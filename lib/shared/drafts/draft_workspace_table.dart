@@ -166,7 +166,6 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
     _navigation.attach(context);
   }
 
-
   @override
   void initState() {
     super.initState();

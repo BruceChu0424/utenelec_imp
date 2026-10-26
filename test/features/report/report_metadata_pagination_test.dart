@@ -222,8 +222,9 @@ void main() {
           reason: 'completed report payload returns without RPC',
         );
         expect(find.text('服务端第1页'), findsOneWidget);
-        if (entry.key != 'ar-ap')
+        if (entry.key != 'ar-ap') {
           expect(find.textContaining('1000'), findsWidgets);
+        }
         final beforeSort = api.queries.length;
         table().onSortChange!('proof', false);
         await tester.pumpAndSettle();

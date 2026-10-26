@@ -176,7 +176,8 @@ class _MaterialReallocationDialogBodyState
   final _qtyController = TextEditingController();
   final _reasonController = TextEditingController();
   final _candidateScrollController = ScrollController();
-  final _candidateRead = ScopedPagedRead<MaterialReallocationEndpointCandidate>();
+  final _candidateRead =
+      ScopedPagedRead<MaterialReallocationEndpointCandidate>();
   ProviderSubscription<int>? _readOwnerSubscription;
   int? _readOwnerEpoch;
   int _readScopeRevision = 0;
@@ -221,8 +222,13 @@ class _MaterialReallocationDialogBodyState
     final container = widget.readContainer;
     if (container != null) {
       _readOwnerEpoch = container.read(exportContextEpochProvider);
-      _readOwnerSubscription = container.listen(exportContextEpochProvider, (previous, next) {
-        if (previous != next && mounted) _retireCandidateReads('账号、权限或计划状态已变化，请关闭后重新打开');
+      _readOwnerSubscription = container.listen(exportContextEpochProvider, (
+        previous,
+        next,
+      ) {
+        if (previous != next && mounted) {
+          _retireCandidateReads('账号、权限或计划状态已变化，请关闭后重新打开');
+        }
       });
     }
     unawaited(_loadCandidates(reset: true));
@@ -339,8 +345,11 @@ class _MaterialReallocationDialogBodyState
     final materialId = _sourceMaterial.materialLineId;
     final future = widget.futureTransfer;
     final receive = widget.receiveIntoCurrent;
-    bool readCurrent() => mounted && readScope == _readScopeRevision &&
-        _readOwnerCurrent && samePagedReadQuery(query, _candidateQuery);
+    bool readCurrent() =>
+        mounted &&
+        readScope == _readScopeRevision &&
+        _readOwnerCurrent &&
+        samePagedReadQuery(query, _candidateQuery);
     final selected = preserveSelection ? _target : null;
     setState(() {
       _loadMoreError = null;
@@ -354,13 +363,21 @@ class _MaterialReallocationDialogBodyState
     try {
       // 每种入口只查自己的一路候选：让出查接受方、现货调入查供料方、
       // 在途调入查专属份额。加载后自动匹配最合适的来源并预填数量。
-      final page = reset ? 1 : future ? _futurePage + 1 : receive ? _spotPage + 1 : _page + 1;
+      final page = reset
+          ? 1
+          : future
+          ? _futurePage + 1
+          : receive
+          ? _spotPage + 1
+          : _page + 1;
       final result = await _candidateRead.read(
         page,
         scope: [readScope, query],
         useCache: !reset,
         isCurrent: readCurrent,
-        canPrefetch: () => readCurrent() && TickerMode.valuesOf(context).enabled &&
+        canPrefetch: () =>
+            readCurrent() &&
+            TickerMode.valuesOf(context).enabled &&
             (ModalRoute.of(context)?.isCurrent ?? true),
         onPrefetchError: (error) {
           if (readCurrent() && pagedReadAccessDenied(error)) {
@@ -369,31 +386,44 @@ class _MaterialReallocationDialogBodyState
         },
         fetchPage: (page) async {
           if (future) {
-            final all = await (_futureSourceSnapshot ??=
-              repository.materialFutureTransferSourceSnapshot(
-                targetAnalysisId: analysisId,
-                targetMaterialId: materialId,
-                isCurrent: readCurrent,
-              ).then((all) => rankedKeywordMatches(all, keyword,
-                primaryFields: (source) => [source.goodsName],
-                fields: (source) => [source.sourceLabel, source.goodsCode])));
+            final all = await (_futureSourceSnapshot ??= repository
+                .materialFutureTransferSourceSnapshot(
+                  targetAnalysisId: analysisId,
+                  targetMaterialId: materialId,
+                  isCurrent: readCurrent,
+                )
+                .then(
+                  (all) => rankedKeywordMatches(
+                    all,
+                    keyword,
+                    primaryFields: (source) => [source.goodsName],
+                    fields: (source) => [source.sourceLabel, source.goodsCode],
+                  ),
+                ));
             const size = 20;
             final start = ((page - 1) * size).clamp(0, all.length);
             final end = (start + size).clamp(0, all.length);
             return PagedResult<MaterialReallocationEndpointCandidate>(
-              items: all.sublist(start, end), page: page, size: size,
-              total: all.length, totalPages: (all.length / size).ceil(),
+              items: all.sublist(start, end),
+              page: page,
+              size: size,
+              total: all.length,
+              totalPages: (all.length / size).ceil(),
             );
           }
           if (receive) {
             return repository.materialCrossReallocationSources(
-              targetAnalysisId: analysisId, targetMaterialLineId: materialId,
-              page: page, keyword: keyword,
+              targetAnalysisId: analysisId,
+              targetMaterialLineId: materialId,
+              page: page,
+              keyword: keyword,
             );
           }
           return repository.materialCrossReallocationCandidates(
-            sourceAnalysisId: analysisId, sourceMaterialLineId: materialId,
-            page: page, keyword: keyword,
+            sourceAnalysisId: analysisId,
+            sourceMaterialLineId: materialId,
+            page: page,
+            keyword: keyword,
           );
         },
       );
@@ -485,9 +515,16 @@ class _MaterialReallocationDialogBodyState
     }
   }
 
-  Object get _candidateQuery => [widget.repository, widget.receiveIntoCurrent,
-    widget.futureTransfer, _sourceAnalysis.analysisId, _sourceAnalysis.version,
-    _sourceAnalysis.fingerprint, _sourceMaterial, _searchController.text];
+  Object get _candidateQuery => [
+    widget.repository,
+    widget.receiveIntoCurrent,
+    widget.futureTransfer,
+    _sourceAnalysis.analysisId,
+    _sourceAnalysis.version,
+    _sourceAnalysis.fingerprint,
+    _sourceMaterial,
+    _searchController.text,
+  ];
 
   void _retireCandidateReads(String message) {
     _readScopeRevision++;

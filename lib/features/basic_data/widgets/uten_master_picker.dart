@@ -453,8 +453,13 @@ class _MasterPickerSheetState<TItem>
     }
   }
 
-  Future<void> _reloadCurrentPage({bool useCache = false, bool reloadVisible = false}) async {
-    if (reloadVisible && _error == null) _page = _pickerRows.visiblePage ?? _page;
+  Future<void> _reloadCurrentPage({
+    bool useCache = false,
+    bool reloadVisible = false,
+  }) async {
+    if (reloadVisible && _error == null) {
+      _page = _pickerRows.visiblePage ?? _page;
+    }
     if (_globalQuery.isNotEmpty && _showingGlobalResults) {
       await _reloadGlobalSearch(useCache: useCache);
     } else {

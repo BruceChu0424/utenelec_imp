@@ -434,8 +434,9 @@ class _PagedOffsetApi extends ApiClient {
     pages.add(page);
     currencies.add(query['currencyId'] as String);
     if (page == 2 && nextGate != null) await nextGate!.future;
-    if (page == 2 && denyNext)
+    if (page == 2 && denyNext) {
       throw ApiException('FORBIDDEN', 'offset read revoked', httpStatus: 403);
+    }
     return {
       'summary': <String, dynamic>{},
       'page': page,

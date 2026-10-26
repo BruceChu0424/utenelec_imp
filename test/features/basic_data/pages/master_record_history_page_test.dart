@@ -673,7 +673,9 @@ void main() {
       await _searchHeader(tester, 'recordLabel', '通过摘要匹配');
       expect(wire.queries.last['keyword'], '通过摘要匹配');
       expect(
-        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['keyword'],
+        wire.queries.lastWhere(
+          (query) => !query.containsKey('cursor'),
+        )['keyword'],
         '通过摘要匹配',
       );
       expect(find.text('第 1 页'), findsOneWidget);
@@ -690,7 +692,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(wire.queries.last['entityType'], 'clients');
       expect(
-        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['entityType'],
+        wire.queries.lastWhere(
+          (query) => !query.containsKey('cursor'),
+        )['entityType'],
         'clients',
       );
       expect(tester.takeException(), isNull);
@@ -803,7 +807,9 @@ void main() {
       await _searchHeader(tester, 'recordCode', ' V8 ');
       expect(wire.queries.last['keyword'], 'V8');
       expect(
-        wire.queries.lastWhere((query) => !query.containsKey('cursor'))['keyword'],
+        wire.queries.lastWhere(
+          (query) => !query.containsKey('cursor'),
+        )['keyword'],
         'V8',
       );
       final table = tester

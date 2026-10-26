@@ -118,7 +118,14 @@ void main() {
           isA<ApiException>().having((e) => e.code, 'code', 'MFA_REQUIRED'),
         ),
       );
-      expect(seen, isA<Map<String, dynamic>>().having((m) => m['code'], 'code', 'MFA_REQUIRED'));
+      expect(
+        seen,
+        isA<Map<String, dynamic>>().having(
+          (m) => m['code'],
+          'code',
+          'MFA_REQUIRED',
+        ),
+      );
     },
   );
   test(

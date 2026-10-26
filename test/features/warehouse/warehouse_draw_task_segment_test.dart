@@ -622,25 +622,27 @@ void main() {
 
   // 2026-09-24 用户口径「生产计划那里表头加个排序，能够快速排序」：表头排序交给服务端
   // 在整个结果集上排(不是只排当前页)，换排序回第 1 页；取消排序回服务端默认顺序。
-  testWidgets('business merged rows keep one read window session across pages', (tester) async {
-    final repository = _FakeRepository()
-      ..pages[1] = [_task('d1')]
-      ..pages[2] = [_task('d2')];
-    await _pump(tester, repository, _issuer);
-    MasterDataTableView<WarehouseDrawTask> table() => tester.widget(
-      find.byKey(const Key('warehouse-draw-task-table')),
-    );
-    final first = readWindowBindingOf(table().items);
-    expect(first, isNotNull);
-    expect(first!.projectionKey, 'warehouse-draw-batch-goods-v1');
-    await table().rowsController!.loadNextPage();
-    await tester.pumpAndSettle();
-    final next = readWindowBindingOf(table().items);
-    expect(next, isNotNull);
-    expect(next!.sameSession(first), isTrue);
-    expect(table().rowsController!.items, isNotEmpty);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'business merged rows keep one read window session across pages',
+    (tester) async {
+      final repository = _FakeRepository()
+        ..pages[1] = [_task('d1')]
+        ..pages[2] = [_task('d2')];
+      await _pump(tester, repository, _issuer);
+      MasterDataTableView<WarehouseDrawTask> table() =>
+          tester.widget(find.byKey(const Key('warehouse-draw-task-table')));
+      final first = readWindowBindingOf(table().items);
+      expect(first, isNotNull);
+      expect(first!.projectionKey, 'warehouse-draw-batch-goods-v1');
+      await table().rowsController!.loadNextPage();
+      await tester.pumpAndSettle();
+      final next = readWindowBindingOf(table().items);
+      expect(next, isNotNull);
+      expect(next!.sameSession(first), isTrue);
+      expect(table().rowsController!.items, isNotEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('plan header sorts on the server and resets to page 1', (
     tester,

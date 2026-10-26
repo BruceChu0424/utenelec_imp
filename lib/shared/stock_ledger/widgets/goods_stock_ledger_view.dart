@@ -75,7 +75,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         UtenRefreshParticipant<GoodsStockLedgerView>,
         ScopedPagedReadViewMixin<GoodsStockLedgerView> {
   final _readViewportRows = MasterDataTableRowsController<StockLedgerRow>();
-  int get _visibleReadPage => _data == null ? (_data?.page ?? 1) : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
+  int get _visibleReadPage => _data == null
+      ? (_data?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
 
   @override
   void scopedPagedReadOwnerChanged() {
@@ -300,7 +302,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
             .map((r) => r.unitName)
             .firstWhere((u) => u != null && u.isNotEmpty, orElse: () => null);
     return MasterDataTableView<StockLedgerRow>(
-                rowsController: _readViewportRows,
+      rowsController: _readViewportRows,
       expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1',

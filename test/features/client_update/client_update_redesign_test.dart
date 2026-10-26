@@ -47,6 +47,10 @@ class _Api extends ApiClient {
   Completer<Map<String, dynamic>>? delayed;
   StreamController<Uint8List>? chunks;
 
+  void dispose() {
+    unawaited(chunks?.close());
+  }
+
   Map<String, dynamic> get result => {
     'updateAvailable': available,
     'checkIntervalSeconds': 300,
@@ -149,6 +153,7 @@ class _Harness {
     addTearDown(scale.dispose);
     addTearDown(() {
       if (!controller.isDisposed) controller.dispose();
+      api.dispose();
     });
     scale.value = textScale;
     await tester.pumpWidget(
@@ -214,8 +219,9 @@ class _Harness {
   }
 
   Future<void> capture(WidgetTester tester, String name) async {
-    if (!const bool.fromEnvironment('CLIENT_UPDATE_REDESIGN_SCREENSHOTS'))
+    if (!const bool.fromEnvironment('CLIENT_UPDATE_REDESIGN_SCREENSHOTS')) {
       return;
+    }
     final mascot = find.byType(UtenBrandMascot);
     final image = tester.widget<Image>(
       find.descendant(of: mascot, matching: find.byType(Image)),

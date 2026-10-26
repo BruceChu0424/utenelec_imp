@@ -192,4 +192,3 @@ class _Repository extends Fake implements EmployeeRepository {
     return _result(id);
   }
 }
-

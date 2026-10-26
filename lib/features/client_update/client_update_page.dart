@@ -147,9 +147,11 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
               ),
               child: UtenBackButton(
                 key: const ValueKey('client-update-back'),
-                onPressed: transferring
-                    ? () {}
-                    : () => Navigator.of(context).maybePop(),
+                onPressed: () {
+                  if (!controller.transferBusy) {
+                    Navigator.of(context).maybePop();
+                  }
+                },
               ),
             ),
           ),

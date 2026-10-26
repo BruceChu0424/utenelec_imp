@@ -56,8 +56,10 @@ class WarehouseInventoryPanel extends ConsumerStatefulWidget {
 class _WarehouseInventoryPanelState
     extends ConsumerState<WarehouseInventoryPanel>
     with ScopedPagedReadViewMixin<WarehouseInventoryPanel> {
-  final _readViewportRows = MasterDataTableRowsController<InstantInventoryRow>();
-  int get _visibleReadPage => _result == null ? (_page) : (_readViewportRows.visiblePage ?? (_page));
+  final _readViewportRows =
+      MasterDataTableRowsController<InstantInventoryRow>();
+  int get _visibleReadPage =>
+      _result == null ? (_page) : (_readViewportRows.visiblePage ?? (_page));
 
   @override
   void scopedPagedReadOwnerChanged() {
@@ -432,7 +434,7 @@ class _WarehouseInventoryPanelState
         ),
         Expanded(
           child: MasterDataTableView<InstantInventoryRow>(
-                rowsController: _readViewportRows,
+            rowsController: _readViewportRows,
             expensiveRowMounts: false,
             key: const Key('warehouse-inventory-table'),
             tableKey: 'master.warehouse.inventory',

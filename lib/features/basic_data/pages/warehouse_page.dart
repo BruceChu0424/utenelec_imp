@@ -1353,7 +1353,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
               _directoryHeader(context, showCreate: false),
               Expanded(
                 child: MasterDataTableView<WarehouseDetail>(
-      expensiveRowMounts: inlineEdit.active,
+                  expensiveRowMounts: inlineEdit.active,
                   appendRowsSource: inlineAppendRowsSource,
                   key: const Key('warehouse-master-table'),
                   tableKey: 'master.warehouses',

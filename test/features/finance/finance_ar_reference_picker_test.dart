@@ -417,8 +417,9 @@ class _PagedArReferenceApi extends _ArReferenceApi {
     final page = (query?['page'] as num?)?.toInt() ?? 1;
     pages.add(page);
     if (page == 2 && nextGate != null) await nextGate!.future;
-    if (page == 2 && denyNext)
+    if (page == 2 && denyNext) {
       throw ApiException('FORBIDDEN', 'picker read revoked', httpStatus: 403);
+    }
     if (page == 2 && failPageTwoOnce && _failed < 2) {
       _failed++;
       throw NetworkException();

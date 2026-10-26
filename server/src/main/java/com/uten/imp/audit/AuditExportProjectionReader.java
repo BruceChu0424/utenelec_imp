@@ -62,7 +62,7 @@ public class AuditExportProjectionReader {
         Predicate predicate=specification.toPredicate(root,query,cb);
         if(after!=null)predicate=cb.and(predicate,cb.or(cb.lessThan(root.get("createdAt"),after.createdAt()),
                 cb.and(cb.equal(root.get("createdAt"),after.createdAt()),cb.lessThan(root.get("id"),after.id()))));
-        query.multiselect(fields).where(predicate).orderBy(cb.desc(root.get("createdAt")),cb.desc(root.get("id")));
+        query.select(cb.tuple(fields)).where(predicate).orderBy(cb.desc(root.get("createdAt")),cb.desc(root.get("id")));
         return em.createQuery(query).setMaxResults(100).setHint("org.hibernate.readOnly",true)
                 .setHint("jakarta.persistence.query.timeout",60000).getResultList().stream().map(tuple->{
                     var row=new AuditLog();var bean=new BeanWrapperImpl(row);
@@ -78,8 +78,8 @@ public class AuditExportProjectionReader {
         var cb=em.getCriteriaBuilder();var query=cb.createTupleQuery();var root=query.from(AuditLog.class);
         List<Predicate> keys=new ArrayList<>();
         for(var row:rows)keys.add(cb.and(cb.equal(root.get("id"),row.getId()),cb.equal(root.get("createdAt"),row.getCreatedAt())));
-        query.multiselect(root.get("id").alias("id"),root.get("createdAt").alias("time"),
-                root.get("before").alias("before"),root.get("after").alias("after")).where(cb.or(keys.toArray(Predicate[]::new)));
+        query.select(cb.tuple(root.get("id").alias("id"),root.get("createdAt").alias("time"),
+                root.get("before").alias("before"),root.get("after").alias("after"))).where(cb.or(keys.toArray(Predicate[]::new)));
         Map<Key,Tuple> evidence=new HashMap<>();
         for(var tuple:em.createQuery(query).setMaxResults(rows.size()+1).setHint("org.hibernate.readOnly",true)
                 .setHint("jakarta.persistence.query.timeout",60000).getResultList())

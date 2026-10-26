@@ -605,7 +605,7 @@ class _FinanceAssetDetailSurfaceState
         if (detail.schedule.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s16),
           MasterDataTableView<FinanceAssetScheduleLine>(
-      expensiveRowMounts: false,
+            expensiveRowMounts: false,
             tableKey: 'finance.asset.schedule',
             embedded: true,
             platformBinding: PlatformTableBinding(

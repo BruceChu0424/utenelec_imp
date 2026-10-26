@@ -128,9 +128,7 @@ public class MasterReportExportSource {
     }
     private static void rejectCredentials(JsonNode node) {
         if (node.isObject()) {
-            var fields = node.fields();
-            while (fields.hasNext()) {
-                var field = fields.next();
+            for (var field : node.properties()) {
                 if ("password".equalsIgnoreCase(field.getKey())) throw invalid();
                 rejectCredentials(field.getValue());
             }

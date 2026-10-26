@@ -38,7 +38,7 @@ class ReadScopeRevisionInterceptor extends Interceptor {
     final nativeDomain =
         providedDomain != null &&
             RegExp(
-            r'^native_(sales_owner|purchase_owner|subcontract_owner|production_owner|fqc_records|workshop_tasks|warehouse_tasks|feature):(task|browse)$',
+              r'^native_(sales_owner|purchase_owner|subcontract_owner|production_owner|fqc_records|workshop_tasks|warehouse_tasks|feature):(task|browse)$',
             ).hasMatch(providedDomain)
         ? providedDomain
         : null;

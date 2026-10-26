@@ -135,7 +135,7 @@ void main() {
           reason: 'the business request is deliberately still pending',
         );
         expect(tables, findsOneWidget);
-          MasterDataTableView<dynamic> table = tester.widget(tables);
+        MasterDataTableView<dynamic> table = tester.widget(tables);
         expect(table.columns, isNotEmpty);
         expect(table.items, isEmpty);
         expect(table.isLoading, isTrue);

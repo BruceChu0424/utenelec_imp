@@ -1,4 +1,4 @@
-import { getPublicResources } from '@/lib/resources';
+import { queryPublicResources } from '@/lib/resources';
 import { PublicResourceList } from '@/components/products/PublicResourceList';
 import { PublicPageIntro } from '@/components/layout/PublicPageIntro';
 import type { Metadata } from 'next';
@@ -30,8 +30,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   return buildPageMetadata({ locale, path: '/resources', title: custom?.title || t('title'), description: custom?.subtitle || t('subtitle') });
 }
 
-export default async function ResourcesPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
+export default async function ResourcesPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ documentsPage?: string }> }) {
+  const [{ locale }, query] = await Promise.all([params, searchParams]);
   setRequestLocale(locale);
   const [t, common, newsT, rawSetting, guides, resources] = await Promise.all([
     getTranslations({ locale, namespace: 'Resources' }),
@@ -39,7 +39,7 @@ export default async function ResourcesPage({ params }: { params: Promise<{ loca
     getTranslations({ locale, namespace: 'News' }),
     getSetting('resources'),
     prisma.news.findMany({ where: publicNewsWhere({ category: 'guide' }), orderBy: { publishedAt: 'desc' }, take: 12 }),
-    getPublicResources(locale),
+    queryPublicResources(locale, { page: Number(query.documentsPage) }),
   ]);
   const custom = pickLocale<ResourceSetting>(rawSetting, locale);
   const faqs = Array.from({ length: 6 }, (_, index) => ({ q: t(`faq${index + 1}q`), a: t(`faq${index + 1}a`) }));
@@ -47,7 +47,7 @@ export default async function ResourcesPage({ params }: { params: Promise<{ loca
   return (
     <>
       <PublicPageIntro locale={locale} title={custom?.title || t('title')} description={custom?.subtitle || t('subtitle')} />
-      {resources.length > 0 && <section className="container-uten pb-16"><div className="public-section-heading"><h2>{t('downloadTitle')}</h2></div><PublicResourceList resources={resources} locale={locale} /></section>}
+      {resources.total > 0 && <section id="documents" className="container-uten pb-16"><div className="public-section-heading"><h2>{t('downloadTitle')}</h2></div><PublicResourceList result={resources} locale={locale} baseHref="/resources" /></section>}
 
       <section className="section">
         <div className="container-uten">

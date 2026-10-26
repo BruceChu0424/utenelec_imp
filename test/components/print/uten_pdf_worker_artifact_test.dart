@@ -20,7 +20,7 @@ void main() {
               as Map<String, dynamic>;
       expect(receipt['sourceTextNormalization'], 'LF');
       expect(receipt['flags'], contains('--csp'));
-      expect(receipt['supportedProtocolVersions'],[1,2,3]);
+      expect(receipt['supportedProtocolVersions'], [1, 2, 3]);
       final sources = Map<String, String>.from(receipt['sources'] as Map);
       expect(
         sources.keys,

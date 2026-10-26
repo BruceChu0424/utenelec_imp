@@ -241,7 +241,10 @@ class _ReferenceMethodRepositoryFake extends ReferenceMethodRepository {
     Map<String, String?> filters = const {},
   }) async {
     final all = (await settlementAdminList(keyword: keyword, filters: filters))
-        .where((item) => matchesKeywordSearch([item.name, item.code], keyword ?? '')).toList();
+        .where(
+          (item) => matchesKeywordSearch([item.name, item.code], keyword ?? ''),
+        )
+        .toList();
     return PagedResult(
       items: all.skip((page - 1) * size).take(size).toList(),
       page: page,

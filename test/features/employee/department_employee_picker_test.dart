@@ -413,11 +413,13 @@ void main() {
     await _pumpPicker(tester, repository);
     await tester.tap(find.text('销售部'));
     await tester.pumpAndSettle();
-    MasterDataTableView<UtenEmployeePickerItem> table() => tester.widget(
-      find.byKey(const ValueKey('department-employee-table')),
+    MasterDataTableView<UtenEmployeePickerItem> table() =>
+        tester.widget(find.byKey(const ValueKey('department-employee-table')));
+    expect(
+      repository.requestedPages,
+      [1, 2],
+      reason: 'page 2 starts without any wheel, thumb or load-more action',
     );
-    expect(repository.requestedPages, [1, 2],
-        reason: 'page 2 starts without any wheel, thumb or load-more action');
     expect(table().items.map((item) => item.id), ['first']);
     table().onLoadMore!();
     await tester.pumpAndSettle();
@@ -488,8 +490,10 @@ void main() {
     expect(tester.getSize(treeFinder).width, 160);
     // The tree keeps its minimum width; its search preserves the one trailing
     // scrollbar lane rather than covering that lane with an input hit target.
-    expect(tester.getSize(_pickerSearch(tester)).width,
-        160 - UtenScrollGutter.trackWidth);
+    expect(
+      tester.getSize(_pickerSearch(tester)).width,
+      160 - UtenScrollGutter.trackWidth,
+    );
 
     await tester.tap(find.byTooltip('展开销售部'));
     await tester.pumpAndSettle();

@@ -24,7 +24,12 @@ void main() {
               Response<dynamic>(
                 requestOptions: request,
                 statusCode: 200,
-                data: <String, dynamic>{'items': <Object?>[], 'hasMore': false, 'page': 1, 'size': 100},
+                data: <String, dynamic>{
+                  'items': <Object?>[],
+                  'hasMore': false,
+                  'page': 1,
+                  'size': 100,
+                },
               ),
             );
           },

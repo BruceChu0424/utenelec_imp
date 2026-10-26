@@ -6,7 +6,8 @@ import Image from 'next/image';
 import { ArrowLeft, ArrowUpRight, CalendarDays } from 'lucide-react';
 import { prisma } from '@/lib/db';
 import { articleExcerpt, pickLocale, tr, formatDate } from '@/lib/content';
-import { getDirectNewsContent, parseNewsContent } from '@/lib/news-content';
+import { getDirectNewsContent } from '@/lib/news-content';
+import { ArticleContent } from '@/components/content/ArticleContent';
 import { publicNewsWhere } from '@/lib/publication';
 import { getNewsBySlug } from '@/lib/queries';
 import { buildPageMetadata, directContentLocales, hasText } from '@/lib/seo';
@@ -41,7 +42,6 @@ export default async function NewsDetailPage({ params }: { params: Promise<{ loc
   const news = await getNewsBySlug(slug);
   if (!news) notFound();
   const nd = tr<{ title: string; summary?: string; content?: string }>(news.i18n, locale);
-  const contentBlocks = parseNewsContent(nd.content, nd.title);
   const hasCleanSummary = Boolean(nd.summary && !/中文\s*\|\s*ENGLISH|联系我们\s*人才招聘|COMPANY NEWS/i.test(nd.summary));
   const more = (await prisma.news.findMany({
     where: publicNewsWhere({ NOT: { id: news.id } }),
@@ -75,23 +75,7 @@ export default async function NewsDetailPage({ params }: { params: Promise<{ loc
           </div>
         )}
         <div className="mx-auto max-w-3xl">
-          {contentBlocks.length ? (
-            <div className="space-y-7 text-base leading-8 text-foreground/86 md:text-lg md:leading-9">
-              {contentBlocks.map((block, index) => {
-                if (block.type === 'heading') {
-                  return <h2 key={`${index}-${block.text.slice(0, 18)}`} className="pt-4 text-2xl font-semibold leading-tight tracking-[-.025em] text-foreground first:pt-0 md:text-3xl">{block.text}</h2>;
-                }
-                if (block.type === 'list') {
-                  return (
-                    <ul key={`${index}-${block.items[0]?.slice(0, 18)}`} className="list-disc space-y-3 ps-6 marker:text-accent">
-                      {block.items.map((item, itemIndex) => <li key={`${itemIndex}-${item.slice(0, 18)}`} className="ps-1">{item}</li>)}
-                    </ul>
-                  );
-                }
-                return <p key={`${index}-${block.text.slice(0, 18)}`}>{block.text}</p>;
-              })}
-            </div>
-          ) : <p className="text-muted-foreground">{tc('noData')}</p>}
+          <ArticleContent text={nd.content} title={nd.title} emptyLabel={tc('noData')} />
         </div>
       </div>
 

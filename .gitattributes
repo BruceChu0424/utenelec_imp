@@ -15,6 +15,8 @@ windows/flutter/generated_plugins.cmake text eol=lf
 
 *.dart text eol=lf
 assets/workers/uten_pdf_worker.js text eol=lf
+web/maintenance.js text eol=lf
+web/maintenance.css text eol=lf
 *.arb text eol=lf
 *.java text eol=lf
 *.xml text eol=lf

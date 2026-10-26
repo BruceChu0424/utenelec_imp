@@ -289,7 +289,10 @@ void main() {
 
     expect(find.text('出货财务审核任务加载失败'), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
-    expect(find.byKey(const Key('finance-shipment-audit-table')), findsOneWidget);
+    expect(
+      find.byKey(const Key('finance-shipment-audit-table')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('missing exact permission shows denial without requesting API', (

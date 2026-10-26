@@ -48,4 +48,54 @@ class StreamingWorkbookTest {
             }
         }
     }
+
+    @Test void concurrentExportsKeepPrivateSheetFilesAndRawRowsInTheirOwnDirectories() throws Exception {
+        Path first=Files.createDirectory(directory.resolve("first"));
+        Path second=Files.createDirectory(directory.resolve("second"));
+        var service=new XlsxExportService();
+        var together=new java.util.concurrent.CyclicBarrier(2);
+        try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var one=workers.submit(()->writeConcurrentExport(service,first,"first",together));
+            var two=workers.submit(()->writeConcurrentExport(service,second,"second",together));
+            for(var result:List.of(one,two)) {
+                byte[] bytes=result.get(30,java.util.concurrent.TimeUnit.SECONDS);
+                try(var book=new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                    var sheet=book.getSheetAt(0);assertEquals(501,sheet.getLastRowNum());
+                    String marker=sheet.getRow(1).getCell(1).getStringCellValue();
+                    assertTrue(Set.of("first","second").contains(marker));
+                    assertEquals(marker,sheet.getRow(501).getCell(1).getStringCellValue());
+                }
+            }
+        }
+        for(Path export:List.of(first,second))try(var files=Files.list(export)){assertEquals(0,files.count());}
+    }
+
+    private static byte[] writeConcurrentExport(XlsxExportService service,Path export,String marker,
+            java.util.concurrent.CyclicBarrier together)throws Exception {
+        try(var stream=service.openStream(null,null,export);var out=new ByteArrayOutputStream()) {
+            var rows=java.util.stream.IntStream.range(0,501).mapToObj(index->Map.<String,Object>of("qty",index,"note",marker)).toList();
+            stream.accept(new ExportPayload(columns(),rows,501));
+            together.await(10,java.util.concurrent.TimeUnit.SECONDS);
+            try(var files=Files.list(export)){assertTrue(files.anyMatch(path->path.getFileName().toString().startsWith("report-sheet-")));}
+            stream.finish(out);return out.toByteArray();
+        }
+    }
+
+    @Test void aFailedPrivateSheetCreationRestoresAnExistingPoiThreadStrategy() throws Exception {
+        Path outer=Files.createDirectory(directory.resolve("outer"));
+        Path blocked=directory.resolve("not-a-directory");Files.writeString(blocked,"fixture");
+        var previous=new org.apache.poi.util.DefaultTempFileCreationStrategy(outer.toFile());
+        org.apache.poi.util.TempFile.withStrategy(previous,()->{
+            assertThrows(RuntimeException.class,()->{
+                try(var writer=new XlsxExportService().openStream(null,null,blocked)) {
+                    writer.accept(new ExportPayload(columns(),List.of(),0));
+                }
+            });
+            try {
+                File probe=org.apache.poi.util.TempFile.createTempFile("restored-",".tmp");
+                assertTrue(probe.toPath().startsWith(outer));Files.delete(probe.toPath());
+            } catch(IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            return null;
+        });
+    }
 }

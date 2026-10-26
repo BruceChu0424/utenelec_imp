@@ -14,6 +14,7 @@ export function publicProductView(product: ProductWithRelations, locale: string,
   const content = tr<{ name?: string; description?: string }>(product.i18n, locale);
   const reviewed = product.classificationStatus === 'VERIFIED';
   const historical = Boolean(product.legacySource || product.sourceIdentity?.startsWith('ch-uten-v2:'));
+  const productGallery = images(product.gallery);
   const variants = product.variants.filter(variant => variant.published && publicImage(variant.image)).map(variant => {
     const names = [tr<{ name?: string }>(variant.i18n, 'zh').name, tr<{ name?: string }>(variant.i18n, 'en').name].filter(Boolean);
     const synthetic = Boolean(variant.legacySynthetic) || (!variant.sourceIdentity && !variant.sku && !variant.swatchHex && !variant.finish && !variant.widthMm && !variant.heightMm && !variant.depthMm && names.every(name => name === '标准款' || name?.toLowerCase() === 'standard'));
@@ -22,7 +23,7 @@ export function publicProductView(product: ProductWithRelations, locale: string,
       id: variant.id,
       name: tr<{ name?: string }>(variant.i18n, locale).name || standardName,
       image: variant.image!,
-      gallery: [...new Set([variant.image!, ...images(variant.gallery)])],
+      gallery: [...new Set([variant.image!, ...images(variant.gallery), ...productGallery])],
       swatchHex: verified ? variant.swatchHex : null,
       finish: verified ? variant.finish : null,
       widthMm: verified ? positive(variant.widthMm) : null,

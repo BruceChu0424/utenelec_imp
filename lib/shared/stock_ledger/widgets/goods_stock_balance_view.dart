@@ -65,7 +65,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         UtenRefreshParticipant<GoodsStockBalanceView>,
         ScopedPagedReadViewMixin<GoodsStockBalanceView> {
   final _readViewportRows = MasterDataTableRowsController<BalanceRow>();
-  int get _visibleReadPage => _balances == null ? (_balances?.page ?? 1) : (_readViewportRows.visiblePage ?? (_balances?.page ?? 1));
+  int get _visibleReadPage => _balances == null
+      ? (_balances?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_balances?.page ?? 1));
 
   @override
   void scopedPagedReadOwnerChanged() {
@@ -237,7 +239,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     ref.watch(defectiveMoveOptionsProvider);
     final rows = _balances?.items ?? const <BalanceRow>[];
     return MasterDataTableView<BalanceRow>(
-                rowsController: _readViewportRows,
+      rowsController: _readViewportRows,
       expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_stock_balance_view.GoodsStockBalanceViewState.build.1',

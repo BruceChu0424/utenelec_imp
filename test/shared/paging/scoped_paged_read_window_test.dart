@@ -57,7 +57,7 @@ fixture({List<int> retained = const [1, 2, 3]}) async {
     reader: reader,
     binding: binding,
     visible: () => visible,
-    move: (p) => visible = p,
+    move: (int p) => visible = p,
   );
 }
 

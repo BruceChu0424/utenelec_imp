@@ -5,6 +5,7 @@ import { migratedDatabase } from './helpers/migrated-database';
 import { catalogWindow, catalogTextFilter } from '../lib/catalog-query';
 import { publicProductView, productContactHref } from '../lib/public-product';
 import type { ProductWithRelations } from '../lib/catalog';
+import { toStudioVariants } from '../lib/catalog';
 
 test('public catalog uses complete database pages and publication-aware context', async (t) => {
   const fixture = await migratedDatabase();
@@ -116,4 +117,26 @@ test('contact URLs retain stable source IDs and pagination clamps hostile values
 test('catalog search preserves case-insensitive behavior for both SQL providers', () => {
   assert.deepEqual(catalogTextFilter('gk11', false), { contains: 'gk11' });
   assert.deepEqual(catalogTextFilter('gk11', true), { contains: 'gk11', mode: 'insensitive' });
+});
+
+test('public variants retain product-level gallery images without accepting remote or duplicate paths', () => {
+  const product = { id: 'gallery-product', slug: 'gallery-product', i18n: '{"en":{"name":"Panel"}}',
+    gallery: '["/uploads/product-detail.jpg","/uploads/variant.jpg","https://example.invalid/remote.jpg","//example.invalid/remote.jpg"]',
+    variants: [{ id: 'v', published: true, image: '/uploads/variant.jpg', gallery: '["/uploads/variant-detail.jpg"]', i18n: '{}' }],
+  } as unknown as ProductWithRelations;
+  assert.deepEqual(publicProductView(product, 'en').variants[0].gallery,
+    ['/uploads/variant.jpg', '/uploads/variant-detail.jpg', '/uploads/product-detail.jpg']);
+});
+
+test('homepage Studio previews only select persisted variants that can resolve through a deep link', () => {
+  const product = { id: 'scene-product', slug: 'scene-product', i18n: '{"en":{"name":"Panel"}}',
+    sceneEnabled: true, image: '/uploads/product.jpg',
+    series: { id: 'family', code: 'family', publicSlug: 'family', catalogRole: 'FAMILY', published: true, i18n: '{}' },
+    variants: [],
+  } as unknown as ProductWithRelations;
+  assert.equal(publicProductView(product, 'en').variants[0].id, 'scene-product-default');
+  assert.deepEqual(toStudioVariants([product], 'en'), []);
+  product.variants.push({ id: 'real-variant', published: true, image: '/uploads/variant.jpg', i18n: '{}', legacySynthetic: true } as ProductWithRelations['variants'][number]);
+  assert.deepEqual(toStudioVariants([product], 'en').map(variant => [variant.id, variant.productHref]),
+    [['real-variant', '/products/family/scene-product?variant=real-variant']]);
 });

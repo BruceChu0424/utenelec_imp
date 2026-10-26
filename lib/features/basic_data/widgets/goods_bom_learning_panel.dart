@@ -333,7 +333,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
           const SizedBox(height: UtenSpacing.s12),
           Expanded(
             child: MasterDataTableView<GoodsBomLearningComponent>(
-      expensiveRowMounts: false,
+              expensiveRowMounts: false,
               tableKey:
                   'features.basic_data.widgets.goods_bom_learning_panel.GoodsBomLearningPanelState._content.1',
               items: rows,

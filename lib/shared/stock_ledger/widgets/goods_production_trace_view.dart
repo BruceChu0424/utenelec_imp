@@ -66,8 +66,11 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
     with
         UtenRefreshParticipant<GoodsProductionTraceView>,
         ScopedPagedReadViewMixin<GoodsProductionTraceView> {
-  final _readViewportRows = MasterDataTableRowsController<GoodsProductionTraceRow>();
-  int get _visibleReadPage => _data == null ? (_data?.page ?? 1) : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
+  final _readViewportRows =
+      MasterDataTableRowsController<GoodsProductionTraceRow>();
+  int get _visibleReadPage => _data == null
+      ? (_data?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_data?.page ?? 1));
 
   @override
   void scopedPagedReadOwnerChanged() {
@@ -305,7 +308,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         const SizedBox(height: 8),
         Expanded(
           child: MasterDataTableView<GoodsProductionTraceRow>(
-                rowsController: _readViewportRows,
+            rowsController: _readViewportRows,
             expensiveRowMounts: false,
             tableKey: 'goods.production_trace.$_direction',
             key: ValueKey(('goods-production-trace', _direction, _readEpoch)),

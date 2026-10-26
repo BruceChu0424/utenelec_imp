@@ -117,8 +117,9 @@ class _ExpenseApprovalListPageState
         body: UtenPageEdgePadding(child: UtenSkeletonList()),
       );
     }
-    ref.read(expenseApprovalListProvider.notifier).bindReadView(context,
-      visiblePage: () => _tableRows.visiblePage);
+    ref
+        .read(expenseApprovalListProvider.notifier)
+        .bindReadView(context, visiblePage: () => _tableRows.visiblePage);
     final queue = ref.watch(approvalQueueProvider);
     final facets = ref.watch(expenseApprovalFacetsProvider(queue));
     final filters = ref.watch(expenseApprovalFiltersProvider);

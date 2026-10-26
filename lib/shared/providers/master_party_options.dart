@@ -128,7 +128,10 @@ Future<T?> guardPartyPanelResult<T>(
     final result = await open();
     if (!context.mounted) return null;
     if (observedEpoch != epoch ||
-        !identical(container, ProviderScope.containerOf(context, listen: false))) {
+        !identical(
+          container,
+          ProviderScope.containerOf(context, listen: false),
+        )) {
       if (result != null) context.appError('登录身份或读取范围已变化，请重新打开面板');
       return null;
     }

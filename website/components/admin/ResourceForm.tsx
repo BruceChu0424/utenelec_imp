@@ -1,6 +1,7 @@
 'use client';
 import { useState, useTransition } from 'react';
 import { uploadDocument, saveResource } from '@/app/admin/resource-actions';
+import { ClientForm } from '@/components/forms/ClientForm';
 
 type Initial = { id: string; rowVersion: number; assetId: string; i18n: string; language: string; version: string;
   market: string | null; productId: string | null; seriesId: string | null; published: boolean; asset: { originalName: string } };
@@ -11,7 +12,7 @@ export function ResourceForm({ initial, expectedHash, series, products }: {
   const [asset, setAsset] = useState({ id: initial?.assetId || '', name: initial?.asset.originalName || '' });
   const [error, setError] = useState(''); const [busy, start] = useTransition();
   const [uploading, setUploading] = useState(false);
-  return <form className="mt-7 max-w-4xl space-y-6" onSubmit={event => {
+  return <ClientForm className="mt-7 max-w-4xl space-y-6" onSubmit={event => {
     event.preventDefault(); if (busy || uploading) return; const form = new FormData(event.currentTarget);
     start(async () => { setError(''); try { const result = await saveResource(form); if (result?.error) setError(result.error); }
       catch { setError('暂时无法保存，已填写的内容仍保留，请检查连接后重试。'); } });
@@ -42,5 +43,5 @@ export function ResourceForm({ initial, expectedHash, series, products }: {
     </section>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <button type="submit" disabled={busy || uploading || !asset.id} className="btn-accent">{busy ? '正在保存…' : '保存资料草稿'}</button>
-  </form>;
+  </ClientForm>;
 }

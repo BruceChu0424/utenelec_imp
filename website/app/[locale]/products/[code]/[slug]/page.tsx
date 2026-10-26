@@ -1,4 +1,4 @@
-import { getPublicResources } from '@/lib/resources';
+import { queryPublicResources } from '@/lib/resources';
 import { PublicResourceList } from '@/components/products/PublicResourceList';
 import type { Metadata } from 'next';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
@@ -90,7 +90,7 @@ export default async function ProductDetailPage({
   const t = await getTranslations({ locale, namespace: 'Products' });
   const tc = await getTranslations({ locale, namespace: 'Common' });
   const resourcesT = await getTranslations({ locale, namespace: 'Resources' });
-  const resources = await getPublicResources(locale, product.id);
+  const resources = await queryPublicResources(locale, { productId: product.id, page: Number(firstValue(query.documentsPage)) });
   const view = publicProductView(product, locale, t('standardVariant'));
   if (requestedVariant && !view.variants.some(variant => variant.id === requestedVariant)) notFound();
   const seriesName = catalogFamilyDisplayName(product.series, locale);
@@ -168,7 +168,7 @@ export default async function ProductDetailPage({
 
       {view.historicalDescription && <section className="container-uten pb-16"><div className="public-history"><h2>{t('historicalTitle')}</h2><p>{t('historicalNote')}</p><p className="historical-copy">{view.historicalDescription}</p></div></section>}
 
-      {resources.length > 0 && <section className="container-uten pb-16"><div className="public-section-heading"><h2>{resourcesT('downloadTitle')}</h2></div><PublicResourceList resources={resources} locale={locale} /></section>}
+      {resources.total > 0 && <section id="documents" className="container-uten pb-16"><div className="public-section-heading"><h2>{resourcesT('downloadTitle')}</h2></div><PublicResourceList result={resources} locale={locale} baseHref={`${canonicalPath}${requestedVariant ? `?variant=${encodeURIComponent(requestedVariant)}` : ''}`} /></section>}
 
       {specs.length > 0 && (
         <section className="border-y border-border bg-background-elevated/55 py-14 md:py-20">

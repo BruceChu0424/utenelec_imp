@@ -270,7 +270,7 @@ void main() {
       '${subcontract ? 'subcontract' : 'purchase'} historical closure stays selectable for direct execution',
       (tester) async {
         final fixture = await _mount(tester, subcontract, legacyClosure: true);
-          expect(find.text('历史结束申请待业务确认'), findsWidgets);
+        expect(find.text('历史结束申请待业务确认'), findsWidgets);
         _selectOrders(tester, {'row-0'});
         await tester.pumpAndSettle();
         expect(tester.widget<UtenButton>(_action).onPressed, isNotNull);

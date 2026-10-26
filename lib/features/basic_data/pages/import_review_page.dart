@@ -305,7 +305,7 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
                   const SizedBox(height: UtenSpacing.s16),
                   Expanded(
                     child: MasterDataTableView<ImportReviewRow>(
-      expensiveRowMounts: false,
+                      expensiveRowMounts: false,
                       key: const ValueKey('import-review-table'),
                       columns: _columns(l10n),
                       items: widget.rows,

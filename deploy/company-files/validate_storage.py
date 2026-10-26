@@ -29,8 +29,20 @@ def parse_mounts(contents):
         mounts.append({"target": unescape_mount(fields[4]), "device": fields[2],
                        "root": unescape_mount(fields[3]), "fs": details[0],
                        "source": unescape_mount(details[1]),
-                       "options": set(fields[5].split(",")) | set(details[2].split(","))})
+                       # Per-mount VFS flags and superblock flags describe different
+                       # layers: a systemd ro bind can still have an rw superblock.
+                       "options": set(fields[5].split(",")),
+                       "super_options": set(details[2].split(","))})
     return mounts
+
+
+def protected_mount(mount, *, writable=False):
+    mode = mount["options"] & {"rw", "ro"}
+    return (mount["fs"] == "ext4"
+            and {"nodev", "nosuid", "noexec"} <= mount["options"]
+            and mode in ({"rw"}, {"ro"})
+            and (not writable or mode == {"rw"})
+            and mount["super_options"] & {"rw", "ro"} == {"rw"})
 
 
 def check_mounts(mounts, expected_mount, expected_source):
@@ -43,7 +55,22 @@ def check_mounts(mounts, expected_mount, expected_source):
         raise ValueError("The media volume must be independent of the system filesystem")
     if volume["source"] != expected_source or volume["root"] != "/":
         raise ValueError("The media mount does not match the reviewed source")
-    if volume["fs"] != "ext4" or not {"rw", "nodev", "nosuid", "noexec"} <= volume["options"] or "ro" in volume["options"]:
+    if not protected_mount(volume):
+        raise ValueError("The media filesystem or mount protections are invalid")
+    attachment_root = expected_mount + "/attachments"
+    attachments = [m for m in mounts if m["target"] == attachment_root]
+    if any(m["target"].startswith(attachment_root + "/") for m in mounts):
+        raise ValueError("Unreviewed child mounts must not replace storage namespaces")
+    if attachments:
+        if len(attachments) != 1:
+            raise ValueError("The attachment mount is ambiguous")
+        binding = attachments[0]
+        if (binding["device"] != volume["device"] or binding["source"] != volume["source"]
+                or binding["root"] != "/attachments" or not protected_mount(binding, writable=True)):
+            raise ValueError("The attachment binding or mount protections are invalid")
+    elif "ro" in volume["options"]:
+        # ProtectSystem=strict may keep the media parent read-only only when
+        # ReadWritePaths exposes this exact reviewed subtree on the same volume.
         raise ValueError("The media filesystem or mount protections are invalid")
     return volume
 

@@ -83,11 +83,15 @@ void main() {
     expect(find.text('请输入登录密码'), findsOneWidget, reason: '确认按钮可以到达，正常提示必填密码');
     expect(verifyCalls, 0);
     expect(find.byKey(const Key('reauth-dialog')), findsOneWidget);
-    await tester.tapAt(tester.getCenter(find.byKey(const Key('reauth-password'))));
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('reauth-password'))),
+    );
     await tester.pump();
     tester.testTextInput.enterText('CorrectPassword1');
     await tester.pump();
-    await tester.tapAt(tester.getCenter(find.byKey(const Key('reauth-confirm'))));
+    await tester.tapAt(
+      tester.getCenter(find.byKey(const Key('reauth-confirm'))),
+    );
     await _frames(tester);
     expect(verifyCalls, 1);
     expect(find.byKey(const Key('reauth-dialog')), findsNothing);

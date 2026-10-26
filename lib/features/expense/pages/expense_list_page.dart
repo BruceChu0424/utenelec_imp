@@ -126,8 +126,9 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
           if (_isOwnDraft(claim)) claim.id,
       ]);
     });
-    ref.read(expenseListProvider.notifier).bindReadView(context,
-      visiblePage: () => _tableRows.visiblePage);
+    ref
+        .read(expenseListProvider.notifier)
+        .bindReadView(context, visiblePage: () => _tableRows.visiblePage);
     final counts = ref.watch(expenseCountsProvider);
     // 「处理中」= 本人已交出去、正在审批或等出纳付款的单(球不在我手上但也没完)。
     // 与工作台「我的报销」卡黄数同一个入口(徽章汇总), 免得这里和工作台各算各的。

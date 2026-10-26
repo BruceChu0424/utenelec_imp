@@ -141,7 +141,8 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
               const SizedBox(height: UtenSpacing.s8),
               boundedTable(
                 MasterDataTableView<DailyReportMaterialReviewRow>(
-      expensiveRowMounts: editable && !historical && !originalIntent,
+                  expensiveRowMounts:
+                      editable && !historical && !originalIntent,
                   tableKey: 'production.daily.material-review',
                   embedded: review.rows.length <= 6,
                   virtualized: review.rows.length > 6,

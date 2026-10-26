@@ -186,7 +186,7 @@ class _ProductionChainHealthPageState
         ),
         Expanded(
           child: MasterDataTableView<_ChainHealthRow>(
-      expensiveRowMounts: false,
+            expensiveRowMounts: false,
             key: const Key('chain-health-table'),
             tableKey:
                 'features.production.pages.production_chain_health_page.ProductionChainHealthPage.issues',

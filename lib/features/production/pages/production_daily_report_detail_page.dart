@@ -1425,7 +1425,7 @@ class _ProductionDailyReportDetailPageState
       children: [
         Expanded(
           child: MasterDataTableView<ProductionDailyReportItem>(
-      expensiveRowMounts: false,
+            expensiveRowMounts: false,
             tableKey: 'production.daily.items',
             primary: true,
             columns: [

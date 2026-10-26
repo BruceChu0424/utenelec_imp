@@ -227,7 +227,7 @@
     "archiveItemLabel": "Arquivo {number}",
     "archiveNote": "O material de arquivo da empresa é apresentado para contexto histórico. O escopo dos projetos atuais e os detalhes dos produtos exigem confirmação separada.",
     "title": "Projetos de referência",
-    "subtitle": "Produtos UTEN em aplicações reais",
+    "subtitle": "Informações de projetos e arquivo da empresa",
     "empty": "Ainda não há conteúdo de projetos"
   },
   "About": {
@@ -240,8 +240,8 @@
     "craft": "Trabalho artesanal",
     "mission": "Missão e visão",
     "coreCraftTitle": "Competências essenciais de fabricação",
-    "teamTitle": "Gestão integrada · Equipe profissional · Serviço global",
-    "teamBody": "Equipes integradas de produção, P&D, testes, vendas, planejamento e atendimento ao cliente, apoiadas por profissionais experientes do setor."
+    "teamTitle": "Comunicação técnica clara sobre os produtos",
+    "teamBody": "Comece pelas linhas de produtos, modelos específicos, amostras e documentos necessários e confirme cada necessidade com a equipe responsável."
   },
   "Join": {
     "title": "Parceiros",

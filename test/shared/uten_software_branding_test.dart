@@ -125,12 +125,12 @@ void main() {
     'visible names never rename Windows persistence or installer product markers',
     () {
       final resource = File('windows/runner/Runner.rc').readAsStringSync();
-    expect(resource, contains('VALUE "FileDescription", "UTEN"'));
+      expect(resource, contains('VALUE "FileDescription", "UTEN"'));
       expect(resource, contains('VALUE "CompanyName", "Uten"'));
       expect(resource, contains('VALUE "ProductName", "优腾综合管理平台"'));
       final script = File(
         'deploy/client/windows_installer.iss',
-    ).readAsStringSync().replaceAll('\r\n', '\n');
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       expect(script, contains('AppId=com.uten.uten_imp.local_test'));
       expect(
         script,

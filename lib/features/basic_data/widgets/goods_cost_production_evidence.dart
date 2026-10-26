@@ -187,7 +187,7 @@ class _GoodsCostProductionEvidenceState
                   const SizedBox(height: 12),
                   Expanded(
                     child: MasterDataTableView<Map<String, dynamic>>(
-      expensiveRowMounts: false,
+                      expensiveRowMounts: false,
                       tableKey: 'master.goods.cost.production.evidence',
                       columns: [
                         MasterColumnDef(

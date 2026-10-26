@@ -79,17 +79,31 @@ public class XlsxExportService {
                 temporaryDirectory==null?null:new ExportTemporaryBudget(temporaryDirectory)));
     }
 
-    private static final ThreadLocal<ExportTemporaryBudget> SHEET_BUDGET = new ThreadLocal<>();
-    private static final class PrivateSheetWriter extends org.apache.poi.xssf.streaming.GZIPSheetDataWriter {
-        private PrivateSheetWriter() throws IOException { super(); }
-        @Override public java.io.File createTempFile() throws IOException {
-            ExportTemporaryBudget budget = Objects.requireNonNull(SHEET_BUDGET.get());
-            var path = java.nio.file.Files.createTempFile(budget.directory,"report-sheet-",".xml.gz");
-            budget.files.add(path);
-            return path.toFile();
-        }
-        @Override protected java.io.OutputStream decorateOutputStream(java.io.FileOutputStream output) throws IOException {
-            return new java.util.zip.GZIPOutputStream(Objects.requireNonNull(SHEET_BUDGET.get()).guard(output));
+    private static org.apache.poi.xssf.streaming.SheetDataWriter privateSheetWriter(ExportTemporaryBudget budget) throws IOException {
+        var strategy = new org.apache.poi.util.DefaultTempFileCreationStrategy(budget.directory.toFile()) {
+            @Override public java.io.File createTempFile(String prefix, String suffix) throws IOException {
+                var path = java.nio.file.Files.createTempFile(budget.directory,"report-sheet-",suffix);
+                budget.files.add(path);
+                return path.toFile();
+            }
+        };
+        try {
+            // POI scopes this strategy to the current thread and restores any
+            // previous strategy on both success and failure. Other exports keep
+            // their own directory and budget; no process-wide setting changes.
+            return org.apache.poi.util.TempFile.withStrategy(strategy, () -> {
+                try {
+                    return new org.apache.poi.xssf.streaming.GZIPSheetDataWriter() {
+                        @Override protected java.io.OutputStream decorateOutputStream(java.io.FileOutputStream output) throws IOException {
+                            return new java.util.zip.GZIPOutputStream(budget.guard(output));
+                        }
+                    };
+                } catch (IOException failure) {
+                    throw new java.io.UncheckedIOException(failure);
+                }
+            });
+        } catch (java.io.UncheckedIOException failure) {
+            throw failure.getCause();
         }
     }
 
@@ -116,10 +130,7 @@ public class XlsxExportService {
             this.tempBudget = tempBudget;
             workbook = tempBudget == null ? new SXSSFWorkbook(ROW_ACCESS_WINDOW) : new SXSSFWorkbook(ROW_ACCESS_WINDOW) {
                 @Override protected org.apache.poi.xssf.streaming.SheetDataWriter createSheetDataWriter() throws IOException {
-                    ExportTemporaryBudget previous = SHEET_BUDGET.get();
-                    SHEET_BUDGET.set(tempBudget);
-                    try { return new PrivateSheetWriter(); }
-                    finally { if (previous == null) SHEET_BUDGET.remove(); else SHEET_BUDGET.set(previous); }
+                    return privateSheetWriter(tempBudget);
                 }
             };
             this.projection = projection;
@@ -217,7 +228,7 @@ public class XlsxExportService {
         @Override public void close() throws IOException {
             if(closed)return;closed=true;
             IOException failure=null;
-            // POI closes a sheet writer before dispose tries to flush its remaining window.
+            // POI close also disposes sheet files after closing their writers.
             // An unpublished window can be discarded; a successful write is already flushed.
             for(Sheet raw:workbook)if(raw instanceof org.apache.poi.xssf.streaming.SXSSFSheet sheet) {
                 if(!written) {
@@ -226,9 +237,9 @@ public class XlsxExportService {
                 }
                 try{sheet.flushRows();}catch(IOException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
             }
-            try { workbook.close(); }catch(Exception error){failure=error instanceof IOException io?io:new IOException("Closing workbook failed",error);}
-            try {workbook.dispose();}catch(RuntimeException error){
-                if(failure==null)failure=new IOException("Disposing workbook failed",error);else failure.addSuppressed(error);
+            try { workbook.close(); }catch(Exception error){
+                IOException closing=error instanceof IOException io?io:new IOException("Closing workbook failed",error);
+                if(failure==null)failure=closing;else failure.addSuppressed(closing);
             }
             if(tempBudget!=null)try{tempBudget.cleanupFiles();}catch(IOException error){
                 if(failure==null)failure=error;else failure.addSuppressed(error);

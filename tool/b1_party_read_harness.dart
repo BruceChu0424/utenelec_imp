@@ -1,7 +1,6 @@
 import 'b1_harness/post_evidence.dart';
 // Explicit synthetic entry point. Business APIs stay in memory; only evidence
 // saving posts to the existing loopback /b0-results collector.
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

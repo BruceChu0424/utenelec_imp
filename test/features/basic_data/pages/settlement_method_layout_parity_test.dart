@@ -60,7 +60,10 @@ class _Repository extends ReferenceMethodRepository {
     Map<String, String?> filters = const {},
   }) async {
     final all = (await settlementAdminList(keyword: keyword, filters: filters))
-        .where((item) => matchesKeywordSearch([item.name, item.code], keyword ?? '')).toList();
+        .where(
+          (item) => matchesKeywordSearch([item.name, item.code], keyword ?? ''),
+        )
+        .toList();
     return PagedResult(
       items: all.skip((page - 1) * size).take(size).toList(),
       page: page,
@@ -134,7 +137,9 @@ Future<ProviderContainer> _pump(
       overrides: [
         referenceMethodRepositoryProvider.overrideWithValue(repository),
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
-        authenticatedScopeProvider.overrideWithValue(const AuthenticatedScope(userId: 'settlement-test')),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'settlement-test'),
+        ),
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
         currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
         isSuperAdminProvider.overrideWithValue(false),
@@ -284,7 +289,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('原输入已保留，此窗口不会提交'), findsOneWidget);
       expect(find.byType(MasterEditForm), findsNothing);
-      final retained = tester.widget<MasterEditForm>(find.byType(MasterEditForm, skipOffstage: false));
+      final retained = tester.widget<MasterEditForm>(
+        find.byType(MasterEditForm, skipOffstage: false),
+      );
       expect(retained.initialValues, edit.initialValues);
       expect(find.widgetWithText(UtenButton, '保存'), findsNothing);
       await tester.tap(find.widgetWithText(UtenButton, '关闭'));

@@ -89,6 +89,9 @@ if (process.env.NODE_ENV === 'production') {
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Preserve the request origin for same-origin proxy rewrites, including
+  // loopback hosts. Path decisions continue to use nextUrl.pathname.
+  skipProxyUrlNormalize: true,
   output: 'standalone',
   webpack(config, { dev }) {
     // next-intl's formatter loader uses a runtime import that Webpack cannot
@@ -119,6 +122,11 @@ const nextConfig = {
     ],
   },
   experimental: {
+    globalNotFound: true,
+    // The cache-safety webpack hook disables Next's automatic build workers.
+    // Keep each compiler in its own process so completed server compilation
+    // does not retain its module graph during the subsequent client build.
+    webpackBuildWorker: true,
     serverActions: { bodySizeLimit: '22mb' },
   },
   async headers() {

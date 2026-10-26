@@ -135,7 +135,9 @@ void main() {
         ..pendingReads.add(Future.value(_data(total: 21)))
         ..pendingReads.add(rejected.future);
       await _pump(tester, repository);
-      rejected.completeError(ApiException('FORBIDDEN', '记录读取权限已撤销', httpStatus: 403));
+      rejected.completeError(
+        ApiException('FORBIDDEN', '记录读取权限已撤销', httpStatus: 403),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('ai-records-denied')), findsOneWidget);
       expect(find.text('原账号问题内容'), findsNothing);
@@ -412,7 +414,8 @@ void main() {
               ..._data(total: 41),
               'records': [
                 {
-                  ...((_data()['records'] as List).single as Map<String, dynamic>),
+                  ...((_data()['records'] as List).single
+                      as Map<String, dynamic>),
                   'id': 'paging-job-$page',
                 },
               ],
@@ -427,13 +430,22 @@ void main() {
         find.byKey(const Key('ai-records-table')),
       );
       expect(table.rowsController!.pagination.value?.currentPage, 2);
-      expect(repository.reads.where((query) => query['page'] == 1), hasLength(1));
+      expect(
+        repository.reads.where((query) => query['page'] == 1),
+        hasLength(1),
+      );
       await _select(tester, '时间', '近 7 天');
       expect(repository.reads.last['days'], 7);
-      expect(repository.reads.lastWhere((query) => query['page'] == 0)['days'], 7);
+      expect(
+        repository.reads.lastWhere((query) => query['page'] == 0)['days'],
+        7,
+      );
       await _select(tester, '使用人', '示例员工（E001）');
       expect(repository.reads.last['userId'], 'employee-1');
-      expect(repository.reads.lastWhere((query) => query['page'] == 0)['userId'], 'employee-1');
+      expect(
+        repository.reads.lastWhere((query) => query['page'] == 0)['userId'],
+        'employee-1',
+      );
       await _select(tester, 'AI 服务', '测试 AI 服务');
       expect(repository.reads.last['providerId'], _providerId);
       expect(repository.reads.last['userId'], 'employee-1');

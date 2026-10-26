@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { saveScenePreset } from '@/app/admin/actions';
 import { ImageUpload } from '@/components/admin/ImageUpload';
 import { pickLocale } from '@/lib/content';
+import { ClientForm } from '@/components/forms/ClientForm';
 
 export type ScenePlacement = { x: number; y: number; scale: number; rotation: number };
 
@@ -53,7 +54,7 @@ export function SceneForm({
   };
 
   return (
-    <form onSubmit={onSubmit} className="max-w-4xl pb-10">
+    <ClientForm onSubmit={onSubmit} className="max-w-4xl pb-10">
       <input type="hidden" name="expectedHash" value={baseHash} />
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Scene preset</p>
@@ -158,6 +159,6 @@ export function SceneForm({
         </button>
         <Link href="/admin/scenes" className="btn-outline min-h-11">取消</Link>
       </div>
-    </form>
+    </ClientForm>
   );
 }

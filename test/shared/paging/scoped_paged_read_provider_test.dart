@@ -42,12 +42,16 @@ final _reads = Provider.autoDispose
       return ScopedPagedReadProviderLease(ref, query: query);
     }, dependencies: [exportContextEpochProvider, _source]);
 final _pages = FutureProvider.autoDispose
-    .family<PagedResult<int>, (String, int)>((ref, key) {
-      final source = ref.watch(_source);
-      return ref
-          .watch(_reads(key.$1))
-          .read(key.$2, fetchPage: (page) => source.fetch(key.$1, page));
-    }, dependencies: [_reads, _source], retry: pagedReadProviderRetry);
+    .family<PagedResult<int>, (String, int)>(
+      (ref, key) {
+        final source = ref.watch(_source);
+        return ref
+            .watch(_reads(key.$1))
+            .read(key.$2, fetchPage: (page) => source.fetch(key.$1, page));
+      },
+      dependencies: [_reads, _source],
+      retry: pagedReadProviderRetry,
+    );
 
 class _View extends ConsumerStatefulWidget {
   const _View({super.key});
@@ -64,7 +68,7 @@ class _ViewState extends ConsumerState<_View> {
       ref.read(_reads(query)).paginate(next, () async {
         setState(() => page = next);
         final provider = _pages((query, next));
-    ref.invalidate(provider);
+        ref.invalidate(provider);
         await _retained.waitFor(ref, provider, () => ref.read(provider.future));
       });
 
@@ -224,8 +228,8 @@ void main() {
       epoch.advance();
       await tester.pumpAndSettle();
       oldSecond.complete(
-        PagedResult(
-          items: const [999],
+        const PagedResult(
+          items: [999],
           page: 2,
           size: 1,
           total: 3,

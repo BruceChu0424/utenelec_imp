@@ -9,7 +9,7 @@ import {
 import { type ProductFunctionType } from './product-taxonomy';
 import { catalogFacets, catalogWhere, catalogWindow, catalogTextFilter } from './catalog-query';
 import { prisma } from './db';
-import { publicNewsWhere, publicProductWhere } from './publication';
+import { publicCaseWhere, publicNewsWhere, publicProductWhere } from './publication';
 
 export const getSeries = () =>
   prisma.series.findMany({
@@ -269,7 +269,10 @@ export const getNewsList = (take?: number, category?: string) =>
 export const getNewsBySlug = (slug: string) => prisma.news.findFirst({ where: publicNewsWhere({ slug }) });
 
 export const getCases = () =>
-  prisma.caseItem.findMany({ where: { published: true }, orderBy: { sortOrder: 'asc' } });
+  prisma.caseItem.findMany({ where: publicCaseWhere(), orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+
+export const getCaseBySlug = (slug: string) =>
+  prisma.caseItem.findFirst({ where: publicCaseWhere({ slug }) });
 
 export const getJobs = () =>
   prisma.job.findMany({ where: { published: true }, orderBy: { sortOrder: 'asc' } });

@@ -90,7 +90,9 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
     final filter = ref.watch(payrollFilterProvider);
     final requestedPage = _requestedPage;
     _requestedPage = null;
-    _page = _lastFilter != filter ? 1 : (requestedPage ?? _visiblePage?.call() ?? _page);
+    _page = _lastFilter != filter
+        ? 1
+        : (requestedPage ?? _visiblePage?.call() ?? _page);
     _lastFilter = filter;
     final repository = ref.watch(payrollRepositoryProvider);
     final reader = ref.watch(_payrollReads(_readQuery));
@@ -129,7 +131,11 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
+    if (page < 1 ||
+        page == (_visiblePage?.call() ?? current.page) ||
+        page > current.totalPages) {
+      return;
+    }
     await _goTo(page);
   }
 

@@ -85,7 +85,9 @@ class _GoodsWeightLearningViewState
         UtenRefreshParticipant<GoodsWeightLearningView>,
         ScopedPagedReadViewMixin<GoodsWeightLearningView> {
   final _readViewportRows = MasterDataTableRowsController<WeightObservation>();
-  int get _visibleReadPage => _records == null ? (_records?.page ?? 1) : (_readViewportRows.visiblePage ?? (_records?.page ?? 1));
+  int get _visibleReadPage => _records == null
+      ? (_records?.page ?? 1)
+      : (_readViewportRows.visiblePage ?? (_records?.page ?? 1));
 
   @override
   void scopedPagedReadOwnerChanged() {
@@ -551,7 +553,7 @@ class _GoodsWeightLearningViewState
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final rows = _records?.items ?? const <WeightObservation>[];
     return MasterDataTableView<WeightObservation>(
-                rowsController: _readViewportRows,
+      rowsController: _readViewportRows,
       expensiveRowMounts: false,
       tableKey:
           'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._recordsTable.1',

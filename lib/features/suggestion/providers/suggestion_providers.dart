@@ -104,7 +104,10 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
 
   Future<void> refresh() async {
     _reader.invalidate();
-    await _goTo(_visiblePage?.call() ?? state.value?.page ?? _page, keepPrevious: false);
+    await _goTo(
+      _visiblePage?.call() ?? state.value?.page ?? _page,
+      keepPrevious: false,
+    );
   }
 
   Future<void> previousPage() async {
@@ -125,7 +128,11 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
+    if (page < 1 ||
+        page == (_visiblePage?.call() ?? current.page) ||
+        page > current.totalPages) {
+      return;
+    }
     await _goTo(page);
   }
 

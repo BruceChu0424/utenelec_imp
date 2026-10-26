@@ -2219,7 +2219,6 @@ class _AuditRepository implements AuditLogRepository {
     this.emptySessions = false,
     this.sessionTotalPages = 1,
     this.rowsPerPage = 1,
-    this.failSessionPageTwoOnce = false,
     this.eventPageGates = const {},
   });
 
@@ -2235,9 +2234,7 @@ class _AuditRepository implements AuditLogRepository {
   final bool emptySessions;
   final int sessionTotalPages;
   final int rowsPerPage;
-  final bool failSessionPageTwoOnce;
   final Map<int, Completer<AuditLogPage>> eventPageGates;
-  bool _sessionPageTwoFailed = false;
   Object? nextEventError;
   Object? nextSessionError;
   String? readScopeVersion;
@@ -2273,10 +2270,6 @@ class _AuditRepository implements AuditLogRepository {
     if (nextSessionError case final failure?) {
       nextSessionError = null;
       throw failure;
-    }
-    if (page == 2 && failSessionPageTwoOnce && !_sessionPageTwoFailed) {
-      _sessionPageTwoFailed = true;
-      throw StateError('temporary page failure');
     }
     final entry = primaryEntry;
     return AuditSessionPage(

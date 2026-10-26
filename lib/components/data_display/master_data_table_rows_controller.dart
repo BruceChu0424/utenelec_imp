@@ -47,6 +47,7 @@ class MasterDataTableRowsController<T> {
   Future<void> Function()? _settlePresentation;
 
   ValueListenable<MasterDataPagination?> get pagination => _pagination;
+
   /// The latest reading position, including a change not yet notified this
   /// frame. A fetched/prepared page is deliberately not the reading position.
   int? get visiblePage =>

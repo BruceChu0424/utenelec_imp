@@ -225,7 +225,11 @@ class ExpenseListNotifier extends AsyncNotifier<PagedResult<ExpenseClaim>> {
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
+    if (page < 1 ||
+        page == (_visiblePage?.call() ?? current.page) ||
+        page > current.totalPages) {
+      return;
+    }
     await _goTo(page);
   }
 
@@ -624,7 +628,11 @@ class ExpenseApprovalListNotifier
   Future<void> goToPage(int page) async {
     final current = state.value;
     if (current == null) return;
-    if (page < 1 || page == (_visiblePage?.call() ?? current.page) || page > current.totalPages) return;
+    if (page < 1 ||
+        page == (_visiblePage?.call() ?? current.page) ||
+        page > current.totalPages) {
+      return;
+    }
     await _goTo(page);
   }
 

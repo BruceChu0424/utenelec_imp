@@ -24,7 +24,7 @@ void registerDailyReportNavigationTests() {
                 'sourceLine': <String, dynamic>{
                   'planId': 'plan-1',
                   'planItemId': 'plan-item-1',
-                'planNo': 'SJ-001',
+                  'planNo': 'SJ-001',
                   'executionSegmentId': 'segment-1',
                   'goodsId': 'goods-1',
                   'unitId': 'unit-1',

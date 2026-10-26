@@ -1,6 +1,7 @@
 'use client';
 import { useState, useTransition, type FormEvent } from 'react';
 import { login } from '@/app/admin/actions';
+import { ClientForm } from '@/components/forms/ClientForm';
 
 export default function LoginPage() {
   const [pending, start] = useTransition();
@@ -16,7 +17,7 @@ export default function LoginPage() {
   };
   return (
     <div className="grid min-h-screen place-items-center bg-primary p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-2xl">
+      <ClientForm onSubmit={onSubmit} className="w-full max-w-sm rounded-2xl bg-card p-8 shadow-2xl">
         <div className="mb-6 flex flex-col items-center">
           <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent font-heading text-xl font-bold text-accent-foreground">U</span>
           <h1 className="mt-3 font-heading text-xl font-bold">优腾官网管理后台</h1>
@@ -30,7 +31,7 @@ export default function LoginPage() {
         <button type="submit" disabled={pending} className="btn-accent w-full">
           {pending ? '登录中…' : '登录'}
         </button>
-      </form>
+      </ClientForm>
     </div>
   );
 }

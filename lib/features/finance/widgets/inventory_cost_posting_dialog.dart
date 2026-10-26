@@ -710,7 +710,7 @@ class _InventoryCostPostingDialogState
               const SizedBox(height: UtenSpacing.s8),
               Expanded(
                 child: MasterDataTableView<Map<String, dynamic>>(
-      expensiveRowMounts: false,
+                  expensiveRowMounts: false,
                   tableKey: 'finance.inventory_cost_posting',
                   columns: columns,
                   items: _rows,

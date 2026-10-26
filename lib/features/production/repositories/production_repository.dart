@@ -1231,7 +1231,8 @@ class ProductionPlanRepository {
 
   /// This endpoint returns a complete source snapshot, not server pages. Keep
   /// its DTO work sliced; a dialog may project several local pages from it.
-  Future<List<MaterialFutureTransferSource>> materialFutureTransferSourceSnapshot({
+  Future<List<MaterialFutureTransferSource>>
+  materialFutureTransferSourceSnapshot({
     required String targetAnalysisId,
     required String targetMaterialId,
     bool Function()? isCurrent,
@@ -1239,11 +1240,16 @@ class ProductionPlanRepository {
     final json = await api.getList(
       '$_materialAnalysesBase/${Uri.encodeComponent(targetAnalysisId)}/materials/${Uri.encodeComponent(targetMaterialId)}/future-transfer-sources',
     );
-    return List<MaterialFutureTransferSource>.unmodifiable(await mapInUiSlices(
-      json,
-      MaterialFutureTransferSource.fromJson,
-      budget: UiWorkBudget(isCurrent: isCurrent, debugLabel: 'future-transfer-source-snapshot'),
-    ));
+    return List<MaterialFutureTransferSource>.unmodifiable(
+      await mapInUiSlices(
+        json,
+        MaterialFutureTransferSource.fromJson,
+        budget: UiWorkBudget(
+          isCurrent: isCurrent,
+          debugLabel: 'future-transfer-source-snapshot',
+        ),
+      ),
+    );
   }
 
   Future<PagedResult<MaterialFutureTransferSource>>

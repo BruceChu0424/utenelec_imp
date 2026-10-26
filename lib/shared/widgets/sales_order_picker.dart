@@ -290,7 +290,8 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                 isLoading: _loading && _page == null,
                 loadingMore: _loading && _page != null,
                 error: _error,
-                onRetry: () => _load(_pickerRows.visiblePage ?? _page?.page ?? 1),
+                onRetry: () =>
+                    _load(_pickerRows.visiblePage ?? _page?.page ?? 1),
                 emptyMessage: '暂无已审销售订单',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,

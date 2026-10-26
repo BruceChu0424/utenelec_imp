@@ -15,6 +15,36 @@ class GoodsFieldEditPolicyTest {
     private final Goods current = new Goods();
     private final GoodsSaveRequest request = new GoodsSaveRequest();
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
+    @Test void anUnchangedHistoricalNullOrUnknownStatusDoesNotNeedStatusAuthority() {
+        grant("goods:edit");
+        request.setStatus(null);
+        assertDoesNotThrow(() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        current.setStatus("历史未知状态");request.setStatus("历史未知状态");
+        assertDoesNotThrow(() -> GoodsFieldEditPolicy.requireChanged(current,request));
+    }
+    @Test void knownStatusCannotBeClearedOrChangedToAnInvalidValueEvenWithStatusAuthority() {
+        grant("goods:edit","goods:status");current.setStatus("使用");
+        for(String invalid:java.util.Arrays.asList(null,"","invalid")) {
+            request.setStatus(invalid);
+            assertThrows(ApiException.class,() -> GoodsFieldEditPolicy.requireChanged(current,request));
+            assertEquals("使用",current.getStatus());
+        }
+    }
+    @Test void assigningAKnownStatusToAnUnknownRecordStillRequiresStatusAuthority() {
+        grant("goods:edit");request.setStatus("使用");
+        assertThrows(ApiException.class,() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        grant("goods:edit","goods:status");
+        assertDoesNotThrow(() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        request.setStatus(null);
+        assertThrows(ApiException.class,() -> GoodsFieldEditPolicy.validateStatus(request),"Creation still validates explicit null independently");
+    }
+    @Test void aBlankHistoricalStatusCanRemainUnchangedButCannotBeClearedAsAnEquivalentNull() {
+        grant("goods:edit","goods:status");current.setStatus(" ");request.setStatus(" ");
+        assertDoesNotThrow(() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        request.setStatus(null);
+        assertThrows(ApiException.class,() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        assertEquals(" ",current.getStatus());
+    }
     void grant(String... codes) {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("actor", "",
                 Arrays.stream(codes).map(SimpleGrantedAuthority::new).toList()));

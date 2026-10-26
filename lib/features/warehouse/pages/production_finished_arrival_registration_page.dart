@@ -205,6 +205,8 @@ class _ProductionFinishedArrivalRegistrationPageState
   Iterable<Listenable> get formDraftListenables => [
     _remarkController,
     _grid,
+    // Selected lots are business input, rather than a table-only highlight.
+    _grid.selectionListenable,
     for (final row in _grid.rows) ...[
       row.place,
       row.warehouse,

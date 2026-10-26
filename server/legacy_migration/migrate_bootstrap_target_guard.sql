@@ -56,7 +56,7 @@ BEGIN
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
     -- The reviewed inventory includes the later archive/file/measurement schema
-    -- through V934. Future root tables still require explicit classification.
+    -- through V937. Future root tables still require explicit classification.
     -- SEED_OR_ADMIN retains the existing explicit master/admin checks above;
     -- it never grants permission to reuse a previous business import.
     CREATE TEMP TABLE bootstrap_target_table_inventory (
@@ -130,6 +130,9 @@ BEGIN
         ('employee_data_handover_scopes','SEED_OR_ADMIN'),
         ('employee_data_handovers','SEED_OR_ADMIN'),
         ('employee_education','SEED_OR_ADMIN'),
+        -- V937 aliases are preserved identity evidence in ordinary operation.
+        -- Any such evidence makes a first-bootstrap target nonempty, never reusable.
+        ('employee_identity_aliases','EMPTY'),
         ('employee_offboarding_events','SEED_OR_ADMIN'),
         ('employee_phones','SEED_OR_ADMIN'),
         ('employee_reconcile_applies','SEED_OR_ADMIN'),

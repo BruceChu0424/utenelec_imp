@@ -203,7 +203,7 @@ class GoodsOperationHistoryAccountPostgresTest {
             Arguments.of("name", "", "PUT", "name='changed'",Set.of("goods:view"),false),
             Arguments.of("name edit", "", "PUT", "name='changed'",EDIT,true),
             Arguments.of("name en only", "/name-en", "PUT", "name_en='Changed'",Set.of("goods:view","goods:name_en:edit"),true),
-            Arguments.of("name en full edit", "/name-en", "PUT", "name_en='Changed'",EDIT,true),
+            Arguments.of("name en sales edit", "/name-en", "PUT", "name_en='Changed'",Set.of("goods:view","goods:sales:edit"),true),
             Arguments.of("name en missing", "/name-en", "PUT", "name_en='Changed'",Set.of("goods:view","goods:status"),false),
             Arguments.of("status only", "/status", "PATCH", "status='禁用'",Set.of("goods:view","goods:status"),true),
             Arguments.of("status missing", "/status", "PATCH", "status='禁用'",EDIT,false),
@@ -215,9 +215,12 @@ class GoodsOperationHistoryAccountPostgresTest {
             Arguments.of("discount granted", "", "PUT", "zk=0.8",Set.of("goods:view","goods:edit","goods:price:edit","goods:discount:view"),true),
             Arguments.of("cost missing", "", "PUT", "g_total=29",EDIT,false),
             Arguments.of("cost granted", "", "PUT", "g_total=29",Set.of("goods:view","goods:edit","goods:cost:view"),true),
-            Arguments.of("purchase policy", "/purchase-receipt-policy", "PUT", "purchase_allowed_over_receipt_pct=3",EDIT,true),
-            Arguments.of("subcontract policy missing cost", "/subcontract-loss-policy", "PUT", "subcontract_allowed_loss_pct=3",EDIT,false),
-            Arguments.of("subcontract policy granted", "/subcontract-loss-policy", "PUT", "subcontract_allowed_loss_pct=3",Set.of("goods:view","goods:edit","goods:cost:view"),true));
+            Arguments.of("purchase policy", "/purchase-receipt-policy", "PUT", "purchase_allowed_over_receipt_pct=3",Set.of("goods:view","goods:purchase:edit"),true),
+            Arguments.of("subcontract policy missing cost", "/subcontract-loss-policy", "PUT", "subcontract_allowed_loss_pct=3",Set.of("goods:view","goods:purchase:edit"),false),
+            Arguments.of("subcontract policy granted", "/subcontract-loss-policy", "PUT", "subcontract_allowed_loss_pct=3",Set.of("goods:view","goods:purchase:edit","goods:cost:view"),true),
+            Arguments.of("name en base edit lacks sales", "/name-en", "PUT", "name_en='Changed'",EDIT,false),
+            Arguments.of("purchase policy base edit lacks purchase", "/purchase-receipt-policy", "PUT", "purchase_allowed_over_receipt_pct=3",EDIT,false),
+            Arguments.of("subcontract policy missing purchase", "/subcontract-loss-policy", "PUT", "subcontract_allowed_loss_pct=3",Set.of("goods:view","goods:edit","goods:cost:view"),false));
     }
     @ParameterizedTest(name="{0}") @MethodSource("permissionCases")
     void originalActionAndFieldPermissionsAreRecheckedWithoutRequiringUnrelatedPermissions(String name,String suffix,String method,String changes,Set<String> permissions,boolean allowed) {

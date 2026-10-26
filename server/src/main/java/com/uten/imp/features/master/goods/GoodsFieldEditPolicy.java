@@ -31,8 +31,12 @@ public final class GoodsFieldEditPolicy {
         requireChanged(old,req,mayWriteCosts());
     }
     public static void requireChanged(Goods old, GoodsSaveRequest req, boolean writeCosts) {
-        validateStatus(req);
-        if (req.hasStatus() && different(old.getStatus(),req.getStatus())) CurrentAuthorityGuard.requireAll("goods:status");
+        // Baseline copies may contain a historical unknown status. Preserve an
+        // unchanged raw value; every actual change still validates and rechecks authority.
+        if (req.hasStatus() && !Objects.equals(old.getStatus(),req.getStatus())) {
+            validateStatus(req);
+            CurrentAuthorityGuard.requireAll("goods:status");
+        }
         requirePriceIfTouched(old,req,hasAny("goods:price:view","goods:price:edit"),hasAny("goods:discount:view"));
         if (req.hasSourceType() && different(old.getSourceType(), req.getSourceType())
                 || req.hasMinOrderQty() && different(old.getMinOrderQty(), req.getMinOrderQty())

@@ -70,6 +70,14 @@ class _Goods extends Fake implements GoodsRepository {
     this.body = Map.of(body);
     if (reject) throw ApiException('CONFLICT', '模拟保存失败', httpStatus: 409);
     value = GoodsDetail.fromJson({
+      // Omitted protected fields retain their current values, matching the API.
+      'clientGoodsName': value.clientGoodsName,
+      'cNumber': value.cNumber,
+      'nameEn': value.nameEn,
+      'sourceType': value.sourceType,
+      'minOrderQty': value.minOrderQty,
+      'orderMultipleQty': value.orderMultipleQty,
+      'status': value.status,
       ...body,
       'id': id,
       'writable': true,
@@ -112,6 +120,7 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
   _Goods goods, {
   bool create = false,
   bool deepLink = false,
+  bool canEditSales = true,
   _Moulds? moulds,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
@@ -140,6 +149,7 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
         Perm.goodsCreate,
         if (moulds != null) Perm.mouldView,
         Perm.goodsEdit,
+        if (canEditSales) Perm.goodsSalesEdit,
         Perm.goodsStatus,
         Perm.goodsBomCreate,
         Perm.goodsBomEdit,
@@ -256,6 +266,31 @@ Future<void> _edit(WidgetTester tester, {bool create = false}) async {
 }
 
 void main() {
+  testWidgets('基础编辑保存不发送或覆盖销售组字段，原客户型号和详情路由保留', (tester) async {
+    final goods = _Goods();
+    final host = await _pump(tester, goods, canEditSales: false);
+    final form = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
+    expect(form.readOnlyKeys, contains('cNumber'));
+    expect(
+      tester.widget<TextField>(_field(tester, 'cNumber')).enabled,
+      isFalse,
+    );
+    final state = tester.state<MasterEditFormState>(
+      find.byType(MasterEditForm),
+    );
+    state.controller.controllers['cNumber']!.text = '未经授权的旧草稿';
+    await tester.enterText(_field(tester, 'name'), '合法的基础名称修改');
+    await tester.tap(find.text('保存').hitTestable());
+    await tester.pumpAndSettle();
+    expect(goods.body, isNotNull);
+    expect(goods.body, isNot(contains('cNumber')));
+    expect(goods.body!['name'], '合法的基础名称修改');
+    expect(goods.value.cNumber, 'CUSTOMER-OLD');
+    expect(find.text('CUSTOMER-OLD'), findsOneWidget);
+    expect(find.byType(MasterEditForm), findsNothing);
+    expect(host.router.state.uri.path, '/basicinfo/goods/g1');
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'new-goods draft restores the mould name for its exact UUID and submits that unchanged reference',
     (tester) async {

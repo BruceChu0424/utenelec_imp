@@ -27,13 +27,26 @@ class NewPermissionDefaultClosedPostgresTest {
             sql.update("INSERT INTO permissions(code,name,module,category,action_type,description,sort_order,baseline) VALUES('staff_probe:edit','probe','测试','测试','EDIT','probe',1,true)");
             assertThat(sql.queryForObject("SELECT baseline FROM permissions WHERE code='staff_probe:edit'",Boolean.class)).isFalse();
             assertThatThrownBy(()->sql.update("INSERT INTO department_permissions(department_id,permission_id) SELECT ?,id FROM permissions WHERE code='goods:purchase:edit'",department)).hasMessageContaining("automatically granted");
+            assertThatThrownBy(()->sql.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code='goods:purchase:edit'",UUID.randomUUID()))
+                    .hasMessageContaining("automatically granted");
+            assertThatThrownBy(()->sql.update("INSERT INTO manager_permission_delegations(user_id,permission_id,department_id,surface_key,granted_by_user_id) SELECT ?,id,?,'basic.goods',? FROM permissions WHERE code='goods:purchase:edit'",
+                    UUID.randomUUID(),department,UUID.randomUUID())).hasMessageContaining("automatically granted");
             assertThatThrownBy(()->sql.update("UPDATE permissions SET baseline=true WHERE code='goods:purchase:edit'")).hasMessageContaining("explicit administrator grant");
+            assertThatThrownBy(()->sql.update("UPDATE permissions SET baseline_pinned=true WHERE code='goods:purchase:edit'"))
+                    .hasMessageContaining("permissions_baseline_pinned_chk");
+            assertThatThrownBy(()->sql.update("UPDATE permissions SET baseline=true,baseline_pinned=true WHERE code='goods:purchase:edit'"))
+                    .hasMessageContaining("explicit administrator grant");
+            assertThat(sql.queryForObject("SELECT count(*) FROM permissions WHERE code IN ('goods:purchase:edit','goods:sales:edit') AND (baseline OR baseline_pinned)",Integer.class)).isZero();
             UUID actor=UUID.randomUUID(),employee=UUID.randomUUID();
             sql.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,'授权测试人员','其他',?,current_date,'active','regular')",employee,"STAFF-GRANT-"+employee,department);
             sql.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status) VALUES(?,?,?,'not-a-login-hash',false,true,'active')",actor,employee,"staff-grant-"+actor);
-            try(Connection connection=source.getConnection(); var statement=connection.createStatement()) {
-                statement.execute("SELECT set_config('app.actor_id','"+actor+"',false)");
-                assertThat(statement.executeUpdate("INSERT INTO department_permissions(department_id,permission_id) SELECT '"+department+"',id FROM permissions WHERE code='goods:purchase:edit'")).isEqualTo(1);
+            try(Connection connection=source.getConnection();
+                    var actorStatement=connection.prepareStatement("SELECT set_config('app.actor_id',?,false)");
+                    var grantStatement=connection.prepareStatement("INSERT INTO department_permissions(department_id,permission_id) SELECT ?,id FROM permissions WHERE code='goods:purchase:edit'")) {
+                actorStatement.setString(1,actor.toString());
+                actorStatement.execute();
+                grantStatement.setObject(1,department);
+                assertThat(grantStatement.executeUpdate()).isEqualTo(1);
             }
         }
     }

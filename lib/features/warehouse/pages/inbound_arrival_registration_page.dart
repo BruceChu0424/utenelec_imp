@@ -144,6 +144,8 @@ class _InboundArrivalRegistrationPageState
   Iterable<Listenable> get formDraftListenables => [
     _remark,
     _lineGrid,
+    // These checkboxes choose which physical arrivals the command will register.
+    _lineGrid.selectionListenable,
     for (final line in _lines) ...[
       line.qty,
       line.weight,

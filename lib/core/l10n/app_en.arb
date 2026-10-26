@@ -41,9 +41,27 @@
   "masterStatusDisableTitle": "Confirm deactivation",
   "masterStatusEnableTitle": "Confirm activation",
   "masterStatusDisableBody": "Deactivate {count} item(s) in {label}? They will no longer be available for new business. Existing documents and change history are retained.",
-  "@masterStatusDisableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
+  "@masterStatusDisableBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "masterStatusEnableBody": "Activate {count} item(s) in {label}? They will be available for new business again.",
-  "@masterStatusEnableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
+  "@masterStatusEnableBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "websiteInquirySeries": "Product series",
   "websiteInquiryProductId": "Product ID",
   "websiteInquirySourceIdentity": "Source identity",
@@ -5554,5 +5572,14 @@
   "orderClosureResultUnconfirmed": "Order closure is unconfirmed. Refresh the original order and verify the result before trying again.",
   "orderClosureRecordTitle": "View closure record",
   "orderClosureRequestCanceled": "Historical closure request withdrawn",
-  "orderClosureQuantityBasisHint": "Cancelled quantities use actual retained goods, physical quality returns and settled losses. Cumulative receipts are not net retained quantities."
+  "orderClosureQuantityBasisHint": "Cancelled quantities use actual retained goods, physical quality returns and settled losses. Cumulative receipts are not net retained quantities.",
+  "docLinkDetailLoadFailed": "Could not read the source document lines. Refresh and select the document again.",
+  "attachmentHistoricalDeletedLabel": "Deleted (history retained)",
+  "docLinkUnknownRemaining": "Some lines have incomplete recorded quantities, so their remaining quantities cannot be determined or imported. You can select other lines. Check the source document.",
+  "docLinkSourceEnded": "The source order has ended and cannot receive more deliveries or material issues. Refresh and select another order. Its recorded difference remains unchanged.",
+  "employeeHistoricalFilesTitle": "Archived employee files",
+  "employeeHistoricalContractFilesTitle": "Archived contract files",
+  "employeeHistoricalFilesHint": "Original ownership and files are retained for viewing and downloading.",
+  "attachmentHistoricalOriginalUnavailable": "Historical original unavailable",
+  "attachmentHistoricalReadOnlyLabel": "Historical record (read only)"
 }

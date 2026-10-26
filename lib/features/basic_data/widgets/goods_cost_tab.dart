@@ -339,7 +339,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   @override
   void initState() {
     super.initState();
-    _feeGrid.addListener(_feeRowsChanged);
+    _feeGrid.draftListenable.addListener(_feeRowsChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _boot());
   }
 

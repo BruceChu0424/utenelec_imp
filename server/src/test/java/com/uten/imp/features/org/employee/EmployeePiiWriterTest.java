@@ -38,6 +38,7 @@ class EmployeePiiWriterTest {
     @Test
     void phoneUpdateAlwaysRefreshesCiphertextAndLookupHashTogether() {
         EmployeeSensitive target = new EmployeeSensitive();
+        target.setEmployeeId(UUID.randomUUID());
         when(tx.encrypt("13800138000")).thenReturn("v2:phone-cipher");
         when(tx.hmac("13800138000")).thenReturn("phone-hmac");
 
@@ -47,6 +48,37 @@ class EmployeePiiWriterTest {
         assertEquals("phone-hmac", target.getPhoneHash());
         verify(tx).encrypt("13800138000");
         verify(tx).hmac("13800138000");
+        verify(repository).lockPrimaryPhoneHash("phone-hmac");
+        verify(repository).existsByPhoneHashAndEmployeeIdNot("phone-hmac", target.getEmployeeId());
+    }
+
+    @Test
+    void primaryPhoneCollisionIsRejectedBeforeChangingCiphertextOrLookupHash() {
+        EmployeeSensitive target = new EmployeeSensitive();
+        target.setEmployeeId(UUID.randomUUID());
+        target.setPhoneEnc("original-cipher");
+        target.setPhoneHash("original-hash");
+        when(tx.hmac("13800138000")).thenReturn("already-claimed");
+        when(repository.existsByPhoneHashAndEmployeeIdNot("already-claimed", target.getEmployeeId())).thenReturn(true);
+        ApiException rejected = assertThrows(ApiException.class, () -> writer.applyPhone(target, "13800138000"));
+        assertEquals(ErrorCode.CONFLICT, rejected.getCode());
+        assertEquals("original-cipher", target.getPhoneEnc());
+        assertEquals("original-hash", target.getPhoneHash());
+        verify(repository).lockPrimaryPhoneHash("already-claimed");
+        verify(tx, never()).encrypt("13800138000");
+    }
+
+    @Test
+    void unchangedPrimaryPhoneCanBeReencryptedWithoutReclaimingHistoricalDuplicates() {
+        EmployeeSensitive target = new EmployeeSensitive();
+        target.setEmployeeId(UUID.randomUUID());
+        target.setPhoneHash("same-phone-hash");
+        when(tx.hmac("13800138000")).thenReturn("same-phone-hash");
+        when(tx.encrypt("13800138000")).thenReturn("refreshed-cipher");
+        writer.applyPhone(target, "13800138000");
+        assertEquals("refreshed-cipher", target.getPhoneEnc());
+        verify(repository, never()).lockPrimaryPhoneHash("same-phone-hash");
+        verify(repository, never()).existsByPhoneHashAndEmployeeIdNot("same-phone-hash", target.getEmployeeId());
     }
 
     @Test

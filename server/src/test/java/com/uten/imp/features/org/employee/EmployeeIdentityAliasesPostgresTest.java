@@ -35,7 +35,14 @@ class EmployeeIdentityAliasesPostgresTest {
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());bean.setPackagesToScan("com.uten.imp");
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();factory=bean.getObject();
     }
-    @AfterAll static void stop() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void stop() throws Exception {
+        if(factory!=null) {
+            factory.close();
+        }
+        if(database!=null) {
+            database.close();
+        }
+    }
     @BeforeEach void seed() {
         directory=new EmployeeIdentityDirectory(db);
         canonical=employee(false);alias=employee(true);second=employee(true);

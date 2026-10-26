@@ -29,13 +29,16 @@ class GoodsNameEnTest {
     }
 
     @Test
-    void editRequiresTheDedicatedCodeOrFullGoodsEdit() {
+    void editRequiresTheDedicatedCodeOrSalesEdit() {
         assertThat(GoodsNameEn.canEdit(user(Set.of("goods:name_en:edit"), false))).isTrue();
-        assertThat(GoodsNameEn.canEdit(user(Set.of("goods:edit"), false))).isTrue();
+        assertThat(GoodsNameEn.canEdit(user(Set.of("goods:sales:edit"), false))).isTrue();
+        assertThat(GoodsNameEn.canEdit(user(Set.of("goods:edit"), false))).isFalse();
+        assertThat(GoodsNameEn.canEdit(user(Set.of("goods:purchase:edit"), false))).isFalse();
         assertThat(GoodsNameEn.canEdit(user(Set.of("goods:view", "goods:price:view"), false))).isFalse();
         assertThat(GoodsNameEn.canEdit(user(Set.of(), true))).isTrue();
         assertThat(GoodsNameEn.canEdit(null)).isFalse();
-        assertThat(GoodsNameEn.canEdit(AuthUser.visitor(UUID.randomUUID(), "v", "V1", Set.of("goods:edit"))))
+        assertThat(GoodsNameEn.canEdit(AuthUser.visitor(UUID.randomUUID(), "v", "V1",
+                Set.of("goods:sales:edit", "goods:name_en:edit"))))
                 .isFalse();
     }
 

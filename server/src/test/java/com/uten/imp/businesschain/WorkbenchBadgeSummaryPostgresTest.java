@@ -21,6 +21,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -755,12 +758,39 @@ class WorkbenchBadgeSummaryPostgresTest {
     }
 
     private void grantAllBusinessActions(UUID userId) {
-        db.update("""
-                INSERT INTO user_permission_overrides(user_id, permission_id, effect)
-                SELECT ?, permission.id, 'grant' FROM permissions permission
-                WHERE NOT ('SUPERADMIN_ONLY'=ANY(COALESCE(permission.grant_policy,ARRAY[]::text[])))
-                ON CONFLICT (user_id, permission_id) DO UPDATE SET effect='grant', active=TRUE
-                """, userId);
+        var transaction = new TransactionTemplate(new DataSourceTransactionManager(db.getDataSource()));
+        transaction.executeWithoutResult(status -> db.execute((ConnectionCallback<Void>) connection -> {
+            String actorAccount;
+            try (var actor = connection.prepareStatement("""
+                    SELECT login_account FROM users
+                    WHERE id=? AND is_super_admin AND status='active' AND NOT is_deleted
+                    """)) {
+                actor.setObject(1, userId);
+                try (var row = actor.executeQuery()) {
+                    assertThat(row.next()).as("explicit fixture grants require its real active administrator").isTrue();
+                    actorAccount = row.getString(1);
+                }
+            }
+            // Both the actor and grant use this transaction-bound connection.
+            // SET LOCAL is discarded at commit/rollback before the pool reuses it.
+            try (var actor = connection.prepareStatement("""
+                    SELECT set_config('app.actor_id',?,true),set_config('app.actor_account',?,true)
+                    """)) {
+                actor.setString(1, userId.toString());
+                actor.setString(2, actorAccount);
+                actor.execute();
+            }
+            try (var grant = connection.prepareStatement("""
+                    INSERT INTO user_permission_overrides(user_id, permission_id, effect)
+                    SELECT ?, permission.id, 'grant' FROM permissions permission
+                    WHERE NOT ('SUPERADMIN_ONLY'=ANY(COALESCE(permission.grant_policy,ARRAY[]::text[])))
+                    ON CONFLICT (user_id, permission_id) DO UPDATE SET effect='grant', active=TRUE
+                    """)) {
+                grant.setObject(1, userId);
+                grant.executeUpdate();
+            }
+            return null;
+        }));
     }
 
     private static String tag() {

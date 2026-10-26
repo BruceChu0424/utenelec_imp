@@ -22,6 +22,7 @@ import 'form_draft.dart';
 import 'form_draft_lifecycle.dart';
 import 'form_draft_navigation.dart';
 import 'form_draft_store.dart';
+import 'platform_draft_restore.dart';
 
 export 'form_draft.dart';
 export 'form_draft_store.dart' show describeFormSaveError, describeSubmitError;
@@ -693,20 +694,28 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   ];
 
   void _restorePlatformGridDrafts(Object? snapshot) {
-    if (snapshot is! List) return; // Earlier draft schemas had no extensions.
+    if (snapshot == null) return; // Earlier draft schemas had no extensions.
+    if (snapshot is! List) throw StateError(platformDraftRestoreFormatError);
     final grids = _platformDraftGrids;
     if (snapshot.length != grids.length) {
       throw StateError('草稿扩展字段与当前表格数量不一致，请核对后恢复');
     }
+    final targets = <PlatformDraftRestoreTarget>[];
     for (var index = 0; index < grids.length; index++) {
       final rows = snapshot[index];
       if (rows is! List || rows.length != grids[index].rows.length) {
         throw StateError('草稿扩展字段与明细行数不一致，请核对后恢复');
       }
       for (var row = 0; row < rows.length; row++) {
-        grids[index].rows[row].platformFields.restoreDraft(rows[row]);
+        targets.add(
+          PlatformDraftRestoreTarget(
+            grids[index].rows[row].platformFields,
+            rows[row],
+          ),
+        );
       }
     }
+    restorePlatformDraftsAtomically(targets);
   }
 
   /// Fence a new business command before sending any bytes. An interrupted or

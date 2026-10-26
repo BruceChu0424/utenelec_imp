@@ -126,6 +126,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('只有货品基础编辑权限时客户名称与客户型号不可编辑也不提交', (tester) async {
+    await _pumpGoods(
+      tester,
+      detail: _labelledGoods,
+      permissions: const {Perm.goodsView, Perm.goodsEdit},
+    );
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    final form = tester.widget<MasterEditForm>(find.byType(MasterEditForm));
+    final state = tester.state<MasterEditFormState>(
+      find.byType(MasterEditForm),
+    );
+    for (final key in ['clientGoodsName', 'cNumber', 'nameEn']) {
+      expect(form.readOnlyKeys, contains(key));
+      expect(tester.widget<TextField>(_field(state, key)).enabled, isFalse);
+      state.controller.controllers[key]!.text = '过期表单中的未授权修改';
+    }
+    final body = state.buildBody(skipKeys: form.readOnlyKeys ?? const {});
+    expect(body, isNotNull);
+    for (final key in ['clientGoodsName', 'cNumber', 'nameEn']) {
+      expect(body, isNot(contains(key)));
+    }
+    expect(body!['name'], '内部货品名称');
+    expect(body['model'], 'INTERNAL-MODEL');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('窄屏大字暗色下客户字段纵向排列，切换编辑保留内容', (tester) async {
     await _pumpGoods(
       tester,
@@ -222,13 +249,19 @@ Future<void> _pumpGoods(
   Size size = const Size(1440, 1100),
   double textScale = 1,
   Brightness brightness = Brightness.light,
+  Set<String> permissions = const {
+    Perm.goodsView,
+    Perm.goodsCreate,
+    Perm.goodsEdit,
+    Perm.goodsSalesEdit,
+  },
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        currentPermissionsProvider.overrideWithValue(const <String>{}),
+        currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         colorDictProvider.overrideWith((ref) async => const []),
         unitDictProvider.overrideWith(

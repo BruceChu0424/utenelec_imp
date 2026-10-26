@@ -1143,7 +1143,7 @@ class MasterRecordHistoryPostgresTest {
               .executeUpdate();
           return null;
         });
-    login(Set.of("goods:view", "goods:edit"), false);
+    login(Set.of("goods:view", "goods:edit", "goods:purchase:edit"), false);
     var selected = detail("goods", service.list("goods", item, null, null).entries().getFirst());
     assertFalse(selected.canRestoreBefore());
     assertTrue(selected.blockedReason().contains("委外损耗"));
@@ -1165,6 +1165,14 @@ class MasterRecordHistoryPostgresTest {
                         "SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",
                         item))));
     login(Set.of("goods:view", "goods:edit", "goods:cost:view"), false);
+    var missingPurchase = service.detail("goods", historyNumber(selected.id()));
+    assertFalse(missingPurchase.canRestoreBefore());
+    assertTrue(missingPurchase.blockedReason().contains("goods:purchase:edit"));
+    assertThrows(ApiException.class, () -> inTx(() -> {
+      service.restore("goods", historyNumber(missingPurchase.id()), missingPurchase.expectedHead(), true);
+      return null;
+    }));
+    login(Set.of("goods:view", "goods:edit", "goods:purchase:edit", "goods:cost:view"), false);
     var allowed = service.detail("goods", historyNumber(selected.id()));
     assertTrue(allowed.canRestoreBefore(), allowed.blockedReason());
     inTx(
@@ -1218,22 +1226,8 @@ class MasterRecordHistoryPostgresTest {
     }
 
     login(Set.of("goods:view", "goods:bom:edit", "goods:bom:delete"), false);
-    var nativeDenied = service.detail("goods", creationId);
-    assertFalse(nativeDenied.canRestoreBefore());
-    assertTrue(nativeDenied.blockedReason().contains("goods:edit"));
-    ApiException nativeError =
-        assertThrows(
-            ApiException.class,
-            () ->
-                inTx(
-                    () -> {
-                      service.restore("goods", creationId, nativeDenied.expectedHead(), true);
-                      return null;
-                    }));
-    assertTrue(nativeError.getMessage().contains("goods:edit"));
-    assertEquals("false", value("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id", edge));
-
-    login(Set.of("goods:view", "goods:edit", "goods:bom:edit", "goods:bom:delete"), false);
+    // Restoring a pure recipe change uses its own edit/delete authorities;
+    // it does not invent a direct goods edit or a cost write.
     var deletion = service.detail("goods", creationId);
     assertTrue(deletion.canRestoreBefore(), deletion.blockedReason());
     inTx(
@@ -1264,7 +1258,7 @@ class MasterRecordHistoryPostgresTest {
     long changeId = historyNumber(change.id());
     login(Set.of("goods:view", "goods:edit"), false);
     assertFalse(service.detail("goods", changeId).canRestoreBefore());
-    login(Set.of("goods:view", "goods:edit", "goods:bom:edit"), false);
+    login(Set.of("goods:view", "goods:bom:edit"), false);
     var editable = service.detail("goods", changeId);
     assertTrue(editable.canRestoreBefore(), editable.blockedReason());
     inTx(
@@ -1276,6 +1270,38 @@ class MasterRecordHistoryPostgresTest {
         0,
         decimal("1")
             .compareTo(decimal(value("SELECT qty::text FROM goods_bom_items WHERE id=:id", edge))));
+  }
+
+  @Test
+  void restoringOnlyEnglishProvenanceStillRechecksTheSalesOrDedicatedAuthority() {
+    UUID item = goods("version English source");
+    inTx(() -> {
+      em.createNativeQuery("UPDATE goods SET name_en='Same English',name_en_source='LEARNED' WHERE id=:id").setParameter("id",item).executeUpdate();
+      return null;
+    });
+    inTx(() -> {
+      provenance();
+      em.createNativeQuery("UPDATE goods SET name_en_source='MANUAL',version=version+1 WHERE id=:id").setParameter("id",item).executeUpdate();
+      return null;
+    });
+    long selected=historyNumber(service.list("goods",item,null,null).entries().getFirst().id());
+    login(Set.of("goods:view","goods:edit"),false);
+    var denied=service.detail("goods",selected);
+    assertFalse(denied.canRestoreBefore());
+    assertThrows(ApiException.class,()->inTx(()->{service.restore("goods",selected,denied.expectedHead(),true);return null;}));
+    assertEquals("MANUAL",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit","goods:name_en:edit"),false);
+    var allowed=service.detail("goods",selected);assertTrue(allowed.canRestoreBefore(),allowed.blockedReason());
+    inTx(()->{service.restore("goods",selected,allowed.expectedHead(),true);return null;});
+    assertEquals("LEARNED",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit"),false);
+    var redoDenied=service.detail("goods",selected);
+    assertThrows(ApiException.class,()->inTx(()->{service.restore("goods",selected,redoDenied.expectedHead(),false);return null;}));
+    assertEquals("LEARNED",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit","goods:sales:edit"),false);
+    var redo=service.detail("goods",selected);assertTrue(redo.canRestoreAfter(),redo.blockedReason());
+    inTx(()->{service.restore("goods",selected,redo.expectedHead(),false);return null;});
+    assertEquals("MANUAL",value("SELECT name_en_source FROM goods WHERE id=:id",item));
   }
 
   @Test

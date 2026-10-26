@@ -18,6 +18,7 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
+import '../../../components/forms/link_quantity_validator.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
@@ -119,7 +120,7 @@ String? _remainQtyText(
     return financeExactTrimmed(
       financeExactSumTexts([
         qty,
-        negative(item.returnedQtyText ?? item.returnedQty?.toString() ?? '0'),
+        negative(item.returnedQtyText ?? item.returnedQty?.toString()),
       ]),
     );
   }
@@ -128,7 +129,7 @@ String? _remainQtyText(
         financeExactTrimmed(
           financeExactSumTexts([
             qty,
-            negative(item.orderedQtyText ?? item.orderedQty?.toString() ?? '0'),
+            negative(item.orderedQtyText ?? item.orderedQty?.toString()),
           ]),
         );
   }
@@ -136,8 +137,8 @@ String? _remainQtyText(
       cfg.type == PurchaseDocType.receipt) {
     final owed = financeExactSumTexts([
       qty,
-      negative(item.receivedQtyText ?? item.receivedQty?.toString() ?? '0'),
-      item.returnedQtyText ?? item.returnedQty?.toString() ?? '0',
+      negative(item.receivedQtyText ?? item.receivedQty?.toString()),
+      item.returnedQtyText ?? item.returnedQty?.toString(),
     ]);
     if ((financeExactDecimalUnits(owed) ?? BigInt.zero) > BigInt.zero) {
       return financeExactTrimmed(owed);
@@ -154,21 +155,9 @@ double _remainQty(
   PurchaseDocType upType,
   PurchaseDocItem it,
 ) {
-  final q = it.qty ?? 0;
-  if (cfg.type == PurchaseDocType.returnDoc) {
-    return q - (it.returnedQty ?? 0);
-  }
-  if (upType == PurchaseDocType.order && cfg.type == PurchaseDocType.receipt) {
-    final owed = q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
-    if (owed > 0) return owed;
-    final toleranceLeft =
-        ((owed + it.allowedOverReceiptQty) * 10000).round() / 10000;
-    return toleranceLeft > 0 ? toleranceLeft : owed;
-  }
-  if (upType == PurchaseDocType.request && cfg.type == PurchaseDocType.order) {
-    return q - (it.orderedQty ?? 0);
-  }
-  return q;
+  // The exact calculation also owns availability. Unknown rows are excluded by
+  // the shared picker before this compatibility double is used for a limit.
+  return double.tryParse(_remainQtyText(cfg, upType, it) ?? '') ?? 0;
 }
 
 /// 弹出"从上游引入"右滑入大面板；返回所选明细 + 上游供应商（null 表示用户取消）。
@@ -183,6 +172,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
 }) async {
   final upstream = _upstreamType(cfg);
   final sourceUnitRates = <String, String?>{};
+  final sourceRequests = LatestLinkRequestGuard();
   final docConfig =
       UtenDocLinkPickerConfig<
         PurchaseDocListItem,
@@ -250,15 +240,25 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
               order: order,
             ),
         loadDetail: (ref, docId) async {
+          final request = sourceRequests.begin();
           final detail = await ref
               .read(purchaseRepositoryProvider(upstream))
               .detail(docId);
+          final unitRates = <String, String?>{};
           for (final item in detail.items) {
             if (item.id != null) {
-              sourceUnitRates[item.id!] = item.unitRateExactText;
+              unitRates[item.id!] = item.unitRateExactText;
             }
           }
+          if (sourceRequests.isCurrent(request)) {
+            sourceUnitRates
+              ..clear()
+              ..addAll(unitRates);
+          }
           return UtenDocLinkDetail<PurchaseDocItem>(
+            sourceEnded:
+                upstream == PurchaseDocType.order &&
+                detail.closureRequest?.isApproved == true,
             partyId: detail.supplierId,
             items: detail.items,
             docId: docId,

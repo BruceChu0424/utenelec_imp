@@ -85,6 +85,25 @@ class ProcurementOrderClosureEndToEndTest {
 
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
 
+    @Test void expeditingNeverInventsDeliveryFactsWhenEitherCumulativeQuantityIsUnknown() {
+        Fixture f = fixture("closure-unknown-expediting", "0");
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
+        assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows())
+                .singleElement().satisfies(row -> {
+                    assertThat(row.get("differenceQtyExact")).isEqualTo("-10.0000");
+                    assertThat(row.get("unreceivedQtyExact")).isEqualTo("10.0000");
+                });
+        for (boolean unknownReceived : List.of(true, false)) {
+            // These nullable recorded facts are unknown, not a confirmed zero.
+            db.update("UPDATE purchase_order_items SET received_qty=CASE WHEN ? THEN NULL ELSE 0 END, returned_qty=CASE WHEN ? THEN NULL ELSE 0 END WHERE id=?",
+                    unknownReceived, !unknownReceived, f.item());
+            assertThat(reports.orderDetail(billNo,null,null,null,null,null,java.util.Map.of(),1,50,null,null)
+                    .rows().getFirst().get("differenceQty")).isNull();
+            assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows())
+                    .as("unknown %s must not create a fabricated delivery quantity",unknownReceived ? "received" : "returned").isEmpty();
+        }
+    }
+
     @Test void buyerDirectlyEndsRemainingDeliveryWhileKeepingRealArrivalAndQualityFacts() {
         Fixture f = fixture("closure-partial", "2");
         UUID receipt = receipt(f, "4", "1");
@@ -222,6 +241,7 @@ class ProcurementOrderClosureEndToEndTest {
 
     @Test void directClosureCannotBeRejectedByFinanceOrReopenedForFurtherReceipts() {
         Fixture f = fixture("closure-reject", "0");
+        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
         var preview = closure.preview("PURCHASE", f.order());
         var pending = closure.submit("PURCHASE", f.order(),
                 new ClosureRequest("CLOSE", "旧库待核对", preview.fingerprint()));

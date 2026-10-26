@@ -121,7 +121,7 @@ class MasterInlineEditRuntimeEndToEndTest {
     @Test void fullGoodsFormsCannotChangeOrClearSubcontractLossWithoutCostAuthority() throws Exception {
         UUID id = goods();
         db.update("UPDATE goods SET subcontract_allowed_loss_pct=15 WHERE id=?", id);
-        loginForSubcontractLoss(false);
+        loginForSubcontractLoss(false, true);
         long version = db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, id);
         long versions = db.queryForObject("SELECT count(*) FROM master_record_versions WHERE source_table='goods' AND row_id=?", Long.class, id);
         long operations = history("goods_operation_history");
@@ -187,9 +187,14 @@ class MasterInlineEditRuntimeEndToEndTest {
     }
 
     private void loginForSubcontractLoss(boolean canViewCosts) {
+        loginForSubcontractLoss(canViewCosts, canViewCosts);
+    }
+
+    private void loginForSubcontractLoss(boolean canViewCosts, boolean canEditPurchase) {
         UUID employee = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, actor);
         var permissions = new java.util.HashSet<>(Set.of("goods:view", "goods:edit", "goods:create"));
         if (canViewCosts) permissions.add("goods:cost:view");
+        if (canEditPurchase) permissions.add("goods:purchase:edit");
         var principal = new AuthUser(actor, employee, "loss-runtime-test", permissions,
                 false, true, false, false, null, UUID.randomUUID());
         SecurityContextHolder.getContext().setAuthentication(

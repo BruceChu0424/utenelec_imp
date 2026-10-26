@@ -53,6 +53,7 @@ public class EmployeeQueryService {
     private final SecurityContextCurrentUser currentUser;
     private final EmployeeVehiclePhoneService vehiclePhoneService;
     private final AttachmentAccessPort attachmentAccess;
+    private final EmployeeAttachmentAccessPolicy employeeAttachmentPolicy;
     private final EmployeeIdentityLookupPort identities;
 
     // ===== 列表（摘要，无敏感） =====
@@ -184,14 +185,10 @@ public class EmployeeQueryService {
         // 档案文件（CLEAN 附件；附件层按 EmployeeAttachmentAccessPolicy 校验）。
         // attachment:view 可被权限管理页按部门收回：无该权限点时降级为空列表，
         // 不能让整个员工详情 403（employee:view 与 attachment:view 是两个独立开关）。
-        try {
-            d.setAttachments(attachmentAccess.listVisible(EmployeeAttachmentAccessPolicy.OWNER_TYPE, id));
-        } catch (ApiException attachmentDenied) {
-            if (attachmentDenied.getCode() != ErrorCode.FORBIDDEN) {
-                throw attachmentDenied;
-            }
-            d.setAttachments(List.of());
-        }
+        boolean canListAttachments = canReadEmployeeAttachments(id);
+        d.setAttachments(canListAttachments
+                ? attachmentAccess.listVisible(EmployeeAttachmentAccessPolicy.OWNER_TYPE, id)
+                : List.of());
 
         // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
         UserAccount account = userRepo.findByEmployeeId(id).orElse(null);
@@ -258,6 +255,18 @@ public class EmployeeQueryService {
                             x.getMajor(), x.getStartDate(), x.getEndDate()), x.getEmployee().getId(), e.getId(), identityCodes))
                     .toList());
         }
+        if(canListAttachments && !archived.isEmpty()) {
+            var groups=new java.util.ArrayList<EmployeeDetail.HistoricalAttachmentGroup>();
+            for(UUID archivedEmployee:archived) {
+                appendHistoricalAttachments(groups,archivedEmployee,identityCodes.get(archivedEmployee),
+                        EmployeeAttachmentAccessPolicy.OWNER_TYPE,archivedEmployee);
+                for(EmployeeContract contract:contractRepo.findByEmployeeIdOrderBySignOrderAsc(archivedEmployee)) {
+                    appendHistoricalAttachments(groups,archivedEmployee,identityCodes.get(archivedEmployee),
+                            EmployeeContractAttachmentAccessPolicy.OWNER_TYPE,contract.getId());
+                }
+            }
+            d.setHistoricalAttachmentGroups(List.copyOf(groups));
+        }
 
         // 车辆（employee:view 可见，支撑「按车牌找人」）与备用手机号（掩码规则同主手机号）—— ADR-021
         d.setVehicles(vehiclePhoneService.listVehicles(id));
@@ -273,6 +282,31 @@ public class EmployeeQueryService {
         }
 
         return d;
+    }
+
+    private void appendHistoricalAttachments(List<EmployeeDetail.HistoricalAttachmentGroup> groups,UUID employee,
+            String code,String ownerType,UUID ownerId) {
+        if (!canReadEmployeeAttachments(employee)) return;
+        // A later port failure must propagate. Catching it would hide the original
+        // denial after its transactional proxy has marked this transaction rollback-only.
+        var files = attachmentAccess.listVisibleHistory(ownerType, ownerId);
+        if (!files.isEmpty()) groups.add(new EmployeeDetail.HistoricalAttachmentGroup(
+                employee, code, ownerType, ownerId, List.copyOf(files)));
+    }
+
+    private boolean canReadEmployeeAttachments(UUID employeeId) {
+        AuthUser actor = currentUser.get().orElse(null);
+        if (actor == null || actor.getEmployeeId() == null
+                || !(actor.isSuperAdmin() || actor.getPermissions().contains("attachment:view"))) return false;
+        try {
+            // Owner policy is shared with the attachment feature and has no transaction
+            // boundary of its own. Expected optional denials happen before entering its port.
+            employeeAttachmentPolicy.requireCanView(employeeId, actor);
+            return true;
+        } catch (ApiException denied) {
+            if (denied.getCode() != ErrorCode.FORBIDDEN && denied.getCode() != ErrorCode.NOT_FOUND) throw denied;
+            return false;
+        }
     }
 
     @Transactional(readOnly = true)

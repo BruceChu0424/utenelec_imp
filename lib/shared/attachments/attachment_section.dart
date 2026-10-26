@@ -374,13 +374,20 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     required bool canDelete,
     required bool canCategorize,
   }) {
+    final readOnly = a.isReadOnly;
+    final rowCanDownload = canDownload && !(readOnly && a.originalUnavailable);
+    final rowCanDelete = canDelete && !readOnly;
+    final rowCanCategorize = canCategorize && !readOnly;
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        lookupAppLocalizations(Localizations.localeOf(context));
     final kind = AttachmentFileKind.of(a.originalName, a.contentType);
     final categories = widget.categories;
-    final previewable = AttachmentPreviewDialog.canPreview(
-      a.originalName,
-      a.contentType,
-    );
-    final rowAction = widget.rowActionBuilder?.call(a);
+    final previewable =
+        !(readOnly &&
+            AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) &&
+        AttachmentPreviewDialog.canPreview(a.originalName, a.contentType);
+    final rowAction = readOnly ? null : widget.rowActionBuilder?.call(a);
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -400,8 +407,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             AttachmentCategoryControl(
               categories: categories,
               value: _categoryOf(a),
-              enabled: !_savingCategory.contains(a.id),
-              onChanged: canCategorize
+              enabled: !_savingCategory.contains(a.id) && !readOnly,
+              onChanged: rowCanCategorize
                   ? (value) => _setCategory(a, value)
                   : null,
             ),
@@ -416,6 +423,16 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         [
           formatAttachmentSize(a.sizeBytes),
           if (a.uploadedAt != null) ChinaDateTime.formatDate(a.uploadedAt!),
+          if (readOnly)
+            a.deleted
+                ? l10n.attachmentHistoricalDeletedLabel
+                : l10n.attachmentHistoricalReadOnlyLabel,
+          if (readOnly && a.deletedAt != null)
+            ChinaDateTime.formatDate(a.deletedAt!),
+          if (readOnly && a.deletedByName?.isNotEmpty == true) a.deletedByName!,
+          if (readOnly && a.deletedReason?.isNotEmpty == true) a.deletedReason!,
+          if (readOnly && a.originalUnavailable)
+            l10n.attachmentHistoricalOriginalUnavailable,
         ].join(' · '),
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
@@ -426,7 +443,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         children: [
           // 行尾附加动作(如已保存草稿的「AI识别」)，没有时这里不占位(null-aware 元素)。
           ?rowAction,
-          if (canDownload)
+          if (rowCanDownload)
             IconButton(
               tooltip: previewable ? '预览' : '下载',
               icon: _readingIds.contains(a.id)
@@ -443,13 +460,15 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                     ),
               onPressed: _readingIds.contains(a.id) ? null : () => _view(a),
             ),
-          if (widget.onSetAvatar != null && a.isImage && !a.avatar)
+          if (!readOnly && widget.onSetAvatar != null && a.isImage && !a.avatar)
             IconButton(
               tooltip: '设为头像',
               icon: const Icon(Icons.account_circle_outlined, size: 20),
-              onPressed: () => widget.onSetAvatar!(a),
+              onPressed: () {
+                if (_canMutate(a)) widget.onSetAvatar!(a);
+              },
             ),
-          if (canDelete)
+          if (rowCanDelete)
             IconButton(
               tooltip: '删除',
               icon: const Icon(
@@ -461,7 +480,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             ),
         ],
       ),
-      onTap: canDownload ? () => _view(a) : null,
+      onTap: rowCanDownload ? () => _view(a) : null,
     );
   }
 
@@ -488,6 +507,10 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   /// 设置/清除单个文件的分类。分类只是标注：先就地生效再落库，失败原样退回并提示。
   Future<void> _setCategory(Attachment a, String? value) async {
+    if (!_canUse(Perm.attachmentUpload, widget.ownerCanUpload) ||
+        !_canMutate(a)) {
+      return;
+    }
     if (_savingCategory.contains(a.id)) return;
     final previous = _categoryOf(a);
     if (previous == value) return;
@@ -605,6 +628,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _view(Attachment a) async {
+    if (a.isReadOnly && a.originalUnavailable) return;
     if (_readingIds.contains(a.id) || !_canUse(Perm.attachmentDownload, true)) {
       return;
     }
@@ -633,7 +657,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
       // 2026-09-10 Office 文档：服务端 LibreOffice 转 PDF 后内嵌查看；
       // 服务器未装转换组件/转换失败 → 提示并回落为下载原件。
-      if (AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) {
+      if (!a.isReadOnly &&
+          AttachmentPreviewDialog.isOffice(a.originalName, a.contentType)) {
         Uint8List? pdf;
         try {
           pdf = await scope.run(() => service.previewBytes(a));
@@ -722,7 +747,10 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   }
 
   Future<void> _delete(Attachment a) async {
-    if (!_canUse(Perm.attachmentDelete, widget.ownerCanDelete)) return;
+    if (!_canUse(Perm.attachmentDelete, widget.ownerCanDelete) ||
+        !_canMutate(a)) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => UtenAlertDialog(
@@ -742,7 +770,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true ||
+        !mounted ||
+        !_canUse(Perm.attachmentDelete, widget.ownerCanDelete) ||
+        !_canMutate(a)) {
+      return;
+    }
     try {
       await ref.read(attachmentServiceProvider).delete(a.id);
       widget.onChanged();
@@ -756,6 +789,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     return ownerAllows &&
         ref.read(currentPermissionsProvider).contains(permission);
   }
+
+  bool _canMutate(Attachment attachment) =>
+      !attachment.isReadOnly &&
+      widget.attachments.any(
+        (current) => current.id == attachment.id && !current.isReadOnly,
+      );
 
   /// 按扩展名猜测后端允许的 Content-Type；不在白名单返回 null
   /// （规则集中在 attachment_file_rules.dart，与保存前暂存共用）。

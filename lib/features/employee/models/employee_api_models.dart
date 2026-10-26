@@ -187,6 +187,55 @@ class EmploymentHistoryView {
 }
 
 /// 员工详情（敏感字段已由后端按角色脱敏）。
+class EmployeeHistoricalAttachmentGroup {
+  const EmployeeHistoricalAttachmentGroup({
+    required this.sourceEmployeeId,
+    this.sourceEmployeeCode,
+    required this.ownerType,
+    required this.ownerId,
+    required this.attachments,
+  });
+  final String sourceEmployeeId;
+  final String? sourceEmployeeCode;
+  final String ownerType;
+  final String ownerId;
+  final List<Attachment> attachments;
+  factory EmployeeHistoricalAttachmentGroup.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final ownerType = json['ownerType'] as String,
+        ownerId = json['ownerId'] as String;
+    final source = json['sourceEmployeeId'] as String;
+    if (!const {'EMPLOYEE', 'EMPLOYEE_CONTRACT'}.contains(ownerType) ||
+        ownerType == 'EMPLOYEE' && ownerId != source) {
+      throw const FormatException(
+        'Historical employee attachment group mismatch',
+      );
+    }
+    final files = (json['attachments'] as List? ?? const [])
+        .map((raw) {
+          final file = Attachment.fromJson(
+            Map<String, dynamic>.from(raw as Map),
+            forceHistoryReadOnly: true,
+          );
+          if (file.ownerType != ownerType || file.ownerId != ownerId) {
+            throw const FormatException(
+              'Historical employee attachment owner mismatch',
+            );
+          }
+          return file;
+        })
+        .toList(growable: false);
+    return EmployeeHistoricalAttachmentGroup(
+      sourceEmployeeId: source,
+      sourceEmployeeCode: json['sourceEmployeeCode'] as String?,
+      ownerType: ownerType,
+      ownerId: ownerId,
+      attachments: files,
+    );
+  }
+}
+
 class EmployeeProfile {
   const EmployeeProfile({
     required this.id,
@@ -244,6 +293,7 @@ class EmployeeProfile {
     this.resolvedFromEmployeeId,
     this.historicalCertificates = const [],
     this.historicalEducations = const [],
+    this.historicalAttachmentGroups = const [],
     this.vehicles = const [],
     this.phones = const [],
     this.attachments = const [],
@@ -322,6 +372,7 @@ class EmployeeProfile {
   final String? resolvedFromEmployeeId;
   final List<EmployeeIdentityArchiveRow> historicalCertificates;
   final List<EmployeeIdentityArchiveRow> historicalEducations;
+  final List<EmployeeHistoricalAttachmentGroup> historicalAttachmentGroups;
   final List<EmployeeVehicleView> vehicles; // ADR-021
   final List<EmployeePhoneView> phones; // 备用手机号（按权限脱敏）
 
@@ -338,6 +389,14 @@ class EmployeeProfile {
     final ec = json['emergencyContacts'] as List<dynamic>? ?? const [];
     final hist = json['history'] as List<dynamic>? ?? const [];
     return EmployeeProfile(
+      historicalAttachmentGroups:
+          (json['historicalAttachmentGroups'] as List? ?? const [])
+              .map(
+                (row) => EmployeeHistoricalAttachmentGroup.fromJson(
+                  Map<String, dynamic>.from(row as Map),
+                ),
+              )
+              .toList(growable: false),
       resolvedFromEmployeeId: json['resolvedFromEmployeeId'] as String?,
       historicalCertificates:
           (json['historicalCertificates'] as List? ?? const [])

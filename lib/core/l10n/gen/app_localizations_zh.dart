@@ -12676,4 +12676,32 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get orderClosureQuantityBasisHint =>
       '取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。';
+
+  @override
+  String get attachmentHistoricalDeletedLabel => '已删除(保留历史)';
+
+  @override
+  String get docLinkUnknownRemaining =>
+      '部分明细的来源数量不完整，无法确定余量，暂不能引入。可继续选择其他明细，请核对原单。';
+
+  @override
+  String get employeeHistoricalFilesTitle => '历史档案附件';
+
+  @override
+  String get employeeHistoricalContractFilesTitle => '历史合同附件';
+
+  @override
+  String get attachmentHistoricalOriginalUnavailable => '历史原件不可用';
+
+  @override
+  String get docLinkDetailLoadFailed => '读取来源单据明细失败，请刷新后重新选择。';
+
+  @override
+  String get docLinkSourceEnded => '来源订货单已结束，不能继续收货或发料。请刷新后重新选择；原始差异数仍保留。';
+
+  @override
+  String get employeeHistoricalFilesHint => '原始归属与文件保留，仅供查看和下载。';
+
+  @override
+  String get attachmentHistoricalReadOnlyLabel => '历史记录(只读)';
 }

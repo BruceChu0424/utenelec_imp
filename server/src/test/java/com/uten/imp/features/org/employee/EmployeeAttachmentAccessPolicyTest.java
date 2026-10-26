@@ -23,8 +23,15 @@ import static org.mockito.Mockito.when;
 class EmployeeAttachmentAccessPolicyTest {
 
     private final EmployeeRepository repository = mock(EmployeeRepository.class);
+    private final com.uten.imp.application.port.EmployeeIdentityLookupPort identities =
+            mock(com.uten.imp.application.port.EmployeeIdentityLookupPort.class);
     private final EmployeeAttachmentAccessPolicy policy =
-            new EmployeeAttachmentAccessPolicy(repository);
+            new EmployeeAttachmentAccessPolicy(repository,identities);
+
+    @org.junit.jupiter.api.BeforeEach
+    void canonicalDefaults() {
+        when(identities.canonicalEmployeeId(org.mockito.ArgumentMatchers.any())).thenAnswer(call->call.getArgument(0));
+    }
 
     private final UUID employeeId = UUID.randomUUID();
 
@@ -34,6 +41,7 @@ class EmployeeAttachmentAccessPolicyTest {
 
     private void employeeExists() {
         when(repository.findById(employeeId)).thenReturn(Optional.of(new Employee()));
+        when(repository.findByIdForUpdate(employeeId)).thenReturn(Optional.of(new Employee()));
     }
 
     @Test
@@ -81,6 +89,53 @@ class EmployeeAttachmentAccessPolicyTest {
         ApiException failure = assertThrows(ApiException.class, () ->
                 policy.requireCanView(employeeId, user(employeeId)));
         assertEquals(ErrorCode.NOT_FOUND, failure.getCode());
+    }
+
+    @Test void verifiedAliasIsReadOnlyForItsCanonicalPersonAndNeverBySameName() {
+        Employee archived=new Employee();archived.setId(employeeId);archived.setDeleted(true);archived.setFullName("same name");
+        when(repository.findById(employeeId)).thenReturn(Optional.of(archived));
+        when(repository.findByIdForUpdate(employeeId)).thenReturn(Optional.of(archived));
+        UUID canonical=UUID.randomUUID();when(identities.canonicalEmployeeId(employeeId)).thenReturn(canonical);
+        assertDoesNotThrow(()->policy.requireCanView(employeeId,user(canonical)));
+        assertThrows(ApiException.class,()->policy.requireCanView(employeeId,user(UUID.randomUUID(),"employee:view")));
+        for(AuthUser actor:new AuthUser[]{user(canonical,"employee:edit","employee:avatar_edit"),
+                new AuthUser(UUID.randomUUID(),canonical,"admin",Set.of(),false,true,true)}) {
+            assertThrows(ApiException.class,()->policy.requireCanManage(employeeId,actor));
+            assertThrows(ApiException.class,()->policy.requireCanManageForUpdate(employeeId,actor));
+            assertThrows(ApiException.class,()->policy.requireCanSelectAvatar(employeeId,actor));
+        }
+    }
+
+    @Test void ordinaryResignedEmployeeStillAllowsExistingHrMaintenance() {
+        Employee resigned=new Employee();resigned.setId(employeeId);resigned.setStatus("resigned");
+        when(repository.findById(employeeId)).thenReturn(Optional.of(resigned));
+        when(repository.findByIdForUpdate(employeeId)).thenReturn(Optional.of(resigned));
+        AuthUser hr=user(UUID.randomUUID(),"employee:edit","employee:avatar_edit");
+        assertDoesNotThrow(()->policy.requireCanManage(employeeId,hr));
+        assertDoesNotThrow(()->policy.requireCanManageForUpdate(employeeId,hr));
+        assertDoesNotThrow(()->policy.requireCanSelectAvatar(employeeId,hr));
+    }
+
+    @Test void contractAttachmentsUseTheSameIdentityAndArchiveWriteBoundary() {
+        Employee archived=new Employee();archived.setId(employeeId);archived.setDeleted(true);
+        when(repository.findById(employeeId)).thenReturn(Optional.of(archived));
+        when(repository.findByIdForUpdate(employeeId)).thenReturn(Optional.of(archived));
+        UUID canonical=UUID.randomUUID();when(identities.canonicalEmployeeId(employeeId)).thenReturn(canonical);
+        UUID contractId=UUID.randomUUID();EmployeeContract contract=new EmployeeContract();contract.setEmployee(archived);
+        EmployeeContractRepository contracts=mock(EmployeeContractRepository.class);
+        when(contracts.findById(contractId)).thenReturn(Optional.of(contract));
+        when(contracts.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+        var contractPolicy=new EmployeeContractAttachmentAccessPolicy(contracts,policy);
+        AuthUser self=user(canonical,"employee:edit");
+        assertDoesNotThrow(()->contractPolicy.requireCanView(contractId,self));
+        assertThrows(ApiException.class,()->contractPolicy.requireCanManageForUpdate(contractId,self));
+        Employee retained=new Employee();UUID retainedId=UUID.randomUUID();retained.setId(retainedId);retained.setStatus("resigned");
+        contract.setEmployee(retained);
+        when(repository.findByIdForUpdate(retainedId)).thenReturn(Optional.of(retained));
+        assertDoesNotThrow(()->contractPolicy.requireCanManageForUpdate(contractId,self));
+        org.mockito.Mockito.verify(contracts,org.mockito.Mockito.atLeastOnce()).findByIdForUpdate(contractId);
+        org.mockito.Mockito.verify(repository,org.mockito.Mockito.atLeastOnce()).findByIdForUpdate(employeeId);
+        org.mockito.Mockito.verify(repository).findByIdForUpdate(retainedId);
     }
     @Test
     void selectedAvatarIsVisibleToStaffViewersButTheirArchiveAccessStaysDenied() {
@@ -135,7 +190,7 @@ class EmployeeAttachmentAccessPolicyTest {
 
         EmployeeContractAttachmentAccessPolicy contractPolicy =
                 new EmployeeContractAttachmentAccessPolicy(
-                        contractRepository, repository);
+                        contractRepository, policy);
         ApiException avatarFailure = assertThrows(ApiException.class, () ->
                 contractPolicy.requireCanSelectAvatar(
                         contractId, user(null, "employee:avatar_edit")));

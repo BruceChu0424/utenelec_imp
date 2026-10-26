@@ -104,6 +104,10 @@ public class EmployeeDetail {
     /** Verified archived identities stay outside the editable replacement collections. */
     private List<CredentialDto> historicalCertificates = List.of();
     private List<EducationDto> historicalEducations = List.of();
+    /** Original employee/contract owners are retained and never enter writable attachment collections. */
+    private List<HistoricalAttachmentGroup> historicalAttachmentGroups = List.of();
+    public record HistoricalAttachmentGroup(UUID sourceEmployeeId,String sourceEmployeeCode,
+            String ownerType,UUID ownerId,List<AttachmentView> attachments) { }
     /** Present only when the requested, verified alias resolves to this canonical id. */
     private UUID resolvedFromEmployeeId;
     // 车辆（employee:view/本人可见）与备用手机号（本人或 pii:view 明文，否则掩码）—— ADR-021

@@ -41,9 +41,27 @@
   "masterStatusDisableTitle": "确认停用",
   "masterStatusEnableTitle": "确认启用",
   "masterStatusDisableBody": "确定停用「{label}」共 {count} 项吗？停用后不能再用于新增业务，已有单据与修改历史保留。",
-  "@masterStatusDisableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
+  "@masterStatusDisableBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "masterStatusEnableBody": "确定启用「{label}」共 {count} 项吗？启用后可再次用于新增业务。",
-  "@masterStatusEnableBody": {"placeholders": {"label": {"type": "String"}, "count": {"type": "int"}}},
+  "@masterStatusEnableBody": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "websiteInquirySeries": "产品系列",
   "websiteInquiryProductId": "产品标识",
   "websiteInquirySourceIdentity": "来源标识",
@@ -6411,7 +6429,13 @@
   "dropdownResetGeometry": "恢复自动大小和位置",
   "dropdownResizeMenu": "调整下拉框大小",
   "pickerChooseRecord": "选择{label}",
-  "@pickerChooseRecord": {"placeholders": {"label": {"type": "String"}}},
+  "@pickerChooseRecord": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "bomChooseComponent": "选择组件",
   "bomReplaceComponent": "替换组件",
   "bomAddChildComponent": "添加下级组件",
@@ -6695,5 +6719,14 @@
   "orderClosureResultUnconfirmed": "尚未确认订单已结束，请刷新原单核对结果后再办理。",
   "orderClosureRecordTitle": "查看结束记录",
   "orderClosureRequestCanceled": "历史结束申请已撤回",
-  "orderClosureQuantityBasisHint": "取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。"
+  "orderClosureQuantityBasisHint": "取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。",
+  "attachmentHistoricalDeletedLabel": "已删除(保留历史)",
+  "docLinkUnknownRemaining": "部分明细的来源数量不完整，无法确定余量，暂不能引入。可继续选择其他明细，请核对原单。",
+  "employeeHistoricalFilesTitle": "历史档案附件",
+  "employeeHistoricalContractFilesTitle": "历史合同附件",
+  "attachmentHistoricalOriginalUnavailable": "历史原件不可用",
+  "docLinkDetailLoadFailed": "读取来源单据明细失败，请刷新后重新选择。",
+  "docLinkSourceEnded": "来源订货单已结束，不能继续收货或发料。请刷新后重新选择；原始差异数仍保留。",
+  "employeeHistoricalFilesHint": "原始归属与文件保留，仅供查看和下载。",
+  "attachmentHistoricalReadOnlyLabel": "历史记录(只读)"
 }

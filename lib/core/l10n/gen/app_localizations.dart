@@ -23329,6 +23329,60 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'取消数量按实际留存、质检实退和已结清损耗核定；累计收货不等于净留存数量。'**
   String get orderClosureQuantityBasisHint;
+
+  /// No description provided for @attachmentHistoricalDeletedLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'已删除(保留历史)'**
+  String get attachmentHistoricalDeletedLabel;
+
+  /// No description provided for @docLinkUnknownRemaining.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分明细的来源数量不完整，无法确定余量，暂不能引入。可继续选择其他明细，请核对原单。'**
+  String get docLinkUnknownRemaining;
+
+  /// No description provided for @employeeHistoricalFilesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史档案附件'**
+  String get employeeHistoricalFilesTitle;
+
+  /// No description provided for @employeeHistoricalContractFilesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史合同附件'**
+  String get employeeHistoricalContractFilesTitle;
+
+  /// No description provided for @attachmentHistoricalOriginalUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史原件不可用'**
+  String get attachmentHistoricalOriginalUnavailable;
+
+  /// No description provided for @docLinkDetailLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取来源单据明细失败，请刷新后重新选择。'**
+  String get docLinkDetailLoadFailed;
+
+  /// No description provided for @docLinkSourceEnded.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源订货单已结束，不能继续收货或发料。请刷新后重新选择；原始差异数仍保留。'**
+  String get docLinkSourceEnded;
+
+  /// No description provided for @employeeHistoricalFilesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'原始归属与文件保留，仅供查看和下载。'**
+  String get employeeHistoricalFilesHint;
+
+  /// No description provided for @attachmentHistoricalReadOnlyLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'历史记录(只读)'**
+  String get attachmentHistoricalReadOnlyLabel;
 }
 
 class _AppLocalizationsDelegate

@@ -2,6 +2,8 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.mastercode.CategoryCodeAllocation;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.dto.GoodsDetail;
 import com.uten.imp.features.master.goods.dto.GoodsListItem;
@@ -33,9 +35,11 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,9 +127,9 @@ class GoodsOrderPolicyFieldsTest {
     }
 
     @Test
-    void omittingBothQuantitiesClearsThemBecauseTheFormAlwaysPostsEveryField() {
-        // 编辑表单全量回传：留空 = 清掉供应商批量要求，按净需求原样下达。
-        GoodsService service = editorService();
+    void omittingBothQuantitiesPreservesTheRegisteredPolicyWithoutPurchaseEdit() {
+        // 缺键保留原值；只有显式 null 才表示清空，且仍须采购资料编辑权限。
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
         Goods goods = goods();
         goods.setMinOrderQty(MOQ);
         goods.setOrderMultipleQty(MULTIPLE);
@@ -136,15 +140,59 @@ class GoodsOrderPolicyFieldsTest {
 
         ArgumentCaptor<Goods> captor = ArgumentCaptor.forClass(Goods.class);
         verify(goodsRepo).save(captor.capture());
-        assertNull(captor.getValue().getMinOrderQty());
-        assertNull(captor.getValue().getOrderMultipleQty());
+        assertEquals(MOQ, captor.getValue().getMinOrderQty());
+        assertEquals(MULTIPLE, captor.getValue().getOrderMultipleQty());
+    }
+
+    @Test
+    void explicitNullClearsBothQuantitiesForAnAuthorizedPurchaseEditor() {
+        GoodsService service = editorService();
+        Goods goods = goods();
+        goods.setMinOrderQty(MOQ);
+        goods.setOrderMultipleQty(MULTIPLE);
+        when(goodsRepo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        when(goodsRepo.save(any(Goods.class))).thenAnswer(inv -> inv.getArgument(0));
+        GoodsSaveRequest request = saveRequest();
+        request.setMinOrderQty(null);
+        request.setOrderMultipleQty(null);
+
+        GoodsDetail detail = service.update(goods.getId(), request);
+
+        verify(goodsRepo).save(goods);
+        assertNull(goods.getMinOrderQty());
+        assertNull(goods.getOrderMultipleQty());
+        assertNull(detail.getMinOrderQty());
+        assertNull(detail.getOrderMultipleQty());
+    }
+
+    @Test
+    void explicitNullForEitherQuantityIsRejectedWithoutPurchaseEdit() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods goods = goods();
+        goods.setMinOrderQty(MOQ);
+        goods.setOrderMultipleQty(MULTIPLE);
+        when(goodsRepo.findById(goods.getId())).thenReturn(Optional.of(goods));
+        for (String field : List.of("minOrderQty", "orderMultipleQty")) {
+            GoodsSaveRequest request = saveRequest();
+            if (field.equals("minOrderQty")) {
+                request.setMinOrderQty(null);
+            } else {
+                request.setOrderMultipleQty(null);
+            }
+            ApiException failure = assertThrows(ApiException.class,
+                    () -> service.update(goods.getId(), request));
+            assertEquals(ErrorCode.FORBIDDEN, failure.getCode());
+            assertEquals(MOQ, goods.getMinOrderQty());
+            assertEquals(MULTIPLE, goods.getOrderMultipleQty());
+        }
+        verify(goodsRepo, never()).save(any());
     }
 
     // ---- 读侧：实体 -> 详情 / 列表 ----
 
     @Test
     void detailExposesBothQuantitiesWithoutAnyExtraPermission() {
-        // 不新增权限码：持 goods:view 即可见（供应商批量要求不是成本/价格敏感项）。
+        // 读取仍只需 goods:view；独立采购资料编辑权限不改变原有可见性。
         GoodsService service = serviceWith(Set.of("goods:view"));
         Goods goods = goods();
         goods.setMinOrderQty(MOQ);
@@ -177,7 +225,7 @@ class GoodsOrderPolicyFieldsTest {
     // ---- fixtures ----
 
     private GoodsService editorService() {
-        return serviceWith(Set.of("goods:view", "goods:edit"));
+        return serviceWith(Set.of("goods:view", "goods:edit", "goods:purchase:edit"));
     }
 
     private GoodsService serviceWith(Set<String> permissions) {

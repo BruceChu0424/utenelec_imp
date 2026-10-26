@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * Narrow status-only master-data command.
@@ -11,6 +12,10 @@ import jakarta.validation.constraints.NotBlank;
  * overwriting unrelated fields when a user only enables or disables a row.
  */
 public record MasterStatusChangeRequest(
-        @NotBlank String status,
+        @NotBlank @Pattern(regexp = "使用|禁用") String status,
         Long version) {
+    /** Also enforce the command contract for trusted in-process callers. */
+    public void requireValidStatus() {
+        com.uten.imp.common.domain.MasterStatuses.requireValid(status);
+    }
 }

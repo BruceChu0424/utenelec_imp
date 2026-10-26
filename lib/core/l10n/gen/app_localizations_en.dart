@@ -13504,4 +13504,37 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get orderClosureQuantityBasisHint =>
       'Cancelled quantities use actual retained goods, physical quality returns and settled losses. Cumulative receipts are not net retained quantities.';
+
+  @override
+  String get attachmentHistoricalDeletedLabel => 'Deleted (history retained)';
+
+  @override
+  String get docLinkUnknownRemaining =>
+      'Some lines have incomplete recorded quantities, so their remaining quantities cannot be determined or imported. You can select other lines. Check the source document.';
+
+  @override
+  String get employeeHistoricalFilesTitle => 'Archived employee files';
+
+  @override
+  String get employeeHistoricalContractFilesTitle => 'Archived contract files';
+
+  @override
+  String get attachmentHistoricalOriginalUnavailable =>
+      'Historical original unavailable';
+
+  @override
+  String get docLinkDetailLoadFailed =>
+      'Could not read the source document lines. Refresh and select the document again.';
+
+  @override
+  String get docLinkSourceEnded =>
+      'The source order has ended and cannot receive more deliveries or material issues. Refresh and select another order. Its recorded difference remains unchanged.';
+
+  @override
+  String get employeeHistoricalFilesHint =>
+      'Original ownership and files are retained for viewing and downloading.';
+
+  @override
+  String get attachmentHistoricalReadOnlyLabel =>
+      'Historical record (read only)';
 }

@@ -457,9 +457,10 @@ public class UnitService {
     @Transactional
     public UnitDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Unit u = requireUnit(id);
-        em.refresh(u, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, u, u::isDeleted, "单位不存在");
         u.setStatus(req.status());
         repo.save(u);
         return toDetail(u, measurementByUnitId(List.of(id)).get(id));

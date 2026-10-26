@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,15 +45,53 @@ class GoodsNameEnServiceTest {
     private final CategoryDrivenCodeService codes = mock(CategoryDrivenCodeService.class);
     private final SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
     private final MaterialCategory category = new MaterialCategory();
+    private final EntityManager em = stubbedEm();
+    private final OwnerVisibility visibility = mock(OwnerVisibility.class);
     private final GoodsService service = new GoodsService(
             goodsRepo, categoryRepo, mock(ColorRepository.class), mock(UnitRepository.class),
-            mock(MouldRepository.class), mock(TxSessionVars.class), stubbedEm(), codes,
-            mock(OwnerVisibility.class), currentUser, mock(GoodsCostMasker.class),
+            mock(MouldRepository.class), mock(TxSessionVars.class), em, codes,
+            visibility, currentUser, mock(GoodsCostMasker.class),
             mock(GoodsMasterRelationshipResolver.class));
 
     @AfterEach
     void clear() {
         SecurityContextHolder.clearContext();
+    }
+    @Test void manualNameEditRechecksOwnerAfterTheLockRefreshEvenForLegacyVersionlessRequests() {
+        login(Set.of("goods:view","goods:name_en:edit"),false);
+        Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_LEARNED);
+        UUID originalOwner=UUID.randomUUID(),newOwner=UUID.randomUUID();goods.setOwnerEmployeeId(originalOwner);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        when(visibility.evaluate("goods","goods:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(originalOwner),Set.of(originalOwner)));
+        doAnswer(invocation->{goods.setOwnerEmployeeId(newOwner);goods.setVersion(goods.getVersion()+1);return null;})
+                .when(em).refresh(goods,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        ApiException denied=catchThrowableOfType(ApiException.class,()->service.updateNameEn(goods.getId(),"forbidden new name",null));
+        assertThat(denied).isNotNull();assertThat(denied.getCode()).isEqualTo(ErrorCode.NOT_FOUND);
+        assertThat(goods.getNameEn()).isEqualTo("OLD NAME");verify(goodsRepo,never()).saveAndFlush(goods);
+    }
+    @Test void nameLearningSkipsGoodsWhoseOwnerChangesDuringLockAcquisition() {
+        login(Set.of("goods:name_en:edit"),false);Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_MANUAL);
+        UUID originalOwner=UUID.randomUUID(),newOwner=UUID.randomUUID();goods.setOwnerEmployeeId(originalOwner);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        when(visibility.evaluate("goods","goods:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(originalOwner),Set.of(originalOwner)));
+        doAnswer(invocation->{goods.setOwnerEmployeeId(newOwner);return null;}).when(em).refresh(goods,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        assertThat(service.learnNameEn(goods.getId(),"forbidden learned name")).isFalse();
+        assertThat(goods.getNameEn()).isEqualTo("OLD NAME");verify(goodsRepo,never()).save(goods);
+    }
+    @Test void aStatusCommandRechecksSoftDeletionAfterTheLockRefresh() {
+        login(Set.of("goods:view","goods:status"),false);Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_MANUAL);
+        doAnswer(invocation->{goods.setDeleted(true);return null;}).when(em).refresh(goods,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        ApiException denied=catchThrowableOfType(ApiException.class,()->service.changeStatus(goods.getId(),
+                new com.uten.imp.features.master.dto.MasterStatusChangeRequest("禁用",null)));
+        assertThat(denied).isNotNull();assertThat(denied.getCode()).isEqualTo(ErrorCode.NOT_FOUND);
+        assertThat(goods.getStatus()).isEqualTo("使用");verify(goodsRepo,never()).save(goods);
+    }
+    @Test void explicitStatusCommandsRejectUnknownNonblankValues() {
+        login(Set.of("goods:view","goods:status"),false);Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_MANUAL);
+        ApiException denied=catchThrowableOfType(ApiException.class,()->service.changeStatus(goods.getId(),
+                new com.uten.imp.features.master.dto.MasterStatusChangeRequest("not-a-status",null)));
+        assertThat(denied).isNotNull();assertThat(denied.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        assertThat(goods.getStatus()).isEqualTo("使用");verify(goodsRepo,never()).save(goods);
     }
 
     @Test

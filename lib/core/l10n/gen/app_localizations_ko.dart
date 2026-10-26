@@ -13025,4 +13025,35 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get orderClosureQuantityBasisHint =>
       '취소 수량은 실제 보유량, 품질 실물 반품 및 정산 손실을 반영합니다. 누적 입고량은 순보유량과 다릅니다.';
+
+  @override
+  String get attachmentHistoricalDeletedLabel => '삭제됨(기록 보관)';
+
+  @override
+  String get docLinkUnknownRemaining =>
+      '일부 명세의 누적 수량 기록이 불완전하여 잔여 수량을 확인하거나 가져올 수 없습니다. 다른 명세는 선택할 수 있습니다. 원본 전표를 확인하세요.';
+
+  @override
+  String get employeeHistoricalFilesTitle => '보관 직원 파일';
+
+  @override
+  String get employeeHistoricalContractFilesTitle => '보관 계약 파일';
+
+  @override
+  String get attachmentHistoricalOriginalUnavailable => '보관 원본을 사용할 수 없음';
+
+  @override
+  String get docLinkDetailLoadFailed =>
+      '원본 전표 명세를 읽지 못했습니다. 새로 고친 후 전표를 다시 선택하세요.';
+
+  @override
+  String get docLinkSourceEnded =>
+      '원본 주문이 종료되어 추가 입고나 자재 출고에 사용할 수 없습니다. 새로 고친 후 다른 주문을 선택하세요. 기록된 차이 수량은 그대로 보존됩니다.';
+
+  @override
+  String get employeeHistoricalFilesHint =>
+      '원래 소유 정보와 파일이 보존되며 보기 및 다운로드만 가능합니다.';
+
+  @override
+  String get attachmentHistoricalReadOnlyLabel => '기록(읽기 전용)';
 }

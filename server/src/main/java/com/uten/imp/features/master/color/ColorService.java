@@ -215,9 +215,10 @@ public class ColorService {
     @Transactional
     public ColorDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Color c = requireColor(id);
-        em.refresh(c, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, c, c::isDeleted, "颜色不存在");
         c.setStatus(req.status());
         repo.save(c);
         return toDetail(c);

@@ -389,7 +389,7 @@ public class AccountService {
         }
         lockAccountPopulation();
         Account a = requireAccount(id);
-        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, a, a::isDeleted, "账户不存在");
         if (req.getStatus() != null && !Objects.equals(a.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("account:status");
         }
@@ -436,6 +436,7 @@ public class AccountService {
     @Transactional
     public AccountDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         boolean targetActive = "使用".equals(req.status());
         if (targetActive) {
@@ -443,7 +444,7 @@ public class AccountService {
         }
         lockAccountPopulation();
         Account a = requireAccount(id);
-        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, a, a::isDeleted, "账户不存在");
         if (Objects.equals(a.getStatus(), req.status())) {
             return toDetail(a);
         }
@@ -468,7 +469,7 @@ public class AccountService {
     public AccountDetail updateWarning(UUID id, AccountWarningUpdateRequest req) {
         tx.bind();
         Account account = requireAccount(id);
-        em.refresh(account, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, account, account::isDeleted, "账户不存在");
         account.setBalanceFloor(req.balanceFloor());
         repo.save(account);
         return toDetail(account);
@@ -480,7 +481,7 @@ public class AccountService {
         tx.bind();
         lockAccountPopulation();
         Account a = requireAccount(id);
-        em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, a, a::isDeleted, "账户不存在");
         assertNoApprovedFinancialUsage(a.getId(), "删除");
         a.setDeleted(true);
         a.setDeletedAt(OffsetDateTime.now());

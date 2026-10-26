@@ -29,6 +29,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
+import 'package:uten_imp/shared/platform_tables/platform_row_draft.dart';
 
 final _testScope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
@@ -347,6 +348,42 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets(
+    'a malformed later platform row cannot partly restore earlier user input',
+    (tester) async {
+      final env = await pumpEditor(
+        tester,
+        MemoryDraftStorage(),
+        withGrid: true,
+      );
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      editor.grid.addRow(_DraftGridRow());
+      const definition = PlatformColumnDefinition(
+        id: 'atomic',
+        scope: 'test',
+        name: '原输入',
+      );
+      editor.grid.rows.first.platformFields.setValue(definition, '本机原始内容');
+      final replacement = PlatformRowDraft()..setValue(definition, '不应部分应用');
+      addTearDown(replacement.dispose);
+      await expectLater(
+        editor.restoreFormDraftPlatformFields([
+          [
+            replacement.exportDraft(),
+            {'cells': 42},
+          ],
+        ]),
+        throwsA(isA<TypeError>()),
+      );
+      expect(
+        editor.grid.rows.first.platformFields.cells.single.value,
+        '本机原始内容',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
   testWidgets('grid presentation changes never capture the business draft', (
     tester,
   ) async {

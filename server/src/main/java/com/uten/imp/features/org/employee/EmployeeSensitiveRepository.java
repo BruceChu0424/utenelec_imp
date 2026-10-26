@@ -1,6 +1,8 @@
 package com.uten.imp.features.org.employee;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -26,4 +28,8 @@ public interface EmployeeSensitiveRepository extends JpaRepository<EmployeeSensi
 
     /** 手机号 HMAC 查重，排除指定员工（更换手机号时）。 */
     boolean existsByPhoneHashAndEmployeeIdNot(String phoneHash, UUID employeeId);
+
+    /** Serialize primary-phone claims without imposing a uniqueness rewrite on historical PII. */
+    @Query(value="SELECT 1 FROM pg_advisory_xact_lock(hashtextextended('employee-primary-phone:' || CAST(:hash AS text),0))", nativeQuery=true)
+    Integer lockPrimaryPhoneHash(@Param("hash") String phoneHash);
 }

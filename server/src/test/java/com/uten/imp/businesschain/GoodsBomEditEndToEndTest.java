@@ -12,6 +12,7 @@ import com.uten.imp.features.master.goods.dto.BomEditPreview;
 import com.uten.imp.features.master.goods.dto.BomEditRequest;
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomMoveRequest;
+import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -76,8 +77,54 @@ class GoodsBomEditEndToEndTest {
         // Evidence and fixtures deliberately remain in this disposable container.
     }
 
-    @Test void masterCellsAndRecipePublishTogetherAfterRollbackOnlySharedPreviewAndHistoryRetainsGoodsEdit() {
+    @Test void unchangedHistoricalNullStatusSurvivesBomPreviewCommitUndoAndRedo() {
         login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        UUID root=editableGoods("unknown-status-root"),shared=editableGoods("unknown-status-shared");
+        edge(root,shared);
+        assertNull(db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,shared));
+        var snapshot=edits.snapshot(shared);
+        var request=draft(List.of(updateGoods(shared,snapshot.goods().version(),
+                Map.of("model",mapper.valueToTree("unknown-status-edit")))),root,shared);
+        route(root,"preview");var preview=edits.preview(root,request);
+        assertEquals("",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertNull(db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,shared));
+        route(root,"commit");edits.commit(root,confirmed(request,preview));
+        assertEquals("unknown-status-edit",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertNull(db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,shared));
+        var operation=history.list().entries().getFirst();
+        historyRoute(operation.id(),"undo");
+        var undone=history.undo(operation.id(),operation.version()).entries().stream()
+                .filter(entry->entry.id().equals(operation.id())).findFirst().orElseThrow();
+        assertEquals("",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertNull(db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,shared));
+        historyRoute(operation.id(),"redo");history.redo(operation.id(),undone.version());
+        assertEquals("unknown-status-edit",db.queryForObject("SELECT model FROM goods WHERE id=?",String.class,shared));
+        assertNull(db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,shared));
+    }
+
+    @Test void aKnownStatusCannotBeClearedAndCreationStillRejectsExplicitNull() {
+        login(Set.of("goods:view","goods:edit","goods:create","goods:status"),session);
+        UUID id=editableGoods("known-status");
+        db.update("UPDATE goods SET status='使用' WHERE id=?",id);
+        long version=db.queryForObject("SELECT version FROM goods WHERE id=?",Long.class,id);
+        long before=count("goods_operation_history"),goodsCount=count("goods");
+        var request=new GoodsSaveRequest();
+        request.setCategoryId(db.queryForObject("SELECT category_id FROM goods WHERE id=?",UUID.class,id));
+        request.setName(db.queryForObject("SELECT name FROM goods WHERE id=?",String.class,id));
+        request.setCode(db.queryForObject("SELECT code FROM goods WHERE id=?",String.class,id));
+        request.setStatus(null);
+        ApiException rejected=assertThrows(ApiException.class,()->goodsService.update(id,request));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,rejected.getCode());
+        assertEquals("使用",db.queryForObject("SELECT status FROM goods WHERE id=?",String.class,id));
+        assertEquals(version,db.queryForObject("SELECT version FROM goods WHERE id=?",Long.class,id));
+        request.setCode("NULL-CREATE-"+UUID.randomUUID());
+        ApiException createRejected=assertThrows(ApiException.class,()->goodsService.create(request));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,createRejected.getCode());
+        assertEquals(goodsCount,count("goods"));assertEquals(before,count("goods_operation_history"));
+    }
+
+    @Test void masterCellsAndRecipePublishTogetherAfterRollbackOnlySharedPreviewAndHistoryRetainsGoodsEdit() {
+        login(Set.of("goods:view","goods:edit","goods:purchase:edit","goods:bom:edit"),session);
         UUID root=editableGoods("master-root"), other=goods("master-other"), shared=editableGoods("master-shared");
         UUID row=edge(root,shared); edge(other,shared);
         db.update("UPDATE goods SET model='old-model',spec='old-spec',material='old-material',source_type='采购',price=37.1234,source_e=5.4321 WHERE id=?",shared);
@@ -115,7 +162,7 @@ class GoodsBomEditEndToEndTest {
         login(Set.of("goods:view","goods:bom:edit"),session);
         var blocked=history.list().entries().stream().filter(entry->entry.id().equals(historyEntry.id())).findFirst().orElseThrow();
         assertFalse(blocked.canUndo()); assertTrue(blocked.blockedReason().contains("goods:edit"));
-        login(Set.of("goods:view","goods:edit","goods:bom:edit"),session);
+        login(Set.of("goods:view","goods:edit","goods:purchase:edit","goods:bom:edit"),session);
         historyRoute(historyEntry.id(),"undo");
         var undone=history.undo(historyEntry.id(),historyEntry.version()).entries().stream()
                 .filter(entry->entry.id().equals(historyEntry.id())).findFirst().orElseThrow();

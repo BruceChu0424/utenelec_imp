@@ -436,9 +436,10 @@ public class SupplierService {
     @Transactional
     public SupplierDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Supplier m = requireSupplier(id);
-        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, m, m::isDeleted, "供应商不存在");
         OptimisticLocks.requireUpToDate(m.getVersion(), req.version());
         m.setStatus(req.status());
         repo.save(m);

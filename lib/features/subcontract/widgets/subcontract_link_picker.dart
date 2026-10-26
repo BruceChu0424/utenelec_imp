@@ -20,6 +20,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../../../shared/providers/master_party_options.dart';
@@ -98,29 +99,41 @@ String _upstreamLabel(SubcontractDocType t) {
 /// 发料←订货 = 未回厂产量（订货数 − 已回厂 + 成品退回），按父件口径给可发料上限；
 /// 退货←进仓/订货 = 原单数 − 已退；材料退/损耗←发料 = 发出数 − 已退 − 已损耗；
 /// 其它（订货←申请）= 全额。
-double _remainQty(
+String? _remainQtyText(
   SubcontractDocConfig cfg,
   SubcontractDocType upstream,
   SubcontractDocItem it,
 ) {
-  final q = it.qty ?? 0;
+  String? recorded(double? value) =>
+      value != null && value.isFinite ? value.toString() : null;
+  String? negative(double? value) =>
+      financeExactMultiplyTexts(['-1', recorded(value)]);
+  final q = it.qtyText ?? recorded(it.qty);
+  if (financeExactDecimalUnits(q) == null) return null;
   switch (upstream) {
     case SubcontractDocType.order:
-      if (cfg.type == SubcontractDocType.receipt) {
-        return q - (it.receivedQty ?? 0);
-      }
-      if (cfg.type == SubcontractDocType.materialIssue) {
+      if (cfg.type == SubcontractDocType.receipt ||
+          cfg.type == SubcontractDocType.materialIssue) {
         // 可发料产量上限 = 未回厂量（订货 − 已回厂 + 成品退回）；材料行再由 BOM 单耗推导。
-        return q - (it.receivedQty ?? 0) + (it.returnedQty ?? 0);
+        return financeExactSumTexts([
+          q,
+          negative(it.receivedQty),
+          recorded(it.returnedQty),
+        ]);
       }
-      return q - (it.returnedQty ?? 0);
+      return financeExactSumTexts([q, negative(it.returnedQty)]);
     case SubcontractDocType.receipt:
-      return q - (it.returnedQty ?? 0);
+      return financeExactSumTexts([q, negative(it.returnedQty)]);
     case SubcontractDocType.materialIssue:
       // 材料退/损耗←发料：默认量 = 供应商处结存（发出−回厂已消费−已退−已损耗，
       // V304 口径；已消费部分不可能再退/再损耗）。老数据无结存字段时回落旧口径。
-      return it.supplierEnding ??
-          (q - (it.returnedQty ?? 0) - (it.wastedQty ?? 0));
+      return it.supplierEnding != null
+          ? recorded(it.supplierEnding)
+          : financeExactSumTexts([
+              q,
+              negative(it.returnedQty),
+              negative(it.wastedQty),
+            ]);
     default:
       return q;
   }
@@ -231,6 +244,9 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
               .read(subcontractRepositoryProvider(upstream))
               .detail(docId);
           return UtenDocLinkDetail<SubcontractDocItem>(
+            sourceEnded:
+                upstream == SubcontractDocType.order &&
+                detail.closureRequest?.isApproved == true,
             partyId: detail.supplierId,
             items: detail.items,
             settlementMethodId: detail.settlementMethodId,
@@ -259,7 +275,9 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
         colorName: (names, colorId) => names.color(colorId),
         unitName: (names, unitId) => names.unit(unitId),
         middleItemColumns: (names) => _middleItemColumns(),
-        remainQty: (it) => _remainQty(cfg, upstream, it),
+        remainQty: (it) =>
+            double.tryParse(_remainQtyText(cfg, upstream, it) ?? '') ?? 0,
+        remainQtyText: (it) => _remainQtyText(cfg, upstream, it),
         createBlankRow: () => UtenDocLinkItemRow<SubcontractDocItem>(
           const SubcontractDocItem(id: null),
         ),

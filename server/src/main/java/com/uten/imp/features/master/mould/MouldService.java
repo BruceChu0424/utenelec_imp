@@ -308,9 +308,10 @@ public class MouldService {
     @Transactional
     public MouldDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Mould m = requireMould(id);
-        em.refresh(m, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, m, m::isDeleted, "模具不存在");
         m.setStatus(req.status());
         repo.save(m);
         return toDetail(m);

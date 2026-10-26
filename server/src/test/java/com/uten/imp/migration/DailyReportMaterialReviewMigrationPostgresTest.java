@@ -208,6 +208,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("subcontract_selected_outbound_items"));
         V904_TO_V913_PRESERVED_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V923_TO_V928_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
+        // V937: verified, append-only identity evidence is preserved independently
+        // of business rows; it is an authorization decision with FULL row audit.
+        assertTrue(expectedTables.add("employee_identity_aliases"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -262,7 +265,17 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(19,V922_TO_V928_INDEX_ADDITIONS.size());
         V922_TO_V928_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A termination/library/measurement index must not replace an existing index: "+name));
+        // Explicit V937 CREATE TABLE/INDEX deltas, not learned from the catalog under test.
+        assertNull(expectedIndexes.put("employee_identity_aliases_pkey",
+                "CREATE UNIQUE INDEX employee_identity_aliases_pkey ON public.employee_identity_aliases USING btree (alias_employee_id)"));
+        assertNull(expectedIndexes.put("employee_identity_aliases_canonical_idx",
+                "CREATE INDEX employee_identity_aliases_canonical_idx ON public.employee_identity_aliases USING btree (canonical_employee_id)"));
         assertEquals(expectedIndexes,catalogMap(indexes()));
+        assertTrue(db.queryForObject("SELECT obj_description('public.employee_identity_aliases'::regclass,'pg_class') LIKE 'PRESERVE %'",Boolean.class));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.employee_identity_aliases'::regclass "
+                + "AND tgfoid='public.fn_audit()'::regprocedure AND tgenabled='A' "
+                + "AND substring(tgargs FROM 1 FOR 14)=convert_to('authorization','UTF8')||decode('00','hex')",Integer.class),
+                "Verified identity evidence keeps FULL/authorization insert/delete and update audit");
         assertNull(db.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text",String.class));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));

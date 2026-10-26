@@ -309,6 +309,9 @@ public class PurchaseReportService {
                 ReportColumn.number("stockQty", "库存数量").withUnitKey("__baseUnitName"),
                 ReportColumn.number("safeStock", "安全库存").withUnitKey("__baseUnitName"),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳采购订货单编辑页
+        String differenceQuantity = com.uten.imp.common.finance.ProcurementDeliveryDifference.sql(
+                "i.qty", "i.received_qty", "i.returned_qty");
+        String unreceivedQuantity = "(-" + differenceQuantity + ")";
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
                        o.deliver_date AS "deliverDate", NULL AS "finishedProductName",
@@ -317,10 +320,10 @@ public class PurchaseReportService {
                        i.qty AS "qty", i.received_qty AS "receivedQty",
                        i.returned_qty AS "returnedQty",
                        %s AS "differenceQty",
-                       (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) AS "unreceivedQty",
+                       %s AS "unreceivedQty",
                        COALESCE(sb.stock_qty,0) AS "stockQty", g.min_qty AS "safeStock",
                        o.id AS "__srcId"
-                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
+                """.formatted(differenceQuantity, unreceivedQuantity);
         String fromJoin = """
                 FROM purchase_order_items i
                 JOIN purchase_orders o ON o.id = i.order_id
@@ -329,11 +332,11 @@ public class PurchaseReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN (SELECT goods_id, SUM(qty) AS stock_qty FROM stock_balances GROUP BY goods_id) sb ON sb.goods_id = i.goods_id
                 """;
-        // 未交口径与服务端权威一致：qty − received + returned（退货回补后供应商仍欠交；已退完的行不再催交）。
+        // 未交与差异共用原始事实；任一累计数未知时不能凭空推定催交数量。
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false"
                 + " AND o.status=1 AND NOT COALESCE(o.is_closed,false) AND NOT COALESCE(o.is_stopped,false)"
                 + " AND o.termination_case_id IS NULL"
-                + " AND (i.qty - COALESCE(i.received_qty,0) + COALESCE(i.returned_qty,0)) > 0");
+                + " AND " + unreceivedQuantity + " > 0");
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, null, null, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；

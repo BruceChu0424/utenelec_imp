@@ -315,7 +315,7 @@ public class WarehouseService {
         tx.bind();
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:edit");
         Warehouse w = requireWarehouse(id);
-        em.refresh(w, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, w, w::isDeleted, "仓库不存在");
         if (req.getStatus() != null && !java.util.Objects.equals(w.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:status");
         }
@@ -360,9 +360,10 @@ public class WarehouseService {
     @Transactional
     public WarehouseDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Warehouse w = requireWarehouse(id);
-        em.refresh(w, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, w, w::isDeleted, "仓库不存在");
         if (w.isLineSide()) throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_READ_ONLY);
         requireCanRetire(w, req.status());
         w.setStatus(req.status());

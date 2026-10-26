@@ -46,7 +46,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MasterLifecycleService {
 
-    static final Set<String> STATUSES = Set.of("使用", "禁用");
+    static final Set<String> STATUSES = com.uten.imp.common.domain.MasterStatuses.VALUES;
 
     private static final String ID_ARRAY = "CAST(string_to_array(:ids, ',') AS uuid[])";
     private static final String ACTOR =
@@ -93,9 +93,7 @@ public class MasterLifecycleService {
     public MasterBatchResult batchStatus(
             MasterEntityKind kind, String status, List<MasterBatchRequests.Item> items) {
         CurrentAuthorityGuard.requireAll(kind.statusPermission());
-        if (!STATUSES.contains(status)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "状态只能是「使用」或「禁用」");
-        }
+        com.uten.imp.common.domain.MasterStatuses.requireValid(status);
         tx.bind();
         Map<UUID, Long> requested = dedupe(items);
         Map<UUID, MasterBatchResult.ItemResult> results = new LinkedHashMap<>();

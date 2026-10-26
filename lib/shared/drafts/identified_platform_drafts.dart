@@ -1,4 +1,5 @@
 import '../platform_tables/platform_row_draft.dart';
+import 'platform_draft_restore.dart';
 
 /// One persisted business row. Derived presentation rows must not be included.
 /// The local identity is independent of goods/source IDs and server record IDs.
@@ -97,20 +98,9 @@ void restoreIdentifiedPlatformDrafts(
   }
   // Parsing must also finish before mutating targets: malformed cells in a later
   // row must not leave earlier rows partially restored.
-  final parsed = <String, PlatformRowDraft>{};
-  try {
-    for (final entry in values.entries) {
-      if (!targets.containsKey(entry.key)) continue;
-      final draft = PlatformRowDraft();
-      parsed[entry.key] = draft;
-      draft.restoreDraft(entry.value);
-    }
-    for (final entry in parsed.entries) {
-      targets[entry.key]!.restoreDraft(entry.value.exportDraft());
-    }
-  } finally {
-    for (final draft in parsed.values) {
-      draft.dispose();
-    }
-  }
+  restorePlatformDraftsAtomically([
+    for (final entry in values.entries)
+      if (targets.containsKey(entry.key))
+        PlatformDraftRestoreTarget(targets[entry.key]!, entry.value),
+  ]);
 }

@@ -31,7 +31,7 @@ public class EmployeeLoginAccountSync {
      * @param normalizedPhone  已规范化的 11 位新手机号
      */
     public void syncLoginAccount(UUID employeeId, String normalizedPhone) {
-        userRepo.findByEmployeeId(employeeId).ifPresent(account -> {
+        userRepo.findByEmployeeId(employeeId).filter(account -> !account.isDeleted()).ifPresent(account -> {
             if (normalizedPhone.equals(account.getLoginAccount())) {
                 return; // 未变化，不动账号不踢登录
             }

@@ -66,6 +66,7 @@ class EmployeeQueryServiceSelfProfileTest {
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeVehiclePhoneService vehiclePhoneService;
     @Mock private AttachmentAccessPort attachmentAccess;
+    @Mock private EmployeeAttachmentAccessPolicy employeeAttachmentPolicy;
     @Mock private EmployeeIdentityLookupPort identities;
 
     @InjectMocks
@@ -129,6 +130,38 @@ class EmployeeQueryServiceSelfProfileTest {
         assertEquals("136****5678", detail.getPhones().get(0).getPhone());
         assertNull(detail.getBankAccount());
         assertNull(detail.getBaseSalary());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=ErrorCode.class,names={"FORBIDDEN","NOT_FOUND"})
+    void optionalAttachmentDenialNeverHidesAnExistingPublicEmployee(ErrorCode denial) {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID,Set.of("employee:view","attachment:view"))));
+        stubDetail(OTHER_ID,"public employee");
+        org.mockito.Mockito.doThrow(new ApiException(denial)).when(employeeAttachmentPolicy)
+                .requireCanView(org.mockito.ArgumentMatchers.eq(OTHER_ID), any());
+        EmployeeDetail detail=service.detail(OTHER_ID);
+        assertEquals(OTHER_ID,detail.getId());assertEquals("public employee",detail.getFullName());
+        assertEquals("****1234",detail.getIdNumber());assertEquals(List.of(),detail.getAttachments());
+        assertEquals(List.of(),detail.getHistoricalAttachmentGroups());
+        verifyNoInteractions(attachmentAccess);
+    }
+
+    @Test void unexpectedAttachmentFailureRemainsDiagnosableInsteadOfReturningFalseEmptySuccess() {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID,Set.of("employee:view","attachment:view"))));
+        Employee employee=new Employee();employee.setId(OTHER_ID);employee.setCode("public-code");
+        when(empRepo.findById(OTHER_ID)).thenReturn(Optional.of(employee));
+        when(attachmentAccess.listVisible("EMPLOYEE",OTHER_ID)).thenThrow(new IllegalStateException("attachment-storage-unavailable"));
+        assertThrows(IllegalStateException.class,()->service.detail(OTHER_ID));
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=ErrorCode.class,names={"FORBIDDEN","NOT_FOUND"})
+    void laterTransactionalPortDenialPropagatesInsteadOfHidingARollbackOnlyTransaction(ErrorCode denial) {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID,Set.of("employee:view","attachment:view"))));
+        Employee employee=new Employee();employee.setId(OTHER_ID);employee.setCode("public-code");
+        when(empRepo.findById(OTHER_ID)).thenReturn(Optional.of(employee));
+        when(attachmentAccess.listVisible("EMPLOYEE",OTHER_ID)).thenThrow(new ApiException(denial));
+        assertEquals(denial,assertThrows(ApiException.class,()->service.detail(OTHER_ID)).getCode());
     }
 
     @Test
@@ -325,7 +358,7 @@ class EmployeeQueryServiceSelfProfileTest {
         when(compensationRepo.findByEmployeeId(employeeId)).thenReturn(Optional.of(compensation));
         when(contractRepo.findByEmployeeIdOrderBySignOrderAsc(employeeId)).thenReturn(List.of());
         when(contractRepo.countByEmployeeId(employeeId)).thenReturn(0L);
-        when(attachmentAccess.listVisible("EMPLOYEE", employeeId))
+        lenient().when(attachmentAccess.listVisible("EMPLOYEE", employeeId))
                 .thenReturn(List.of());
         when(userRepo.findByEmployeeId(employeeId)).thenReturn(Optional.empty());
         when(emergencyRepo.findByEmployeeIdOrderBySortOrderAsc(employeeId))

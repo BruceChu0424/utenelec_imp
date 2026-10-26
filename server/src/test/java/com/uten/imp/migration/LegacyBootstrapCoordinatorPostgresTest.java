@@ -181,6 +181,81 @@ class LegacyBootstrapCoordinatorPostgresTest {
     }
 
     @Test
+    void freshInventoryIsExactAndVerifiedAliasEvidenceStillRejectsBootstrapWithoutMutation() throws Exception {
+        String database = "bootstrap_alias_guard_" + UUID.randomUUID().toString().replace("-", "");
+        try (var connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE " + database);
+        }
+        String url = postgres.getJdbcUrl().replace("/" + postgres.getDatabaseName() + "?", "/" + database + "?");
+        com.uten.imp.testsupport.TestFlyway.configure().dataSource(url, postgres.getUsername(), postgres.getPassword())
+                .locations("filesystem:" + candidate.resolve("server/src/main/resources/db/migration")).load().migrate();
+        String guard = Files.readString(candidate.resolve("server/legacy_migration/migrate_bootstrap_target_guard.sql"));
+        try (var connection = DriverManager.getConnection(url, postgres.getUsername(), postgres.getPassword());
+             var statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            statement.execute(guard);
+            connection.rollback();
+
+            // A new unreviewed root table still fails closed; V937 is one exact
+            // EMPTY registration, never an automatic catalog exemption.
+            statement.execute("CREATE TABLE unexpected_bootstrap_fact(id integer)");
+            connection.commit();
+            java.sql.SQLException unknown = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute(guard));
+            assertThat(unknown.getSQLState()).isEqualTo("P0001");
+            assertThat(unknown.getMessage()).contains("unclassified unexpected_bootstrap_fact");
+            connection.rollback();
+            statement.execute("DROP TABLE unexpected_bootstrap_fact");
+            connection.commit();
+
+            UUID alias = UUID.randomUUID();
+            statement.execute("SELECT set_config('app.actor_account','ops:private-bootstrap-guard-fixture',true),"
+                    + "set_config('app.employee_identity_merge_evidence','private-bootstrap-alias-proof',true)");
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted,deleted_at)
+                    SELECT ?,'FIXTURE-ARCHIVED-ALIAS','Synthetic archived identity','其他',department_id,
+                           CURRENT_DATE,'resigned','regular',true,now()
+                    FROM employees WHERE code='ADMIN'
+                    """)) {
+                insert.setObject(1, alias);
+                insert.executeUpdate();
+            }
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO employee_identity_aliases(alias_employee_id,canonical_employee_id,reason,evidence_reference)
+                    SELECT ?,id,'Verified synthetic old identity','private-bootstrap-alias-proof' FROM employees WHERE code='ADMIN'
+                    """)) {
+                insert.setObject(1, alias);
+                assertThat(insert.executeUpdate()).isEqualTo(1);
+            }
+            connection.commit();
+            String before = bootstrapIdentityFacts(statement);
+            java.sql.SQLException nonempty = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute(guard));
+            assertThat(nonempty.getSQLState()).isEqualTo("P0001");
+            assertThat(nonempty.getMessage()).contains("bootstrap requires a fresh schema-only target");
+            connection.rollback();
+            assertThat(bootstrapIdentityFacts(statement)).as("rejected bootstrap preserves exact employee/alias identity facts").isEqualTo(before);
+            try (var rows = statement.executeQuery("SELECT count(*) FROM employee_identity_aliases")) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getLong(1)).isEqualTo(1);
+            }
+            connection.rollback();
+        }
+    }
+
+    private static String bootstrapIdentityFacts(java.sql.Statement statement) throws Exception {
+        try (var rows = statement.executeQuery("""
+                SELECT jsonb_build_object(
+                  'employees',(SELECT jsonb_agg(to_jsonb(e) ORDER BY e.id) FROM employees e),
+                  'aliases',(SELECT jsonb_agg(to_jsonb(a) ORDER BY a.alias_employee_id) FROM employee_identity_aliases a))::text
+                """)) {
+            rows.next();
+            return rows.getString(1);
+        }
+    }
+
+    @Test
     void downgradedV15NonemptyProductionIsRejectedAndEveryBusinessWriteRollsBack() throws Exception {
         Map<String, String> beforeBusiness = databaseFingerprints(false, null);
         String beforeSequenceDefinitions = sequenceDefinitionsFingerprint();

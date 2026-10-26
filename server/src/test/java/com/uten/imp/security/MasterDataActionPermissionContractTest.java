@@ -87,8 +87,32 @@ class MasterDataActionPermissionContractTest {
     @Test
     void mixedMasterPutRequiresEditAndAddsStatusOnlyWhenPersistedValueChanges()
             throws Exception {
+        String sharedLock = source(type("com.uten.imp.common.concurrency.MasterRowWriteLock"));
+        assertThat(sharedLock).containsSubsequence(
+                "em.refresh(row, LockModeType.PESSIMISTIC_WRITE);",
+                "if (deleted.getAsBoolean())",
+                "throw new ApiException(ErrorCode.NOT_FOUND, missingMessage)");
+        var rowVariables = java.util.Map.of(
+                "goods", "g", "mould", "m", "supplier", "m", "color", "c",
+                "unit", "u", "currency", "c", "warehouse", "w", "account", "a");
         for (MasterSpec spec : MASTERS) {
             String source = source(spec.service());
+            String statusCommand = methodBody(source, "public " + spec.detail() + " changeStatus(");
+            if (spec.prefix().equals("client")) {
+                // Customers acquire a fresh locked entity before scope checks instead of refreshing a prior read.
+                assertThat(statusCommand).containsSubsequence(
+                        "Client m = requireClientForUpdate(id);", "m.setStatus(req.status());");
+                assertThat(methodBody(source, "private Client requireClientForUpdate(UUID id)"))
+                        .containsSubsequence(
+                                "em.find(Client.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)",
+                                "if (client == null || client.isDeleted())",
+                                "throw new ApiException(ErrorCode.NOT_FOUND");
+            } else {
+                String row = rowVariables.get(spec.prefix());
+                assertThat(statusCommand).containsSubsequence(
+                        "MasterRowWriteLock.refreshActive(em, " + row + ", " + row + "::isDeleted,",
+                        row + ".setStatus(req.status());");
+            }
             if (spec.prefix().equals("goods")) {
                 assertThat(source).contains("GoodsFieldEditPolicy.requireChanged(g, req)");
                 assertThat(source(type("com.uten.imp.features.master.goods.GoodsFieldEditPolicy")))
@@ -100,7 +124,6 @@ class MasterDataActionPermissionContractTest {
                             + spec.prefix() + ":edit\")")
                     .contains("CurrentAuthorityGuard.requireAll(\""
                             + spec.prefix() + ":status\")")
-                    .contains("PESSIMISTIC_WRITE")
                     .contains("MasterStatusChangeRequest");
         }
     }
@@ -206,6 +229,14 @@ class MasterDataActionPermissionContractTest {
         return Files.readString(
                 Path.of("src/main/java/com/uten/imp").resolve(relative),
                 StandardCharsets.UTF_8);
+    }
+
+    private static String methodBody(String source, String declaration) {
+        int start = source.indexOf(declaration);
+        assertThat(start).as("missing method: " + declaration).isNotNegative();
+        int end = source.indexOf("\n    }", start);
+        assertThat(end).as("missing method end: " + declaration).isGreaterThan(start);
+        return source.substring(start, end);
     }
 
     private static MasterSpec master(String prefix, String stem, String detail) {

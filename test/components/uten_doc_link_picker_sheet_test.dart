@@ -13,6 +13,8 @@ import 'package:uten_imp/components/layout/uten_doc_link_picker_sheet.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_master_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -38,7 +40,8 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
   Map<String, List<_Item>> details = const {},
   Map<String, ProcurementSourceTerms> sourceTerms = const {},
   Map<String, String>? gifts,
-  Map<String, String>? exacts,
+  Map<String, String?>? exacts,
+  Future<UtenDocLinkDetail<_Item>> Function(String)? detailLoader,
   bool allowOverRemaining = false,
   bool allowGiftOverRemaining = false,
   Future<UtenDocLinkParty?> Function()? pickParty,
@@ -72,12 +75,14 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
         totalPages: 1,
       );
     },
-    loadDetail: (ref, docId) async => UtenDocLinkDetail<_Item>(
-      partyId: detailPartyId,
-      items: details[docId] ?? const [],
-      docId: docId,
-      sourceTerms: sourceTerms[docId],
-    ),
+    loadDetail: (ref, docId) async => detailLoader != null
+        ? detailLoader(docId)
+        : UtenDocLinkDetail<_Item>(
+            partyId: detailPartyId,
+            items: details[docId] ?? const [],
+            docId: docId,
+            sourceTerms: sourceTerms[docId],
+          ),
     itemFields: UtenDocLinkItemFields<_Item>(
       goodsId: (it) => it.goodsId,
       colorId: (_) => null,
@@ -111,7 +116,9 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     remainQty: (it) => it.remain,
     remainQtyText: gifts == null && exacts == null
         ? null
-        : (item) => exacts?[item.id] ?? item.remain.toString(),
+        : (item) => exacts != null && exacts.containsKey(item.id)
+              ? exacts[item.id]
+              : item.remain.toString(),
     remainGiftQtyText: gifts == null ? null : (item) => gifts[item.id],
     createBlankRow: () => UtenDocLinkItemRow<_Item>(const _Item('', '', 0, 0)),
   );
@@ -122,6 +129,7 @@ Future<void> _openPanel(
   WidgetTester tester,
   UtenDocLinkPickerConfig<_Doc, _Item, Null> config, {
   Map<String, Object?>? resultHolder,
+  Locale locale = const Locale('zh'),
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -129,6 +137,9 @@ Future<void> _openPanel(
   await tester.pumpWidget(
     ProviderScope(
       child: MaterialApp(
+        locale: locale,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: Stack(
           children: [
             Scaffold(
@@ -207,6 +218,94 @@ void main() {
     },
   );
 
+  testWidgets(
+    'unknown source quantities do not hide known selectable lines or become completed',
+    (tester) async {
+      final holder = <String, Object?>{};
+      await _openPanel(
+        tester,
+        _config(
+          docs: const [_Doc('mixed', 'MIXED-001', 's1')],
+          details: const {
+            'mixed': [
+              _Item('unknown', 'unknown-goods', 10, 10),
+              _Item('known', 'known-goods', 10, 2),
+            ],
+          },
+          exacts: const {'unknown': null, 'known': '2'},
+        ),
+        resultHolder: holder,
+      );
+      await _doubleTapRow(tester, find.text('MIXED-001'));
+      await tester.pump();
+      expect(find.text('货品-unknown-goods'), findsNothing);
+      expect(find.text('货品-known-goods'), findsOneWidget);
+      expect(find.textContaining('来源数量不完整'), findsOneWidget);
+      expect(find.text('该单据明细已全部完成，无剩余可引入'), findsNothing);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      await tester.tap(find.text('引入'));
+      await tester.pumpAndSettle();
+      final result =
+          await (holder['result']! as Future<UtenDocLinkPickResult<_Item>?>);
+      expect(result!.items.single.upstreamItemId, 'known');
+    },
+  );
+  for (final locale in const [Locale('zh'), Locale('en'), Locale('ko')]) {
+    testWidgets(
+      'detail read failure is visible and recoverable in ${locale.languageCode}',
+      (tester) async {
+        var calls = 0;
+        await _openPanel(
+          tester,
+          _config(
+            docs: const [_Doc('retry', 'RETRY-001', 's1')],
+            detailLoader: (id) async {
+              if (calls++ == 0) {
+                throw StateError('private implementation failure');
+              }
+              return const UtenDocLinkDetail(
+                partyId: 's1',
+                items: [_Item('good', 'g1', 10, 3)],
+              );
+            },
+          ),
+          locale: locale,
+        );
+        await _doubleTapRow(tester, find.text('RETRY-001'));
+        await tester.pump();
+        expect(
+          find.text(lookupAppLocalizations(locale).docLinkDetailLoadFailed),
+          findsOneWidget,
+        );
+        expect(find.textContaining('private implementation'), findsNothing);
+        final table = tester.widget<MasterDataTableView<_Doc>>(
+          find.byType(MasterDataTableView<_Doc>),
+        );
+        table.onRetry!();
+        await tester.pumpAndSettle();
+        await _doubleTapRow(tester, find.text('RETRY-001'));
+        await tester.pump();
+        expect(find.text('货品-g1'), findsOneWidget);
+        expect(calls, 2);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('specific source denial remains visible', (tester) async {
+    await _openPanel(
+      tester,
+      _config(
+        docs: const [_Doc('denied', 'DENIED-001', 's1')],
+        detailLoader: (id) async =>
+            throw ApiException('FORBIDDEN', '该来源单据权限已收回'),
+      ),
+    );
+    await _doubleTapRow(tester, find.text('DENIED-001'));
+    await tester.pump();
+    expect(find.text('该来源单据权限已收回'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'exact positive remainder remains visible when binary subtraction reached zero',
     (tester) async {

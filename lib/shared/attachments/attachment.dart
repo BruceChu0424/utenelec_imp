@@ -20,6 +20,13 @@ class Attachment {
     this.downloadUrl,
     this.category,
     this.avatar = false,
+    this.deletedAt,
+    this.deletedBy,
+    this.deletedByName,
+    this.deletedReason,
+    this.historyReadOnly = false,
+    this.originalAvailability = 'UNKNOWN',
+    this.historyDownloadUrl,
   });
 
   final String id;
@@ -40,13 +47,30 @@ class Attachment {
 
   /// 是否员工头像。
   final bool avatar;
+  final DateTime? deletedAt;
+  final String? deletedBy;
+  final String? deletedByName;
+  final String? deletedReason;
+  final bool historyReadOnly;
+  final String originalAvailability;
+  final String? historyDownloadUrl;
+
+  bool get isReadOnly => historyReadOnly || deleted;
+  bool get originalUnavailable => const {
+    'LEGACY_UNAVAILABLE',
+    'MISSING',
+    'PURGED',
+  }.contains(originalAvailability.toUpperCase());
 
   /// 是否「客户端能显示的图片」——用于头像选择与图片分支。
   /// 2026-09-11 起以能力矩阵为准而非 `image/` 前缀：tiff/heic/svg 也是 image/*，
   /// 但 Flutter 解码不了，选成头像就是一个永远加载失败的空头像。
   bool get isImage => isRenderableImageAttachment(originalName, contentType);
 
-  factory Attachment.fromJson(Map<String, dynamic> json) {
+  factory Attachment.fromJson(
+    Map<String, dynamic> json, {
+    bool forceHistoryReadOnly = false,
+  }) {
     return Attachment(
       id: json['id'] as String,
       ownerType: json['ownerType'] as String,
@@ -62,6 +86,14 @@ class Attachment {
       downloadUrl: json['downloadUrl'] as String?,
       category: json['category'] as String?,
       avatar: json['avatar'] as bool? ?? false,
+      deletedAt: _dateTime(json['deletedAt']),
+      deletedBy: json['deletedBy'] as String?,
+      deletedByName: json['deletedByName'] as String?,
+      deletedReason: json['deletedReason'] as String?,
+      historyReadOnly: forceHistoryReadOnly || json['historyReadOnly'] == true,
+      originalAvailability:
+          json['originalAvailability'] as String? ?? 'UNKNOWN',
+      historyDownloadUrl: json['historyDownloadUrl'] as String?,
     );
   }
 

@@ -7,6 +7,7 @@ import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.lifecycle.MasterEntityKind;
+import com.uten.imp.features.master.goods.GoodsFieldEditPolicy;
 import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.OwnerVisibility;
@@ -55,8 +56,7 @@ public class GoodsOperationHistoryService {
     }
     private record Facts(Map<String,JsonNode> current,Set<UUID> periodic,OwnerVisibility.OwnerScope scope) {}
     private static final Set<String> TABLES=Set.of("goods","goods_bom_items","material_categories","colors","units");
-    private static final Set<String> GOODS_COSTS=Set.of("source_e","machining_e","incidental_e","lacquer_e","plating_e",
-            "casing_e","polish_e","total","work_rate","work_e","lost_rate","lost_e","rent_rate","rent_e","make_rate","make_e","c_total","g_total");
+    private static final Set<String> GOODS_COSTS=GoodsFieldEditPolicy.COST_SNAPSHOT_FIELDS;
 
     @PreAuthorize("hasAuthority('goods:view')")
     @Transactional(readOnly=true)
@@ -383,19 +383,10 @@ public class GoodsOperationHistoryService {
         }
         for(Row row:rows) {
             if("goods".equals(row.table()) && row.before()!=null && row.after()!=null) {
-                if(changed(row.before(),row.after(),"status"))needed.add("goods:status");
-                if(changed(row.before(),row.after(),"price","zk"))needed.add("goods:price:edit");
-                if(changed(row.before(),row.after(),"zk"))needed.add("goods:discount:view");
-                // Direct master edits and version restoration require the same field rights.
-                // BOM-derived source costs retain the original BOM command's authority.
-                if(("GOODS_EDIT".equals(op.type()) || "GOODS_IMPORT".equals(op.type()))
-                        && changed(row.before(),row.after(),GOODS_COSTS.toArray(String[]::new))) {
-                    needed.add("goods:edit"); needed.add("goods:cost:view");
-                }
-                if(changed(row.before(),row.after(),"code","category_id","name","short_name","model","spec","series","stock_place","material","thickness","m_weight","pack","pieces","paper","rear_insert_code","color_id","unit_id","mould_id","thickness_unit_id","m_weight_unit_id","owning_warehouse_id","color_legacy_id","unit_legacy_id","mould_legacy_id"))needed.add("goods:edit");
-                if(changed(row.before(),row.after(),"source_type","min_order_qty","order_multiple_qty","default_supplier_id","secondary_supplier_id","vend_legacy_id","vend2_legacy_id","subcontract_allowed_loss_pct","purchase_allowed_over_receipt_pct"))needed.add("goods:purchase:edit");
-                if(changed(row.before(),row.after(),"c_number","client_goods_name","client_id","client_legacy_id"))needed.add("goods:sales:edit");
-                if(changed(row.before(),row.after(),"name_en") && !user.getPermissions().contains("goods:name_en:edit"))needed.add("goods:sales:edit");
+                // Replays use the same complete field groups as ordinary writes.
+                // Material costs derived by a BOM command retain that command's authority.
+                needed.addAll(GoodsFieldEditPolicy.snapshotPermissions(row.before(),row.after(),
+                        "GOODS_EDIT".equals(op.type()) || "GOODS_IMPORT".equals(op.type()),user.getPermissions()));
             }
             if("BOM_PASTE".equals(op.type())&&row.before()!=null&&row.after()!=null&&row.after().path("is_deleted").asBoolean())needed.add("goods:bom:delete");
             if("GOODS_CREATE".equals(op.type())&&"goods".equals(row.table())&&row.after()!=null) {

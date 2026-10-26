@@ -371,11 +371,19 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.mouldCategoryMove': 1,
       'Perm.mouldCategoryReorder': 1,
       'Perm.mouldStatus': 2,
-      'Perm.mouldCreate': 1,
-      'Perm.mouldEdit': 2,
+      // Retained manufacturer pickers recheck their original create/edit grant.
+      'Perm.mouldCreate': 3,
+      'Perm.mouldEdit': 4,
       'Perm.mouldDelete': 2,
       'Perm.mouldExport': 1,
     },
+  ),
+  // Manufacturer candidates expose names only under supplier:view. Live checks
+  // also reject callbacks retained after a grant is revoked; writes keep their
+  // original mould:create/edit authority and remain server checked.
+  'lib/features/basic_data/widgets/mould_manufacturer_field.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.mouldEdit': 1, 'Perm.supplierView': 4},
   ),
   'lib/features/basic_data/pages/product_category_page.dart': (
     legacyCount: 18,
@@ -620,9 +628,10 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsBomEdit': 1,
       'Perm.goodsExport': 1,
       'Perm.goodsView': 1,
-      // BOM stock quantities have the same explicit stock-view read boundary
-      // as the backing GoodsBomStockVisibilityTest projection.
-      'Perm.stockView': 1,
+      // Both visibility and the retained column cache key track stock:view;
+      // otherwise a revoked grant could retain an old column projection.
+      // GoodsBomStockVisibilityTest checks the independent server masking.
+      'Perm.stockView': 2,
     },
   ),
   'lib/features/production/pages/where_used_report_page.dart': (
@@ -805,7 +814,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      231, // Reviewed exact action/read boundaries; the global cap stays677.
+      242, // Reviewed exact action/read boundaries; the global cap stays677.
     );
   });
 

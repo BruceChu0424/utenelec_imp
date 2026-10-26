@@ -216,7 +216,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/migration/StockMeasurementHoldAuditPostgresTest.java#hold_audit_scope_probe",
             // Private two-parent DAG proves archive ancestry deduplication, cycles and
             // fail-closed reachability. It is an algorithm oracle, not an ERP table.
-            "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_dag");
+            "com/uten/imp/migration/ImportedDocumentAncestryWalkPostgresTest.java#fixture_origin_dag",
+            // Only this bootstrap guard's unreviewed-root-table negative oracle;
+            // it must not exist in the real schema or become an import exemption.
+            "com/uten/imp/migration/LegacyBootstrapCoordinatorPostgresTest.java#unexpected_bootstrap_fact");
     private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
             // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",

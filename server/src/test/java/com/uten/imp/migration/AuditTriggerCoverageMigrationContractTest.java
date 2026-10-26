@@ -92,6 +92,9 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("employee_identity_aliases", "authorization", false,
+                    "V937 经人工证据核实的员工身份合并关系决定跨档案历史的查询范围；身份授权决定须完整审计，不能因只追加而豁免",
+                    Set.of("employee_identity_aliases")),
             new FullGroup("document_unapprovals", "data_change", false,
                     "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
             new FullGroup("permission_templates", "authorization", false,

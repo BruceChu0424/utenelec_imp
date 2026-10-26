@@ -3,6 +3,8 @@ package com.uten.imp.features.master.goods.history;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.features.master.history.MasterVersionRow;
+import com.uten.imp.features.master.history.MasterRecordHistoryService;
+import com.uten.imp.features.master.goods.GoodsFieldEditPolicy;
 import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
 import com.uten.imp.security.*;
 import jakarta.persistence.EntityManager;
@@ -12,6 +14,36 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class GoodsFieldHistoryPermissionTest {
+    @Test void everyRestorableGoodsFieldHasAnExplicitPermissionOrLifecycleClassification() throws Exception {
+        var allowed=MasterRecordHistoryService.class.getDeclaredField("GOODS_EDITABLE");allowed.setAccessible(true);
+        @SuppressWarnings("unchecked") Set<String> restorable=(Set<String>)allowed.get(null);
+        var missing=new TreeSet<>(restorable);missing.removeAll(GoodsFieldEditPolicy.snapshotClassifiedFields());
+        assertTrue(missing.isEmpty(),"Restorable fields without an authority classification: "+missing);
+    }
+    @Test void allBaseAndEnglishSnapshotFieldsUseTheSameVersionRestoreAuthority() throws Exception {
+        var mapper=new ObjectMapper();var current=mock(SecurityContextCurrentUser.class);
+        var service=new GoodsOperationHistoryService(mock(EntityManager.class),mapper,current,mock(TxSessionVars.class),mock(MasterReferenceGuard.class),mock(OwnerVisibility.class),mock(BusinessEventPublisher.class));
+        for(String field:GoodsFieldEditPolicy.BASE_SNAPSHOT_FIELDS) {
+            var row=new MasterVersionRow("goods",UUID.randomUUID(),mapper.createObjectNode().put(field,"new"),mapper.createObjectNode().put(field,"old"));
+            when(current.get()).thenReturn(Optional.of(actor("goods:sales:edit")));
+            assertTrue(service.versionRestorePermissionReason(List.of(row)).contains("goods:edit"),field);
+            when(current.get()).thenReturn(Optional.of(actor("goods:edit")));
+            assertNull(service.versionRestorePermissionReason(List.of(row)),field);
+        }
+        for(String field:GoodsFieldEditPolicy.ENGLISH_SNAPSHOT_FIELDS) {
+            var row=new MasterVersionRow("goods",UUID.randomUUID(),mapper.createObjectNode().put(field,"new"),mapper.createObjectNode().put(field,"old"));
+            when(current.get()).thenReturn(Optional.of(actor("goods:edit")));
+            assertTrue(service.versionRestorePermissionReason(List.of(row)).contains("goods:sales:edit"),field);
+            when(current.get()).thenReturn(Optional.of(actor("goods:name_en:edit")));
+            assertNull(service.versionRestorePermissionReason(List.of(row)),field);
+        }
+    }
+    @Test void derivedBomCostsKeepTheirNativeAuthorityButDoNotBypassDirectBaseChanges() {
+        var mapper=new ObjectMapper();var before=mapper.createObjectNode().put("source_e",1);var after=mapper.createObjectNode().put("source_e",2);
+        assertTrue(GoodsFieldEditPolicy.snapshotPermissions(before,after,false,Set.of()).isEmpty());
+        after.put("spec","new");
+        assertEquals(Set.of("goods:edit"),GoodsFieldEditPolicy.snapshotPermissions(before,after,false,Set.of()));
+    }
     @Test void historyRestorationChecksTheChangedGroupInsteadOfTheFormerBroadEditGrant() throws Exception {
         var mapper=new ObjectMapper();
         var current=mock(SecurityContextCurrentUser.class);

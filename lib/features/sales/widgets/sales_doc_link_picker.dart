@@ -13,8 +13,11 @@
 //  - linkToOrderItem（出货/退货链订货）：拉 orders（已审）
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/network/api_exception.dart';
 
 import '../../../components/layout/uten_doc_link_picker_sheet.dart';
+import '../../../components/forms/link_quantity_validator.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
@@ -79,14 +82,25 @@ String _upTypeLabel(SalesDocType t) {
 /// 上游明细剩余可引量（也是"本次数量"默认值）：
 /// 出货←订货 = 订货数 − 已发；退货←出货/订货 = 原单数 − 已退；其它 = 全额。
 double _remainQty(SalesDocConfig cfg, SalesDocType upType, SalesDocItem it) {
-  final q = it.qty ?? 0;
-  if (upType == SalesDocType.order && cfg.type == SalesDocType.shipment) {
-    return q - (it.shippedQty ?? 0);
-  }
-  if (cfg.type == SalesDocType.returnDoc) {
-    return q - (it.returnedQty ?? 0);
-  }
-  return q;
+  return double.tryParse(_recordedRemainQty(cfg, upType, it) ?? '') ?? 0;
+}
+
+String? _recordedRemainQty(
+  SalesDocConfig cfg,
+  SalesDocType upstream,
+  SalesDocItem item,
+) {
+  if (item.qty == null || !item.qty!.isFinite) return null;
+  final counter = cfg.type == SalesDocType.returnDoc
+      ? item.returnedQty
+      : upstream == SalesDocType.order && cfg.type == SalesDocType.shipment
+      ? item.shippedQty
+      : 0.0;
+  if (counter == null || !counter.isFinite) return null;
+  return financeExactSumTexts([
+    item.qty!.toString(),
+    financeExactMultiplyTexts(['-1', counter.toString()]),
+  ]);
 }
 
 /// 弹出"从上游引入"右滑入大面板；返回所选明细 + 上游客户（null 表示取消）。
@@ -98,7 +112,8 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
   String? initialClientId,
 }) async {
   final upstream = _upstreamType(cfg);
-  final availableByOrderItem = <String, double>{};
+  final availableByOrderItem = <String, double?>{};
+  final sourceRequests = LatestLinkRequestGuard();
   final importsShipment =
       upstream == SalesDocType.order && cfg.type == SalesDocType.shipment;
   final docConfig =
@@ -164,22 +179,29 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
               order: order,
             ),
         loadDetail: (ref, docId) async {
+          final request = sourceRequests.begin();
           final detail = await ref
               .read(salesRepositoryProvider(upstream))
               .detail(docId);
+          final available = <String, double?>{};
           if (importsShipment) {
             if (!detail.writable ||
                 !detail.financeConfirmed ||
                 detail.closed ||
                 detail.stopped) {
-              throw const FormatException('该订单当前不能发货，请核对财务状态和操作权限');
+              throw ApiException('CONFLICT', '该订单当前不能发货，请核对财务状态和操作权限');
             }
             final progress = await ref
                 .read(salesRepositoryProvider(upstream))
                 .planProgress(docId);
             for (final line in progress) {
-              availableByOrderItem[line.orderItemId] = line.shippableQty ?? 0;
+              available[line.orderItemId] = line.shippableQty;
             }
+          }
+          if (sourceRequests.isCurrent(request)) {
+            availableByOrderItem
+              ..clear()
+              ..addAll(available);
           }
           return UtenDocLinkDetail<SalesDocItem>(
             partyId: detail.clientId,
@@ -204,6 +226,9 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
         remainQty: (it) => importsShipment
             ? availableByOrderItem[it.id] ?? 0
             : _remainQty(cfg, upstream, it),
+        remainQtyText: (it) => importsShipment
+            ? availableByOrderItem[it.id]?.toString()
+            : _recordedRemainQty(cfg, upstream, it),
         createBlankRow: () =>
             UtenDocLinkItemRow<SalesDocItem>(const SalesDocItem(id: null)),
       );

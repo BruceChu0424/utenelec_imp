@@ -77,8 +77,17 @@ public class EmployeePiiWriter {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.VALIDATION_FAILED,
                         "中国大陆手机号格式不正确"));
+        UUID employeeId = java.util.Objects.requireNonNull(target.getEmployeeId(),
+                "Primary phone requires its owning employee identity");
+        String hash = tx.hmac(normalized);
+        if (hash != null && !hash.equals(target.getPhoneHash())) {
+            sensitiveRepo.lockPrimaryPhoneHash(hash);
+            if (sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash, employeeId)) {
+                throw new ApiException(ErrorCode.CONFLICT, "该手机号已被其他员工使用");
+            }
+        }
         target.setPhoneEnc(tx.encrypt(normalized));
-        target.setPhoneHash(tx.hmac(normalized));
+        target.setPhoneHash(hash);
     }
 
     // ===== V282 扩展加密字段（户籍/居住地址、邮箱、出生日期、婚姻/政治面貌、办公电话）=====

@@ -51,7 +51,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   List<T> _items = const [];
   final Map<String, PlatformRowValues> _values = {};
   final Map<String, int> _edits = {};
-  final Set<String> _saving = {};
+  final Set<(int, String)> _saving = {};
   ProviderSubscription<PlatformTableLayout>? _layoutSubscription;
   ProviderSubscription<PlatformTableRepository>? _repositorySubscription;
   ProviderSubscription<AuthenticatedScope?>? _queryScopeSubscription;
@@ -714,12 +714,24 @@ class PlatformTableController<T> extends ChangeNotifier {
         final pending = <PlatformRowValues>[];
         for (var start = 0; start < ids.length; start += 200) {
           final end = (start + 200).clamp(0, ids.length);
+          final requested = ids.sublist(start, end);
+          final requestedIds = requested.toSet();
           final records = await repo.rows(
             owner.scope,
-            ids.sublist(start, end),
+            requested,
             columnIds: columns,
           );
           if (disposed || generation != _generation) return;
+          // A null cell is valid. A missing/duplicate/foreign record is not a complete read.
+          final seen = <String>{};
+          if (records.length != requested.length ||
+              records.any(
+                (row) =>
+                    !requestedIds.contains(row.recordId) ||
+                    !seen.add(row.recordId),
+              )) {
+            throw ApiException('NOT_FOUND', '扩展字段记录清单已变化，请重新核对');
+          }
           pending.addAll(records);
         }
         // Publish a complete read only. A later batch failure retains the prior
@@ -744,7 +756,9 @@ class PlatformTableController<T> extends ChangeNotifier {
           }
         }
         _values.removeWhere(
-          (id, _) => !ids.contains(id) && !_saving.contains(id),
+          (id, _) =>
+              !ids.contains(id) &&
+              !_saving.contains((_authorizationRevision, id)),
         );
         _stageSelectedCalculations();
       }
@@ -898,7 +912,7 @@ class PlatformTableController<T> extends ChangeNotifier {
           (draftOf?.call(item) != null &&
               (binding?.recordIdOf(item)?.isEmpty ?? true) &&
               capabilities?.canCreate == true)) &&
-      !_saving.contains(binding?.recordIdOf(item));
+      !_saving.contains((_authorizationRevision, binding?.recordIdOf(item)));
   bool canEdit(T item, PlatformColumnDefinition column) =>
       _canWriteFields(item) &&
       !column.calculated &&
@@ -922,7 +936,9 @@ class PlatformTableController<T> extends ChangeNotifier {
     final scope = binding!.scope;
     final currentTable = _tableKey;
     final currentRepository = repository;
-    _saving.add(row.recordId);
+    final authorization = _authorizationRevision;
+    final operation = (authorization, row.recordId);
+    _saving.add(operation);
     _edits[row.recordId] = (_edits[row.recordId] ?? 0) + 1;
     _emit();
     try {
@@ -943,16 +959,18 @@ class PlatformTableController<T> extends ChangeNotifier {
       if (disposed ||
           scope != binding?.scope ||
           currentTable != _tableKey ||
+          authorization != _authorizationRevision ||
           !identical(currentRepository, repository)) {
         return;
       }
+      if ((_values[row.recordId]?.version ?? -1) > result.version) return;
       _values[row.recordId] = result;
       for (final cell in result.cells) {
         _definitions[cell.columnId] = cell.definition;
         if (cell.persisted) _recordColumnIds.add(cell.columnId);
       }
     } finally {
-      _saving.remove(row.recordId);
+      _saving.remove(operation);
       _emit();
     }
   }

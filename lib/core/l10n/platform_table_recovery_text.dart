@@ -17,12 +17,18 @@ String platformTableRecoveryReason(BuildContext context, String message) {
     '扩展字段服务未初始化' => 'initializationReason',
     '当前账号不能访问此表的扩展字段' => 'scopeReason',
     '登录已过期，请重新登录' => 'sessionReason',
+    '扩展字段记录清单已变化，请重新核对' => 'incompleteReason',
     _ => null,
   };
   return key == null ? message : platformTableRecoveryText(context, key);
 }
 
 const platformTableRecoveryTexts = <String, List<String>>{
+  'incompleteReason': [
+    '扩展字段记录未完整返回。',
+    'The additional-field records were not returned in full.',
+    '추가 필드 레코드를 모두 불러오지 못했습니다.',
+  ],
   'timeoutReason': [
     '服务器响应超时。',
     'The server response timed out.',

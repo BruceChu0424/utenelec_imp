@@ -189,6 +189,8 @@ public class ClientService {
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Client> p = repo.findAll(spec, pageable);
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
+        Map<UUID, String> ownerNames = employeeNameResolver.namesOf(
+                p.getContent().stream().map(Client::getOwnerEmployeeId).toList());
         return new PageResponse<>(
                 p.getContent().stream()
                         // settlementNames 可能为空 Map.of()（不可变），null key 的 get 会抛 NPE，先判空。
@@ -197,7 +199,8 @@ public class ClientService {
                                 client.getDefaultSettlementMethodId() == null
                                         ? null
                                         : settlementNames.get(client.getDefaultSettlementMethodId()),
-                                accessScope))
+                                accessScope,
+                                ownerNames.get(client.getOwnerEmployeeId())))
                         .toList(),
                 p);
     }
@@ -582,7 +585,8 @@ public class ClientService {
     private ClientListItem toList(
             Client m,
             String settlementMethodName,
-            ClientAccessPolicy.ClientScope scope) {
+            ClientAccessPolicy.ClientScope scope,
+            String ownerEmployeeName) {
         return new ClientListItem(
                 m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
@@ -591,7 +595,7 @@ public class ClientService {
                 m.getCredit(), m.getCreditFloor(), m.getWebsite(), m.getStatus(), m.getLegacyId(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
                 m.getOwnerEmployeeId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                ownerEmployeeName,
                 m.getDefaultSettlementMethodId(), settlementMethodName,
                 clientAccessPolicy.canWrite(m, scope),
                 clientAccessPolicy.canManageAccess(m, scope),

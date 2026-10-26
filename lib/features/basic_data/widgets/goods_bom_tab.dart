@@ -2995,11 +2995,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
 
   List<MasterColumnDef<_BomRow>> get _columns {
     final l10n = AppLocalizations.of(context);
+    final canViewStock = _hasPermission(Perm.stockView);
     final scope = (
       l10n,
       _canEdit,
       _auditMode,
-      _hasPermission(Perm.stockView),
+      canViewStock,
       UtenTreeTableCell.toggleExtentOf(context),
     );
     if (_columnsCacheScope == scope && _columnsCache != null) {
@@ -3206,7 +3207,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         cellBuilder: (context, r) =>
             _masterCell(r, 'material', r.node.item.componentMaterial),
       ),
-      if (_hasPermission(Perm.stockView))
+      if (canViewStock)
         MasterColumnDef(
           key: 'stockQty',
           label: '库存数量',

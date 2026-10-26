@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../../security/secure_storage.dart';
 import '../api_endpoints.dart';
 import '../network_policy.dart';
+import '../owned_dio.dart';
 import '../visitor_session_event_bus.dart';
 import 'token_refresh_result.dart';
 
@@ -13,6 +14,7 @@ class VisitorAuthInterceptor extends Interceptor {
   VisitorAuthInterceptor({
     required this.storage,
     required this.baseUrl,
+    // Each call transfers a fresh client's ownership to this interceptor.
     Dio Function()? dioFactory,
   }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl)));
 
@@ -63,8 +65,10 @@ class VisitorAuthInterceptor extends Interceptor {
       final opts = err.requestOptions
         ..extra['retried'] = true
         ..headers['Authorization'] = 'Bearer $newToken';
-      final retryDio = _dioFactory();
-      final resp = await retryDio.fetch<dynamic>(opts);
+      final resp = await withOwnedDio(
+        _dioFactory,
+        (dio) => dio.fetch<dynamic>(opts),
+      );
       handler.resolve(resp);
     } on DioException catch (retryError) {
       handler.next(retryError);
@@ -90,10 +94,12 @@ class VisitorAuthInterceptor extends Interceptor {
         c.complete(result);
         return result;
       }
-      final dio = _dioFactory();
-      final resp = await dio.post<dynamic>(
-        ApiEndpoints.visitorRefresh,
-        data: {'refreshToken': refresh},
+      final resp = await withOwnedDio(
+        _dioFactory,
+        (dio) => dio.post<dynamic>(
+          ApiEndpoints.visitorRefresh,
+          data: {'refreshToken': refresh},
+        ),
       );
       final data = resp.data;
       final body = data is Map<String, dynamic> ? data : null;

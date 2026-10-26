@@ -1,5 +1,6 @@
 package com.uten.imp.features.visitor;
 
+import com.uten.imp.common.concurrency.BoundedIdleStore;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import io.github.bucket4j.Bucket;
@@ -7,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.LongSupplier;
 
 /**
  * 访客搜索接待人的限流(security-08)：访客账号靠短信自助注册，名单查询必须限速，
@@ -24,25 +25,43 @@ class VisitorDirectoryRateLimiter {
     static final int PER_ACCOUNT_PER_DAY = 60;
     static final int PER_IP_PER_MINUTE = 30;
 
-    /** 容量上限：防被构造大量不同键撑爆内存(超出即整体重置)。 */
+    /** 活跃额度不被淘汰；容量满时只拒绝新键。 */
     private static final int MAX_BUCKETS = 20_000;
+    static final Duration IDLE_EXPIRY = Duration.ofDays(1).plusMinutes(1);
 
-    private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();
+    private final BoundedIdleStore<String, Bucket> buckets;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    VisitorDirectoryRateLimiter() {
+        this(System::nanoTime, MAX_BUCKETS);
+    }
+
+    VisitorDirectoryRateLimiter(LongSupplier nanoTime, int maxEntries) {
+        buckets = new BoundedIdleStore<>(maxEntries, IDLE_EXPIRY, nanoTime);
+    }
 
     /** 消耗一次查询额度；任一桶耗尽抛 {@link ErrorCode#RATE_LIMITED}。 */
     void check(UUID visitorAccountId, String clientIp) {
-        if (buckets.size() > MAX_BUCKETS) {
-            buckets.clear();
-        }
         consume("account:" + visitorAccountId, this::accountBucket);
         consume("ip:" + (clientIp == null || clientIp.isBlank() ? "unknown" : clientIp.strip()),
                 this::ipBucket);
     }
 
     private void consume(String key, java.util.function.Supplier<Bucket> factory) {
-        if (!buckets.computeIfAbsent(key, ignored -> factory.get()).tryConsume(1)) {
-            throw new ApiException(ErrorCode.RATE_LIMITED, "查询太频繁了，请稍后再搜接待人");
-        }
+        Bucket admitted = buckets.compute(key, current -> {
+            Bucket bucket = current == null ? factory.get() : current;
+            if (!bucket.tryConsume(1)) throw limited();
+            return bucket;
+        });
+        if (admitted == null) throw limited();
+    }
+
+    private static ApiException limited() {
+        return new ApiException(ErrorCode.RATE_LIMITED, "查询太频繁了，请稍后再搜接待人");
+    }
+
+    int size() {
+        return buckets.size();
     }
 
     private Bucket accountBucket() {

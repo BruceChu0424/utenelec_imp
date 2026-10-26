@@ -164,8 +164,6 @@ class AutoFeed:
         atomic_json(path, {"firstObservedAt": utc_text(self.now()), "fetchedAt": utc_text(self.now()), "payload": value})
 
     def publish_models(self, indices: list[dict]) -> dict[str, str]:
-        from .automatic_engine import build_automatic_snapshot
-
         self.heartbeat(status="MODEL")
         digest = hashlib.sha256(json.dumps([(item["date"], item["sha256"]) for item in indices]).encode()).hexdigest()
         selected = {}
@@ -182,6 +180,7 @@ class AutoFeed:
                    not previous.get("generatedAt") or self.now() - instant(previous["generatedAt"]) >= timedelta(hours=12))
             if due:
                 try:
+                    from .automatic_engine import build_automatic_snapshot
                     snapshot = build_automatic_snapshot(benchmark, points, self.now(), digest, instant(indices[-1]["fetchedAt"]))
                     self._check_cancelled()
                     if snapshot.get("schemaVersion") != 2 or snapshot.get("status") == "READY" or snapshot.get("procurementSignal") != "INSUFFICIENT":

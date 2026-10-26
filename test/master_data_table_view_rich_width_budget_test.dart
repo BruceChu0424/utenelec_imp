@@ -1,8 +1,124 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 void main() {
+  Widget backgroundTable({
+    required int count,
+    required double Function(int) measure,
+    String? Function(int)? measureValueOf,
+  }) => MaterialApp(
+    home: Scaffold(
+      body: SizedBox(
+        width: 900,
+        height: 400,
+        child: MasterDataTableView<int>(
+          virtualized: true,
+          columns: [
+            MasterColumnDef<int>(
+              key: 'name',
+              label: '名称',
+              width: 180,
+              minimumWidthOf: (_) => 180,
+              value: (row) => '$row',
+              measureValueOf: measureValueOf,
+              measureWidthOf: (_, row, _) => measure(row),
+            ),
+          ],
+          items: List.generate(count, (row) => row),
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          showFullscreenToggle: false,
+        ),
+      ),
+    ),
+  );
+
+  testWidgets(
+    'cached width tails finish without a frame for every scan batch',
+    (tester) async {
+      final visited = <int>{};
+      var shapes = 0;
+      await tester.pumpWidget(
+        backgroundTable(
+          count: 5000,
+          measureValueOf: (row) {
+            visited.add(row);
+            return 'cached';
+          },
+          measure: (row) {
+            shapes++;
+            return 80;
+          },
+        ),
+      );
+      final frames = await tester.pumpAndSettle();
+      expect(visited.length, 5000);
+      expect(shapes, 1);
+      expect(frames, lessThan(12));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('width scans yield to events before completing all values', (
+    tester,
+  ) async {
+    var calls = 0;
+    int? callsAtEvent;
+    await tester.pumpWidget(
+      backgroundTable(
+        count: 40,
+        measure: (row) {
+          calls++;
+          if (calls == 1) {
+            Timer(Duration.zero, () => callsAtEvent = calls);
+          }
+          final clock = Stopwatch()..start();
+          while (clock.elapsedMicroseconds < 2200) {}
+          return 80;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(callsAtEvent, isNotNull);
+    expect(callsAtEvent, lessThan(40));
+    expect(calls, 40);
+    await tester.pumpWidget(const SizedBox.shrink());
+    final before = calls;
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, before);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('removing a table cancels its still-pending width scan', (
+    tester,
+  ) async {
+    var calls = 0;
+    await tester.pumpWidget(
+      backgroundTable(
+        count: 40,
+        measure: (row) {
+          calls++;
+          return 80;
+        },
+      ),
+    );
+    expect(calls, lessThan(40));
+    await tester.pumpWidget(const SizedBox.shrink());
+    final afterRemoval = calls;
+    for (var tick = 0; tick < 3; tick++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    expect(calls, afterRemoval);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cached widths leave the frame budget for unmeasured values', (
     tester,
   ) async {

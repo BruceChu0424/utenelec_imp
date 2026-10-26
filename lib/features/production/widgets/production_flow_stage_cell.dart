@@ -7,9 +7,7 @@ import '../models/production_flow_stage.dart';
 
 /// 流程进度条：线性进度 + 百分比文字（顶层产品完工进度 / 车间报工进度）。
 ///
-/// 2026-09-27 用户口径「所有进度颜色统一」：全站业务进度条（线性 + 环形
-/// ProgressRing + 各表格内裸 LinearProgressIndicator）统一主题主色，
-/// 不再随状态/百分比变色；本组件是公共落点之一。
+/// 业务进度统一使用主题主色，不随状态或百分比变色。
 class ProductionFlowProgress extends StatelessWidget {
   const ProductionFlowProgress({
     super.key,

@@ -1,5 +1,6 @@
 package com.uten.imp.security;
 
+import com.uten.imp.common.concurrency.BoundedIdleStore;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
@@ -11,7 +12,6 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 /**
@@ -46,24 +46,20 @@ public class LoginRateLimiter {
     static final int INGEST_FAILURES_PER_MINUTE = 5;
 
     private final SystemSettingsService settings;
-    private final LongSupplier nanoTime;
-    private final int maxEntries;
-    private final ConcurrentHashMap<String, Entry> buckets = new ConcurrentHashMap<>();
+    private final BoundedIdleStore<String, Entry> buckets;
 
     private static final class Entry {
         private final Bucket bucket;
         private final int capacity;
         private final int perMinute;
-        private volatile long lastAccessNanos;
 
-        private Entry(int capacity, int perMinute, long now) {
+        private Entry(int capacity, int perMinute) {
             this.bucket = Bucket.builder()
                     .addLimit(limit -> limit.capacity(capacity)
                             .refillGreedy(perMinute, Duration.ofMinutes(1)))
                     .build();
             this.capacity = capacity;
             this.perMinute = perMinute;
-            this.lastAccessNanos = now;
         }
     }
 
@@ -74,8 +70,7 @@ public class LoginRateLimiter {
 
     LoginRateLimiter(SystemSettingsService settings, LongSupplier nanoTime, int maxEntries) {
         this.settings = settings;
-        this.nanoTime = nanoTime;
-        this.maxEntries = maxEntries;
+        this.buckets = new BoundedIdleStore<>(maxEntries, IDLE_EXPIRY, nanoTime);
     }
 
     /** 登录/发码入口: IP 粗桶放行后才扣主体桶; 任一耗尽抛 429。 */
@@ -101,32 +96,15 @@ public class LoginRateLimiter {
     }
 
     private void consume(String key, int capacity, int perMinute) {
-        long now = nanoTime.getAsLong();
-        Entry entry = buckets.get(key);
-        if (entry == null || entry.capacity != capacity || entry.perMinute != perMinute) {
-            if (entry == null && buckets.size() >= maxEntries) {
-                evictIdle(now);
-                if (buckets.size() >= maxEntries) {
-                    // 海量新键攻击: 拒绝新建条目, 保住已有条目的计数。
-                    throw new ApiException(ErrorCode.RATE_LIMITED);
-                }
-            }
-            Entry fresh = new Entry(capacity, perMinute, now);
-            entry = entry == null
-                    ? buckets.computeIfAbsent(key, ignored -> fresh)
-                    : buckets.merge(key, fresh, (current, replacement) ->
-                            current.capacity == capacity && current.perMinute == perMinute
-                                    ? current : replacement);
-        }
-        entry.lastAccessNanos = now;
-        if (!entry.bucket.tryConsume(1)) {
+        Entry admitted = buckets.compute(key, current -> {
+            Entry entry = current != null && current.capacity == capacity && current.perMinute == perMinute
+                    ? current : new Entry(capacity, perMinute);
+            if (!entry.bucket.tryConsume(1)) throw new ApiException(ErrorCode.RATE_LIMITED);
+            return entry;
+        });
+        if (admitted == null) {
             throw new ApiException(ErrorCode.RATE_LIMITED);
         }
-    }
-
-    private void evictIdle(long now) {
-        long expiry = IDLE_EXPIRY.toNanos();
-        buckets.entrySet().removeIf(e -> now - e.getValue().lastAccessNanos > expiry);
     }
 
     int size() {

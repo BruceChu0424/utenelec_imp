@@ -2,6 +2,7 @@ import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
 
 class MemoryFormDraftStorage implements FormDraftStorage {
   final records = <String, String>{};
+  int successfulWrites = 0;
 
   @override
   Future<Map<String, String>> readAll(String prefix) async => {
@@ -15,6 +16,7 @@ class MemoryFormDraftStorage implements FormDraftStorage {
   @override
   Future<void> write(String key, String value) async {
     records[key] = value;
+    successfulWrites++;
   }
 
   @override
@@ -33,6 +35,7 @@ class MemoryFormDraftStorage implements FormDraftStorage {
       records.remove(key);
     } else {
       records[key] = value;
+      successfulWrites++;
     }
     return true;
   }

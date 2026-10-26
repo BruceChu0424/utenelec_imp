@@ -517,8 +517,14 @@ void main() {
       permissions: const {Perm.stockDocApprove, Perm.stockDocView},
     );
 
+    final writesBeforeSelection = drafts.successfulWrites;
     await _toggleSelectAll(tester);
     await tester.pumpAndSettle();
+    expect(
+      drafts.successfulWrites,
+      greaterThan(writesBeforeSelection),
+      reason: '业务勾选变化触发草稿实际落盘',
+    );
     expect(drafts.records, isNotEmpty, reason: '取消勾选后已自动保存本机草稿');
     await _toggleSelectAll(tester);
     await tester.pumpAndSettle();

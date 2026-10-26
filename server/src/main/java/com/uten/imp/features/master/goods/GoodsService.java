@@ -206,7 +206,7 @@ public class GoodsService {
         List<GoodsListItem> items = content.stream()
                 .map(g -> {
                     var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
-                            owningWarehouseNames, owningWorkshopNames);
+                            owningWarehouseNames, owningWorkshopNames, scope);
                     item.setHasBom(goodsWithBom.contains(g.getId()));
                     if (keyword.active()) {
                         UUID category = g.getCategory() == null ? null : g.getCategory().getId();
@@ -962,7 +962,10 @@ public class GoodsService {
     }
 
     boolean canWrite(Goods g) {
-        var scope = goodsScope();
+        return canWrite(g, goodsScope());
+    }
+
+    private static boolean canWrite(Goods g, com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
         return scope.seeAll() || g.getOwnerEmployeeId() == null
                 || scope.writableOwners().contains(g.getOwnerEmployeeId());
     }
@@ -974,8 +977,7 @@ public class GoodsService {
         for (Goods candidate : candidates) {
             UUID owner = candidate.getOwnerEmployeeId();
             if (scope.seeAll() || owner == null || scope.visibleOwners().contains(owner)) {
-                result.put(candidate.getId(), scope.seeAll() || owner == null
-                        || scope.writableOwners().contains(owner));
+                result.put(candidate.getId(), canWrite(candidate, scope));
             }
         }
         return result;
@@ -1630,7 +1632,8 @@ public class GoodsService {
     private GoodsListItem toList(Goods g, Map<Integer, String> colorNames, Map<Integer, String> unitNames,
                                  Map<Integer, Mould> mouldsByLegacy, Map<UUID, BigDecimal> stockByGoods,
                                  Map<UUID, String> owningWarehouseNames,
-                                 Map<UUID, String> owningWorkshopNames) {
+                                 Map<UUID, String> owningWorkshopNames,
+                                 com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
         UUID owningWarehouseId = owningWarehouseIdOf(g);
         UUID owningWorkshopId = owningWorkshopIdOf(g);
         GoodsListItem item = new GoodsListItem(
@@ -1668,7 +1671,7 @@ public class GoodsService {
                 g.getNameEn(), g.getNameEnSource());
         item.setMouldId(g.getMould() == null ? null : g.getMould().getId());
         item.setClientGoodsName(g.getClientGoodsName());
-        item.setWritable(canWrite(g));
+        item.setWritable(canWrite(g, scope));
         return item;
     }
 

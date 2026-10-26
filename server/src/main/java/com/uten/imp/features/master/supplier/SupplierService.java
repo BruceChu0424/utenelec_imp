@@ -172,9 +172,12 @@ public class SupplierService {
         Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Supplier> p = repo.findAll(spec, pageable);
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
+        Map<UUID, String> ownerNames = employeeNameResolver.namesOf(
+                p.getContent().stream().map(Supplier::getOwnerEmployeeId).toList());
         List<SupplierListItem> items = new ArrayList<>(p.getContent().stream()
                 .map(supplier -> toList(supplier, supplier.getDefaultSettlementMethodId() == null
-                        ? null : settlementNames.get(supplier.getDefaultSettlementMethodId())))
+                        ? null : settlementNames.get(supplier.getDefaultSettlementMethodId()),
+                        ownerNames.get(supplier.getOwnerEmployeeId())))
                 .toList());
         applySubcontractLossRates(items);
         return new PageResponse<>(items, p);
@@ -546,7 +549,7 @@ public class SupplierService {
         return names;
     }
 
-    private SupplierListItem toList(Supplier m, String settlementMethodName) {
+    private SupplierListItem toList(Supplier m, String settlementMethodName, String ownerEmployeeName) {
         return new SupplierListItem(
                 m.getId(), m.getLegacyId(),
                 m.getName(), m.getDescription(), m.getTday(), m.getPlace(),
@@ -555,7 +558,7 @@ public class SupplierService {
                 m.getBank(), m.getBankAccount(), m.getTaxId(), m.getWebsite(),
                 m.getShipVia(), m.getShipAddress(),
                 m.getCategory() == null ? null : m.getCategory().getId(),
-                employeeNameResolver.nameOf(m.getOwnerEmployeeId()),
+                ownerEmployeeName,
                 null, m.getVersion(), m.getStatus(), m.getDefaultSettlementMethodId(), settlementMethodName);
     }
 

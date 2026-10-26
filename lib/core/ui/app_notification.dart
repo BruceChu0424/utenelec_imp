@@ -7,6 +7,7 @@
 // - API 错误自动带 fieldErrors，高密度提示。
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -98,7 +99,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
   List<AppNotification> build() => const <AppNotification>[];
 
   String _newId() {
-    final ts = DateTime.now().millisecondsSinceEpoch;
+    final ts = clock.now().millisecondsSinceEpoch;
     _seq = (_seq + 1) % _seqMod;
     return '$ts-$_seq';
   }
@@ -136,7 +137,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
     // force=true 时跳过 600ms 去重，用于必须让用户看到的关键提示
     // （如"请先审核"、"仓库未加载"等点击反馈，避免被前一条同文案吞掉）。
     if (!force) {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = clock.now().millisecondsSinceEpoch;
       // 同 message + 同 kind 在 600ms 内合并去重，避免重复触发时的叠加。
       final hasRecent = state.any(
         (x) =>
@@ -159,7 +160,7 @@ class AppNotificationService extends Notifier<List<AppNotification>> {
       onDismissed: n.onDismissed,
       actions: n.actions,
       statusLine: n.statusLine,
-      createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      createdAtMs: clock.now().millisecondsSinceEpoch,
     );
     // state 同时承担「当前可见 + 等待显示」队列。宿主按新到旧叠放最近 3 条；
     // 更早的项继续保留，由宿主按「到达时刻 + 停留时长」独立到期移除（最早的
@@ -417,7 +418,7 @@ class _AppNotificationHostState extends ConsumerState<AppNotificationHost> {
       timer.cancel();
       return true;
     });
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = clock.now().millisecondsSinceEpoch;
     for (final n in wanted.values) {
       if (_expiryTimers.containsKey(n.id)) continue;
       final remaining = n.createdAtMs + n.durationMs - now;
@@ -594,7 +595,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
     var ms = n.durationMs;
     if (n.createdAtMs > 0) {
       final remaining =
-          n.createdAtMs + n.durationMs - DateTime.now().millisecondsSinceEpoch;
+          n.createdAtMs + n.durationMs - clock.now().millisecondsSinceEpoch;
       // 宽限地板不超过通知自身时长，显式设置的短时长（如测试用 200ms）不被抬高。
       final grace = n.durationMs < 1500 ? n.durationMs : 1500;
       ms = remaining < grace ? grace : remaining;

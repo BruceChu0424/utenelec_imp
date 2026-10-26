@@ -17,6 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -277,6 +278,152 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 });
     }
 
+    @Test
+    void aHundredDrawDocumentsResolveOnlyTheFinallyDisplayedApprover() {
+        ProjectionScenario scenario = new ProjectionScenario(false, true);
+        scenario.realNameReads = true;
+        scenario.issueHistory = new ArrayList<>();
+        UUID approver = UUID.randomUUID();
+        scenario.personNames.put(scenario.makerId, "提交人(001)");
+        scenario.personNames.put(approver, "审批人(002)");
+        for (int i = 0; i < 100; i++) {
+            scenario.issueHistory.add(new Object[]{"FL-" + i,
+                    ProjectionScenario.AT.plusSeconds(i), approver});
+        }
+
+        MaterialAnalysisContracts.SupplyProgressView view = scenario.service()
+                .supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").operatorName()).isEqualTo("审批人(002)");
+        assertThat(step(view, "DRAW").at()).isEqualTo(ProjectionScenario.AT.plusSeconds(99).withOffsetSameInstant(java.time.ZoneOffset.UTC).toString());
+        assertThat(scenario.executions.stream().filter(execution ->
+                execution.sql().startsWith("SELECT full_name ||")).count())
+                .as("name SQL depends on displayed roles, never number of draw documents")
+                .isEqualTo(5);
+    }
+    @Test
+    void latestApproverSelectionKeepsNullTimesAndTheFirstEqualTimestamp() {
+        ProjectionScenario scenario = new ProjectionScenario(false, true);
+        scenario.realNameReads = true;
+        UUID first = UUID.randomUUID();
+        UUID selected = UUID.randomUUID();
+        UUID tied = UUID.randomUUID();
+        scenario.personNames.put(scenario.makerId, "提交人(001)");
+        scenario.personNames.put(first, "空时间审批人(002)");
+        scenario.personNames.put(selected, "首个最新审批人(003)");
+        scenario.personNames.put(tied, "同时间后续审批人(004)");
+        scenario.issueHistory = List.of(
+                new Object[]{"FL-1", null, first},
+                new Object[]{"FL-2", ProjectionScenario.AT.plusSeconds(2), selected},
+                new Object[]{"FL-3", ProjectionScenario.AT.plusSeconds(1), first},
+                new Object[]{"FL-4", null, first},
+                new Object[]{"FL-5", ProjectionScenario.AT.plusSeconds(2), tied});
+
+        var view = scenario.service().supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").operatorName()).isEqualTo("首个最新审批人(003)");
+        assertThat(step(view, "DRAW").docNo()).isEqualTo("FL-1、FL-2、FL-3、FL-4、FL-5");
+        assertThat(nameReadCount(scenario)).isEqualTo(5);
+    }
+
+    @Test
+    void allNullIssueTimesStillSelectTheLastRowAndPreserveANullActor() {
+        ProjectionScenario scenario = new ProjectionScenario(false, true);
+        scenario.realNameReads = true;
+        scenario.personNames.put(scenario.makerId, "提交人(001)");
+        scenario.issueHistory = List.of(
+                new Object[]{"FL-1", null, scenario.makerId},
+                new Object[]{"FL-2", null, scenario.makerId},
+                new Object[]{"FL-3", null, null});
+
+        var view = scenario.service().supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").state()).isEqualTo("DONE");
+        assertThat(step(view, "DRAW").at()).isNull();
+        assertThat(step(view, "DRAW").operatorName()).isNull();
+        assertThat(step(view, "DRAW").docNo()).isEqualTo("FL-1、FL-2、FL-3");
+        assertThat(nameReadCount(scenario)).isEqualTo(4);
+    }
+
+    @Test
+    void aPartialDrawDoesNotReadApproverNamesThatAreNotDisplayed() {
+        ProjectionScenario scenario = new ProjectionScenario(false, true);
+        scenario.realNameReads = true;
+        scenario.personNames.put(scenario.makerId, "提交人(001)");
+        scenario.drawSummary = new Object[]{BigDecimal.ONE, BigDecimal.TEN, 1,
+                new BigDecimal("5"), BigDecimal.ZERO, new BigDecimal("5"), BigDecimal.ZERO,
+                false, true, false, BigDecimal.ZERO};
+        scenario.issueHistory = new ArrayList<>();
+        for (int i = 0; i < 100; i++) {
+            scenario.issueHistory.add(new Object[]{"FL-" + i,
+                    ProjectionScenario.AT.plusSeconds(i), scenario.makerId});
+        }
+
+        var view = scenario.service().supplyProgress(scenario.analysisId, scenario.materialLineId);
+
+        assertThat(step(view, "DRAW").state()).isEqualTo("CURRENT");
+        assertThat(step(view, "DRAW").at()).isNull();
+        assertThat(step(view, "DRAW").operatorName()).isNull();
+        assertThat(step(view, "DRAW").detail()).startsWith("已领 5 / 10");
+        assertThat(nameReadCount(scenario)).isEqualTo(4);
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+    void aHundredLegacyApproversUseSixActualPostgresNameQueries() {
+        // Business supply facts use the projection fixture. Only employee/user name reads
+        // execute on this independent, minimal PostgreSQL database.
+        var postgres = new org.testcontainers.postgresql.PostgreSQLContainer("postgres:16-alpine");
+        jakarta.persistence.EntityManagerFactory factory = null;
+        EntityManager nameEntityManager = null;
+        postgres.start();
+        try {
+            var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+            var db = new org.springframework.jdbc.core.JdbcTemplate(dataSource);
+            db.execute("CREATE TABLE employees(id uuid PRIMARY KEY, full_name text, code text, is_deleted boolean NOT NULL DEFAULT false)");
+            db.execute("CREATE TABLE users(id uuid PRIMARY KEY, employee_id uuid REFERENCES employees(id))");
+            ProjectionScenario scenario = new ProjectionScenario(false, true);
+            UUID historicEmployee = UUID.randomUUID();
+            UUID historicUser = UUID.randomUUID();
+            db.update("INSERT INTO employees(id,full_name,code) VALUES(?,?,?)", scenario.makerId, "提交人", "001");
+            db.update("INSERT INTO employees(id,full_name,code,is_deleted) VALUES(?,?,?,true)", historicEmployee, "历史审批人", "002");
+            db.update("INSERT INTO users(id,employee_id) VALUES(?,?)", historicUser, historicEmployee);
+            var bean = new org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean();
+            bean.setDataSource(dataSource);
+            bean.setJpaVendorAdapter(new org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter());
+            bean.setPackagesToScan("com.uten.imp.common.util");
+            bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "none", "hibernate.generate_statistics", "true"));
+            bean.afterPropertiesSet();
+            factory = bean.getObject();
+            nameEntityManager = factory.createEntityManager();
+            scenario.delegatedNames = new EmployeeNameResolver(nameEntityManager);
+            scenario.issueHistory = new ArrayList<>();
+            for (int i = 0; i < 100; i++) {
+                scenario.issueHistory.add(new Object[]{"FL-" + i,
+                        ProjectionScenario.AT.plusSeconds(i), historicUser});
+            }
+            var statistics = factory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+            statistics.clear();
+
+            var view = scenario.service().supplyProgress(scenario.analysisId, scenario.materialLineId);
+            long queries = statistics.getPrepareStatementCount();
+
+            System.out.println("SUPPLY-PROGRESS-NAME-SQL legacy-documents=100 statements=" + queries);
+            assertThat(step(view, "DRAW").operatorName()).isEqualTo("历史审批人(002)");
+            assertThat(step(view, "DRAW").state()).isEqualTo("DONE");
+            assertThat(queries).isEqualTo(6);
+        } finally {
+            if (nameEntityManager != null) nameEntityManager.close();
+            if (factory != null) factory.close();
+            postgres.stop();
+        }
+    }
+
+    private static long nameReadCount(ProjectionScenario scenario) {
+        return scenario.executions.stream().filter(execution ->
+                execution.sql().startsWith("SELECT full_name ||")).count();
+    }
     private static MaterialAnalysisContracts.SupplyProgressStep step(
             MaterialAnalysisContracts.SupplyProgressView view, String key) {
         return view.steps().stream()
@@ -300,6 +447,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
         private Object[] splitProgress;
         private boolean make;
         private boolean orderExists = true;
+        private boolean realNameReads;
+        private EmployeeNameResolver delegatedNames;
+        private List<Object[]> issueHistory;
+        private final Map<UUID, String> personNames = new HashMap<>();
         /** fn_subcontract_draw_summary 行：换算率、订货量、物料种数、已领、待发、可领、还缺(套)、
          * 全部发齐、领料开放、订货单结案、已回厂(基本量)。默认 10 套全部领齐、全部回厂。 */
         private Object[] drawSummary = new Object[]{BigDecimal.ONE, new BigDecimal("10"), 1,
@@ -338,6 +489,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
                     parameters.put(parameterCall.getArgument(0), parameterCall.getArgument(1));
                     return query;
                 });
+                when(query.setMaxResults(anyInt())).thenReturn(query);
                 when(query.getResultList()).thenAnswer(ignored -> {
                     executions.add(new QueryExecution(sql, Map.copyOf(parameters)));
                     return result(sql, parameters);
@@ -353,12 +505,19 @@ class MaterialAnalysisSupplyProgressServiceTest {
                 return query;
             });
             ProductionDocumentAccessPolicy access = mock(ProductionDocumentAccessPolicy.class);
+            if (delegatedNames != null) return new MaterialAnalysisSupplyProgressService(em, access, delegatedNames);
+            if (realNameReads) return new MaterialAnalysisSupplyProgressService(em, access, new EmployeeNameResolver(em));
             EmployeeNameResolver names = mock(EmployeeNameResolver.class);
             when(names.nameWithCodeOf(any())).thenReturn("测试员工");
             return new MaterialAnalysisSupplyProgressService(em, access, names);
         }
 
         private List<?> result(String sql, Map<String, Object> parameters) {
+            if (sql.startsWith("SELECT full_name ||")) {
+                String name = personNames.get(parameters.get("id"));
+                return name == null ? List.of() : List.of(name);
+            }
+            if (sql.startsWith("SELECT e.full_name ||")) return List.of();
             if (sql.contains("fn_subcontract_draw_summary")) {
                 assertNativeSources(sql, "subcontract_order_items", "subcontract_orders",
                         "subcontract_receipt_items", "subcontract_receipts");
@@ -408,7 +567,7 @@ class MaterialAnalysisSupplyProgressServiceTest {
                         .contains("ii.issue_id = i.id AND ii.is_deleted = FALSE")
                         .contains("ii.order_item_id IN (:orderItemIds)");
                 assertThat(parameters).containsEntry("orderItemIds", List.of(targetOrderItemId));
-                return rows(new Object[]{"FL-001", AT, makerId});
+                return issueHistory == null ? rows(new Object[]{"FL-001", AT, makerId}) : issueHistory;
             }
             if (sql.contains("FROM purchase_receipt_items receipt_item")) {
                 // Only the sibling order line was received and passed. The old order-id filter

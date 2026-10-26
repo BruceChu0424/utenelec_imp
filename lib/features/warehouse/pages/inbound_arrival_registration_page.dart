@@ -143,6 +143,7 @@ class _InboundArrivalRegistrationPageState
   Iterable<Listenable> get formDraftListenables => [
     _remark,
     _lineGrid,
+    _lineGrid.selectionListenable,
     for (final line in _lines) ...[
       line.qty,
       line.weight,

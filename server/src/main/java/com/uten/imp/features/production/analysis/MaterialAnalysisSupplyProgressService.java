@@ -220,7 +220,7 @@ public class MaterialAnalysisSupplyProgressService {
         Set<UUID> orderItemIds = new LinkedHashSet<>();
         StringBuilder orderNos = new StringBuilder();
         OffsetDateTime firstOrderAt = null;
-        String orderMakerName = null;
+        UUID orderMakerId = null;
         boolean allApproved = true;
         for (Object[] row : orderRows) {
             boolean newOrder = orderIds.add((UUID) row[0]);
@@ -232,10 +232,11 @@ public class MaterialAnalysisSupplyProgressService {
             OffsetDateTime createdAt = time(row[4]);
             if (firstOrderAt == null || (createdAt != null && createdAt.isBefore(firstOrderAt))) {
                 firstOrderAt = createdAt;
-                orderMakerName = nameResolver.nameWithCodeOf((UUID) row[5]);
+                orderMakerId = (UUID) row[5];
             }
             if (((Number) row[2]).intValue() != 1) allApproved = false;
         }
+        String orderMakerName = nameResolver.nameWithCodeOf(orderMakerId);
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "ORDER_PLACED", routeLabel + "下单", DONE,
                 null, orderNos.toString(), iso(firstOrderAt), orderMakerName));
@@ -252,14 +253,14 @@ public class MaterialAnalysisSupplyProgressService {
         boolean anyPending = false;
         boolean anyRejected = false;
         OffsetDateTime decidedAt = null;
-        String deciderName = null;
+        UUID deciderId = null;
         for (Object[] row : caseRows) {
             String status = (String) row[0];
             if ("PENDING".equals(status)) anyPending = true;
             if ("REJECTED".equals(status)) anyRejected = true;
             if ("APPROVED".equals(status) && decidedAt == null) {
                 decidedAt = time(row[1]);
-                deciderName = nameResolver.nameWithCodeOf((UUID) row[2]);
+                deciderId = (UUID) row[2];
             }
         }
         String financeState;
@@ -278,7 +279,7 @@ public class MaterialAnalysisSupplyProgressService {
         steps.add(new MaterialAnalysisContracts.SupplyProgressStep(
                 "FINANCE", "财务批准", financeState,
                 financeDetail, null, financeState == DONE ? iso(decidedAt) : null,
-                financeState == DONE ? deciderName : null));
+                financeState == DONE ? nameResolver.nameWithCodeOf(deciderId) : null));
 
         SubcontractDrawProgress subcontractDraw = null;
         if (!purchase) {
@@ -305,7 +306,7 @@ public class MaterialAnalysisSupplyProgressService {
         Set<UUID> approvedReceiptItemIds = new LinkedHashSet<>();
         StringBuilder receiptNos = new StringBuilder();
         OffsetDateTime firstReceiptAt = null;
-        String receiverName = null;
+        UUID receiverId = null;
         boolean anyReceiptDraft = false;
         for (Object[] row : receiptRows) {
             int status = ((Number) row[2]).intValue();
@@ -320,7 +321,7 @@ public class MaterialAnalysisSupplyProgressService {
                 if (firstReceiptAt == null
                         || (createdAt != null && createdAt.isBefore(firstReceiptAt))) {
                     firstReceiptAt = createdAt;
-                    receiverName = nameResolver.nameWithCodeOf((UUID) row[4]);
+                    receiverId = (UUID) row[4];
                 }
             } else if (status == 0) {
                 anyReceiptDraft = true;
@@ -355,7 +356,7 @@ public class MaterialAnalysisSupplyProgressService {
                 receivedDetail,
                 receiptNos.isEmpty() ? null : receiptNos.toString(),
                 approvedReceiptIds.isEmpty() ? null : iso(firstReceiptAt),
-                approvedReceiptIds.isEmpty() ? null : receiverName));
+                approvedReceiptIds.isEmpty() ? null : nameResolver.nameWithCodeOf(receiverId)));
 
         // ⑤ 品质验收：已审收货单的 IQC 待检明细（全部结案且有合格量 = 完成）。
         String qualityState;
@@ -507,16 +508,18 @@ public class MaterialAnalysisSupplyProgressService {
                 """).setParameter("orderItemIds", List.copyOf(orderItemIds)));
         StringBuilder approvedNos = new StringBuilder();
         OffsetDateTime lastApprovedAt = null;
-        String approverName = null;
+        UUID approverId = null;
         for (Object[] row : issueRows) {
             if (!approvedNos.isEmpty()) approvedNos.append('、');
             approvedNos.append((String) row[0]);
             OffsetDateTime at = time(row[1]);
             if (lastApprovedAt == null || (at != null && at.isAfter(lastApprovedAt))) {
                 lastApprovedAt = at;
-                approverName = nameResolver.nameWithCodeOf((UUID) row[2]);
+                approverId = (UUID) row[2];
             }
         }
+        String approverName = allSent || (!anyOpen && !anyWithoutPlan)
+                ? nameResolver.nameWithCodeOf(approverId) : null;
         String docNos = approvedNos.isEmpty() ? null : approvedNos.toString();
         String drawnText = "已领 " + plain(drawnBase) + " / " + plain(orderBase);
         boolean canReturn = drawnBase.signum() > 0;

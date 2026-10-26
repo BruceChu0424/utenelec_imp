@@ -8283,10 +8283,27 @@ void main() {
     },
   );
 
+  testWidgets('candidate sorting evaluates each readiness only once', (
+    tester,
+  ) async {
+    final before = debugMaterialCandidateSortEvaluations;
+    await _pumpPage(
+      tester,
+      size: const Size(1600, 1000),
+      permissions: const {
+        Perm.productionMaterialAnalysisCreate,
+        Perm.productionMaterialAnalysisRefresh,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      analysisJson: _bigWaitingAnalysisJson(productCount: 32),
+    );
+    expect(debugMaterialCandidateSortEvaluations - before, 32);
+  });
+
   testWidgets('big analysis opens waiting bucket fast (perf canary)', (
     tester,
   ) async {
-    // 性能看门狗：1500 产品 / 3000 物料的大分析，点「暂不可安排」入口
+    // 性能看门狗：1500 产品 / 4500 物料的大分析，点「暂不可安排」入口
     // 必须在 10 秒内完成。分桶投影原为 O(物料²)（候选×全表扫描），该量级
     // 下要点几十秒（真实环境表现为整页卡死）；2026-09-04 起走
     // (analysisLineId,parentNodeKey) 复合索引 + 分析快照缓存。此用例

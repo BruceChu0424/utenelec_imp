@@ -204,6 +204,7 @@ class _SubcontractOrderEditPageState
   Iterable<Listenable> get formDraftListenables => [
     ..._draftHeaderText.values,
     _grid,
+    if (_isCreate) _grid.selectionListenable,
     for (final row in _grid.rows) ...row.draftListenables,
     _pendingFiles,
   ];

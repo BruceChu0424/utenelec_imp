@@ -18,8 +18,39 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  testWidgets('新建采购订货纯勾选变化自动保存业务选择且不发业务写入', (tester) async {
+    final api = _SelectionApi();
+    final drafts = MemoryFormDraftStorage();
+    await _openSourcePreview(tester, api, drafts: drafts);
+    final grid = tester
+        .widget<UtenEditableGrid<PurchaseGridRow>>(
+          find.byType(UtenEditableGrid<PurchaseGridRow>),
+        )
+        .controller;
+    final writesBefore = drafts.successfulWrites;
+    final commandsBefore = api.writes.length;
+    expect(grid.rows, hasLength(2));
+
+    grid.setSelected([grid.rows.first], false);
+    await tester.pumpAndSettle();
+
+    expect(drafts.successfulWrites, greaterThan(writesBefore));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PurchaseOrderEditPage)),
+    );
+    final rows = container.read(formDraftsProvider).single.data['rows'] as List;
+    expect(rows.map((row) => (row as Map)['selected']), [false, true]);
+    expect(api.writes, hasLength(commandsBefore));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     '1000-row purchase order save reveals first invalid selected row without writing',
     (tester) async {
@@ -416,6 +447,20 @@ class _EmptySessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState();
 }
 
+class _DraftSessionNotifier extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'draft-buyer',
+      code: 'BUYER',
+      name: '采购员',
+      permissions: [Perm.purchaseOrderCreate, Perm.purchaseOrderDecompose],
+      businessDatasetId: 'bd6a3b4a-474e-48d6-8c42-c8ed99030bcd',
+    ),
+  );
+}
+
 class _SelectionApi extends ApiClient {
   _SelectionApi({this.previewRows}) : super(Dio());
   final List<Map<String, dynamic>>? previewRows;
@@ -560,7 +605,11 @@ Map<String, dynamic> _preview(
   };
 }
 
-Future<void> _openSourcePreview(WidgetTester tester, _SelectionApi api) async {
+Future<void> _openSourcePreview(
+  WidgetTester tester,
+  _SelectionApi api, {
+  MemoryFormDraftStorage? drafts,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -568,7 +617,20 @@ Future<void> _openSourcePreview(WidgetTester tester, _SelectionApi api) async {
       overrides: [
         apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(api),
-        sessionProvider.overrideWith(_EmptySessionNotifier.new),
+        if (drafts == null)
+          sessionProvider.overrideWith(_EmptySessionNotifier.new)
+        else ...[
+          sessionProvider.overrideWith(_DraftSessionNotifier.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'draft-buyer'),
+          ),
+          formDraftStorageProvider.overrideWithValue(drafts),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.purchaseOrderView,
+            Perm.purchaseOrderCreate,
+            Perm.purchaseOrderDecompose,
+          }),
+        ],
       ],
       child: const MaterialApp(
         home: Column(

@@ -48,6 +48,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/data_write_revision.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -126,6 +127,9 @@ part 'material_analysis_draft_budget.dart';
 part 'material_analysis_order_page.dart';
 part 'material_analysis_supply_actions.dart';
 part 'material_analysis_view_models.dart';
+
+@visibleForTesting
+int debugFutureTransferReadPublications = 0;
 
 /// 独立、预计划的物料分析工作台。
 ///
@@ -240,17 +244,18 @@ abstract class _MaterialAnalysisPageBase
     final view = await ref
         .read(productionPlanRepositoryProvider)
         .materialAnalysisDetail(id);
-    if (!readOwnerCurrent()) throw const UiWorkCancelled();
+    if (!readOwnerCurrent() || _sessionScopeKey() != scope) {
+      throw const UiWorkCancelled();
+    }
     _ownerReadTokens[view] = token;
     // Ownership freshness is not a proof that these quantity facts are stale.
     // Keep same-session useful reads sliced until their indexes are ready;
     // dropping only the warm work could move a later accepted view's cold work
     // back into build. Existing callers and the owner overlay decide acceptance.
-    await _warmMaterialReadSnapshot(
-      view,
-      () => mounted && readOwnerCurrent() && _sessionScopeKey() == scope,
-    );
-    if (!readOwnerCurrent()) throw const UiWorkCancelled();
+    await _warmMaterialReadSnapshot(view, () => mounted && readOwnerCurrent());
+    if (!readOwnerCurrent() || _sessionScopeKey() != scope) {
+      throw const UiWorkCancelled();
+    }
     return view;
   }
 
@@ -300,6 +305,26 @@ abstract class _MaterialAnalysisPageBase
   String? _futureTransferReadScope;
   String? _futureTransferError;
   int _futureTransferRequest = 0;
+  ({
+    String scope,
+    ProductionMaterialAnalysisView view,
+    int writeRevision,
+    int request,
+  })?
+  _futureTransferPending;
+
+  bool _hasFutureTransferRead(
+    ProductionMaterialAnalysisView view,
+    String scope,
+    int writeRevision,
+  ) {
+    final pending = _futureTransferPending;
+    return pending != null &&
+        pending.request == _futureTransferRequest &&
+        identical(pending.view, view) &&
+        pending.scope == scope &&
+        pending.writeRevision == writeRevision;
+  }
 
   // ===== 附带读取的公共装载器 (2026-09-27 进页只整页重画一次) =====
   //
@@ -375,19 +400,39 @@ abstract class _MaterialAnalysisPageBase
       _deferredFutureTransferRead = true;
       return null;
     }
-    final request = ++_futureTransferRequest;
     final scope = _sessionScopeKey();
+    final writeRevision = ref.read(dataWriteRevisionProvider);
+    if (_hasFutureTransferRead(view, scope, writeRevision)) return null;
+    final request = ++_futureTransferRequest;
+    _futureTransferPending = (
+      scope: scope,
+      view: view,
+      writeRevision: writeRevision,
+      request: request,
+    );
+    void retire() {
+      if (_futureTransferPending?.request == request) {
+        _futureTransferPending = null;
+      }
+    }
+
     bool current() =>
         mounted &&
         request == _futureTransferRequest &&
         _analysis?.analysisId == view.analysisId &&
-        scope == _sessionScopeKey();
+        scope == _sessionScopeKey() &&
+        writeRevision == ref.read(dataWriteRevisionProvider);
     try {
       final records = await ref
           .read(productionPlanRepositoryProvider)
           .materialFutureTransfers(analysisId: view.analysisId);
       return () {
+        retire();
         if (!current()) return;
+        assert(() {
+          debugFutureTransferReadPublications++;
+          return true;
+        }());
         _futureTransferRecords = records;
         _futureTransferByMaterial = MaterialFutureTransferProgress.index(
           view.analysisId,
@@ -397,8 +442,14 @@ abstract class _MaterialAnalysisPageBase
         _futureTransferError = null;
       };
     } catch (_) {
+      retire();
       return () {
-        if (current()) _futureTransferError = '在途调拨进度暂不可用，请刷新核对';
+        if (!current()) return;
+        assert(() {
+          debugFutureTransferReadPublications++;
+          return true;
+        }());
+        _futureTransferError = '在途调拨进度暂不可用，请刷新核对';
       };
     }
   }
@@ -410,7 +461,16 @@ abstract class _MaterialAnalysisPageBase
       _CompanionRead.transferableIn,
       _CompanionRead.assignmentDefaults,
     ];
-    if (_futureTransferReadScope != _sessionScopeKey()) {
+    final scope = _sessionScopeKey();
+    final view = _analysis;
+    final pending =
+        view != null &&
+        _hasFutureTransferRead(
+          view,
+          scope,
+          ref.read(dataWriteRevisionProvider),
+        );
+    if (_futureTransferReadScope != scope && !pending) {
       setState(() {
         ++_futureTransferRequest;
         _futureTransferRecords = const [];

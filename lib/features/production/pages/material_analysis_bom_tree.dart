@@ -362,11 +362,10 @@ abstract class _MaterialAnalysisBomTreeState
     final epoch = ++_bomLayoutTransitionEpoch;
     final analysis = _analysis;
     final scope = _sessionScopeKey();
+    final readOwnerCurrent = captureReadOwner(ref);
     _bomLayoutIntentScope = scope;
     bool current() =>
-        mounted &&
-        epoch == _bomLayoutTransitionEpoch &&
-        _sessionScopeKey() == scope;
+        mounted && epoch == _bomLayoutTransitionEpoch && readOwnerCurrent();
     final fade = utenMotionDurationOf(
       context,
       const Duration(milliseconds: 120),

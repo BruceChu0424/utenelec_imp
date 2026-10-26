@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 
 /** Reads warehouse-only document history projections from fixed source tables. */
 @Service
@@ -111,9 +112,14 @@ public class WarehouseHistoryQueryService {
                 .setParameter("limit", safeSize)
                 .setParameter("offset", pageable.getOffset());
         Map<UUID, String> employeeCache = new HashMap<>();
-        List<WarehouseHistoryListItem> items = NativeQueryResults.objectArrayRows(rowsQuery)
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(rowsQuery);
+        Map<UUID, String> resolvedNames = employeeNames.namesOf(rows.stream()
+                .flatMap(row -> java.util.stream.Stream.of(
+                        NativeValueConverters.uuid(row[10]), NativeValueConverters.uuid(row[11])))
+                .toList());
+        List<WarehouseHistoryListItem> items = rows
                 .stream()
-                .map(row -> toListItem(type, row, employeeCache))
+                .map(row -> toListItem(type, row, employeeCache, resolvedNames::get))
                 .toList();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -177,7 +183,7 @@ public class WarehouseHistoryQueryService {
                 .map(this::toLine)
                 .toList();
         Map<UUID, String> employeeCache = new HashMap<>();
-        HeaderRow header = header(headers.getFirst(), employeeCache);
+        HeaderRow header = header(headers.getFirst(), employeeCache, employeeNames::nameOf);
         return new WarehouseHistoryDetail(
                 header.id(),
                 type.pathSegment(),
@@ -216,8 +222,9 @@ public class WarehouseHistoryQueryService {
     private WarehouseHistoryListItem toListItem(
             WarehouseHistoryType type,
             Object[] row,
-            Map<UUID, String> employeeCache) {
-        HeaderRow header = header(row, employeeCache);
+            Map<UUID, String> employeeCache,
+            Function<UUID, String> nameLookup) {
+        HeaderRow header = header(row, employeeCache, nameLookup);
         return new WarehouseHistoryListItem(
                 header.id(),
                 type.pathSegment(),
@@ -246,7 +253,7 @@ public class WarehouseHistoryQueryService {
                         row[24] == null ? null : NativeValueConverters.toBigDecimal(row[24])));
     }
 
-    private HeaderRow header(Object[] row, Map<UUID, String> employeeCache) {
+    private HeaderRow header(Object[] row, Map<UUID, String> employeeCache, Function<UUID, String> nameLookup) {
         UUID makerId = NativeValueConverters.uuid(row[10]);
         UUID approverId = NativeValueConverters.uuid(row[11]);
         return new HeaderRow(
@@ -261,9 +268,9 @@ public class WarehouseHistoryQueryService {
                 NativeValueConverters.booleanValue(row[8]),
                 NativeValueConverters.text(row[9]),
                 makerId,
-                employeeName(makerId, NativeValueConverters.text(row[12]), employeeCache),
+                employeeName(makerId, NativeValueConverters.text(row[12]), employeeCache, nameLookup),
                 approverId,
-                employeeName(approverId, NativeValueConverters.text(row[13]), employeeCache),
+                employeeName(approverId, NativeValueConverters.text(row[13]), employeeCache, nameLookup),
                 NativeValueConverters.text(row[14]));
     }
 
@@ -303,11 +310,12 @@ public class WarehouseHistoryQueryService {
     private String employeeName(
             UUID id,
             String legacyName,
-            Map<UUID, String> employeeCache) {
+            Map<UUID, String> employeeCache,
+            Function<UUID, String> nameLookup) {
         if (id == null) return normalizeToNull(legacyName);
         String cached = employeeCache.get(id);
         if (cached != null) return cached;
-        String resolved = normalizeToNull(employeeNames.nameOf(id));
+        String resolved = normalizeToNull(nameLookup.apply(id));
         String value = resolved == null ? normalizeToNull(legacyName) : resolved;
         if (value != null) employeeCache.put(id, value);
         return value;

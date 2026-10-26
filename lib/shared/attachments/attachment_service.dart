@@ -14,11 +14,17 @@ import 'attachment.dart';
 
 class AttachmentService {
   AttachmentService(this._api, {Dio? externalDio})
-    : _externalDio = externalDio ?? Dio();
+    : _externalDio = externalDio ?? Dio(),
+      _ownsExternalDio = externalDio == null;
 
   final ApiClient _api;
   final Dio _externalDio;
+  final bool _ownsExternalDio;
   static const _base = '/attachments';
+
+  void dispose() {
+    if (_ownsExternalDio) _externalDio.close();
+  }
 
   Future<Attachment> upload({
     required String ownerType,
@@ -270,6 +276,8 @@ class AttachmentService {
   }
 }
 
-final attachmentServiceProvider = Provider<AttachmentService>(
-  (ref) => AttachmentService(ref.watch(apiClientProvider)),
-);
+final attachmentServiceProvider = Provider<AttachmentService>((ref) {
+  final service = AttachmentService(ref.watch(apiClientProvider));
+  ref.onDispose(service.dispose);
+  return service;
+});

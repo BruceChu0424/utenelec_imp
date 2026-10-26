@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .data import InputError, ledger_payload, read_dataset, require_append_only
-from .engine import build_snapshot
 from .locking import os_file_lock, register_write_barrier, write_barrier
 
 
@@ -88,6 +87,7 @@ def run_once(manifest_path: Path, csv_path: Path, output_directory: Path,
             if not isinstance(previous, dict):
                 raise InputError("import ledger must be an object")
         require_append_only(dataset, previous)
+        from .engine import build_snapshot
         snapshot = build_snapshot(dataset, now)
         # Ledger first: after a crash, rerunning the same full append-only file is safe.
         # Publish uses same-directory replace, so readers see either complete generation.

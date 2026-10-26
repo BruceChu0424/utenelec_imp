@@ -529,6 +529,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
+  ref.onDispose(dio.close);
   // Large responses use a native isolate or a same-origin Web Worker. Web's
   // ordinary compute/BackgroundTransformer does not create a worker; model
   // conversion after JSON decoding must also keep its own bounded UI budget.

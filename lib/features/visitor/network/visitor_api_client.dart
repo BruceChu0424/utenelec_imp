@@ -26,6 +26,7 @@ final visitorApiProvider = Provider<ApiClient>((ref) {
   }
 
   final dio = Dio(buildApiBaseOptions(baseUrl));
+  ref.onDispose(dio.close);
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
   // 与员工同口径：访客没在操作时发出的请求不续期服务端会话 (ADR-110)。
   dio.interceptors.add(const AutomaticRequestInterceptor());

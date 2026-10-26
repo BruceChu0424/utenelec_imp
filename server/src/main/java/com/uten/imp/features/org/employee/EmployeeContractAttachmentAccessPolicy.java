@@ -22,7 +22,7 @@ public class EmployeeContractAttachmentAccessPolicy implements AttachmentOwnerAc
     public static final String OWNER_TYPE = "EMPLOYEE_CONTRACT";
 
     private final EmployeeContractRepository contractRepository;
-    private final EmployeeRepository employeeRepository;
+    private final EmployeeAttachmentAccessPolicy employeePolicy;
 
     @Override
     public String ownerType() {
@@ -31,34 +31,36 @@ public class EmployeeContractAttachmentAccessPolicy implements AttachmentOwnerAc
 
     @Override
     public void requireCanView(UUID ownerId, AuthUser user) {
-        UUID employeeId = resolveEmployeeId(ownerId);
-        if (user.isSuperAdmin()
-                || employeeId.equals(user.getEmployeeId())
-                || user.getPermissions().contains("employee:pii:view")) {
-            return;
-        }
-        throw notFound();
+        authorize(ownerId,user,false,false);
     }
 
     @Override
     public void requireCanManage(UUID ownerId, AuthUser user) {
-        resolveEmployeeId(ownerId);
-        if (user.isSuperAdmin() || user.getPermissions().contains("employee:edit")) {
-            return;
-        }
-        throw notFound();
+        authorize(ownerId,user,true,false);
     }
 
     @Override
     public void requireCanManageForUpdate(UUID ownerId, AuthUser user) {
-        requireCanManage(ownerId, user);
+        authorize(ownerId,user,true,true);
     }
 
-    private UUID resolveEmployeeId(UUID contractId) {
+    private void authorize(UUID contractId,AuthUser user,boolean write,boolean forUpdate) {
+        UUID employee=resolveEmployeeId(contractId,forUpdate);
+        try {
+            if(!write)employeePolicy.requireCanView(employee,user);
+            else if(forUpdate)employeePolicy.requireCanManageForUpdate(employee,user);
+            else employeePolicy.requireCanManage(employee,user);
+        } catch(ApiException denied) {
+            if(denied.getCode()==ErrorCode.NOT_FOUND)throw notFound();
+            throw denied;
+        }
+    }
+
+    private UUID resolveEmployeeId(UUID contractId,boolean forUpdate) {
         if (contractId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定合同");
         }
-        EmployeeContract c = contractRepository.findById(contractId)
+        EmployeeContract c = (forUpdate?contractRepository.findByIdForUpdate(contractId):contractRepository.findById(contractId))
                 .orElseThrow(() -> notFound());
         // 合同可能挂在已软删员工下（历史）；返回其 employeeId 用于本人判定。
         return c.getEmployee().getId();

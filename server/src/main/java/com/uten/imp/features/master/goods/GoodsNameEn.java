@@ -10,9 +10,9 @@ import java.util.regex.Pattern;
 /**
  * 货品英文名称(goods.name_en, ADR-134)的统一口径: 取值规范化、长度校验、来源常量与改名权限。
  *
- * <p>三条写入路径共用这里: 货品资料整单保存(goods:edit)、单独改英文名称
- * ({@code PUT /api/master/goods/{id}/name-en}, goods:name_en:edit 或 goods:edit)、
- * 保存报价/订货单时勾选「设为货品英文名」的学习(同样要求 goods:name_en:edit 或 goods:edit)。
+ * <p>三条写入路径共用这里: 货品资料整单保存(goods:sales:edit)、单独改英文名称
+ * ({@code PUT /api/master/goods/{id}/name-en}, goods:name_en:edit 或 goods:sales:edit)、
+ * 保存报价/订货单时勾选「设为货品英文名」的学习(同样要求 goods:name_en:edit 或 goods:sales:edit)。
  */
 public final class GoodsNameEn {
 
@@ -24,7 +24,7 @@ public final class GoodsNameEn {
     /** 与 goods.name_en varchar(255) 一致。 */
     public static final int MAX_LENGTH = 255;
 
-    /** 专门维护英文名称的权限码; 持有 goods:edit 的人同样可以改。 */
+    /** 专门维护英文名称的权限码; 持有 goods:sales:edit 的人同样可以改。 */
     public static final String EDIT_AUTHORITY = "goods:name_en:edit";
     public static final String GOODS_EDIT_AUTHORITY = "goods:sales:edit";
 

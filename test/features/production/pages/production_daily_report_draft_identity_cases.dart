@@ -301,6 +301,50 @@ void _rewriteIdentityRecord(
 
 void registerDailyReportDraftIdentityTests() {
   testWidgets(
+    'daily-report business selection autosaves through its material-ownership listener and restores',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final storage = MemoryFormDraftStorage();
+      final fake = _IdentityApi();
+      var env = await _openIdentityPage(tester, storage, fake);
+      var grid = _identityGrid(tester);
+      final first = grid.rows.singleWhere((row) => !row.isSubRow)
+        ..qty.text = '1.2345';
+      final second = first.clone()..qty.text = '2.3456';
+      grid.addRow(second);
+      grid.setSelected([first, second], true);
+      await tester.pumpAndSettle();
+      grid.setSelected([second], false);
+      await tester.pumpAndSettle();
+      final draft = env.container.read(formDraftsProvider).single;
+      final saved = (draft.data['rows'] as List)
+          .cast<Map<String, dynamic>>()
+          .singleWhere((row) => row['localRowId'] == second.localRowId);
+      expect(
+        saved['selected'],
+        isFalse,
+        reason:
+            'The existing selection→ownership→setState path must persist the submit set',
+      );
+      await _closeIdentityPage(tester, env);
+      env = await _openIdentityPage(
+        tester,
+        storage,
+        fake,
+        location: draft.resumeLocation,
+      );
+      grid = _identityGrid(tester);
+      final restored = grid.rows.where((row) => !row.isSubRow).toList();
+      expect(restored.map((row) => row.qty.text), ['1.2345', '2.3456']);
+      expect(grid.isSelected(restored.first), isTrue);
+      expect(grid.isSelected(restored.last), isFalse);
+      expect(_identityState(tester).formDraftRestorationBlocked, isFalse);
+      await _closeIdentityPage(tester, env);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'stable draft products survive duplicate goods, reorder and changed dynamic material rows',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1800, 1100));

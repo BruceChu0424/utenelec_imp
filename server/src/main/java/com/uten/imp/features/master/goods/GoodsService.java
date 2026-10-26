@@ -64,7 +64,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 货品主档：子树范围列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（goods:edit）。
+ * 货品主档：子树范围列表（动态筛选）+ facets + 详情 + 新建、按字段组编辑及独立生命周期命令。
  *
  * <p>列表用 {@link Specification} 复刻 {@code EmployeeQueryService.list} 范式：子树 id 集合（复用
  * {@link MaterialCategoryRepository#findSubtree} 递归 CTE）+ keyword 多字段 OR + 字段精确等值 +
@@ -1196,7 +1196,7 @@ public class GoodsService {
 
     /**
      * 单独修改英文名称(ADR-134, {@code PUT /api/master/goods/{id}/name-en}): 持有 goods:name_en:edit
-     * 或 goods:edit 即可, 不必有整单编辑权限; 对象写范围与乐观锁同整单编辑。写入后来源记为 MANUAL,
+     * 或 goods:sales:edit 即可; 对象写范围与乐观锁同整单编辑。写入后来源记为 MANUAL,
      * 清空时来源一并清空。旧值由 goods 行级审计保留。
      */
     @org.springframework.security.access.prepost.PreAuthorize(
@@ -1206,7 +1206,8 @@ public class GoodsService {
         tx.bind();
         Goods g = requireGoods(id);
         requireWritable(g);
-        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, g, g::isDeleted, "货品不存在");
+        requireWritable(g);
         OptimisticLocks.requireUpToDate(g.getVersion(), version);
         String value = GoodsNameEn.normalizeForWrite(nameEn);
         if (!Objects.equals(value, g.getNameEn())) {
@@ -1220,7 +1221,7 @@ public class GoodsService {
 
     /**
      * 保存报价/订货单后的学习写入(ADR-134, 由主档学习在独立事务里调用): 当前用户必须持有
-     * goods:name_en:edit 或 goods:edit 且对该货品有写范围, 货品须未删除、非占位。
+     * goods:name_en:edit 或 goods:sales:edit 且对该货品有写范围, 货品须未删除、非占位。
      * 值相同不写; 否则覆盖为学习值(用户已明确勾选), 来源记 LEARNED, 版本号随 JPA 递增。
      *
      * @return 是否真的改了
@@ -1236,6 +1237,7 @@ public class GoodsService {
         Goods g = repo.findById(goodsId).orElse(null);
         if (g == null || g.isDeleted() || g.isAutoCreated() || !canWrite(g)) return false;
         em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (g.isDeleted() || g.isAutoCreated() || !canWrite(g)) return false;
         if (value.equals(g.getNameEn())) return false;
         g.setNameEn(value);
         g.setNameEnSource(GoodsNameEn.SOURCE_LEARNED);
@@ -1243,7 +1245,7 @@ public class GoodsService {
         return true;
     }
 
-    /** 英文名称编辑能力: 功能权限(goods:name_en:edit 或 goods:edit) + 对象写范围。 */
+    /** 英文名称编辑能力: 功能权限(goods:name_en:edit 或 goods:sales:edit) + 对象写范围。 */
     boolean canEditNameEn(Goods g) {
         return GoodsNameEn.canEdit(currentUser.get().orElse(null)) && canWrite(g);
     }
@@ -1270,10 +1272,12 @@ public class GoodsService {
     @Transactional
     public GoodsDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Goods g = requireGoods(id);
         requireWritable(g);
-        em.refresh(g, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, g, g::isDeleted, "货品不存在");
+        requireWritable(g);
         OptimisticLocks.requireUpToDate(g.getVersion(), req.version());
         g.setStatus(req.status());
         repo.save(g);

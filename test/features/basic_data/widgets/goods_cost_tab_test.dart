@@ -25,6 +25,7 @@ import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
@@ -476,6 +477,14 @@ class _ProjectedCosts extends _Costs {
   @override
   Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
       GoodsCostCalculation(result(input));
+}
+
+class _CountedProjectedCosts extends _ProjectedCosts {
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) {
+    previewCalls++;
+    return super.preview(input);
+  }
 }
 
 /// A self-consistent synthetic fixture for the rendered UI artifact only.
@@ -1944,7 +1953,10 @@ void main() {
   testWidgets(
     'subcontract loss policy refuses database-rounding input before save',
     (tester) async {
-      await _pump(tester, _Costs());
+      final grants = StateProvider<Set<String>>(
+        (ref) => {..._allCostGrants, Perm.goodsPurchaseEdit},
+      );
+      await _pump(tester, _Costs(), livePermissions: grants);
       await _more(tester, '委外允许损耗');
       final input = find.descendant(
         of: find.byType(AlertDialog),
@@ -1963,6 +1975,15 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('base and cost editing do not grant subcontract loss policy', (
+    tester,
+  ) async {
+    await _pump(tester, _Costs());
+    await tester.tap(find.byKey(const Key('cost-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('委外允许损耗'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'actual costs retain decimal evidence and never claim complete total variance',
     (tester) async {
@@ -2014,6 +2035,54 @@ void main() {
       expect(costMaps(repo.saved?['fees']), isEmpty);
       expect(costMaps(repo.saved?['priceCells']).single['value'], '0.03');
       expect(costMaps(repo.saved?['priceCells']).single['quantity'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'fee selection and copying preserve the draft command key and do not request a preview',
+    (tester) async {
+      final repo = _CountedProjectedCosts();
+      await _pump(tester, repo);
+      await _more(tester, '工序与费用');
+      final grid = tester
+          .widget<UtenEditableGrid<GoodsCostFeeRow>>(
+            find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<GoodsCostFeeRow>,
+            ),
+          )
+          .controller;
+      final state =
+          tester.state(find.byType(GoodsCostTab))
+              as FormDraftMixin<GoodsCostTab>;
+      final before = state.captureFormDraft();
+      final beforeInput = copyCostJson(before);
+      final previews = repo.previewCalls;
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      expect(grid.selectedRows, hasLength(1));
+      expect(
+        state.captureFormDraft(),
+        before,
+        reason: 'Selection is an editing helper, not a changed cost command',
+      );
+      grid.copySelected((row) => GoodsCostFeeRow(row.encode()));
+      await tester.pump();
+      expect(grid.hasBuffer, isTrue);
+      expect(copyCostJson(state.captureFormDraft()), beforeInput);
+      await tester.pump(const Duration(milliseconds: 550));
+      await tester.pumpAndSettle();
+      expect(repo.previewCalls, previews);
+      await tester.enterText(
+        find.byKey(const ValueKey('cost-fee-row-COLUMN:inspect:edge-a-value')),
+        '0.03',
+      );
+      await tester.pump(const Duration(milliseconds: 550));
+      await tester.pumpAndSettle();
+      expect(repo.previewCalls, greaterThan(previews));
+      expect(
+        state.captureFormDraft()['idempotencyKey'],
+        isNot(before['idempotencyKey']),
+      );
       expect(tester.takeException(), isNull);
     },
   );

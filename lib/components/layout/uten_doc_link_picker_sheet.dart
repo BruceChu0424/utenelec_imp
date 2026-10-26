@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../data_display/uten_goods_identity_cell.dart';
@@ -56,6 +57,7 @@ class UtenDocLinkDetail<I> {
     this.docNo,
     this.settlementMethodId,
     this.sourceTerms,
+    this.sourceEnded = false,
   });
 
   final String? partyId;
@@ -64,6 +66,9 @@ class UtenDocLinkDetail<I> {
   final String? docNo;
   final String? settlementMethodId;
   final ProcurementSourceTerms? sourceTerms;
+
+  /// The domain marks administrative order closure; recorded differences remain intact.
+  final bool sourceEnded;
 }
 
 /// 勾选并校验通过的一行引入草稿（归一化，不含领域映射）。
@@ -343,6 +348,10 @@ class _UtenDocLinkPickerSheetState<D, I, N>
   UtenDocLinkDetail<I>? _upDetail;
   late final UtenEditableGridController<UtenDocLinkItemRow<I>> _grid;
   bool _loadingItems = false;
+  bool _hasUnknownQuantities = false;
+  AppLocalizations get _l10n =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      lookupAppLocalizations(Localizations.localeOf(context));
   String _gridEmptyMessage = '该单据无明细'; // TODO(l10n): 补 arb
 
   bool get _partyLocked =>
@@ -432,10 +441,19 @@ class _UtenDocLinkPickerSheetState<D, I, N>
     setState(() {
       _loadingItems = true;
       _upDetail = null;
+      _docsError = null;
+      _hasUnknownQuantities = false;
     });
     try {
       final detail = await _cfg.loadDetail(ref, _cfg.docIdOf(d));
       if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
+      if (detail.sourceEnded) {
+        setState(() {
+          _loadingItems = false;
+          _docsError = _l10n.docLinkSourceEnded;
+        });
+        return;
+      }
       if (!_matchesSelectedParty(detail.partyId)) {
         setState(() => _loadingItems = false);
         context.appError('上游单据${_cfg.partyNoun}与表头${_cfg.partyNoun}不一致，已阻止引入');
@@ -447,18 +465,28 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           .toSet();
       await _cfg.loadGoodsNames(ref, goodsIds);
       if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
-      // 只显示有剩余可引量的明细：已收完/已发完/已退完的行不显示。
+      // Unknown source facts are neither a zero nor proof of completed delivery.
+      bool known(I item) =>
+          _cfg.remainQtyText == null ||
+          financeExactDecimalUnits(_cfg.remainQtyText!.call(item)) != null;
+      final hasUnknown = detail.items.any((item) => !known(item));
+      // 只显示已核实且有剩余可引量的明细；其他明细可继续正常引入。
       final visible = detail.items
           .where(
             (it) =>
-                (_cfg.remainQtyText == null
-                    ? _cfg.remainQty(it) > 0
-                    : (financeExactDecimalUnits(_cfg.remainQtyText!.call(it)) ??
-                              BigInt.zero) >
-                          BigInt.zero) ||
-                (financeExactDecimalUnits(_cfg.remainGiftQtyText?.call(it)) ??
-                        BigInt.zero) >
-                    BigInt.zero,
+                known(it) &&
+                ((_cfg.remainQtyText == null
+                        ? _cfg.remainQty(it) > 0
+                        : (financeExactDecimalUnits(
+                                    _cfg.remainQtyText!.call(it),
+                                  ) ??
+                                  BigInt.zero) >
+                              BigInt.zero) ||
+                    (financeExactDecimalUnits(
+                              _cfg.remainGiftQtyText?.call(it),
+                            ) ??
+                            BigInt.zero) >
+                        BigInt.zero),
           )
           .toList();
       final rows = visible.map((it) {
@@ -471,17 +499,24 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       _grid.replaceAll(rows);
       setState(() {
         _upDetail = detail;
+        _hasUnknownQuantities = hasUnknown;
         _gridEmptyMessage = detail.items.isEmpty
             ? '该单据无明细'
             : visible.isEmpty
-            ? '该单据明细已全部完成，无剩余可引入'
+            ? hasUnknown
+                  ? _l10n.docLinkUnknownRemaining
+                  : '该单据明细已全部完成，无剩余可引入'
             : '该单据无明细';
         _loadingItems = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
-      setState(() => _loadingItems = false);
-      // 静默降级（与 v1 一致）
+      setState(() {
+        _loadingItems = false;
+        _docsError = error is ApiException
+            ? error.message
+            : _l10n.docLinkDetailLoadFailed;
+      });
     }
   }
 
@@ -744,6 +779,14 @@ class _UtenDocLinkPickerSheetState<D, I, N>
   Widget _buildStep2(ThemeData theme, N names) {
     return Column(
       children: [
+        if (_hasUnknownQuantities && _grid.rows.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s12),
+            child: UtenFieldMessage.autofill(
+              _l10n.docLinkUnknownRemaining,
+              maxLines: 2,
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(
             UtenSpacing.s12,

@@ -6676,5 +6676,14 @@
   "mouldManufacturerChooseHistoryTooltip": "选择历史制造商",
   "employeeIdentitySectionTitle": "证件信息",
   "employeeIdentitySavedReadbackFailed": "证件信息已保存，读取最新资料失败，请重试读取。",
-  "employeeIdentitySeparateSaveHint": "证件信息单独保存，现有登录账号继续保留。"
+  "employeeIdentitySeparateSaveHint": "证件信息单独保存，现有登录账号继续保留。",
+  "attachmentHistoricalReadOnlyLabel": "历史记录(只读)",
+  "attachmentHistoricalDeletedLabel": "已删除(保留历史)",
+  "attachmentHistoricalOriginalUnavailable": "历史原件不可用",
+  "employeeHistoricalFilesTitle": "历史档案附件",
+  "employeeHistoricalContractFilesTitle": "历史合同附件",
+  "employeeHistoricalFilesHint": "原始归属与文件保留，仅供查看和下载。",
+  "docLinkUnknownRemaining": "部分明细的来源数量不完整，无法确定余量，暂不能引入。可继续选择其他明细，请核对原单。",
+  "docLinkDetailLoadFailed": "读取来源单据明细失败，请刷新后重新选择。",
+  "docLinkSourceEnded": "来源订货单已结束，不能继续收货或发料。请刷新后重新选择；原始差异数仍保留。"
 }

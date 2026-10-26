@@ -44,12 +44,12 @@ import java.util.UUID;
  * - GET  /api/master/goods?categoryId=&keyword=&nullFields=&series=...&page=1&size=20 → 分页
  * - GET  /api/master/goods/facets?categoryId=                                        → 各字段可选值 + 空值计数
  * - GET  /api/master/goods/{id}                                                       → 详情
- * - POST /api/master/goods                                                            → 新建（goods:edit）
- * - PUT  /api/master/goods/{id}                                                       → 编辑（goods:edit）
- * - PUT  /api/master/goods/{id}/name-en                                               → 只改英文名称(goods:name_en:edit 或 goods:edit)
+ * - POST /api/master/goods                                                            → 新建（goods:create）
+ * - PUT  /api/master/goods/{id}                                                       → 按基础/采购/销售及独立字段权限编辑
+ * - PUT  /api/master/goods/{id}/name-en                                               → 只改英文名称(goods:name_en:edit 或 goods:sales:edit)
  * - DEL  /api/master/goods/{id} 与批量启停/删除 → 见 MasterLifecycleController(ADR-111，带引用保护)
  *
- * 权限点 goods:view 由种子化（已授予全部未软删部门）；goods:edit 仅超管恒有（未授部门）。
+ * 权限目录与各字段写入权限由服务端统一校验，新增权限默认关闭。
  */
 @RestController
 @RequestMapping("/api/master/goods")
@@ -245,7 +245,7 @@ public class GoodsController {
 
     /**
      * 单独修改英文名称(ADR-134): 销售等没有整单编辑权限的人持 goods:name_en:edit 即可维护,
-     * 持 goods:edit 的人同样可以; 页面按详情里的 canEditNameEn 决定是否显示入口。
+     * 持 goods:sales:edit 的人同样可以; 页面按详情里的 canEditNameEn 决定是否显示入口。
      */
     @PutMapping("/{id}/name-en")
     @PreAuthorize("hasAnyAuthority('goods:name_en:edit', 'goods:sales:edit')")

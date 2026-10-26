@@ -217,9 +217,10 @@ public class CurrencyService {
     @Transactional
     public CurrencyDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Currency c = requireCurrency(id);
-        em.refresh(c, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, c, c::isDeleted, "币种不存在");
         if (c.isBaseCurrency() && !"使用".equals(req.status())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,

@@ -486,6 +486,7 @@ public class ClientService {
     @Transactional
     public ClientDetail changeStatus(
             UUID id, com.uten.imp.features.master.dto.MasterStatusChangeRequest req) {
+        req.requireValidStatus();
         tx.bind();
         Client m = requireClientForUpdate(id);
         ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();

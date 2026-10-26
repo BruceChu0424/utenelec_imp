@@ -507,7 +507,7 @@ public class EmployeeCommandService {
     @Transactional
     public void changePhone(UUID id, String newPhone) {
         tx.bind();
-        Employee e = queryService.requireEmployee(id);
+        Employee e = requireEmployeeForUpdate(id);
         // 超管账号的敏感信息同样禁止经此入口修改（与 update 一致）
         userRepo.findByEmployeeId(id).ifPresent(account -> {
             if (account.isSuperAdmin()) {
@@ -517,10 +517,6 @@ public class EmployeeCommandService {
         String normalized = com.uten.imp.common.util.ChinaMobileNumber.normalize(newPhone)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.VALIDATION_FAILED, "中国大陆手机号格式不正确"));
-        String hash = tx.hmac(normalized);
-        if (hash != null && sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash, e.getId())) {
-            throw new ApiException(ErrorCode.CONFLICT, "该手机号已被其他员工使用");
-        }
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
         piiWriter.applyPhone(s, normalized);

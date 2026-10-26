@@ -191,26 +191,7 @@ public class MasterRecordHistoryService {
           "balance_current",
           "balance_floor");
   private static final Set<String> GOODS_PRICES = Set.of("price", "zk");
-  private static final Set<String> GOODS_COSTS =
-      Set.of(
-          "source_e",
-          "machining_e",
-          "incidental_e",
-          "lacquer_e",
-          "plating_e",
-          "casing_e",
-          "polish_e",
-          "total",
-          "work_rate",
-          "work_e",
-          "lost_rate",
-          "lost_e",
-          "rent_rate",
-          "rent_e",
-          "make_rate",
-          "make_e",
-          "c_total",
-          "g_total");
+  private static final Set<String> GOODS_COSTS = com.uten.imp.features.master.goods.GoodsFieldEditPolicy.COST_SNAPSHOT_FIELDS;
   private static final Set<String> GOODS_EDITABLE =
       Set.of(
           "code",

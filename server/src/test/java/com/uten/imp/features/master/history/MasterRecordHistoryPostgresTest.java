@@ -1273,6 +1273,38 @@ class MasterRecordHistoryPostgresTest {
   }
 
   @Test
+  void restoringOnlyEnglishProvenanceStillRechecksTheSalesOrDedicatedAuthority() {
+    UUID item = goods("version English source");
+    inTx(() -> {
+      em.createNativeQuery("UPDATE goods SET name_en='Same English',name_en_source='LEARNED' WHERE id=:id").setParameter("id",item).executeUpdate();
+      return null;
+    });
+    inTx(() -> {
+      provenance();
+      em.createNativeQuery("UPDATE goods SET name_en_source='MANUAL',version=version+1 WHERE id=:id").setParameter("id",item).executeUpdate();
+      return null;
+    });
+    long selected=historyNumber(service.list("goods",item,null,null).entries().getFirst().id());
+    login(Set.of("goods:view","goods:edit"),false);
+    var denied=service.detail("goods",selected);
+    assertFalse(denied.canRestoreBefore());
+    assertThrows(ApiException.class,()->inTx(()->{service.restore("goods",selected,denied.expectedHead(),true);return null;}));
+    assertEquals("MANUAL",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit","goods:name_en:edit"),false);
+    var allowed=service.detail("goods",selected);assertTrue(allowed.canRestoreBefore(),allowed.blockedReason());
+    inTx(()->{service.restore("goods",selected,allowed.expectedHead(),true);return null;});
+    assertEquals("LEARNED",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit"),false);
+    var redoDenied=service.detail("goods",selected);
+    assertThrows(ApiException.class,()->inTx(()->{service.restore("goods",selected,redoDenied.expectedHead(),false);return null;}));
+    assertEquals("LEARNED",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+    login(Set.of("goods:view","goods:edit","goods:sales:edit"),false);
+    var redo=service.detail("goods",selected);assertTrue(redo.canRestoreAfter(),redo.blockedReason());
+    inTx(()->{service.restore("goods",selected,redo.expectedHead(),false);return null;});
+    assertEquals("MANUAL",value("SELECT name_en_source FROM goods WHERE id=:id",item));
+  }
+
+  @Test
   void restoringABomRejectsDisabledComponentsAndAChangedGraphWithoutPartialWrites() {
     UUID parent = goods("parent"), component = goods("component"), edge = UUID.randomUUID();
     inTx(

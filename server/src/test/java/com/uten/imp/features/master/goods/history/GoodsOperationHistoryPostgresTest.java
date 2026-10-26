@@ -105,6 +105,69 @@ class GoodsOperationHistoryPostgresTest {
         var entry=service.list().entries().getFirst();assertFalse(entry.canUndo());assertTrue(entry.blockedReason().contains("goods:cost:view"));
         assertThrows(ApiException.class,()->inTx(()->service.undo(op,0)));
     }
+    @Test void unitLegacySnapshotsRequireBaseEditForReplay() {
+        for(boolean thickness:new boolean[]{true,false}) {
+            UUID id=goods(thickness?"thickness legacy role":"weight legacy role");
+            String seed=thickness?"UPDATE goods SET thickness_unit_legacy_id=17 WHERE id=:id":"UPDATE goods SET m_weight_unit_legacy_id=17 WHERE id=:id";
+            String clear=thickness?"UPDATE goods SET thickness_unit_legacy_id=NULL,version=version+1 WHERE id=:id":"UPDATE goods SET m_weight_unit_legacy_id=NULL,version=version+1 WHERE id=:id";
+            String read=thickness?"SELECT thickness_unit_legacy_id::text FROM goods WHERE id=:id":"SELECT m_weight_unit_legacy_id::text FROM goods WHERE id=:id";
+            inTx(()->{update(seed,id);return null;});
+            UUID operation=inTx(()->{provenance("/api/master/goods/"+id,"PUT");update(clear,id);return latest();});
+            int events=count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor);
+            login(Set.of("goods:view","goods:sales:edit"),false);
+            var denied=service.list().entries().stream().filter(entry->entry.id().equals(operation)).findFirst().orElseThrow();
+            assertFalse(denied.canUndo(),"Unit legacy changes remain goods base edits");
+            assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
+            assertNull(scalar(read,id));
+            assertEquals(events,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+            login(Set.of("goods:view","goods:edit"),false);inTx(()->service.undo(operation,0));
+            assertEquals("17",scalar(read,id));
+            login(Set.of("goods:view","goods:sales:edit"),false);
+            assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
+            assertEquals("17",scalar(read,id));
+            assertEquals(events+1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+            login(Set.of("goods:view","goods:edit"),false);inTx(()->service.redo(operation,1));
+            assertNull(scalar(read,id));
+        }
+    }
+    @Test void fullGoodsEditsRequireCostViewToReplaySubcontractLossChanges() {
+        UUID id=goods("full loss field roles");
+        inTx(()->{update("UPDATE goods SET subcontract_allowed_loss_pct=15 WHERE id=:id",id);return null;});
+        UUID operation=inTx(()->{provenance("/api/master/goods/"+id,"PUT");update("UPDATE goods SET subcontract_allowed_loss_pct=25,version=version+1 WHERE id=:id",id);return latest();});
+        login(Set.of("goods:view","goods:purchase:edit"),false);
+        var denied=service.list().entries().stream().filter(entry->entry.id().equals(operation)).findFirst().orElseThrow();
+        assertFalse(denied.canUndo(),"A full-form loss edit retains the dedicated command's cost-view requirement");
+        assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
+        assertEquals("25.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:purchase:edit","goods:cost:view"),false);
+        inTx(()->service.undo(operation,0));
+        assertEquals("15.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:purchase:edit"),false);
+        assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
+        assertEquals("15.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+        assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+        login(Set.of("goods:view","goods:purchase:edit","goods:cost:view"),false);
+        inTx(()->service.redo(operation,1));
+        assertEquals("25.00",scalar("SELECT subcontract_allowed_loss_pct::text FROM goods WHERE id=:id",id));
+    }
+    @Test void englishSourceOnlyHistoryRequiresTheSalesOrDedicatedAuthority() {
+        UUID id=goods("English source role");
+        inTx(()->{update("UPDATE goods SET name_en='Unchanged English',name_en_source='LEARNED' WHERE id=:id",id);return null;});
+        UUID operation=inTx(()->{provenance("/api/master/goods/"+id,"PUT");update("UPDATE goods SET name_en_source='MANUAL',version=version+1 WHERE id=:id",id);return latest();});
+        login(Set.of("goods:view","goods:edit"),false);
+        var denied=service.list().entries().stream().filter(entry->entry.id().equals(operation)).findFirst().orElseThrow();
+        assertFalse(denied.canUndo(),"Changing English provenance is a sales-field change even when the text is unchanged");
+        assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
+        assertEquals("MANUAL",scalar("SELECT name_en_source FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:name_en:edit"),false);inTx(()->service.undo(operation,0));
+        assertEquals("LEARNED",scalar("SELECT name_en_source FROM goods WHERE id=:id",id));
+        login(Set.of("goods:view","goods:edit"),false);
+        assertThrows(ApiException.class,()->inTx(()->service.redo(operation,1)));
+        assertEquals("LEARNED",scalar("SELECT name_en_source FROM goods WHERE id=:id",id));
+        assertEquals(1,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",actor));
+        login(Set.of("goods:view","goods:sales:edit"),false);inTx(()->service.redo(operation,1));
+        assertEquals("MANUAL",scalar("SELECT name_en_source FROM goods WHERE id=:id",id));
+    }
     @Test void revokingGeneralGoodsEditBlocksCostOnlyUndoAndRedoEvenWithCostVisibility() {
         UUID id=goods("cost field group");
         inTx(()->{update("UPDATE goods SET g_total=16 WHERE id=:id",id);return null;});

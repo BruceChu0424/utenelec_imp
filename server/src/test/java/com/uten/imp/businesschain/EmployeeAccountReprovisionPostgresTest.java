@@ -23,6 +23,98 @@ class EmployeeAccountReprovisionPostgresTest extends AuthSessionPostgresTestSupp
     com.uten.imp.features.org.employee.EmployeeOnboardingService onboarding;
 
     @Test
+    void editingPrimaryPhoneDoesNotReclaimAnArchivedLoginBeforeExplicitProvisioning() throws Exception {
+        String admin=adminToken();Employee employee=newEmployee(admin,"DEPT_ENG");
+        retire(employee);admin=adminToken();
+        UUID staff=UUID.fromString(employee.employeeId()),user=UUID.fromString(employee.userId());
+        String before=accountHash(user),phone=unusedPhone();
+        MvcResult updated=mvc.perform(json(put("/api/org/employees/"+staff),Map.of("phone",phone),admin)).andReturn();
+        assertEquals(200,updated.getResponse().getStatus(),body(updated));
+        assertEquals(before,accountHash(user),"unopened identity keeps the archived login and original credentials");
+        admin=adminToken();
+        MvcResult opened=provision(admin,staff,stepUp(admin,ADMIN_PASSWORD));
+        assertEquals(200,opened.getResponse().getStatus(),body(opened));
+        assertEquals(phone,json(opened).path("loginAccount").asText());
+        assertEquals(user,jdbc.queryForObject("SELECT id FROM users WHERE employee_id=?",UUID.class,staff));
+    }
+
+    @Test
+    void genericEmployeePutCannotBypassPrimaryPhoneIdentityChecksWhenNoLoginExists() throws Exception {
+        String admin=adminToken();Employee existing=newEmployee(admin,"DEPT_ENG");
+        UUID target=profileWithoutAccount();
+        MvcResult duplicate=mvc.perform(json(put("/api/org/employees/"+target),
+                Map.of("phone",existing.loginAccount()),admin)).andReturn();
+        assertEquals(409,duplicate.getResponse().getStatus(),body(duplicate));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id=?",Long.class,target));
+        assertEquals(0L,jdbc.queryForObject("SELECT count(*) FROM users WHERE employee_id=?",Long.class,target));
+        MvcResult updated=mvc.perform(json(put("/api/org/employees/"+target),Map.of("phone",unusedPhone()),admin)).andReturn();
+        assertEquals(200,updated.getResponse().getStatus(),body(updated));
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id=?",Long.class,target));
+    }
+
+    @Test
+    void concurrentUnopenedProfilesCanClaimOnePrimaryPhoneOnlyOnce() throws Exception {
+        String admin=adminToken(),phone=unusedPhone();UUID a=profileWithoutAccount(),b=profileWithoutAccount();
+        CountDownLatch start=new CountDownLatch(1);
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var first=executor.submit(()->putPhone(admin,a,phone,start));
+            var second=executor.submit(()->putPhone(admin,b,phone,start));start.countDown();
+            assertThat(java.util.List.of(first.get(30,TimeUnit.SECONDS),second.get(30,TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(200,409);
+        }
+        assertEquals(1L,jdbc.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id IN (?,?) AND phone_hash IS NOT NULL",Long.class,a,b));
+    }
+
+    @Test
+    void approvedPhoneChangeCannotClaimAnotherPrimaryPhoneAndEntireDecisionRollsBack() throws Exception {
+        String admin = adminToken();
+        Employee owner = newEmployee(admin, "DEPT_ENG");
+        Employee applicant = newEmployee(admin, "DEPT_ENG");
+        String before = accountHash(UUID.fromString(applicant.userId()));
+        String sensitiveBefore = jdbc.queryForObject(
+                "SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",
+                String.class, UUID.fromString(applicant.employeeId()));
+        var submitted = mvc.perform(json(post("/api/profile/me/changes"), Map.of(
+                "changes", java.util.List.of(Map.of("fieldCode", "phone", "fieldLabel", "Phone",
+                        "newValue", owner.loginAccount())), "idemKey", "phone-identity-" + UUID.randomUUID()),
+                applicant.accessToken()).header("X-Uten-Step-Up", stepUp(applicant.accessToken(), EMPLOYEE_PASSWORD)))
+                .andReturn();
+        assertEquals(200, submitted.getResponse().getStatus(), body(submitted));
+        UUID batch = UUID.fromString(json(submitted).path("batchId").asText());
+        var decision = mvc.perform(json(post("/api/hr/profile-changes/" + batch + "/review"),
+                Map.of("action", "approve"), admin)).andReturn();
+        assertEquals(409, decision.getResponse().getStatus(), body(decision));
+        assertEquals(before, accountHash(UUID.fromString(applicant.userId())));
+        assertEquals(sensitiveBefore, jdbc.queryForObject(
+                "SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",
+                String.class, UUID.fromString(applicant.employeeId())));
+        assertEquals("pending", jdbc.queryForObject(
+                "SELECT status FROM profile_change_requests WHERE batch_id=?", String.class, batch));
+    }
+
+    private int putPhone(String admin,UUID employee,String phone,CountDownLatch start) throws Exception {
+        start.await();return mvc.perform(json(put("/api/org/employees/"+employee),Map.of("phone",phone),admin))
+                .andReturn().getResponse().getStatus();
+    }
+
+    private UUID profileWithoutAccount() {
+        UUID employee=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                SELECT ?,?,'Synthetic unopened phone profile','其他',department_id,CURRENT_DATE,'probation','regular'
+                FROM employees WHERE id=(SELECT employee_id FROM users WHERE login_account=?)
+                """,employee,"PHONE-CLAIM-"+employee.toString().substring(0,8),ADMIN_LOGIN);
+        return employee;
+    }
+
+    private String unusedPhone() {
+        String phone;
+        do {phone="137"+String.format(java.util.Locale.ROOT,"%08d",Math.floorMod(System.nanoTime(),100_000_000L));}
+        while(jdbc.queryForObject("SELECT count(*) FROM users WHERE login_account=?",Long.class,phone)>0);
+        return phone;
+    }
+
+    @Test
     void unopenedRetainedIdentityUsesNormalStepUpAndPreservesHistoricalOwnership() throws Exception {
         String admin = adminToken();
         Employee employee = newEmployee(admin, "DEPT_ENG");

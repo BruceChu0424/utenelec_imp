@@ -46,7 +46,12 @@ class _Repository extends PlatformTableRepository {
   bool fail = true, allowed = true;
   String value = '原值';
   String? failingId;
+  String? omittedId;
+  int? responseVersion;
+  bool nullValues = false;
+  final Map<String, String> responseIds = {};
   Completer<void>? gate;
+  Completer<PlatformRowValues>? saveGate;
   int reads = 0, scopeReads = 0, invalidations = 0, writes = 0;
   @override
   void invalidateScopes() {
@@ -87,16 +92,16 @@ class _Repository extends PlatformTableRepository {
       throw NetworkTimeoutException();
     }
     return [
-      for (final id in ids)
+      for (final id in ids.where((id) => id != omittedId))
         PlatformRowValues(
-          recordId: id,
-          version: value == '原值' ? 1 : 2,
+          recordId: responseIds[id] ?? id,
+          version: responseVersion ?? (value == '原值' ? 1 : 2),
           canWrite: true,
           cells: [
             PlatformColumnCell(
               columnId: 'note',
               definition: _note,
-              value: value,
+              value: nullValues ? null : value,
             ),
           ],
         ),
@@ -111,6 +116,7 @@ class _Repository extends PlatformTableRepository {
     required List<Map<String, dynamic>> cells,
   }) async {
     writes++;
+    if (saveGate case final pending?) return pending.future;
     throw StateError('Read recovery must never resubmit a write');
   }
 }
@@ -169,6 +175,361 @@ Future<void> _mount(
 }
 
 void main() {
+  testWidgets(
+    'complete rows containing null values remain a valid atomic read',
+    (tester) async {
+      final repo = _Repository()
+        ..fail = false
+        ..nullValues = true
+        ..responseVersion = 2;
+      final rows = [for (var i = 0; i < 201; i++) _Row('record-$i')];
+      for (final row in rows) {
+        addTearDown(row.dispose);
+      }
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                rows: rows,
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+              ),
+            );
+            return const Text('Nullable values are facts');
+          },
+        ),
+      );
+      expect(controller.error, isNull);
+      expect(controller.readFailure, isNull);
+      expect(controller.capabilities, isNotNull);
+      expect(controller.rowValues(rows.last)!.version, 2);
+      expect(controller.value(rows.last, _note), isNull);
+      expect(repo.reads, 2);
+      expect(repo.writes, 0);
+    },
+  );
+  for (final malformed in ['duplicate', 'foreign']) {
+    testWidgets(
+      '$malformed record ids cannot replace any prior inline-table values',
+      (tester) async {
+        final repo = _Repository()..fail = false;
+        final rows = [for (var i = 0; i < 201; i++) _Row('record-$i')];
+        for (final row in rows) {
+          addTearDown(row.dispose);
+        }
+        final controller = PlatformTableController<_Row>();
+        addTearDown(controller.dispose);
+        await _mount(
+          tester,
+          repo,
+          Builder(
+            builder: (context) {
+              controller.configure(
+                context,
+                descriptor: PlatformTableDescriptor<_Row>(
+                  kind: 'master',
+                  rows: rows,
+                  columnKeys: const ['base'],
+                  tableKey: 'recovery.table',
+                ),
+                explicitBinding: PlatformTableBinding<_Row>(
+                  tableKey: 'recovery.table',
+                  scope: 'recovery',
+                  recordIdOf: (row) => row.id,
+                ),
+              );
+              return const Text('Inline values');
+            },
+          ),
+        );
+        repo.value = '新值';
+        repo.responseIds[malformed == 'duplicate'
+            ? 'record-199'
+            : 'record-200'] = malformed == 'duplicate'
+            ? 'record-0'
+            : 'foreign-record';
+        await controller.reload();
+        await tester.pumpAndSettle();
+        expect(controller.readFailure, PlatformTableReadFailure.recordsChanged);
+        expect(controller.capabilities, isNotNull);
+        expect(controller.value(rows.first, _note), '原值');
+        expect(controller.value(rows.last, _note), '原值');
+        repo.responseIds.clear();
+        await controller.retryRead();
+        await tester.pumpAndSettle();
+        expect(controller.value(rows.last, _note), '新值');
+        expect(repo.writes, 0);
+      },
+    );
+  }
+  testWidgets(
+    'a late successful save cannot roll back a newer authoritative read version',
+    (tester) async {
+      final repo = _Repository()..fail = false;
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              columnEditingEnabled: true,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                rows: [row],
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+                canEditValues: true,
+              ),
+            );
+            return const Text('Current record');
+          },
+        ),
+      );
+      repo.saveGate = Completer<PlatformRowValues>();
+      final saving = controller.saveCell(row, _note, '本次写入');
+      repo.value = '后来已核定的版本';
+      repo.responseVersion = 3;
+      await controller.reload();
+      await tester.pumpAndSettle();
+      repo.saveGate!.complete(
+        PlatformRowValues(
+          recordId: row.id,
+          version: 2,
+          canWrite: true,
+          cells: [
+            const PlatformColumnCell(
+              columnId: 'note',
+              definition: _note,
+              value: '较早保存结果',
+            ),
+          ],
+        ),
+      );
+      await saving;
+      await tester.pumpAndSettle();
+      expect(controller.rowValues(row)!.version, 3);
+      expect(controller.value(row, _note), '后来已核定的版本');
+    },
+  );
+
+  testWidgets(
+    'a superseded table save neither blocks nor releases the current table writer',
+    (tester) async {
+      final repo = _Repository()..fail = false;
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final key = ValueNotifier('recovery.table');
+      addTearDown(key.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        ValueListenableBuilder<String>(
+          valueListenable: key,
+          builder: (context, table, _) {
+            controller.configure(
+              context,
+              columnEditingEnabled: true,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                rows: [row],
+                columnKeys: const ['base'],
+                tableKey: table,
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: table,
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+                canEditValues: true,
+              ),
+            );
+            return const Text('Current table');
+          },
+        ),
+      );
+      final oldGate = Completer<PlatformRowValues>();
+      repo.saveGate = oldGate;
+      final oldSave = controller.saveCell(row, _note, '原表请求');
+      repo.responseVersion = 3;
+      key.value = 'recovery.other';
+      await tester.pumpAndSettle();
+      expect(
+        controller.canEdit(row, _note),
+        isTrue,
+        reason: 'The previous table cannot reserve the new table writer slot',
+      );
+      final newGate = Completer<PlatformRowValues>();
+      repo.saveGate = newGate;
+      final currentSave = controller.saveCell(row, _note, '当前表请求');
+      oldGate.complete(
+        PlatformRowValues(recordId: row.id, version: 99, canWrite: true),
+      );
+      await oldSave;
+      await tester.pumpAndSettle();
+      expect(
+        controller.canEdit(row, _note),
+        isFalse,
+        reason:
+            'Finishing an old writer cannot release the current writer slot',
+      );
+      expect(controller.rowValues(row)!.version, 3);
+      newGate.complete(
+        PlatformRowValues(recordId: row.id, version: 4, canWrite: true),
+      );
+      await currentSave;
+      await tester.pumpAndSettle();
+      expect(controller.rowValues(row)!.version, 4);
+    },
+  );
+
+  testWidgets(
+    'a successful but incomplete batch cannot publish a mixed record snapshot',
+    (tester) async {
+      final repo = _Repository()..fail = false;
+      final rows = [for (var i = 0; i < 201; i++) _Row('record-$i')];
+      for (final row in rows) {
+        addTearDown(row.dispose);
+      }
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'editable',
+                rows: rows,
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+                canEditValues: true,
+                draftOf: (row) => row.platformFields,
+              ),
+            );
+            return const Text('Host remains mounted');
+          },
+        ),
+      );
+      rows.first.platformFields.setValue(_note, '本机精确输入');
+      repo.value = '新值';
+      repo.omittedId = 'record-200';
+      await controller.reload();
+      await tester.pumpAndSettle();
+      expect(
+        controller.value(rows[1], _note),
+        '原值',
+        reason:
+            'No earlier successful batch may be published until every requested record is present',
+      );
+      expect(controller.readFailure, PlatformTableReadFailure.recordsChanged);
+      expect(rows.first.platformFields.cells.single.value, '本机精确输入');
+      expect(rows.first.platformFields.version, 1);
+      repo.omittedId = null;
+      await controller.retryRead();
+      await tester.pumpAndSettle();
+      expect(controller.value(rows[1], _note), '新值');
+      expect(rows.first.platformFields.cells.single.value, '本机精确输入');
+      expect(repo.writes, 0);
+    },
+  );
+
+  testWidgets(
+    'a late cell-save response cannot restore values after a fresh access rejection',
+    (tester) async {
+      final repo = _Repository()..fail = false;
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              columnEditingEnabled: true,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                rows: [row],
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+                canEditValues: true,
+              ),
+            );
+            return const Text('Host remains mounted');
+          },
+        ),
+      );
+      repo.saveGate = Completer<PlatformRowValues>();
+      final saving = controller.saveCell(row, _note, '已发出保存');
+      await tester.pump();
+      repo.allowed = false;
+      await controller.retryRead();
+      await tester.pumpAndSettle();
+      expect(controller.rowValues(row), isNull);
+      repo.saveGate!.complete(
+        PlatformRowValues(
+          recordId: row.id,
+          version: 7,
+          canWrite: true,
+          cells: [
+            const PlatformColumnCell(
+              columnId: 'note',
+              definition: _note,
+              value: '迟到的服务器返回',
+            ),
+          ],
+        ),
+      );
+      await saving;
+      await tester.pumpAndSettle();
+      expect(
+        controller.rowValues(row),
+        isNull,
+        reason:
+            'A successful old command is not authority for the current reader',
+      );
+      expect(controller.readFailure, PlatformTableReadFailure.forbidden);
+      expect(repo.writes, 1);
+    },
+  );
+
   test(
     'explicit capability cache invalidation rechecks the actual repository response',
     () async {
@@ -205,6 +566,108 @@ void main() {
 
   for (final language in ['zh', 'en', 'ko']) {
     for (final editable in [false, true]) {
+      testWidgets(
+        '$language ${editable ? 'grid' : 'master'} retries an incomplete successful response without replacing base input',
+        (tester) async {
+          final repo = _Repository()
+            ..fail = false
+            ..omittedId = 'record';
+          final row = _Row('record');
+          final input = TextEditingController(text: '未保存原文');
+          addTearDown(input.dispose);
+          final grid = UtenEditableGridController<_Row>(initial: [row]);
+          addTearDown(grid.dispose);
+          final binding = PlatformTableBinding<_Row>(
+            tableKey: 'recovery.table',
+            scope: 'recovery',
+            recordIdOf: (row) => row.id,
+            canEditValues: true,
+          );
+          final table = editable
+              ? UtenEditableGrid<_Row>(
+                  tableKey: 'recovery.table',
+                  platformBinding: binding,
+                  controller: grid,
+                  showAddRow: false,
+                  showRowDelete: false,
+                  columns: [
+                    EditableGridColumn<_Row>(
+                      key: 'base',
+                      label: '基础资料',
+                      width: 240,
+                      cellBuilder: (_, _) => TextField(
+                        key: const Key('base-input'),
+                        controller: input,
+                      ),
+                    ),
+                  ],
+                )
+              : MasterDataTableView<_Row>(
+                  tableKey: 'recovery.table',
+                  embedded: true,
+                  platformBinding: binding,
+                  items: [row],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  columns: [
+                    MasterColumnDef<_Row>(
+                      key: 'base',
+                      label: '基础资料',
+                      width: 240,
+                      value: (_) => '基础资料',
+                      cellBuilder: (_, _) => TextField(
+                        key: const Key('base-input'),
+                        controller: input,
+                      ),
+                    ),
+                  ],
+                );
+          await _mount(tester, repo, table, language: language);
+          expect(
+            find.textContaining(
+              platformTableRecoveryTexts['incompleteReason']![[
+                'zh',
+                'en',
+                'ko',
+              ].indexOf(language)],
+            ),
+            findsOneWidget,
+          );
+          await tester.enterText(
+            find.byKey(const Key('base-input')),
+            '输入原文继续保留',
+          );
+          final oldState = tester.state<EditableTextState>(
+            find.descendant(
+              of: find.byKey(const Key('base-input')),
+              matching: find.byType(EditableText),
+            ),
+          );
+          repo.omittedId = null;
+          await tester.tap(
+            find.byKey(const ValueKey('platform-table-read-retry')),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('platform-table-read-error')),
+            findsNothing,
+          );
+          expect(input.text, '输入原文继续保留');
+          expect(
+            tester.state<EditableTextState>(
+              find.descendant(
+                of: find.byKey(const Key('base-input')),
+                matching: find.byType(EditableText),
+              ),
+            ),
+            same(oldState),
+          );
+          expect(repo.writes, 0);
+          expect(tester.takeException(), isNull);
+        },
+      );
       testWidgets(
         '$language ${editable ? 'grid' : 'master'} shows the cause and recovers without replacing base input',
         (tester) async {

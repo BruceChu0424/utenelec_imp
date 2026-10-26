@@ -148,7 +148,9 @@ class AttachmentService {
         'includeDeleted': true,
       },
     );
-    return rows.map(Attachment.fromJson).toList();
+    return rows
+        .map((row) => Attachment.fromJson(row, forceHistoryReadOnly: true))
+        .toList();
   }
 
   /// 上传完成后设置/清除文件分类（`PUT /attachments/{id}/category`）。
@@ -202,6 +204,11 @@ class AttachmentService {
   }
 
   Future<Uint8List> downloadBytes(Attachment attachment) async {
+    if (attachment.isReadOnly) {
+      return _api.getBytes(
+        '$_base/${Uri.encodeComponent(attachment.id)}/history/download',
+      );
+    }
     final grant = await _api.get('$_base/${attachment.id}/download-grant');
     final downloadUrl = grant['url'] as String?;
     if (downloadUrl == null || downloadUrl.isEmpty) {

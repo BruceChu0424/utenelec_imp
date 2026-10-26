@@ -5535,5 +5535,14 @@
   "mouldManufacturerChooseHistoryTooltip": "Choose a previous manufacturer",
   "employeeIdentitySectionTitle": "Identity details",
   "employeeIdentitySavedReadbackFailed": "Identity details were saved, but the updated record could not be loaded. Retry loading.",
-  "employeeIdentitySeparateSaveHint": "Identity details are saved separately. The existing login account is retained."
+  "employeeIdentitySeparateSaveHint": "Identity details are saved separately. The existing login account is retained.",
+  "attachmentHistoricalReadOnlyLabel": "Historical record (read only)",
+  "attachmentHistoricalDeletedLabel": "Deleted (history retained)",
+  "attachmentHistoricalOriginalUnavailable": "Historical original unavailable",
+  "employeeHistoricalFilesTitle": "Archived employee files",
+  "employeeHistoricalContractFilesTitle": "Archived contract files",
+  "employeeHistoricalFilesHint": "Original ownership and files are retained for viewing and downloading.",
+  "docLinkUnknownRemaining": "Some lines have incomplete recorded quantities, so their remaining quantities cannot be determined or imported. You can select other lines. Check the source document.",
+  "docLinkDetailLoadFailed": "Could not read the source document lines. Refresh and select the document again.",
+  "docLinkSourceEnded": "The source order has ended and cannot receive more deliveries or material issues. Refresh and select another order. Its recorded difference remains unchanged."
 }

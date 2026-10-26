@@ -28,6 +28,7 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
     public static final String OWNER_TYPE = "EMPLOYEE";
 
     private final EmployeeRepository employeeRepository;
+    private final com.uten.imp.application.port.EmployeeIdentityLookupPort employeeIdentities;
 
     @Override
     public String ownerType() {
@@ -36,18 +37,16 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
 
     @Override
     public void requireCanView(UUID ownerId, AuthUser user) {
+        requireStaff(user);
         requireEmployee(ownerId);
-        if (user.isSuperAdmin()) {
+        if (user.isSuperAdmin() || user.getPermissions().contains("employee:pii:view")) {
             return;
         }
         // 本人可看自己的档案文件
-        if (ownerId.equals(user.getEmployeeId())) {
+        if (isSelf(ownerId,user)) {
             return;
         }
         // 档案文件=身份证件/合同扫描件级 PII：按 employee:pii:view 门控，不随 employee:view 扩散
-        if (user.getPermissions().contains("employee:pii:view")) {
-            return;
-        }
         throw notFound();
     }
 
@@ -57,7 +56,7 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
             throw notFound();
         }
         requireEmployee(ownerId);
-        if (user.isSuperAdmin() || ownerId.equals(user.getEmployeeId())
+        if (user.isSuperAdmin() || isSelf(ownerId,user)
                 || user.getPermissions().contains("employee:view")) {
             return;
         }
@@ -66,33 +65,44 @@ public class EmployeeAttachmentAccessPolicy implements AttachmentOwnerAccessPoli
 
     @Override
     public void requireCanManage(UUID ownerId, AuthUser user) {
-        requireEmployee(ownerId);
-        if (user.isSuperAdmin() || user.getPermissions().contains("employee:edit")) {
-            return;
-        }
-        throw notFound();
+        requireWritable(ownerId,user,"employee:edit",false);
     }
 
     /** 员工档案无单据状态机跳变，更新时同 manage 校验即可。 */
     @Override
     public void requireCanManageForUpdate(UUID ownerId, AuthUser user) {
-        requireCanManage(ownerId, user);
+        requireWritable(ownerId,user,"employee:edit",true);
     }
 
     @Override
     public void requireCanSelectAvatar(UUID ownerId, AuthUser user) {
-        requireEmployee(ownerId);
-        if (user.isSuperAdmin() || user.getPermissions().contains("employee:avatar_edit")) {
-            return;
-        }
-        throw notFound();
+        requireWritable(ownerId,user,"employee:avatar_edit",true);
+    }
+
+    private boolean isSelf(UUID ownerId,AuthUser user) {
+        UUID actor=user.getEmployeeId();
+        return actor!=null && (ownerId.equals(actor)
+                || employeeIdentities.canonicalEmployeeId(ownerId).equals(employeeIdentities.canonicalEmployeeId(actor)));
+    }
+
+    private void requireWritable(UUID ownerId,AuthUser user,String permission,boolean forUpdate) {
+        requireStaff(user);
+        if(ownerId==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"附件必须绑定员工");
+        Employee employee=(forUpdate?employeeRepository.findByIdForUpdate(ownerId):employeeRepository.findById(ownerId))
+                .orElseThrow(EmployeeAttachmentAccessPolicy::notFound);
+        // Resigned but retained records remain maintainable. Deleted archive identities do not.
+        if(employee.isDeleted() || !(user.isSuperAdmin() || user.getPermissions().contains(permission)))throw notFound();
+    }
+
+    private static void requireStaff(AuthUser user) {
+        if(user==null || user.isVisitor() || user.isMustChangePassword())throw notFound();
     }
 
     private void requireEmployee(UUID ownerId) {
         if (ownerId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件必须绑定员工");
         }
-        // 仅校验存在性（含软删员工也不允许挂附件）；不泄露是否存在给无权者——统一 NOT_FOUND。
+        // Historical reads retain the original owner; new writes use requireWritable.
         if (employeeRepository.findById(ownerId).isEmpty()) {
             throw notFound();
         }

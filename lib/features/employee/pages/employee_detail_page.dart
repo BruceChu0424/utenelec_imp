@@ -1273,7 +1273,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _historyTab(AppLocalizations l10n) {
     if (_p.history.isEmpty &&
         _p.historicalEducations.isEmpty &&
-        _p.historicalCertificates.isEmpty) {
+        _p.historicalCertificates.isEmpty &&
+        _p.historicalAttachmentGroups.isEmpty) {
       return const Center(
         child: UtenEmpty(icon: Icons.history_rounded, message: '暂无任职记录'),
       );

@@ -26,6 +26,26 @@ public class FulfillmentWorkbenchController {
     private final WarehouseTaskScopePort warehouseScopes;
     private final com.uten.imp.application.port.WarehouseTaskRowCountPort taskRowCounts;
 
+    @GetMapping("/purchase/overview")
+    @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
+    public FulfillmentWorkbenchPage purchaseOverview(@RequestParam(defaultValue = "") String keyword) {
+        return queryService.overview("PURCHASE", keyword, WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    @GetMapping("/subcontract/overview")
+    @PreAuthorize("hasAnyAuthority('subcontract_inquiry:view','subcontract_application:view','subcontract_order:view','subcontract_receipt:view','subcontract_material_issue:view','subcontract_return:view','subcontract_material_return:view','subcontract_waste:view')")
+    public FulfillmentWorkbenchPage subcontractOverview(@RequestParam(defaultValue = "") String keyword) {
+        return queryService.overview("SUBCONTRACT", keyword, WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    @GetMapping("/warehouse/overview")
+    @PreAuthorize("hasAuthority('stock_doc:view')")
+    public FulfillmentWorkbenchPage warehouseOverview(
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return queryService.overview("WAREHOUSE", keyword, warehouseScopes.current(scopeWarehouseId));
+    }
+
     @GetMapping("/warehouse")
     @PreAuthorize("hasAnyAuthority('stock_doc:view')")
     public FulfillmentWorkbenchPage warehouse(

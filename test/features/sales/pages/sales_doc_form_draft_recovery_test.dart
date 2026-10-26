@@ -51,6 +51,37 @@ Finder _orderDraftStageSegment() => find.descendant(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'sales selection performs no quantity scans while real edits still update totals',
+    (tester) async {
+      final env = await _pump(tester, MemoryFormDraftStorage());
+      await _seedPartialOrder(tester, qty: '2');
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      final scans = <int>[];
+      debugSalesQuantityScan = scans.add;
+      addTearDown(() => debugSalesQuantityScan = null);
+      for (var i = 0; i < 5; i++) {
+        grid.setSelected(grid.rows, i.isEven);
+        await tester.pump();
+      }
+      expect(scans, isEmpty);
+      grid.addRow(SalesGridRow());
+      await tester.pump();
+      expect(scans, [2]);
+      grid.rows.first.qty.text = '3';
+      await tester.pump();
+      expect(scans, [2, 2]);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
   testWidgets('价格撤权立即遮住已恢复的价格、固定列和合计，保留完整草稿', (tester) async {
     final storage = MemoryFormDraftStorage();
     final env = await _pump(tester, storage);

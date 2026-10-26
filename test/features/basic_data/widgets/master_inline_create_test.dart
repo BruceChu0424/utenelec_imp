@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_inline_edit_cell.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -87,7 +88,95 @@ Future<void> _table(
 
 Future<void> _discardUpdate(String _, Map<String, dynamic> _) async {}
 
+Future<void> _activateCreation(
+  WidgetTester tester,
+  String key,
+  String field,
+) async {
+  final input = find
+      .byKey(ValueKey('inline-create-cell-$key-$field'))
+      .hitTestable();
+  if (input.evaluate().isNotEmpty) return;
+  final activate = find
+      .byKey(ValueKey('inline-create-activate-$key-$field'))
+      .hitTestable();
+  await tester.tap(activate);
+  await tester.pump();
+}
+
 void main() {
+  testWidgets(
+    'new rows defer choice requests and the first character does not rebuild sibling editors',
+    (tester) async {
+      var loads = 0, builds = 0;
+      final controller = _controller(
+        fields: [
+          _name,
+          MasterFieldDef(
+            key: 'choice',
+            label: 'Choice',
+            type: MasterFieldType.custom,
+            customBuilder: (field) {
+              builds++;
+              return MasterInlineOptionsCell(
+                field: field,
+                load: () async {
+                  loads++;
+                  return const [MasterSelectOption(value: 'one', label: 'One')];
+                },
+              );
+            },
+          ),
+        ],
+        create: (_, _) async {},
+      );
+      addTearDown(controller.dispose);
+      final row = controller.appendRows.first;
+      final key = controller.creationDraftKeys.first;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Column(
+                children: [
+                  for (final field in ['name', 'choice'])
+                    SizedBox(
+                      width: 260,
+                      child: row.cellBuilder(context, field),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(loads, 0);
+      expect(builds, 0);
+      expect(find.byType(TextField), findsNothing);
+      await _activateCreation(tester, key, 'choice');
+      await tester.pumpAndSettle();
+      expect(loads, 1);
+      final mountedBuilds = builds;
+      await _activateCreation(tester, key, 'name');
+      final name = find.byKey(ValueKey('inline-create-cell-$key-name'));
+      await tester.enterText(name, 'F');
+      await tester.pump();
+      expect(
+        builds,
+        mountedBuilds,
+        reason:
+            'The clean-to-dirty transition only affects the edited field and toolbar',
+      );
+      await tester.enterText(name, 'First entry');
+      await tester.pump();
+      expect(builds, mountedBuilds);
+      expect(loads, 1);
+      expect(controller.creationValuesFor(key)['name'], 'First entry');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'frozen and ordinary editor copies share one creation draft after horizontal scrolling',
     (tester) async {
@@ -136,6 +225,7 @@ void main() {
       final key = controller.creationDraftKeys.first;
       Finder input() =>
           find.byKey(ValueKey('inline-create-cell-$key-name')).hitTestable();
+      await _activateCreation(tester, key, 'name');
       await tester.enterText(input(), 'Original draft');
       await tester.pumpAndSettle();
       void horizontal(double offset) {
@@ -152,6 +242,7 @@ void main() {
 
       horizontal(300);
       await tester.pumpAndSettle();
+      await _activateCreation(tester, key, 'name');
       await tester.enterText(input(), 'Edited in frozen column');
       await tester.pumpAndSettle();
       expect(
@@ -291,13 +382,14 @@ void main() {
         final key = controller.creationDraftKeys.first;
         final input = find.byKey(ValueKey('inline-create-cell-$key-name'));
         await tester.scrollUntilVisible(
-          input,
+          find.byKey(ValueKey('inline-create-activate-$key-name')),
           200,
           scrollable: find.descendant(
             of: find.byType(ListView),
             matching: find.byType(Scrollable),
           ),
         );
+        await _activateCreation(tester, key, 'name');
         await tester.enterText(input, 'New after the last loaded page');
         await tester.pumpAndSettle();
         expect(calls, isEmpty);
@@ -491,7 +583,7 @@ void main() {
       expect(find.text('暂无数据'), findsNothing);
       final key = controller.creationDraftKeys.last;
       final input = find.byKey(ValueKey('inline-create-cell-$key-name'));
-      await tester.tap(input);
+      await _activateCreation(tester, key, 'name');
       await tester.enterText(input, 'Continuous entry');
       await tester.pumpAndSettle();
       expect(controller.appendRows, hasLength(4));
@@ -575,6 +667,7 @@ void main() {
       expect(find.byKey(ValueKey('inline-create-other-$key')), findsNothing);
 
       // 行已编辑但缺的只是选填字段：入口同样保持沉默。
+      await _activateCreation(tester, key, 'name');
       await tester.enterText(
         find.byKey(ValueKey('inline-create-cell-$key-name')),
         'Typed',
@@ -592,6 +685,15 @@ void main() {
       addTearDown(controller.dispose);
       await _table(tester, controller);
       final key = controller.creationDraftKeys.first;
+      final preview = tester.widget<UtenInlineEditCell>(
+        find.ancestor(
+          of: find.byKey(ValueKey('inline-create-activate-$key-name')),
+          matching: find.byType(UtenInlineEditCell),
+        ),
+      );
+      expect(preview.requiredEmpty, isTrue);
+      await _activateCreation(tester, key, 'name');
+      await _activateCreation(tester, key, 'amount');
       final error = Theme.of(
         tester.element(find.byKey(ValueKey('inline-create-cell-$key-name'))),
       ).colorScheme.error;
@@ -647,9 +749,20 @@ void main() {
           .widgetList<UtenDropdownField>(find.byType(UtenDropdownField))
           .where((field) => field.items.any((item) => item.value == 'a'))
           .toList();
+      expect(
+        selects,
+        isEmpty,
+        reason: 'Blank rows do not mount dropdown editors eagerly',
+      );
+      final key = controller.creationDraftKeys.first;
+      await _activateCreation(tester, key, 'kind');
+      final activatedSelects = tester
+          .widgetList<UtenDropdownField>(find.byType(UtenDropdownField))
+          .where((field) => field.items.any((item) => item.value == 'a'))
+          .toList();
       // 空白草稿行不止一行，每行的必填下拉都要带 required 红框语义。
-      expect(selects, isNotEmpty);
-      expect(selects.map((field) => field.required), everyElement(isTrue));
+      expect(activatedSelects, hasLength(1));
+      expect(activatedSelects.single.required, isTrue);
       expect(tester.takeException(), isNull);
     },
   );

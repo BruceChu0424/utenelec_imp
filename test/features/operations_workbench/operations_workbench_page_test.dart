@@ -45,7 +45,11 @@ MasterDataTableView<OperationsWorkbenchTask> _table(WidgetTester tester) =>
 // Existing presentation scenarios describe an authorized task worker. Supply a
 // separate task-response fixture; regressions below deliberately make it differ
 // from the browsable status distribution.
-Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
+Widget _taskScope({
+  required Widget child,
+  Map<String, int>? taskFacts,
+  ApiClient? api,
+}) {
   final page = (child as MaterialApp).home! as OperationsWorkbenchPage;
   final data = switch (page.repository) {
     _FakeGateway(:final data) => data,
@@ -58,13 +62,9 @@ Widget _taskScope({required Widget child, Map<String, int>? taskFacts}) {
       : 'purchaseTask';
   return ProviderScope(
     overrides: [
-      // 页面会并行预热主档「主仓 - 子仓」字典（masterNameServiceProvider →
-      // apiClientProvider）。Riverpod 3 下这条链会真实挂载默认 Dio：widget 测试的
-      // 假时钟里真实网络请求永不完成，_load 的 await warehouseNames 一直挂起，
-      // 首屏停在加载转圈、pumpAndSettle 超时。本文件断言的仓库列本就是「字典
-      // 未加载回退行内叶仓名」路径，注入一个立即失败的离线 api 即可（页面契约：
-      // 预热失败就地吞掉，不阻断任务加载）。
-      apiClientProvider.overrideWithValue(_OfflineApi()),
+      // 任务 DTO 有仓库名称快照。字典只在选中阶段后后台补充层级名称，
+      // 即使未完成也不得阻塞首屏或任务行。
+      apiClientProvider.overrideWithValue(api ?? _OfflineApi()),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts:
@@ -108,6 +108,52 @@ class _OfflineApi extends ApiClient {
 }
 
 void main() {
+  for (final department in OperationsWorkbenchDepartment.values) {
+    testWidgets('${department.name} entry skips rows and slow dictionaries', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _PendingDictionaryApi();
+      final gateway = _OverviewGateway(_emptyData(department: department));
+      await tester.pumpWidget(
+        _taskScope(
+          api: api,
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: department,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.overviews, 1);
+      expect(gateway.statuses, isEmpty);
+      expect(api.calls, 0);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      await _selectSegment(
+        tester,
+        department == OperationsWorkbenchDepartment.warehouse
+            ? '待备料 / 待领取'
+            : '申请待分解',
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.statuses, hasLength(1));
+      expect(api.calls, 1);
+      // A warehouse dictionary request is still pending, but the table settled.
+      expect(
+        find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      api.pending.complete([]);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('read-only status counts never become personal task badges', (
     tester,
   ) async {
@@ -1279,6 +1325,36 @@ void main() {
       expect(gateway.statuses.last, 'IN_PROGRESS');
     },
   );
+}
+
+class _PendingDictionaryApi extends _OfflineApi {
+  final pending = Completer<List<Map<String, dynamic>>>();
+  int calls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) {
+    calls++;
+    return pending.future;
+  }
+}
+
+class _OverviewGateway extends _FakeGateway
+    implements OperationsWorkbenchOverviewGateway {
+  _OverviewGateway(super.data);
+
+  int overviews = 0;
+
+  @override
+  Future<OperationsWorkbenchData> loadOverview({
+    required OperationsWorkbenchDepartment department,
+    String? keyword,
+  }) async {
+    overviews++;
+    return data;
+  }
 }
 
 class _FakeGateway implements OperationsWorkbenchGateway {

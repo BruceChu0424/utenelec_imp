@@ -398,12 +398,12 @@ void main() {
     await _pumpTab(tester, _FakeBomRepo());
 
     final periodic = tester.widget<TextField>(
-      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-pc')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-goods-a/row-pc'),
     );
     expect(periodic.controller!.text, '12.5');
     expect(periodic.decoration!.suffixText, '克');
     final ordinary = tester.widget<TextField>(
-      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-shell')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-goods-a/row-shell'),
     );
     expect(ordinary.controller!.text, '1');
     expect(ordinary.decoration!.suffixText, '个');
@@ -604,7 +604,7 @@ void main() {
     final repo = _FakeBomRepo(rows: const [_tonRow]);
     await _pumpTab(tester, repo);
     final inline = tester.widget<TextField>(
-      find.byKey(const ValueKey('goods-bom-inline-qty-goods-a/row-ton')),
+      await activateBomEditor(tester, 'goods-bom-inline-qty-goods-a/row-ton'),
     );
     expect(inline.controller!.text, '0.00002');
     expect(inline.decoration!.suffixText, '吨');

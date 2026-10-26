@@ -6,6 +6,41 @@ import 'package:uten_imp/features/operations_workbench/repositories/operations_w
 
 void main() {
   test(
+    'entry overview requests no historical row window or table facets',
+    () async {
+      late RequestOptions captured;
+      final repository = OperationsWorkbenchRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': <Object>[],
+            'page': 1,
+            'size': 1,
+            'total': 0,
+            'totalPages': 0,
+            'summary': {
+              'totalTasks': 9,
+              'overdueTasks': 0,
+              'openTasks': 4,
+              'openQty': 12,
+              'statusCounts': {'WAITING_ORDER': 4, 'COMPLETED': 5},
+            },
+            'capabilities': <String, Object>{},
+          };
+        }),
+      );
+      final data = await repository.loadOverview(
+        department: OperationsWorkbenchDepartment.purchase,
+        keyword: '  轴套  ',
+      );
+      expect(captured.path, '/operations/workbench/purchase/overview');
+      expect(captured.queryParameters, {'keyword': '轴套'});
+      expect(data.items, isEmpty);
+      expect(data.summary.statusCounts['COMPLETED'], 5);
+    },
+  );
+
+  test(
     'warehouse discovery links to the existing draw queue and keeps quantities unknown',
     () {
       final json = <String, dynamic>{

@@ -6,6 +6,78 @@ import 'package:uten_imp/features/department/widgets/uten_department_picker.dart
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 
 void main() {
+  testWidgets(
+    'late initial selection synchronizes after the parent Form build without disturbing another input',
+    (tester) async {
+      final selection = ValueNotifier<List<DeptSelection>>(const []);
+      final text = TextEditingController(text: '输入草稿');
+      final focus = FocusNode();
+      addTearDown(selection.dispose);
+      addTearDown(text.dispose);
+      addTearDown(focus.dispose);
+      var selectedCallbacks = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Form(
+              child: Column(
+                children: [
+                  TextField(controller: text, focusNode: focus),
+                  ValueListenableBuilder<List<DeptSelection>>(
+                    valueListenable: selection,
+                    builder: (_, value, _) => UtenDepartmentPicker(
+                      mode: UtenDepartmentPickerMode.single,
+                      treeOverride: const [],
+                      initialSelection: value,
+                      onChanged: (_) => selectedCallbacks++,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byType(TextField));
+      const composing = TextEditingValue(
+        text: '输入草稿 ',
+        selection: TextSelection.collapsed(offset: 5),
+        composing: TextRange(start: 4, end: 5),
+      );
+      tester.testTextInput.updateEditingValue(composing);
+      await tester.pump();
+      final inputState = tester.state<EditableTextState>(
+        find.byType(EditableText),
+      );
+      selection.value = const [
+        DeptSelection(
+          id: 'department',
+          name: '后到的部门',
+          fullPath: '公司-后到的部门',
+          level: 'DEPARTMENT',
+        ),
+      ];
+      await tester.pumpAndSettle();
+      final formField = tester.state<FormFieldState<List<DeptSelection>>>(
+        find.byType(FormField<List<DeptSelection>>),
+      );
+      expect(formField.value!.single.id, 'department');
+      expect(find.text('公司-后到的部门'), findsOneWidget);
+      expect(
+        tester.state<EditableTextState>(find.byType(EditableText)),
+        same(inputState),
+      );
+      expect(text.value, composing);
+      expect(focus.hasFocus, isTrue);
+      expect(
+        selectedCallbacks,
+        0,
+        reason: 'Source readback is not a user selection command',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('默认人事策略可选管理中心，车间策略排除管理中心', () {
     final tree = _organizationTree();
 

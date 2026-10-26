@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -224,6 +225,82 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 }
 
 void main() {
+  for (final aba in [false, true]) {
+    testWidgets(
+      'late warehouse stash preserves touched input, new rows and session ABA=$aba',
+      (tester) async {
+        final repo = _DelayedStashRepo();
+        final router = await _mount(tester, repo, warehouseId: 'leaf-a');
+        addTearDown(router.dispose);
+        Finder field(String id) => find.byKey(ValueKey('stock-count-qty-$id|'));
+        await tester.enterText(field(_screw), '11');
+        await tester.enterText(field(_nut), '4');
+        Future<void> warehouse(String id) async {
+          tester
+              .widget<UtenDropdownField>(
+                find.byKey(const Key('stock-count-warehouse')),
+              )
+              .onChanged(id);
+          await tester.pumpAndSettle();
+        }
+
+        await warehouse('leaf-b');
+        repo.hold = true;
+        if (!aba) repo.stock['leaf-a'] = [_row(_screw, qty: '10')];
+        await warehouse('leaf-a');
+        expect(repo.held, hasLength(1));
+        final originalController = tester
+            .widget<TextField>(field(_screw))
+            .controller;
+        await tester.enterText(field(_screw), '19');
+        if (aba) {
+          await warehouse('leaf-b');
+          await warehouse('leaf-a');
+          expect(repo.held, hasLength(2));
+          await tester.enterText(field(_screw), '23');
+        } else {
+          await tester.enterText(field(_screw), '');
+          repo.stock['leaf-a'] = [_row(_screw, qty: '10'), _row(_nut)];
+          tester
+              .widget<MasterDataTableView<CountStockRow>>(
+                find.byType(MasterDataTableView<CountStockRow>),
+              )
+              .onPageChange!(1);
+          await tester.pumpAndSettle();
+          await tester.enterText(field(_nut), '9');
+        }
+        final currentController = tester
+            .widget<TextField>(field(_screw))
+            .controller;
+        final newRowController = aba
+            ? null
+            : tester.widget<TextField>(field(_nut)).controller;
+        repo.held.first.complete(
+          _candidatePage([_row(_screw, qty: '10'), _row(_nut)], page: 1),
+        );
+        await tester.pumpAndSettle();
+        if (aba) {
+          expect(currentController, isNot(same(originalController)));
+          expect(currentController!.text, '23');
+          repo.held.last.complete(
+            _candidatePage([_row(_screw, qty: '10'), _row(_nut)], page: 1),
+          );
+          await tester.pumpAndSettle();
+          expect(currentController.text, '23');
+        } else {
+          expect(currentController, same(originalController));
+          expect(currentController!.text, isEmpty);
+          expect(
+            tester.widget<TextField>(field(_nut)).controller,
+            same(newRowController),
+          );
+          expect(newRowController!.text, '9');
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('相关查询切换和清空不丢已填数，换仓复位模式并保持送审身份', (tester) async {
     final repo = _SessionRepo({
       'leaf-a': [_row(_screw, qty: '10')],
@@ -593,6 +670,45 @@ class _DelayedFilterRepo extends _SessionRepo {
     calls++;
     if (calls == 2) return older.future;
     if (calls == 3) return newer.future;
+    return super.candidates(
+      warehouseId: warehouseId,
+      keyword: keyword,
+      categoryId: categoryId,
+      goodsIds: goodsIds,
+      stockedOnly: stockedOnly,
+      sheet: sheet,
+      page: page,
+      size: size,
+      includeRelated: includeRelated,
+    );
+  }
+}
+
+class _DelayedStashRepo extends _SessionRepo {
+  _DelayedStashRepo()
+    : super({
+        'leaf-a': [_row(_screw, qty: '10'), _row(_nut)],
+        'leaf-b': [_row(_nut)],
+      });
+  bool hold = false;
+  final held = <Completer<PagedResult<CountStockRow>>>[];
+  @override
+  Future<PagedResult<CountStockRow>> candidates({
+    required String warehouseId,
+    String? keyword,
+    String? categoryId,
+    List<String> goodsIds = const [],
+    bool stockedOnly = false,
+    bool sheet = false,
+    int page = 1,
+    int size = 50,
+    bool includeRelated = false,
+  }) {
+    if (hold && warehouseId == 'leaf-a' && goodsIds.isNotEmpty) {
+      final gate = Completer<PagedResult<CountStockRow>>();
+      held.add(gate);
+      return gate.future;
+    }
     return super.candidates(
       warehouseId: warehouseId,
       keyword: keyword,

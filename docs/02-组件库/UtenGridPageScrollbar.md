@@ -5,14 +5,9 @@
 
 ## 一、用途
 
-单据编辑页（表头表单 + `UtenEditableGrid` 明细表、整页一条 ListView 滚动）的
-**竖向滚动条门控包装**（2026-09-14 全站滚动条口径）。
+单据编辑页的右缘竖向滚动条包装。2026-10-25 起，只要页面内容超出视口即显示，不再等待明细表头置顶。
 
-明细表未置顶（表头表单还没滚完）时**不显示上下滚动条**；`UtenEditableGrid`
-的 sticky 表头吸附视口顶后（继续滚动在观感上就是表内滚动）才显示——与
-`UtenCollapsingHeaderScrollView` + `MasterDataTableView` 经
-`UtenInnerScrollActiveScope` 的门控口径一致（见
-[UtenCollapsingHeaderScrollView.md](UtenCollapsingHeaderScrollView.md) §五）。
+通过 [UtenScrollbarOwnerScope](UtenScrollBehavior.md) 声明当前控制器的覆盖层所有权，避免自动滚动条重复绘制；独立内层列表继续使用全局自动滚动条。pinned/extraPinned 参数保留调用兼容，不再参与显隐。
 
 共享竖条 `UtenContentScrollbar` 支持按住滑块上下拖动、点击滑块上下的轨道翻页，悬停与拖动时加深提示。命中范围限于右缘活动带，底部悬浮按钮让位区不接管点击；鼠标停在滚动条上仍可使用滚轮。滑块与轨道继续排除底部让位空白。
 

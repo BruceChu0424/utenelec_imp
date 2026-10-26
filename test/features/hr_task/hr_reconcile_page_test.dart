@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_paged_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
@@ -66,6 +68,7 @@ class _FakeRepo extends Fake implements HrReconcileRepository {
   final List<String> fetched = [];
   final List<List<String>> created = [];
   int getPlanCalls = 0;
+  Completer<HrReconcilePlan>? delayedPlan;
   int listCalls = 0;
   final List<int> recordPagesRequested = [];
   final Map<int, HrReconcilePlanSummaryPage> recordPages = {};
@@ -93,6 +96,7 @@ class _FakeRepo extends Fake implements HrReconcileRepository {
   Future<HrReconcilePlan> getPlan(String id) async {
     getPlanCalls++;
     fetched.add(id);
+    if (delayedPlan != null) return delayedPlan!.future;
     if (createdPlan?.id == id) return createdPlan!;
     return _applied ? (planAfterApply ?? plan) : plan;
   }
@@ -513,6 +517,80 @@ Future<FormDraft> _seedUnknown(
 }
 
 void main() {
+  for (final fail in [false, true]) {
+    testWidgets(
+      'refresh retains editor State, focus and composing while writes are gated (error=$fail)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final repo = _FakeRepo(
+          HrReconcilePlan.fromJson(
+            _planJson(
+              rows: [_rowJson(item: _itemJson(tier: 'MANUAL'))],
+            ),
+          ),
+        );
+        await _pump(
+          tester,
+          repo: repo,
+          pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+        );
+        await _typeManual(tester, 1);
+        final input = find.byKey(const ValueKey('hr-reconcile-manual-1'));
+        final editable = find.descendant(
+          of: input,
+          matching: find.byType(EditableText),
+        );
+        final state = tester.state<EditableTextState>(editable);
+        final controller = state.widget.controller;
+        final focus = state.widget.focusNode;
+        const composing = TextEditingValue(
+          text: _kValidId,
+          selection: TextSelection.collapsed(offset: 18),
+          composing: TextRange(start: 17, end: 18),
+        );
+        tester.testTextInput.updateEditingValue(composing);
+        _table(tester).onSelectedIdsChanged!({'emp-1'});
+        await tester.pumpAndSettle();
+        final apply = find.byKey(const Key('hr-reconcile-apply'));
+        final beforeRefreshAction = tester.widget<UtenButton>(apply).onPressed!;
+        repo.delayedPlan = Completer<HrReconcilePlan>();
+        final refresh = tester
+            .widget<UtenRefreshButton>(find.byType(UtenRefreshButton))
+            .onRefresh();
+        await tester.pump();
+        expect(tester.state<EditableTextState>(editable), same(state));
+        expect(focus.hasFocus, isTrue);
+        expect(controller.value, composing);
+        expect(tester.widget<TextField>(input).readOnly, isTrue);
+        expect(tester.widget<UtenButton>(apply).onPressed, isNull);
+        await beforeRefreshAction();
+        expect(repo.applies, isEmpty);
+        if (fail) {
+          repo.delayedPlan!.completeError(ApiException('TEMPORARY', '网络暂不可用'));
+        } else {
+          repo.delayedPlan!.complete(repo.plan);
+        }
+        await refresh;
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(editable), same(state));
+        expect(tester.widget<TextField>(input).controller, same(controller));
+        expect(focus.hasFocus, isTrue);
+        expect(controller.value, composing);
+        expect(tester.widget<TextField>(input).readOnly, fail);
+        expect(tester.widget<UtenButton>(apply).onPressed == null, fail);
+        if (fail) {
+          expect(
+            find.byKey(const Key('hr-reconcile-retained-read-error')),
+            findsOneWidget,
+          );
+        }
+        expect(repo.applies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final systemFactor in [1.0, 2.0]) {
     testWidgets('closed reconcile summary at 200% keeps counts $systemFactor', (
       tester,

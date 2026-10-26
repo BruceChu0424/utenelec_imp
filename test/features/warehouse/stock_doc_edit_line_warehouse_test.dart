@@ -5,6 +5,8 @@
 //  3. 库位号列可编辑, 选品/改仓后按 仓×货品 的记忆建议只预填空格;
 //  4. 保存 payload: 明细带 warehouseId/place, 表头仓 = 首条明细行仓;
 //  5. 盘点(CHECK)仍按表头仓, 表格没有行内仓库列。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +37,94 @@ const _pickedGoods = [
 ];
 
 void main() {
+  testWidgets(
+    'place suggestions read warehouse groups concurrently and reject stale row context',
+    (tester) async {
+      tester.view.physicalSize = const Size(2000, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _PendingSuggestionsApi();
+      final router = GoRouter(
+        initialLocation: '/edit',
+        routes: [
+          GoRoute(
+            path: '/edit',
+            builder: (_, _) =>
+                const StockDocEditPage(docType: StockDocType.otherOut),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.stockDocView,
+              Perm.stockDocEdit,
+            }),
+            stockGridGoodsPickerProvider(StockDocType.otherOut).overrideWith(
+              (ref) =>
+                  (context, ref) async => _pickedGoods,
+            ),
+            ...warehouseWeightTestOverrides(api),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final gridFinder = find.byType(UtenEditableGrid<StockGridRow>);
+      final grid = tester
+          .widget<UtenEditableGrid<StockGridRow>>(gridFinder)
+          .controller;
+      final blank = grid.rows.single;
+      await tester.tap(
+        find.descendant(
+          of: gridFinder,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is RequiredCellFrame &&
+                identical(widget.listenable, blank.goodsNotifier),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      tester
+          .widget<WarehouseHierarchyDropdown>(
+            find.byType(WarehouseHierarchyDropdown).at(0),
+          )
+          .onChanged(_whMain);
+      await tester.pumpAndSettle();
+      expect(api.pending, hasLength(1));
+      tester
+          .widget<WarehouseHierarchyDropdown>(
+            find.byType(WarehouseHierarchyDropdown).at(1),
+          )
+          .onChanged(_whSecond);
+      await tester.pumpAndSettle();
+      expect(
+        api.pending,
+        hasLength(3),
+        reason:
+            'the second warehouse read starts before the first group finishes',
+      );
+      final rowA = grid.rows.first;
+      final rowB = grid.rows.last;
+      // A later request owns both groups. The first response must not fill its old snapshot.
+      api.complete(0, 'obsolete');
+      await tester.pumpAndSettle();
+      expect(rowA.place.text, isEmpty);
+      rowB.place.text = 'manual';
+      api.complete(1, 'current-a');
+      api.complete(2, 'current-b');
+      await tester.pumpAndSettle();
+      expect(rowA.place.text, 'current-a');
+      expect(rowB.place.text, 'manual');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('其它出库: 多选逐行追加, 行内选仓跨仓, 库位按仓预填, payload 带行仓', (tester) async {
     tester.view.physicalSize = const Size(2000, 1400);
     tester.view.devicePixelRatio = 1;
@@ -376,5 +466,42 @@ class _Api extends ApiClient {
       };
     }
     return const {};
+  }
+}
+
+class _PendingSuggestionsApi extends _Api {
+  final pending = <(Map<String, dynamic>, Completer<Map<String, dynamic>>)>[];
+
+  void complete(int index, String place) {
+    final (body, completion) = pending[index];
+    final items = body['items'] as List;
+    completion.complete({
+      'items': [
+        for (final item in items)
+          {
+            'goodsId': (item as Map)['goodsId'],
+            'colorId': item['colorId'],
+            'place': place,
+            'source': 'WAREHOUSE_PREFERENCE',
+          },
+      ],
+    });
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) {
+    if (path != ApiEndpoints.warehousePlaceSuggestions) {
+      return super.post(path, body: body, headers: headers, query: query);
+    }
+    final snapshot = Map<String, dynamic>.from(body! as Map);
+    suggestionBodies.add(snapshot);
+    final completion = Completer<Map<String, dynamic>>();
+    pending.add((snapshot, completion));
+    return completion.future;
   }
 }

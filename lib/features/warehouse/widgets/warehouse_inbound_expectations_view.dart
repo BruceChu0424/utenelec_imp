@@ -39,6 +39,7 @@ import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -128,11 +129,13 @@ class _WarehouseInboundExpectationsViewState
     _orderType = widget.fixedOrderType;
     _keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ownerCurrent = captureReadOwner(ref);
       // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
       ref
           .read(masterNameServiceProvider)
-          .ensureLoaded()
-          .then((_) => mounted ? setState(() {}) : null);
+          .ensureSuppliersLoaded()
+          .then((_) => ownerCurrent() ? setState(() {}) : null);
       if (mounted) trackRefresh(_load(1));
     });
   }

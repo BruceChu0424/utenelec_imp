@@ -157,9 +157,46 @@ Map<String, dynamic> bomItemTestJson(GoodsBomItem item) => {
   'actualSampleCount': item.actual.sampleCount,
 };
 
+/// Enter the session without activating unrelated inputs. Drag, hierarchy and
+/// selection fixtures must exercise the same previews as the real page.
 Future<void> enterBomEdit(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('goods-bom-edit-mode')).hitTestable());
   await tester.pumpAndSettle();
+}
+
+/// Existing workflow tests address the actual input by its stable field key.
+/// Activate that field alone; pointer/keyboard activation is tested separately.
+Future<Finder> activateBomEditor(WidgetTester tester, String editorKey) async {
+  final String field;
+  final String occurrence;
+  if (editorKey.startsWith('goods-bom-replace-')) {
+    field = 'name';
+    occurrence = editorKey.substring('goods-bom-replace-'.length);
+  } else {
+    final prefix = editorKey.startsWith('goods-bom-master-')
+        ? 'goods-bom-master-'
+        : 'goods-bom-inline-';
+    final identity = editorKey.substring(prefix.length);
+    final separator = identity.indexOf('-');
+    field = identity.substring(0, separator);
+    occurrence = identity.substring(separator + 1);
+  }
+  final preview = find.byKey(ValueKey('goods-bom-activate-$field-$occurrence'));
+  if (preview.evaluate().isNotEmpty) {
+    // A synthetic activation must not autofocus an off-screen test field and
+    // scroll all subsequent drag/drop coordinates away from their viewport.
+    final scope = FocusScope.of(tester.element(preview));
+    final couldFocus = scope.canRequestFocus;
+    scope.canRequestFocus = false;
+    try {
+      tester.widget<InkWell>(preview).onTap?.call();
+      await tester.pumpAndSettle();
+    } finally {
+      scope.canRequestFocus = couldFocus;
+    }
+    await tester.pump();
+  }
+  return find.byKey(ValueKey(editorKey));
 }
 
 Future<void> saveBomEdit(WidgetTester tester) async {

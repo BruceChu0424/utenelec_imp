@@ -11100,7 +11100,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomEditMode => '编辑模式';
 
   @override
-  String get bomEditExitAndSave => '退出并保存';
+  String get bomEditExitAndSave => '退出编辑模式';
 
   @override
   String get bomEditAuditMode => '审计模式';
@@ -11109,7 +11109,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get bomEditExitAudit => '退出审计';
 
   @override
-  String get bomEditSaveTitle => '保存组装信息并退出';
+  String get bomEditSaveTitle => '保存或丢弃本次修改';
 
   @override
   String bomEditSaveSummary(int operations, int parents) {
@@ -11197,26 +11197,26 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String bomEditPasteStaged(int count) {
-    return '已暂存粘贴 $count 个组件，退出并保存后生效';
+    return '已暂存粘贴 $count 个组件，确认保存后生效';
   }
 
   @override
   String bomEditDeleteStaged(int count) {
-    return '已暂存删除 $count 个组件，退出并保存后生效';
+    return '已暂存删除 $count 个组件，确认保存后生效';
   }
 
   @override
   String bomEditMoveStaged(int count) {
-    return '已暂存移动 $count 个组件，退出并保存后生效';
+    return '已暂存移动 $count 个组件，确认保存后生效';
   }
 
   @override
   String bomEditAddStaged(int count) {
-    return '已暂存添加 $count 个组件，退出并保存后生效';
+    return '已暂存添加 $count 个组件，确认保存后生效';
   }
 
   @override
-  String get bomEditComponentStaged => '组件修改已暂存，退出并保存后生效';
+  String get bomEditComponentStaged => '组件修改已暂存，确认保存后生效';
 
   @override
   String bomEditReviewWarnings(String message, String warnings) {

@@ -24,6 +24,14 @@ abstract interface class OperationsWorkbenchGateway {
   });
 }
 
+/// Entry categories need counts, not historical rows or table filter buckets.
+abstract interface class OperationsWorkbenchOverviewGateway {
+  Future<OperationsWorkbenchData> loadOverview({
+    required OperationsWorkbenchDepartment department,
+    String? keyword,
+  });
+}
+
 /// 委外任务中心缺 BOM 的申请行「通知研发完善」(ADR-143 §二.3)。
 ///
 /// 与列表读取分开一个接口：列表的测试替身不必跟着实现写动作。
@@ -34,10 +42,28 @@ abstract interface class SubcontractBomGapGateway {
 }
 
 class OperationsWorkbenchRepository
-    implements OperationsWorkbenchGateway, SubcontractBomGapGateway {
+    implements
+        OperationsWorkbenchGateway,
+        OperationsWorkbenchOverviewGateway,
+        SubcontractBomGapGateway {
   const OperationsWorkbenchRepository(this.api);
 
   final ApiClient api;
+
+  @override
+  Future<OperationsWorkbenchData> loadOverview({
+    required OperationsWorkbenchDepartment department,
+    String? keyword,
+  }) async => OperationsWorkbenchData.fromJson(
+    await api.get(
+      '/operations/workbench/${department.apiValue}/overview',
+      query: {
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+      },
+    ),
+    department,
+  );
 
   @override
   Future<OperationsWorkbenchData> load({

@@ -591,6 +591,45 @@ void main() {
     expect(find.byKey(const ValueKey('ai-usage-limit-save')), findsNothing);
   });
 
+  for (final conflict in [false, true]) {
+    testWidgets(
+      'known absent limits skip detail reads and preserve first-create CAS (conflict=$conflict)',
+      (tester) async {
+        final json = _dashboardJson();
+        ((json['people'] as List).first as Map)['rowVersion'] = -1;
+        final repo = _Repo(dashboard: AiUsageDashboard.fromJson(json));
+        if (conflict) {
+          repo.saveError = ApiException('CONFLICT', '并发配置已存在', httpStatus: 409);
+        }
+        await _pump(tester, const AdminAiUsagePage(), repo: repo);
+        await _tap(tester, 'ai-usage-limit-$_zhangId');
+        expect(repo.personCalls, isEmpty);
+        expect(
+          find.byKey(const ValueKey('ai-usage-limit-save')),
+          findsOneWidget,
+        );
+        await _enter(tester, 'ai-usage-limit-tokens', '200000');
+        await _tap(tester, 'ai-usage-limit-save');
+        expect(repo.saves.single['rowVersion'], -1);
+        expect(repo.saves.single['dailyTokenLimit'], 200000);
+        expect(repo.personCalls, isEmpty);
+        if (conflict) {
+          expect(find.text(_zh.aiUsageConflict), findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('ai-usage-limit-save')),
+            findsOneWidget,
+          );
+        } else {
+          expect(
+            find.byKey(const ValueKey('ai-usage-limit-save')),
+            findsNothing,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('person page shows gauge, distributions and recent uses', (
     tester,
   ) async {

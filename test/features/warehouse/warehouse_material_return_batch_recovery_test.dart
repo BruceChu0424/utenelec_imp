@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -28,6 +29,8 @@ class _Names extends MasterNameService {
   _Names() : super(ApiClient(Dio()));
   @override
   Future<void> ensureLoaded() async {}
+  @override
+  Future<void> ensureWarehousesLoaded() async {}
   @override
   List<WarehouseDictEntry> get warehouseHierarchy => const [
     WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
@@ -76,9 +79,11 @@ class _Repo extends StockDocRepository {
   final missing = <String>{};
   final statuses = <String, int>{};
   final calls = <Map<String, dynamic>>[];
+  final detailReads = <String>[];
   bool lose = true;
   @override
   Future<StockDocDetail> detail(String id) async {
+    detailReads.add(id);
     if (missing.contains(id)) {
       throw ApiException('NOT_FOUND', '原单已删除', httpStatus: 404);
     }
@@ -132,6 +137,7 @@ Future<ProviderContainer> _pump(
   _Repo repo,
   MemoryFormDraftStorage storage, {
   String? draftId,
+  MasterNameService? names,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -178,7 +184,7 @@ Future<ProviderContainer> _pump(
           Perm.stockDocApprove,
         }),
         isSuperAdminProvider.overrideWithValue(false),
-        masterNameServiceProvider.overrideWithValue(_Names()),
+        masterNameServiceProvider.overrideWithValue(names ?? _Names()),
         stockDocRepositoryProvider(StockDocType.wdraw).overrideWithValue(repo),
         formDraftStorageProvider.overrideWithValue(storage),
       ],
@@ -197,6 +203,42 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  for (final manualClear in [false, true]) {
+    testWidgets(
+      'late return warehouse options publish once and protect manual clear=$manualClear',
+      (tester) async {
+        final names = _DelayedWarehouseNames(cached: manualClear);
+        final repo = _Repo();
+        await _pump(tester, repo, MemoryFormDraftStorage(), names: names);
+        final fields = find.byType(UtenDropdownField);
+        expect(fields, findsNWidgets(2));
+        expect(names.calls, 1);
+        if (manualClear) {
+          tester.widget<UtenDropdownField>(fields.first).onChanged('alternate');
+          await tester.pump();
+          tester.widget<UtenDropdownField>(fields.first).onChanged(null);
+          await tester.pump();
+        } else {
+          expect(tester.widget<UtenDropdownField>(fields.first).value, isNull);
+          expect(tester.widget<UtenDropdownField>(fields.first).items, isEmpty);
+        }
+        final reads = repo.detailReads.length;
+        names.complete();
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<UtenDropdownField>(fields.first).value,
+          manualClear ? null : 'leaf',
+        );
+        expect(
+          tester.widget<UtenDropdownField>(fields.first).items,
+          isNotEmpty,
+        );
+        expect(repo.detailReads, hasLength(reads));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'return binds the original intent before its draft write awaits',
     (tester) async {
@@ -317,4 +359,36 @@ void main() {
     expect(find.textContaining('原单不可读取'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _DelayedWarehouseNames extends _Names {
+  _DelayedWarehouseNames({required this.cached});
+  final bool cached;
+  bool ready = false;
+  int calls = 0;
+  final pending = Completer<void>();
+  @override
+  Future<void> ensureWarehousesLoaded() {
+    calls++;
+    return pending.future;
+  }
+
+  void complete() {
+    ready = true;
+    pending.complete();
+  }
+
+  @override
+  List<WarehouseDictEntry> get warehouseHierarchy => !cached && !ready
+      ? []
+      : [
+          ...super.warehouseHierarchy,
+          const WarehouseDictEntry(
+            id: 'alternate',
+            name: '另一实际仓',
+            parentId: 'main',
+            status: '使用',
+            selectableForNew: true,
+          ),
+        ];
 }

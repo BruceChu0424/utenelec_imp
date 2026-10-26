@@ -6,6 +6,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -13,8 +15,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../repositories/master_record_history_repository.dart';
 import 'master_inline_edit.dart';
+import 'master_record_history_labels.dart';
 
 class MasterRecordRevisionBody extends ConsumerStatefulWidget {
   const MasterRecordRevisionBody({
@@ -43,6 +47,12 @@ class MasterRecordRevisionBodyState
   bool _mutating = false;
   bool _confirming = false;
   bool _before = true;
+  final _scroll = ScrollController();
+  final _actionsKey = GlobalKey();
+  double _actionClearance =
+      UtenFloatingActionGroup.controlHeight + UtenSpacing.s16;
+  bool _measuringActions = false;
+  String _keyword = '';
   int _epoch = 0;
   bool get isBusy => _loading || _mutating || _confirming;
   String get _scope => '${widget.entityType}:${widget.id}';
@@ -96,8 +106,38 @@ class MasterRecordRevisionBodyState
       _loading = false;
       _mutating = false;
       _confirming = false;
+      _keyword = '';
     });
     _notifyBusy();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _search(String value) {
+    if (_keyword == value) return;
+    setState(() => _keyword = value);
+    // Results belong to this complete revision snapshot. Filtering never
+    // reloads the revision or changes the scope of either restoration action.
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  void _measureActionsAfterLayout() {
+    if (_measuringActions) return;
+    _measuringActions = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _measuringActions = false;
+      if (!mounted) return;
+      final box = _actionsKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached || !box.hasSize) return;
+      final clearance = box.size.height + UtenSpacing.s16;
+      if ((_actionClearance - clearance).abs() > 0.5) {
+        setState(() => _actionClearance = clearance);
+      }
+    });
   }
 
   @override
@@ -248,6 +288,7 @@ class MasterRecordRevisionBodyState
   @override
   Widget build(BuildContext context) {
     final revision = _revision;
+    _measureActionsAfterLayout();
     return PopScope(
       canPop: !_mutating && !_confirming,
       child: Stack(
@@ -262,44 +303,53 @@ class MasterRecordRevisionBodyState
           if (revision != null)
             Align(
               alignment: Alignment.bottomRight,
-              child: UtenFloatingActionGroup(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    size: UtenButtonSize.large,
-                    isLoading: _mutating && !_before,
-                    onPressed:
-                        !isBusy &&
-                            nativeReadCanWrite &&
-                            revision.canRestoreAfter
-                        ? () => _restore(revision, false)
-                        : null,
-                    child: Text(
-                      _text(
-                        '恢复到此次修改后',
-                        'Restore after this change',
-                        '이 변경 후로 복원',
+              child: NotificationListener<SizeChangedLayoutNotification>(
+                onNotification: (_) {
+                  _measureActionsAfterLayout();
+                  return true;
+                },
+                child: SizeChangedLayoutNotifier(
+                  child: UtenFloatingActionGroup(
+                    key: _actionsKey,
+                    children: [
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.large,
+                        isLoading: _mutating && !_before,
+                        onPressed:
+                            !isBusy &&
+                                nativeReadCanWrite &&
+                                revision.canRestoreAfter
+                            ? () => _restore(revision, false)
+                            : null,
+                        child: Text(
+                          _text(
+                            '恢复到此次修改后',
+                            'Restore after this change',
+                            '이 변경 후로 복원',
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  UtenButton(
-                    size: UtenButtonSize.large,
-                    isLoading: _mutating && _before,
-                    onPressed:
-                        !isBusy &&
-                            nativeReadCanWrite &&
-                            revision.canRestoreBefore
-                        ? () => _restore(revision, true)
-                        : null,
-                    child: Text(
-                      _text(
-                        '恢复到此次修改前',
-                        'Restore before this change',
-                        '이 변경 전으로 복원',
+                      UtenButton(
+                        size: UtenButtonSize.large,
+                        isLoading: _mutating && _before,
+                        onPressed:
+                            !isBusy &&
+                                nativeReadCanWrite &&
+                                revision.canRestoreBefore
+                            ? () => _restore(revision, true)
+                            : null,
+                        child: Text(
+                          _text(
+                            '恢复到此次修改前',
+                            'Restore before this change',
+                            '이 변경 전으로 복원',
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           if (_mutating)
@@ -318,143 +368,377 @@ class MasterRecordRevisionBodyState
   Widget _revisionContent(
     BuildContext context,
     MasterRecordRevision? revision,
-  ) => CustomScrollView(
-    slivers: [
-      SliverPadding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        sliver: SliverToBoxAdapter(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_error != null) ...[
-                UtenInlineNotice(
-                  level: UtenInlineNoticeLevel.error,
-                  message: _error,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-              if (_message != null) ...[
-                UtenInlineNotice(message: _message),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-              if (revision != null) ...[
-                Text(
-                  revision.recordLabel,
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-                UtenFormGrid(
-                  columns: 4,
-                  maxColumns: 4,
-                  minFieldWidth: 260,
-                  children: [
-                    _metadata(_text('编号', 'Code', '번호'), revision.recordCode),
-                    _metadata(
-                      _text('操作人', 'Operator', '작업자'),
-                      revision.actorName,
+  ) {
+    final theme = Theme.of(context);
+    final clearance = revision == null ? 0.0 : _actionClearance;
+    final changes = revision?.changes
+        .where(
+          (change) => matchesKeywordSearch([
+            change.label,
+            _displayValue(change.before),
+            _displayValue(change.after),
+          ], _keyword),
+        )
+        .toList(growable: false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Both columns need readable values at large text sizes. The compact
+        // layout retains the complete values instead of truncating snapshots.
+        final sideBySide =
+            constraints.maxWidth >=
+            640 * (MediaQuery.textScalerOf(context).scale(14) / 14);
+        return Stack(
+          children: [
+            ScrollConfiguration(
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
+              child: CustomScrollView(
+                key: const Key('master-revision-scroll'),
+                controller: _scroll,
+                primary: false,
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s16,
+                      UtenSpacing.s12,
+                      UtenSpacing.s24,
+                      UtenSpacing.s12,
                     ),
-                    _metadata(
-                      _text('操作时间', 'Time', '시간'),
-                      ChinaDateTime.formatIsoInstant(revision.recordedAt),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (_error != null) ...[
+                            UtenInlineNotice(
+                              level: UtenInlineNoticeLevel.error,
+                              message: _error,
+                            ),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (_message != null) ...[
+                            UtenInlineNotice(message: _message),
+                            const SizedBox(height: UtenSpacing.s12),
+                          ],
+                          if (revision != null) ...[
+                            Wrap(
+                              spacing: UtenSpacing.s12,
+                              runSpacing: UtenSpacing.s8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                SelectableText(
+                                  revision.recordLabel,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: UtenSpacing.s8,
+                                    vertical: UtenSpacing.s4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: theme.colorScheme.primaryContainer,
+                                    borderRadius: UtenRadius.smAll,
+                                  ),
+                                  child: Text(
+                                    masterHistoryActionLabel(
+                                      context,
+                                      revision.action,
+                                    ),
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: theme
+                                              .colorScheme
+                                              .onPrimaryContainer,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (revision.summary.isNotEmpty) ...[
+                              const SizedBox(height: UtenSpacing.s8),
+                              SelectableText(
+                                revision.summary,
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                            ],
+                            const SizedBox(height: UtenSpacing.s12),
+                            UtenFormGrid(
+                              columns: 3,
+                              maxColumns: 3,
+                              minFieldWidth: 200,
+                              runSpacing: UtenSpacing.s8,
+                              children: [
+                                _metadata(
+                                  _text('编号', 'Code', '번호'),
+                                  revision.recordCode,
+                                ),
+                                _metadata(
+                                  _text('操作人', 'Operator', '작업자'),
+                                  revision.actorName,
+                                ),
+                                _metadata(
+                                  _text('操作时间', 'Time', '시간'),
+                                  ChinaDateTime.formatIsoInstant(
+                                    revision.recordedAt,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (revision.blockedReason != null) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              UtenInlineNotice(
+                                key: const Key(
+                                  'master-revision-blocked-reason',
+                                ),
+                                message: revision.blockedReason,
+                              ),
+                            ],
+                            const SizedBox(height: UtenSpacing.s20),
+                            _comparisonToolbar(revision, changes!.length),
+                            const SizedBox(height: UtenSpacing.s12),
+                            if (changes.isEmpty)
+                              UtenInlineNotice(
+                                key: const Key('master-revision-empty-changes'),
+                                message: revision.changes.isEmpty
+                                    ? _text(
+                                        '此版本没有当前可见的字段差异。',
+                                        'There are no visible field differences in this revision.',
+                                        '이 버전에서 볼 수 있는 필드 차이가 없습니다.',
+                                      )
+                                    : _text(
+                                        '没有匹配的变更，请更换关键词或清除搜索。',
+                                        'No matching changes. Try another keyword or clear the search.',
+                                        '일치하는 변경 사항이 없습니다. 검색어를 바꾸거나 지우세요.',
+                                      ),
+                              ),
+                            if (changes.isNotEmpty && sideBySide)
+                              _comparisonHeader(),
+                          ],
+                        ],
+                      ),
                     ),
-                    _metadata(_text('操作摘要', 'Summary', '요약'), revision.summary),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s24),
-                if (revision.blockedReason != null) ...[
-                  UtenInlineNotice(
-                    key: const Key('master-revision-blocked-reason'),
-                    message: revision.blockedReason,
                   ),
-                  const SizedBox(height: UtenSpacing.s16),
+                  if (changes != null)
+                    SliverPadding(
+                      padding: const EdgeInsets.only(
+                        left: UtenSpacing.s16,
+                        right: UtenSpacing.s24,
+                      ),
+                      sliver: SliverList.builder(
+                        itemCount: changes.length,
+                        itemBuilder: (_, index) =>
+                            _change(changes[index], sideBySide),
+                      ),
+                    ),
+                  SliverToBoxAdapter(child: SizedBox(height: clearance)),
                 ],
-                Text(
-                  _text('变更对照', 'Changes', '변경 비교'),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  _text(
-                    '涉及 ${revision.affectedCount} 条资料与关联记录',
-                    '${revision.affectedCount} records and related rows',
-                    '자료 및 관련 행 ${revision.affectedCount}개',
-                  ),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                if (revision.changes.isEmpty)
-                  UtenInlineNotice(
-                    message: _text(
-                      '此版本没有当前可见的字段差异。',
-                      'There are no visible field differences in this revision.',
-                      '이 버전에서 볼 수 있는 필드 차이가 없습니다.',
-                    ),
-                  ),
-              ],
-            ],
-          ),
-        ),
-      ),
-      if (revision != null)
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          sliver: SliverList.builder(
-            itemCount: revision.changes.length,
-            itemBuilder: (_, index) => _change(revision.changes[index]),
-          ),
-        ),
-      const SliverToBoxAdapter(
-        child: SizedBox(height: UtenFloatingActionGroup.scrollClearance),
-      ),
-    ],
-  );
+              ),
+            ),
+            Positioned.fill(
+              child: UtenContentScrollbar(
+                key: const Key('master-revision-scrollbar'),
+                controller: _scroll,
+                bottomInset: clearance,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-  Widget _metadata(String label, String value) => Column(
+  Widget _comparisonToolbar(MasterRecordRevision revision, int shown) {
+    final theme = Theme.of(context);
+    final summary = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              _text('变更对照', 'Changes', '변경 비교'),
+              style: theme.textTheme.titleMedium,
+            ),
+            Text(
+              _keyword.trim().isEmpty
+                  ? _text(
+                      '${revision.changes.length} 项',
+                      '${revision.changes.length} fields',
+                      '${revision.changes.length}개 필드',
+                    )
+                  : _text(
+                      '$shown / ${revision.changes.length} 项',
+                      '$shown / ${revision.changes.length} fields',
+                      '$shown / ${revision.changes.length}개 필드',
+                    ),
+              key: const Key('master-revision-change-count'),
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: UtenSpacing.s4),
+        Text(
+          _text(
+            '涉及 ${revision.affectedCount} 条资料与关联记录',
+            '${revision.affectedCount} records and related rows',
+            '자료 및 관련 행 ${revision.affectedCount}개',
+          ),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+    final search = UtenSearchBar(
+      key: const Key('master-revision-search'),
+      hint: _text(
+        '搜索字段、修改前或修改后',
+        'Search field, before or after',
+        '필드, 변경 전후 값 검색',
+      ),
+      initialValue: _keyword,
+      onChanged: _search,
+      onSubmitted: _search,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => constraints.maxWidth < 720
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                summary,
+                const SizedBox(height: UtenSpacing.s12),
+                search,
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: summary),
+                const SizedBox(width: UtenSpacing.s16),
+                SizedBox(width: constraints.maxWidth * 0.38, child: search),
+              ],
+            ),
+    );
+  }
+
+  String _displayValue(String value) =>
+      value.isEmpty ? _text('未设置', 'Not set', '미설정') : value;
+
+  Widget _comparisonHeader() {
+    final theme = Theme.of(context);
+    return Container(
+      key: const Key('master-revision-comparison-header'),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: UtenRadius.smAll,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s8,
+      ),
+      child: DefaultTextStyle(
+        style: theme.textTheme.labelMedium!,
+        child: Row(
+          children: [
+            Expanded(flex: 2, child: Text(_text('字段', 'Field', '필드'))),
+            Expanded(flex: 4, child: Text(_text('修改前', 'Before', '변경 전'))),
+            const SizedBox(width: UtenSpacing.s16),
+            Expanded(flex: 4, child: Text(_text('修改后', 'After', '변경 후'))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metadata(String label, String value) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label, style: Theme.of(context).textTheme.labelMedium),
-      const SizedBox(height: UtenSpacing.s4),
-      SelectableText(value.isEmpty ? '—' : value),
+      Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(width: UtenSpacing.s8),
+      Expanded(
+        child: SelectableText(
+          value.isEmpty ? '—' : value,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ),
     ],
   );
-  Widget _change(MasterRecordChange change) {
-    final theme = Theme.of(context), empty = _text('未设置', 'Not set', '미설정');
+  Widget _change(MasterRecordChange change, bool sideBySide) {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
+      key: ValueKey(change),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s12,
+        vertical: UtenSpacing.s8,
+      ),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: theme.colorScheme.outlineVariant),
         ),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
+      child: Builder(
+        builder: (context) {
           final label = Text(change.label, style: theme.textTheme.labelLarge);
           final before = SelectableText(
-            '${_text('修改前', 'Before', '변경 전')}\n${change.before.isEmpty ? empty : change.before}',
+            _displayValue(change.before),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           );
-          final after = SelectableText(
-            '${_text('修改后', 'After', '변경 후')}\n${change.after.isEmpty ? empty : change.after}',
-            style: TextStyle(color: theme.colorScheme.primary),
+          final after = Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s8,
+              vertical: UtenSpacing.s4,
+            ),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withValues(alpha: 0.06),
+              borderRadius: UtenRadius.xsAll,
+            ),
+            child: SelectableText(
+              _displayValue(change.after),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           );
-          if (constraints.maxWidth < 560) {
+          if (!sideBySide) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 label,
                 const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  _text('修改前', 'Before', '변경 전'),
+                  style: theme.textTheme.labelSmall,
+                ),
                 before,
                 const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  _text('修改后', 'After', '변경 후'),
+                  style: theme.textTheme.labelSmall,
+                ),
                 after,
               ],
             );
           }
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 160, child: label),
-              Expanded(child: before),
+              Expanded(flex: 2, child: label),
+              Expanded(flex: 4, child: before),
               const SizedBox(width: UtenSpacing.s16),
-              Expanded(child: after),
+              Expanded(flex: 4, child: after),
             ],
           );
         },

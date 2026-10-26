@@ -4,7 +4,7 @@
 // UtenFilterToolbar 阶段行（无「全部」段；终态「已完成/已领取」不占段，
 // 归入末尾「历史记录」段时间门控浏览）；异常通过现有表头筛选，专用 exception
 // 参数下推服务端，清除时继续当前主阶段。异常桶来自部门全量 exceptionOptions，
-// 不依赖当前页。主阶段保留后端全量计数徽章（进页面只拉 size=1 概览）。
+// 不依赖当前页。主阶段保留后端全量计数徽章(进页面只读取聚合概览)。
 // 表格多选 + 右下悬浮「生成采购订货单」批量链路保持不变。
 //
 // ADR-100(2026-09-21 用户口径)：采购侧照抄委外任务中心已落地的范式
@@ -18,6 +18,8 @@
 // 批量导出所选任务关联的采购订货单 PDF（与详情页「打印单据」同一份文件），
 // 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，仅财务已通过的
 // 订货单可勾选，导出前由采购侧统一二次确认。「申请待分解」段的批量下单不变。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
@@ -293,11 +295,13 @@ class _OperationsWorkbenchPageState
   /// 预热仓库字典（「主仓 - 子仓」组合名）。任何失败——含测试环境没有注入
   /// api client、离线——都就地吞掉：仓库列回退行内叶仓名，不阻断任务加载。
   Future<void> _warmWarehouseNames() async {
-    final requestId = _requestId;
+    final readerGeneration = _readerGeneration;
     try {
       final names = ref.read(masterNameServiceProvider);
       await names.ensureWarehousesLoaded();
-      if (mounted && requestId == _requestId) _masterNames = names;
+      if (mounted && readerGeneration == _readerGeneration) {
+        setState(() => _masterNames = names);
+      }
     } catch (_) {}
   }
 
@@ -374,7 +378,7 @@ class _OperationsWorkbenchPageState
         if (!identical(previous, next)) _readerChanged();
       });
     }
-    // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章。
+    // 默认不选阶段：只取分类概览，不读取历史行和全部表头筛选桶。
     Future<void>.microtask(() => _load(page: 1));
   }
 
@@ -494,25 +498,33 @@ class _OperationsWorkbenchPageState
       // 同源）：与任务数据并行预热（字典自带缓存，重复加载不重复请求）。预热
       // 在自己的 Future 里吞掉一切错误——拉不到（离线/测试环境未注入 api）只是
       // 仓库列回退行内叶仓名，绝不能把任务列表拖成加载失败。
-      final warehouseNames = _warmWarehouseNames();
-      Future<OperationsWorkbenchData> fetchPage(int requestedPage) =>
-          _repository.load(
-            department: widget.department,
-            page: requestedPage,
-            // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
-            size: _shouldLoad && !draft ? size : 1,
-            keyword: _keyword,
-            status: seg == null || seg.history || draft ? null : seg.code,
-            exception: seg == null || seg.history ? null : _exception,
-            dateFrom: range == null
-                ? null
-                : ChinaDateTime.formatDate(range.start),
-            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-            // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
-            sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
-            order: _sortAscending ? 'asc' : 'desc',
-            columnFilters: _columnFilters,
-          );
+      if (_shouldLoad && !draft) unawaited(_warmWarehouseNames());
+      final repository = _repository;
+      Future<OperationsWorkbenchData> fetchPage(int requestedPage) {
+        if ((!_shouldLoad || draft) &&
+            repository is OperationsWorkbenchOverviewGateway) {
+          return (repository as OperationsWorkbenchOverviewGateway)
+              .loadOverview(department: widget.department, keyword: _keyword);
+        }
+        return repository.load(
+          department: widget.department,
+          page: requestedPage,
+          // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
+          size: _shouldLoad && !draft ? size : 1,
+          keyword: _keyword,
+          status: seg == null || seg.history || draft ? null : seg.code,
+          exception: seg == null || seg.history ? null : _exception,
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
+          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
+          sort: _sortColumn == null ? null : _serverKeyByColumn[_sortColumn],
+          order: _sortAscending ? 'asc' : 'desc',
+          columnFilters: _columnFilters,
+        );
+      }
+
       final requestedPage = page ?? _page;
       final pages = _backgroundRefresh && _retainedPages.isNotEmpty
           ? _retainedPages.toList()
@@ -539,7 +551,6 @@ class _OperationsWorkbenchPageState
         if (!current()) return;
       }
       final next = window[targetPage]!;
-      await warehouseNames;
       if (!mounted ||
           requestId != _requestId ||
           !mapEquals(query, _queryIdentity)) {

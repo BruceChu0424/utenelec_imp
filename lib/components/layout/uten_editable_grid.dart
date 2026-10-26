@@ -487,6 +487,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   final _GridSignal _rowsSignal = _GridSignal();
   final _GridSignal _selectionSignal = _GridSignal();
+  final _GridSignal _draftSignal = _GridSignal();
   int _rowsRevision = 0;
 
   /// 行集变化(增删/替换/换行)通知：表体与自动加宽只订阅它。
@@ -494,6 +495,17 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   /// 选中集变化通知：每行的勾选框/选中底色与表头全选格单独订阅它。
   Listenable get selectionListenable => _selectionSignal;
+
+  /// Row, platform-field and explicit business-change notifications for drafts.
+  /// Selection and copy-buffer changes do not change the document. Native row
+  /// input controllers remain independently supplied by formDraftListenables.
+  Listenable get draftListenable => _draftSignal;
+
+  @override
+  void notifyListeners() {
+    _draftSignal.fire();
+    super.notifyListeners();
+  }
 
   /// 行集修订号(每次行集变化 +1)，表头筛选结果按它缓存。
   int get rowsRevision => _rowsRevision;
@@ -515,7 +527,7 @@ class UtenEditableGridController<T extends EditableGridRow>
 
   void _selectionChanged() {
     _selectionSignal.fire();
-    notifyListeners();
+    super.notifyListeners();
   }
 
   List<T> get rows => _rowsSnapshot ??= List<T>.unmodifiable(_rows);
@@ -669,7 +681,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     _copyBuffer
       ..clear()
       ..addAll(_selected.map((row) => _cloneWithPlatform(row, clone)));
-    notifyListeners();
+    super.notifyListeners();
   }
 
   /// 粘贴缓冲（每条再克隆出独立行）count 份。
@@ -715,6 +727,7 @@ class UtenEditableGridController<T extends EditableGridRow>
     _total.dispose();
     _rowsSignal.dispose();
     _selectionSignal.dispose();
+    _draftSignal.dispose();
     super.dispose();
   }
 }
@@ -4525,16 +4538,16 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       );
     }
 
-    final listenable = isSelected
-        ? null
-        : column.cellColorListenableOf?.call(row);
+    // Preserve the editor subtree through selection and semantic-color changes.
+    // A selected row still owns the same listener wrapper and input State.
+    final listenableOf = column.cellColorListenableOf;
     final cell = SizedBox(
       key: ValueKey(('uten-grid-cell', column.key)),
       width: widths[i],
-      child: listenable == null
+      child: listenableOf == null
           ? build()
           : ListenableBuilder(
-              listenable: listenable,
+              listenable: listenableOf(row) ?? const AlwaysStoppedAnimation(0),
               builder: (context, _) => build(),
             ),
     );

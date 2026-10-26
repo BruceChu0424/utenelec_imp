@@ -91,12 +91,14 @@ class HrReconcileIdNumberCell extends StatelessWidget {
     required this.rowNo,
     required this.item,
     required this.editable,
+    this.readOnly = false,
     this.draft,
     this.onManualChanged,
   });
   final int rowNo;
   final HrReconcileItem item;
   final bool editable;
+  final bool readOnly;
   final HrReconcileRowDraft? draft;
   final VoidCallback? onManualChanged;
 
@@ -107,6 +109,7 @@ class HrReconcileIdNumberCell extends StatelessWidget {
       key: ValueKey('hr-reconcile-manual-$rowNo'),
       controller: draft?.manual,
       enabled: editable && item.permitted,
+      readOnly: readOnly,
       inputFormatters: ChinaInputFormatters.residentId,
       style: Theme.of(context).textTheme.bodySmall,
       onChanged: (_) => onManualChanged?.call(),

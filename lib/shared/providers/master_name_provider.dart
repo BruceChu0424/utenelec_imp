@@ -540,6 +540,20 @@ class MasterNameService extends MasterDictionaryService {
   Future<void> ensureLoaded() =>
       Future.wait([ensureCommonLoaded(), _loadSuppliers(), _loadDepartments()]);
 
+  /// Read-only procurement summaries only display supplier and color names.
+  /// Empty results need neither dictionary, nor warehouse/currency/unit/department data.
+  Future<void> ensureReportNamesLoaded({
+    bool suppliers = false,
+    bool colors = false,
+  }) => Future.wait([
+    if (suppliers) _loadSuppliers(),
+    if (colors)
+      ensureDictionaryLoaded(
+        ApiEndpoints.colorsDict,
+        (entries) => _colors = MasterDictionaryService._nameMap(entries),
+      ),
+  ]);
+
   Future<void> _loadSuppliers({bool reload = false}) => ensureDictionaryLoaded(
     ApiEndpoints.suppliersDict,
     (entries) {
@@ -565,10 +579,16 @@ class MasterNameService extends MasterDictionaryService {
   /// 单据页内联新增供应商后重载字典（让本实例的下拉选项立即含新值）。
   Future<void> reloadSuppliers() => _loadSuppliers(reload: true);
 
+  /// Supplier-only table filters do not need the other master dictionaries.
+  Future<void> ensureSuppliersLoaded() => _loadSuppliers();
+
   Future<void> _loadDepartments() => ensureDictionaryLoaded(
     ApiEndpoints.departmentsTree,
     (entries) => _departments = _flattenDeptTree(entries),
   );
+
+  /// Department-only lists do not need procurement or inventory dictionaries.
+  Future<void> ensureDepartmentsLoaded() => _loadDepartments();
 
   String supplier(String? id) =>
       MasterDictionaryService.resolveName(_suppliers, id);

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../core/router/route_names.dart';
 
 import '../../../components/buttons/click_guard.dart';
@@ -126,6 +127,8 @@ class _FinanceAssetFormSurfaceState
   String? _sourceType;
   String? _custodianId;
   UtenEmployeePickerItem? _custodian;
+  int _custodianSelectionRevision = 0;
+  final _custodianRequests = LatestRequestGuard();
   DateTime? _acquisitionDate;
   DateTime? _acceptanceDate;
   DateTime? _readyForUseDate;
@@ -202,6 +205,7 @@ class _FinanceAssetFormSurfaceState
     _departmentId = data['departmentId'] as String?;
     _departmentName = data['departmentName'] as String?;
     _sourceType = data['sourceType'] as String?;
+    _custodianSelectionRevision++;
     _custodianId = data['custodianId'] as String?;
     _acquisitionDate = DateTime.tryParse(draftText(data, 'acquisitionDate'));
     _acceptanceDate = DateTime.tryParse(draftText(data, 'acceptanceDate'));
@@ -351,9 +355,17 @@ class _FinanceAssetFormSurfaceState
   Future<void> _preloadCustodian() async {
     final id = _custodianId;
     if (id == null || id.isEmpty) return;
+    final generation = _custodianRequests.begin();
+    final selectionRevision = _custodianSelectionRevision;
+    final ownerCurrent = captureReadOwner(ref);
     try {
       final profile = await ref.read(employeeRepositoryProvider).getById(id);
-      if (!mounted) return;
+      if (!ownerCurrent() ||
+          !_custodianRequests.isCurrent(generation) ||
+          selectionRevision != _custodianSelectionRevision ||
+          _custodianId != id) {
+        return;
+      }
       setState(() {
         _custodian = UtenEmployeePickerItem(
           id: profile.id,
@@ -711,6 +723,7 @@ class _FinanceAssetFormSurfaceState
                                           loader: _loadEmployees,
                                           onChanged: (item) {
                                             setState(() {
+                                              _custodianSelectionRevision++;
                                               _custodian = item;
                                               _custodianId = item?.id;
                                               _dirty = true;

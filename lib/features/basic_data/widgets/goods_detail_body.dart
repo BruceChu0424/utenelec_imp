@@ -24,6 +24,7 @@ import '../../../shared/pricing/price_analysis_l10n.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -33,6 +34,8 @@ import '../../../components/layout/uten_detail_action_layout.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -41,6 +44,7 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_navigation.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -233,6 +237,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   GlobalKey<GoodsBomTabState> _bomKey = GlobalKey<GoodsBomTabState>();
   bool _bomEditing = false;
   bool _leavingBom = false;
+  final Object _bomNavigationOwner = Object();
 
   bool get _historyBlocked =>
       widget.busy ||
@@ -243,14 +248,23 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       _bomInteracting ||
       _mode != _GoodsDetailMode.view;
 
-  Future<void> _finishBomBeforeLeaving(Object? result) async {
+  Future<void> _finishBomBeforeLeaving(
+    Object? result, {
+    bool fromHeader = false,
+  }) async {
     if (_leavingBom) return;
     _leavingBom = true;
     try {
       final finished = await _bomKey.currentState?.finishEditing() ?? true;
       if (!mounted || !finished) return;
       await WidgetsBinding.instance.endOfFrame;
-      if (mounted) Navigator.of(context).pop(result);
+      if (mounted) {
+        if (fromHeader) {
+          backTo(context, defaultPath: RouteName.basicinfoGoods);
+        } else {
+          Navigator.of(context).pop(result);
+        }
+      }
     } finally {
       _leavingBom = false;
     }
@@ -284,6 +298,31 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         ? GlobalKey<MasterEditFormState>()
         : null;
     WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // BOM sessions are in-memory and separate from the new-goods form draft.
+    // A distinct owner preserves that form guard while covering router.go,
+    // replacement and browser route changes on an existing goods detail.
+    FormDraftNavigation.unregister(_bomNavigationOwner);
+    final route = goRouterPageStateOrNull(context);
+    if (route == null) return;
+    FormDraftNavigation.register(
+      _bomNavigationOwner,
+      route.uri.path,
+      () async =>
+          !mounted ||
+          await (_bomKey.currentState?.finishEditing() ?? Future.value(true)),
+      pageKey: route.pageKey,
+    );
+  }
+
+  @override
+  void dispose() {
+    FormDraftNavigation.unregister(_bomNavigationOwner);
+    super.dispose();
   }
 
   @override
@@ -1102,6 +1141,18 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     child: UtenAppBar(
       title: title,
       showBackButton: true,
+      // Explicit app-bar/context.pop navigation is imperative and bypasses
+      // PopScope.canPop. Run the same draft decision before that return too.
+      leading: UtenBackButton(
+        key: const Key('goods-detail-back'),
+        onPressed: () {
+          if (_bomEditing || _bomInteracting) {
+            _finishBomBeforeLeaving(null, fromHeader: true);
+          } else {
+            backTo(context, defaultPath: RouteName.basicinfoGoods);
+          }
+        },
+      ),
       showBottomBorder: false,
       actions: [
         if (_goodsId != null)

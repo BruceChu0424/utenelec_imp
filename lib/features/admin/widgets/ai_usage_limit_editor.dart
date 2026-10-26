@@ -127,9 +127,9 @@ class _AiUsageLimitEditorState extends ConsumerState<AiUsageLimitEditor> {
     _tokens = TextEditingController();
     _jobs = TextEditingController();
     final target = widget.target;
-    // 服务端现在随看板行下发 rowVersion(COALESCE(row_version,-1)): 已知版本(≥0,
-    // 含 -1 之外的所有现值)直接编辑, 不再先 GET 人员详情补齐; null(旧 wire 未知)才补。
-    if (target.rowVersion != null && target.rowVersion! >= 0) {
+    // -1 is a known absent configuration, and remains the save CAS version.
+    // Only unknown/invalid versions need the legacy detail-read fallback.
+    if (target.rowVersion != null && target.rowVersion! >= -1) {
       _applyTarget(target);
     } else {
       _resolve();

@@ -5876,10 +5876,10 @@
   "rdInitialUnitFailed": "首次基本单位核对失败",
   "rdInitialUnitRetry": "重试",
   "bomEditMode": "编辑模式",
-  "bomEditExitAndSave": "退出并保存",
+  "bomEditExitAndSave": "退出编辑模式",
   "bomEditAuditMode": "审计模式",
   "bomEditExitAudit": "退出审计",
-  "bomEditSaveTitle": "保存组装信息并退出",
+  "bomEditSaveTitle": "保存或丢弃本次修改",
   "bomEditSaveSummary": "本次共 {operations} 项操作，修改 {parents} 个货品的组装信息。",
   "@bomEditSaveSummary": {
     "placeholders": {
@@ -5949,7 +5949,7 @@
     }
   },
   "bomEditPasteParentRequired": "请只选择一个父组件，或清除选择后粘贴到顶层",
-  "bomEditPasteStaged": "已暂存粘贴 {count} 个组件，退出并保存后生效",
+  "bomEditPasteStaged": "已暂存粘贴 {count} 个组件，确认保存后生效",
   "@bomEditPasteStaged": {
     "placeholders": {
       "count": {
@@ -5957,7 +5957,7 @@
       }
     }
   },
-  "bomEditDeleteStaged": "已暂存删除 {count} 个组件，退出并保存后生效",
+  "bomEditDeleteStaged": "已暂存删除 {count} 个组件，确认保存后生效",
   "@bomEditDeleteStaged": {
     "placeholders": {
       "count": {
@@ -5965,7 +5965,7 @@
       }
     }
   },
-  "bomEditMoveStaged": "已暂存移动 {count} 个组件，退出并保存后生效",
+  "bomEditMoveStaged": "已暂存移动 {count} 个组件，确认保存后生效",
   "@bomEditMoveStaged": {
     "placeholders": {
       "count": {
@@ -5973,7 +5973,7 @@
       }
     }
   },
-  "bomEditAddStaged": "已暂存添加 {count} 个组件，退出并保存后生效",
+  "bomEditAddStaged": "已暂存添加 {count} 个组件，确认保存后生效",
   "@bomEditAddStaged": {
     "placeholders": {
       "count": {
@@ -5981,7 +5981,7 @@
       }
     }
   },
-  "bomEditComponentStaged": "组件修改已暂存，退出并保存后生效",
+  "bomEditComponentStaged": "组件修改已暂存，确认保存后生效",
   "bomEditReviewWarnings": "{message}；请核对：{warnings}",
   "@bomEditReviewWarnings": {
     "placeholders": {

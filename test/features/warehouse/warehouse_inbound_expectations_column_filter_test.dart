@@ -38,6 +38,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(api.dictionaryPaths, [ApiEndpoints.suppliersDict]);
+
     final table = tester.widget<MasterDataTableView<InboundExpectation>>(
       find.byKey(const Key('inbound-expectation-task-table')),
     );
@@ -130,6 +132,7 @@ class _ExpectationApi extends ApiClient {
   _ExpectationApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final dictionaryPaths = <String>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -173,6 +176,7 @@ class _ExpectationApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    dictionaryPaths.add(path);
     if (path.contains('suppliers')) {
       return const [
         {'id': 'supplier-1', 'name': '供应商甲'},

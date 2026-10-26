@@ -550,12 +550,52 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
   TextEditingController get _text => _textController ??= TextEditingController(
     text: widget.draft.value(widget.field.key)?.toString() ?? '',
   );
-  final FocusNode _focus = FocusNode();
+  FocusNode? _focusNode;
+  FocusNode get _focus =>
+      _focusNode ??= FocusNode()..addListener(_focusChanged);
   int _external = 0;
+  Object? _view;
+
+  bool get _enabled =>
+      widget.creation.owner.active &&
+      !widget.creation.owner.busy &&
+      !widget.draft.uncertain &&
+      widget.creation.config?.canCreate == true;
+
+  Object get _snapshot => (
+    widget.draft.value(widget.field.key),
+    widget.draft.errors[widget.field.key],
+    widget.draft.externalRevision,
+    _enabled,
+  );
+
   @override
   void initState() {
     super.initState();
-    _focus.addListener(_focusChanged);
+    _view = _snapshot;
+    widget.draft.addListener(_changed);
+    widget.creation.owner.addListener(_changed);
+  }
+
+  void _changed() {
+    final view = _snapshot;
+    if (!mounted || view == _view) return;
+    _view = view;
+    setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant _MasterCreationCell<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.draft != widget.draft) {
+      oldWidget.draft.removeListener(_changed);
+      widget.draft.addListener(_changed);
+    }
+    if (oldWidget.creation.owner != widget.creation.owner) {
+      oldWidget.creation.owner.removeListener(_changed);
+      widget.creation.owner.addListener(_changed);
+    }
+    _view = _snapshot;
   }
 
   void _focusChanged() {
@@ -564,108 +604,143 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
 
   @override
   void dispose() {
-    _focus.dispose();
+    widget.draft.removeListener(_changed);
+    widget.creation.owner.removeListener(_changed);
+    _focusNode?.dispose();
     _textController?.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.draft, widget.creation.owner]),
-    builder: (context, _) {
-      final draft = widget.draft, field = widget.field;
-      final currentText = draft.value(field.key)?.toString() ?? '';
-      if (_external != draft.externalRevision ||
-          !_focus.hasFocus &&
-              _textController != null &&
-              _textController!.text != currentText) {
-        _external = draft.externalRevision;
-        if (_textController != null) _textController!.text = currentText;
-      }
-      final enabled =
-          !widget.creation.owner.busy &&
-          !draft.uncertain &&
-          widget.creation.config?.canCreate == true;
-      if (field.readOnly) {
-        return Text(draft.value(field.key)?.toString() ?? field.hint ?? '—');
-      }
-      final value = draft.value(field.key);
-      void change(dynamic v) => widget.creation.change(draft, field, v);
-      if (field.customBuilder != null) {
-        return IgnorePointer(
-          ignoring: !enabled,
-          child: UtenDropdownPreferenceScope(
-            preferenceKey:
-                'master.${widget.creation.config!.namespace}.${field.key}',
-            child: field.customBuilder!(
-              MasterFieldContext(
-                initialValue: value?.toString(),
-                currentValue: value,
-                onChanged: change,
-                required: field.required,
-              ),
-            ),
-          ),
-        );
-      }
-      if (field.type == MasterFieldType.select) {
-        return UtenDropdownField(
-          value: value?.toString(),
-          dense: true,
-          enabled: enabled,
-          allowClear: !field.required,
-          required: field.required,
-          info: field.info,
-          onAddNew: field.onAddNew == null
-              ? null
-              : () async {
-                  final epoch = widget.creation.owner._epoch;
-                  final created = await field.onAddNew!();
-                  if (mounted &&
-                      epoch == widget.creation.owner._epoch &&
-                      created != null) {
-                    change(created);
-                  }
-                },
-          menuPreferenceKey:
+  Widget build(BuildContext context) {
+    final draft = widget.draft, field = widget.field;
+    final currentText = draft.value(field.key)?.toString() ?? '';
+    if (_external != draft.externalRevision ||
+        _focusNode?.hasFocus != true &&
+            _textController != null &&
+            _textController!.value.composing.isCollapsed &&
+            _textController!.text != currentText) {
+      _external = draft.externalRevision;
+      if (_textController != null) _textController!.text = currentText;
+    }
+    if (field.readOnly) {
+      return Text(draft.value(field.key)?.toString() ?? field.hint ?? '—');
+    }
+    final value = draft.value(field.key);
+    String? display = value?.toString();
+    if (field.type == MasterFieldType.select) {
+      display =
+          field.options
+              ?.where((option) => option.value == display)
+              .firstOrNull
+              ?.label ??
+          display;
+    } else if (field.customBuilder != null && value != null) {
+      display = field.label;
+    }
+    return UtenInlineEditCell(
+      activationKey: ValueKey(
+        'inline-create-activate-${draft.key}-${field.key}',
+      ),
+      semanticLabel: masterEditText(
+        context,
+        '编辑${field.label}',
+        'Edit ${field.label}',
+        '${field.label} 편집',
+      ),
+      enabled: _enabled,
+      requiredEmpty: _enabled && field.required && value == null,
+      retainFocusWhenDisabled:
+          field.customBuilder == null && field.type != MasterFieldType.select,
+      preview: Text(
+        display?.isNotEmpty == true ? display! : field.hint ?? field.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      editorBuilder: _editor,
+    );
+  }
+
+  Widget _editor(BuildContext context) {
+    final draft = widget.draft, field = widget.field;
+    final enabled = _enabled;
+    final value = draft.value(field.key);
+    void change(dynamic v) => widget.creation.change(draft, field, v);
+    if (field.customBuilder != null) {
+      return IgnorePointer(
+        ignoring: !enabled,
+        child: UtenDropdownPreferenceScope(
+          preferenceKey:
               'master.${widget.creation.config!.namespace}.${field.key}',
-          menuMatchContentWidth: true,
-          items: [
-            for (final option in field.options ?? const <MasterSelectOption>[])
-              UtenDropdownItem(value: option.value, label: option.label),
-          ],
-          errorMessage: draft.errors[field.key],
-          onChanged: change,
-        );
-      }
-      return TextField(
-        key: ValueKey('inline-create-cell-${draft.key}-${field.key}'),
-        controller: _text,
-        focusNode: _focus,
-        enabled: enabled,
-        keyboardType:
-            field.type == MasterFieldType.integer ||
-                field.type == MasterFieldType.money
-            ? const TextInputType.numberWithOptions(decimal: true, signed: true)
-            : TextInputType.text,
-        decoration: applyRequiredEmpty(
-          UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              hintText:
-                  field.hint ??
-                  (!draft.dirty && field.required
-                      ? widget.creation._strings?.masterInlineNewRowHint
-                      : null),
-              border: const OutlineInputBorder(),
-              error: utenFieldError(draft.errors[field.key]),
+          child: field.customBuilder!(
+            MasterFieldContext(
+              initialValue: value?.toString(),
+              currentValue: value,
+              onChanged: change,
+              required: field.required,
             ),
           ),
-          Theme.of(context),
-          requiredEmpty: enabled && field.required && value == null,
         ),
+      );
+    }
+    if (field.type == MasterFieldType.select) {
+      return UtenDropdownField(
+        value: value?.toString(),
+        dense: true,
+        enabled: enabled,
+        allowClear: !field.required,
+        required: field.required,
+        info: field.info,
+        onAddNew: field.onAddNew == null
+            ? null
+            : () async {
+                final epoch = widget.creation.owner._epoch;
+                final created = await field.onAddNew!();
+                if (mounted &&
+                    epoch == widget.creation.owner._epoch &&
+                    created != null) {
+                  change(created);
+                }
+              },
+        menuPreferenceKey:
+            'master.${widget.creation.config!.namespace}.${field.key}',
+        menuMatchContentWidth: true,
+        items: [
+          for (final option in field.options ?? const <MasterSelectOption>[])
+            UtenDropdownItem(value: option.value, label: option.label),
+        ],
+        errorMessage: draft.errors[field.key],
         onChanged: change,
       );
-    },
-  );
+    }
+    return TextField(
+      key: ValueKey('inline-create-cell-${draft.key}-${field.key}'),
+      controller: _text,
+      focusNode: _focus,
+      autofocus: true,
+      readOnly: !enabled,
+      keyboardType:
+          field.type == MasterFieldType.integer ||
+              field.type == MasterFieldType.money
+          ? const TextInputType.numberWithOptions(decimal: true, signed: true)
+          : TextInputType.text,
+      decoration: applyRequiredEmpty(
+        UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText:
+                field.hint ??
+                (value == null && field.required
+                    ? widget.creation._strings?.masterInlineNewRowHint
+                    : null),
+            border: const OutlineInputBorder(),
+            error: utenFieldError(draft.errors[field.key]),
+          ),
+        ),
+        Theme.of(context),
+        requiredEmpty: enabled && field.required && value == null,
+      ),
+      onChanged: change,
+    );
+  }
 }

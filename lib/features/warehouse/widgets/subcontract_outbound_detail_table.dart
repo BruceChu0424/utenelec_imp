@@ -1,4 +1,7 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -218,17 +221,57 @@ class SubcontractOutboundTableRow extends EditableGridRow {
   });
 
   final SubcontractOutboundLineDraft draft;
-  final String warehouse;
-  final String? orderBillNo;
-  final String? supplierName;
-  final bool editable;
-  final String? documentNo;
-  final String? status;
-  final TextEditingController? documentRemark;
-  final String? warehouseId;
-  final List<WarehouseDictEntry> warehouses;
-  final ValueChanged<String?>? onWarehouseChanged;
-  final bool warehouseAutofilled;
+  String warehouse;
+  String? orderBillNo;
+  String? supplierName;
+  bool editable;
+  String? documentNo;
+  String? status;
+  TextEditingController? documentRemark;
+  String? warehouseId;
+  List<WarehouseDictEntry> warehouses;
+  ValueChanged<String?>? onWarehouseChanged;
+  bool warehouseAutofilled;
+
+  bool updatePresentation(SubcontractOutboundTableRow next) {
+    assert(identical(draft, next.draft));
+    final changed =
+        (
+              warehouse,
+              orderBillNo,
+              supplierName,
+              editable,
+              documentNo,
+              status,
+              documentRemark,
+              warehouseId,
+              warehouseAutofilled,
+            ) !=
+            (
+              next.warehouse,
+              next.orderBillNo,
+              next.supplierName,
+              next.editable,
+              next.documentNo,
+              next.status,
+              next.documentRemark,
+              next.warehouseId,
+              next.warehouseAutofilled,
+            ) ||
+        !listEquals(warehouses, next.warehouses);
+    warehouse = next.warehouse;
+    orderBillNo = next.orderBillNo;
+    supplierName = next.supplierName;
+    editable = next.editable;
+    documentNo = next.documentNo;
+    status = next.status;
+    documentRemark = next.documentRemark;
+    warehouseId = next.warehouseId;
+    warehouses = next.warehouses;
+    warehouseAutofilled = next.warehouseAutofilled;
+    onWarehouseChanged = next.onWarehouseChanged;
+    return changed;
+  }
 }
 
 /// Shared by single-document picking and batch picking. It uses the same
@@ -283,30 +326,83 @@ class _SubcontractOutboundDetailTableState
 
   /// 本次 build 盯住的页内单重参数缓存 (有明细行时才建)。
   WeightParamsCache? _weightCache;
+  List<Object> _weightSources = const [];
 
   @override
   void initState() {
     super.initState();
-    _grid.replaceAll(widget.rows);
-    _ensureWeightParams();
+    _syncRows();
   }
 
   @override
   void didUpdateWidget(covariant SubcontractOutboundDetailTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _grid.replaceAll(widget.rows);
-    _ensureWeightParams();
+    _syncRows();
+  }
+
+  void _syncRows() {
+    final old = _grid.rows;
+    final byDraft =
+        HashMap<
+          SubcontractOutboundLineDraft,
+          SubcontractOutboundTableRow
+        >.identity();
+    for (final row in old) {
+      byDraft[row.draft] = row;
+    }
+    final next = <SubcontractOutboundTableRow>[];
+    var presentationChanged = false;
+    for (final incoming in widget.rows) {
+      final existing = byDraft[incoming.draft];
+      if (existing == null) {
+        next.add(incoming);
+      } else {
+        if (!identical(existing, incoming)) {
+          presentationChanged =
+              existing.updatePresentation(incoming) || presentationChanged;
+          incoming.dispose();
+        }
+        next.add(existing);
+      }
+    }
+    final structureChanged =
+        old.length != next.length ||
+        next.asMap().entries.any(
+          (entry) => !identical(entry.value, old[entry.key]),
+        );
+    if (structureChanged) {
+      final retained = HashSet<SubcontractOutboundTableRow>.identity()
+        ..addAll(next);
+      final removed = old.where((row) => !retained.contains(row)).toList();
+      if (removed.isNotEmpty) _grid.removeRows(removed);
+      _grid.swapRows(next);
+    } else if (presentationChanged) {
+      _grid.notifyListeners();
+    }
+    final sources = <Object>[
+      for (final row in next)
+        (
+          row.draft.weight.goodsId,
+          row.draft.weight.supplierId,
+          row.draft.weight.colorId,
+          row.warehouseId,
+        ),
+    ];
+    if (!listEquals(_weightSources, sources)) {
+      _weightSources = sources;
+      _ensureWeightParams();
+    }
   }
 
   /// 下一帧 (缓存已在 build 里盯住) 补齐缺的单重参数; 已有/在途的不重复取。
   void _ensureWeightParams() {
-    for (final row in widget.rows) {
+    for (final row in _grid.rows) {
       row.draft.weight.warehouseId = row.warehouseId;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ensureOutboundWeightParams(_weightCache, [
-        for (final row in widget.rows) row.draft.weight,
+        for (final row in _grid.rows) row.draft.weight,
       ]);
     });
   }

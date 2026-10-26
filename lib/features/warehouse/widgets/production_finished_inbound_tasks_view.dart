@@ -35,6 +35,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -105,11 +106,13 @@ class _ProductionFinishedInboundTasksViewState
     super.initState();
     _keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ownerCurrent = captureReadOwner(ref);
       // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
       ref
           .read(masterNameServiceProvider)
-          .ensureLoaded()
-          .then((_) => mounted ? setState(() {}) : null);
+          .ensureWarehousesLoaded()
+          .then((_) => ownerCurrent() ? setState(() {}) : null);
       trackRefresh(_load(1));
     });
   }

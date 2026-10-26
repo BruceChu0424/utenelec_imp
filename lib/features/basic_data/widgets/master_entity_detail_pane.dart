@@ -1554,9 +1554,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                   preferenceNamespace: _c.batchEntityPath,
                   columns: _c.columns,
                   idOf: _c.idOf,
-                  fields: !_c.canEdit || _listLoading || _listError != null
-                      ? const {}
-                      : _c.inlineFields,
+                  fields: _c.canEdit ? _c.inlineFields : const {},
+                  enabled: !_listLoading && _listError == null,
                   writableOf: _c.writableOf,
                 ),
                 items: _page?.items ?? <TItem>[],

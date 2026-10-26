@@ -930,6 +930,7 @@ PriceCheckBinding purchasePriceCheckBinding(
   String? currencyId,
   String? taxRate,
 }) => PriceCheckBinding(
+  contextKey: (row.colorId, row.unitId, row.recordedUnitRateText),
   listenables: [
     row.goodsNotifier,
     row.pricing,

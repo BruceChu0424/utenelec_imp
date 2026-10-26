@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
+import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/attachments/attachment_preview_dialog.dart';
 
@@ -17,9 +19,11 @@ Future<void> _pumpPreview(
   String? contentType,
   Size size = const Size(900, 700),
   double textScale = 1.0,
+  ScrollBehavior? scrollBehavior,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      scrollBehavior: scrollBehavior,
       home: MediaQuery(
         data: MediaQueryData(
           size: size,
@@ -196,6 +200,70 @@ void main() {
       expect(find.textContaining('3 列'), findsOneWidget);
     });
 
+    testWidgets(
+      'wide CSV owns its horizontal bar and keeps vertical scrolling independent',
+      (tester) async {
+        final csv = [
+          List.generate(18, (column) => 'Column $column').join(','),
+          for (var row = 0; row < 80; row++)
+            List.generate(18, (column) => 'value-$row-$column').join(','),
+        ].join('\n');
+        await _pumpPreview(
+          tester,
+          bytes: _utf8(csv),
+          name: 'wide.csv',
+          contentType: 'text/csv',
+          scrollBehavior: const UtenScrollBehavior(),
+        );
+        await tester.pumpAndSettle();
+        final horizontalFinder = find.byKey(
+          const Key('attachment-preview-csv-horizontal-scrollbar'),
+        );
+        final horizontal = tester.widget<Scrollbar>(horizontalFinder);
+        expect(horizontal.controller, isNotNull);
+        expect(horizontal.thumbVisibility, isTrue);
+        final list = find.byType(ListView);
+        final verticalFinder = find.byKey(
+          const Key('attachment-preview-csv-vertical-scrollbar'),
+        );
+        final vertical = tester.widget<UtenContentScrollbar>(verticalFinder);
+        expect(vertical.controller, isNot(same(horizontal.controller)));
+        expect(
+          find.descendant(of: list, matching: find.byType(Scrollbar)),
+          findsNothing,
+          reason: 'the wide CSV canvas must not own an offscreen second thumb',
+        );
+        final position = tester
+            .state<ScrollableState>(
+              find
+                  .descendant(of: list, matching: find.byType(Scrollable))
+                  .first,
+            )
+            .position;
+        expect(position.maxScrollExtent, greaterThan(0));
+        expect(horizontal.controller!.position.maxScrollExtent, greaterThan(0));
+        expect(horizontal.controller!.offset, 0);
+        final verticalRect = tester.getRect(verticalFinder);
+        await tester.dragFrom(
+          Offset(verticalRect.right - 8, verticalRect.top + 10),
+          const Offset(0, 120),
+        );
+        await tester.pumpAndSettle();
+        expect(position.pixels, greaterThan(0));
+        expect(horizontal.controller!.offset, 0);
+        final verticalOffset = position.pixels;
+        final rect = tester.getRect(horizontalFinder);
+        await tester.dragFrom(
+          Offset(rect.left + 10, rect.bottom - 3),
+          const Offset(120, 0),
+        );
+        await tester.pumpAndSettle();
+        expect(horizontal.controller!.offset, greaterThan(0));
+        expect(position.pixels, verticalOffset);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('压缩包：列条目，不解压', (tester) async {
       await _pumpPreview(
         tester,
@@ -206,6 +274,29 @@ void main() {
       expect(find.text('2026.pdf'), findsOneWidget);
       expect(find.text('4.0 KB'), findsOneWidget);
       expect(find.text('1 个条目'), findsOneWidget);
+    });
+
+    testWidgets('archive list has one automatic visible scrollbar owner', (
+      tester,
+    ) async {
+      await _pumpPreview(
+        tester,
+        bytes: _singleEntryZip('folder/readme.txt', 16),
+        name: 'archive.zip',
+        contentType: 'application/zip',
+        scrollBehavior: const UtenScrollBehavior(),
+      );
+      await tester.pumpAndSettle();
+      final bars = find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollbar),
+      );
+      expect(bars, findsOneWidget);
+      expect(find.byType(Scrollbar), findsOneWidget);
+      final bar = tester.widget<Scrollbar>(bars);
+      expect(bar.controller, isNotNull);
+      expect(bar.thumbVisibility, isTrue);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('压缩包损坏：给出原因与下载指引，不装作能看', (tester) async {

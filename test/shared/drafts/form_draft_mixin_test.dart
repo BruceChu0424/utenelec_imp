@@ -146,6 +146,7 @@ class TestEditorState extends ConsumerState<TestEditor>
   String choice = 'default';
   bool busy = false;
   bool canReplay = false;
+  int captures = 0;
   @override
   bool get formDraftTracksPermissionChanges => widget.trackPermissionChanges;
   @override
@@ -166,12 +167,16 @@ class TestEditorState extends ConsumerState<TestEditor>
     if (widget.withAttachment) attachments,
   ];
   @override
-  Map<String, dynamic> captureFormDraft() => {
-    'text': text.text,
-    'choice': choice,
-    if (widget.withGrid) 'rowCount': grid.rows.length,
-    if (widget.withAttachment) 'attachments': attachments.exportDraft(),
-  };
+  Map<String, dynamic> captureFormDraft() {
+    captures++;
+    return {
+      'text': text.text,
+      'choice': choice,
+      if (widget.withGrid) 'rowCount': grid.rows.length,
+      if (widget.withAttachment) 'attachments': attachments.exportDraft(),
+    };
+  }
+
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     text.text = data['text'] as String;
@@ -306,6 +311,43 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets('grid presentation changes never capture the business draft', (
+    tester,
+  ) async {
+    final storage = MemoryDraftStorage();
+    final env = await pumpEditor(tester, storage, withGrid: true);
+    final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+    final baseline = editor.captures;
+    final row = editor.grid.rows.single;
+    editor.grid.toggleSelect(row);
+    editor.grid.copySelected((_) => _DraftGridRow());
+    editor.grid.clearSelection();
+    editor.grid.selectAll();
+    editor.grid.clearSelection();
+    await tester.pumpAndSettle();
+    expect(editor.captures, baseline);
+    expect(env.container.read(formDraftsProvider), isEmpty);
+
+    editor.grid.addRow(_DraftGridRow());
+    expect(editor.captures, greaterThan(baseline));
+    await editor.saveFormDraftNow();
+    expect(env.container.read(formDraftsProvider).single.data['rowCount'], 2);
+    final beforeMetadata = editor.captures;
+    row.platformFields.setValue(
+      const PlatformColumnDefinition(id: 'field', scope: 'test', name: 'Code'),
+      '000017',
+    );
+    expect(editor.captures, greaterThan(beforeMetadata));
+    await editor.saveFormDraftNow();
+    expect(
+      env.container.read(formDraftsProvider).single.data['_platformGridDrafts'],
+      isNotEmpty,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+    env.router.dispose();
+    env.container.dispose();
+  });
+
   testWidgets(
     'live capability editor retains owner input through permission ABA and repeated initialization guards',
     (tester) async {

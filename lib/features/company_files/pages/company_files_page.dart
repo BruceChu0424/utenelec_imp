@@ -1144,7 +1144,10 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                   key: const ValueKey('company-files-navigation'),
                   width: wide ? (_directoryExpanded ? 180 : 56) : 0,
                   child: wide
-                      ? _navigation(collapsed: !_directoryExpanded)
+                      ? _navigation(
+                          collapsed: !_directoryExpanded,
+                          sidebar: true,
+                        )
                       : null,
                 ),
                 SizedBox(
@@ -1378,7 +1381,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   bool _useSidebar(double width) =>
       width >= 1000 && MediaQuery.textScalerOf(context).scale(1) < 1.5;
 
-  Widget _navigation({bool collapsed = false}) => Padding(
+  Widget _navigation({bool collapsed = false, bool sidebar = false}) => Padding(
     padding: EdgeInsets.all(collapsed ? UtenSpacing.s8 : UtenSpacing.s12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1399,20 +1402,47 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           collapsed: collapsed,
         ),
         const Spacer(),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Tooltip(
-            message: _trash ? l.companyFilesTrashHint : l.companyFilesDragHint,
-            child: IconButton(
-              onPressed: () => context.appInfo(
-                _trash ? l.companyFilesTrashHint : l.companyFilesDragHint,
+        Flex(
+          direction: collapsed ? Axis.vertical : Axis.horizontal,
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message: _trash
+                    ? l.companyFilesTrashHint
+                    : l.companyFilesDragHint,
+                child: IconButton(
+                  onPressed: () => context.appInfo(
+                    _trash ? l.companyFilesTrashHint : l.companyFilesDragHint,
+                  ),
+                  icon: const Icon(Icons.info_outline),
+                ),
               ),
-              icon: const Icon(Icons.info_outline),
             ),
-          ),
+            if (sidebar) _directoryToggle(sidebar: true),
+          ],
         ),
       ],
     ),
+  );
+
+  Widget _directoryToggle({required bool sidebar}) => IconButton(
+    key: const ValueKey('company-files-toggle-directory'),
+    tooltip: sidebar
+        ? (_directoryExpanded
+              ? l.companyFilesHideDirectory
+              : l.companyFilesShowDirectory)
+        : l.companyFilesDirectory,
+    onPressed: () {
+      if (sidebar) {
+        setState(() => _directoryExpanded = !_directoryExpanded);
+      } else {
+        _scaffoldKey.currentState?.openDrawer();
+      }
+    },
+    icon: Icon(sidebar && _directoryExpanded ? Icons.menu_open : Icons.menu),
   );
 
   Widget _navItem(
@@ -1467,22 +1497,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         final wide =
             box.maxWidth >= 760 &&
             MediaQuery.textScalerOf(context).scale(1) < 1.5;
-        final directory = IconButton(
-          key: const ValueKey('company-files-toggle-directory'),
-          tooltip: sidebar
-              ? (_directoryExpanded
-                    ? l.companyFilesHideDirectory
-                    : l.companyFilesShowDirectory)
-              : l.companyFilesDirectory,
-          onPressed: () {
-            if (sidebar) {
-              setState(() => _directoryExpanded = !_directoryExpanded);
-            } else {
-              _scaffoldKey.currentState?.openDrawer();
-            }
-          },
-          icon: Icon(_directoryExpanded ? Icons.menu_open : Icons.menu),
-        );
         final crumbs = SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -1510,7 +1524,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         if (wide) {
           return Row(
             children: [
-              directory,
+              if (!sidebar) _directoryToggle(sidebar: false),
               Expanded(
                 child: Row(
                   children: [
@@ -1530,7 +1544,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           children: [
             Row(
               children: [
-                directory,
+                if (!sidebar) _directoryToggle(sidebar: false),
                 Expanded(child: crumbs),
                 more,
               ],

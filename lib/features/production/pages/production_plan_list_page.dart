@@ -9,6 +9,8 @@ import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 「新建」进入计划前物料分析，按 production_material_analysis:create 权限显隐。
 //
 // 路径写死（待用户在 route_names.dart 加 RouteName.production* 后替换）。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -145,8 +147,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     int? requestedPage,
   ]) async {
     final names = ref.read(masterNameServiceProvider);
-    // 字典与列表并行(ADR-108)，不再先等字典。
-    final dictionaries = names.ensureLoaded();
+    final ownerCurrent = captureReadOwner(ref);
     final r = await ref
         .read(productionPlanRepositoryProvider)
         .list(
@@ -170,15 +171,27 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
           sort: _list.sortKey,
           order: _list.sortOrder,
         );
-    // 跟单员姓名服务端随行已给；只有缺名的行才按 id 补查(部门名已在 ensureLoaded 加载)。
+    // Empty results require no master data. Populated rows already carry display
+    // names; optional legacy fallbacks and workshop filter buckets load behind them.
+    if (r.items.isNotEmpty && ownerCurrent()) {
+      unawaited(_resolveDisplayNames(names, r.items, ownerCurrent));
+    }
+    return r;
+  }
+
+  Future<void> _resolveDisplayNames(
+    MasterNameService names,
+    List<ProductionPlanListItem> items,
+    bool Function() ownerCurrent,
+  ) async {
     await Future.wait([
-      dictionaries,
+      names.ensureDepartmentsLoaded(),
       names.loadEmployeeNames([
-        for (final e in r.items)
-          if ((e.sellerName ?? '').trim().isEmpty) e.sellerId,
+        for (final item in items)
+          if ((item.sellerName ?? '').trim().isEmpty) item.sellerId,
       ]),
     ]);
-    return r;
+    if (ownerCurrent()) setState(() {});
   }
 
   /// 分段计数范围(2026-09-21 用户口径: 父分类 hub 卡有草稿红徽章, 子分类也要有数)。
@@ -451,7 +464,9 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
       key: 'workshop',
       label: '车间',
       width: 160,
-      value: (it) => names.department(it.departmentId),
+      value: (it) => (it.workshopName ?? '').trim().isNotEmpty
+          ? it.workshopName
+          : names.department(it.departmentId),
     ),
     MasterColumnDef(
       key: 'seller',

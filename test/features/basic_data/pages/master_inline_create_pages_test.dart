@@ -181,6 +181,10 @@ MasterInlineEditController<dynamic> _controller(WidgetTester tester) => tester
 Future<void> _name(WidgetTester tester, String name) async {
   final rows = _controller(tester).appendRowsSource.value;
   final key = (rows.last.key as ValueKey).value as String;
+  final activation = find.byKey(ValueKey('inline-create-activate-$key-name'));
+  await tester.ensureVisible(activation);
+  await tester.tap(activation);
+  await tester.pump();
   final field = find.byKey(ValueKey('inline-create-cell-$key-name'));
   await tester.ensureVisible(field);
   await tester.enterText(field, name);

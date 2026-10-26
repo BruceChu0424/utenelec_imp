@@ -62,6 +62,96 @@ Future<void> _pumpRecordEditor(
 );
 
 void main() {
+  testWidgets(
+    'separate mounted aliases share edits without replacing either controller',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Row(
+              children: [
+                for (final side in ['left', 'right'])
+                  Expanded(
+                    child: MasterInlineRecordEditor<_Row>(
+                      key: ValueKey(side),
+                      controller: controller,
+                      row: (id: '1', name: 'Before', days: 4),
+                      idOf: (row) => row.id,
+                      columns: [
+                        MasterColumnDef<_Row>(
+                          key: 'name',
+                          label: 'Name',
+                          width: 180,
+                          value: (row) => row.name,
+                        ),
+                      ],
+                      fields: {'name': _name},
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('inline-activate-1-name')).first,
+      );
+      await tester.pump();
+      final left = tester.widget<TextField>(find.byType(TextField)).controller!;
+      await tester.enterText(find.byType(TextField), 'First draft');
+      await tester.tap(
+        find.byKey(const ValueKey('inline-activate-1-name')).first,
+      );
+      await tester.pump();
+      final rightInput = find.byType(TextField).last;
+      final right = tester.widget<TextField>(rightInput).controller!;
+      await tester.enterText(rightInput, 'Shared second draft');
+      await tester.pump();
+      expect(left.text, 'Shared second draft');
+      expect(right.text, 'Shared second draft');
+      expect(
+        tester.widget<TextField>(find.byType(TextField).first).controller,
+        same(left),
+      );
+      expect(tester.widget<TextField>(rightInput).controller, same(right));
+      expect(controller.patchFor('1'), {'name': 'Shared second draft'});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unrelated row rebuild keeps raw text selection and IME when normalized patch is empty',
+    (tester) async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      final selected = ValueNotifier<_Row>((id: '1', name: 'Before', days: 4));
+      addTearDown(controller.dispose);
+      addTearDown(selected.dispose);
+      await _pumpRecordEditor(tester, controller, selected);
+      await tester.tap(find.byKey(const ValueKey('inline-activate-1-name')));
+      await tester.pump();
+      final input = find.byType(TextField);
+      final text = tester.widget<TextField>(input).controller!;
+      final focus = tester.widget<TextField>(input).focusNode!;
+      const composition = TextEditingValue(
+        text: 'Before ',
+        selection: TextSelection.collapsed(offset: 7),
+        composing: TextRange(start: 6, end: 7),
+      );
+      tester.testTextInput.updateEditingValue(composition);
+      await tester.pump();
+      expect(controller.patchFor('1'), isEmpty);
+      selected.value = (id: '1', name: 'Before', days: 5);
+      await tester.pump();
+      expect(tester.widget<TextField>(input).controller, same(text));
+      expect(tester.widget<TextField>(input).focusNode, same(focus));
+      expect(text.value, composition);
+      expect(focus.hasFocus, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'required columns resolve create aliases and leave system columns alone',
     () {

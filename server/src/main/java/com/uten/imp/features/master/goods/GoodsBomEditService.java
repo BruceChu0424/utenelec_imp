@@ -99,7 +99,8 @@ public class GoodsBomEditService {
 
     public record GoodsSnapshot(UUID id, long version, String model, String spec, String material,
                                 String sourceType, boolean componentGoodsWritable) { }
-    public record SnapshotView(List<BomItemView> items, String fingerprint, GoodsSnapshot goods) { }
+    public record SnapshotView(List<BomItemView> items, String fingerprint, GoodsSnapshot goods,
+                               List<GoodsSnapshot> componentGoods) { }
     private static final Set<String> GOODS_FIELDS = Set.of("model", "spec", "material", "sourceType");
     public record CommitResult(int operationCount, List<UUID> affectedGoodsIds, Map<UUID, UUID> itemIds) { }
     private record Identity(UUID user, UUID session, UUID impersonator) { }
@@ -130,8 +131,33 @@ public class GoodsBomEditService {
                     || goods.getStatus() != null && !"使用".equals(goods.getStatus())) {
                 throw conflict("货品已删除、停用或仅为迁移占位，不能进入编辑模式");
             }
-            return new SnapshotView(bom.list(parent), fingerprint(parent), goodsSnapshot(goods));
+            List<BomItemView> items = bom.list(parent);
+            return new SnapshotView(items, fingerprint(parent), goodsSnapshot(goods), componentSnapshots(items));
         });
+    }
+
+    private List<GoodsSnapshot> componentSnapshots(List<BomItemView> items) {
+        AuthUser user = currentUser.get().orElseThrow(() ->
+                new ApiException(ErrorCode.FORBIDDEN, "当前登录状态无效"));
+        if (!hasPermission(user, "goods:view") || !hasPermission(user, "goods:edit")) return List.of();
+        List<UUID> ids = items.stream().map(BomItemView::getComponentGoodsId).distinct().toList();
+        List<GoodsSnapshot> result = new ArrayList<>();
+        // Immediate displayed components only, never their BOMs or descendants.
+        // Bound each lookup even for an unusually large imported assembly.
+        for (int start = 0; start < ids.size(); start += 250) {
+            List<Goods> batch = goodsRepo.findAllById(ids.subList(start, Math.min(start + 250, ids.size())));
+            Map<UUID, Boolean> capabilities = goods.visibleWriteCapabilities(batch);
+            for (Goods item : batch) {
+                if (!capabilities.containsKey(item.getId()) || item.isDeleted() || item.isAutoCreated()
+                        || item.getStatus() != null && !"使用".equals(item.getStatus())) continue;
+                boolean writable = user.getEmployeeId() != null && !user.isVisitor()
+                        && user.isAccountNonLocked() && !user.isMustChangePassword()
+                        && user.getImpersonatedBy() == null && capabilities.get(item.getId());
+                result.add(new GoodsSnapshot(item.getId(), item.getVersion(), item.getModel(), item.getSpec(),
+                        item.getMaterial(), item.getSourceType(), writable));
+            }
+        }
+        return List.copyOf(result);
     }
 
     private GoodsSnapshot goodsSnapshot(Goods item) {

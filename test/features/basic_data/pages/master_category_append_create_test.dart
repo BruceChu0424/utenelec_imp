@@ -210,6 +210,23 @@ UtenDropdownField _newRowDropdown(
       .first,
 );
 
+Future<void> _activateNewField(
+  WidgetTester tester,
+  String field, {
+  String? draftKey,
+}) async {
+  final activate = find.byWidgetPredicate((widget) {
+    if (widget.key is! ValueKey<String>) return false;
+    final key = (widget.key as ValueKey<String>).value;
+    return draftKey == null
+        ? key.startsWith('inline-create-activate-') && key.endsWith('-$field')
+        : key == 'inline-create-activate-$draftKey-$field';
+  }).first;
+  await tester.ensureVisible(activate);
+  await tester.tap(activate);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   final cases = <_PageCase>[
     (
@@ -245,23 +262,34 @@ void main() {
         await _open(tester, entry, api);
         await tester.tap(find.text('编辑模式'));
         await tester.pumpAndSettle();
-        expect(_newName(), findsWidgets);
+        expect(_newName(), findsNothing);
         expect(api.writes, isEmpty);
+        await _activateNewField(tester, 'name');
         await tester.enterText(_newName().first, '表格新资料');
         await tester.pumpAndSettle();
+        final nameKey =
+            (tester.widget<TextField>(_newName().first).key as ValueKey<String>)
+                .value;
+        final draftKey = nameKey.substring(
+          'inline-create-cell-'.length,
+          nameKey.length - '-name'.length,
+        );
         // 必填字段全部在可见列内，直接在新建行补齐（不再有「其他字段」弹窗入口）。
         if (entry.domain == 'goods') {
+          await _activateNewField(tester, 'sourceType', draftKey: draftKey);
           _newRowDropdown(
             tester,
             (field) => field.items.any((item) => item.value == '采购'),
           ).onChanged('采购');
           await tester.pumpAndSettle();
+          await _activateNewField(tester, 'unitId', draftKey: draftKey);
           _newRowDropdown(
             tester,
             (field) => field.items.any((item) => item.value == _unit),
           ).onChanged(_unit);
           await tester.pumpAndSettle();
         } else if (entry.domain == 'suppliers') {
+          await _activateNewField(tester, 'linkman', draftKey: draftKey);
           await tester.enterText(_newRowTextCell('linkman'), '采购联系人');
           await tester.pumpAndSettle();
         }
@@ -315,7 +343,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('编辑模式'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(_newName().first);
+    await _activateNewField(tester, 'name');
     await tester.enterText(_newName().first, '窄屏新货品');
     await tester.pumpAndSettle();
     expect(api.writes, isEmpty);

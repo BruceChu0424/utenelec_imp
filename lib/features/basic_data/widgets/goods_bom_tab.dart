@@ -1,5 +1,5 @@
 // 货品详情「组装信息」：默认只读；编辑模式中的每次操作进入会话草稿。
-// 退出并保存前预览共用组件的影响，二次确认后一次提交全部变更。
+// 退出编辑时选择保存或丢弃，保存前预览共用组件的影响并一次提交全部变更。
 // 右下固定选择摘要、编辑模式和审计模式；写入口同时检查模式、会话及细分权限。
 // 行右键自动选中未选中的行，已选中的行保留多选，支持批量复制与跨货品粘贴。
 // 审计模式独立于结构编辑，已核对标记持久化在服务端，修改结构后需重新核对。
@@ -39,6 +39,7 @@ import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -52,6 +53,7 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_inline_edit_cell.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
@@ -72,6 +74,7 @@ import '../models/goods_node.dart';
 import '../providers/goods_clipboard.dart';
 import '../providers/color_unit_dict.dart';
 import 'master_edit_dialog.dart' show kGoodsSourceTypeOptions;
+import 'master_inline_edit.dart' show masterEditText;
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_bom_edit_repository.dart';
 import 'goods_bom_import_dialog.dart';
@@ -128,43 +131,55 @@ class _BomRow {
 
 class _BomInlineValues {
   _BomInlineValues(this.item, this.parentGoodsId)
-    : qty = TextEditingController(
-        text: item.isPeriodicEdge
-            ? _plainQty(item.periodicUnitWeightGrams ?? item.qty)
-            : item.designQtyText,
-      ),
-      basis = TextEditingController(text: formatBomQty(item.basisOutputQty)),
-      summary = TextEditingController(text: item.summary ?? ''),
-      colorId = item.colorId,
+    : colorId = item.colorId,
+      colorLabel = item.componentColorName,
       consumption = item.consumptionBasis,
       partial = item.allowPartialPackage;
-  final TextEditingController qty;
-  final TextEditingController basis;
-  final TextEditingController summary;
+  final _text = <String, TextEditingController>{};
+  TextEditingController get qty => _controller('qty');
+  TextEditingController get basis => _controller('basisOutputQty');
+  TextEditingController get summary => _controller('summary');
+  String textFor(String field) =>
+      _text[field]?.text ??
+      switch (field) {
+        'qty' =>
+          item.isPeriodicEdge
+              ? _plainQty(item.periodicUnitWeightGrams ?? item.qty)
+              : item.designQtyText,
+        'basisOutputQty' => formatBomQty(item.basisOutputQty),
+        _ => item.summary ?? '',
+      };
+  TextEditingController _controller(String field) => _text.putIfAbsent(
+    field,
+    () => TextEditingController(text: textFor(field)),
+  );
   final GoodsBomItem item;
   final String parentGoodsId;
   BomConsumptionBasis consumption;
   bool partial;
   String? colorId;
+  String? colorLabel;
   final Set<String> changed = {};
   void dispose() {
-    qty.dispose();
-    basis.dispose();
-    summary.dispose();
+    for (final controller in _text.values) {
+      controller.dispose();
+    }
   }
 }
 
 class _BomMasterValues {
   _BomMasterValues(this.snapshot)
     : base = Map<String, dynamic>.of(snapshot),
-      text = {
-        for (final key in const ['model', 'spec', 'material'])
-          key: TextEditingController(text: snapshot[key] as String? ?? ''),
-      },
       sourceType = snapshot['sourceType'] as String?;
   final Map<String, dynamic> snapshot;
   final Map<String, dynamic> base;
-  final Map<String, TextEditingController> text;
+  final text = <String, TextEditingController>{};
+  String textFor(String field) =>
+      text[field]?.text ?? snapshot[field] as String? ?? '';
+  TextEditingController controllerFor(String field) => text.putIfAbsent(
+    field,
+    () => TextEditingController(text: textFor(field)),
+  );
   String? sourceType;
   final Set<String> changed = {};
   void dispose() {
@@ -287,26 +302,26 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   final Map<String, TextEditingController> _componentInputs = {};
   final Set<String> _childAppendParents = {};
   final Map<String, _BomMasterValues> _masterValues = {};
-  final Map<String, Future<void>> _masterReads = {};
-  final Set<String> _masterReadErrors = {};
-  final List<Future<void>> _masterReadSlots = List.generate(
-    4,
-    (_) => Future<void>.value(),
-  );
-  int _masterReadSlot = 0;
+  AsyncValue<GoodsBomLearningSummary>? _editingLearning;
+  late final _editableAppendRows = [
+    for (var index = 0; index < 3; index++)
+      MasterTableAppendRow(
+        key: ValueKey('goods-bom-new-row-$index'),
+        cellBuilder: (context, key) => key != 'treeIdentity'
+            ? const SizedBox.shrink()
+            : _componentLookup('new:$index', parentGoodsId: widget.goodsId),
+      ),
+  ];
+  List<MasterColumnDef<_BomRow>>? _columnsCache;
+  Object? _columnsCacheScope;
 
   void _clearTableEditors() {
     _flushingInline = false;
+    _editingLearning = null;
     for (final values in _masterValues.values) {
       values.dispose();
     }
     _masterValues.clear();
-    _masterReads.clear();
-    _masterReadErrors.clear();
-    for (var index = 0; index < _masterReadSlots.length; index++) {
-      _masterReadSlots[index] = Future<void>.value();
-    }
-    _masterReadSlot = 0;
     for (final value in _inlineValues.values) {
       value.dispose();
     }
@@ -512,7 +527,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   Future<void> refresh() async {
-    if (!_writeBusy) await _load();
+    // An edit session owns a stable snapshot until save/discard. A host refresh
+    // must not rebuild its draft or replace inputs while the user is typing.
+    if (!_writeBusy && !_editMode) await _load();
   }
 
   Future<bool> finishEditing() async {
@@ -829,6 +846,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       isCurrent: current,
     );
     setState(() {
+      _editingLearning = ref.read(goodsBomLearningProvider(goodsId));
       _enteringEdit = true;
       _pendingDraft = draft;
     });
@@ -838,17 +856,24 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!current()) return;
       final roots = await _readTree(draft, goodsId, current);
       if (!current()) return;
+      final masters = await _prepareMasterValues(roots, draft, current);
+      if (!current()) {
+        for (final values in masters.values) {
+          values.dispose();
+        }
+        return;
+      }
       // Preparing snapshots must not replace the current table with a loading
       // screen or enable any write controls before the snapshot succeeds.
       _loadRevision++;
       setState(() {
-        _roots = roots;
-        _visibleRowsCache = null;
+        _acceptTree(roots);
         _pruneSelection();
         _editMode = true;
         _editBoundary = boundary;
         _auditMode = false;
         _draft = draft;
+        _adoptMasterValues(masters);
         _error = null;
         _loading = false;
       });
@@ -1079,7 +1104,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final active = TickerMode.valuesOf(context).enabled;
     if (_wasActive == false && active) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
+        if (mounted && !_editMode && !_writeBusy) _load();
       });
     }
     _wasActive = active;
@@ -1090,7 +1115,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (state == AppLifecycleState.resumed &&
         _wasActive == true &&
         ModalRoute.of(context)?.isCurrent == true &&
-        !_deleting) {
+        !_editMode &&
+        !_writeBusy) {
       _load();
     }
   }
@@ -1167,14 +1193,21 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     try {
       final roots = await _readTree(repository, goodsId, current);
       if (!current()) return;
-      ref.invalidate(goodsBomLearningProvider(goodsId));
+      final masters = repository is GoodsBomEditDraft
+          ? await _prepareMasterValues(roots, repository, current)
+          : <String, _BomMasterValues>{};
+      if (!current()) {
+        for (final values in masters.values) {
+          values.dispose();
+        }
+        return;
+      }
+      if (!_editMode) ref.invalidate(goodsBomLearningProvider(goodsId));
       setState(() {
-        _roots = roots;
-        _visibleRowsCache = null;
-        // 重载会重建全部行/节点对象，但勾选集用的是业务复合键而非对象引用，
-        // 所以编辑保存后的重载不会平白丢掉用户的勾选；真正已经不在
-        // 树里的行(刚被删掉的、父级子树没恢复展开的)在这里一并剪掉，
-        // 避免编辑/删除去指一个已经不存在的 id。
+        _adoptMasterValues(masters);
+        _acceptTree(roots);
+        // Keep rows and editor identity when the accepted snapshot is equal.
+        // A real structure change still prunes relations that no longer exist.
         _pruneSelection();
         _loading = false;
       });
@@ -1192,6 +1225,88 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       });
     }
   }
+
+  void _acceptTree(List<_BomNode> roots) {
+    final displayed = _roots;
+    if (displayed != null && _sameSnapshotTree(displayed, roots)) return;
+    _roots = roots;
+    _visibleRowsCache = null;
+  }
+
+  static bool _sameSnapshotTree(List<_BomNode> before, List<_BomNode> after) {
+    if (before.length != after.length) return false;
+    for (var index = 0; index < before.length; index++) {
+      final previous = before[index];
+      final next = after[index];
+      if (previous.expanded != next.expanded ||
+          previous.loading != next.loading ||
+          _itemSnapshot(previous.item) != _itemSnapshot(next.item) ||
+          !listEquals(previous.item.warnings, next.item.warnings)) {
+        return false;
+      }
+      final previousChildren = previous.children;
+      final nextChildren = next.children;
+      if ((previousChildren == null) != (nextChildren == null) ||
+          (previousChildren != null &&
+              !_sameSnapshotTree(previousChildren, nextChildren!))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Value comparison happens only when accepting a read, never on scroll or
+  // selection frames. Include every field so fresh business facts are retained.
+  static Object _itemSnapshot(GoodsBomItem item) => (
+    (
+      item.id,
+      item.componentGoodsId,
+      item.componentCode,
+      item.componentName,
+      item.componentModel,
+      item.componentSpec,
+      item.componentMaterial,
+      item.componentStockQty,
+      item.componentUnitName,
+      item.componentColorName,
+      item.componentSourceType,
+      item.componentIssueMethod,
+    ),
+    (
+      item.colorId,
+      item.colorLegacyId,
+      item.defaultSupplierId,
+      item.vendLegacyId,
+      item.qty,
+      item.price,
+      item.total,
+      item.summary,
+      item.legacyId,
+      item.hasChildren,
+      item.controlStage,
+      item.consumptionBasis,
+      item.basisOutputQty,
+      item.allowPartialPackage,
+      item.hardGate,
+      item.auditedAt,
+      item.systemLearned,
+      item.unitWeightGrams,
+    ),
+    (
+      item.actual.qty,
+      item.actual.perUnitQty,
+      item.actual.status,
+      item.actual.usesActual,
+      item.actual.netQty,
+      item.actual.outputQty,
+      item.actual.sampleCount,
+      item.actual.defectQty,
+      item.actual.perProducedQty,
+      item.actual.defectRate,
+      item.actual.updatedAt,
+      item.actual.relearnedAt,
+    ),
+  );
 
   Future<List<_BomNode>> _readTree(
     GoodsBomRepository repository,
@@ -1447,8 +1562,24 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           (!node.item.hasChildren && !_childAppendParents.contains(id))) {
         return;
       }
+      final children = items.map(_BomNode.new).toList();
+      bool current() =>
+          mounted &&
+          revision == _loadRevision &&
+          boundary == ref.read(sensitiveReadBoundaryProvider) &&
+          identical(repository, _repository);
+      final masters = repository is GoodsBomEditDraft
+          ? await _prepareMasterValues(children, repository, current)
+          : <String, _BomMasterValues>{};
+      if (!current()) {
+        for (final values in masters.values) {
+          values.dispose();
+        }
+        return;
+      }
       setState(() {
-        node.children = items.map(_BomNode.new).toList();
+        _adoptMasterValues(masters);
+        node.children = children;
         node.expanded = true;
         _visibleRowsCache = null;
         node.loading = false;
@@ -1735,6 +1866,31 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     required String parentGoodsId,
     _BomRow? replacing,
   }) {
+    if (replacing == null) {
+      return _componentLookupEditor(inputKey, parentGoodsId: parentGoodsId);
+    }
+    final label =
+        replacing.node.item.componentName ??
+        replacing.node.item.componentCode ??
+        '';
+    return _lazyCell(
+      replacing,
+      'name',
+      _l10n.bomReplaceComponent,
+      label,
+      (_) => _componentLookupEditor(
+        inputKey,
+        parentGoodsId: parentGoodsId,
+        replacing: replacing,
+      ),
+    );
+  }
+
+  Widget _componentLookupEditor(
+    String inputKey, {
+    required String parentGoodsId,
+    _BomRow? replacing,
+  }) {
     final revision = _modeRevision;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final draft = _draft;
@@ -1841,20 +1997,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     );
   }
 
-  List<MasterTableAppendRow> get _appendRows => !_canCreate
-      ? const []
-      : [
-          for (var index = 0; index < 3; index++)
-            MasterTableAppendRow(
-              key: ValueKey('goods-bom-new-row-$index'),
-              cellBuilder: (context, key) => key != 'treeIdentity'
-                  ? const SizedBox.shrink()
-                  : _componentLookup(
-                      'new:$index',
-                      parentGoodsId: widget.goodsId,
-                    ),
-            ),
-        ];
+  List<MasterTableAppendRow> get _appendRows =>
+      _canCreate ? _editableAppendRows : const [];
   //
   // 添加组件：选中某组件行 → 默认作为该组件的子组件；未选中 → 顶层。浮窗内父级可选。
   // 保存把添加动作暂存到所选父级的会话草稿，退出并确认后统一提交。
@@ -2529,62 +2673,135 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     await _load();
   }
 
-  UtenTableRowDrag<_BomRow>? get _rowDrag => (_canMutate && !_loading)
-      ? UtenTableRowDrag<_BomRow>(
-          canDragRow: (r) =>
-              !r.isPlaceholder && _canMutate && !_loading && !_writeBusy,
-          dragRowsOf: _dragPayloadOf,
-          dragLabelOf: (r) =>
-              r.node.item.componentName ?? r.node.item.componentCode ?? '组件',
-          canDrop: (target, dragged) =>
-              _canMutate &&
-              !target.isPlaceholder &&
-              !_isInDraggedSubtree(target, dragged),
-          // 任何可见节点都能接收子级（叶子挂上组件后自然成父件）；
-          // 成环与重复的权威校验在服务端。
-          canDropInto: (target, dragged) =>
-              _canMutate &&
-              !target.isPlaceholder &&
-              !_isInDraggedSubtree(target, dragged),
-          onHoverAutoExpand: (target) {
-            final node = target.node;
-            if (node.item.hasChildren && !node.expanded && !node.loading) {
-              _toggle(node);
-            }
-          },
-          onDrop: _onRowsDropped,
-        )
-      : null;
+  // A viewer with editing capability keeps the same keyed row ancestors even
+  // before entering edit mode. Live predicates enable gestures only inside a
+  // writable session; reads, writes and recovery never remount the row.
+  UtenTableRowDrag<_BomRow>? get _rowDrag =>
+      _canEnterEdit ? _editableRowDrag : null;
+
+  late final UtenTableRowDrag<_BomRow> _editableRowDrag =
+      UtenTableRowDrag<_BomRow>(
+        canDragRow: (r) =>
+            !r.isPlaceholder && _canMutate && !_loading && !_writeBusy,
+        dragRowsOf: _dragPayloadOf,
+        dragLabelOf: (r) =>
+            r.node.item.componentName ?? r.node.item.componentCode ?? '组件',
+        canDrop: (target, dragged) =>
+            _canMutate &&
+            !_loading &&
+            !_writeBusy &&
+            !target.isPlaceholder &&
+            !_isInDraggedSubtree(target, dragged),
+        // 任何可见节点都能接收子级(叶子挂上组件后自然成父件)；
+        // 成环与重复的权威校验在服务端。
+        canDropInto: (target, dragged) =>
+            _canMutate &&
+            !_loading &&
+            !_writeBusy &&
+            !target.isPlaceholder &&
+            !_isInDraggedSubtree(target, dragged),
+        onHoverAutoExpand: (target) {
+          if (!_canMutate || _loading || _writeBusy) return;
+          final node = target.node;
+          if (node.item.hasChildren && !node.expanded && !node.loading) {
+            _toggle(node);
+          }
+        },
+        onDrop: _onRowsDropped,
+      );
 
   // ---- 渲染 ---------------------------------------------------------------
 
-  void _readMasterValues(String goodsId) {
-    if (_masterReads.containsKey(goodsId)) return;
-    final draft = _draft;
-    final revision = _modeRevision;
-    bool current() =>
-        mounted &&
-        _canEdit &&
-        _hasPermission(Perm.goodsEdit) &&
-        identical(draft, _draft) &&
-        revision == _modeRevision;
-    final slot = _masterReadSlot++ % _masterReadSlots.length;
-    final read = _masterReadSlots[slot].then((_) async {
-      if (!current() || draft == null) return;
-      try {
-        final snapshot = await draft.goodsSnapshot(goodsId);
-        if (!current()) return;
-        setState(() {
-          if (snapshot != null && snapshot['componentGoodsWritable'] == true) {
-            _masterValues[goodsId] = _BomMasterValues(snapshot);
-          }
-        });
-      } catch (_) {
-        if (current()) setState(() => _masterReadErrors.add(goodsId));
+  Widget _lazyCell(
+    _BomRow row,
+    String field,
+    String label,
+    String preview,
+    WidgetBuilder editor, {
+    bool changed = false,
+    bool retainFocusWhenDisabled = false,
+    TextAlign textAlign = TextAlign.start,
+  }) => _bomTableInput(
+    child: UtenInlineEditCell(
+      key: ValueKey((
+        'goods-bom-editor',
+        field,
+        row.occurrenceKey,
+        row.node.item.componentGoodsId,
+        _modeRevision,
+      )),
+      activationKey: ValueKey('goods-bom-activate-$field-${row.occurrenceKey}'),
+      semanticLabel: masterEditText(
+        context,
+        '编辑$label',
+        'Edit $label',
+        '$label 편집',
+      ),
+      enabled: _canMutate && !_writeBusy,
+      changed: changed,
+      retainFocusWhenDisabled: retainFocusWhenDisabled,
+      preview: Text(
+        preview.isEmpty ? '—' : preview,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: textAlign,
+      ),
+      editorBuilder: editor,
+    ),
+  );
+
+  void _adoptMasterValues(Map<String, _BomMasterValues> prepared) {
+    for (final entry in prepared.entries) {
+      // Concurrent expansion of two aliases can prepare the same component.
+      // Preserve its first editor and any input already entered into it.
+      final adopted = _masterValues.putIfAbsent(entry.key, () => entry.value);
+      if (!identical(adopted, entry.value)) entry.value.dispose();
+    }
+  }
+
+  /// Prepare every displayed master editor before publishing a new table.
+  /// Building/selecting/scrolling a cell performs no network or setState work.
+  Future<Map<String, _BomMasterValues>> _prepareMasterValues(
+    List<_BomNode> roots,
+    GoodsBomEditDraft draft,
+    bool Function() current,
+  ) async {
+    final prepared = <String, _BomMasterValues>{};
+    if (!_hasPermission(Perm.goodsEdit)) return prepared;
+    final ids = <String>{};
+    void collect(List<_BomNode> nodes) {
+      for (final node in nodes) {
+        final id = node.item.componentGoodsId;
+        if (!_masterValues.containsKey(id)) ids.add(id);
+        if (node.expanded && node.children != null) collect(node.children!);
       }
-    });
-    _masterReads[goodsId] = read;
-    _masterReadSlots[slot] = read;
+    }
+
+    collect(roots);
+    final pending = ids.toList();
+    var preparing = true;
+    try {
+      for (var start = 0; start < pending.length && current(); start += 4) {
+        await Future.wait([
+          for (final id in pending.skip(start).take(4))
+            () async {
+              final snapshot = await draft.goodsSnapshot(id);
+              if (preparing &&
+                  current() &&
+                  snapshot?['componentGoodsWritable'] == true) {
+                prepared[id] = _BomMasterValues(snapshot!);
+              }
+            }(),
+        ], eagerError: true);
+      }
+      return prepared;
+    } catch (_) {
+      preparing = false;
+      for (final values in prepared.values) {
+        values.dispose();
+      }
+      rethrow;
+    }
   }
 
   Widget _masterCell(_BomRow row, String field, String? fallback) {
@@ -2593,32 +2810,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (!_canEdit || !_hasPermission(Perm.goodsEdit)) {
       return Text(fallback ?? '', maxLines: 1, overflow: TextOverflow.ellipsis);
     }
-    _readMasterValues(goodsId);
     final values = _masterValues[goodsId];
     if (values == null) {
-      return Row(
-        children: [
-          Expanded(
-            child: Text(
-              fallback ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (_masterReadErrors.contains(goodsId))
-            UtenPickerIconButton(
-              tooltip: _l10n.commonRetry,
-              icon: Icons.refresh_rounded,
-              onPressed: () async {
-                setState(() {
-                  _masterReads.remove(goodsId);
-                  _masterReadErrors.remove(goodsId);
-                  _readMasterValues(goodsId);
-                });
-              },
-            ),
-        ],
-      );
+      return Text(fallback ?? '', maxLines: 1, overflow: TextOverflow.ellipsis);
     }
     void changed(Object? value) {
       if (!_canMutate || !_hasPermission(Perm.goodsEdit)) return;
@@ -2630,8 +2824,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
 
     if (field == 'sourceType') {
-      return _bomTableInput(
-        child: UtenDropdownField(
+      return _lazyCell(
+        row,
+        field,
+        masterEditText(context, '来源', 'Source', '공급 방식'),
+        values.sourceType ?? '',
+        (_) => UtenDropdownField(
           value: values.sourceType,
           allowClear: false,
           dense: true,
@@ -2648,54 +2846,85 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             });
           },
         ),
+        changed: values.changed.contains(field),
       );
     }
-    return _bomTableInput(
-      child: TextField(
+    final label = switch (field) {
+      'model' => masterEditText(context, '型号', 'Model', '모델'),
+      'spec' => masterEditText(context, '规格', 'Specification', '규격'),
+      _ => masterEditText(context, '材质', 'Material', '재질'),
+    };
+    return _lazyCell(
+      row,
+      field,
+      label,
+      values.textFor(field),
+      (_) => TextField(
         key: ValueKey('goods-bom-master-$field-${row.occurrenceKey}'),
-        controller: values.text[field],
-        enabled: _canMutate && !_writeBusy,
+        controller: values.controllerFor(field),
+        autofocus: true,
+        enabled: _canMutate,
+        readOnly: _writeBusy,
         decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
         onChanged: (value) => changed(value.trim()),
       ),
+      changed: values.changed.contains(field),
+      retainFocusWhenDisabled: true,
     );
   }
 
   Widget _colorCell(_BomRow row) {
     if (row.isPlaceholder) return const SizedBox.shrink();
     final values = _valuesFor(row);
-    final colors = ref.watch(colorDictProvider).value ?? const [];
-    final selected = colors.where((color) => color.id == values.colorId);
-    return _bomTableInput(
-      child: UtenDropdownField(
-        value: values.colorId,
-        selectedLabel: selected.isEmpty
-            ? row.node.item.componentColorName
-            : selected.first.name,
-        dense: true,
-        enabled: _canMutate && !_writeBusy,
-        hintText: values.item.colorId != null && values.colorId == null
-            ? '—'
-            : row.node.item.componentColorName,
-        items: [
-          for (final color in colors)
-            UtenDropdownItem(
-              value: color.id,
-              label: color.name ?? color.code ?? color.id,
-            ),
-        ],
-        onChanged: (value) {
-          if (!_canMutate || _writeBusy) return;
-          setState(() {
-            values.colorId = value;
-            if (value == row.node.item.colorId) {
-              values.changed.remove('colorId');
-            } else {
-              values.changed.add('colorId');
-            }
-          });
+    return _lazyCell(
+      row,
+      'color',
+      masterEditText(context, '颜色', 'Color', '색상'),
+      values.colorLabel ?? '',
+      (_) => Consumer(
+        builder: (context, cellRef, child) {
+          final colors = cellRef.watch(colorDictProvider).value ?? const [];
+          final selected = colors.where((color) => color.id == values.colorId);
+          return UtenDropdownField(
+            value: values.colorId,
+            selectedLabel: selected.isEmpty
+                ? values.colorLabel
+                : selected.first.name ??
+                      selected.first.code ??
+                      selected.first.id,
+            dense: true,
+            enabled: _canMutate && !_writeBusy,
+            hintText: values.item.colorId != null && values.colorId == null
+                ? '—'
+                : row.node.item.componentColorName,
+            items: [
+              for (final color in colors)
+                UtenDropdownItem(
+                  value: color.id,
+                  label: color.name ?? color.code ?? color.id,
+                ),
+            ],
+            onChanged: (value) {
+              if (!_canMutate || _writeBusy) return;
+              setState(() {
+                values.colorId = value;
+                final chosen = colors
+                    .where((color) => color.id == value)
+                    .firstOrNull;
+                values.colorLabel = value == null
+                    ? null
+                    : chosen?.name ?? chosen?.code ?? chosen?.id;
+                if (value == row.node.item.colorId) {
+                  values.changed.remove('colorId');
+                } else {
+                  values.changed.add('colorId');
+                }
+              });
+            },
+          );
         },
       ),
+      changed: values.changed.contains('colorId'),
     );
   }
 
@@ -2706,11 +2935,17 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   Widget _inlineText(_BomRow row, String field, String label) {
     if (row.isPlaceholder) return const SizedBox.shrink();
     final values = _valuesFor(row);
-    final controller = switch (field) {
-      'qty' => values.qty,
-      'basisOutputQty' => values.basis,
-      _ => values.summary,
-    };
+    final unit = field != 'qty'
+        ? null
+        : row.node.item.isPeriodicEdge &&
+              row.node.item.periodicUnitWeightGrams != null
+        ? '克'
+        : row.node.item.componentUnitName;
+    final entered = values.textFor(field);
+    final preview =
+        field == 'qty' && entered.isNotEmpty && unit?.trim().isNotEmpty == true
+        ? '$entered ${unit!.trim()}'
+        : entered;
     final original = switch (field) {
       'qty' =>
         row.node.item.isPeriodicEdge
@@ -2721,26 +2956,27 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       'basisOutputQty' => formatBomQty(row.node.item.basisOutputQty),
       _ => row.node.item.summary ?? '',
     };
-    return _bomTableInput(
-      child: TextField(
+    return _lazyCell(
+      row,
+      field,
+      label,
+      preview,
+      (_) => TextField(
         key: ValueKey('goods-bom-inline-$field-${row.occurrenceKey}'),
-        controller: controller,
-        enabled: _canMutate && !_writeBusy,
+        controller: switch (field) {
+          'qty' => values.qty,
+          'basisOutputQty' => values.basis,
+          _ => values.summary,
+        },
+        autofocus: true,
+        enabled: _canMutate,
+        readOnly: _writeBusy,
         keyboardType: field == 'summary'
             ? TextInputType.text
             : const TextInputType.numberWithOptions(decimal: true),
         textAlign: field == 'summary' ? TextAlign.start : TextAlign.end,
         decoration: UtenInputDecoration(
-          InputDecoration(
-            hintText: label,
-            isDense: true,
-            suffixText: field == 'qty'
-                ? row.node.item.isPeriodicEdge &&
-                          row.node.item.periodicUnitWeightGrams != null
-                      ? '克'
-                      : row.node.item.componentUnitName
-                : null,
-          ),
+          InputDecoration(hintText: label, isDense: true, suffixText: unit),
         ),
         onChanged: (value) {
           if (!_canMutate) return;
@@ -2751,12 +2987,26 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           }
         },
       ),
+      changed: values.changed.contains(field),
+      textAlign: field == 'summary' ? TextAlign.start : TextAlign.end,
+      retainFocusWhenDisabled: true,
     );
   }
 
   List<MasterColumnDef<_BomRow>> get _columns {
     final l10n = AppLocalizations.of(context);
-    return [
+    final scope = (
+      l10n,
+      _canEdit,
+      _auditMode,
+      _hasPermission(Perm.stockView),
+      UtenTreeTableCell.toggleExtentOf(context),
+    );
+    if (_columnsCacheScope == scope && _columnsCache != null) {
+      return _columnsCache!;
+    }
+    _columnsCacheScope = scope;
+    return _columnsCache = [
       // 层级身份集中在首列：级联号 + 明确层级文字 + 连续树轨 + 48dp
       // 单击展开按钮。行单击只负责选中，不再让“双击整行”兼任树导航。
       // 2026-09-12 用户口径「只显示名字和组件X级」：身份格不再堆路径行与编号
@@ -2993,8 +3243,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   return Text(r.node.item.consumptionBasis.label);
                 }
                 final values = _valuesFor(r);
-                return _bomTableInput(
-                  child: UtenDropdownField(
+                return _lazyCell(
+                  r,
+                  'consumptionBasis',
+                  masterEditText(context, '计量方式', 'Consumption basis', '소모 기준'),
+                  values.consumption.label,
+                  (_) => UtenDropdownField(
                     value: values.consumption.code,
                     allowClear: false,
                     dense: true,
@@ -3018,6 +3272,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       });
                     },
                   ),
+                  changed: values.changed.contains('consumptionBasis'),
                 );
               },
       ),
@@ -3049,8 +3304,14 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   return const Text('—');
                 }
                 final values = _valuesFor(r);
-                return _bomTableInput(
-                  child: UtenDropdownField(
+                return _lazyCell(
+                  r,
+                  'allowPartialPackage',
+                  masterEditText(context, '尾包', 'Partial package', '부분 포장'),
+                  values.partial
+                      ? masterEditText(context, '允许', 'Allowed', '허용')
+                      : masterEditText(context, '整包', 'Whole package', '전체 포장'),
+                  (_) => UtenDropdownField(
                     value: values.partial ? 'yes' : 'no',
                     allowClear: false,
                     dense: true,
@@ -3071,6 +3332,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       });
                     },
                   ),
+                  changed: values.changed.contains('allowPartialPackage'),
                 );
               },
       ),
@@ -3138,7 +3400,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final selectedCount = _selectedRowIds.length;
     // 查询态保留多选和已选摘要，写入能力只由模式与权限决定。
     const selectable = true;
-    final learning = ref.watch(goodsBomLearningProvider(widget.goodsId));
+    final learning = ref.watch(
+      goodsBomLearningProvider(widget.goodsId).select(
+        (latest) =>
+            (_editMode || _enteringEdit) ? _editingLearning ?? latest : latest,
+      ),
+    );
     final evidence =
         learning.asData?.value.materialEvidence ??
         const <GoodsBomMaterialEvidence>[];
@@ -3155,23 +3422,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         Positioned.fill(
           child: Column(
             children: [
-              if (_enteringEdit || (_loading && _roots != null))
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const LinearProgressIndicator(
-                      key: Key('goods-bom-read-progress'),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s8),
-                      child: Text(
-                        _enteringEdit
-                            ? _l10n.bomEditPreparing
-                            : _l10n.bomEditRefreshing,
-                      ),
-                    ),
-                  ],
-                ),
               if (learning.hasError)
                 const Padding(
                   padding: EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -3208,6 +3458,41 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   key: ValueKey('goods-bom-table-$selectable-$_auditMode'),
                   columns: _columns,
                   items: visible,
+                  bodyPresentationBuilder: (context, child) => Stack(
+                    fit: StackFit.passthrough,
+                    children: [
+                      child,
+                      if (_enteringEdit || (_loading && _roots != null))
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: IgnorePointer(
+                            child: Material(
+                              color: Theme.of(context).colorScheme.surface,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const LinearProgressIndicator(
+                                    key: Key('goods-bom-read-progress'),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s8,
+                                    ),
+                                    child: Text(
+                                      _enteringEdit
+                                          ? _l10n.bomEditPreparing
+                                          : _l10n.bomEditRefreshing,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   appendRows: _appendRows,
                   facets: const {},
                   nullCounts: const {},

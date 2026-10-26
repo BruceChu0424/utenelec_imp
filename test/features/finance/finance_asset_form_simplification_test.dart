@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -16,7 +20,72 @@ import 'package:uten_imp/features/finance/widgets/finance_asset_form_v2.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+final _assetPermissions = StateProvider<Set<String>>(
+  (ref) => {Perm.financeAssetView, Perm.financeAssetEdit},
+);
+
 void main() {
+  for (final scenario in ['selection', 'selection-aba', 'reader-aba']) {
+    testWidgets('late asset custodian preserves $scenario', (tester) async {
+      final api = _PendingCustodianApi();
+      await _pump(
+        tester,
+        api: api,
+        existing: _existing(
+          FinanceAssetLedger.fixedAsset,
+          custodianId: 'employee-a',
+        ),
+      );
+      Finder picker() => find.byType(UtenEmployeePicker);
+      if (scenario == 'reader-aba') {
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(FinanceAssetFormSurface)),
+        );
+        container.read(_assetPermissions.notifier).state = {};
+        await tester.pump();
+        container.read(_assetPermissions.notifier).state = {
+          Perm.financeAssetView,
+          Perm.financeAssetEdit,
+        };
+        await tester.pump();
+      } else {
+        tester
+            .widget<UtenEmployeePicker>(picker())
+            .onChanged(
+              const UtenEmployeePickerItem(id: 'employee-b', name: 'Picked B'),
+            );
+        await tester.pump();
+        if (scenario == 'selection-aba') {
+          tester
+              .widget<UtenEmployeePicker>(picker())
+              .onChanged(
+                const UtenEmployeePickerItem(
+                  id: 'employee-a',
+                  name: 'Picked A',
+                ),
+              );
+          await tester.pump();
+        }
+      }
+      api.pending.complete({
+        'id': 'employee-a',
+        'fullName': 'Old A',
+        'code': 'A',
+      });
+      await tester.pumpAndSettle();
+      final initial = tester.widget<UtenEmployeePicker>(picker()).initial;
+      expect(
+        initial?.name,
+        scenario == 'reader-aba'
+            ? null
+            : scenario == 'selection'
+            ? 'Picked B'
+            : 'Picked A',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final ledger in FinanceAssetLedger.values) {
     testWidgets(
       '${ledger.name} keeps required fields outside optional groups',
@@ -185,6 +254,7 @@ TextEditingController _input(WidgetTester tester, String label) => tester
 FinanceAssetSummary _existing(
   FinanceAssetLedger ledger, {
   String acceptanceDate = '2026-01-05',
+  String? custodianId,
 }) => FinanceAssetSummary.fromJson({
   'id': 'asset-1',
   'code': 'ZC-001',
@@ -212,6 +282,7 @@ FinanceAssetSummary _existing(
   'sourceDocumentDate': '2026-01-02',
   'remark': '保留原始说明',
   'version': 7,
+  'custodianId': custodianId,
 }, ledger);
 
 Future<void> _pump(
@@ -221,6 +292,7 @@ Future<void> _pump(
   _Repository? repository,
   double width = 1200,
   Locale locale = const Locale('zh'),
+  ApiClient? api,
 }) async {
   await tester.binding.setSurfaceSize(Size(width, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -229,12 +301,11 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(_Api()),
+        apiClientProvider.overrideWithValue(api ?? _Api()),
         sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.financeAssetView,
-          Perm.financeAssetEdit,
-        }),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_assetPermissions),
+        ),
         financeAssetWorkbenchRepositoryProvider.overrideWithValue(
           repository ?? _Repository(),
         ),
@@ -294,4 +365,15 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => const [];
+}
+
+class _PendingCustodianApi extends _Api {
+  final pending = Completer<Map<String, dynamic>>();
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) => path.endsWith('/employee-a')
+      ? pending.future
+      : super.get(path, query: query);
 }

@@ -160,6 +160,8 @@ public class SecurityConfig {
                 .exceptionHandling(e -> e.authenticationEntryPoint(authenticationFailure).accessDeniedHandler(accessDenied));
 
         if (securityProps.isRequireHttps()) {
+            http.addFilterBefore(new com.uten.imp.security.HttpsRequestAuthorityFilter(),
+                    org.springframework.security.web.transport.HttpsRedirectFilter.class);
             http.redirectToHttps(Customizer.withDefaults());
         }
         return http.build();

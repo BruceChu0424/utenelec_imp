@@ -54,6 +54,8 @@ class IqcDecideReportBatchPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties){FullChainEndToEndTest.registerDataSource(properties);}
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
+    @Autowired jakarta.persistence.EntityManager em;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     @Autowired ObjectMapper json;
     @Autowired MockMvc http;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
@@ -410,6 +412,66 @@ class IqcDecideReportBatchPostgresTest {
         assertEquals(committed,performanceFacts(),"Original-key replay must leave physical, funding and value facts unchanged");
         assertTrue(elapsed<35_000,"全预入库 20 张单也须低于服务端 40s 命令截止(20 张上限的实测依据)，实测 " + elapsed + "ms");
         }
+    }
+
+    /** Real unrelated procurement graphs must never enter one action's recursive origin proof. */
+    @Test void purchaseFailureProjectionClassifiesOnlyItsPhysicalSources()throws Exception{
+        Stage selected=prepare(2,2);
+        call(selected,report(selected,null),200);
+        // Both scenarios use the real finance/order/receipt/IQC chain. The second scenario
+        // contributes 50 unrelated purchase receipt rows, as a shared CI database does.
+        prepare(20,5);
+        SecurityContextHolder.getContext().setAuthentication(selected.actor());
+        long receiptRows=selected.byReceipt().values().stream()
+                .filter(rows->rows.getFirst().type().equals("PURCHASE")).mapToLong(List::size).sum();
+        assertTrue(db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE NOT is_deleted",Long.class)
+                >receiptRows*10,"The regression must contain unrelated, valid physical procurement history");
+        String sql=org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                Class.forName("com.uten.imp.features.production.analysis.PurchaseActionLifecycleProjection"),
+                "failedSupplyCancellationSql");
+        assertNotNull(sql);
+        Map<String,String> before=performanceFacts();
+        String actionsBefore=db.queryForObject("SELECT md5(string_agg(to_jsonb(action)::text,'' ORDER BY action.id)) FROM preplan_supply_actions action WHERE analysis_id=?",String.class,selected.analysisId());
+        String previousTracking=db.queryForObject("SHOW track_functions",String.class);
+        new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            try {
+                beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+                db.execute("SET LOCAL track_functions='all'");
+                long initial=originClassifierCalls();
+                String explained=em.createNativeQuery("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) "+sql)
+                        .setParameter("actorId",((AuthUser)selected.actor().getPrincipal()).getId())
+                        .setParameter("analysisId",selected.analysisId()).getSingleResult().toString();
+                long calls=originClassifierCalls()-initial;
+                assertEquals(before,performanceFacts(),"Origin scoping must preserve every quality, funding and physical fact");
+                assertEquals(actionsBefore,db.queryForObject("SELECT md5(string_agg(to_jsonb(action)::text,'' ORDER BY action.id)) FROM preplan_supply_actions action WHERE analysis_id=?",String.class,selected.analysisId()),
+                        "A resolved quality result awaiting warehouse confirmation must keep covering its original action");
+                // Four lifecycle predicates each prove at most the item/header pairs of these two physical rows.
+                long bound=receiptRows*16;
+                System.out.println("[decide-report] purchase projection originCalls="+calls+" bound="+bound
+                        +" selectedReceiptRows="+receiptRows);
+                String directory=System.getProperty("uten.perf.quality-report-directory");
+                if(directory!=null){
+                    var path=java.nio.file.Path.of(directory);java.nio.file.Files.createDirectories(path);
+                    json.writerWithDefaultPrettyPrinter().writeValue(path.resolve("purchase-failure-projection.json").toFile(),
+                            Map.of("originCalls",calls,"originCallBound",bound,"selectedReceiptRows",receiptRows,
+                                    "plan",json.readTree(explained).get(0),"sourceIdentity",
+                                    System.getProperty("uten.perf.source-identity","unspecified")));
+                }
+                assertTrue(calls>0&&calls<=bound,"Classify only physical item/header references of the selected analysis; calls="
+                        +calls+", bound="+bound);
+            } catch(java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            } finally { status.setRollbackOnly(); }
+        });
+        assertEquals(previousTracking,db.queryForObject("SHOW track_functions",String.class));
+        assertEquals(before,performanceFacts());
+    }
+
+    private long originClassifierCalls(){
+        return db.queryForObject("""
+                SELECT COALESCE(sum(calls),0) FROM pg_stat_xact_user_functions
+                WHERE schemaname='public' AND funcname='fn_imported_business_document'
+                """,Long.class);
     }
 
     private void assertQualityValueSources(Stage stage){

@@ -185,7 +185,7 @@ class GoodsImportControllerTest {
         GoodsImportController controller = new GoodsImportController(service);
         byte[] bytes = new byte[]{7, 8, 9};
         Map<Integer, String> corrections = Map.of(2, "NEW001", 3, "");
-        var request = jsonRequest(new GoodsImportDetectRequest(bytes, corrections));
+        var request = jsonBodyRequest(new GoodsImportDetectRequest(bytes, corrections));
 
         controller.detectJson(request);
 
@@ -198,7 +198,7 @@ class GoodsImportControllerTest {
         GoodsImportController controller = new GoodsImportController(service);
         byte[] bytes = new byte[]{7, 8, 9};
 
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, null)));
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(bytes, null)));
 
         org.mockito.Mockito.verify(service).detect(bytes);
         org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any());
@@ -214,7 +214,7 @@ class GoodsImportControllerTest {
         byte[] bytes = new byte[]{7, 8, 9};
         Map<Integer, String> corrections = Map.of(2, "NEW001", 3, "");
 
-        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+        controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of("goods:2"), corrections)));
 
         org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), corrections, null);
@@ -252,12 +252,12 @@ class GoodsImportControllerTest {
                 "{\"2\":\"NEW001\",\"2\":\"OTHER001\"}")) {
             String json = "{\"file\":\"AQ==\",\"codeCorrections\":" + invalidCorrections + "}";
             ApiException detected = assertThrows(ApiException.class,
-                    () -> controller.detectJson(jsonRequest(json)));
+                    () -> controller.detectJson(rawJsonRequest(json)));
             assertEquals(ErrorCode.VALIDATION_FAILED, detected.getCode());
             String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
                     + "\",\"codeCorrections\":" + invalidCorrections + "}";
             ApiException committed = assertThrows(ApiException.class,
-                    () -> controller.commitJson(jsonRequest(commitJson)));
+                    () -> controller.commitJson(rawJsonRequest(commitJson)));
             assertEquals(ErrorCode.VALIDATION_FAILED, committed.getCode());
         }
         org.mockito.Mockito.verifyNoInteractions(service);
@@ -274,8 +274,8 @@ class GoodsImportControllerTest {
         UUID planId = UUID.randomUUID();
         java.util.Set<Integer> excluded = java.util.Set.of(2, 4);
 
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, Map.of(), excluded)));
-        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(bytes, Map.of(), excluded)));
+        controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of(), Map.of(), excluded)));
 
         org.mockito.Mockito.verify(service).detect(bytes, Map.of(), excluded);
@@ -292,8 +292,8 @@ class GoodsImportControllerTest {
         java.util.Set<Integer> excluded = java.util.Set.of(4);
         Map<Integer, Map<String, String>> cells = Map.of(2, Map.of("name", "修正名称", "price", "12.3400"));
 
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, codes, excluded, cells)));
-        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(bytes, codes, excluded, cells)));
+        controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of("goods:2"), codes, excluded, cells)));
 
         org.mockito.Mockito.verify(service).detect(bytes, codes, excluded, cells);
@@ -307,8 +307,8 @@ class GoodsImportControllerTest {
         byte[] bytes = new byte[]{7, 8, 9};
         UUID planId = UUID.randomUUID();
 
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, Map.of(), java.util.Set.of(), Map.of())));
-        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(bytes, Map.of(), java.util.Set.of(), Map.of())));
+        controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of(), Map.of(), java.util.Set.of(), Map.of())));
 
         org.mockito.Mockito.verify(service).detect(bytes);
@@ -327,14 +327,14 @@ class GoodsImportControllerTest {
                 "{\"2\":{\"name\":\"x\",\"name\":\"y\"}}")) {
             String json = "{\"file\":\"AQ==\",\"cellCorrections\":" + invalidCells + "}";
             assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                    () -> controller.detectJson(jsonRequest(json))).getCode());
+                    () -> controller.detectJson(rawJsonRequest(json))).getCode());
             String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
                     + "\",\"cellCorrections\":" + invalidCells + "}";
             assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                    () -> controller.commitJson(jsonRequest(commitJson))).getCode());
+                    () -> controller.commitJson(rawJsonRequest(commitJson))).getCode());
         }
         org.mockito.Mockito.verifyNoInteractions(service);
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of())));
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of())));
         org.mockito.Mockito.verify(service).detect(new byte[]{1});
     }
 
@@ -345,14 +345,14 @@ class GoodsImportControllerTest {
         for (String invalidRows : List.of("[\"2\"]", "[2.0]", "[null]", "[2,2]", "{}", "[2147483648]", "[true]")) {
             String json = "{\"file\":\"AQ==\",\"excludedRowNums\":" + invalidRows + "}";
             assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                    () -> controller.detectJson(jsonRequest(json))).getCode());
+                    () -> controller.detectJson(rawJsonRequest(json))).getCode());
             String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
                     + "\",\"excludedRowNums\":" + invalidRows + "}";
             assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                    () -> controller.commitJson(jsonRequest(commitJson))).getCode());
+                    () -> controller.commitJson(rawJsonRequest(commitJson))).getCode());
         }
         org.mockito.Mockito.verifyNoInteractions(service);
-        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of(), java.util.Set.of())));
+        controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of(), java.util.Set.of())));
         org.mockito.Mockito.verify(service).detect(new byte[]{1});
     }
 
@@ -362,7 +362,7 @@ class GoodsImportControllerTest {
         GoodsImportController controller = new GoodsImportController(service);
         for (String invalidJson : List.of("{\"file\":\"!invalid!\"}", "{}", "{\"file\":\"\"}", "null")) {
             ApiException error = assertThrows(ApiException.class,
-                    () -> controller.detectJson(jsonRequest(invalidJson)));
+                    () -> controller.detectJson(rawJsonRequest(invalidJson)));
             assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
         }
         org.mockito.Mockito.verifyNoInteractions(service);
@@ -395,21 +395,21 @@ class GoodsImportControllerTest {
         byte[] oversized = new byte[GoodsImportWorkbookSecurity.MAX_COMPRESSED_BYTES + 1];
 
         assertEquals(ErrorCode.PAYLOAD_TOO_LARGE, assertThrows(ApiException.class,
-                () -> controller.detectJson(jsonRequest(new GoodsImportDetectRequest(oversized, Map.of())))).getCode());
+                () -> controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(oversized, Map.of())))).getCode());
         assertEquals(ErrorCode.PAYLOAD_TOO_LARGE, assertThrows(ApiException.class,
-                () -> controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                () -> controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                         oversized, UUID.randomUUID(), "too-large.xlsx", List.of(), Map.of())))).getCode());
         org.mockito.Mockito.verifyNoInteractions(service);
     }
 
-    private static MockHttpServletRequest jsonRequest(Object body) throws Exception {
+    private static MockHttpServletRequest jsonBodyRequest(Object body) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContentType("application/json");
         request.setContent(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(body));
         return request;
     }
 
-    private static MockHttpServletRequest jsonRequest(String json) {
+    private static MockHttpServletRequest rawJsonRequest(String json) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContentType("application/json");
         request.setContent(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));

@@ -40,6 +40,13 @@ final class WindowsSetupFixture {
         ByteBuffer fixed = ByteBuffer.allocate(52).order(ByteOrder.LITTLE_ENDIAN);
         for (int value : new int[] {0xfeef04bd, 0x10000, ms, ls, ms, ls, 63, 0, 0x40004, 1, 0, 0, 0}) fixed.putInt(value);
         byte[] versionInfo = block("VS_VERSION_INFO", 0, fixed.array(), List.of(stringInfo));
+        return withVersionInfo(versionInfo);
+    }
+
+    /** Wraps unchanged compiler-emitted VERSIONINFO; contains no program code or installer payload. */
+    static byte[] withVersionInfo(byte[] versionInfo) {
+        if (versionInfo == null || versionInfo.length < 92 || versionInfo.length > 4000)
+            throw new IllegalArgumentException("Fixture VERSIONINFO must fit the bounded resource section");
         byte[] bytes = new byte[4608];
         ByteBuffer pe = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         pe.putShort(0, (short) 0x5a4d).putInt(60, 128).putInt(128, 0x4550);

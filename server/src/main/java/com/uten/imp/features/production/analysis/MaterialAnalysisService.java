@@ -2474,29 +2474,7 @@ public class MaterialAnalysisService {
         // receipt is terminal and no approved order quantity remains in transit.
 
         if (hasPurchase) {
-            em.createNativeQuery("""
-                UPDATE preplan_supply_actions action
-                SET status='CANCELLED',cancelled_by=:actorId,cancelled_at=now(),
-                    cancellation_reason='到货质检存在不合格且原采购需求已无在途，需重新通知补采',updated_at=now()
-                WHERE action.analysis_id=:analysisId AND NOT fn_preplan_action_has_future_transfer(action.id)
-                  AND NOT fn_preplan_action_has_shared_claims(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
-                  AND action.status IN ('CREATED','IN_PROGRESS','DONE')
-                  AND action.external_document_type='PURCHASE_REQUEST'
-                  AND (action.safety_replenishment_qty=0 OR action.public_surplus_qty>0)
-                  AND EXISTS (SELECT 1 FROM (SELECT * FROM purchase_requests archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('purchase_requests',archive_origin.id)) request WHERE request.id=action.external_document_id
-                      AND NOT request.is_deleted AND request.status IN (0,1) AND NOT request.is_stopped AND request.is_closed)
-                  AND action.requested_qty+action.public_surplus_qty > (
-                """ + REGULAR_STOCKED_BASE_SQL + """
-                  ) AND (
-                """ + REGULAR_FAILED_INSPECTION_EXISTS_SQL + """
-                  ) AND NOT (
-                """ + REGULAR_FUTURE_ORDER_EXISTS_SQL + """
-                  ) AND NOT (
-                """ + REGULAR_PENDING_INSPECTION_EXISTS_SQL + """
-                  ) AND (action.safety_replenishment_qty=0 OR EXISTS (
-                      SELECT 1 FROM v_preplan_buy_action_slice_progress progress
-                      WHERE progress.action_id=action.id AND progress.safety_future_qty=0))
-                """).setParameter("actorId",actorId).setParameter("analysisId",analysisId).executeUpdate();
+            em.createNativeQuery(PurchaseActionLifecycleProjection.failedSupplyCancellationSql()).setParameter("actorId",actorId).setParameter("analysisId",analysisId).executeUpdate();
         }
 
         if (hasSubcontract) {

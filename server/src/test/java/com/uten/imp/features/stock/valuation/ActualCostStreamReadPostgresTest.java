@@ -47,9 +47,13 @@ class ActualCostStreamReadPostgresTest {
 
     @BeforeAll static void baseline() throws Exception {
         lease=MigratedSchemaBaseline.openDatabase("actual_cost_stream");
-        var admin=new NamedParameterJdbcTemplate(new DriverManagerDataSource(lease.getJdbcUrl(),lease.getUsername(),lease.getPassword()));
+        var catalogSource = new DriverManagerDataSource(lease.getJdbcUrl(),lease.getUsername(),lease.getPassword());
+        var admin=new NamedParameterJdbcTemplate(catalogSource);
         admin.getJdbcTemplate().execute("CREATE SCHEMA "+SCHEMA);
-        for(String table:TABLES)admin.getJdbcTemplate().execute("CREATE TABLE "+SCHEMA+"."+table+" AS SELECT * FROM public."+table+" WITH NO DATA");
+        try (var connection = catalogSource.getConnection()) {
+            connection.setSchema(SCHEMA);
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection, TABLES.toArray(String[]::new));
+        }
         String url=lease.getJdbcUrl()+(lease.getJdbcUrl().contains("?")?"&":"?")+"currentSchema="+SCHEMA+",public";
         source=new DriverManagerDataSource(url,lease.getUsername(),lease.getPassword());db=new NamedParameterJdbcTemplate(source);
         var bean=new LocalContainerEntityManagerFactoryBean();bean.setDataSource(source);bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());

@@ -73,10 +73,12 @@ class ReadScopeDatasetRealmPostgresTest {
         String url=POSTGRES.getJdbcUrl().replace("/realm_router","/"+name);
         var source=new DriverManagerDataSource(url,POSTGRES.getUsername(),POSTGRES.getPassword());
         var db=new JdbcTemplate(source);
-        db.execute("CREATE TABLE authorization_state(singleton_id int PRIMARY KEY,business_reset_generation bigint NOT NULL)");
-        db.execute("INSERT INTO authorization_state VALUES(1,7)");
-        db.execute("CREATE TABLE read_scope_generations(domain text PRIMARY KEY,generation bigint NOT NULL)");
-        db.execute("INSERT INTO read_scope_generations VALUES('stock',0)");
+        // The actual pre-V935 catalog supplies every historical column. Each
+        // independent realm then executes V935 itself to create its own identity.
+        com.uten.imp.support.MigratedProjectionSchema.createTables(db, "934", "authorization_state");
+        db.execute("INSERT INTO authorization_state(singleton_id,business_reset_generation) VALUES(1,7)");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db, "read_scope_generations");
+        db.execute("INSERT INTO read_scope_generations(domain,generation) VALUES('stock',0)");
         // Apply the actual V935 identity migration, without changing its bytes or disabling its guards.
         try(var stream=new ClassPathResource("db/migration/V935__persistent_business_dataset_identity.sql").getInputStream()){
             db.execute(new String(stream.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));

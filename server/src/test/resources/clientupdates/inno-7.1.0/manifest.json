@@ -1,0 +1,26 @@
+{
+  "format": "uten-inno-version-resource-fixture-v1",
+  "compilerVersion": "7.1.0",
+  "compilerSha256": "d06ebd38f38e3cee60a3c50cc45bd449d77e0bc6a5cabc607ea9886808e4de1a",
+  "compilerLicenseSha256": "2e5346868c2a18434489824e11d65c3031620f792fefc415d05f19cd441abf5c",
+  "scriptSha256": "f87bf39707c8a6c6db3db14645fa4a9685b9ba044b3eabe064a78d8b7d681281",
+  "payloadSha256": "7ca05047b48f1602aed2fda85d732e0b13d005acc140515ab15a3f0f1d99449b",
+  "applicationVersion": "2.5.31",
+  "buildNumber": 2531,
+  "architecture": "x64",
+  "fixtures": {
+    "normal.versioninfo.hex": {
+      "resourceBytes": 1412,
+      "resourceSha256": "891d165153bccb3dc701bc7853431818d01ef4d28ec89265ab0d69630ee3f1cb",
+      "compiledSyntheticInstallerSha256": "fa6ba17a32e59b16d1f7282b8a2dc06033de2be3a25274d5194d2b4673dc416e"
+    },
+    "local-test.versioninfo.hex": {
+      "resourceBytes": 1412,
+      "resourceSha256": "2593cb0bb83bd3b28d1123089bcd85739f665cbb2b4f6b2e3595508749230c90",
+      "compiledSyntheticInstallerSha256": "262ee42af44f645b38210515f82d89eb25fa54a04f755d82f5228ec4f9aa07fb"
+    }
+  },
+  "installerExecuted": false,
+  "erpOrCustomerPayloadIncluded": false,
+  "includedLicenseCanonicalSha256": "3df23505b7ec00dc007a1e1e9ba32ee3895e7ce90043bcd1ac1b9b47155921a7"
+}

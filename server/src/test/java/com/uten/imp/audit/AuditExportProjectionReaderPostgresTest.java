@@ -35,9 +35,13 @@ class AuditExportProjectionReaderPostgresTest {
 
     @BeforeAll static void open() throws Exception {
         lease=MigratedSchemaBaseline.openDatabase("audit_export_projection");
-        var admin=new NamedParameterJdbcTemplate(new DriverManagerDataSource(lease.getJdbcUrl(),lease.getUsername(),lease.getPassword()));
+        var catalogSource = new DriverManagerDataSource(lease.getJdbcUrl(),lease.getUsername(),lease.getPassword());
+        var admin=new NamedParameterJdbcTemplate(catalogSource);
         admin.getJdbcTemplate().execute("CREATE SCHEMA audit_export_fixture");
-        admin.getJdbcTemplate().execute("CREATE TABLE audit_export_fixture.audit_log AS SELECT * FROM public.audit_log WITH NO DATA");
+        try (var connection = catalogSource.getConnection()) {
+            connection.setSchema("audit_export_fixture");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection, "audit_log");
+        }
         String url=lease.getJdbcUrl()+(lease.getJdbcUrl().contains("?")?"&":"?")+"currentSchema=audit_export_fixture,public";
         var source=new DriverManagerDataSource(url,lease.getUsername(),lease.getPassword());jdbc=new NamedParameterJdbcTemplate(source);
         // A separately owned connection commits late fixtures outside the RR reader.

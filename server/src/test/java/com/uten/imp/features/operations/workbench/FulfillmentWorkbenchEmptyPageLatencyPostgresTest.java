@@ -3,8 +3,9 @@ package com.uten.imp.features.operations.workbench;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
+import com.uten.imp.support.MigratedSchemaBaseline;
+import com.uten.imp.support.RequiresDatabaseTests;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -15,6 +16,7 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.sql.Connection;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -29,65 +31,78 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** Measures real generated SQL against a dump of this run's empty, isolated migration template. */
-@EnabledIfEnvironmentVariable(named = "UTEN_EMPTY_BENCHMARK_DUMP", matches = ".+")
+/** Measures real generated SQL on an owned empty schema; an explicit dump remains an optional input. */
+@RequiresDatabaseTests
 class FulfillmentWorkbenchEmptyPageLatencyPostgresTest {
     @Test void compareSixReadQueriesWithOneSharedProjectionOnAnEmptyBusinessDatabase() throws Exception {
+        String dump = System.getenv("UTEN_EMPTY_BENCHMARK_DUMP");
+        if (dump == null || dump.isEmpty()) {
+            try (var database = MigratedSchemaBaseline.openDatabase("workbench_empty_latency");
+                 var connection = database.openConnection()) {
+                compareReads(connection, "isolated PostgreSQL postgres:16-alpine", "owned-full-migration-template");
+            }
+            return;
+        }
         try (var postgres = new PostgreSQLContainer("postgres:16-alpine").withDatabaseName("workbench_latency")
                 .withReuse(false).withCopyFileToContainer(MountableFile.forHostPath(
-                        System.getenv("UTEN_EMPTY_BENCHMARK_DUMP")), "/tmp/empty-baseline.dump")) {
+                        dump), "/tmp/empty-baseline.dump")) {
             postgres.start();
             var restored = postgres.execInContainer("pg_restore", "-U", postgres.getUsername(),
                     "-d", postgres.getDatabaseName(), "--no-owner", "--no-privileges", "/tmp/empty-baseline.dump");
             assertEquals(0, restored.getExitCode(), restored.getStderr());
             try (var connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())) {
-                var jdbc = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true));
-                var parameters = new MapSqlParameterSource();
-                String optimized = generatedSql(parameters);
-                List<String> legacy = equivalentSixReads(optimized);
-                assertEquals(6, legacy.size());
-                for (String table : List.of("purchase_request_items", "purchase_order_items", "subcontract_order_items"))
-                    assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Map.of(), Long.class));
-                var result = jdbc.queryForList(optimized, parameters);
-                assertEquals(1, result.size());
-                assertEquals(0L, ((Number) result.getFirst().get("page_total")).longValue());
-                assertTrue(jdbc.queryForList(legacy.getFirst(), parameters).isEmpty());
-                assertEquals(0L, ((Number) jdbc.queryForList(legacy.get(1), parameters).getFirst().get("total")).longValue());
-                for (int warmup = 0; warmup < 2; warmup++) {
-                    duration(jdbc, legacy, parameters);
-                    duration(jdbc, List.of(optimized), parameters);
-                }
-                var sixSamples = new ArrayList<Double>();
-                var oneSamples = new ArrayList<Double>();
-                for (int sample = 0; sample < 9; sample++) {
-                    if (sample % 2 == 0) {
-                        sixSamples.add(duration(jdbc, legacy, parameters));
-                        oneSamples.add(duration(jdbc, List.of(optimized), parameters));
-                    } else {
-                        oneSamples.add(duration(jdbc, List.of(optimized), parameters));
-                        sixSamples.add(duration(jdbc, legacy, parameters));
-                    }
-                }
-                var report = new LinkedHashMap<String, Object>();
-                report.put("database", "isolated PostgreSQL " + postgres.getDockerImageName());
-                report.put("schemaVersion", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1", Map.of(), String.class));
-                report.put("scope", "PURCHASE / COMPLETED / all dates / no column filters / empty business database");
-                report.put("comparison", "Former six equivalent row/summary/status/exception/pending/facet SQL reads reconstructed from the same current authorized projection versus the new single SQL; same connected JDBC session; two warmups and nine alternating trials");
-                report.put("legacySqlPerRequest", 6);
-                report.put("optimizedSqlPerRequest", 1);
-                report.put("legacyMedianMs", median(sixSamples));
-                report.put("optimizedMedianMs", median(oneSamples));
-                report.put("medianSpeedup", median(sixSamples) / median(oneSamples));
-                report.put("legacySamplesMs", sixSamples);
-                report.put("optimizedSamplesMs", oneSamples);
-                String json = new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(report);
-                Path output = Path.of(System.getenv().getOrDefault("UTEN_LOADING_BENCHMARK_REPORT",
-                        "target/category-loading-empty-latency.json"));
-                Files.createDirectories(output.toAbsolutePath().getParent());
-                Files.writeString(output, json + System.lineSeparator());
-                System.out.println("Empty workbench SQL benchmark: " + json);
+                compareReads(connection, "isolated PostgreSQL " + postgres.getDockerImageName(), "explicit-dump");
             }
         }
+    }
+
+    private static void compareReads(Connection connection, String databaseDescription, String fixtureSource) throws Exception {
+        var jdbc = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true));
+        var parameters = new MapSqlParameterSource();
+        String optimized = generatedSql(parameters);
+        List<String> legacy = equivalentSixReads(optimized);
+        assertEquals(6, legacy.size());
+        for (String table : List.of("purchase_request_items", "purchase_order_items", "subcontract_order_items"))
+            assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Map.of(), Long.class));
+        var result = jdbc.queryForList(optimized, parameters);
+        assertEquals(1, result.size());
+        assertEquals(0L, ((Number) result.getFirst().get("page_total")).longValue());
+        assertTrue(jdbc.queryForList(legacy.getFirst(), parameters).isEmpty());
+        assertEquals(0L, ((Number) jdbc.queryForList(legacy.get(1), parameters).getFirst().get("total")).longValue());
+        for (int warmup = 0; warmup < 2; warmup++) {
+            duration(jdbc, legacy, parameters);
+            duration(jdbc, List.of(optimized), parameters);
+        }
+        var sixSamples = new ArrayList<Double>();
+        var oneSamples = new ArrayList<Double>();
+        for (int sample = 0; sample < 9; sample++) {
+            if (sample % 2 == 0) {
+                sixSamples.add(duration(jdbc, legacy, parameters));
+                oneSamples.add(duration(jdbc, List.of(optimized), parameters));
+            } else {
+                oneSamples.add(duration(jdbc, List.of(optimized), parameters));
+                sixSamples.add(duration(jdbc, legacy, parameters));
+            }
+        }
+        var report = new LinkedHashMap<String, Object>();
+        report.put("database", databaseDescription);
+        report.put("fixtureSource", fixtureSource);
+        report.put("schemaVersion", jdbc.queryForObject("SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1", Map.of(), String.class));
+        report.put("scope", "PURCHASE / COMPLETED / all dates / no column filters / empty business database");
+        report.put("comparison", "Former six equivalent row/summary/status/exception/pending/facet SQL reads reconstructed from the same current authorized projection versus the new single SQL; same connected JDBC session; two warmups and nine alternating trials");
+        report.put("legacySqlPerRequest", 6);
+        report.put("optimizedSqlPerRequest", 1);
+        report.put("legacyMedianMs", median(sixSamples));
+        report.put("optimizedMedianMs", median(oneSamples));
+        report.put("medianSpeedup", median(sixSamples) / median(oneSamples));
+        report.put("legacySamplesMs", sixSamples);
+        report.put("optimizedSamplesMs", oneSamples);
+        String json = new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(report);
+        Path output = Path.of(System.getenv().getOrDefault("UTEN_LOADING_BENCHMARK_REPORT",
+                "target/category-loading-empty-latency.json"));
+        Files.createDirectories(output.toAbsolutePath().getParent());
+        Files.writeString(output, json + System.lineSeparator());
+        System.out.println("Empty workbench SQL benchmark: " + json);
     }
 
     private static String generatedSql(MapSqlParameterSource parameters) {

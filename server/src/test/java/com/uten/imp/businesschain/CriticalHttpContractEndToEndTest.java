@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uten.imp.features.admin.serveroperations.HostOperationsClient;
 import com.uten.imp.features.admin.serveroperations.HostOperationsException;
+import com.uten.imp.features.admin.serveroperations.PublicMaintenanceController;
+import com.uten.imp.features.admin.serveroperations.PublicMaintenanceTestFixture;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.convention.TestBean;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.ByteArrayInputStream;
@@ -132,6 +135,15 @@ class CriticalHttpContractEndToEndTest {
     @Autowired
     private ReadOnlyHostBridge hostBridge;
 
+    @TestBean(methodName = "maintenanceController", enforceOverride = true)
+    private PublicMaintenanceController publicMaintenanceController;
+    private static PublicMaintenanceTestFixture maintenanceFixture;
+
+    static PublicMaintenanceController maintenanceController() throws java.io.IOException {
+        maintenanceFixture = new PublicMaintenanceTestFixture();
+        return maintenanceFixture.controller();
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class HostBridgeConfiguration {
         @Bean
@@ -206,6 +218,14 @@ class CriticalHttpContractEndToEndTest {
 
     @Test
     void accountProvisioningPasswordGateAndOptionalWorkbookPasswordWorkOverRealHttp() throws Exception {
+        assertTrue(publicMaintenanceController != null);
+        HttpResponse<byte[]> maintenance = request("GET", "/api/system/maintenance", null, null);
+        assertStatus(maintenance, 200);
+        assertEquals("available", json(maintenance).path("state").asText());
+        assertTrue(maintenance.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+        maintenanceFixture.unavailable();
+        assertStatus(request("GET", "/api/system/maintenance", null, null), 503);
+        maintenanceFixture.available();
         HttpResponse<byte[]> health = request("GET", "/actuator/health", null, null);
         assertStatus(health, 200);
         assertEquals("UP", json(health).path("status").asText());

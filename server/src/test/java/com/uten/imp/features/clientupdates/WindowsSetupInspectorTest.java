@@ -12,7 +12,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -63,13 +62,32 @@ class WindowsSetupInspectorTest {
     }
 
     @Test
-    @EnabledIfSystemProperty(named = "uten.inno.paddingFixture", matches = ".+")
     void validatesRealInnoCompilerPaddingFixtureAndStillRejectsTheLocalTestProduct() throws Exception {
-        Path productionResourceFixture = Path.of(System.getProperty("uten.inno.paddingFixture"));
+        Path productionResourceFixture = compilerFixture("uten.inno.paddingFixture", "normal.versioninfo.hex");
         WindowsSetupInspector.inspect(productionResourceFixture, release(2531, "x64", "2.5.31"));
-        Path localProductFixture = Path.of(System.getProperty("uten.inno.localFixture"));
+        Path localProductFixture = compilerFixture("uten.inno.localFixture", "local-test.versioninfo.hex");
         assertThatThrownBy(() -> WindowsSetupInspector.inspect(localProductFixture, release(2531, "x64", "2.5.31")))
                 .isInstanceOfSatisfying(ApiException.class, failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    private Path compilerFixture(String overrideProperty, String resourceName) throws Exception {
+        String override = System.getProperty(overrideProperty);
+        if (override != null) return Path.of(override);
+        String root = "/clientupdates/inno-7.1.0/";
+        try (var source = getClass().getResourceAsStream(root + resourceName);
+             var manifest = getClass().getResourceAsStream(root + "manifest.json")) {
+            assertThat(source).as("committed real Inno VERSIONINFO").isNotNull();
+            assertThat(manifest).as("reviewed compiler and resource provenance").isNotNull();
+            byte[] versionInfo = java.util.HexFormat.of().parseHex(
+                    new String(source.readAllBytes(), java.nio.charset.StandardCharsets.US_ASCII).replaceAll("\\s+", ""));
+            var expected = new com.fasterxml.jackson.databind.ObjectMapper().readTree(manifest)
+                    .path("fixtures").path(resourceName);
+            assertThat(versionInfo.length).isEqualTo(expected.path("resourceBytes").asInt());
+            assertThat(java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(versionInfo)))
+                    .isEqualTo(expected.path("resourceSha256").asText());
+            Path fixture = directory.resolve(resourceName + ".fixture");
+            return Files.write(fixture, WindowsSetupFixture.withVersionInfo(versionInfo));
+        }
     }
 
     @Test void rejectsTruncatedOrUnboundedPeResourceAndVersionStructuresWithoutExecutingInput() throws Exception {

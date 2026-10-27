@@ -27,6 +27,18 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
     private static final List<String> V885_HISTORY_TABLES=List.of(
             "master_operation_history","master_operation_history_rows","master_operation_history_events");
+    // Independent V938/V939 CREATE TABLE/INDEX declarations: permanent task
+    // identity and authorization lineage, not additional business fact tables.
+    private static final List<String> V938_TO_V939_TABLE_ADDITIONS=List.of(
+            "report_export_jobs","read_scope_domains","read_scope_change_events");
+    private static final Map<String,String> V938_TO_V939_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("report_export_jobs_pkey","CREATE UNIQUE INDEX report_export_jobs_pkey ON public.report_export_jobs USING btree (id)"),
+            Map.entry("report_export_jobs_claim_idx","CREATE INDEX report_export_jobs_claim_idx ON public.report_export_jobs USING btree (created_at, id) WHERE (status = 'PENDING'::text)"),
+            Map.entry("report_export_jobs_user_idx","CREATE INDEX report_export_jobs_user_idx ON public.report_export_jobs USING btree (submitted_by, created_at DESC, id)"),
+            Map.entry("report_export_jobs_lease_idx","CREATE INDEX report_export_jobs_lease_idx ON public.report_export_jobs USING btree (lease_until) WHERE (status = 'RUNNING'::text)"),
+            Map.entry("report_export_jobs_expiry_idx","CREATE INDEX report_export_jobs_expiry_idx ON public.report_export_jobs USING btree (expires_at) WHERE (status = 'SUCCEEDED'::text)"),
+            Map.entry("read_scope_domains_pkey","CREATE UNIQUE INDEX read_scope_domains_pkey ON public.read_scope_domains USING btree (domain)"),
+            Map.entry("read_scope_change_events_pkey","CREATE UNIQUE INDEX read_scope_change_events_pkey ON public.read_scope_change_events USING btree (domain, change_txid)"));
     private static final Map<String,String> V898_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("master_record_versions_pkey","CREATE UNIQUE INDEX master_record_versions_pkey ON public.master_record_versions USING btree (id)"),
             Map.entry("ix_master_versions_object","CREATE INDEX ix_master_versions_object ON public.master_record_versions USING btree (entity_type, record_id, id DESC)"),
@@ -211,6 +223,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V937: verified, append-only identity evidence is preserved independently
         // of business rows; it is an authorization decision with FULL row audit.
         assertTrue(expectedTables.add("employee_identity_aliases"));
+        V938_TO_V939_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
@@ -270,7 +283,22 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE UNIQUE INDEX employee_identity_aliases_pkey ON public.employee_identity_aliases USING btree (alias_employee_id)"));
         assertNull(expectedIndexes.put("employee_identity_aliases_canonical_idx",
                 "CREATE INDEX employee_identity_aliases_canonical_idx ON public.employee_identity_aliases USING btree (canonical_employee_id)"));
+        assertEquals(7,V938_TO_V939_INDEX_ADDITIONS.size());
+        V938_TO_V939_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A retained export/authorization index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
+        Map.of("report_export_jobs",List.of("trg_guard_report_export_identity","trg_report_export_jobs_no_truncate"),
+                "read_scope_domains",List.of("trg_read_scope_domains_immutable","trg_read_scope_domains_no_truncate"),
+                "read_scope_change_events",List.of("trg_read_scope_event_insert","trg_read_scope_event_immutable","trg_read_scope_event_no_truncate"))
+                .forEach((table,names)->names.forEach(trigger->assertEquals("A",db.queryForObject(
+                        "SELECT tgenabled::text FROM pg_trigger WHERE tgrelid=?::regclass AND tgname=?",String.class,"public."+table,trigger),
+                        "Retained export/authorization evidence keeps its exact ALWAYS guard: "+trigger)));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.report_export_jobs'::regclass "
+                + "AND tgfoid='public.fn_audit()'::regprocedure AND tgenabled='A'",Integer.class),
+                "Export task state keeps its declared insert/delete and scoped update audit");
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid IN('public.read_scope_domains'::regclass,'public.read_scope_change_events'::regclass) "
+                + "AND tgfoid='public.fn_audit()'::regprocedure",Integer.class),
+                "Technical read-scope lineage must not duplicate the audited authorization source rows");
         assertTrue(db.queryForObject("SELECT obj_description('public.employee_identity_aliases'::regclass,'pg_class') LIKE 'PRESERVE %'",Boolean.class));
         assertEquals(2,db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.employee_identity_aliases'::regclass "
                 + "AND tgfoid='public.fn_audit()'::regprocedure AND tgenabled='A' "

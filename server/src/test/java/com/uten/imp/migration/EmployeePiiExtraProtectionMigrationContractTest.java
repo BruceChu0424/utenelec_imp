@@ -76,7 +76,10 @@ class EmployeePiiExtraProtectionMigrationContractTest {
         assertThat(crypto)
                 .contains("if (cipher == null || cipher.isblank()) { return null;");
         assertThat(onboarding)
-                .contains("if (isblank(loginaccount))")
+                // Required primary identity/phone behavior is exercised by
+                // EmployeeOnboardingServiceTest, including profile-only and
+                // custom-login requests. Do not couple that contract to a
+                // local variable name in the provisioning implementation.
                 // New onboarding/provisioning uses the normalized original identity's last six;
                 // a missing/short identity falls back to a one-time random credential (V807),
                 // and an invalid resident identity no longer refuses provisioning.

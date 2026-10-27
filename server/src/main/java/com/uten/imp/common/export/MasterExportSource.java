@@ -201,6 +201,15 @@ public final class MasterExportSource {
             return Collections.unmodifiableMap(copy);
         }
         if (value instanceof List<?> list) return Collections.unmodifiableList(list.stream().map(MasterExportSource::freeze).toList());
+        if (value instanceof TableColumnProjection projection) {
+            // Preserve the previous record's exact parameter identity. This
+            // immutable selection DTO is the only non-record object admitted.
+            List<Object> fields=new ArrayList<>(); fields.add(TableColumnProjection.class.getName());
+            fields.add(freeze(projection.tableKey()));
+            fields.add(freeze(projection.scope()));
+            fields.add(freeze(projection.columns()));
+            return Collections.unmodifiableList(fields);
+        }
         if (value instanceof Record record) {
             List<Object> fields=new ArrayList<>(); fields.add(record.getClass().getName());
             try {

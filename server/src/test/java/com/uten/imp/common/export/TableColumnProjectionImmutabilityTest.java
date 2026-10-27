@@ -15,6 +15,62 @@ class TableColumnProjectionImmutabilityTest {
         requested.add(new TableColumnProjection.Column("private-field", "其他字段", 120d, "text", null));
         assertEquals(List.of(original), projection.columns());
         assertThrows(UnsupportedOperationException.class, () -> projection.columns().clear());
+        assertThrows(UnsupportedOperationException.class, () -> projection.columns().set(0, original));
+        assertThrows(UnsupportedOperationException.class, () -> projection.columns().subList(0, 1).clear());
+        var iterator = projection.columns().iterator();
+        iterator.next();
+        assertThrows(UnsupportedOperationException.class, iterator::remove);
+    }
+
+    @Test void selectionKeepsThePreviousRecordValueContract() {
+        var column = new TableColumnProjection.Column("amount", "金额", 120d, "money", null);
+        for (List<TableColumnProjection.Column> columns : Arrays.<List<TableColumnProjection.Column>>asList(null, List.of(), List.of(column))) {
+            var projection = new TableColumnProjection("report", "view_sales", columns);
+            var same = new TableColumnProjection("report", "view_sales", columns);
+            var previous = new PreviousRecordValue("report", "view_sales", columns);
+            assertEquals(projection, same);
+            assertEquals(previous.hashCode(), projection.hashCode());
+            assertEquals(previous.toString().replaceFirst("PreviousRecordValue", "TableColumnProjection"), projection.toString());
+            assertNotEquals(projection, new TableColumnProjection("other", "view_sales", columns));
+            assertNotEquals(projection, new TableColumnProjection("report", "other_scope", columns));
+            assertNotEquals(projection, previous);
+        }
+    }
+
+    private record PreviousRecordValue(
+            @jakarta.validation.constraints.Size(max=300) String tableKey,
+            @jakarta.validation.constraints.Pattern(regexp="[a-z][a-z0-9_]{0,99}") String scope,
+            @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max=160)
+            List<TableColumnProjection.@jakarta.validation.Valid Column> columns) { }
+
+    @Test void fieldConstructorAndAccessorValidationMatchThePreviousRecord() throws Exception {
+        var invalidColumns = List.of(new TableColumnProjection.Column("", "金额", 0d, "money", null));
+        var current = new TableColumnProjection("x".repeat(301), "INVALID", invalidColumns);
+        var previous = new PreviousRecordValue("x".repeat(301), "INVALID", invalidColumns);
+        try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+            var validator = factory.getValidator();
+            assertEquals(violationPaths(validator.validate(previous)), violationPaths(validator.validate(current)));
+            for (String property : List.of("tableKey", "scope", "columns")) {
+                var currentAccessor = TableColumnProjection.class.getMethod(property);
+                var previousAccessor = PreviousRecordValue.class.getDeclaredMethod(property);
+                assertEquals(
+                        violationPaths(validator.forExecutables().validateReturnValue(previous, previousAccessor, previousAccessor.invoke(previous))),
+                        violationPaths(validator.forExecutables().validateReturnValue(current, currentAccessor, currentAccessor.invoke(current))));
+            }
+            var currentConstructor = TableColumnProjection.class.getConstructor(String.class, String.class, List.class);
+            var previousConstructor = PreviousRecordValue.class.getDeclaredConstructor(String.class, String.class, List.class);
+            Object[] parameters = {"x".repeat(301), "INVALID", null};
+            assertEquals(
+                    violationPaths(validator.forExecutables().validateConstructorParameters(previousConstructor, parameters)),
+                    violationPaths(validator.forExecutables().validateConstructorParameters(currentConstructor, parameters)));
+        }
+    }
+
+    private static java.util.Set<String> violationPaths(java.util.Set<? extends jakarta.validation.ConstraintViolation<?>> errors) {
+        return errors.stream().map(error -> error.getPropertyPath().toString()
+                        .replaceFirst("^(?:TableColumnProjection|PreviousRecordValue)\\.", "")
+                        + ":" + error.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     @Test void malformedInputRemainsAvailableForTheExistingStructuredValidator() {

@@ -340,85 +340,87 @@ void main() {
     );
   }
 
-  testWidgets('replacing an audited shared component also resets hidden aliases', (
-    tester,
-  ) async {
-    final repo = _AuditRepository({
-      'goods-a': [
-        _item('row-left', 'goods-shared', '左装配', hasChildren: true),
-        _item('row-right', 'goods-shared', '右装配', hasChildren: true),
-      ],
-      'goods-shared': [
-        _item('row-shared', 'goods-old', '共同父组件', hasChildren: true),
-      ],
-      'goods-old': [_item('row-old', 'old-leaf', '旧子件')],
-      'goods-new': [_item('row-new', 'new-leaf', '新子件')],
-    });
-    await _pumpTab(tester, repo);
-    await _expand(tester, 'row-left');
-    await _expand(tester, 'row-shared');
-    await _expand(tester, 'row-right');
-    await tester.tap(
-      find.byKey(const ValueKey('goods-bom-tree-toggle-row-shared')).last,
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('旧子件'), findsNWidgets(2));
-    await _expand(tester, 'row-right');
-    expect(find.text('旧子件'), findsOneWidget);
+  testWidgets(
+    'replacing an audited shared component also resets hidden aliases',
+    (tester) async {
+      final repo = _AuditRepository({
+        'goods-a': [
+          _item('row-left', 'goods-shared', '左装配', hasChildren: true),
+          _item('row-right', 'goods-shared', '右装配', hasChildren: true),
+        ],
+        'goods-shared': [
+          _item('row-shared', 'goods-old', '共同父组件', hasChildren: true),
+        ],
+        'goods-old': [_item('row-old', 'old-leaf', '旧子件')],
+        'goods-new': [_item('row-new', 'new-leaf', '新子件')],
+      });
+      await _pumpTab(tester, repo);
+      await _expand(tester, 'row-left');
+      await _expand(tester, 'row-shared');
+      await _expand(tester, 'row-right');
+      await tester.tap(
+        find.byKey(const ValueKey('goods-bom-tree-toggle-row-shared')).last,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('旧子件'), findsNWidgets(2));
+      await _expand(tester, 'row-right');
+      expect(find.text('旧子件'), findsOneWidget);
 
-    await tester.tap(find.byTooltip(_markTooltip).at(1));
-    await tester.pump();
-    final updated = _item(
-      'row-shared',
-      'goods-new',
-      '新的共同父组件',
-      audited: true,
-      hasChildren: true,
-    );
-    repo.tree['goods-shared'] = [updated];
-    repo.requests.single.result.complete(updated);
-    await tester.pumpAndSettle();
-    final preparedReads = List<String>.of(repo.listCalls);
-    await _expand(tester, 'row-right');
+      await tester.tap(find.byTooltip(_markTooltip).at(1));
+      await tester.pump();
+      final updated = _item(
+        'row-shared',
+        'goods-new',
+        '新的共同父组件',
+        audited: true,
+        hasChildren: true,
+      );
+      repo.tree['goods-shared'] = [updated];
+      repo.requests.single.result.complete(updated);
+      await tester.pumpAndSettle();
+      final preparedReads = List<String>.of(repo.listCalls);
+      await _expand(tester, 'row-right');
 
-    final aliases = tester.widgetList<UtenTreeTableCell>(
-      find.byKey(const ValueKey('goods-bom-tree-cell-row-shared')),
-    );
-    expect(aliases.map((cell) => cell.expanded), [false, false]);
-    expect(find.text('新子件'), findsNothing);
-    expect(find.text('旧子件'), findsNothing);
-    expect(repo.listCalls, preparedReads, reason: '重新打开别名只使用完整预读快照');
-    expect(tester.takeException(), isNull);
-  });
+      final aliases = tester.widgetList<UtenTreeTableCell>(
+        find.byKey(const ValueKey('goods-bom-tree-cell-row-shared')),
+      );
+      expect(aliases.map((cell) => cell.expanded), [false, false]);
+      expect(find.text('新子件'), findsNothing);
+      expect(find.text('旧子件'), findsNothing);
+      expect(repo.listCalls, preparedReads, reason: '重新打开别名只使用完整预读快照');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('audit turning an existing component into a branch prefetches it', (
-    tester,
-  ) async {
-    final repo = _AuditRepository({
-      'goods-a': [_item('row-a1', 'goods-x', '原叶组件')],
-    });
-    await _pumpTab(tester, repo);
-    await tester.tap(find.byTooltip(_markTooltip));
-    await tester.pump();
-    final updated = _item(
-      'row-a1',
-      'goods-x',
-      '已有下级的组件',
-      audited: true,
-      hasChildren: true,
-    );
-    repo.tree['goods-a'] = [updated];
-    repo.tree['goods-x'] = [_item('row-child', 'goods-y', '新下级')];
-    repo.requests.single.result.complete(updated);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'audit turning an existing component into a branch prefetches it',
+    (tester) async {
+      final repo = _AuditRepository({
+        'goods-a': [_item('row-a1', 'goods-x', '原叶组件')],
+      });
+      await _pumpTab(tester, repo);
+      await tester.tap(find.byTooltip(_markTooltip));
+      await tester.pump();
+      final updated = _item(
+        'row-a1',
+        'goods-x',
+        '已有下级的组件',
+        audited: true,
+        hasChildren: true,
+      );
+      repo.tree['goods-a'] = [updated];
+      repo.tree['goods-x'] = [_item('row-child', 'goods-y', '新下级')];
+      repo.requests.single.result.complete(updated);
+      await tester.pumpAndSettle();
 
-    expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
-    expect(find.text('新下级'), findsNothing);
-    await _expand(tester, 'row-a1');
-    expect(find.text('新下级'), findsOneWidget);
-    expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
-    expect(tester.takeException(), isNull);
-  });
+      expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
+      expect(find.text('新下级'), findsNothing);
+      await _expand(tester, 'row-a1');
+      expect(find.text('新下级'), findsOneWidget);
+      expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'an older tree prefetch cannot attach beneath a refreshed component',

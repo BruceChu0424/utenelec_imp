@@ -29,14 +29,22 @@ class ReadScopeVersionAuthorityTest {
         when(restorer.currentStamps(actor)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1, 7)));
         lenient().when(restorer.restore(actor, 1, 7L)).thenAnswer(call -> subject);
         lenient().when(jdbc.queryForObject(anyString(), anyMap(), eq(Long.class))).thenReturn(0L);
-        lenient().when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>any()))
+        lenient().when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>notNull()))
                 .thenReturn(new ReadScopeVersionAuthority.DatasetRealm(UUID.fromString("00000000-0000-0000-0000-000000000935"),0));
     }
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
 
+    @Test void unknownOrNoncanonicalDomainCannotSelectAnAuthorizationPolicy() {
+        for (String domain : Arrays.asList(null, "sales ", "SALES", "native_unknown", "sales/../stock")) {
+            assertThatThrownBy(() -> authority.scopeFor(domain, subject)).isInstanceOfSatisfying(ApiException.class,
+                    failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        }
+        verifyNoInteractions(jdbc, restorer, owners);
+    }
+
     @Test void independentDatasetRealmsCannotShareMetadataEvenWhenRolesOwnersAndCountersMatch() {
         UUID a=UUID.randomUUID(),b=UUID.randomUUID();
-        when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>any()))
+        when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>notNull()))
                 .thenReturn(new ReadScopeVersionAuthority.DatasetRealm(a,7),new ReadScopeVersionAuthority.DatasetRealm(b,7),
                         new ReadScopeVersionAuthority.DatasetRealm(b,8));
         String first=authority.scopeFor("stock",subject),second=authority.scopeFor("stock",subject),third=authority.scopeFor("stock",subject);
@@ -46,7 +54,7 @@ class ReadScopeVersionAuthorityTest {
     @Test void absentOrMalformedDatasetMetadataFailsClosedInsteadOfBorrowingAnEmptyRealm() {
         for(ReadScopeVersionAuthority.DatasetRealm realm:Arrays.asList(null,new ReadScopeVersionAuthority.DatasetRealm(null,0),
                 new ReadScopeVersionAuthority.DatasetRealm(UUID.randomUUID(),-1))){
-            when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>any())).thenReturn(realm);
+            when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>notNull())).thenReturn(realm);
             assertThatThrownBy(()->authority.scopeFor("stock",subject)).isInstanceOfSatisfying(ApiException.class,
                     failure->assertThat(failure.getCode()).isEqualTo(ErrorCode.PRIMARY_UNAVAILABLE));
         }

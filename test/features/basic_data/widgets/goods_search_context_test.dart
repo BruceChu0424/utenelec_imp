@@ -58,7 +58,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastList.queryParameters['categoryId'], 'cat-b');
     expect(api.lastList.queryParameters['includeRelated'], isTrue);
-    expect(api.lastList.queryParameters['page'], 1);
+    expect(
+      api.requests.any(
+        (request) =>
+            request.path == '/master/goods' &&
+            request.queryParameters['categoryId'] == 'cat-b' &&
+            request.queryParameters['page'] == 1,
+      ),
+      isTrue,
+      reason: '分类切换从第一页开始；邻页预取不是当前浏览页',
+    );
     expect(_ids(tester), ['b', 'r']);
     expect(_tree(tester).selectedIds, {'cat-b'});
     await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
@@ -92,10 +101,13 @@ void main() {
     }
     expect(tester.widget<CheckboxListTile>(_related).value, isTrue);
     expect(api.held.length, greaterThanOrEqualTo(2));
-    api.release(api.held.length - 1, 'new');
+    final latest = api.held.length - 1;
+    api.release(latest, 'new');
     await tester.pumpAndSettle();
     expect(_ids(tester), ['new']);
-    for (var i = 0; i < api.held.length - 1; i++) {
+    // Resolving the new page may prepare an adjacent page. Only retire the
+    // captured old cohort, never resolve the new response handler twice.
+    for (var i = 0; i < latest; i++) {
       api.release(i, 'old');
     }
     await tester.pumpAndSettle();
@@ -396,9 +408,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(api.held.length, greaterThanOrEqualTo(2));
-    api.release(api.held.length - 1, 'new');
+    final latest = api.held.length - 1;
+    api.release(latest, 'new');
     await tester.pumpAndSettle();
-    for (var i = 0; i < api.held.length - 1; i++) {
+    for (var i = 0; i < latest; i++) {
       api.release(i, 'old');
     }
     await tester.pumpAndSettle();

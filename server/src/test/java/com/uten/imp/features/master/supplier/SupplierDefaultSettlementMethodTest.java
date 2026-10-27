@@ -50,7 +50,8 @@ class SupplierDefaultSettlementMethodTest {
         unresolved.setDefaultSettlementMethodId(missing); unresolved.setPriceStyle(30);
         SupplierRepository repo = mock(SupplierRepository.class);
         when(repo.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
-                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(modern, noRelation, unresolved)));
+                .thenAnswer(call -> new org.springframework.data.domain.PageImpl<>(List.of(modern, noRelation, unresolved),
+                        call.getArgument(1, org.springframework.data.domain.Pageable.class), 3));
         EntityManager em = mock(EntityManager.class);
         Query names = mock(Query.class), loss = mock(Query.class);
         when(em.createNativeQuery(org.mockito.ArgumentMatchers.contains("FROM settlement_methods"))).thenReturn(names);

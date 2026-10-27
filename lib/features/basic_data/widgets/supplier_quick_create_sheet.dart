@@ -17,12 +17,12 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../models/product_category_node.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_category_repository.dart';
 import '../repositories/supplier_repository.dart';
 import 'master_edit_dialog.dart';
+import 'uten_category_tree_view.dart';
 
 /// 单据表单内联新建供应商：弹主档编辑表单 → POST /master/suppliers → 返回新建详情。
 Future<SupplierDetail?> showSupplierQuickCreateSheet(
@@ -90,7 +90,7 @@ Future<SupplierDetail?> showSupplierQuickCreateSheet(
   ).then((_) => created);
 }
 
-/// 供应商分类树选择字段（quick-create 弹窗用）：点开抽屉按层级缩进暂存一个分类，
+/// 供应商分类树选择字段（quick-create 弹窗用）：点开抽屉用共享分类树暂存一个分类，
 /// 确定后经 [onChanged]（MasterFieldContext 回调）回写，buildBody 校验必填。
 class _SupplierCategoryPickerField extends ConsumerStatefulWidget {
   const _SupplierCategoryPickerField({
@@ -126,9 +126,7 @@ class _SupplierCategoryPickerFieldState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialValue == widget.initialValue) return;
     _selectedId = widget.initialValue;
-    _selectedName = _flatten(
-      _tree ?? const [],
-    ).where((entry) => entry.$1.id == _selectedId).firstOrNull?.$1.name;
+    _selectedName = _findById(_tree ?? const [], _selectedId)?.name;
   }
 
   Future<void> _load() async {
@@ -138,9 +136,7 @@ class _SupplierCategoryPickerFieldState
       setState(() {
         _tree = tree;
         _error = null;
-        _selectedName ??= _flatten(
-          tree,
-        ).where((entry) => entry.$1.id == _selectedId).firstOrNull?.$1.name;
+        _selectedName ??= _findById(tree, _selectedId)?.name;
       });
     } catch (_) {
       if (!mounted) return;
@@ -148,18 +144,14 @@ class _SupplierCategoryPickerFieldState
     }
   }
 
-  /// 树拍平成 (节点, 层级) 列表，保持前序（父在前、子紧随），供抽屉列表按层级缩进。
-  List<(ProductCategoryNode, int)> _flatten(List<ProductCategoryNode> nodes) {
-    final out = <(ProductCategoryNode, int)>[];
-    void walk(List<ProductCategoryNode> list, int depth) {
-      for (final n in list) {
-        out.add((n, depth));
-        walk(n.children, depth + 1);
-      }
+  ProductCategoryNode? _findById(List<ProductCategoryNode> nodes, String? id) {
+    if (id == null) return null;
+    for (final node in nodes) {
+      if (node.id == id) return node;
+      final found = _findById(node.children, id);
+      if (found != null) return found;
     }
-
-    walk(nodes, 0);
-    return out;
+    return null;
   }
 
   Future<void> _pick() async {
@@ -167,11 +159,7 @@ class _SupplierCategoryPickerFieldState
       await _load();
       if (!mounted || _tree == null) return;
     }
-    final flattened = _flatten(_tree!);
-    var pending = flattened
-        .where((entry) => entry.$1.id == _selectedId)
-        .firstOrNull
-        ?.$1;
+    var pending = _findById(_tree!, _selectedId);
     final node = await showUtenAdaptivePanel<ProductCategoryNode>(
       context: context,
       widthFraction: UtenPanelWidth.form,
@@ -184,35 +172,16 @@ class _SupplierCategoryPickerFieldState
             ),
             const Divider(height: 1),
             Expanded(
-              child: ListView.builder(
-                itemCount: flattened.length,
-                itemBuilder: (_, i) {
-                  final (node, depth) = flattened[i];
-                  final selected = pending?.id == node.id;
-                  return ListTile(
-                    key: ValueKey('supplier-category-option-${node.id}'),
-                    dense: true,
-                    selected: selected,
-                    selectedTileColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer,
-                    contentPadding: EdgeInsets.only(
-                      left: UtenSpacing.s16 + depth * UtenSpacing.s16,
-                      right: UtenSpacing.s16,
-                    ),
-                    leading: Icon(
-                      depth == 0
-                          ? Icons.folder_outlined
-                          : Icons.subdirectory_arrow_right_rounded,
-                      size: 18,
-                    ),
-                    title: Text(node.name),
-                    trailing: selected
-                        ? const Icon(Icons.check_circle_rounded)
-                        : null,
-                    onTap: () => setSheetState(() => pending = node),
-                  );
-                },
+              child: UtenCategoryTreeView<ProductCategoryNode>(
+                nodes: _tree!,
+                mode: UtenCategoryTreeMode.single,
+                selectedIds: {?pending?.id},
+                onToggleSelect: (node) => setSheetState(() => pending = node),
+                nodeEnabledPredicate: (_) => true,
+                showSearch: false,
+                initiallyExpandDepth: 999,
+                sortByCode: false,
+                flatLevelColors: true,
               ),
             ),
             UtenPickerConfirmBar(

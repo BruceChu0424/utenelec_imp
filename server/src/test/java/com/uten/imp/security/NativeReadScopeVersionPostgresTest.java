@@ -54,7 +54,14 @@ class NativeReadScopeVersionPostgresTest {
         bean.setPackagesToScan("com.uten.imp.security");bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();
         factory=bean.getObject();transactions=new JpaTransactionManager(factory);
     }
-    @AfterAll static void close() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void close() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void identities(){
         actor=UUID.randomUUID();employee=employee("reader");other=employee("owner");
         insertUser(actor,employee);

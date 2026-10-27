@@ -5,6 +5,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.lang.reflect.Method;
 import java.time.LocalDate;
@@ -83,9 +85,11 @@ class WarehouseHistoryControllerSecurityTest {
             String permission) throws Exception {
         Class<?>[] parameters = new Class<?>[]{String.class, Short.class, LocalDate.class, LocalDate.class, java.util.UUID.class};
         Method method = WarehouseHistoryController.class.getDeclaredMethod(methodName, parameters);
-        GetMapping mapping = method.getAnnotation(GetMapping.class);
+        RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
         PreAuthorize authorize = method.getAnnotation(PreAuthorize.class);
+        assertThat(mapping).isNotNull();
         assertThat(mapping.value()).containsExactly(path);
+        assertThat(mapping.method()).containsExactly(RequestMethod.GET, RequestMethod.POST);
         assertThat(authorize.value()).isEqualTo("hasAuthority('" + permission + "')");
         assertOptionalWarehouseScope(method);
     }

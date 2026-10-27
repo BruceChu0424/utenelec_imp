@@ -16,7 +16,9 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionCo
 import com.uten.imp.features.warehouse.outbound.WarehouseSubcontractOutboundController;
 import com.uten.imp.features.workbench.badge.WorkbenchBadgeController;
 import org.junit.jupiter.api.Test;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.core.annotation.AnnotatedElementUtils;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Method;
@@ -60,9 +62,13 @@ class WarehouseTaskEndpointScopeContractTest {
         for (var entry : SCOPED.entrySet()) {
             for (String name : entry.getValue()) {
                 List<Method> endpoints = Arrays.stream(entry.getKey().getDeclaredMethods())
-                        .filter(method -> method.getName().equals(name) && method.isAnnotationPresent(GetMapping.class))
+                        .filter(method -> method.getName().equals(name) && supportsGet(method))
                         .toList();
                 assertThat(endpoints).as(entry.getKey().getSimpleName() + "." + name).hasSize(1);
+                RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(endpoints.getFirst(), RequestMapping.class);
+                assertThat(mapping).isNotNull();
+                assertThat(mapping.method()).contains(RequestMethod.GET)
+                        .allMatch(verb -> verb == RequestMethod.GET || verb == RequestMethod.POST);
                 Parameter scope = Arrays.stream(endpoints.getFirst().getParameters())
                         .filter(parameter -> "scopeWarehouseId".equals(requestParamName(parameter)))
                         .findFirst().orElse(null);
@@ -71,6 +77,11 @@ class WarehouseTaskEndpointScopeContractTest {
                 assertThat(scope.getAnnotation(RequestParam.class).required()).isFalse();
             }
         }
+    }
+
+    private static boolean supportsGet(Method method) {
+        RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
+        return mapping != null && Arrays.asList(mapping.method()).contains(RequestMethod.GET);
     }
 
     @Test

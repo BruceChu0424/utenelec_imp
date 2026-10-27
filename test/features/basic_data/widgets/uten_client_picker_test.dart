@@ -103,7 +103,7 @@ void main() {
     });
   }
 
-  testWidgets('客户分类区可拖到160且搜索清除展开选择确认和宽度记忆均可用', (tester) async {
+  testWidgets('客户分类窄栏为层级缩进留位且搜索清除展开选择确认和宽度记忆均可用', (tester) async {
     await loadAuditScreenshotFonts(tester);
     final repository = _FakeClientRepository();
     await _pumpPicker(
@@ -121,9 +121,10 @@ void main() {
 
     await tester.drag(_splitGutter(), const Offset(-1400, 0));
     await tester.pumpAndSettle();
-    expect(tester.getSize(_categoryPane()).width, 160);
+    final compactWidth = tester.getSize(_categoryPane()).width;
+    expect(compactWidth, inInclusiveRange(160, 184));
     // 搜索和树行保持同一左缘，右侧共同让出独立滚动轨道。
-    expect(tester.getSize(_searchTextField()).width, 144);
+    expect(tester.getSize(_searchTextField()).width, compactWidth - 16);
     expect(
       tester
           .renderObject<RenderParagraph>(find.text(_longOverseasCategory))
@@ -134,6 +135,8 @@ void main() {
 
     await tester.tap(find.byTooltip('展开$_longOverseasCategory'));
     await tester.pumpAndSettle();
+    final expandedWidth = tester.getSize(_categoryPane()).width;
+    expect(expandedWidth, inInclusiveRange(compactWidth, compactWidth + 12));
     expect(find.text('东南亚客户').hitTestable(), findsOneWidget);
     await tester.tap(find.text('东南亚客户'));
     await tester.pumpAndSettle();
@@ -152,7 +155,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(_searchTextField()).controller!.text, '');
     expect(repository.listCategoryIds.last, 'southeast-asia');
-    expect(tester.getSize(_categoryPane()).width, 160);
+    // Revealing a second level keeps the same 64px minimum title allowance.
+    expect(tester.getSize(_categoryPane()).width, expandedWidth);
 
     await tester.tap(find.text('远洋电器'));
     await tester.pumpAndSettle();
@@ -173,7 +177,7 @@ void main() {
     expect(find.text('已选择：远洋电器'), findsOneWidget);
 
     await _openPicker(tester);
-    expect(tester.getSize(_categoryPane()).width, 160);
+    expect(tester.getSize(_categoryPane()).width, compactWidth);
     expect(find.byTooltip(_longOverseasCategory), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -203,6 +207,8 @@ void main() {
       }
       await tester.tap(expand);
       await tester.pumpAndSettle();
+      final expandedWidth = tester.getSize(_categoryPane()).width;
+      expect(expandedWidth, inInclusiveRange(width, width + 12));
       await tester.tap(find.text('东南亚客户'));
       await tester.pumpAndSettle();
       expect(repository.listCategoryIds.last, 'southeast-asia');
@@ -221,7 +227,7 @@ void main() {
       await tester.tap(clear);
       await tester.pumpAndSettle();
       expect(tester.widget<TextField>(_searchTextField()).controller!.text, '');
-      expect(tester.getSize(_categoryPane()).width, width);
+      expect(tester.getSize(_categoryPane()).width, expandedWidth);
       expect(find.text('远洋电器').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

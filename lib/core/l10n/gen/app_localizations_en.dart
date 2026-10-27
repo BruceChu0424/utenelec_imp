@@ -12632,7 +12632,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank. Keep the system identifier when updating. A blank code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a new code. Reused codes require the system identifier to confirm the current goods.';
+      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank or the column may be removed. Keep the system identifier when updating. A blank or missing code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a code. If an old identifier is absent from this database, match by code or create a record; a blank code is assigned automatically. Reused codes require the current goods identifier.';
 
   @override
   String get goodsImportMergeHint =>
@@ -12699,6 +12699,99 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get importRedetectRequired =>
       'Check this file again before submitting';
+
+  @override
+  String get goodsImportProblemsTitle => 'Fix import problems';
+
+  @override
+  String get goodsImportProblemsHint =>
+      'Import valid rows first. Edit problem cells in the table, then check again. A blank code keeps the current record’s code or assigns one to new goods. Edits apply only after checking again.';
+
+  @override
+  String goodsImportReadySummary(int ready, int problems) {
+    return 'Valid rows: $ready / Problem rows: $problems';
+  }
+
+  @override
+  String get goodsImportImportReady => 'Import valid rows';
+
+  @override
+  String get goodsImportApplyCorrections => 'Apply edits and check again';
+
+  @override
+  String get goodsImportFixSourceFile =>
+      'Fix the headers or system identifier in the source Excel file, then select it again.';
+
+  @override
+  String goodsImportPartialOutcome(String filename, String summary) {
+    return '$filename: Valid rows saved ($summary).';
+  }
+
+  @override
+  String get goodsImportProblemReason => 'Problem';
+
+  @override
+  String get goodsImportCodeCorrection => 'Code';
+
+  @override
+  String get goodsImportFieldName => 'Goods name';
+
+  @override
+  String get goodsImportFieldCategory => 'Category';
+
+  @override
+  String get goodsImportFieldClientName => 'Customer goods name';
+
+  @override
+  String get goodsImportFieldClientModel => 'Customer model';
+
+  @override
+  String get goodsImportFieldSeries => 'Series';
+
+  @override
+  String get goodsImportFieldModel => 'Model';
+
+  @override
+  String get goodsImportFieldSpec => 'Specification';
+
+  @override
+  String get goodsImportFieldMaterial => 'Material';
+
+  @override
+  String get goodsImportFieldRearInsert => 'Rear insert code';
+
+  @override
+  String get goodsImportFieldPaper => 'Remarks';
+
+  @override
+  String get goodsImportFieldColor => 'Main color';
+
+  @override
+  String get goodsImportFieldUnit => 'Unit';
+
+  @override
+  String get goodsImportFieldSource => 'Source';
+
+  @override
+  String get goodsImportFieldStatus => 'Status';
+
+  @override
+  String get goodsImportFieldPrice => 'Price';
+
+  @override
+  String get goodsImportFieldMinOrder => 'Minimum order quantity';
+
+  @override
+  String get goodsImportFieldOrderMultiple => 'Order multiple';
+
+  @override
+  String goodsImportRestoreNotice(int count) {
+    return 'Valid rows include $count deleted goods. Confirming the import restores them from this file.';
+  }
+
+  @override
+  String get goodsImportDetectionFailed =>
+      'The file could not be read or checked. Check it again or select the file again. If it still fails, send this message to your administrator.';
 
   @override
   String get importRetryPrevious => 'Retry previous submission';

@@ -45,6 +45,7 @@ class _Session extends SessionNotifier {
 class _Api extends ApiClient {
   _Api() : super(Dio());
   final termsQueries = <Set<String>>[];
+  final supplierLookupIds = <Set<String>>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -87,6 +88,14 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      supplierLookupIds.add(ids);
+      return [
+        if (ids.contains('supplier'))
+          {'id': 'supplier', 'name': '供应商', 'status': '使用'},
+      ];
+    }
     if (path == ApiEndpoints.suppliersDict) {
       return const [
         {'id': 'supplier', 'name': '供应商', 'status': '使用'},
@@ -189,6 +198,13 @@ void main() {
     expect(rows.last.supportsTotalInput, isTrue);
     expect(_grid(tester).controller.selectedRows, containsAll(rows));
     expect(api.termsQueries.single, {'g1', 'g2'});
+    expect(api.supplierLookupIds, isNotEmpty);
+    expect(
+      api.supplierLookupIds.every(
+        (ids) => ids.length == 1 && ids.single == 'supplier',
+      ),
+      isTrue,
+    );
   });
 
   for (final type in [

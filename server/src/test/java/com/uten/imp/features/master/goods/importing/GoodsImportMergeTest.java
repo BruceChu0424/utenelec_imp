@@ -227,6 +227,85 @@ class GoodsImportMergeTest {
         verifyNoInteractions(f.goodsService);
     }
 
+    @Test void removingTheNumberColumnKeepsTheLocalUuidAndFillsOnlyProvidedValues() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbookWithoutCode(f.goods.getId().toString(), "新客户品名");
+        var report = f.service.detect(file);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(0, report.addedRows());
+        assertEquals("UUID", report.reviewRows().getFirst().matchType());
+        var result = f.service.commit(report.planId(), file, "without-code.xlsx");
+
+        assertEquals("G1", captured(f).getCode());
+        assertEquals("新客户品名", capturedAgain(f).getClientGoodsName());
+        assertEquals(1, result.filledCount());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
+    @Test void unknownExportUuidsWithNoNumberEachCreateANewLocalIdentity() throws Exception {
+        for (String incomingCode : Arrays.asList(null, "", "NEW-CODE")) {
+            Fixture f = fixture();
+            String foreignId = UUID.randomUUID().toString();
+            byte[] file = incomingCode == null ? workbookWithoutCode(foreignId, "")
+                    : workbookWithUuid(incomingCode, foreignId);
+            var report = f.service.detect(file);
+
+            assertTrue(report.errors().isEmpty(), report.errors().toString());
+            assertEquals(1, report.addedRows());
+            assertTrue(report.reviewRows().isEmpty());
+            var result = f.service.commit(report.planId(), file, "historical-export.xlsx");
+
+            var request = org.mockito.ArgumentCaptor.forClass(GoodsSaveRequest.class);
+            verify(f.goodsService).saveImported(request.capture());
+            assertEquals(incomingCode, request.getValue().getCode());
+            assertEquals(1, result.createdCount());
+            verify(f.goodsService, never()).updateImported(any(), any());
+        }
+    }
+
+    @Test void unknownExportUuidUsesCurrentCodeReviewWithoutSilentlyReplacingConflicts() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbookWithUuid("G1", UUID.randomUUID().toString());
+        f.goods.setName("当前名称");
+        var report = f.service.detect(file);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(0, report.addedRows());
+        assertEquals("CODE", report.reviewRows().getFirst().matchType());
+        var ignored = f.service.commit(report.planId(), file, "historical-export.xlsx");
+        assertEquals(1, ignored.ignoredCount());
+        verifyNoInteractions(f.goodsService);
+
+        report = f.service.detect(file);
+        var selected = f.service.commit(report.planId(), file, "reviewed-historical-export.xlsx", Set.of("goods:2"));
+        assertEquals(1, selected.updatedCount());
+        assertEquals("现有货品", captured(f).getName());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
+    @Test void unknownExportUuidCannotBypassCodeReuseOrDuplicateTargetGuards() throws Exception {
+        Fixture f = fixture();
+        when(f.repo.codeHasReuseHistory("G1")).thenReturn(true);
+        var report = f.service.detect(workbookWithUuid("G1", UUID.randomUUID().toString()));
+        assertNull(report.planId());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("曾复用")));
+
+        f = fixture();
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(
+                workbookWithUuid("G1", UUID.randomUUID().toString())));
+             var out = new ByteArrayOutputStream()) {
+            var row = book.getSheetAt(0).createRow(2);
+            String[] values = {"G1", "另一名称", "成品", UUID.randomUUID().toString()};
+            for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+            book.write(out);
+            report = f.service.detect(out.toByteArray());
+            assertNull(report.planId());
+            assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("重复")));
+            verifyNoInteractions(f.goodsService);
+        }
+    }
+
     @Test void anExportedUuidWithAnUnusedNewCodeRequiresReviewBeforeRenumbering() throws Exception {
         Fixture f = fixture();
         byte[] file = workbookWithUuid("NEW-CODE", f.goods.getId().toString());
@@ -355,6 +434,9 @@ class GoodsImportMergeTest {
         authorities("goods:import");
         byte[] file = workbook("G1", "现有货品", "222", "", "");
         var report = f.service.detect(file);
+        assertNull(report.planId());
+        assertEquals(List.of(2), report.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertTrue(report.reviewRows().isEmpty());
         assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx"));
         verifyNoInteractions(f.goodsService);
     }
@@ -363,7 +445,11 @@ class GoodsImportMergeTest {
         Fixture f = fixture();
         doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND, "货品不存在"))
                 .when(f.access).requireWritable(f.goods.getId());
-        assertThrows(ApiException.class, () -> f.service.detect(workbook("G1", "现有货品", "222", "", "")));
+        var report = f.service.detect(workbook("G1", "现有货品", "222", "", ""));
+        assertNull(report.planId());
+        assertEquals(List.of(2), report.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertTrue(report.reviewRows().isEmpty());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("权限")));
     }
 
     @Test void uuidAndCodeMustReferToTheSameIdentity() throws Exception {
@@ -574,6 +660,18 @@ class GoodsImportMergeTest {
     }
     private static byte[] workbookWithUuid(String id) throws Exception {
         return workbookWithUuid("G1", id);
+    }
+    private static byte[] workbookWithoutCode(String id, String customerName) throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0); var row = sheet.createRow(1);
+            String[] titles = {"名称", "类别", "系统标识", "客户品名"};
+            String[] values = {"现有货品", "成品", id, customerName};
+            for (int i = 0; i < titles.length; i++) {
+                header.createCell(i).setCellValue(titles[i]); row.createCell(i).setCellValue(values[i]);
+            }
+            book.write(out); return out.toByteArray();
+        }
     }
     private static byte[] workbookWithUuid(String code, String id) throws Exception {
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {

@@ -10,11 +10,11 @@ final class ReadScopePublication {
     record Proof(String domain,AuthUser subject,String version,boolean businessTasks) {
         Proof(String domain,AuthUser subject,String version){this(domain,subject,version,false);}
     }
-    static String capture(HttpServletRequest request,HttpServletResponse response,
+    static String capture(HttpServletRequest request,
             ReadScopeVersionAuthority authority,SecurityContextCurrentUser users,String domain) {
-        return capture(request,response,authority,users,domain,false);
+        return capture(request,authority,users,domain,false);
     }
-    static String capture(HttpServletRequest request,HttpServletResponse response,
+    static String capture(HttpServletRequest request,
             ReadScopeVersionAuthority authority,SecurityContextCurrentUser users,String domain,boolean businessTasks) {
         if(authority==null)return null;
         // An async redispatch must not replace the original read's proof.

@@ -359,7 +359,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final scenario in ['light', 'dark', 'narrow160', 'compact']) {
+  for (final scenario in ['light', 'dark', 'narrow', 'compact']) {
     testWidgets('员工组织表格真实中文预览 $scenario', (tester) async {
       if (!_fontsLoaded) {
         await loadAuditScreenshotFonts(tester);
@@ -384,20 +384,33 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('展开业务部').first);
         await tester.pumpAndSettle();
-        if (scenario == 'narrow160') {
+        if (scenario == 'narrow') {
+          final naturalWidth = tester.getSize(find.byKey(_treeKey)).width;
           await tester.drag(
             find.byTooltip('拖动调整宽度 · 双击复位'),
             const Offset(-1400, 0),
           );
           await tester.pumpAndSettle();
-          expect(tester.getSize(find.byKey(_treeKey)).width, 160);
-          // The directory remains 160 wide. Its full-width search reserves
-          // the same trailing scrollbar lane as the tree rows; leading inset
-          // remains zero.
+          final narrowedWidth = tester.getSize(find.byKey(_treeKey)).width;
+          expect(narrowedWidth, lessThan(naturalWidth));
+          expect(narrowedWidth, inInclusiveRange(160, 240));
+          // Expanded controls retain their measured safety width; only labels
+          // elide. Search still reserves the shared trailing scrollbar lane.
           expect(
             tester.getSize(_search()).width,
-            160 - UtenScrollGutter.trackWidth,
+            narrowedWidth - UtenScrollGutter.trackWidth,
           );
+          final directoryBounds = tester.getRect(find.byKey(_treeKey));
+          for (final control in [
+            find.byTooltip('收起$_salesCenter'),
+            find.byTooltip('收起业务部').first,
+          ]) {
+            expect(control.hitTestable(), findsOneWidget);
+            final bounds = tester.getRect(control);
+            expect(directoryBounds.contains(bounds.center), isTrue);
+            expect(bounds.left, greaterThanOrEqualTo(directoryBounds.left));
+            expect(bounds.right, lessThanOrEqualTo(directoryBounds.right));
+          }
           expect(
             find.byTooltip('$_company / $_salesCenter / 业务部 / $_longTeam'),
             findsNWidgets(2),
@@ -405,9 +418,15 @@ void main() {
           await tester.enterText(_search(), '林晓');
           await tester.pump(const Duration(milliseconds: 301));
           await tester.pumpAndSettle();
-          await tester.tap(find.byTooltip('清除搜索'));
+          final clear = find.byTooltip('清除搜索');
+          expect(clear.hitTestable(), findsOneWidget);
+          expect(
+            tester.getRect(_search()).contains(tester.getRect(clear).center),
+            isTrue,
+          );
+          await tester.tap(clear);
           await tester.pumpAndSettle();
-          expect(tester.getSize(find.byKey(_treeKey)).width, 160);
+          expect(tester.getSize(find.byKey(_treeKey)).width, narrowedWidth);
           expect(_treeText('全部部门'), findsOneWidget);
           final allDepartments = _treeText('全部部门');
           expect(tester.widget<Text>(allDepartments).maxLines, 1);

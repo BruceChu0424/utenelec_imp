@@ -8,6 +8,7 @@ import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/supplier_category_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/supplier_quick_create_sheet.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _Categories implements SupplierCategoryRepository {
@@ -75,9 +76,16 @@ void main() {
       await tester.tap(category);
       await tester.pumpAndSettle();
       expect(tester.widget<UtenButton>(_pickerAction('确定')).onPressed, isNull);
-      await tester.tap(
-        find.byKey(const ValueKey('supplier-category-option-child')),
+      expect(
+        find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+        findsOneWidget,
       );
+      await tester.tap(find.byTooltip('收起供应商父分类'));
+      await tester.pumpAndSettle();
+      expect(_categoryRow('child'), findsNothing);
+      await tester.tap(find.byTooltip('展开供应商父分类'));
+      await tester.pumpAndSettle();
+      await tester.tap(_categoryRow('child'));
       await tester.pump();
       expect(find.text('选择供应商分类'), findsOneWidget);
       expect(form.controller.customValues['categoryId'], isNull);
@@ -93,15 +101,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<ListTile>(
-              find.byKey(const ValueKey('supplier-category-option-child')),
+            .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+              find.byType(UtenCategoryTreeView<ProductCategoryNode>),
             )
-            .selected,
-        isTrue,
+            .selectedIds,
+        {'child'},
       );
-      await tester.tap(
-        find.byKey(const ValueKey('supplier-category-option-parent')),
-      );
+      await tester.tap(_categoryRow('parent'));
       await tester.pump();
       expect(form.controller.customValues['categoryId'], 'child');
       await tester.tap(_pickerAction('取消'));
@@ -122,3 +128,5 @@ Finder _pickerAction(String label) => find.descendant(
   of: find.byType(UtenPickerConfirmBar),
   matching: find.widgetWithText(UtenButton, label),
 );
+
+Finder _categoryRow(String id) => find.byKey(ValueKey('hierarchy-row:$id'));

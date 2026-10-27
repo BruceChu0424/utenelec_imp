@@ -18,16 +18,16 @@ public class MasterReadScopeInterceptor implements HandlerInterceptor {
         if(authority==null||users==null)return true;
         String path=SecurityRequestPath.withinApplication(request);
         if("GET".equals(request.getMethod())&&path.equals("/api/master/goods/cost-sheets/actual")) {
-            ReadScopePublication.capture(request,response,authority,users,"master_goods");return true;
+            ReadScopePublication.capture(request,authority,users,"master_goods");return true;
         }
         if("GET".equals(request.getMethod())&&path.matches("^/api/master/reference-methods/settlement-admin(?:/page)?$")) {
-            ReadScopePublication.capture(request,response,authority,users,"master_settlement_method");return true;
+            ReadScopePublication.capture(request,authority,users,"master_settlement_method");return true;
         }
         var matcher=java.util.regex.Pattern.compile("^/api/master/(clients|suppliers|goods|accounts|currencies|colors|units|moulds|warehouses)(?:/(lookup|dict|facets|facet-values|summary|locate|search-category-ids|search|search-context|[0-9a-fA-F-]{36}))?$").matcher(path);
         if(!matcher.matches())return true;
         boolean search="POST".equals(request.getMethod()) && ("search".equals(matcher.group(2)) || "search-context".equals(matcher.group(2)));
         if("GET".equals(request.getMethod()) || search)
-            ReadScopePublication.capture(request,response,authority,users,DOMAINS.get(matcher.group(1)));
+            ReadScopePublication.capture(request,authority,users,DOMAINS.get(matcher.group(1)));
         return true;
     }
 }

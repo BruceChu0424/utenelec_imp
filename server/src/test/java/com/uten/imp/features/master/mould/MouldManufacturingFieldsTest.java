@@ -70,7 +70,7 @@ class MouldManufacturingFieldsTest {
         mould.setQty("1+1");
         mould.setTqty(new java.math.BigDecimal("2"));
         when(repository.findAll(org.mockito.ArgumentMatchers.<Specification<Mould>>any(), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(mould)));
+                .thenAnswer(call -> new PageImpl<>(List.of(mould), call.getArgument(1, Pageable.class), 1));
         var filter = new MouldQueryFilter(null, null, Set.of(), null, null, null, null, null, null, null, null);
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getManufacturer()).isEqualTo("模具制造商");
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getQty()).isEqualTo("1+1");

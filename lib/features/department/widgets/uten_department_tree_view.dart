@@ -60,7 +60,7 @@ class UtenDepartmentTreeView extends StatelessWidget {
   /// 用于"只展开某个特定子节点，同级其它节点保持折叠"的场景（如模具车间选择器只展开生产部）。
   final Set<String> initiallyExpandedIds;
 
-  /// 选择滑窗与客户分类树一致的无缩进层级色；管理页面保持默认样式。
+  /// 选择滑窗与客户分类树一致的紧凑层级色，保留公共树的缩进与连接线。
   final bool flatLevelColors;
 
   /// 行右键/长按菜单的宿主动作条目（透传 UtenHierarchyTreeView；菜单由树内置，

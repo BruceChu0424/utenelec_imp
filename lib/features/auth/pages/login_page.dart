@@ -23,6 +23,7 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/platform/desktop_window.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../core/network/server_selection.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -192,7 +193,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final isCompact = context.breakpoint.isCompact;
+    final isCompact = supportsDesktopWindow || context.breakpoint.isCompact;
     final isDark = theme.brightness == Brightness.dark;
     final branding = ref.watch(platformBrandingSnapshotProvider);
 

@@ -86,7 +86,7 @@ public class ReportExportWorker {
             }
             if(!acquired)return null;
             try {
-                if(Boolean.FALSE.equals(shortTx.execute(s -> repository.hasRunning())))cleanupInterruptedFiles(null);
+                if(Boolean.FALSE.equals(shortTx.execute(s -> repository.hasRunning())))cleanupInterruptedFiles();
             } finally {try(var statement=connection.createStatement()){statement.execute("SELECT pg_advisory_unlock(935,2)");}}
             return null;
         });
@@ -100,12 +100,12 @@ public class ReportExportWorker {
                 rows.next();acquired=rows.getBoolean(1);
             }
             if(!acquired) return null;
-            try { cleanupInterruptedFiles(job);run(job); }
+            try { cleanupInterruptedFiles();run(job); }
             finally {try(var statement=connection.createStatement()) {statement.execute("SELECT pg_advisory_unlock(935,2)");}}
             return null;
         });
     }
-    private void cleanupInterruptedFiles(ReportExportRepository.Job current) {
+    private void cleanupInterruptedFiles() {
         // This dedicated directory contains reproducible export copies only. The session slot
         // proves no other report worker can still be writing a sheet or a partial workbook.
         var names=java.util.regex.Pattern.compile("([0-9a-f-]{36})-([0-9]+)\\.(?:xlsx|pdf)(\\.part)?");
@@ -164,7 +164,7 @@ public class ReportExportWorker {
                     throw new IOException("Export file reservation unavailable");
                 try(var file=Files.newOutputStream(part,StandardOpenOption.CREATE_NEW);
                     var hashing=new DigestOutputStream(file,digest)) {
-                    writer.finish(new FilterOutputStream(hashing) {
+                    try(var bounded=new FilterOutputStream(hashing) {
                         long bytes;
                         long checked=System.nanoTime();
                         private void before(int amount) throws IOException {
@@ -176,7 +176,9 @@ public class ReportExportWorker {
                         }
                         @Override public void write(int b) throws IOException { before(1);out.write(b); }
                         @Override public void write(byte[] b,int off,int len) throws IOException { before(len);out.write(b,off,len); }
-                    });
+                    }) {
+                        writer.finish(bounded);
+                    }
                 }
                 checkpoint(job,writer.rowCount(),deadline);
                 Files.move(part,destination,StandardCopyOption.ATOMIC_MOVE);
@@ -226,21 +228,21 @@ public class ReportExportWorker {
                     :xlsx.openDocumentStream(service.requireStorage());
             document.onCheckpoint(()->checkpoint(job,Math.toIntExact(document.primaryRowCount()),deadline));
             return new TaskWriter() {
-                public int rowCount(){return Math.toIntExact(document.primaryRowCount());}
-                public void readSource(){
+                @Override public int rowCount(){return Math.toIntExact(document.primaryRowCount());}
+                @Override public void readSource(){
                     try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){
-                        public void begin(DocumentPageSink.Header header){checkpoint(job,rowCount(),deadline);document.begin(header);}
-                        public void accept(DocumentPageSink.Page page){checkpoint(job,rowCount(),deadline);document.accept(page);}
+                        @Override public void begin(DocumentPageSink.Header header){checkpoint(job,rowCount(),deadline);document.begin(header);}
+                        @Override public void accept(DocumentPageSink.Page page){checkpoint(job,rowCount(),deadline);document.accept(page);}
                     })) {source.readDocument(request);}
                 }
-                public void finish(OutputStream output)throws IOException{document.finish(output);}
-                public void close()throws IOException{document.close();}
+                @Override public void finish(OutputStream output)throws IOException{document.finish(output);}
+                @Override public void close()throws IOException{document.close();}
             };
         }
         var table=xlsx.openStream(source.projection(request),ReportExportSource.scope(request),service.requireStorage());
         return new TaskWriter() {
-            public int rowCount(){return table.rowCount();}
-            public void readSource(){
+            @Override public int rowCount(){return table.rowCount();}
+            @Override public void readSource(){
                 try(var cursor=com.uten.imp.common.report.ReportExportCursor.open();
                     var sink=ExportPageSink.open(page->{checkpoint(job,rowCount(),deadline);table.accept(page);})) {
                     var remainder=source.read(request);
@@ -248,8 +250,8 @@ public class ReportExportWorker {
                     if(!remainder.rows().isEmpty())table.accept(remainder);
                 }
             }
-            public void finish(OutputStream output)throws IOException{table.finish(output);}
-            public void close()throws IOException{table.close();}
+            @Override public void finish(OutputStream output)throws IOException{table.finish(output);}
+            @Override public void close()throws IOException{table.close();}
         };
     }
     private record Snapshot(OffsetDateTime at,String identity) { }

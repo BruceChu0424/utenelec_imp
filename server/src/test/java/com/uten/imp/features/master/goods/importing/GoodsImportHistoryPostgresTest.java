@@ -53,6 +53,8 @@ class GoodsImportHistoryPostgresTest {
     static JpaTransactionManager transactions;
     EntityManager em;
     GoodsImportService importer;
+    GoodsService goodsService;
+    OwnerVisibility goodsOwners;
     GoodsOperationHistoryService history;
     SecurityContextCurrentUser current;
     UUID actor, categoryId, existingId;
@@ -116,9 +118,10 @@ class GoodsImportHistoryPostgresTest {
         var colors = mock(ColorRepository.class); when(colors.findAll()).thenAnswer(call -> em.createQuery("from Color", Color.class).getResultList());
         var units = mock(UnitRepository.class); when(units.findAll()).thenAnswer(call -> em.createQuery("from Unit", Unit.class).getResultList());
         var tx = mock(TxSessionVars.class);
-        var service = transactional(new GoodsService(goods, categories, colors, units, null, tx, em,
-                new CategoryDrivenCodeService(em), mock(OwnerVisibility.class), current, new GoodsCostMasker(current), null));
-        var importTarget = new GoodsImportService(service, goods, null, categories, null, colors, null, units, em, current, null);
+        goodsOwners = mock(OwnerVisibility.class);
+        goodsService = transactional(new GoodsService(goods, categories, colors, units, null, tx, em,
+                new CategoryDrivenCodeService(em), goodsOwners, current, new GoodsCostMasker(current), null));
+        var importTarget = new GoodsImportService(goodsService, goods, null, categories, null, colors, null, units, em, current, null);
         ReflectionTestUtils.setField(importTarget, "writeAccess", (GoodsMasterWriteAccessPort) id -> {
             Goods value = em.find(Goods.class, id);
             if (value == null || value.isDeleted()) throw new IllegalStateException("goods not available");
@@ -263,6 +266,72 @@ class GoodsImportHistoryPostgresTest {
                 .setParameter("id", categoryId).getSingleResult()).longValue());
     }
 
+    @Test void removingTheNumberColumnStillKeepsTheExportedLocalIdentity() throws Exception {
+        byte[] file = workbookWithoutNumber(existingId.toString());
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.unchangedRows());
+
+        var result = inTx(() -> importer.commit(detected.planId(), file, "removed-number.xlsx"));
+
+        assertNull(result.batchId());
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+    }
+
+    @Test void missingNumberAndForeignUuidsAllocateDistinctLocalGoodsAndRemainUndoable() throws Exception {
+        UUID foreignId = UUID.randomUUID();
+        byte[] file = workbookWithoutNumber(foreignId.toString(), foreignId.toString(), "");
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(3, detected.addedRows());
+        var result = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "foreign-without-numbers.xlsx");
+        });
+
+        assertEquals(3, result.createdCount());
+        List<UUID> createdIds = em.createQuery("select g.id from Goods g where g.category.id=:category and g.id<>:existing", UUID.class)
+                .setParameter("category", categoryId).setParameter("existing", existingId).getResultList();
+        assertEquals(3, createdIds.size());
+        assertFalse(createdIds.contains(foreignId));
+        assertEquals(4L, ((Number) em.createNativeQuery("SELECT count(DISTINCT code) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertThrows(ApiException.class, () -> inTx(() -> importer.commit(detected.planId(), file, "replayed.xlsx")));
+        assertEquals(4L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+
+        UUID operation = UUID.fromString(scalar("SELECT operation_id::text FROM goods_import_batches WHERE id=:id", result.batchId()));
+        inTx(() -> {
+            provenance("/api/master/goods/import/" + result.batchId(), "DELETE");
+            return importer.undo(result.batchId());
+        });
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        for (UUID id : createdIds) assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", id));
+        assertEquals("UNDONE", scalar("SELECT status FROM goods_import_batches WHERE id=:id", result.batchId()));
+
+        inTx(() -> {
+            provenance("/api/master/goods/history/" + operation + "/redo", "POST");
+            return history.redo(operation, 1);
+        });
+        for (UUID id : createdIds) assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", id));
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+    }
+
+    private byte[] workbookWithoutNumber(String... goodsIds) {
+        var columns = List.of(
+                new com.uten.imp.common.export.ExportColumn("name", "货品名称", "text"),
+                new com.uten.imp.common.export.ExportColumn("category", "类别", "text"),
+                new com.uten.imp.common.export.ExportColumn("id", "系统标识", "text"));
+        List<Map<String, Object>> rows = Arrays.stream(goodsIds).map(id -> Map.<String, Object>of(
+                "name", "现有货品", "category", categoryName(), "id", id)).toList();
+        // Use raw SXSSF export bytes: the user's files must not require a resave.
+        return new com.uten.imp.common.export.XlsxExportService().build(columns, rows);
+    }
+
     @Test void newNumberWithoutUuidCreatesASameNameVariantWithoutChangingTheExistingGoods() throws Exception {
         byte[] file = identityWorkbook(newCode, "");
         var detected = inTx(() -> importer.detect(file));
@@ -281,6 +350,180 @@ class GoodsImportHistoryPostgresTest {
         assertEquals("现有货品", scalar("SELECT name FROM goods WHERE id=:id", createdId));
         assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
         assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+    }
+
+    @Test void historicalUuidWithChangedOrBlankNumberCreatesFreshGoodsWithoutChangingCurrentGoods() throws Exception {
+        UUID historicalId = UUID.randomUUID();
+        for (String code : List.of(newCode, "")) {
+            byte[] file = identityWorkbook(code, historicalId.toString());
+            var detected = inTx(() -> importer.detect(file));
+            assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+            assertEquals(1, detected.addedRows());
+            var result = inTx(() -> {
+                provenance("/api/master/goods/import/commit", "POST");
+                return importer.commit(detected.planId(), file, "historical-number.xlsx");
+            });
+            assertEquals(1, result.createdCount());
+            assertEquals(0, result.updatedCount());
+        }
+        List<UUID> createdIds = em.createQuery("select g.id from Goods g where g.category.id=:category and g.id<>:existing", UUID.class)
+                .setParameter("category", categoryId).setParameter("existing", existingId).getResultList();
+        assertEquals(2, createdIds.size());
+        assertFalse(createdIds.contains(historicalId));
+        assertEquals(3L, ((Number) em.createNativeQuery("SELECT count(DISTINCT code) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+    }
+
+    @Test void historicalUuidMayRestoreByUnambiguousCodeWhileIgnoredConflictsRemainUntouched() {
+        UUID otherId = UUID.randomUUID();
+        inTx(() -> {
+            em.createNativeQuery("UPDATE goods SET is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id")
+                    .setParameter("id", existingId).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,code_sequence)
+                    VALUES(:id,:code,'其他货品',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                    """).setParameter("id", otherId).setParameter("code", newCode).setParameter("category", categoryId).executeUpdate();
+            return null;
+        });
+        var columns = List.of(
+                new com.uten.imp.common.export.ExportColumn("code", "编号", "text"),
+                new com.uten.imp.common.export.ExportColumn("name", "货品名称", "text"),
+                new com.uten.imp.common.export.ExportColumn("category", "类别", "text"),
+                new com.uten.imp.common.export.ExportColumn("id", "系统标识", "text"));
+        byte[] file = new com.uten.imp.common.export.XlsxExportService().build(columns, List.of(
+                Map.of("code", existingCode, "name", "现有货品", "category", categoryName(), "id", UUID.randomUUID().toString()),
+                Map.of("code", newCode, "name", "未选择的新名称", "category", categoryName(), "id", "")));
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.restorableRows());
+        assertEquals(1, detected.conflictRows());
+
+        var result = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "restore-and-ignore.xlsx", Set.of());
+        });
+        assertEquals(1, result.restoredCount());
+        assertEquals(1, result.ignoredCount());
+        assertEquals(0, result.createdCount());
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("其他货品", scalar("SELECT name FROM goods WHERE id=:id", otherId));
+        inTx(() -> {
+            provenance("/api/master/goods/import/" + result.batchId(), "DELETE");
+            return importer.undo(result.batchId());
+        });
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals("其他货品", scalar("SELECT name FROM goods WHERE id=:id", otherId));
+    }
+
+    @Test void normalSubsetThenCellCorrectionsCreateOnlyRemainingGoodsAndHaveIndependentUndo() throws Exception {
+        byte[] file;
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
+            String[] titles = {"编号", "名称", "类别", "来源", "价格", "规格"};
+            for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
+            String[][] values = {
+                    {newCode, "正常新货品", categoryName(), "采购", "1.2345", "正常规格"},
+                    {"DUP" + categoryId, "", categoryName(), "错误来源", "无效价格", "问题规格一"},
+                    {"DUP" + categoryId, "待修复货品", categoryName(), "错误来源", "无效价格", "问题规格二"}};
+            for (int n = 0; n < values.length; n++) {
+                var row = sheet.createRow(n + 1);
+                for (int i = 0; i < titles.length; i++) row.createCell(i).setCellValue(values[n][i]);
+            }
+            book.write(out); file = out.toByteArray();
+        }
+        byte[] originalBytes = file.clone();
+        var firstPlan = inTx(() -> importer.detect(file));
+        assertEquals(List.of(2), firstPlan.readyRowNums());
+        assertEquals(List.of(3, 4), firstPlan.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        var first = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(firstPlan.planId(), file, "partial.xlsx");
+        });
+        assertEquals(1, first.createdCount());
+        UUID normalId = (UUID) em.createNativeQuery("SELECT id FROM goods WHERE code=:code")
+                .setParameter("code", newCode).getSingleResult();
+
+        Map<Integer, Map<String, String>> corrections = Map.of(
+                3, Map.of("code", "C" + categoryId, "name", "已修复一", "sourceType", "采购", "price", "12.3456"),
+                4, Map.of("code", "", "name", "已修复二", "sourceType", "自制", "price", "7.8901"));
+        var secondPlan = inTx(() -> importer.detect(file, Map.of(), Set.of(2), corrections));
+        assertTrue(secondPlan.errors().isEmpty(), secondPlan.errors().toString());
+        assertEquals(List.of(3, 4), secondPlan.readyRowNums());
+        var second = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(secondPlan.planId(), file, "repaired.xlsx", Set.of(), Map.of(), Set.of(2), corrections);
+        });
+        assertEquals(2, second.createdCount());
+        assertNotEquals(first.batchId(), second.batchId());
+        assertEquals("1.2345", scalar("SELECT price::text FROM goods WHERE id=:id", normalId));
+        assertEquals("正常规格", scalar("SELECT spec FROM goods WHERE id=:id", normalId));
+        List<Goods> repaired = em.createQuery("from Goods g where g.category.id=:category and g.name in ('已修复一','已修复二') order by g.name", Goods.class)
+                .setParameter("category", categoryId).getResultList();
+        assertEquals(2, repaired.size());
+        assertEquals(new java.math.BigDecimal("12.3456"), repaired.getFirst().getPrice());
+        assertEquals("采购", repaired.getFirst().getSourceType());
+        assertEquals("问题规格一", repaired.getFirst().getSpec());
+        assertEquals(new java.math.BigDecimal("7.8901"), repaired.get(1).getPrice());
+        assertEquals("自制", repaired.get(1).getSourceType());
+        assertNotEquals(repaired.getFirst().getCode(), repaired.get(1).getCode());
+        assertEquals(4L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE category_id=:id")
+                .setParameter("id", categoryId).getSingleResult()).longValue());
+        assertArrayEquals(originalBytes, file);
+        assertThrows(ApiException.class, () -> inTx(() -> importer.commit(secondPlan.planId(), file,
+                "replay.xlsx", Set.of(), Map.of(), Set.of(2), corrections)));
+        inTx(() -> {
+            provenance("/api/master/goods/import/" + second.batchId(), "DELETE");
+            return importer.undo(second.batchId());
+        });
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", normalId));
+        for (Goods value : repaired) assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", value.getId()));
+        inTx(() -> {
+            provenance("/api/master/goods/import/" + first.batchId(), "DELETE");
+            return importer.undo(first.batchId());
+        });
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", normalId));
+        assertEquals("false", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+    }
+
+    @Test void deniedRestorationDoesNotPoisonTheNormalSubsetTransaction() throws Exception {
+        UUID owner = UUID.randomUUID();
+        inTx(() -> {
+            em.createNativeQuery("""
+                    INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                    VALUES(:id,:code,'范围测试','其他',
+                      (SELECT id FROM departments WHERE NOT is_deleted ORDER BY id LIMIT 1),current_date,'active','regular')
+                    """).setParameter("id", owner).setParameter("code", "IO" + owner.toString().replace("-", "")).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET owner_employee_id=:owner,is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id")
+                    .setParameter("owner", owner).setParameter("id", existingId).executeUpdate();
+            return null;
+        });
+        GoodsService target = (GoodsService) ((org.springframework.aop.framework.Advised) goodsService)
+                .getTargetSource().getTarget();
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(target, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
+        when(goodsOwners.evaluate("goods", "goods:view:all"))
+                .thenReturn(new OwnerVisibility.OwnerScope(false, Set.of(owner), Set.of()));
+        byte[] file = workbook();
+
+        // Both services use real Spring transaction proxies. A caught denial in
+        // the nested read-only guard must not mark this transaction rollback-only.
+        var detected = inTx(() -> importer.detect(file));
+        assertEquals(List.of(3), detected.readyRowNums());
+        assertEquals(List.of(2), detected.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertEquals(0, detected.restorableRows());
+        assertTrue(detected.reviewRows().isEmpty());
+        assertTrue(detected.errors().stream().anyMatch(error -> error.message().contains("权限")));
+        var result = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "denied-restore-with-normal.xlsx");
+        });
+        assertEquals(1, result.createdCount());
+        assertEquals(0, result.restoredCount());
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code AND NOT is_deleted")
+                .setParameter("code", newCode).getSingleResult()).longValue());
     }
 
     @Test void reviewedRenameCannotTakeAnotherGoodsHistoricalNumberAndRollsBackItsBatch() throws Exception {

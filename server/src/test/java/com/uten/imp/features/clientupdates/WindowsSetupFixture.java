@@ -18,8 +18,14 @@ final class WindowsSetupFixture {
     static byte[] bytes(long build, String architecture, String version, Map<String, String> overrides) {
         String base = version.split("-", 2)[0], text = base + "." + build;
         String[] parts = base.split("\\.");
-        int ms = Integer.parseInt(parts[0]) << 16 | Integer.parseInt(parts[1]);
-        int ls = Integer.parseInt(parts[2]) << 16 | (int) build;
+        final int ms;
+        final int ls;
+        try {
+            ms = Integer.parseInt(parts[0]) << 16 | Integer.parseInt(parts[1]);
+            ls = Integer.parseInt(parts[2]) << 16 | (int) build;
+        } catch (NumberFormatException invalidVersion) {
+            throw new IllegalArgumentException("Fixture version must contain numeric components", invalidVersion);
+        }
         var strings = new LinkedHashMap<String, String>();
         strings.put("ProductName", "Uten IMP Windows Setup");
         strings.put("OriginalFileName", "UtenIMPSetup.exe");

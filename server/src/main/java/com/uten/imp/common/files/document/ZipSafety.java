@@ -95,8 +95,7 @@ public final class ZipSafety {
                 else if (lower.equals("content.xml") || lower.equals("styles.xml")) {
                     OfficePreviewXmlSafety.inspect(bounded, OfficePreviewXmlSafety.Kind.OPEN_DOCUMENT);
                 }
-                int count;
-                while ((count = bounded.read(buffer)) != -1) { /* validate bytes not consumed by the XML parser */ }
+                while (bounded.read(buffer) != -1) { /* validate bytes not consumed by the XML parser */ }
             }
         }
         if (names.isEmpty()) throw rejected("文档压缩结构无效");

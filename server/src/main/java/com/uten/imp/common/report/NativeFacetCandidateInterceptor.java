@@ -38,7 +38,7 @@ public final class NativeFacetCandidateInterceptor implements AsyncHandlerInterc
         long size=number(single(request,"__facetSize","100"));
         if(size>100)throw invalid("候选每页最多100项");
         boolean tasks=handler instanceof HandlerMethod method&&method.hasMethodAnnotation(BusinessTaskRead.class);
-        ReadScopePublication.capture(request,response,authority,users,route.profile(),tasks);
+        ReadScopePublication.capture(request,authority,users,route.profile(),tasks);
         var scope=NativeFacetCandidates.open(field,single(request,"__facetKeyword",""),page,(int)size);
         request.setAttribute(ATTRIBUTE,scope);
         com.uten.imp.audit.AuditRequestContext.markControlledRead(request);

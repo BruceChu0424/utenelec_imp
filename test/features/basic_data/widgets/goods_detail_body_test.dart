@@ -88,7 +88,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          currentPermissionsProvider.overrideWithValue(const {Perm.goodsEdit}),
           isSuperAdminProvider.overrideWithValue(false),
           colorDictProvider.overrideWith((ref) async => const []),
           unitDictProvider.overrideWith((ref) async => const []),
@@ -213,7 +213,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          currentPermissionsProvider.overrideWithValue(const {Perm.goodsEdit}),
           isSuperAdminProvider.overrideWithValue(false),
           colorDictProvider.overrideWith(
             (ref) async => const [

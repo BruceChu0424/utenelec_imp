@@ -115,9 +115,12 @@ public class TabularPdfExportService {
     }
     static RowSource memorySection(ExportDocument.Section section) {
         return new RowSource() {
-            public String name(){return section.name();}public List<ExportColumn> columns(){return section.columns();}
+            @Override
+            public String name(){return section.name();}@Override public List<ExportColumn> columns(){return section.columns();}
+            @Override
             public RowCursor open(){var rows=section.rows().iterator();return new RowCursor(){
-                public Map<String,Object> next(){return rows.hasNext()?rows.next():null;}public void close(){}
+                @Override
+                public Map<String,Object> next(){return rows.hasNext()?rows.next():null;}@Override public void close(){}
             };}
         };
     }

@@ -77,7 +77,7 @@ class MasterExportSourceTest {
         }
         assertThat(emitted).hasValue(100_000); assertThat(fixture.closed).isTrue();
         verify(fixture.repository,times(1)).count(fixture.specification);
-        verify(fixture.repository,never()).findAll(org.mockito.ArgumentMatchers.<Specification<Item>>any(),any(Pageable.class));
+        verify(fixture.repository,never()).findAll(org.mockito.ArgumentMatchers.<Specification<Item>>notNull(),any(Pageable.class));
         verify(em,times(1001)).clear();
     }
     @Test void sinkFailureClosesCursorAndRestoresOrdinaryListMode() {

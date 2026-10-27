@@ -130,7 +130,7 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
         List<Gap> gaps = new ArrayList<>();
         var math = new ActualCostEvidenceMath(objectRows,query.goodsId(),gaps::add);
         if(objectRows.isEmpty()) {
-            math.finish(query.goodsId());
+            math.finish();
             return result(query,math.summary(),math.objects(),List.of(),List.of(),List.of(),gaps);
         }
         args.addValue("ids",objectRows.stream().map(row->uuid(row,"cost_object_id")).toList());
@@ -139,7 +139,7 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
         var outputs=db.queryForList(OUTPUTS_SQL,args).stream().map(GoodsActualCostQueryService::output).toList();
         outputs.forEach(math::accept);
         var revisions=db.queryForList(REVISIONS_SQL,args).stream().map(GoodsActualCostQueryService::revision).toList();
-        math.finish(query.goodsId());
+        math.finish();
         return result(query,math.summary(),math.objects(),inputs,outputs,revisions,gaps);
     }
 

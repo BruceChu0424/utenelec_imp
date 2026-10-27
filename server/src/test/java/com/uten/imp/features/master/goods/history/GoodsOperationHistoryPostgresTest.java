@@ -38,6 +38,20 @@ class GoodsOperationHistoryPostgresTest {
 
     @BeforeAll static void start() throws Exception {
         database=MigratedSchemaBaseline.openDatabase("goods_history_service");
+        // This class validates permission/CAS success paths in a quiescent
+        // private clone. Automatic maintenance uses a relation lock which is
+        // intentionally incompatible with production's NOWAIT replay fence.
+        // The separate concurrency suite covers that exact conflict mode.
+        try(var connection=database.openConnection();var statement=connection.createStatement()) {
+            statement.setQueryTimeout(10);
+            statement.execute("""
+                    ALTER TABLE colors SET (autovacuum_enabled=false);
+                    ALTER TABLE units SET (autovacuum_enabled=false);
+                    ALTER TABLE material_categories SET (autovacuum_enabled=false);
+                    ALTER TABLE goods SET (autovacuum_enabled=false);
+                    ALTER TABLE goods_bom_items SET (autovacuum_enabled=false);
+                    """);
+        }
         var bean=new LocalContainerEntityManagerFactoryBean();
         bean.setDataSource(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());

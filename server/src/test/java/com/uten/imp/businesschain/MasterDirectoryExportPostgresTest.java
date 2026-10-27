@@ -128,8 +128,8 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThat(HexFormat.of().formatHex(actual.digest())).isEqualTo(HexFormat.of().formatHex(expected.digest()));
         BigDecimal original=jdbc.queryForObject("SELECT price FROM goods WHERE id=?",BigDecimal.class,seed.ids().getFirst());
         assertThat(sum.get()).isEqualByComparingTo(original.multiply(BigDecimal.valueOf(100_000)));
-        verify(goodsRepository,times(1)).count(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>any());
-        verify(goodsRepository,never()).findAll(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>any(),any(Pageable.class));
+        verify(goodsRepository,times(1)).count(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>notNull());
+        verify(goodsRepository,never()).findAll(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>notNull(),any(Pageable.class));
         assertThat(sample.logicalStatements).isLessThan(12_000);
         System.out.println("B1-MASTER-SOURCE rows="+rows+" batches="+batches+" peakManaged="+peakManaged
                 +" sourceMillis="+(System.nanoTime()-started)/1_000_000+" statements="+sample.logicalStatements
@@ -186,7 +186,15 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         String sql="INSERT INTO "+table+"(id,code,name,status"+extras+") VALUES("+String.join(",",Collections.nCopies(4+extraCount,"?"))+")";
         List<Integer> indices=java.util.stream.IntStream.range(0,count).boxed().toList();
         var write=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
-        write.executeWithoutResult(status->jdbc.batchUpdate(sql,indices,100,(ps,index)->{
+        // Fixture preparation is outside the measured export. Keep every row,
+        // but release its connection between bounded writes instead of holding
+        // one 100,000-row transaction past the production leak threshold.
+        long seedStarted=System.nanoTime();
+        for(int start=0;start<count;start+=1000){
+            long batchStarted=System.nanoTime();
+            int end=Math.min(start+1000,count);
+            List<Integer> batch=indices.subList(start,end);
+            write.executeWithoutResult(status->jdbc.batchUpdate(sql,batch,100,(ps,index)->{
             ps.setObject(1,ids.get(index));ps.setString(2,"MX-"+token+"-"+String.format("%06d",index));
             ps.setString(3,token+"-"+index);ps.setString(4,"使用");
             switch(report){
@@ -198,7 +206,12 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
                 case "warehouse"->{ps.setObject(5,category);ps.setBoolean(6,true);}
                 default->{}
             }
-        }));
+            }));
+            if(count>=10_000&&(start==0||end%10_000==0||end==count))
+                System.out.println("B1-MASTER-SEED report="+report+" prepared="+end+" rows="+count
+                        +" batchMillis="+(System.nanoTime()-batchStarted)/1_000_000
+                        +" elapsedMillis="+(System.nanoTime()-seedStarted)/1_000_000);
+        }
         return new Seed(List.copyOf(ids));
     }
 }

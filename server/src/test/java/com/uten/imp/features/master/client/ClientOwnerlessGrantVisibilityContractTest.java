@@ -27,10 +27,25 @@ class ClientOwnerlessGrantVisibilityContractTest {
 
         assertThat(section(service, "public PageResponse<ClientListItem> list(",
                 "public List<ClientDictItem> dict()"))
-                .contains("clientAccessPolicy.readablePredicate");
+                .contains("clientSpec(f, subtreeIds, accessScope, keyword, requestedSort)")
+                .contains("MasterExportSource.page(repo, em, Client.class, spec, pageable, f)");
+        assertThat(section(service, "private Specification<Client> clientSpec(",
+                "private static void addEq"))
+                .contains("clientAccessPolicy.readablePredicate(root, q, cb, accessScope)");
         assertThat(section(service, "public List<ClientDictItem> dict(boolean",
                 "private static void addEq"))
-                .contains("clientAccessPolicy.readablePredicate");
+                .contains("dictionarySpec(scope, excludeLegacyFinanceStub)");
+        assertThat(section(service, "private Specification<Client> dictionarySpec(",
+                "public com.uten.imp.common.web.MasterSearchContext searchContext("))
+                .contains("clientAccessPolicy.readablePredicate(root, q, cb, scope)");
+        assertThat(section(service, "public List<ClientDictItem> lookup(",
+                "private static ClientDictItem dictionaryItem("))
+                .contains("dictionarySpec(scope, excludeLegacyFinanceStub)")
+                .contains("root.get(\"id\").in(ids)");
+        assertThat(section(service, "public com.uten.imp.common.web.MasterSearchContext searchContext(",
+                "private static void validateReadFilter("))
+                .contains("clientAccessPolicy.evaluate()")
+                .contains("clientSpec(filter, subtreeIds, scope,");
         assertThat(section(service, "public ExportPayload export(",
                 "public ClientFacets facets(UUID categoryId)"))
                 // 导出按系统设置的行数上限分页收集, 每一页仍走 list(f, ...) 的同一对象口径。

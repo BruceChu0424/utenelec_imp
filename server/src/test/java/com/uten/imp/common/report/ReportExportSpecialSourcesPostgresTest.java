@@ -130,7 +130,13 @@ class ReportExportSpecialSourcesPostgresTest {
             TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(Connection.TRANSACTION_REPEATABLE_READ);
         }
         @Override public void close() throws Exception {
-            try { if(session.getTransaction().isActive())session.getTransaction().rollback();session.close();factory.close(); }
+            try {
+                if (session.getTransaction().isActive()) {
+                    session.getTransaction().rollback();
+                }
+                session.close();
+                factory.close();
+            }
             finally {TransactionSynchronizationManager.clear();connection.close();}
         }
     }

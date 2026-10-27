@@ -33,7 +33,7 @@ class PaymentStyleHierarchyLockConsumerContractTest {
                 source,
                 "public AccountDetail update(",
                 "if (targetActive || req.getStyleId() != null || req.getStyleLegacyId() != null)",
-                "em.refresh(a, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);");
+                "com.uten.imp.common.concurrency.MasterRowWriteLock.refreshActive(em, a, a::isDeleted, \"账户不存在\");");
     }
 
     @Test

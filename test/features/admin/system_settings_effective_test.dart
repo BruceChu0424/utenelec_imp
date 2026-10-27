@@ -77,10 +77,14 @@ void main() {
       expect(repository.statusReads, 0);
       expect(repository.writes, 0);
       expect(find.text('服务器已确认更新计划'), findsNothing);
-      expect(
-        find.text('旧自动检查周期仅保留为升级记录。实际更新方式与运行状态请在服务器更新中查看。'),
-        findsOneWidget,
+      const legacyGuidance = '旧自动检查周期仅保留为升级记录。实际更新方式与运行状态请在服务器更新中查看。';
+      final guidance = find.byTooltip(legacyGuidance);
+      expect(guidance, findsOneWidget);
+      await tester.tap(
+        find.descendant(of: guidance, matching: find.byType(IconButton)),
       );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(legacyGuidance), findsOneWidget);
       expect(find.text('实际仅手动，运行状态以本机运维状态为准'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     },

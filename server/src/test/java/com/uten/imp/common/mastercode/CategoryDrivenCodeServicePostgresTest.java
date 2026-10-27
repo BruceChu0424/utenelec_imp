@@ -60,6 +60,9 @@ class CategoryDrivenCodeServicePostgresTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.flyway.user", POSTGRES::getUsername);
+        registry.add("spring.flyway.password", POSTGRES::getPassword);
     }
 
     public static class DatabaseCleanup extends AbstractTestExecutionListener {
@@ -186,44 +189,55 @@ class CategoryDrivenCodeServicePostgresTest {
     private com.uten.imp.features.master.mouldcategory.MouldCategoryRepository mouldCategoryRepository;
 
     @Test
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     void mouldCategorySeriesSearchKeepsSubtreePaginationGlobalSearchAndExportInAgreement() {
         UUID root = UUID.randomUUID();
         UUID child = UUID.randomUUID();
         UUID outside = UUID.randomUUID();
-        jdbc.update("INSERT INTO mould_categories (id, code, name, remark, is_deleted) VALUES (?, 'SERIES-ROOT', 'Q7系列', '旧分类备注', false)", root);
-        jdbc.update("INSERT INTO mould_categories (id, code, name, parent_id, is_deleted) VALUES (?, 'SERIES-CHILD', 'Q7开关子系列', ?, false)", child, root);
-        jdbc.update("INSERT INTO mould_categories (id, code, name, is_deleted) VALUES (?, 'SERIES-OUTSIDE', 'Q7外部系列', false)", outside);
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
         UUID outsideMould = UUID.randomUUID();
         UUID unrelated = UUID.randomUUID();
-        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M001', '双联开关模具', 1, '使用', false)", first, root);
-        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M002', '双联开关模具', 2, '使用', false)", second, child);
-        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M003', '双联开关模具', 3, '使用', false)", outsideMould, outside);
-        jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M004', '双联插座模具', 4, '使用', false)", unrelated, child);
-        var mouldService = new com.uten.imp.features.master.mould.MouldService(mouldRepository, mouldCategoryRepository,
-                org.mockito.Mockito.mock(com.uten.imp.security.TxSessionVars.class), entityManager, service,
-                org.mockito.Mockito.mock(com.uten.imp.common.util.DepartmentNameResolver.class),
-                org.mockito.Mockito.mock(com.uten.imp.common.util.EmployeeNameResolver.class));
-        var filter = new com.uten.imp.features.master.mould.dto.MouldQueryFilter(root, null, java.util.Set.of(),
-                null, "双联开关模具", null, null, null, null, "使用", null)
-                .withColumnSearch(java.util.Map.of("categoryName", "Q7", "name", "开关"));
-        var pageOne = mouldService.list(filter, 1, 1);
-        var pageTwo = mouldService.list(filter, 2, 1);
-        assertEquals(2, pageOne.getTotal());
-        assertEquals(2, pageTwo.getTotal());
-        assertEquals(first, pageOne.getItems().getFirst().getId());
-        assertEquals("Q7系列", pageOne.getItems().getFirst().getCategoryName());
-        assertEquals(second, pageTwo.getItems().getFirst().getId());
-        assertEquals("Q7开关子系列", pageTwo.getItems().getFirst().getCategoryName());
-        var exported = mouldService.export(filter, 100);
-        assertEquals(2, exported.rows().size());
-        assertEquals(java.util.Set.of("Q7系列", "Q7开关子系列"), exported.rows().stream()
-                .map(row -> row.get("categoryName")).collect(java.util.stream.Collectors.toSet()));
-        var global = mouldService.list(new com.uten.imp.features.master.mould.dto.MouldQueryFilter(null, "Q7", null,
-                null, null, null, null, null, null, null, null), 1, 20);
-        assertEquals(java.util.Set.of(first, second, outsideMould, unrelated), global.getItems().stream()
-                .map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
+        // This private-container fixture commits its unique rows before the
+        // real read-only snapshot. Never disguise the surrounding write test
+        // transaction as read-only or weaken the shared export guard.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            jdbc.update("INSERT INTO mould_categories (id, code, name, remark, is_deleted) VALUES (?, 'SERIES-ROOT', 'Q7系列', '旧分类备注', false)", root);
+            jdbc.update("INSERT INTO mould_categories (id, code, name, parent_id, is_deleted) VALUES (?, 'SERIES-CHILD', 'Q7开关子系列', ?, false)", child, root);
+            jdbc.update("INSERT INTO mould_categories (id, code, name, is_deleted) VALUES (?, 'SERIES-OUTSIDE', 'Q7外部系列', false)", outside);
+            jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M001', '双联开关模具', 1, '使用', false)", first, root);
+            jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M002', '双联开关模具', 2, '使用', false)", second, child);
+            jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M003', '双联开关模具', 3, '使用', false)", outsideMould, outside);
+            jdbc.update("INSERT INTO moulds (id, category_id, code, name, code_sequence, status, is_deleted) VALUES (?, ?, 'SERIES-M004', '双联插座模具', 4, '使用', false)", unrelated, child);
+        });
+        var read = new TransactionTemplate(transactionManager);
+        read.setReadOnly(true);
+        read.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        read.executeWithoutResult(status -> {
+            var mouldService = new com.uten.imp.features.master.mould.MouldService(mouldRepository, mouldCategoryRepository,
+                    org.mockito.Mockito.mock(com.uten.imp.security.TxSessionVars.class), entityManager, service,
+                    org.mockito.Mockito.mock(com.uten.imp.common.util.DepartmentNameResolver.class),
+                    org.mockito.Mockito.mock(com.uten.imp.common.util.EmployeeNameResolver.class));
+            var filter = new com.uten.imp.features.master.mould.dto.MouldQueryFilter(root, null, java.util.Set.of(),
+                    null, "双联开关模具", null, null, null, null, "使用", null)
+                    .withColumnSearch(java.util.Map.of("categoryName", "Q7", "name", "开关"));
+            var pageOne = mouldService.list(filter, 1, 1);
+            var pageTwo = mouldService.list(filter, 2, 1);
+            assertEquals(2, pageOne.getTotal());
+            assertEquals(2, pageTwo.getTotal());
+            assertEquals(first, pageOne.getItems().getFirst().getId());
+            assertEquals("Q7系列", pageOne.getItems().getFirst().getCategoryName());
+            assertEquals(second, pageTwo.getItems().getFirst().getId());
+            assertEquals("Q7开关子系列", pageTwo.getItems().getFirst().getCategoryName());
+            var exported = mouldService.export(filter, 100);
+            assertEquals(2, exported.rows().size());
+            assertEquals(java.util.Set.of("Q7系列", "Q7开关子系列"), exported.rows().stream()
+                    .map(row -> row.get("categoryName")).collect(java.util.stream.Collectors.toSet()));
+            var global = mouldService.list(new com.uten.imp.features.master.mould.dto.MouldQueryFilter(null, "Q7", null,
+                    null, null, null, null, null, null, null, null), 1, 20);
+            assertEquals(java.util.Set.of(first, second, outsideMould, unrelated), global.getItems().stream()
+                    .map(item -> item.getId()).collect(java.util.stream.Collectors.toSet()));
+        });
     }
 
     @Test

@@ -36,13 +36,14 @@ void main() {
     );
   });
 
-  testWidgets('展开箭头与分类名称垂直居中', (tester) async {
+  testWidgets('小号方框加减按钮与分类名称垂直居中', (tester) async {
     await tester.pumpWidget(_app(_categories(), width: 240));
 
     expect(
-      tester.getCenter(find.byIcon(Icons.chevron_right_rounded)).dy,
+      tester.getCenter(find.byIcon(Icons.add)).dy,
       tester.getCenter(find.text('外贸钟')).dy,
     );
+    expect(tester.getSize(find.byIcon(Icons.add)), const Size(12, 12));
   });
 
   testWidgets('窄分类栏的选中标记始终与名称同行', (tester) async {
@@ -97,7 +98,7 @@ void main() {
     expect(find.byTooltip('外贸钟 / 美国客户'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('美国客户')).dx,
-      tester.getTopLeft(find.text('外贸刘')).dx,
+      tester.getTopLeft(find.text('外贸刘')).dx + 12,
     );
     expect(tester.takeException(), isNull);
   });

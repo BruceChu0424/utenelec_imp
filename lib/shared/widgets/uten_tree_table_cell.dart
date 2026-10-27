@@ -1,11 +1,14 @@
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../components/data_display/uten_tree_branch_guide.dart';
 import '../../core/theme/uten_tokens.dart';
 
-const double _treeIndent = 16;
-const double _treeToggleExtent = 48;
+export '../../components/data_display/uten_tree_branch_guide.dart'
+    show utenTreeGuideSegments;
+
+const double _treeIndent = UtenTreeBranchGuide.defaultIndent;
+const double _treeToggleExtent = UtenTreeBranchGuide.defaultToggleExtent;
 
 /// Reusable tree identity cell for data tables.
 ///
@@ -127,7 +130,8 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 视觉缩进的深度上限（全站一个数，2026-09-15）：与业务侧的 BOM 展开上限
   /// （物料分析级联页 10 层）对齐。原来组件默认 8、级联页显式传 10，同一颗
   /// 第 9/10 层的料在两个页面缩进深浅不同。确有更浅需求的宿主再显式覆盖。
-  static const int defaultMaxVisualDepth = 10;
+  static const int defaultMaxVisualDepth =
+      UtenTreeBranchGuide.defaultMaxVisualDepth;
 
   /// 展开位、叶子占位与连线中心同源，缩小偏好仍保留48窗口触摸目标。
   static double toggleExtentOf(
@@ -370,34 +374,28 @@ class UtenTreeTableCell extends StatelessWidget {
               // 多画半个展开位：肘线的横段一直伸到展开按钮/叶子位的圆心，
               // 行才真的「挂」在树上（原来横段停在缩进区边缘，离标题还有 52px）。
               width: guideWidth + toggleCenter,
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _TreeGuidePainter(
-                    depth: depth,
-                    maxVisualDepth: maxVisualDepth,
-                    indent: indent,
-                    toggleExtent: toggleExtent,
-                    // 连线用色三档：宿主显式色（2026-10-10 按产品轮换）→
-                    // 行前景降调 → 默认明暗两档灰。宿主显式色整笔直用、不再
-                    // 降调——轮换色的意义就是让整棵子树一眼同色。
-                    color:
-                        guideColor ??
-                        foregroundColor?.withValues(alpha: 0.35) ??
-                        // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色
-                        // 模式下浅点」：原来两种明暗都取 outlineVariant——白底上
-                        // 它几乎与表格网格线同色。改成按明暗两档对称调：浅色用
-                        // onSurfaceVariant 七成不透明（明显能看出层级走向，又不至于
-                        // 抢名称），深色用四成（深底上线条本就更跳，压下去才不刺眼）。
-                        colors.onSurfaceVariant.withValues(
-                          alpha: theme.brightness == Brightness.dark
-                              ? 0.40
-                              : 0.70,
-                        ),
-                    ancestorContinuations: ancestorContinuations,
-                    isLastChild: isLastChild,
-                    hasExpandedChildren: hasExpandedChildren,
-                  ),
-                ),
+              child: UtenTreeBranchGuide(
+                depth: depth,
+                maxVisualDepth: maxVisualDepth,
+                indent: indent,
+                toggleExtent: toggleExtent,
+                // 连线用色三档：宿主显式色（2026-10-10 按产品轮换）→
+                // 行前景降调 → 默认明暗两档灰。宿主显式色整笔直用、不再
+                // 降调——轮换色的意义就是让整棵子树一眼同色。
+                color:
+                    guideColor ??
+                    foregroundColor?.withValues(alpha: 0.35) ??
+                    // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色
+                    // 模式下浅点」：原来两种明暗都取 outlineVariant——白底上
+                    // 它几乎与表格网格线同色。改成按明暗两档对称调：浅色用
+                    // onSurfaceVariant 七成不透明（明显能看出层级走向，又不至于
+                    // 抢名称），深色用四成（深底上线条本就更跳，压下去才不刺眼）。
+                    colors.onSurfaceVariant.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.40 : 0.70,
+                    ),
+                ancestorContinuations: ancestorContinuations,
+                isLastChild: isLastChild,
+                hasExpandedChildren: hasExpandedChildren,
               ),
             ),
           Row(
@@ -719,124 +717,4 @@ class _ThickChevronPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ThickChevronPainter oldDelegate) =>
       oldDelegate.direction != direction || oldDelegate.color != color;
-}
-
-/// 层级连线的纯几何：给定深度、祖先链与画布尺寸，算出要画哪几条线段。
-///
-/// 抽成独立函数是为了让口径可被直接断言——2026-09-14 把祖先槽的索引整体翻转
-/// 过一次，两个宿主一好一坏而 CI 全绿，就是因为当时没有任何一条测试断言过线段
-/// 坐标。宿主不需要调用它，画笔与单测各调一次。
-List<({double x1, double y1, double x2, double y2})> utenTreeGuideSegments({
-  required int depth,
-  required List<bool> ancestorContinuations,
-  required bool isLastChild,
-  required double height,
-  required double width,
-  required double connectorY,
-  bool hasExpandedChildren = false,
-  int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
-  double indent = _treeIndent,
-  double toggleExtent = _treeToggleExtent,
-}) {
-  final result = <({double x1, double y1, double x2, double y2})>[];
-  double centerX(int level) =>
-      level.clamp(0, maxVisualDepth) * indent + toggleExtent / 2;
-
-  if (depth > 0) {
-    // 每条竖线与对应父行的箭头圆心同轴。槽 level 承载深度 level+1
-    // 节点的兄弟连接，仍按投影的绝对祖先深度读取续线标记。
-    // 超过视觉深度上限后多层共用一条轨道，任一祖先仍有兄弟就续到行底。
-    final verticalEnds = <double, double>{};
-    for (var level = 0; level < depth - 1; level++) {
-      final index = level + 1;
-      final continues =
-          index >= ancestorContinuations.length || ancestorContinuations[index];
-      if (continues) verticalEnds[centerX(level)] = height;
-    }
-    final branchX = centerX(depth - 1);
-    verticalEnds.putIfAbsent(branchX, () => isLastChild ? connectorY : height);
-    for (final line in verticalEnds.entries) {
-      result.add((x1: line.key, y1: 0, x2: line.key, y2: line.value));
-    }
-    if (branchX < width) {
-      result.add((x1: branchX, y1: connectorY, x2: width, y2: connectorY));
-    }
-  }
-  // 父行先从箭头圆心向下引出，再由下一行顶端接续；根行也必须画这一段。
-  // 折叠时子行不显示，对应的向下连接也一起收起。
-  final childStemAlreadyDrawn = result.any(
-    (line) =>
-        line.x1 == width &&
-        line.x2 == width &&
-        line.y1 <= connectorY &&
-        line.y2 == height,
-  );
-  if (hasExpandedChildren && !childStemAlreadyDrawn) {
-    result.add((x1: width, y1: connectorY, x2: width, y2: height));
-  }
-  return result;
-}
-
-class _TreeGuidePainter extends CustomPainter {
-  const _TreeGuidePainter({
-    required this.depth,
-    required this.maxVisualDepth,
-    required this.indent,
-    required this.toggleExtent,
-    required this.color,
-    required this.ancestorContinuations,
-    required this.isLastChild,
-    required this.hasExpandedChildren,
-  });
-
-  final int depth;
-  final int maxVisualDepth;
-  final double indent;
-  final double toggleExtent;
-  final Color color;
-
-  /// `[i]` = 深度 i 的祖先后面还有没有兄弟。长度 = 本行深度
-  /// （见 [UtenTreeTableCell.ancestorContinuations]）。
-  final List<bool> ancestorContinuations;
-  final bool isLastChild;
-
-  final bool hasExpandedChildren;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
-    for (final line in utenTreeGuideSegments(
-      depth: depth,
-      ancestorContinuations: ancestorContinuations,
-      isLastChild: isLastChild,
-      height: size.height,
-      width: size.width,
-      // Stack 和 Row 都垂直居中，画布上下 bleed 对称，故中线即箭头圆心。
-      connectorY: size.height / 2,
-      hasExpandedChildren: hasExpandedChildren,
-      maxVisualDepth: maxVisualDepth,
-      indent: indent,
-      toggleExtent: toggleExtent,
-    )) {
-      canvas.drawLine(
-        Offset(line.x1, line.y1),
-        Offset(line.x2, line.y2),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _TreeGuidePainter oldDelegate) =>
-      oldDelegate.depth != depth ||
-      oldDelegate.maxVisualDepth != maxVisualDepth ||
-      oldDelegate.indent != indent ||
-      oldDelegate.toggleExtent != toggleExtent ||
-      oldDelegate.color != color ||
-      oldDelegate.isLastChild != isLastChild ||
-      oldDelegate.hasExpandedChildren != hasExpandedChildren ||
-      !listEquals(oldDelegate.ancestorContinuations, ancestorContinuations);
 }

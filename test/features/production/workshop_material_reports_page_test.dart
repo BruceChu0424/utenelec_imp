@@ -8,6 +8,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -611,8 +612,27 @@ void main() {
         final paragraph = tester.renderObject<RenderParagraph>(paragraphs);
         final fullText = paragraph.text.toPlainText();
         expect(fullText, text.data);
-        final boxes = paragraph.getBoxesForSelection(
-          TextSelection(baseOffset: 0, extentOffset: fullText.length),
+        // A complete ISO-date run can legitimately exceed the body at 4x
+        // effective text size. Every original glyph must remain reachable
+        // through the real local horizontal scroll, with the body unchanged.
+        final boxes = <TextBox>[];
+        var offset = 0;
+        for (final rune in fullText.runes) {
+          final end = offset + (rune > 0xffff ? 2 : 1);
+          boxes.addAll(
+            paragraph.getBoxesForSelection(
+              TextSelection(baseOffset: offset, extentOffset: end),
+            ),
+          );
+          offset = end;
+        }
+        final readoutHorizontal = find.ancestor(
+          of: target,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.right,
+          ),
         );
         expect(boxes, isNotEmpty);
         for (final box in boxes) {
@@ -630,9 +650,34 @@ void main() {
             final viewport = bodyViewport();
             final glyph = glyphRect();
             expect(viewport.isEmpty, isFalse);
-            expect(glyph.width, lessThanOrEqualTo(viewport.width + 1));
-            expect(glyph.height, lessThanOrEqualTo(viewport.height + 1));
+            expect(
+              glyph.width,
+              lessThanOrEqualTo(viewport.width + 1),
+              reason:
+                  'readout=$fullText paragraph=${paragraph.size} viewport=$viewport',
+            );
+            expect(
+              glyph.height,
+              lessThanOrEqualTo(viewport.height + 1),
+              reason:
+                  'readout=$fullText paragraph=${paragraph.size} viewport=$viewport',
+            );
             if (inside(glyph, viewport)) break;
+            if ((glyph.left < viewport.left || glyph.right > viewport.right) &&
+                readoutHorizontal.evaluate().isNotEmpty) {
+              final lane = tester
+                  .getRect(readoutHorizontal.first)
+                  .intersect(viewport);
+              expect(lane.isEmpty, isFalse);
+              await tester.sendEventToBinding(
+                PointerScrollEvent(
+                  position: lane.center,
+                  scrollDelta: Offset(glyph.left < viewport.left ? -80 : 80, 0),
+                ),
+              );
+              await tester.pumpAndSettle();
+              continue;
+            }
             // Window deltas enter the real linked-scroll wheel handoff. Do
             // not scale again, jump the controller or bypass a lazy viewport.
             final delta = (glyph.center.dy - viewport.center.dy)
@@ -652,7 +697,9 @@ void main() {
             isTrue,
             reason:
                 'each complete glyph run, including the first and last, '
-                'must be reachable within the real body viewport: $fullText',
+                'must be reachable within the real body viewport: $fullText; '
+                'glyph=$glyph viewport=${bodyViewport()} '
+                'horizontal=${readoutHorizontal.evaluate().isNotEmpty}',
           );
           expect(
             tester
@@ -666,6 +713,23 @@ void main() {
       }
 
       final rateLabel = AppLocalizations.of(tester.element(page)).wmWasteRate;
+      expect(bodyViewport().width, lessThanOrEqualTo(281));
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
       final expectedRates = [
         '$rateLabel ≈ -30.0%',
         '$rateLabel ',
@@ -689,6 +753,26 @@ void main() {
         expect(tester.widget<Text>(value).data, expectedRates[period - 1]);
         await expectWholeReadoutReachable(value);
         reviewedRates.add(tester.widget<Text>(value).data!);
+        if (period == 1) {
+          final selection = tester.state<SelectionAreaState>(
+            find.ancestor(of: row, matching: find.byType(SelectionArea)).first,
+          );
+          expect(selection.widget.focusNode, isNotNull);
+          selection.widget.focusNode!.requestFocus();
+          await tester.pump();
+          selection.selectableRegion.selectAll(SelectionChangedCause.keyboard);
+          await tester.pumpAndSettle();
+          final copyAction = selection.selectableRegion.contextMenuButtonItems
+              .firstWhere((item) => item.type == ContextMenuButtonType.copy)
+              .onPressed;
+          expect(copyAction, isNotNull);
+          copyAction!();
+          await tester.pump();
+          expect(copied, contains('第 1 期 2026-09-01 至 2026-09-15'));
+          expect(copied, contains(expectedRates.first));
+          selection.selectableRegion.clearSelection();
+          await tester.pumpAndSettle();
+        }
       }
       expect(reviewedRates, expectedRates);
       for (final reading in ['-30.0%', '50.0%', '100000000.0%']) {
@@ -702,7 +786,12 @@ void main() {
       // Returning from all long captions exceeds the stock 50 small drags.
       // Use real reverse wheel handoff until the original field is clickable.
       await revealBodyTarget(selector, towardStart: true, mustHit: true);
-      await tester.tap(selector);
+      final dropdownArrow = find.descendant(
+        of: selector,
+        matching: find.byIcon(Icons.arrow_drop_down_rounded),
+      );
+      await revealBodyTarget(dropdownArrow, towardStart: true, mustHit: true);
+      await tester.tap(dropdownArrow);
       await tester.pumpAndSettle();
       await tester.tap(find.text('单点材料 透明').last);
       await tester.pumpAndSettle();

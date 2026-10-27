@@ -61,7 +61,7 @@ class GoodsNameEnServiceTest {
         login(Set.of("goods:view","goods:name_en:edit"),false);
         Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_LEARNED);
         UUID originalOwner=UUID.randomUUID(),newOwner=UUID.randomUUID();goods.setOwnerEmployeeId(originalOwner);
-        org.springframework.test.util.ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        org.springframework.test.util.ReflectionTestUtils.setField(org.springframework.test.util.ReflectionTestUtils.getField(service,"goodsReadScopePolicy"),"ownerScopeEnabled",true);
         when(visibility.evaluate("goods","goods:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(originalOwner),Set.of(originalOwner)));
         doAnswer(invocation->{goods.setOwnerEmployeeId(newOwner);goods.setVersion(goods.getVersion()+1);return null;})
                 .when(em).refresh(goods,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
@@ -72,7 +72,7 @@ class GoodsNameEnServiceTest {
     @Test void nameLearningSkipsGoodsWhoseOwnerChangesDuringLockAcquisition() {
         login(Set.of("goods:name_en:edit"),false);Goods goods=existingGoods("OLD NAME",GoodsNameEn.SOURCE_MANUAL);
         UUID originalOwner=UUID.randomUUID(),newOwner=UUID.randomUUID();goods.setOwnerEmployeeId(originalOwner);
-        org.springframework.test.util.ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        org.springframework.test.util.ReflectionTestUtils.setField(org.springframework.test.util.ReflectionTestUtils.getField(service,"goodsReadScopePolicy"),"ownerScopeEnabled",true);
         when(visibility.evaluate("goods","goods:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(originalOwner),Set.of(originalOwner)));
         doAnswer(invocation->{goods.setOwnerEmployeeId(newOwner);return null;}).when(em).refresh(goods,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         assertThat(service.learnNameEn(goods.getId(),"forbidden learned name")).isFalse();

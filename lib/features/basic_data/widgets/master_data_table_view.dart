@@ -2295,7 +2295,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       : _appendError != null
       ? Material(child: _appendFailure())
       : _appendPage != null
-      ? const LinearProgressIndicator(minHeight: 2)
+      ? const _MasterTableFeedbackTicker(
+          child: LinearProgressIndicator(minHeight: 2),
+        )
       : null;
 
   /// 重查反馈：已有旧行时再次查询（回车搜索/切筛选/翻页），行区顶部钉 2px 细
@@ -2306,7 +2308,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (widget.isRefreshing || widget.refreshError != null) return null;
     if (_prepending || !_busy || _items.isEmpty) return null;
     if (_bodyV.hasClients && _bodyV.position.extentAfter < 400) return null;
-    return const LinearProgressIndicator(minHeight: 2);
+    return const _MasterTableFeedbackTicker(
+      child: LinearProgressIndicator(minHeight: 2),
+    );
   }
 
   bool _refreshStatusHasShown = false;
@@ -8853,6 +8857,22 @@ class _MasterTableRefreshTransition extends StatefulWidget {
       _MasterTableRefreshTransitionState();
 }
 
+/// Feedback follows its presented route, just like the deferred row window.
+/// Keep pending work and its geometry intact while a dialog covers the table;
+/// only its animation pauses, then resumes when the same route is current.
+class _MasterTableFeedbackTicker extends StatelessWidget {
+  const _MasterTableFeedbackTicker({this.enabled = true, required this.child});
+
+  final bool enabled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TickerMode(
+    enabled: enabled && (ModalRoute.of(context)?.isCurrent ?? true),
+    child: child,
+  );
+}
+
 class _MasterTableRefreshTransitionState
     extends State<_MasterTableRefreshTransition>
     with SingleTickerProviderStateMixin {
@@ -8898,7 +8918,7 @@ class _MasterTableRefreshTransitionState
         heightFactor: _height.value,
         child: ExcludeSemantics(
           excluding: _controller.isDismissed,
-          child: TickerMode(
+          child: _MasterTableFeedbackTicker(
             enabled: !_controller.isDismissed,
             child: Offstage(offstage: _controller.isDismissed, child: child!),
           ),

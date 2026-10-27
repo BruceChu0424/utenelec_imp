@@ -1374,7 +1374,6 @@ public class MasterRecordHistoryService {
           fieldLabel =
               "组装信息 · "
                   + referenceName(
-                      user,
                       "goods",
                       (fact.after() == null ? fact.before() : fact.after())
                           .get("component_goods_id"),
@@ -1397,10 +1396,10 @@ public class MasterRecordHistoryService {
                 fieldLabel,
                 reference == null
                     ? displayField(key, b)
-                    : referenceName(user, reference, b, names, ownAccountReference),
+                    : referenceName(reference, b, names, ownAccountReference),
                 reference == null
                     ? displayField(key, a)
-                    : referenceName(user, reference, a, names, ownAccountReference)));
+                    : referenceName(reference, a, names, ownAccountReference)));
       }
     }
     return List.copyOf(changes);
@@ -1707,7 +1706,7 @@ public class MasterRecordHistoryService {
         String label = "关联资料已删除或不可解析";
         if (row != null) {
           boolean allowed = !table.equals("clients") || Boolean.TRUE.equals(row[5])
-              || row[4] != null && clientScope.sharedClientIds().contains(request.id());
+              || row[4] != null && clientScope != null && clientScope.sharedClientIds().contains(request.id());
           if (goodsScope != null) allowed = goodsScope.seeAll() || row[4] == null || goodsScope.visibleOwners().contains((UUID) row[4]);
           label = allowed
               ? ((row[1] == null ? "" : row[1].toString()) + " " + (row[2] == null ? "" : row[2].toString())).strip()
@@ -1777,12 +1776,11 @@ public class MasterRecordHistoryService {
   }
 
   private String referenceName(
-      AuthUser user, String table, JsonNode value, Map<String, String> names) {
-    return referenceName(user, table, value, names, false);
+      String table, JsonNode value, Map<String, String> names) {
+    return referenceName(table, value, names, false);
   }
 
   private String referenceName(
-      AuthUser user,
       String table,
       JsonNode value,
       Map<String, String> names,

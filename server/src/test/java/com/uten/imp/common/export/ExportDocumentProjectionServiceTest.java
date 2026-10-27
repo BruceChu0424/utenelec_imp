@@ -36,7 +36,9 @@ class ExportDocumentProjectionServiceTest {
         var headers=new java.util.ArrayList<DocumentPageSink.Header>();
         streaming.set(true);
         DocumentPageSink.emitDocument(document,service.stream(new DocumentPageSink.Consumer(){
+            @Override
             public void begin(DocumentPageSink.Header header){headers.add(header);header.sections().forEach(section->collected.put(section.id(),new java.util.ArrayList<>()));}
+            @Override
             public void accept(DocumentPageSink.Page page){collected.get(page.sectionId()).addAll(page.rows());}
         },projection,"物料明细","view_goods_cost"));
         assertThat(headers.getFirst().sections().getFirst().columns()).isEqualTo(expected.sections().getFirst().columns());

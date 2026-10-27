@@ -1058,8 +1058,12 @@ public class GoodsService {
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, readOnly = true)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY, readOnly = true,
+            noRollbackFor = ApiException.class)
     public void requireRestoreImportedWriteAccess(UUID id) {
+        // This check only reads. Detection isolates an expected denied row and
+        // must not poison its surrounding transaction. Commit still propagates
+        // the denial through its own authoritative rollback boundary.
         requireWritableDeletedImportGoods(id);
     }
 

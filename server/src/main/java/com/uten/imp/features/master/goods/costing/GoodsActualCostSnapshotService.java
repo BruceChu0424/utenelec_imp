@@ -72,6 +72,7 @@ public class GoodsActualCostSnapshotService implements com.uten.imp.application.
 
     /** Bounded source; the exact canonical digest is checked before any sheet is emitted. */
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    @Override
     public void streamExport(GoodsActualCostQueryPort.Query query,String expectedDigest,int perSectionLimit) {
         CurrentAuthorityGuard.requireAll("goods:cost:view","goods:cost:export");
         if(expectedDigest==null||!expectedDigest.matches("[0-9a-f]{64}"))

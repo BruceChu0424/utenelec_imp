@@ -3,6 +3,8 @@
 #include <dwmapi.h>
 #include <flutter_windows.h>
 
+#include <algorithm>
+
 #include "resource.h"
 
 namespace {
@@ -17,6 +19,10 @@ namespace {
 #endif
 
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
+constexpr DWORD kLoginWindowStyle =
+    WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
+constexpr DWORD kMainWindowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+constexpr UINT kBeginWindowDrag = WM_APP + 0x351;
 
 /// Registry key for app theme preference.
 ///
@@ -134,8 +140,8 @@ bool Win32Window::Create(const std::wstring& title,
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
-  HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
+  HWND window = CreateWindowEx(
+      WS_EX_APPWINDOW, window_class, title.c_str(), kLoginWindowStyle,
       Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
@@ -145,12 +151,119 @@ bool Win32Window::Create(const std::wstring& title,
   }
 
   UpdateTheme(window);
+  CenterClientSize(static_cast<int>(size.width), static_cast<int>(size.height));
 
   return OnCreate();
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWMAXIMIZED);
+  shown_ = true;
+  const int command = main_mode_ && has_main_placement_ &&
+                              main_placement_.showCmd == SW_SHOWMAXIMIZED
+                          ? SW_SHOWMAXIMIZED
+                          : SW_SHOWNORMAL;
+  return ShowWindow(window_handle_, command);
+}
+
+void Win32Window::CenterClientSize(int width, int height) {
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(monitor_info);
+  const HMONITOR monitor =
+      MonitorFromWindow(window_handle_, MONITOR_DEFAULTTONEAREST);
+  if (!GetMonitorInfo(monitor, &monitor_info)) return;
+  const double scale = FlutterDesktopGetDpiForMonitor(monitor) / 96.0;
+  RECT bounds = {0, 0, Scale(width, scale), Scale(height, scale)};
+  const auto style = static_cast<DWORD>(GetWindowLongPtr(window_handle_, GWL_STYLE));
+  const auto extended_style =
+      static_cast<DWORD>(GetWindowLongPtr(window_handle_, GWL_EXSTYLE));
+  AdjustWindowRectExForDpi(&bounds, style, FALSE, extended_style,
+                          FlutterDesktopGetDpiForMonitor(monitor));
+  const RECT& work = monitor_info.rcWork;
+  const LONG outer_width = std::min(bounds.right - bounds.left,
+                                    work.right - work.left);
+  const LONG outer_height = std::min(bounds.bottom - bounds.top,
+                                     work.bottom - work.top);
+  SetWindowPos(window_handle_, nullptr,
+               work.left + (work.right - work.left - outer_width) / 2,
+               work.top + (work.bottom - work.top - outer_height) / 2,
+               outer_width, outer_height,
+               SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
+void Win32Window::ConstrainToWorkArea() {
+  if (IsIconic(window_handle_) || IsZoomed(window_handle_)) return;
+  MONITORINFO monitor_info = {};
+  monitor_info.cbSize = sizeof(monitor_info);
+  if (!GetMonitorInfo(MonitorFromWindow(window_handle_, MONITOR_DEFAULTTONEAREST),
+                       &monitor_info)) return;
+  RECT bounds = {};
+  if (!GetWindowRect(window_handle_, &bounds)) return;
+  const RECT& work = monitor_info.rcWork;
+  const LONG width = std::min(bounds.right - bounds.left, work.right - work.left);
+  const LONG height = std::min(bounds.bottom - bounds.top, work.bottom - work.top);
+  const LONG left = std::clamp(bounds.left, work.left, work.right - width);
+  const LONG top = std::clamp(bounds.top, work.top, work.bottom - height);
+  if (left != bounds.left || top != bounds.top ||
+      width != bounds.right - bounds.left || height != bounds.bottom - bounds.top) {
+    SetWindowPos(window_handle_, nullptr, left, top, width, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+  }
+}
+
+bool Win32Window::SetMainWindowMode(bool main_mode) {
+  if (!IsWindow(window_handle_)) return false;
+  if (main_mode == main_mode_) return true;
+  const bool visible = shown_;
+  if (main_mode_) {
+    main_placement_.length = sizeof(main_placement_);
+    has_main_placement_ = GetWindowPlacement(window_handle_, &main_placement_) != 0;
+    if (main_placement_.showCmd == SW_SHOWMINIMIZED) {
+      main_placement_.showCmd = (main_placement_.flags & WPF_RESTORETOMAXIMIZED)
+                                    ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+    }
+  }
+  // Normalize the maximized/minimized state before replacing frame styles.
+  // Keep hidden startup windows hidden until the first rendered frame.
+  if (IsIconic(window_handle_) || IsZoomed(window_handle_)) {
+    ShowWindow(window_handle_, visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+  }
+  main_mode_ = main_mode;
+  const LONG_PTR transient_style = GetWindowLongPtr(window_handle_, GWL_STYLE) &
+                                  (WS_VISIBLE | WS_DISABLED);
+  SetWindowLongPtr(window_handle_, GWL_STYLE,
+                   (main_mode_ ? kMainWindowStyle : kLoginWindowStyle) |
+                       transient_style);
+  SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                   SWP_FRAMECHANGED);
+  if (main_mode_ && has_main_placement_) {
+    WINDOWPLACEMENT placement = main_placement_;
+    placement.flags = 0;
+    placement.showCmd = visible ? main_placement_.showCmd : SW_HIDE;
+    SetWindowPlacement(window_handle_, &placement);
+    ConstrainToWorkArea();
+  } else {
+    CenterClientSize(main_mode_ ? 1280 : 460, main_mode_ ? 800 : 720);
+  }
+  return true;
+}
+
+bool Win32Window::BeginWindowDrag() {
+  if (main_mode_ || !IsWindow(window_handle_)) return false;
+  // Post the modal Win32 move loop so the MethodChannel reply is not held until
+  // the user releases the pointer. The Flutter drag strip owns hit testing.
+  return PostMessage(window_handle_, kBeginWindowDrag, 0, 0) != 0;
+}
+
+bool Win32Window::MinimizeWindow() {
+  return IsWindow(window_handle_) &&
+         PostMessage(window_handle_, WM_SYSCOMMAND, SC_MINIMIZE, 0) != 0;
+}
+
+bool Win32Window::CloseWindow() {
+  // Do not destroy the engine/messenger while its method handler is executing.
+  return IsWindow(window_handle_) &&
+         PostMessage(window_handle_, WM_CLOSE, 0, 0) != 0;
 }
 
 // static
@@ -179,6 +292,18 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case kBeginWindowDrag:
+      if (!main_mode_ && (GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
+        ReleaseCapture();
+        SendMessage(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
+      }
+      return 0;
+
+    case WM_SYSCOMMAND:
+      if (!main_mode_ && ((wparam & 0xfff0) == SC_MAXIMIZE ||
+                         (wparam & 0xfff0) == SC_SIZE)) return 0;
+      break;
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();
@@ -194,9 +319,30 @@ Win32Window::MessageHandler(HWND hwnd,
 
       SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
                    newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+      ConstrainToWorkArea();
 
       return 0;
     }
+    case WM_DISPLAYCHANGE:
+      ConstrainToWorkArea();
+      return 0;
+
+    case WM_GETMINMAXINFO:
+      if (main_mode_) {
+        auto limits = reinterpret_cast<MINMAXINFO*>(lparam);
+        MONITORINFO monitor_info = {};
+        monitor_info.cbSize = sizeof(monitor_info);
+        if (GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                            &monitor_info)) {
+          const double scale = GetDpiForWindow(hwnd) / 96.0;
+          limits->ptMinTrackSize.x = std::min<LONG>(
+              Scale(800, scale), monitor_info.rcWork.right - monitor_info.rcWork.left);
+          limits->ptMinTrackSize.y = std::min<LONG>(
+              Scale(600, scale), monitor_info.rcWork.bottom - monitor_info.rcWork.top);
+        }
+        return 0;
+      }
+      break;
     case WM_SIZE: {
       RECT rect = GetClientArea();
       if (child_content_ != nullptr) {

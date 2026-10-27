@@ -48,7 +48,14 @@ class AuditExportProjectionReaderPostgresTest {
         bean.afterPropertiesSet();factory=bean.getObject();shared=SharedEntityManagerCreator.createSharedEntityManager(factory);
         read=new TransactionTemplate(new JpaTransactionManager(factory));read.setReadOnly(true);read.setIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
     }
-    @AfterAll static void close() throws Exception {if(factory!=null)factory.close();if(lease!=null)lease.close();}
+    @AfterAll static void close() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (lease != null) {
+            lease.close();
+        }
+    }
     @BeforeEach void reset() {jdbc.getJdbcTemplate().execute("TRUNCATE audit_export_fixture.audit_log");sql.clear();ReflectionTestUtils.setField(reader,"em",shared);}
     private void insert(long id,OffsetDateTime time,String after) {
         writer.update("INSERT INTO audit_log(id,created_at,action,target_type,target_id,event_source,result,risk_level,event_category,before,after,user_agent) VALUES(:id,:time,'update','goods','原件-龘','database','success','low','business',CAST('{\"name\":\"旧名称\"}' AS jsonb),CAST(:after AS jsonb),'raw-user-agent-preserved')",

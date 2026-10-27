@@ -13,8 +13,10 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_drop_target.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../models/goods_import.dart';
+import '../pages/goods_import_problems_page.dart';
 import '../repositories/goods_import_repository.dart';
 import 'basic_data_l10n.dart';
 import 'goods_import_file_reader.dart';
@@ -66,6 +68,13 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   bool _commitUncertain = false;
   String? _detectionMessage;
   final _queue = ImportFileQueue();
+  GoodsImportCorrections _cellCorrections = {};
+  GoodsImportCorrections _problemDraft = {};
+  final _excludedRowNums = <int>{};
+  GoodsImportCorrections? _submittedCorrections;
+  Set<int>? _submittedExclusions;
+  final _fileResults = <GoodsImportResult>[];
+  bool _correctionsNeedDetection = false;
 
   @override
   Widget build(BuildContext context) {
@@ -155,17 +164,18 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     if (_report != null) {
       return _reportView(theme, _report!);
     }
-    if (_bytes != null) {
+    if (_bytes != null || _detectionMessage != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             _detectionMessage ?? basicDataL10n(context).importRedetectRequired,
           ),
-          TextButton(
-            onPressed: _redetectCurrentFile,
-            child: Text(basicDataL10n(context).importRedetectCurrent),
-          ),
+          if (_bytes != null)
+            TextButton(
+              onPressed: _redetectCurrentFile,
+              child: Text(basicDataL10n(context).importRedetectCurrent),
+            ),
         ],
       );
     }
@@ -210,6 +220,11 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           '${r.hasErrors ? "，发现 ${r.errors.length} 个问题" : "，可导入 ${r.readyToImport} 条"}',
         ),
         const SizedBox(height: UtenSpacing.s12),
+        if (_detectionMessage != null)
+          Text(
+            _detectionMessage!,
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
         if (!r.hasErrors && r.reviewRows.isNotEmpty) ...[
           Text(
             basicDataL10n(context).importReviewSummary(
@@ -223,25 +238,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           Text(basicDataL10n(context).importReviewIgnoreExplanation),
         ],
         if (r.hasErrors) ...[
-          Container(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('需修正后重传：', style: theme.textTheme.titleSmall),
-                const SizedBox(height: UtenSpacing.s4),
-                for (final e in r.errors.take(200))
-                  Text(
-                    '• 第 ${e.rowNum} 行 · ${e.column}：${e.message}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-              ],
-            ),
-          ),
+          Text(basicDataL10n(context).goodsImportProblemsHint),
         ] else ...[
           _willCreate(theme, '将自动新建分类', r.willCreateCategories),
           _willCreate(theme, '将自动新建颜色', r.willCreateColors),
@@ -322,6 +319,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         const SizedBox(height: UtenSpacing.s8),
         if (r.batchId.isNotEmpty &&
             r.importedCount > 0 &&
+            _fileResults.length <= 1 &&
             _queue.completed.length <= 1)
           Text(
             basicDataL10n(context).goodsImportUndoHint,
@@ -346,7 +344,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     // 初始 / 检测后
     final canConfirm =
         _report != null &&
-        !_report!.hasErrors &&
+        !_correctionsNeedDetection &&
         _report!.planId?.isNotEmpty == true &&
         _bytes != null;
     return Wrap(
@@ -366,6 +364,14 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             onPressed: _detecting || _reviewing ? null : _detectCurrentFile,
             child: Text(basicDataL10n(context).importFilesContinue),
           ),
+        if (_report?.hasErrors == true)
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: _detecting || _reviewing || _commitUncertain
+                ? null
+                : _openProblems,
+            child: Text(basicDataL10n(context).goodsImportProblemsTitle),
+          ),
         if (canConfirm)
           UtenButton(
             icon: Icons.check_rounded,
@@ -379,6 +385,8 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
                   ? basicDataL10n(context).importRetryPrevious
                   : _report!.reviewRows.isNotEmpty
                   ? basicDataL10n(context).importReviewOpen
+                  : _report!.hasErrors
+                  ? basicDataL10n(context).goodsImportImportReady
                   : '确认导入',
             ),
           ),
@@ -392,6 +400,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     final previousReport = _report;
     final previousBytes = _bytes;
     final previousSelection = _submittedSelection;
+    final previousCorrections = _submittedCorrections;
+    final previousExclusions = _submittedExclusions;
+    final previousMessage = _detectionMessage;
     _beginDetection();
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -407,10 +418,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           setState(() {
             _detecting = false;
             _queue.pause();
+            _report = previousReport;
+            _bytes = previousBytes;
+            _detectionMessage = previousMessage;
             if (uncertain) {
               _report = previousReport;
               _bytes = previousBytes;
               _submittedSelection = previousSelection;
+              _submittedCorrections = previousCorrections;
+              _submittedExclusions = previousExclusions;
               _commitUncertain = true;
             }
           });
@@ -423,10 +439,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       setState(() {
         _detecting = false;
         _queue.pause(failed: true);
+        _report = previousReport;
+        _bytes = previousBytes;
+        _detectionMessage = previousMessage;
         if (uncertain) {
           _report = previousReport;
           _bytes = previousBytes;
           _submittedSelection = previousSelection;
+          _submittedCorrections = previousCorrections;
+          _submittedExclusions = previousExclusions;
           _commitUncertain = true;
         }
       });
@@ -436,7 +457,10 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
 
   Future<void> _replaceQueueAndDetect(List<PlatformFile> files) async {
     if (!mounted || files.isEmpty || _committing || _reviewing) return;
-    setState(() => _queue.replacePending(files));
+    setState(() {
+      _queue.replacePending(files);
+      _resetCurrentFileProgress();
+    });
     await _detectCurrentFile();
   }
 
@@ -444,6 +468,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   Future<void> _detectCurrentFile() async {
     final file = _queue.current;
     if (!mounted || file == null || _committing || _reviewing) return;
+    final previousProblems = _correctionsNeedDetection ? _report : null;
     _beginDetection();
     try {
       final bytes = _queue.currentBytes ?? await readGoodsImportFile(file);
@@ -452,12 +477,17 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       _bytes = bytes;
       final report = await ref
           .read(goodsImportRepositoryProvider)
-          .detect(bytes);
+          .detect(
+            bytes,
+            cellCorrections: freezeGoodsImportCorrections(_cellCorrections),
+            excludedRowNums: Set.unmodifiable(_excludedRowNums),
+          );
       if (!mounted) return;
       setState(() {
         _bytes = bytes;
         _pickedName = file.name;
         _report = report;
+        _correctionsNeedDetection = false;
         _result = null;
         _detecting = false;
         if (report.hasErrors) {
@@ -466,7 +496,11 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _queue.phase = ImportFileQueuePhase.waiting;
         }
       });
-      if (!report.hasErrors && report.reviewRows.isNotEmpty) {
+      if (report.hasErrors) {
+        await _openProblems();
+      } else if (!report.hasErrors &&
+          report.restorableRows == 0 &&
+          report.reviewRows.isNotEmpty) {
         await _reviewAndCommit();
       } else if (!report.hasErrors &&
           report.restorableRows == 0 &&
@@ -483,14 +517,17 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       context.appError(e.message);
     } catch (e) {
       if (!mounted) return;
+      final message =
+          humanErrorMessage(e) ??
+          basicDataL10n(context).goodsImportDetectionFailed;
       setState(() {
         _detecting = false;
+        _detectionMessage = message;
+        if (previousProblems != null) _report = previousProblems;
         _queue.pause(failed: true);
       });
-      context.appApiError(
-        e,
-        fallback: '读取或检测文件时出了问题，请刷新页面重试；仍失败请联系管理员重启 Web 服务',
-      );
+      context.appApiError(e, fallback: message);
+      if (previousProblems != null) await _openProblems();
     }
   }
 
@@ -501,6 +538,8 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       _bytes = null;
       _result = null;
       _submittedSelection = null;
+      _submittedCorrections = null;
+      _submittedExclusions = null;
       _commitUncertain = false;
       _detectionMessage = null;
       _queue.phase = ImportFileQueuePhase.detecting;
@@ -519,7 +558,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         _committing ||
         _reviewing ||
         report == null ||
-        report.hasErrors) {
+        report.planId?.isNotEmpty != true) {
       return;
     }
     Set<String> selected = {};
@@ -556,16 +595,30 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   }
 
   Future<void> _commit(Set<String> selected) async {
-    if (_committing || _detecting || _report?.hasErrors != false) return;
+    if (_committing ||
+        _detecting ||
+        _report == null ||
+        _correctionsNeedDetection) {
+      return;
+    }
     final bytes = _bytes;
     final planId = _report?.planId;
     if (bytes == null || planId == null || planId.isEmpty) {
       context.appError('检测结果已过期，请重新选择文件并检测');
       return;
     }
+    final report = _report!;
+    final corrections = _commitUncertain && _submittedCorrections != null
+        ? _submittedCorrections!
+        : freezeGoodsImportCorrections(_cellCorrections);
+    final exclusions = _commitUncertain && _submittedExclusions != null
+        ? _submittedExclusions!
+        : Set<int>.unmodifiable(_excludedRowNums);
     setState(() {
       _committing = true;
       _submittedSelection = Set.of(selected);
+      _submittedCorrections = corrections;
+      _submittedExclusions = exclusions;
       _queue.phase = ImportFileQueuePhase.committing;
     });
     try {
@@ -576,25 +629,47 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             planId: planId,
             filename: _pickedName,
             replaceRowKeys: selected,
+            cellCorrections: corrections,
+            excludedRowNums: exclusions,
           );
       if (!mounted) return;
       setState(() {
-        _result = res;
-        _committing = false;
-        _queue.approved = true;
-        _queue.succeed(
-          basicDataL10n(context).importResultSummary(
-            res.createdCount,
-            res.filledCount,
-            res.updatedCount,
-            res.ignoredCount,
-            res.unchangedCount,
-          ),
+        _fileResults.add(res);
+        _excludedRowNums.addAll(report.readyRowNums);
+        _cellCorrections.removeWhere(
+          (row, _) => _excludedRowNums.contains(row),
         );
+        _problemDraft = {
+          for (final entry in _problemDraft.entries)
+            if (!_excludedRowNums.contains(entry.key)) entry.key: entry.value,
+        };
+        _committing = false;
+        _commitUncertain = false;
+        final summary = basicDataL10n(context).importResultSummary(
+          res.createdCount,
+          res.filledCount,
+          res.updatedCount,
+          res.ignoredCount,
+          res.unchangedCount,
+        );
+        if (report.hasErrors) {
+          _result = null;
+          _queue.recordPartial(summary);
+          _queue.pause();
+        } else {
+          _result = _combinedResult(res);
+          _queue.approved = true;
+          _queue.succeed(_summaryOf(_result!));
+        }
       });
       context.appSuccess('已导入 ${res.importedCount} 条货品');
       widget.onImported?.call();
-      if (_queue.hasPending) await _detectCurrentFile();
+      if (report.hasErrors) {
+        await _detectCurrentFile();
+      } else if (_queue.hasPending) {
+        _resetCurrentFileProgress();
+        await _detectCurrentFile();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -617,6 +692,86 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       });
       if (_commitUncertain) widget.onImported?.call();
       context.appApiError(e);
+    }
+  }
+
+  void _resetCurrentFileProgress() {
+    _cellCorrections = {};
+    _problemDraft = {};
+    _excludedRowNums.clear();
+    _submittedCorrections = null;
+    _submittedExclusions = null;
+    _fileResults.clear();
+    _correctionsNeedDetection = false;
+  }
+
+  String _summaryOf(GoodsImportResult result) =>
+      basicDataL10n(context).importResultSummary(
+        result.createdCount,
+        result.filledCount,
+        result.updatedCount,
+        result.ignoredCount,
+        result.unchangedCount,
+      );
+
+  GoodsImportResult _combinedResult(GoodsImportResult latest) =>
+      GoodsImportResult(
+        batchId: latest.batchId,
+        importedCount: _fileResults.fold(0, (n, r) => n + r.importedCount),
+        createdCategories: _fileResults.fold(
+          0,
+          (n, r) => n + r.createdCategories,
+        ),
+        createdColors: _fileResults.fold(0, (n, r) => n + r.createdColors),
+        createdUnits: _fileResults.fold(0, (n, r) => n + r.createdUnits),
+        createdCategoryPaths: [
+          for (final r in _fileResults) ...r.createdCategoryPaths,
+        ],
+        createdCount: _fileResults.fold(0, (n, r) => n + r.createdCount),
+        filledCount: _fileResults.fold(0, (n, r) => n + r.filledCount),
+        updatedCount: _fileResults.fold(0, (n, r) => n + r.updatedCount),
+        ignoredCount: _fileResults.fold(0, (n, r) => n + r.ignoredCount),
+        unchangedCount: _fileResults.fold(0, (n, r) => n + r.unchangedCount),
+        restoredCount: _fileResults.fold(0, (n, r) => n + r.restoredCount),
+      );
+
+  Future<void> _openProblems() async {
+    final report = _report;
+    if (report == null ||
+        !report.hasErrors ||
+        _reviewing ||
+        _committing ||
+        _detecting ||
+        _commitUncertain) {
+      return;
+    }
+    setState(() => _reviewing = true);
+    final decision = await Navigator.of(context)
+        .push<GoodsImportProblemDecision>(
+          MaterialPageRoute(
+            builder: (_) => GoodsImportProblemsPage(
+              report: report,
+              filename: _queue.current?.name ?? '',
+              cellCorrections: _problemDraft,
+              canImportReady: !_correctionsNeedDetection,
+              detectionMessage: _detectionMessage,
+              onDraftChanged: (draft) => _problemDraft = draft,
+            ),
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _reviewing = false);
+    if (decision == null) return;
+    if (decision.action == GoodsImportProblemAction.importReady) {
+      await _reviewAndCommit();
+    } else {
+      _cellCorrections = {
+        for (final entry in decision.cellCorrections.entries)
+          entry.key: Map<String, String>.of(entry.value),
+      };
+      _queue.approved = false;
+      _correctionsNeedDetection = true;
+      await _detectCurrentFile();
     }
   }
 }

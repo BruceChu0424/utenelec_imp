@@ -12186,7 +12186,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      '품목 내보내기 파일을 신규 또는 수정 템플릿으로 사용할 수 있습니다. 분류(경로를 -로 연결)와 품목명은 필수이며 코드는 비워둘 수 있습니다. 수정할 때는 시스템 식별자를 유지하세요. 코드를 비우면 기존 코드를 유지하고 미사용 새 코드는 차이 검토에 표시됩니다. 신규 행은 시스템 식별자를 비우고 새 코드를 입력할 수 있습니다. 재사용된 코드는 시스템 식별자로 현재 품목을 확인해야 합니다.';
+      '품목 내보내기 파일을 신규 또는 수정 템플릿으로 사용할 수 있습니다. 분류(경로를 -로 연결)와 품목명은 필수이며 코드는 비우거나 열을 삭제할 수 있습니다. 수정할 때는 시스템 식별자를 유지하세요. 코드가 비어 있거나 열이 없으면 기존 코드를 유지하고 미사용 새 코드는 차이 검토에 표시됩니다. 신규 행은 시스템 식별자를 비우고 코드를 입력할 수 있습니다. 이전 식별자가 현재 데이터베이스에 없으면 코드로 일치시키거나 새 품목을 만듭니다. 코드도 비어 있으면 자동 부여합니다. 재사용된 코드는 현재 품목의 시스템 식별자가 필요합니다.';
 
   @override
   String get goodsImportMergeHint =>
@@ -12250,6 +12250,99 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get importRedetectRequired => '현재 파일을 다시 검사한 후 제출하세요';
+
+  @override
+  String get goodsImportProblemsTitle => '가져오기 문제 수정';
+
+  @override
+  String get goodsImportProblemsHint =>
+      '정상 행을 먼저 가져올 수 있습니다. 표에서 문제 셀을 수정한 후 다시 검사하세요. 빈 코드는 기존 품목 번호를 유지하거나 신규 품목에 자동 부여합니다. 수정은 재검사 후 적용됩니다.';
+
+  @override
+  String goodsImportReadySummary(int ready, int problems) {
+    return '정상 $ready행 / 문제 $problems행';
+  }
+
+  @override
+  String get goodsImportImportReady => '정상 행 가져오기';
+
+  @override
+  String get goodsImportApplyCorrections => '수정 적용 후 재검사';
+
+  @override
+  String get goodsImportFixSourceFile =>
+      '원본 Excel의 머리글 또는 시스템 식별자를 수정한 후 다시 선택하세요.';
+
+  @override
+  String goodsImportPartialOutcome(String filename, String summary) {
+    return '$filename: 정상 행 저장됨 ($summary).';
+  }
+
+  @override
+  String get goodsImportProblemReason => '문제 원인';
+
+  @override
+  String get goodsImportCodeCorrection => '코드';
+
+  @override
+  String get goodsImportFieldName => '품목명';
+
+  @override
+  String get goodsImportFieldCategory => '분류';
+
+  @override
+  String get goodsImportFieldClientName => '고객 품목명';
+
+  @override
+  String get goodsImportFieldClientModel => '고객 모델';
+
+  @override
+  String get goodsImportFieldSeries => '시리즈';
+
+  @override
+  String get goodsImportFieldModel => '모델';
+
+  @override
+  String get goodsImportFieldSpec => '규격';
+
+  @override
+  String get goodsImportFieldMaterial => '재질';
+
+  @override
+  String get goodsImportFieldRearInsert => '후면 인서트 코드';
+
+  @override
+  String get goodsImportFieldPaper => '비고';
+
+  @override
+  String get goodsImportFieldColor => '주 색상';
+
+  @override
+  String get goodsImportFieldUnit => '단위';
+
+  @override
+  String get goodsImportFieldSource => '공급 방식';
+
+  @override
+  String get goodsImportFieldStatus => '상태';
+
+  @override
+  String get goodsImportFieldPrice => '가격';
+
+  @override
+  String get goodsImportFieldMinOrder => '최소 주문 수량';
+
+  @override
+  String get goodsImportFieldOrderMultiple => '주문 배수';
+
+  @override
+  String goodsImportRestoreNotice(int count) {
+    return '정상 행에 삭제된 품목 $count개가 있습니다. 가져오기를 확인하면 파일 내용으로 복원합니다.';
+  }
+
+  @override
+  String get goodsImportDetectionFailed =>
+      '파일을 읽거나 검사하지 못했습니다. 다시 검사하거나 파일을 다시 선택하세요. 계속 실패하면 이 메시지를 관리자에게 전달하세요.';
 
   @override
   String get importRetryPrevious => '이전 제출 재시도';

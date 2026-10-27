@@ -76,7 +76,7 @@ class StreamingDocumentWriterTest {
     @Test void outputFailureCleansEveryPrivateSheetAndCannotRetry()throws Exception {
         try(var writer=new XlsxExportService().openDocumentStream(directory)) {
             writer.begin(header(1));writer.accept(new DocumentPageSink.Page("main",rows(0,1)));
-            assertThrows(IOException.class,()->writer.finish(new OutputStream(){public void write(int value)throws IOException{throw new IOException("injected destination failure");}}));
+            assertThrows(IOException.class,()->writer.finish(new OutputStream(){@Override public void write(int value)throws IOException{throw new IOException("injected destination failure");}}));
             assertThrows(IllegalStateException.class,()->writer.finish(new ByteArrayOutputStream()));
         }
         assertNoSheetTemps();

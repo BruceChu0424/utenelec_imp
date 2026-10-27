@@ -13,6 +13,7 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
 FlutterWindow::~FlutterWindow() {
   client_update_channel_.reset();
   ResetWindowTitleChannel();
+  ResetDesktopWindowChannel();
 }
 
 bool FlutterWindow::OnCreate() {
@@ -33,6 +34,40 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   client_update_channel_ = std::make_unique<ClientUpdateChannel>(
       flutter_controller_->engine()->messenger(), GetHandle());
+  desktop_window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "com.uten.imp/desktop_window",
+          &flutter::StandardMethodCodec::GetInstance());
+  desktop_window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        bool success = false;
+        if (call.method_name() == "setMode") {
+          const auto* arguments = call.arguments();
+          const auto* mode = arguments == nullptr
+                                 ? nullptr : std::get_if<std::string>(arguments);
+          if (mode == nullptr || (*mode != "login" && *mode != "main")) {
+            result->Error("INVALID_MODE", "Mode must be login or main.");
+            return;
+          }
+          success = SetMainWindowMode(*mode == "main");
+        } else if (call.method_name() == "beginDrag") {
+          success = BeginWindowDrag();
+        } else if (call.method_name() == "minimize") {
+          success = MinimizeWindow();
+        } else if (call.method_name() == "close") {
+          success = CloseWindow();
+        } else {
+          result->NotImplemented();
+          return;
+        }
+        if (success) {
+          result->Success();
+        } else {
+          result->Error("WINDOW_UNAVAILABLE", "The window operation is unavailable.");
+        }
+      });
   window_title_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
@@ -112,11 +147,19 @@ bool FlutterWindow::OnCreate() {
 void FlutterWindow::OnDestroy() {
   client_update_channel_.reset();
   ResetWindowTitleChannel();
+  ResetDesktopWindowChannel();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+void FlutterWindow::ResetDesktopWindowChannel() {
+  if (desktop_window_channel_) {
+    desktop_window_channel_->SetMethodCallHandler(nullptr);
+    desktop_window_channel_.reset();
+  }
 }
 
 void FlutterWindow::ResetWindowTitleChannel() {

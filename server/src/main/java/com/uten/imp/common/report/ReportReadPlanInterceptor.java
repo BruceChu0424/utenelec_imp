@@ -33,7 +33,7 @@ public class ReportReadPlanInterceptor implements AsyncHandlerInterceptor {
         if(authority!=null) {
             var match=java.util.regex.Pattern.compile("^/api/(sales|purchase|subcontract|production|stock|finance)/reports(?:/.*)?$").matcher(path);
             if(match.matches()) {
-                version=ReadScopePublication.capture(request,response,authority,users,match.group(1));
+                version=ReadScopePublication.capture(request,authority,users,match.group(1));
             }
         }
         if(reuse && (version==null || supplied==null || !version.equals(supplied[0])))count=facets=totals=true;

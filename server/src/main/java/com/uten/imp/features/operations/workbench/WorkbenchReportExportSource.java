@@ -36,6 +36,7 @@ public class WorkbenchReportExportSource implements WorkbenchReportExportPort {
                     ReportQueryKit.parseDate(p.get("needFrom")),ReportQueryKit.parseDate(p.get("needTo")));
         }catch(IllegalArgumentException | java.time.DateTimeException invalid){throw invalid();}
     }
+    @Override
     public ExportPayload read(ReportExportQuery request) {
         authorize(users.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED)));
         var p=request.parameters();var table=table(request);

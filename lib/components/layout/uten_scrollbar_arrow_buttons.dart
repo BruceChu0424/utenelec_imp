@@ -204,36 +204,13 @@ class _UtenScrollbarArrowButtonsState extends State<UtenScrollbarArrowButtons>
   void _wheel(PointerSignalEvent event) {
     widget.onPointerSignal?.call(event);
     final position = _position;
-    if (event is PointerScrollInertiaCancelEvent &&
-        position != null &&
-        widget.interactive) {
-      position.pointerScroll(0);
-      return;
-    }
-    if (event is! PointerScrollEvent ||
-        position == null ||
-        !widget.interactive ||
-        !position.acceptsUserOffset) {
-      return;
-    }
-    final modifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
-    final flipped =
-        event.kind == PointerDeviceKind.mouse &&
-        HardwareKeyboard.instance.logicalKeysPressed.any(modifiers.contains);
-    var delta = flipped ? event.scrollDelta.dx : event.scrollDelta.dy;
-    if (position.axisDirection == AxisDirection.up) delta = -delta;
-    final target = (position.pixels + delta).clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
+    if (position == null || !widget.interactive) return;
+    position.handlePointerSignal(
+      context,
+      event,
+      isCurrent: () =>
+          mounted && identical(position.identity, _position?.identity),
     );
-    if (delta == 0 || target == position.pixels) return;
-    GestureBinding.instance.pointerSignalResolver.register(event, (event) {
-      if (!mounted || !identical(position.identity, _position?.identity)) {
-        return;
-      }
-      position.pointerScroll(delta);
-      (event as PointerScrollEvent).respond(allowPlatformDefault: false);
-    });
   }
 
   Widget _button(int direction, double extent, double width) {

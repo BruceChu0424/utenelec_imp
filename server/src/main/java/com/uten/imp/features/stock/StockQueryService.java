@@ -885,6 +885,7 @@ public class StockQueryService {
                 ? ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw)
                 : ShelfLabelSql.rowsPage(warehouseId != null, includeDisabled, hasRack, hasKw));
         if (page != null) {
+            if (size == null) throw new IllegalArgumentException("Paged shelf labels require a page size");
             q.setParameter("__limit", size);
             q.setParameter("__offset", (long) (page - 1) * size);
         }

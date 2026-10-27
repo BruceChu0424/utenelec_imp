@@ -177,7 +177,8 @@ bool _hitsNativeInput(PointerDownEvent event) {
 }
 
 /// Keeps child registrations locally while detached, then restores them once
-/// layout has completed. Removing a child still removes it immediately; this
+/// layout has completed. Removed text becomes unavailable immediately; an SDK
+/// registration is retired after an in-flight selection event returns. This
 /// does not retain removed text, swallow geometry errors or disable copying.
 class UtenSelectionLifecycleScope extends StatefulWidget {
   const UtenSelectionLifecycleScope({
@@ -199,6 +200,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     implements SelectionRegistrar {
   final _members = LinkedHashSet<Selectable>.identity();
   final _registered = LinkedHashSet<Selectable>.identity();
+  final _forwarded = HashMap<Selectable, _SelectionForwarder>.identity();
   final _selectionListeners = HashMap<Selectable, VoidCallback>.identity();
   final _selectedMembers = HashSet<Selectable>.identity();
   final _paintOwners = HashMap<Selectable, RenderObject>.identity();
@@ -296,13 +298,14 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       // registered when table selection is cleared at the end of that frame.
       _registered.add(selectable);
       _rememberPaintOwner(selectable);
-      _parent!.add(selectable);
+      _addToParent(selectable);
     } else {
       _scheduleFlush();
     }
   }
 
   bool _selectableReady(Selectable selectable) {
+    selectable = _selectionSource(selectable);
     final RenderObject? render;
     if (selectable is State) {
       final state = selectable as State;
@@ -322,14 +325,15 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   }
 
   void _rememberPaintOwner(Selectable selectable) {
+    final source = _selectionSource(selectable);
     RenderObject? render;
-    if (selectable is State) {
-      final state = selectable as State;
+    if (source is State) {
+      final state = source as State;
       if (!state.mounted) return;
       final memberContext = state.context;
       if (memberContext is Element) render = memberContext.renderObject;
-    } else if (selectable is RenderObject) {
-      render = selectable as RenderObject;
+    } else if (source is RenderObject) {
+      render = source as RenderObject;
     }
     while (render != null && !render.isRepaintBoundary) {
       render = render.parent;
@@ -341,8 +345,9 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     for (final selectable in _registered.toList(growable: false)) {
       if (_selectableReady(selectable)) continue;
       _registered.remove(selectable);
-      _parent!.remove(selectable);
-      if (selectable is State && (selectable as State).mounted) {
+      _removeFromParent(selectable);
+      final source = _selectionSource(selectable);
+      if (source is State && (source as State).mounted) {
         // RenderParagraph ignores handle updates after detach. Retire the
         // detached leaf's own text geometry, while its State is still alive,
         // so reattachment cannot paint the former parent's stale links.
@@ -380,7 +385,19 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
     if (listener != null) selectable.removeListener(listener);
     _selectedMembers.remove(selectable);
     _notifySelection();
-    if (_registered.remove(selectable)) _parent!.remove(selectable);
+    if (_registered.remove(selectable)) _removeFromParent(selectable);
+  }
+
+  void _addToParent(Selectable selectable) {
+    final forwarded = _SelectionForwarder(selectable, _parent!);
+    _forwarded[selectable] = forwarded;
+    _parent!.add(forwarded);
+  }
+
+  void _removeFromParent(Selectable selectable) {
+    final forwarded = _forwarded.remove(selectable)!;
+    forwarded.retire();
+    _SelectionDispatchFence.remove(forwarded);
   }
 
   void _unregister() {
@@ -392,7 +409,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
       // old parent's links before detach so reattachment cannot paint two
       // leaders for one selection edge. The text selection itself is retained.
       selectable.pushHandleLayers(null, null);
-      _parent!.remove(selectable);
+      _removeFromParent(selectable);
     }
   }
 
@@ -418,7 +435,7 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
         if (!_selectableReady(selectable)) continue;
         if (_registered.add(selectable)) {
           _rememberPaintOwner(selectable);
-          _parent!.add(selectable);
+          _addToParent(selectable);
         }
       }
     }
@@ -495,6 +512,106 @@ class _LifecycleState extends State<UtenSelectionLifecycleScope>
   );
 }
 
+Selectable _selectionSource(Selectable selectable) {
+  while (selectable is _SelectionForwarder) {
+    selectable = selectable.source;
+  }
+  return selectable;
+}
+
+/// SelectionRegistrant may remove an empty native container while its parent
+/// is iterating a clear/extend event. Keep that public protocol reentrant-safe,
+/// while ordinary render detach still unregisters synchronously before sorting.
+abstract final class _SelectionDispatchFence {
+  static int _depth = 0;
+  static bool _scheduled = false;
+  static final _pending = <_SelectionForwarder>[];
+
+  static SelectionResult dispatch(Selectable source, SelectionEvent event) {
+    _depth++;
+    try {
+      return source.dispatchSelectionEvent(event);
+    } finally {
+      _depth--;
+      if (_depth == 0 && _pending.isNotEmpty && !_scheduled) {
+        _scheduled = true;
+        scheduleMicrotask(() {
+          _scheduled = false;
+          final removals = List<_SelectionForwarder>.of(_pending);
+          _pending.clear();
+          for (final forwarded in removals) {
+            forwarded.parent.remove(forwarded);
+          }
+        });
+      }
+    }
+  }
+
+  static void remove(_SelectionForwarder forwarded) {
+    if (_depth == 0) {
+      forwarded.parent.remove(forwarded);
+    } else {
+      _pending.add(forwarded);
+    }
+  }
+}
+
+/// Transparent Selectable registration; the source retains lifecycle ownership.
+class _SelectionForwarder with Selectable {
+  _SelectionForwarder(this.source, this.parent);
+  final Selectable source;
+  final SelectionRegistrar parent;
+  bool _active = true;
+
+  void retire() {
+    if (!_active) return;
+    source.pushHandleLayers(null, null);
+    _active = false;
+  }
+
+  @override
+  SelectionGeometry get value => _active
+      ? source.value
+      : const SelectionGeometry(
+          status: SelectionStatus.none,
+          hasContent: false,
+        );
+  @override
+  SelectionResult dispatchSelectionEvent(SelectionEvent event) => _active
+      ? _SelectionDispatchFence.dispatch(source, event)
+      : SelectionResult.none;
+  @override
+  Matrix4 getTransformTo(RenderObject? ancestor) =>
+      _active ? source.getTransformTo(ancestor) : Matrix4.identity();
+  @override
+  Size get size => _active ? source.size : Size.zero;
+  @override
+  List<Rect> get boundingBoxes =>
+      _active ? source.boundingBoxes : const [Rect.zero];
+  @override
+  int get contentLength => _active ? source.contentLength : 0;
+  @override
+  SelectedContent? getSelectedContent() =>
+      _active ? source.getSelectedContent() : null;
+  @override
+  SelectedContentRange? getSelection() =>
+      _active ? source.getSelection() : null;
+  @override
+  void pushHandleLayers(LayerLink? startHandle, LayerLink? endHandle) {
+    if (_active) source.pushHandleLayers(startHandle, endHandle);
+  }
+
+  @override
+  void addListener(VoidCallback listener) {
+    if (_active) source.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) => source.removeListener(listener);
+  @override
+  void dispose() => retire();
+}
+
 /// Runs after the normal rendering/layout callback and before post-frame SDK
 /// selection merges. It requests no recurring frame. Only bridges to native
 /// registrars participate; nested Uten row scopes feed those same bridges.
@@ -548,7 +665,13 @@ class _SelectionScrollBehavior extends ScrollBehavior {
       platform: platform,
       keyboardDismissBehavior: keyboardDismissBehavior,
     ),
-  );
+  )._scrollableConfiguration();
+
+  // EditableText retains its Scrollable while a field moves into/out of a
+  // selection host. The SDK compares explicit behavior copies directly, with
+  // a covariant private wrapper parameter. Return the same SDK copy type on
+  // both sides, while keeping requested chrome flags inside our lifecycle hook.
+  ScrollBehavior _scrollableConfiguration() => super.copyWith();
 
   @override
   Set<PointerDeviceKind> get dragDevices => delegate.dragDevices;
@@ -590,7 +713,8 @@ class _SelectionScrollBehavior extends ScrollBehavior {
     details,
   );
   @override
-  bool shouldNotify(_SelectionScrollBehavior oldDelegate) =>
+  bool shouldNotify(ScrollBehavior oldDelegate) =>
+      oldDelegate is! _SelectionScrollBehavior ||
       !identical(delegate, oldDelegate.delegate);
 }
 

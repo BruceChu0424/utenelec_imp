@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uten.imp.support.MigratedSchemaBaseline;
+import com.uten.imp.support.RequiresDatabaseTests;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * 一个 Spring 上下文与一个数据库；不同上下文从已迁移模板获取独立数据库，
  * 不把旧上下文的故意损坏密文等负例带入新上下文的启动回填。
  */
-@EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+@RequiresDatabaseTests
 @SpringBootTest(classes = com.uten.imp.UtenImpApplication.class, properties = {
         "spring.profiles.active=dev",
         // DatabaseInitializer clones a schema already migrated by TestFlyway. Do not start a

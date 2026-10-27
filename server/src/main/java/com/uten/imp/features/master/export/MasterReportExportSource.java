@@ -61,6 +61,7 @@ public class MasterReportExportSource implements MasterReportExportPort {
     public static String permission(String report) { return MasterReportExportPort.permission(report); }
     public static String projectionScope(String report) { return MasterReportExportPort.projectionScope(report); }
     public static String authorityDomain(String report) { return MasterReportExportPort.authorityDomain(report); }
+    @Override
     public TableColumnProjection projection(ReportExportQuery request) {
         requireReport(request.report());
         return "goods".equals(request.report())
@@ -68,8 +69,10 @@ public class MasterReportExportSource implements MasterReportExportPort {
     }
 
     /** Call before persisting a job so unknown/credential fields are never stored as a private filter. */
+    @Override
     public void validate(ReportExportQuery request) { filter(request); }
 
+    @Override
     public ExportPayload read(ReportExportQuery request) {
         Object filter = filter(request);
         com.uten.imp.security.CurrentAuthorityGuard.requireAll(permission(request.report()));

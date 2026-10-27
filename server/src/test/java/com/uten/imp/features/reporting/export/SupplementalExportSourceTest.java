@@ -63,7 +63,7 @@ class SupplementalExportSourceTest {
         var projection=new TableColumnProjection("master.goods.cost.actual.2","view_goods_cost",List.of(new TableColumnProjection.Column("amount","不替换规范表头",120d,"text",null)));
         var request=new ReportExportRequest(UUID.randomUUID(),"goods_actual_cost","snapshot",Map.of("goodsId",GOODS.toString(),"expectedDigest","a".repeat(64)),null,null,projection,"pdf");
         var headers=new ArrayList<DocumentPageSink.Header>();var pages=new ArrayList<DocumentPageSink.Page>();
-        try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){public void begin(DocumentPageSink.Header h){headers.add(h);}public void accept(DocumentPageSink.Page p){pages.add(p);}})){
+        try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){@Override public void begin(DocumentPageSink.Header h){headers.add(h);}@Override public void accept(DocumentPageSink.Page p){pages.add(p);}})){
             source.readDocument(request);
         }
         assertEquals(2,headers.getFirst().sections().getFirst().columns().size());

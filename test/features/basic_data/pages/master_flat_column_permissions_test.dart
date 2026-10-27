@@ -285,6 +285,7 @@ class _MasterListApi extends ApiClient {
       ApiEndpoints.units,
       ApiEndpoints.warehouses,
       AccountEndpoints.base,
+      '${ApiEndpoints.settlementMethodsAdmin}/page',
     }.contains(path)) {
       return {
         'items': [if (!empty) _item],

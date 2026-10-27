@@ -194,6 +194,7 @@ class ManualUpdateWorkerUnitTest(unittest.TestCase):
         )
         self.assertEqual(
             ["/opt/uten-imp", "/run/uten-imp-updater", "/var/lib/uten-imp-operations",
+             "/var/lib/uten-imp-public",
              "/srv/uten-backup/pre-activation", "/data/uten-imp-backups/paired", "/var/log/uten-imp"],
             write_paths(self.unit),
         )

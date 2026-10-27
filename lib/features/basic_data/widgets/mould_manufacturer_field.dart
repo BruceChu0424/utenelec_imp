@@ -373,9 +373,6 @@ class _MouldManufacturerFieldState
                 labelText: widget.dense ? null : l10n.mouldManufacturerLabel,
                 isDense: widget.dense,
                 hintText: l10n.mouldManufacturerInputHint,
-                helperText: widget.dense
-                    ? null
-                    : l10n.mouldManufacturerInputHelp,
                 counterText: '',
                 suffixIcon: IconButton(
                   tooltip: l10n.mouldManufacturerChooseHistoryTooltip,
@@ -388,6 +385,7 @@ class _MouldManufacturerFieldState
                         },
                 ),
               ),
+              info: widget.dense ? null : l10n.mouldManufacturerInputHelp,
             ),
           ),
         ),

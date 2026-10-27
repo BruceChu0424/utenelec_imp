@@ -88,6 +88,12 @@ class ScheduledTaskCatalogTest {
     }
 
     @Test
+    void exportTaskDescribesTheAuthorizedCompleteReadWithoutChangingBusinessRecords() {
+        var export = ScheduledTaskCatalog.describe("ReportExportWorker.poll").orElseThrow();
+        assertThat(export.purpose()).contains("已授权", "分批", "完整文件", "读取权限", "原业务记录不改变");
+    }
+
+    @Test
     void unknownNamesFallBackToThemselvesInsteadOfCrashing() {
         assertThat(ScheduledTaskCatalog.describe("Nope.run")).isEmpty();
         assertThat(ScheduledTaskCatalog.describe(null)).isEmpty();

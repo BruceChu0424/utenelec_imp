@@ -40,7 +40,12 @@ class NativeSqlOffsetPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "none")); bean.afterPropertiesSet(); factory = bean.getObject();
     }
     @AfterAll static void close() throws Exception {
-        if (factory != null) factory.close(); if (database != null) database.close();
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
     }
 
     @ParameterizedTest @ValueSource(strings = {"schedule", "quote-finance", "order-finance", "subcontract-draw"})

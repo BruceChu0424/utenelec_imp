@@ -21,6 +21,7 @@ enum ImportFileQueuePhase {
 class ImportFileQueue {
   List<PlatformFile> _pending = [];
   final List<({String filename, String summary})> completed = [];
+  final List<({String filename, String summary})> partialCompleted = [];
   Uint8List? currentBytes;
   bool approved = false;
   ImportFileQueuePhase phase = ImportFileQueuePhase.waiting;
@@ -50,6 +51,10 @@ class ImportFileQueue {
     phase = hasPending
         ? ImportFileQueuePhase.waiting
         : ImportFileQueuePhase.done;
+  }
+
+  void recordPartial(String summary) {
+    partialCompleted.add((filename: current!.name, summary: summary));
   }
 }
 
@@ -101,6 +106,14 @@ class ImportFileQueueSummary extends StatelessWidget {
               ),
             ),
         ],
+        for (final outcome in queue.partialCompleted)
+          Padding(
+            padding: const EdgeInsets.only(top: UtenSpacing.s8),
+            child: Text(
+              l.goodsImportPartialOutcome(outcome.filename, outcome.summary),
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
         const SizedBox(height: UtenSpacing.s12),
       ],
     );

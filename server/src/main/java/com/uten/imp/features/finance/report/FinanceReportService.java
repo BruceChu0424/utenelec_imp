@@ -1958,7 +1958,7 @@ public class FinanceReportService {
             String inExpr = ReportReadPlan.current().includeTotals() ? "SUM(in_amount)" : "NULL::numeric";
             String outExpr = ReportReadPlan.current().includeTotals() ? "SUM(out_amount)" : "NULL::numeric";
             var metadata = em.createNativeQuery(sql.substring(0, sql.indexOf("SELECT bill_date,bill_no"))
-                    + "SELECT " + countExpr + "," + inExpr + "," + outExpr
+                    + " SELECT " + countExpr + "," + inExpr + "," + outExpr
                     + ",(SELECT " + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
                     + " FROM accounts account LEFT JOIN currencies currency ON currency.id=account.currency_id"
                     + " WHERE account.id=:aid) FROM filtered")
@@ -2012,7 +2012,8 @@ public class FinanceReportService {
         if (!items.isEmpty() || emptyPageMetadata != null) {
             String unit = !items.isEmpty()
                     ? java.util.Objects.toString(items.getFirst().get("__accountCurrencyName"), null)
-                    : emptyPageMetadata.length > 3 ? java.util.Objects.toString(emptyPageMetadata[3], null) : null;
+                    : emptyPageMetadata != null && emptyPageMetadata.length > 3
+                        ? java.util.Objects.toString(emptyPageMetadata[3], null) : null;
             totals = totals.stream().map(t -> new com.uten.imp.common.report.ReportTotal(
                     t.key(), t.label(), t.type(), t.groupKey(), t.groups(), unit)).toList();
         }

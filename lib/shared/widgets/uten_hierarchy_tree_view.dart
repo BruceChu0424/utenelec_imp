@@ -15,6 +15,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../components/data_display/uten_selection_lifecycle.dart';
+import '../../components/data_display/uten_tree_branch_guide.dart';
 
 import '../../components/feedback/uten_context_menu.dart';
 import '../../components/feedback/uten_motion.dart';
@@ -32,6 +33,7 @@ import '../models/uten_tree_node.dart';
 import '../hierarchy/category_tree_search.dart';
 import '../search/keyword_search.dart';
 import 'uten_hierarchy_search_header.dart';
+import 'uten_tree_row_projection.dart';
 
 /// 树的选择语义。
 enum UtenTreeSelectMode { none, single, multi }
@@ -172,8 +174,8 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 选中」），但不展开/收起子级。宿主条目与通用项全空则不弹菜单。
   final List<UtenContextMenuEntry> Function(T node)? rowMenuBuilder;
 
-  /// 无缩进层级色模式（选择器滑窗窄左栏用，2026-09-24 用户口径：层级多或名字长
-  /// 时缩进吃掉宽度，名字几乎看不到）。行不按深度缩进，改为整行按深度铺色：
+  /// 紧凑层级色模式：整行按深度铺色，同时保留公共树的缩进、连接线与加减按钮。
+  /// 2026-10-26 起分类列统一使用带线树，窄栏仅限制视觉缩进，不改变真实层级。
   /// 五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字、往下逐档降饱和降
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深一层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；行距收紧、行间 1px 分隔线。
@@ -250,7 +252,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   /// flat 模式按深度铺色：五档梯度（UtenColors.treeLevelRow）——一级深绿实底白字，
   /// 往下逐档降饱和降明度、四档起转中性灰，4 及更深固定第五档；相邻档色差一眼可分。
-  Color? _flatRowBackground(ThemeData theme, int depth) =>
+  Color _flatRowBackground(ThemeData theme, int depth) =>
       UtenColors.treeLevelRow(depth, dark: theme.brightness == Brightness.dark);
 
   @override
@@ -473,6 +475,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   List<({T node, int depth, List<String> ancestors, List<String> branches})>
   _rowPlanCache = [];
   Map<Key, int> _rowPlanIndexes = {};
+  List<UtenTreeRowProjection> _rowProjections = const [];
 
   List<({T node, int depth, List<String> ancestors, List<String> branches})>
   _rowPlan(Set<String>? visible) {
@@ -532,6 +535,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     }
 
     walk(widget.nodes, 0, const [], const []);
+    _rowProjections = utenTreeProjection(rows, depthOf: (row) => row.depth);
     _rowPlanIndexes = {
       for (var index = 0; index < rows.length; index++)
         ValueKey('hierarchy-row:${rows[index].node.id}'): index,
@@ -709,6 +713,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     T node,
     int depth,
     List<String> ancestors,
+    UtenTreeRowProjection projection,
     Duration animDuration,
   ) {
     final theme = Theme.of(context);
@@ -736,13 +741,43 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final indent = flat
-            ? 0.0
-            : (depth * 16.0).clamp(0.0, constraints.maxWidth * 0.12);
+        // Keep every visible row on the same guide tracks. Narrow panes cap
+        // visual depth only; tooltips retain the full ancestor path.
         final hitExtent = UtenControlMetrics.minimumHitExtent(
           context,
           desktop: 32,
         );
+        final touch = UtenControlMetrics.usesTouchTargets(context);
+        final checkboxDensity =
+            theme.checkboxTheme.visualDensity ??
+            (theme.useMaterial3 ? VisualDensity.standard : theme.visualDensity);
+        final selectionWidth = widget.mode == UtenTreeSelectMode.multi
+            ? (touch ? 48.0 : 40.0) + checkboxDensity.baseSizeAdjustment.dx + 8
+            : 32.0;
+        // Budget the same control roles for the entire tree, rather than
+        // shrinking tracks per row when a count, badge or checkbox is present.
+        // Reserve a short title before allocating any indentation. Very narrow
+        // panes reduce visual depth; the complete path remains in the tooltip.
+        final fixedChrome =
+            hitExtent +
+            16 +
+            4 +
+            16 +
+            selectionWidth +
+            (widget.leadingBuilder == null ? 0 : 28) +
+            (widget.trailingBuilder == null ? 0 : 32);
+        final indentBudget = math.max(
+          0.0,
+          math.min(
+            constraints.maxWidth * 0.4,
+            constraints.maxWidth - fixedChrome,
+          ),
+        );
+        final indentStep = indentBudget < 12
+            ? math.max(4.0, indentBudget)
+            : 12.0;
+        final maxVisualDepth = (indentBudget / indentStep).floor().clamp(0, 10);
+        final indent = depth.clamp(0, maxVisualDepth) * indentStep;
         final label = widget.labelOf?.call(node) ?? node.name;
         final flatSelected = flat && isSelected;
         final blockColor = onDarkRow
@@ -756,6 +791,9 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
             : onDarkRow
             ? Colors.white
             : theme.colorScheme.onSurfaceVariant;
+        final toggleBackground = flatSelected
+            ? blockColor
+            : rowBg ?? theme.colorScheme.surface;
         final minHeight = flat
             ? UtenFilterRow.heightOf(context)
             : UtenControlMetrics.controlHeight(context);
@@ -821,13 +859,18 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                     tween: ColorTween(end: toggleColor),
                     duration: animDuration,
                     curve: UtenAnim.standard,
-                    builder: (context, color, _) => AnimatedRotation(
-                      turns: expanded ? 0.25 : 0,
-                      duration: animDuration,
-                      curve: UtenAnim.standard,
+                    builder: (context, color, _) => Container(
+                      width: 14,
+                      height: 14,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: toggleBackground,
+                        border: Border.all(color: color ?? toggleColor),
+                        borderRadius: UtenRadius.xsAll,
+                      ),
                       child: Icon(
-                        Icons.chevron_right_rounded,
-                        size: 20,
+                        expanded ? Icons.remove : Icons.add,
+                        size: 12,
                         color: color ?? toggleColor,
                       ),
                     ),
@@ -856,7 +899,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                                 ? theme.colorScheme.primary
                                 : null)
                           : flatSelected
-                          ? selectedForeground?.withValues(alpha: 0.85)
+                          ? selectedForeground.withValues(alpha: 0.85)
                           : onDarkRow
                           ? Colors.white.withValues(alpha: 0.85)
                           : theme.colorScheme.onSurfaceVariant,
@@ -877,6 +920,23 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           if (leading != null) ...[leading, const SizedBox(width: 8)],
           title,
         ];
+        final guides = Positioned(
+          left: 8,
+          top: 0,
+          bottom: 0,
+          width: indent + (node.hasChildren ? hitExtent / 2 : hitExtent),
+          child: UtenTreeBranchGuide(
+            depth: depth,
+            ancestorContinuations: projection.ancestorContinuations,
+            isLastChild: projection.isLastChild,
+            hasExpandedChildren: projection.hasChildren,
+            indent: indentStep,
+            toggleExtent: hitExtent,
+            maxVisualDepth: maxVisualDepth,
+            color: toggleColor.withValues(alpha: 0.65),
+            dotted: true,
+          ),
+        );
         final Widget body;
         if (flat) {
           final hasControls = trailing != null || selection != null;
@@ -897,7 +957,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                     final blockWidth = leading == null
                         ? math.min(
                             titleConstraints.maxWidth,
-                            8 + hitExtent + 4 + nameWidth + 8,
+                            8 + indent + hitExtent + 4 + nameWidth + 8,
                           )
                         : titleConstraints.maxWidth;
                     return ConstrainedBox(
@@ -924,10 +984,13 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                               ),
                             ),
                           ),
+                          guides,
                           Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: verticalPadding,
+                            padding: EdgeInsets.fromLTRB(
+                              8 + indent,
+                              verticalPadding,
+                              8,
+                              verticalPadding,
                             ),
                             child: Row(children: titleCluster),
                           ),
@@ -946,20 +1009,32 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
             ],
           );
         } else {
-          body = Padding(
-            padding: EdgeInsets.fromLTRB(
-              8 + indent,
-              verticalPadding,
-              8,
-              verticalPadding,
-            ),
-            child: Row(
-              children: [
-                ...titleCluster,
-                if (trailing != null) ...[const SizedBox(width: 8), trailing],
-                if (selection != null) ...[const SizedBox(width: 8), selection],
-              ],
-            ),
+          body = Stack(
+            alignment: Alignment.centerLeft,
+            children: [
+              guides,
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  8 + indent,
+                  verticalPadding,
+                  8,
+                  verticalPadding,
+                ),
+                child: Row(
+                  children: [
+                    ...titleCluster,
+                    if (trailing != null) ...[
+                      const SizedBox(width: 8),
+                      trailing,
+                    ],
+                    if (selection != null) ...[
+                      const SizedBox(width: 8),
+                      selection,
+                    ],
+                  ],
+                ),
+              ),
+            ],
           );
         }
         final content = Semantics(
@@ -1117,6 +1192,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                           entry.node,
                           entry.depth,
                           entry.ancestors,
+                          _rowProjections[index],
                           animDuration,
                         ),
                       ),

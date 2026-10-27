@@ -13,6 +13,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 Future<Map<String, MasterInlineField<GoodsListItem>>> _fields(
   WidgetTester tester, {
   bool priceEdit = false,
+  bool purchaseEdit = false,
 }) async {
   Map<String, MasterInlineField<GoodsListItem>> fields = {};
   await tester.pumpWidget(
@@ -21,6 +22,7 @@ Future<Map<String, MasterInlineField<GoodsListItem>>> _fields(
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsEdit,
           if (priceEdit) Perm.goodsPriceEdit,
+          if (purchaseEdit) Perm.goodsPurchaseEdit,
         }),
         colorDictProvider.overrideWith(
           (ref) async => const [
@@ -62,6 +64,10 @@ void main() {
       'price',
       'discount',
       'mouldCode',
+      'sourceType',
+      'minOrderQty',
+      'orderMultipleQty',
+      'nameEn',
     ]) {
       expect(fields.containsKey(key), isFalse, reason: key);
     }
@@ -70,7 +76,7 @@ void main() {
   testWidgets(
     'real relation choices submit UUIDs while source uses fixed options',
     (tester) async {
-      final fields = await _fields(tester);
+      final fields = await _fields(tester, purchaseEdit: true);
       expect(fields['colorLegacyId']!.key, 'colorId');
       expect(fields['colorLegacyId']!.options!.single.value, 'color-uuid');
       expect(fields['unitLegacyId']!.key, 'unitId');
@@ -90,7 +96,7 @@ void main() {
   testWidgets(
     'price edit authority enables decimals and validates precise negative strings',
     (tester) async {
-      final fields = await _fields(tester, priceEdit: true);
+      final fields = await _fields(tester, priceEdit: true, purchaseEdit: true);
       expect(fields['price']!.type, MasterFieldType.money);
       expect(fields['price']!.validate!('-0.0001'), isNotNull);
       expect(fields['price']!.validate!('99999999999999.9999'), isNull);

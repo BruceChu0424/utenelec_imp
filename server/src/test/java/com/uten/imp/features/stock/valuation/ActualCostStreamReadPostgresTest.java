@@ -57,7 +57,14 @@ class ActualCostStreamReadPostgresTest {
         factory=bean.getObject();read=new TransactionTemplate(new JpaTransactionManager(factory));
         read.setReadOnly(true);read.setIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
     }
-    @AfterAll static void close() throws Exception {if(factory!=null)factory.close();if(lease!=null)lease.close();}
+    @AfterAll static void close() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (lease != null) {
+            lease.close();
+        }
+    }
     @BeforeEach void seed() throws Exception {
         for(String table:TABLES)db.getJdbcTemplate().execute("TRUNCATE "+SCHEMA+"."+table);
         row("stock_value_pools",Map.of("id",PRODUCT_POOL,"goods_id",GOODS));row("stock_value_pools",Map.of("id",INPUT_POOL,"goods_id",COMPONENT));
@@ -88,7 +95,9 @@ class ActualCostStreamReadPostgresTest {
             var expected=GoodsActualCostDocumentMapper.map(old.snapshot(),old.digest());
             Map<String,List<Map<String,Object>>> rows=new LinkedHashMap<>();
             try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){
+                @Override
                 public void begin(DocumentPageSink.Header header){assertThat(header.expectedPrimaryRows()).isEqualTo(1);}
+                @Override
                 public void accept(DocumentPageSink.Page page){assertThat(page.rows()).hasSizeLessThanOrEqualTo(100);rows.computeIfAbsent(page.sectionId(),key->new ArrayList<>()).addAll(page.rows());}
             })) {snapshots.streamExport(query(),old.digest(),ExportDocument.MAX_SECTION_ROWS);}
             for(int index=0;index<expected.sections().size();index++)assertThat(rows.get("actual-"+index)).isEqualTo(expected.sections().get(index).rows());
@@ -100,6 +109,7 @@ class ActualCostStreamReadPostgresTest {
         var committed=new AtomicBoolean();var count=new java.util.concurrent.atomic.AtomicInteger();
         read.executeWithoutResult(tx->{
             try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){
+                @Override
                 public void begin(DocumentPageSink.Header header){
                     UUID node=UUID.randomUUID();input(node,UUID.randomUUID(),AT.plusSeconds(1));
                     UUID next=UUID.randomUUID();
@@ -112,6 +122,7 @@ class ActualCostStreamReadPostgresTest {
                     other.update("UPDATE stock_value_production_cost_objects SET current_revision_id=:next WHERE execution_segment_id=:id",Map.of("next",next,"id",OBJECT));
                     committed.set(true);
                 }
+                @Override
                 public void accept(DocumentPageSink.Page page){if(page.sectionId().equals("actual-1"))count.addAndGet(page.rows().size());}
             })) {snapshots.streamExport(query(),initial,ExportDocument.MAX_SECTION_ROWS);}
         });

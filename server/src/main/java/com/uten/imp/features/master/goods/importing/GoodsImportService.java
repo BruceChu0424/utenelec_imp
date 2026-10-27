@@ -76,7 +76,10 @@ import java.util.concurrent.ConcurrentMap;
  *   <li>分类分隔符只认标准 {@code -}（两侧空格 trim）；其它「横杠样」字符不切 → 自然匹配不上报错。</li>
  *   <li>空格：匹配键（编号/分类/颜色/单位/系列）全删空白含全角/NBSP + 全角转半角；
  *         货品名 trim + 内部多空格合并一个。</li>
- *   <li>编号：允许留空并由目标分类规则自动分配；显式填写时须文件内唯一且库里不存在。</li>
+ *   <li>编号：允许留空或缺列；匹配原货品时保留原号，新建时按目标分类自动分配。
+ *       显式编号须文件内唯一；已有编号进入差异核对，占用、历史复用与歧义按原规则复核。</li>
+ *   <li>系统标识：当前库存在的 UUID 保留原身份，改号须核对确认；当前库不存在的历史 UUID
+ *       按编号匹配或新增规则处理，新建使用新的本地 UUID，不沿用文件 UUID。</li>
  *   <li>缺失分类/颜色/单位：自动新建（登记录撤回）。</li>
  *   <li>仅收 .xlsx；跳过空行/合计/总计/小计/标题行；公式错误单元格当空。</li>
  * </ul>
@@ -112,6 +115,13 @@ public class GoodsImportService {
     private static final int MAX_ACTIVE_PLANS = 32;
     private static final int MAX_CACHED_ROWS = 16_000;
     private static final long MAX_CACHED_PLAN_BYTES = 32L * 1024 * 1024;
+    private static final int MAX_CODE_CORRECTIONS = 2_000;
+    private static final int MAX_CORRECTED_CODE_LENGTH = 100;
+    private static final int MAX_CORRECTED_CELLS = 10_000;
+    private static final Set<String> CORRECTABLE_FIELDS = Set.of("code", "name", "categoryPath", "clientGoodsName",
+            "cNumber", "series", "model", "spec", "material", "rearInsertCode", "paper", "nameEn",
+            "colorName", "unitName", "sourceType", "status", "price", "minOrderQty", "orderMultipleQty");
+    private static final Set<String> NUMERIC_IMPORT_FIELDS = Set.of("price", "minOrderQty", "orderMultipleQty");
 
     private static final Map<String, String> HEADER_ALIASES = new HashMap<>();
     static {
@@ -188,11 +198,42 @@ public class GoodsImportService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportReport detect(byte[] xlsx) {
-        Parsed parsed = parse(xlsx);
+        return detect(xlsx, Map.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(readOnly = true)
+    public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections) {
+        return detect(xlsx, codeCorrections, Set.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(readOnly = true)
+    public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums) {
+        return detect(xlsx, codeCorrections, excludedRowNums, Map.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(readOnly = true)
+    public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
+                                   Map<Integer, Map<String, String>> cellCorrections) {
+        Map<Integer, Map<String, String>> corrections = normalizeCellCorrections(codeCorrections, cellCorrections);
+        Parsed parsed = parse(xlsx, corrections);
+        validateCorrectionRows(parsed, corrections);
+        Set<Integer> excluded = validateExcludedRows(parsed, excludedRowNums);
+        return detectParsed(xlsx, new Parsed(parsed.rows.stream()
+                .filter(row -> !excluded.contains(row.rowNum)).toList(),
+                parsed.headerErrors.stream().filter(error -> !excluded.contains(error.rowNum())).toList(),
+                parsed.totalRows), corrections, excluded, true);
+    }
+
+    private GoodsImportReport detectParsed(byte[] xlsx, Parsed parsed, Map<Integer, Map<String, String>> corrections,
+                                           Set<Integer> excluded, boolean partitionErrors) {
         List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
-        if (!parsed.headerErrors.isEmpty()) {
+        if (parsed.headerErrors.stream().anyMatch(error -> error.rowNum() <= 1)) {
             return new GoodsImportReport(
-                    parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, 0, null);
+                    parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, 0, null,
+                    List.of(), 0, 0, 0, 0, problemRows(parsed, errors));
         }
 
         MasterSnapshot masters = loadMasterSnapshot();
@@ -204,8 +245,10 @@ public class GoodsImportService {
         Set<String> willCreateCat = new LinkedHashSet<>();
         Set<String> willCreateColor = new LinkedHashSet<>();
         Set<String> willCreateUnit = new LinkedHashSet<>();
-        Set<String> seenCodes = new HashSet<>();
-        Set<UUID> seenGoods = new HashSet<>();
+        Map<String, Integer> firstCodeRows = new HashMap<>();
+        Set<String> reportedDuplicateFirstCodes = new HashSet<>();
+        Map<UUID, Integer> firstGoodsRows = new HashMap<>();
+        Set<UUID> reportedDuplicateFirstGoods = new HashSet<>();
         List<GoodsImportIdentity> goodsSnapshot = goodsRepo.findImportIdentities();
         List<PlannedRow> plannedRows = new ArrayList<>();
         List<GoodsImportReviewRow> reviewRows = new ArrayList<>();
@@ -215,11 +258,22 @@ public class GoodsImportService {
 
         for (ParsedRow r : parsed.rows) {
             dataRows++;
+            try {
+            Goods byId = r.goodsId == null ? null : goodsRepo.findById(r.goodsId).orElse(null);
+            // An export can come from a previous dataset. Its UUID is useful
+            // only when it resolves locally; otherwise use the ordinary code
+            // review/new-record rules and allocate a fresh local UUID on save.
+            // Keep the source UUID on the parsed row, never reuse it as a key.
+            UUID localGoodsId = byId == null ? null : byId.getId();
             UUID restoreGoodsId = null;
             Goods existingGoods = null;
             String matchType = null;
             if (r.code != null && !r.code.isEmpty()) {
-                if (!seenCodes.add(r.code)) {
+                Integer firstRow = firstCodeRows.putIfAbsent(r.code, r.rowNum);
+                if (firstRow != null) {
+                    if (reportedDuplicateFirstCodes.add(r.code)) {
+                        errors.add(new GoodsImportError(firstRow, "编号", "编号「" + r.code + "」在本文件内重复"));
+                    }
                     errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在本文件内重复"));
                 } else {
                     existingGoods = goodsRepo.findByCodeAndDeletedFalse(r.code).orElse(null);
@@ -231,22 +285,22 @@ public class GoodsImportService {
                     // 同编号命中已软删行：不再当冲突拦下，导入时以原 UUID 原编号恢复该行
                     //（2026-10-19「删除后同编号不能导入」根因修复，见 [commit]）。
                     List<UUID> deletedIds = goodsRepo.findRestorableDeletedIdsByCode(r.code);
-                    if (deletedIds.size() > 1 && r.goodsId == null) {
+                    if (deletedIds.size() > 1 && localGoodsId == null) {
                         errors.add(new GoodsImportError(r.rowNum, "系统标识", "同编号对应多个已删除货品，请填写原货品系统标识后核对恢复"));
                     } else if (!deletedIds.isEmpty()) {
-                        if (r.goodsId != null && !deletedIds.contains(r.goodsId)) {
+                        if (localGoodsId != null && !deletedIds.contains(localGoodsId)) {
                             errors.add(new GoodsImportError(r.rowNum, "系统标识", "系统标识与已删除货品编号不一致，请核对原货品"));
-                        } else restoreGoodsId = r.goodsId == null ? deletedIds.getFirst() : r.goodsId;
+                        } else restoreGoodsId = localGoodsId == null ? deletedIds.getFirst() : localGoodsId;
                     }
                     if (restoreGoodsId != null) {
+                        goodsService.requireRestoreImportedWriteAccess(restoreGoodsId);
                         restorableRows++;
                     }
                     }
                 }
             }
-            if (r.goodsId != null) {
-                Goods byId = goodsRepo.findById(r.goodsId).orElse(null);
-                if (byId == null || byId.isDeleted() && !Objects.equals(restoreGoodsId, byId.getId())) {
+            if (byId != null) {
+                if (byId.isDeleted() && !Objects.equals(restoreGoodsId, byId.getId())) {
                     errors.add(new GoodsImportError(r.rowNum, "货品UUID", "货品 UUID 不存在或已删除，请重新导出后导入"));
                 } else if (existingGoods != null && !existingGoods.getId().equals(byId.getId())) {
                     errors.add(new GoodsImportError(r.rowNum, "编号", "货品 UUID 与编号指向不同货品，请核对后重传"));
@@ -255,7 +309,7 @@ public class GoodsImportService {
                     matchType = "UUID";
                 }
             }
-            if (r.goodsId == null && r.code != null && !r.code.isEmpty() && goodsRepo.codeHasReuseHistory(r.code)) {
+            if (localGoodsId == null && r.code != null && !r.code.isEmpty() && goodsRepo.codeHasReuseHistory(r.code)) {
                 errors.add(new GoodsImportError(r.rowNum, "系统标识", "该编号曾复用，请重新导出并保留系统标识，核对当前货品后导入"));
             }
             if (r.name == null || r.name.isEmpty()) {
@@ -309,11 +363,19 @@ public class GoodsImportService {
             List<GoodsImportReviewRow.Change> changes = List.of();
             String goodsFingerprint = null;
             if (existingGoods != null) {
-                if (!seenGoods.add(existingGoods.getId())) {
+                Integer firstRow = firstGoodsRows.putIfAbsent(existingGoods.getId(), r.rowNum);
+                if (firstRow != null) {
+                    if (reportedDuplicateFirstGoods.add(existingGoods.getId())) {
+                        errors.add(new GoodsImportError(firstRow, "货品名称", "本文件多行对应同一货品，请合并为一行后重传"));
+                    }
                     errors.add(new GoodsImportError(r.rowNum, "货品名称", "本文件多行对应同一货品，请合并为一行后重传"));
                 }
                 // Object scope is checked before returning any stored cell values.
                 changes = changes(r, existingGoods, category, color, unit);
+                // Automatic fills are writes even when no conflict is selected.
+                // Isolate a denied fill now so independent normal rows can proceed.
+                com.uten.imp.features.master.goods.GoodsFieldEditPolicy.requireFields(changes.stream()
+                        .filter(change -> "FILL".equals(change.kind())).map(GoodsImportReviewRow.Change::field).toList());
                 goodsFingerprint = goodsFingerprint(existingGoods);
                 if (changes.isEmpty()) unchangedRows++;
                 else {
@@ -326,17 +388,42 @@ public class GoodsImportService {
             } else if (restoreGoodsId == null) addedRows++;
             plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId,
                     existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes));
+            } catch (ApiException failure) {
+                String message = failure.getCode() == ErrorCode.FORBIDDEN || failure.getCode() == ErrorCode.NOT_FOUND
+                        ? "该行货品当前不可查看或编辑，请联系管理员核对权限后重新检测"
+                        : failure.getMessage();
+                errors.add(new GoodsImportError(r.rowNum, "导入", message));
+            }
+        }
+        if (partitionErrors && !errors.isEmpty()) {
+            Set<Integer> problemRowNums = errors.stream().map(GoodsImportError::rowNum)
+                    .collect(java.util.stream.Collectors.toSet());
+            List<ParsedRow> ready = parsed.rows.stream().filter(row -> !problemRowNums.contains(row.rowNum)).toList();
+            // Reuse the exact detector for the normal subset. No category/color/
+            // unit tokens, counts or stored review values from rejected rows escape.
+            GoodsImportReport normal = ready.isEmpty()
+                    ? new GoodsImportReport(parsed.totalRows, 0, List.of(), List.of(), List.of(), List.of(), 0, 0, null)
+                    : detectParsed(xlsx, new Parsed(ready, List.of(), parsed.totalRows), corrections, excluded, false);
+            List<GoodsImportError> combined = new ArrayList<>(errors);
+            combined.addAll(normal.errors());
+            return new GoodsImportReport(parsed.totalRows, dataRows, List.copyOf(combined),
+                    normal.willCreateCategories(), normal.willCreateColors(), normal.willCreateUnits(),
+                    normal.readyToImport(), normal.restorableRows(), normal.planId(), normal.reviewRows(),
+                    normal.addedRows(), normal.unchangedRows(), normal.fillRows(), normal.conflictRows(),
+                    problemRows(parsed, combined), normal.readyRowNums());
         }
         int errorRows = (int) errors.stream().map(GoodsImportError::rowNum).distinct().count();
         UUID planId = null;
         if (errors.isEmpty()) {
             planId = rememberPlan(
-                    sha256(xlsx), masters.fingerprint(), identityFingerprint(goodsSnapshot), currentActorId(), plannedRows);
+                    sha256(xlsx), masters.fingerprint(), identityFingerprint(goodsSnapshot), currentActorId(), plannedRows,
+                    corrections, excluded);
         }
         return new GoodsImportReport(parsed.totalRows, dataRows, errors,
                 new ArrayList<>(willCreateCat), new ArrayList<>(willCreateColor),
                 new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows - unchangedRows),
-                restorableRows, planId, List.copyOf(reviewRows), addedRows, unchangedRows, fillRows, conflictRows);
+                restorableRows, planId, List.copyOf(reviewRows), addedRows, unchangedRows, fillRows, conflictRows,
+                problemRows(parsed, errors), planId == null ? List.of() : parsed.rows.stream().map(row -> row.rowNum).toList());
     }
 
     // ============================================================
@@ -353,7 +440,31 @@ public class GoodsImportService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys) {
-        ImportPlan plan = requireAndConsumePlan(planId, xlsx);
+        return commit(planId, xlsx, filename, replaceRowKeys, Map.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional
+    public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
+                                    Map<Integer, String> codeCorrections) {
+        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, Set.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional
+    public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
+                                    Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums) {
+        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, excludedRowNums, Map.of());
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional
+    public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
+                                    Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
+                                    Map<Integer, Map<String, String>> cellCorrections) {
+        Map<Integer, Map<String, String>> corrections = normalizeCellCorrections(codeCorrections, cellCorrections);
+        Set<Integer> excluded = normalizeExcludedRows(excludedRowNums);
+        ImportPlan plan = requireAndConsumePlan(planId, xlsx, corrections, excluded);
         Set<String> replacements = replaceRowKeys == null ? Set.of() : Set.copyOf(replaceRowKeys);
         Set<String> allowedKeys = plan.rows().stream()
                 .filter(row -> row.changes().stream().anyMatch(change -> "CONFLICT".equals(change.kind())))
@@ -361,7 +472,13 @@ public class GoodsImportService {
         if (!allowedKeys.containsAll(replacements)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "替换选择包含检测报告以外的行，请重新检测");
         }
-        Parsed parsed = parse(xlsx);
+        Parsed original = parse(xlsx, corrections);
+        validateCorrectionRows(original, corrections);
+        validateExcludedRows(original, excluded);
+        Set<Integer> plannedRowNums = plan.rows().stream().map(PlannedRow::rowNum)
+                .collect(java.util.stream.Collectors.toSet());
+        Parsed parsed = new Parsed(original.rows.stream().filter(row -> plannedRowNums.contains(row.rowNum)).toList(),
+                original.headerErrors, original.totalRows);
         if (parsed.rows.size() != plan.rows().size()) {
             throw stalePlan("导入文件解析结果已变化");
         }
@@ -671,6 +788,10 @@ public class GoodsImportService {
     // ============================================================
 
     private Parsed parse(byte[] xlsx) {
+        return parse(xlsx, Map.of());
+    }
+
+    private Parsed parse(byte[] xlsx, Map<Integer, Map<String, String>> corrections) {
         List<ParsedRow> rows = new ArrayList<>();
         List<GoodsImportError> headerErrors = new ArrayList<>();
         if (xlsx == null || xlsx.length == 0) {
@@ -695,7 +816,9 @@ public class GoodsImportService {
                 return new Parsed(rows, headerErrors, 0);
             }
             Map<String, Integer> col = mapHeaders(header);
-            for (String req : new String[]{"code", "name", "categoryPath"}) {
+            // An omitted number column has the same meaning as blank numbers:
+            // retain a matched local identity's number or allocate for new goods.
+            for (String req : new String[]{"name", "categoryPath"}) {
                 if (!col.containsKey(req)) {
                     headerErrors.add(new GoodsImportError(1, "表头", "缺少必填列：" + reqLabel(req)));
                 }
@@ -714,6 +837,20 @@ public class GoodsImportService {
                 totalRows++;
                 ParsedRow pr = new ParsedRow();
                 pr.rowNum = ri + 1;
+                // Establish physical data-row membership from the original file
+                // before corrections. Edited names/codes cannot turn a row into
+                // a skipped total, and numeric corrections use the same parser.
+                Map<String, String> values = new HashMap<>();
+                for (String field : CORRECTABLE_FIELDS) {
+                    if (col.containsKey(field)) {
+                        String input = NUMERIC_IMPORT_FIELDS.contains(field)
+                                ? numberText(row, col.get(field)) : str(row, col.get(field));
+                        values.put(field, input == null ? "" : input);
+                    }
+                }
+                Map<String, String> edited = corrections.getOrDefault(pr.rowNum, Map.of());
+                values.putAll(edited);
+                pr.cells = Map.copyOf(values);
                 String rawGoodsId = trim(str(row, col.get("goodsId")));
                 if (rawGoodsId != null && !rawGoodsId.isEmpty()) {
                     try {
@@ -722,31 +859,31 @@ public class GoodsImportService {
                         headerErrors.add(new GoodsImportError(pr.rowNum, "货品UUID", "货品 UUID 格式不正确"));
                     }
                 }
-                pr.code = code;
-                pr.name = name;
-                pr.clientGoodsNamePresent = col.containsKey("clientGoodsName");
-                pr.clientGoodsName = trim(str(row, col.get("clientGoodsName")));
-                pr.cNumberPresent = col.containsKey("cNumber");
-                pr.cNumber = trim(str(row, col.get("cNumber")));
-                pr.series = normKey(str(row, col.get("series")));
-                pr.model = trim(str(row, col.get("model")));
-                pr.spec = trim(str(row, col.get("spec")));
-                pr.material = trim(str(row, col.get("material")));
-                pr.rearInsertCode = trim(str(row, col.get("rearInsertCode")));
-                pr.paper = trim(str(row, col.get("paper")));
+                pr.code = normCode(values.get("code"));
+                pr.name = normName(values.get("name"));
+                pr.clientGoodsNamePresent = col.containsKey("clientGoodsName") || edited.containsKey("clientGoodsName");
+                pr.clientGoodsName = trim(values.get("clientGoodsName"));
+                pr.cNumberPresent = col.containsKey("cNumber") || edited.containsKey("cNumber");
+                pr.cNumber = trim(values.get("cNumber"));
+                pr.series = normKey(values.get("series"));
+                pr.model = trim(values.get("model"));
+                pr.spec = trim(values.get("spec"));
+                pr.material = trim(values.get("material"));
+                pr.rearInsertCode = trim(values.get("rearInsertCode"));
+                pr.paper = trim(values.get("paper"));
                 pr.nameEn = com.uten.imp.features.master.goods.GoodsNameEn.normalize(
-                        str(row, col.get("nameEn")));
-                pr.colorName = normKey(str(row, col.get("colorName")));
-                pr.unitName = normKey(str(row, col.get("unitName")));
-                pr.sourceType = normKey(str(row, col.get("sourceType")));
-                pr.status = trim(str(row, col.get("status")));
-                pr.price = parsePrice(numberText(row, col.get("price")), pr.rowNum, headerErrors);
+                        values.get("nameEn"));
+                pr.colorName = normKey(values.get("colorName"));
+                pr.unitName = normKey(values.get("unitName"));
+                pr.sourceType = normKey(values.get("sourceType"));
+                pr.status = trim(values.get("status"));
+                pr.price = parsePrice(values.get("price"), pr.rowNum, headerErrors);
                 // 采购批量口径（V575）：负数按无效数字报错，不静默取绝对值。
                 pr.minOrderQty = parseQty(
-                        numberText(row, col.get("minOrderQty")), "最小起订量", pr.rowNum, headerErrors);
+                        values.get("minOrderQty"), "最小起订量", pr.rowNum, headerErrors);
                 pr.orderMultipleQty = parseQty(
-                        numberText(row, col.get("orderMultipleQty")), "订货倍数", pr.rowNum, headerErrors);
-                pr.categoryPath = str(row, col.get("categoryPath"));
+                        values.get("orderMultipleQty"), "订货倍数", pr.rowNum, headerErrors);
+                pr.categoryPath = values.get("categoryPath");
                 pr.categorySegments = splitCategory(pr.categoryPath);
                 rows.add(pr);
             }
@@ -955,12 +1092,110 @@ public class GoodsImportService {
         return currentUser.requireId();
     }
 
+    private static Map<Integer, Map<String, String>> normalizeCellCorrections(Map<Integer, String> codes,
+                                                                            Map<Integer, Map<String, String>> cells) {
+        Map<Integer, Map<String, String>> result = new HashMap<>();
+        int totalCells = 0;
+        if (cells != null) {
+            if (cells.size() > MAX_CODE_CORRECTIONS) throw correctionError("一次最多修正 2000 行，请分批处理");
+            for (var row : cells.entrySet()) {
+                requireCorrectionRowNumber(row.getKey());
+                if (row.getValue() == null || row.getValue().isEmpty()) throw correctionError("单元格修正内容无效");
+                Map<String, String> values = new HashMap<>();
+                for (var cell : row.getValue().entrySet()) {
+                    if (cell.getKey() == null || !CORRECTABLE_FIELDS.contains(cell.getKey()) || cell.getValue() == null
+                            || cell.getValue().length() > 4_096) {
+                        throw correctionError("单元格修正包含不支持的字段、空值或超长内容，系统标识不能修改");
+                    }
+                    values.put(cell.getKey(), normalizeCorrectedCell(cell.getKey(), cell.getValue()));
+                    if (++totalCells > MAX_CORRECTED_CELLS) throw correctionError("一次最多修正 10000 个单元格，请分批处理");
+                }
+                result.put(row.getKey(), values);
+            }
+        }
+        if (codes != null) {
+            if (codes.size() > MAX_CODE_CORRECTIONS) throw correctionError("一次最多修正 2000 行编号，请分批处理");
+            for (var row : codes.entrySet()) {
+                requireCorrectionRowNumber(row.getKey());
+                if (row.getValue() == null || row.getValue().length() > 4_096) throw correctionError("编号修正内容无效");
+                String code = normalizeCorrectedCell("code", row.getValue());
+                Map<String, String> values = result.computeIfAbsent(row.getKey(), ignored -> new HashMap<>());
+                if (values.containsKey("code") && !values.get("code").equals(code)) {
+                    throw correctionError("同一行的编号修正不一致，请重新检测");
+                }
+                if (!values.containsKey("code") && ++totalCells > MAX_CORRECTED_CELLS) {
+                    throw correctionError("一次最多修正 10000 个单元格，请分批处理");
+                }
+                values.put("code", code);
+            }
+        }
+        if (result.size() > MAX_CODE_CORRECTIONS) throw correctionError("一次最多修正 2000 行，请分批处理");
+        Map<Integer, Map<String, String>> immutable = new HashMap<>();
+        result.forEach((row, values) -> immutable.put(row, Map.copyOf(values)));
+        return Map.copyOf(immutable);
+    }
+
+    private static String normalizeCorrectedCell(String field, String value) {
+        if (!"code".equals(field)) return value;
+        String code = normCode(value);
+        if (code.length() > MAX_CORRECTED_CODE_LENGTH || code.codePoints().anyMatch(Character::isISOControl)) {
+            throw correctionError("修正编号不能超过 100 个字符或包含控制字符");
+        }
+        return code;
+    }
+
+    private static void requireCorrectionRowNumber(Integer row) {
+        if (row == null || row < 2 || row > 20_000) throw correctionError("单元格修正行号无效，请重新检测文件");
+    }
+
+    private static void validateCorrectionRows(Parsed parsed, Map<Integer, Map<String, String>> corrections) {
+        Set<Integer> actualRows = parsed.rows.stream().map(row -> row.rowNum)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!actualRows.containsAll(corrections.keySet())) {
+            throw correctionError("只能修正原文件的数据行，不能修改表头、空行或合计行");
+        }
+    }
+
+    private static Set<Integer> normalizeExcludedRows(Set<Integer> source) {
+        if (source == null || source.isEmpty()) return Set.of();
+        if (source.size() > 20_000 || source.stream().anyMatch(row -> row == null || row < 2 || row > 20_000)) {
+            throw correctionError("排除行号无效，请重新检测文件");
+        }
+        return Set.copyOf(source);
+    }
+
+    private static Set<Integer> validateExcludedRows(Parsed parsed, Set<Integer> source) {
+        Set<Integer> excluded = normalizeExcludedRows(source);
+        Set<Integer> actualRows = parsed.rows.stream().map(row -> row.rowNum)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!actualRows.containsAll(excluded)) {
+            throw correctionError("只能排除原文件的数据行，不能排除表头、空行或合计行");
+        }
+        return excluded;
+    }
+
+    private static ApiException correctionError(String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, message);
+    }
+
+    private static List<GoodsImportProblemRow> problemRows(Parsed parsed, List<GoodsImportError> errors) {
+        Set<Integer> affected = errors.stream().map(GoodsImportError::rowNum)
+                .collect(java.util.stream.Collectors.toSet());
+        return parsed.rows.stream().filter(row -> affected.contains(row.rowNum))
+                .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, row.cells)).toList();
+    }
+
     private UUID rememberPlan(String workbookHash,
                               String masterFingerprint,
                               String goodsFingerprint,
                               UUID actorId,
-                              List<PlannedRow> rows) {
-        long estimatedBytes = estimatePlanBytes(rows);
+                              List<PlannedRow> rows,
+                              Map<Integer, Map<String, String>> corrections,
+                              Set<Integer> excluded) {
+        long estimatedBytes = estimatePlanBytes(rows)
+                + corrections.values().stream().mapToLong(values -> 64L + values.entrySet().stream()
+                        .mapToLong(entry -> stringBytes(entry.getKey()) + stringBytes(entry.getValue())).sum()).sum()
+                + excluded.size() * 32L;
         if (estimatedBytes > MAX_CACHED_PLAN_BYTES || rows.size() > MAX_CACHED_ROWS) {
             throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE, "导入差异内容过多，请拆分文件后重新检测");
         }
@@ -976,7 +1211,7 @@ public class GoodsImportService {
             UUID id = UUID.randomUUID();
             plans.put(id, new ImportPlan(
                     id, actorId, workbookHash, masterFingerprint, goodsFingerprint,
-                    List.copyOf(rows), now.plus(PLAN_TTL), estimatedBytes));
+                    List.copyOf(rows), Map.copyOf(corrections), Set.copyOf(excluded), now.plus(PLAN_TTL), estimatedBytes));
             return id;
         }
     }
@@ -1002,7 +1237,8 @@ public class GoodsImportService {
         return value == null ? 0 : 64L + value.toString().length() * 2L;
     }
 
-    private ImportPlan requireAndConsumePlan(UUID planId, byte[] workbook) {
+    private ImportPlan requireAndConsumePlan(UUID planId, byte[] workbook, Map<Integer, Map<String, String>> corrections,
+                                             Set<Integer> excluded) {
         if (planId == null) {
             throw stalePlan("缺少检测计划");
         }
@@ -1021,6 +1257,9 @@ public class GoodsImportService {
                 plan.workbookHash().getBytes(StandardCharsets.US_ASCII),
                 actualHash.getBytes(StandardCharsets.US_ASCII))) {
             throw stalePlan("提交文件与检测文件不一致");
+        }
+        if (!plan.cellCorrections().equals(corrections) || !plan.excludedRowNums().equals(excluded)) {
+            throw stalePlan("单元格修正或排除行与检测计划不一致");
         }
         return plan;
     }
@@ -1338,6 +1577,7 @@ public class GoodsImportService {
 
     private static final class ParsedRow {
         int rowNum;
+        Map<String, String> cells;
         UUID goodsId;
         String code;
         String name;
@@ -1370,6 +1610,8 @@ public class GoodsImportService {
             String masterFingerprint,
             String goodsFingerprint,
             List<PlannedRow> rows,
+            Map<Integer, Map<String, String>> cellCorrections,
+            Set<Integer> excludedRowNums,
             Instant expiresAt,
             long estimatedBytes) {}
 

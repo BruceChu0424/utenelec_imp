@@ -110,7 +110,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testWidgets(
-    'new input immediately hides old export and rejects a late list response during debounce',
+    'new input immediately disables stale export and rejects a late list response during debounce',
     (tester) async {
       final goods = _FakeGoodsRepository(
         rankedSearch: true,
@@ -153,7 +153,12 @@ void main() {
       );
       await tester.pump();
       expect(find.text('迟到旧行'), findsNothing);
-      expect(find.byType(UtenExportButton), findsNothing);
+      final pendingExport = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(pendingExport.enabled, isFalse);
+      final pendingSelection = await pendingExport.prepareExport!();
+      expect(pendingSelection!.stillCurrent!(), isFalse);
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
       expect(goods.listCalls.last, (null, 'PART-001'));
@@ -166,6 +171,7 @@ void main() {
       final export = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );
+      expect(export.enabled, isTrue);
       expect(export.queryParams, isNot(contains('categoryId')));
       expect(export.queryParams['keyword'], 'PART-001');
       expect(export.queryParams['excludeDisabled'], isFalse);

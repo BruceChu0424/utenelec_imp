@@ -46,7 +46,7 @@ final class ActualCostEvidenceMath {
         outputCount++;outputQty=add(outputQty,line.effectiveQtyBase());outputAmount=add(outputAmount,line.knownAmountLocal());
         outputPending|=line.pending();
     }
-    void finish(UUID goodsId) {
+    void finish() {
         if(rows.isEmpty()) {
             objects=List.of();summary=new Summary(null,null,null,null,null,null,null,null,null,true,false,"INVENTORY_PRODUCTION_COST_ONLY",0);
             return;

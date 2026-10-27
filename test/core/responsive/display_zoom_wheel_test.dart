@@ -208,37 +208,51 @@ void main() {
           );
           await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
           await tester.pump();
-          final mouseResponses = <bool>[];
-          await wheel(
-            tester,
-            const Offset(0, 120),
-            at: const Offset(388, 998),
-            onRespond: ({required allowPlatformDefault}) =>
-                mouseResponses.add(allowPlatformDefault),
-          );
-          expect(
-            controller.offset,
-            0,
-            reason: 'Shift changes the mouse wheel axis before scrolling',
-          );
-          expect(mouseResponses, [true]);
-          final trackpadResponses = <bool>[];
-          await wheel(
-            tester,
-            const Offset(0, 120),
-            at: const Offset(388, 998),
-            kind: PointerDeviceKind.trackpad,
-            onRespond: ({required allowPlatformDefault}) =>
-                trackpadResponses.add(allowPlatformDefault),
-          );
-          expect(controller.offset * factor, closeTo(120, 0.001));
-          expect(trackpadResponses, [
-            false,
-          ], reason: 'Trackpad axes are not modified by Shift');
+          var expectedScreenOffset = 0.0;
+          for (final at in const [
+            Offset(388, 2),
+            Offset(388, 500),
+            Offset(388, 998),
+          ]) {
+            final mouseResponses = <bool>[];
+            await wheel(
+              tester,
+              const Offset(0, 120),
+              at: at,
+              onRespond: ({required allowPlatformDefault}) =>
+                  mouseResponses.add(allowPlatformDefault),
+            );
+            expect(
+              controller.offset * factor,
+              closeTo(expectedScreenOffset, 0.001),
+              reason: 'Shift changes the mouse wheel axis before scrolling',
+            );
+            expect(mouseResponses, [true]);
+            final trackpadResponses = <bool>[];
+            await wheel(
+              tester,
+              const Offset(0, 120),
+              at: at,
+              kind: PointerDeviceKind.trackpad,
+              onRespond: ({required allowPlatformDefault}) =>
+                  trackpadResponses.add(allowPlatformDefault),
+            );
+            expectedScreenOffset += 120;
+            expect(
+              controller.offset * factor,
+              closeTo(expectedScreenOffset, 0.001),
+            );
+            expect(trackpadResponses, [
+              false,
+            ], reason: 'Trackpad axes are not modified by Shift');
+          }
           await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
           await tester.pump();
           await wheel(tester, const Offset(0, 120), at: const Offset(388, 998));
-          expect(controller.offset * factor, closeTo(240, 0.001));
+          expect(
+            controller.offset * factor,
+            closeTo(expectedScreenOffset + 120, 0.001),
+          );
           final bar = tester.widget<RawScrollbar>(
             find.byWidgetPredicate((widget) => widget is RawScrollbar),
           );

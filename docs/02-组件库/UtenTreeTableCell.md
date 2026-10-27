@@ -1,6 +1,7 @@
 # UtenTreeTableCell（表格树形层级单元格）
 
 > 路径：`lib/shared/widgets/uten_tree_table_cell.dart` · 测试：`test/shared/widgets/uten_tree_table_cell_test.dart`
+> 连线公共入口（2026-10-26）：`lib/components/data_display/uten_tree_branch_guide.dart` 的 `UtenTreeBranchGuide` / `utenTreeGuideSegments`；结构投影继续使用 `lib/shared/widgets/uten_tree_row_projection.dart` 的 `utenTreeProjection`。表格单元格与页面/选择滑窗的分类、部门树共用几何和画笔，表格保留实线、原有展开图形、颜色及间距；本次提取不把分类树的小号加减方框应用到 BOM 表格。详见[本次治理回执](../99-项目治理/2026-10-26-分类树连接线与滑窗统一.md)。
 > 已接入：货品资料-组装信息（`goods_bom_tab.dart`，懒加载不传 `childCount`；**2026-09-12 用户口径「只显示名字和组件X级」**：不再传路径行/编号副标题，身份格 = 级联号徽标 + 「组件 N 级」 + 名字，编号看表格「编号」列；**2026-09-21 起该表开多选**：勾选列由 `MasterDataTableView.selectable` 渲染在层级格**之前**并随横滚冻结，展开箭头的 48×48 命中区与勾选/行点击仍互不抢手势，折叠起来的子行不参与表头三态全选）/ 生产物料分析统一物料表（`material_analysis_material_table.dart`，2026-09-10 起传 `childCount` = 当前投影可见的直接子件数：产品行 = 直挂子件数、物料行 = `childCountByParent`；「只看缺料」/表头筛选下是可见数而非 BOM 全量；汇总行副标题已有「N 来源」不传）。**凡在 MasterDataTableView/UtenEditableGrid 类表格里展示「父子层级行」，层级标识一律用本单元格，不得各页自写缩进**（2026-09-04 起）。`pathLabel` 路径行参数已随最后宿主下线（2026-09-12）删除。
 
 ## 一、解决什么
@@ -11,7 +12,7 @@
 UtenTreeTableCell 把层级表达收敛为**四重冗余标识**（颜色只是强化，永远不是唯一信号）：
 
 1. **缩进**：每级默认 16px，`indent` 参数可放宽（2026-10-10 物料分析口径「下面的箭头跟线挨在一起」：主表传 24，祖先竖线与箭头圆底的间隙从 2px 放到 10px，间隙 = indent − 14），`maxVisualDepth`（默认 10）封顶——超深旧 BOM 不至于把单元格拉爆；
-2. **连续参考线**：`_TreeGuidePainter` 画祖先竖线 + 分支拐角线，`ancestorContinuations` 精确控制「下边还有兄弟」的断线，`isLastChild` 收尾。**颜色按明暗对称调（2026-09-14）**：原来两种明暗都取 `outlineVariant`，白底上几乎与表格网格线同色；改为 `onSurfaceVariant` 两档——浅色 0.70（看得清层级走向又不抢名称）、深色 0.40（深底上线条本就更跳，压下去才不刺眼）。宿主给了 `foregroundColor` 时仍按它的 0.35 走；宿主给了 `guideColor` 时整笔直用（见参数表）；
+2. **连续参考线**：公共 `UtenTreeBranchGuide` 内部的 `_TreeGuidePainter` 调用 `utenTreeGuideSegments` 画祖先竖线 + 分支拐角线，`ancestorContinuations` 精确控制「下边还有兄弟」的断线，`isLastChild` 收尾；不在表格文件中另维护画笔。**颜色按明暗对称调（2026-09-14）**：原来两种明暗都取 `outlineVariant`，白底上几乎与表格网格线同色；改为 `onSurfaceVariant` 两档——浅色 0.70（看得清层级走向又不抢名称）、深色 0.40（深底上线条本就更跳，压下去才不刺眼）。宿主给了 `foregroundColor` 时仍按它的 0.35 走；宿主给了 `guideColor` 时整笔直用（见参数表）；
 3. **级联序号徽标**：`P1.1.2` 式，tabular 数字、按 depth%4 轮换取色（primary/secondary/tertiary/onSurfaceVariant）。**`sequence` 传空串即不渲染徽标**（2026-09-14：物料分析主表与三个分桶详情按用户口径去掉 P1 / P1.1，层级由缩进 + 连接线表达；货品 BOM 等宿主传非空仍照旧）；
 4. **显式层级标签**：`levelLabel`（如「组件 2 级」「产品」「物料汇总」），默认 `层级 N`。
 

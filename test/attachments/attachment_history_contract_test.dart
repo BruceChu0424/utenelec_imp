@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -53,7 +54,7 @@ class _Api extends Fake implements ApiClient {
     Map<String, dynamic>? query,
   }) async {
     paths.add(path);
-    return {'url': '/current-bytes'};
+    return {'url': '/attachments/raw/current-bytes'};
   }
 
   @override
@@ -92,6 +93,9 @@ void main() {
             }),
           ],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: StatefulBuilder(
                 builder: (_, setState) {
@@ -175,10 +179,16 @@ void main() {
       await service.downloadBytes(Attachment.fromJson(_file(historical: true)));
       expect(api.paths, ['/attachments/original/history/download']);
       api.paths.clear();
-      await service.downloadBytes(Attachment.fromJson(_file()));
+      await service.downloadBytes(
+        Attachment.fromJson({
+          ..._file(),
+          'sizeBytes': 3,
+          'sha256': sha256.convert([1, 2, 3]).toString(),
+        }),
+      );
       expect(api.paths, [
         '/attachments/original/download-grant',
-        '/current-bytes',
+        '/attachments/raw/current-bytes',
       ]);
       api.failure = StateError('retained original unavailable');
       await expectLater(

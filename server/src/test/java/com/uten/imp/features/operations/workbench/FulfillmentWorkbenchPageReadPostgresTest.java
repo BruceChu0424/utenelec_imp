@@ -59,8 +59,8 @@ class FulfillmentWorkbenchPageReadPostgresTest {
                         : booleans.contains(name) ? "boolean" : arrays.contains(name) ? "text[]"
                         : "lines".equals(name) ? "jsonb" : name.endsWith("_count") ? "bigint" : "text"))
                 .collect(java.util.stream.Collectors.joining(","));
-        connection.createStatement().execute("CREATE TEMP TABLE workbench_fixture(" + columns + ",visible_doc_no text)");
-        connection.createStatement().execute("CREATE TEMP SEQUENCE workbench_probe");
+        try(var statement=connection.createStatement()) { statement.execute("CREATE TEMP TABLE workbench_fixture(" + columns + ",visible_doc_no text)"); }
+        try(var statement=connection.createStatement()) { statement.execute("CREATE TEMP SEQUENCE workbench_probe"); }
     }
 
     @Test void emptySourceReturnsMetadataAndNeverEvaluatesAProbeRow() throws Exception {
@@ -121,7 +121,7 @@ class FulfillmentWorkbenchPageReadPostgresTest {
 
     @Test void warehouseDocumentFacetsRespectIssuedAndNeedDateRanges() throws Exception {
         insertRows();
-        connection.createStatement().execute("UPDATE workbench_fixture SET department='WAREHOUSE',issued_at=updated_at");
+        try(var statement=connection.createStatement()) { statement.execute("UPDATE workbench_fixture SET department='WAREHOUSE',issued_at=updated_at"); }
         LocalDate day = LocalDate.of(2026, 10, 1);
         for (var table : List.of(
                 new FulfillmentWorkbenchTableQuery("needDate", "asc", Map.of(), day, day, null, null),
@@ -164,7 +164,7 @@ class FulfillmentWorkbenchPageReadPostgresTest {
     }
 
     private void insertRows() throws Exception {
-        connection.createStatement().execute("""
+        try(var statement=connection.createStatement()) { statement.execute("""
                 INSERT INTO workbench_fixture(department,task_id,goods_id,goods_code,goods_name,plan_no,
                     task_status,display_stage,exception_code,updated_at,need_date,open_qty,open_line_count,visible_doc_no)
                 VALUES
@@ -176,6 +176,6 @@ class FulfillmentWorkbenchPageReadPostgresTest {
                     'COMPLETED','COMPLETED',NULL,'2026-09-01','2026-09-01',0,0,NULL),
                 ('PURCHASE','00000000-0000-0000-0000-000000000004','%s','A','货品甲','P3',
                     'FINANCE_APPROVED','FINANCE_APPROVED','OTHER','2026-10-03','2026-10-03',2,1,'D3')
-                """.formatted(GOODS_A, GOODS_B, GOODS_A, GOODS_A));
+                """.formatted(GOODS_A, GOODS_B, GOODS_A, GOODS_A)); }
     }
 }

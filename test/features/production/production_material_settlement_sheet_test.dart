@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_material_settlement_sheet.dart';
 
@@ -45,7 +46,18 @@ void main() {
         findsNothing,
       );
       expect(find.text('已结清原料'), findsNothing);
+      final equation = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info == '每项：已领 = 实耗 + 已退 + 损耗 + 在制 + 待登记',
+      );
+      expect(equation, findsOneWidget);
+      await tester.ensureVisible(equation);
+      await tester.tap(equation);
+      await tester.pumpAndSettle();
       expect(find.text('每项：已领 = 实耗 + 已退 + 损耗 + 在制 + 待登记'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('材料数量台账'));
       await tester.tap(find.text('材料数量台账'));
       await tester.pumpAndSettle();

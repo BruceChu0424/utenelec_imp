@@ -56,7 +56,7 @@ BEGIN
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
     -- The reviewed inventory includes the later archive/file/measurement schema
-    -- through V937. Future root tables still require explicit classification.
+    -- through V946. Future root tables still require explicit classification.
     -- SEED_OR_ADMIN retains the existing explicit master/admin checks above;
     -- it never grants permission to reuse a previous business import.
     CREATE TEMP TABLE bootstrap_target_table_inventory (
@@ -434,8 +434,13 @@ BEGIN
         ('purchase_returns','EMPTY'),
         ('rd_task_forwarders','EMPTY'),
         ('rd_tasks','EMPTY'),
+        ('read_scope_change_events','EMPTY'),
+        -- The fixed immutable domain catalog is installed by the migrations;
+        -- any committed change event or export identity proves prior use.
+        ('read_scope_domains','SEED_OR_ADMIN'),
         ('refresh_tokens','SEED_OR_ADMIN'),
         ('remote_access_policy','SEED_OR_ADMIN'),
+        ('report_export_jobs','EMPTY'),
         ('report_materialized_view_refresh_state','SEED_OR_ADMIN'),
         ('sales_alias_document_evidence','SEED_OR_ADMIN'),
         ('sales_document_learning_receipts','EMPTY'),

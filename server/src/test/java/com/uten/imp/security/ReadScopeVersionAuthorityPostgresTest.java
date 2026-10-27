@@ -56,7 +56,14 @@ class ReadScopeVersionAuthorityPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "none")); bean.afterPropertiesSet();
         factory = bean.getObject(); transactions = new JpaTransactionManager(factory);
     }
-    @AfterAll static void closeDatabase() throws Exception { if (factory != null) factory.close(); if (database != null) database.close(); }
+    @AfterAll static void closeDatabase() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
 
     @BeforeEach void identities() {
         delegated.set(false);
@@ -247,7 +254,13 @@ class ReadScopeVersionAuthorityPostgresTest {
     }
     private void grant(String scope) { db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,?,?)", actor, scope, other); }
     private long generation(String domain) { return db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=?", Long.class, domain); }
-    private Set<String> permissions() { var result = new HashSet<>(BASE); if (delegated.get()) result.add("sales:view:all"); return Set.copyOf(result); }
+    private Set<String> permissions() {
+        var result = new HashSet<>(BASE);
+        if (delegated.get()) {
+            result.add("sales:view:all");
+        }
+        return Set.copyOf(result);
+    }
     private AuthUser user() { return new AuthUser(actor, employee, "scope-reader", permissions(), false, true, false); }
     private UUID employee(String label) {
         UUID id = UUID.randomUUID(); db.update("""

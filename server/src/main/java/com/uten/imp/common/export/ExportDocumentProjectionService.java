@@ -55,6 +55,7 @@ public class ExportDocumentProjectionService {
             private final Map<String,DocumentPageSink.Section> sources=new HashMap<>();
             private final Map<String,List<ExportColumn>> projectedColumns=new HashMap<>();
             private boolean begun;
+            @Override
             public void begin(DocumentPageSink.Header header) {
                 if(begun)throw new IllegalStateException("Document projection header already supplied");begun=true;
                 List<DocumentPageSink.Section> sections=new ArrayList<>();
@@ -67,6 +68,7 @@ public class ExportDocumentProjectionService {
                 }
                 destination.begin(new DocumentPageSink.Header(header.title(),header.metadata(),sections,header.expectedPrimaryRows()));
             }
+            @Override
             public void accept(DocumentPageSink.Page page) {
                 var original=sources.get(page.sectionId());
                 if(!begun||original==null)throw new IllegalStateException("Document projection source section is unknown");

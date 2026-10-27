@@ -69,7 +69,10 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         properties.setProperty("hibernate.show_sql", "false");
         properties.setProperty("hibernate.jdbc.time_zone", "UTC");
         properties.put("hibernate.session_factory.statement_inspector",(org.hibernate.resource.jdbc.spi.StatementInspector)sql->{
-            if(recordingExport)exportSql.add(sql);return sql;
+            if (recordingExport) {
+                exportSql.add(sql);
+            }
+            return sql;
         });
         factory.setJpaProperties(properties);
         factory.afterPropertiesSet();

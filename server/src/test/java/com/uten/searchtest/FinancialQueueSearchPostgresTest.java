@@ -335,6 +335,11 @@ class FinancialQueueSearchPostgresTest {
             when(query.setParameter(anyString(), any())).thenAnswer(bind -> { params.put(bind.getArgument(0),bind.getArgument(1)); return query; });
             when(query.setFirstResult(anyInt())).thenAnswer(bound -> { bounds[0]=bound.getArgument(0); return query; });
             when(query.setMaxResults(anyInt())).thenAnswer(bound -> { bounds[1]=bound.getArgument(0); return query; });
+            // NativeFacets preserves the caller's configured bound. Model the
+            // real Query getter contract rather than Mockito's default zero,
+            // which would silently turn a valid grouped query into LIMIT 0.
+            when(query.getFirstResult()).thenAnswer(ignored -> bounds[0]);
+            when(query.getMaxResults()).thenAnswer(ignored -> bounds[1]);
             when(query.getResultList()).thenAnswer(ignored -> {
                 String statement = sql;
                 if (!sql.toLowerCase(Locale.ROOT).contains("limit :") && bounds[1] != Integer.MAX_VALUE) statement += " LIMIT " + bounds[1] + " OFFSET " + bounds[0];

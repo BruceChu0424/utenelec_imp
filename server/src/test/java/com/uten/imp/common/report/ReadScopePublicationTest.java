@@ -98,7 +98,7 @@ class ReadScopePublicationTest {
             when(authority.scopeFor("native_warehouse_tasks",subject,task)).thenReturn("a".repeat(64));
             var request=new MockHttpServletRequest("POST","/api/warehouse/history/receipts/facets");
             var response=new MockHttpServletResponse();
-            assertEquals("a".repeat(64),ReadScopePublication.capture(request,response,authority,users,"native_warehouse_tasks",task));
+            assertEquals("a".repeat(64),ReadScopePublication.capture(request,authority,users,"native_warehouse_tasks",task));
             var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
             assertSame(subject,proof.subject());assertEquals(task,proof.businessTasks());
             var body=Map.of("items",List.of());
@@ -129,7 +129,7 @@ class ReadScopePublicationTest {
         when(authority.scopeFor("native_workshop_tasks",subject,false)).thenReturn("a".repeat(64),"b".repeat(64));
         var request=new MockHttpServletRequest("POST","/api/production/workshop/tasks/facets");
         var response=new MockHttpServletResponse();
-        ReadScopePublication.capture(request,response,authority,users,"native_workshop_tasks",false);
+        ReadScopePublication.capture(request,authority,users,"native_workshop_tasks",false);
         var failure=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(
                 Map.of("items",List.of("old authorized row")),null,MediaType.APPLICATION_JSON,null,
                 new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));

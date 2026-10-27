@@ -110,7 +110,7 @@ class GoodsImportRestoreDeletedTest {
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         return new GoodsImportService(
-                goodsService, goods, null, categories,
+                goodsService == null ? mock(GoodsService.class) : goodsService, goods, null, categories,
                 null, colors, null, units, em, currentUser, null);
     }
 

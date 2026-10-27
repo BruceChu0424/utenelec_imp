@@ -12,16 +12,23 @@ class UtenReviewInputCell extends StatelessWidget {
     required this.child,
     this.beforeLabel,
     this.beforeKey,
+    this.decimalValues = true,
   });
   final String? before;
   final String? after;
   final String? beforeLabel;
   final Key? beforeKey;
+
+  /// Numeric review cells compare equivalent decimal scales by default.
+  /// Identifiers and other text preserve every character when this is false.
+  final bool decimalValues;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    if (financeExactTrimmed(before) == financeExactTrimmed(after)) return child;
+    final changed = decimalValues
+        ? financeExactTrimmed(before) != financeExactTrimmed(after)
+        : (before ?? '') != (after ?? '');
     final red = Theme.of(context).colorScheme.error;
     final inTable = UtenTableCellInputTheme.contains(context);
     final original = beforeLabel ?? before ?? '未填写';
@@ -37,7 +44,9 @@ class UtenReviewInputCell extends StatelessWidget {
       ),
     );
     return Semantics(
-      label: '原值 ${beforeLabel ?? before ?? "未填写"}，修改为 ${after ?? "未填写"}',
+      label: changed
+          ? '原值 ${beforeLabel ?? before ?? "未填写"}，修改为 ${after ?? "未填写"}'
+          : null,
       // Table hosts provide finite column widths. Avoid LayoutBuilder here:
       // stretch rows measure intrinsic height to draw continuous tree guides.
       child: inTable
@@ -47,16 +56,22 @@ class UtenReviewInputCell extends StatelessWidget {
           ? Row(
               children: [
                 Flexible(
-                  child: Tooltip(message: original, child: retained),
+                  flex: changed ? 1 : 0,
+                  child: changed
+                      ? Tooltip(message: original, child: retained)
+                      : const SizedBox.shrink(),
                 ),
-                const SizedBox(width: 6),
-                Expanded(flex: 2, child: child),
+                SizedBox(width: changed ? 6 : 0),
+                Expanded(flex: changed ? 2 : 1, child: child),
               ],
             )
           : Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [retained, child],
+              // Keep the input in the same slot before, during and after an
+              // edit. Switching between the bare child and this layout would
+              // recreate its state and disconnect the active text input.
+              children: [changed ? retained : const SizedBox.shrink(), child],
             ),
     );
   }

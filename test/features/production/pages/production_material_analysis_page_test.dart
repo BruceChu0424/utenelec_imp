@@ -516,7 +516,16 @@ void main() {
           if (!request.path.endsWith('/sales-candidates')) return null;
           final keyword = request.queryParameters['keyword'];
           if (keyword == 'old') return slow.future;
-          if (keyword == 'new') return _pagedSalesCandidatesJson(2);
+          if (keyword == 'new') {
+            return {
+              ..._pagedSalesCandidatesJson(2),
+              // This search has one match, so B is on its first page. Returning
+              // page=2 to a page=1 request would test an invalid server result.
+              'page': 1,
+              'totalPages': 1,
+              'total': 1,
+            };
+          }
           return _salesCandidatesJson();
         },
       );
@@ -534,7 +543,8 @@ void main() {
         harness.requests.where(
           (request) =>
               request.path.endsWith('/sales-candidates') &&
-              request.queryParameters['keyword'] == 'new',
+              request.queryParameters['keyword'] == 'new' &&
+              request.queryParameters['page'] == 1,
         ),
         hasLength(1),
       );
@@ -1759,7 +1769,12 @@ void main() {
             .value,
         isTrue,
       );
-      expect(requestedPages, containsAllInOrder([1, 2, 1]));
+      expect(requestedPages, containsAllInOrder([1, 2]));
+      expect(
+        requestedPages.where((page) => page == 1),
+        hasLength(1),
+        reason: '返回已准备的第一页保持选择与数量，不重复网络读取',
+      );
     },
   );
 
@@ -6612,9 +6627,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('material-borrow-dialog')), findsOneWidget);
+      final transferHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('接受计划无需返还') ?? false),
+      );
+      expect(transferHint, findsOneWidget);
+      await tester.tap(transferHint);
+      await tester.pumpAndSettle();
       expect(find.textContaining('跨计划让料'), findsOneWidget);
       expect(find.textContaining('优先待补'), findsOneWidget);
       expect(find.textContaining('接受计划无需返还'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       // 只列出其它产品中缺同种料的路径（第二测试产品 · 共享电机）。
       await tester.tap(
         find.byKey(const ValueKey('material-borrow-target-agg-path-2')),

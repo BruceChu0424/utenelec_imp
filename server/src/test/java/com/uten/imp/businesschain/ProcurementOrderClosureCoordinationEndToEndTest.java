@@ -202,7 +202,7 @@ class ProcurementOrderClosureCoordinationEndToEndTest {
     @Test void directClosureCreatesNoFinanceApprovalQueueCountFacetOrCurrentTaskRow() {
         var f=fixture("queue-state");harness.loginAs(f.reviewer());
         long before=finance.countTasksByType("CLOSURE_PENDING").getOrDefault("PURCHASE",0L);
-        var pending=submit(f,"CLOSE");harness.loginAs(f.reviewer());
+        submit(f,"CLOSE");harness.loginAs(f.reviewer());
         assertThat(finance.countTasksByType("CLOSURE_PENDING").getOrDefault("PURCHASE",0L)).isEqualTo(before);
         String bill=db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
         var page=finance.tasks(1,50,"PURCHASE",bill,null,null,null,"CLOSURE_PENDING");

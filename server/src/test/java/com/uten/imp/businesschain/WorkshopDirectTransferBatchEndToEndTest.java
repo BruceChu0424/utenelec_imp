@@ -123,6 +123,13 @@ class WorkshopDirectTransferBatchEndToEndTest {
      */
     private static final long APPROVE_TRIGGER_CALLS_BUDGET = 450;
 
+    // V942 observes authorization-source row events without changing the
+    // existing business trigger graph. The reviewed one-line direct-approval
+    // profile has 16 column observers and exactly one deduplicated warehouse
+    // authorization event. These exact functions are bounded separately; no
+    // name-prefix allowance or increase of the original 450-call budget.
+    private static final long NATIVE_SCOPE_OBSERVER_CALLS_BUDGET = 16;
+
     /**
      * 一行报工分给三个上层工单时审核的语句预算(ADR-127 §8，2026-09-27)。
      * 逐块办，每多一块约 295 条、线性增长(2026-09-27 实测 1052 条，改前 1054 条)；钉住的是「不再随块数平方变慢」之后的形状，
@@ -404,11 +411,24 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 "V928 protects exactly the two movements and their balance write attempts: " + physicalMeasurement);
         assertTrue(reservationMeasurement > 0 && reservationMeasurement <= 2 + 2,
                 "V928 reservation protection stays bounded by the two creates and consumes: " + reservationMeasurement);
-        long originalCalls = profile.triggerCalls() - archive - physicalMeasurement - reservationMeasurement;
+        long nativeScopeObservers = profile.calls().getOrDefault("fn_mark_native_scope_columns", 0L);
+        long scopeEventGuards = profile.calls().getOrDefault("fn_guard_read_scope_event_insert", 0L);
+        assertTrue(nativeScopeObservers > 0 && nativeScopeObservers <= NATIVE_SCOPE_OBSERVER_CALLS_BUDGET,
+                "V942 observers stay inside the reviewed one-line write graph: " + nativeScopeObservers);
+        assertEquals(1, scopeEventGuards,
+                "all warehouse source changes in this transaction deduplicate to one protected scope event");
+        assertEquals(List.of("native_warehouse_tasks"), db.queryForList(
+                        "SELECT domain FROM read_scope_change_events WHERE change_txid=? ORDER BY domain",
+                        String.class, profile.transactionId()),
+                "the measured approval changes only the warehouse-task authorization source");
+        long originalCalls = profile.triggerCalls() - archive - physicalMeasurement - reservationMeasurement
+                - nativeScopeObservers - scopeEventGuards;
         System.out.println("APPROVE-TRIGGER-BUDGET raw=" + profile.triggerCalls() + " original=" + originalCalls
                 + " archive=" + archive + " physicalMeasurement=" + physicalMeasurement
-                + " reservationMeasurement=" + reservationMeasurement);
-        assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET + 59 + (2 + 2 + 1) + (2 + 2),
+                + " reservationMeasurement=" + reservationMeasurement
+                + " nativeScopeObservers=" + nativeScopeObservers + " scopeEventGuards=" + scopeEventGuards);
+        assertTrue(profile.triggerCalls() <= APPROVE_TRIGGER_CALLS_BUDGET + 59 + (2 + 2 + 1) + (2 + 2)
+                        + NATIVE_SCOPE_OBSERVER_CALLS_BUDGET + 1,
                 "raw trigger calls retain the original budget plus only the separately bounded new guard events");
         assertTrue(originalCalls <= APPROVE_TRIGGER_CALLS_BUDGET,
                 "一行直送审核原有触发器函数被调了 " + originalCalls + " 次，超出预算 "
@@ -1150,7 +1170,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     }
 
     private record TriggerProfile(ProductionJdbcMeasurement.Sample sample, java.util.Map<String, Long> calls,
-                                  long triggerCalls, long deferredCheckCalls, String top) {}
+                                  long triggerCalls, long deferredCheckCalls, String top, long transactionId) {}
 
     /** 触发器函数调用次数快照：只取返回 trigger 的函数，按函数名汇总，不含任何参数或业务值。 */
     private java.util.Map<String, Long> triggerFunctionCalls() {
@@ -1191,9 +1211,11 @@ class WorkshopDirectTransferBatchEndToEndTest {
         UUID reportId = reports.create(report).getId();
         var before = triggerFunctionCalls();
         ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        long[] transactionId = {0};
         try {
             new org.springframework.transaction.support.TransactionTemplate(transactionManager)
                     .executeWithoutResult(status -> {
+                        transactionId[0] = db.queryForObject("SELECT txid_current()", Long.class);
                         // 只对这一笔真实审核事务计数，提交时 SET LOCAL 随事务结束。
                         db.execute("SET LOCAL track_functions = 'all'");
                         db.execute("SELECT pg_stat_force_next_flush()");
@@ -1221,7 +1243,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 .sorted((a, b) -> Long.compare(b.getValue(), a.getValue()))
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(java.util.stream.Collectors.joining(","));
-        return new TriggerProfile(sample, delta, total, deferred, top);
+        return new TriggerProfile(sample, delta, total, deferred, top, transactionId[0]);
     }
 
     /** 同 {@link #transfer}，但只对「审核」那一段计量，返回本次审核的 JDBC 剖面。 */

@@ -10,8 +10,10 @@ import 'core/constants/app_info.dart';
 import 'components/feedback/uten_context_menu_policy.dart';
 import 'core/l10n/gen/app_localizations.dart';
 import 'core/platform/platform_window_title.dart';
+import 'core/platform/desktop_window.dart';
 import 'core/responsive/display_zoom.dart';
 import 'core/router/app_router.dart';
+import 'core/router/route_names.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
 import 'core/theme/uten_control_theme.dart';
@@ -31,6 +33,7 @@ import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
 import 'shared/platform_branding/platform_branding_provider.dart';
 import 'shared/widgets/reauth_dialog.dart';
+import 'shared/widgets/desktop_window_host.dart';
 import 'features/auth/widgets/remote_mfa_prompt.dart';
 import 'shared/widgets/user_activity_tracker.dart';
 import 'shared/widgets/server_maintenance_host.dart';
@@ -118,7 +121,7 @@ class UtenApp extends ConsumerWidget {
         // textScaler——文字、图标、卡片、间距同步变化；自动档为 100%，
         // 系统无障碍曲线原样继承）。之下的 MediaQuery 已换算成画布口径，
         // 见 core/responsive/display_zoom.dart。
-        return UtenContextMenuPolicy(
+        final appContent = UtenContextMenuPolicy(
           child: PlatformTablesHost(
             key: ValueKey(
               'tables:${session.user?.id}:${session.actor?.id}:$impersonating',
@@ -208,6 +211,21 @@ class UtenApp extends ConsumerWidget {
                 ),
               ),
             ),
+          ),
+        );
+        return ListenableBuilder(
+          listenable: router.routeInformationProvider,
+          child: appContent,
+          builder: (context, child) => DesktopWindowHost(
+            // Rescue has its own access checks and needs the regular workspace
+            // even when the business session is unavailable.
+            mode:
+                session.isLoggedIn ||
+                    router.routeInformationProvider.value.uri.path ==
+                        RouteName.disasterRecovery
+                ? DesktopWindowMode.main
+                : DesktopWindowMode.login,
+            child: child!,
           ),
         );
       },

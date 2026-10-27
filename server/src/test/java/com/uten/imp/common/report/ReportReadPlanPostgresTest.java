@@ -95,7 +95,7 @@ class ReportReadPlanPostgresTest {
             Files.createDirectories(EVIDENCE);
             new ObjectMapper().writerWithDefaultPrettyPrinter().writeValue(EVIDENCE.resolve("metrics.json").toFile(), metrics);
         } finally {
-            if (session != null) { if (session.getTransaction().isActive()) session.getTransaction().rollback();session.close(); }
+            if (session != null) { if (session.getTransaction().isActive()) {session.getTransaction().rollback();} session.close(); }
             if (sessions != null) sessions.close();
             if (reportConnection != null) { reportConnection.rollback(); reportConnection.close(); }
             PG.stop();
@@ -303,7 +303,7 @@ class ReportReadPlanPostgresTest {
             String resource = "/com/uten/imp/" + name.replace('.', '/') + ".class";
             try (var bytes = ReportReadPlanPostgresTest.class.getResourceAsStream(resource)) {
                 var digest = java.security.MessageDigest.getInstance("SHA-256");
-                Objects.requireNonNull(bytes).transferTo(new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), digest));
+                try(var hashing=new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(), digest)) { Objects.requireNonNull(bytes).transferTo(hashing); }
                 runtimeClasses.put(name, HexFormat.of().formatHex(digest.digest()));
             }
         }
@@ -353,8 +353,12 @@ class ReportReadPlanPostgresTest {
         try (var archive = new ZipFile(file.toFile()); var sheet = archive.getInputStream(archive.getEntry("xl/worksheets/sheet1.xml"))) {
             parser.newSAXParser().parse(sheet, new org.xml.sax.helpers.DefaultHandler() {
                 int row;String cell;String valueElement;StringBuilder value;
-                @Override public void startElement(String uri, String local, String name, org.xml.sax.Attributes attributes) {
-                    if (name.equals("row")) { row = Integer.parseInt(attributes.getValue("r"));if (row > 1) count.incrementAndGet(); }
+                @Override public void startElement(String uri, String local, String name, org.xml.sax.Attributes attributes) throws org.xml.sax.SAXException {
+                    if (name.equals("row")) {
+                        try { row = Integer.parseInt(attributes.getValue("r")); }
+                        catch(NumberFormatException invalid) { throw new org.xml.sax.SAXException("Worksheet row identity is invalid",invalid); }
+                        if (row > 1) count.incrementAndGet();
+                    }
                     if (name.equals("c")) cell = attributes.getValue("r");
                     if (name.equals("v") || name.equals("t")) { value = new StringBuilder();valueElement = name; }
                 }

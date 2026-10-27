@@ -55,6 +55,13 @@ class Win32Window {
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
+  // The same native window/Flutter engine hosts the compact sign-in surface and
+  // the ordinary resizable application. Repeated mode updates are no-ops.
+  bool SetMainWindowMode(bool main_mode);
+  bool BeginWindowDrag();
+  bool MinimizeWindow();
+  bool CloseWindow();
+
  protected:
   // Processes and route salient window messages for mouse handling,
   // size change and DPI. Delegates handling of these to member overloads that
@@ -89,6 +96,14 @@ class Win32Window {
 
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);
+
+  void CenterClientSize(int width, int height);
+  void ConstrainToWorkArea();
+
+  bool main_mode_ = false;
+  bool shown_ = false;
+  bool has_main_placement_ = false;
+  WINDOWPLACEMENT main_placement_ = {};
 
   bool quit_on_close_ = false;
 

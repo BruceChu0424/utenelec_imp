@@ -36,7 +36,7 @@ class GoodsActualCostStreamingExportTest {
              "gaps":[{"code":"原始未归集","component":"MATERIAL"}]}
             """,ActualCostSnapshot.class);
     }
-    private final class Read implements StreamingRead {
+    private static final class Read implements StreamingRead {
         final ActualCostSnapshot snapshot;boolean closed,fail;
         Read(ActualCostSnapshot snapshot){this.snapshot=snapshot;}
         @Override public StreamingHeader header(){
@@ -62,8 +62,8 @@ class GoodsActualCostStreamingExportTest {
         var rows=new LinkedHashMap<String,List<Map<String,Object>>>();
         var header=new java.util.concurrent.atomic.AtomicReference<DocumentPageSink.Header>();
         try(var scope=DocumentPageSink.open(new DocumentPageSink.Consumer(){
-            public void begin(DocumentPageSink.Header value){header.set(value);}
-            public void accept(DocumentPageSink.Page page){assertThat(page.rows().size()).isLessThanOrEqualTo(100);rows.computeIfAbsent(page.sectionId(),id->new ArrayList<>()).addAll(page.rows());}
+            @Override public void begin(DocumentPageSink.Header value){header.set(value);}
+            @Override public void accept(DocumentPageSink.Page page){assertThat(page.rows().size()).isLessThanOrEqualTo(100);rows.computeIfAbsent(page.sectionId(),id->new ArrayList<>()).addAll(page.rows());}
         })) {service.streamExport(snapshot.filter(),digest,ExportDocument.MAX_SECTION_ROWS);}
         assertThat(read.closed).isTrue();assertThat(header.get().expectedPrimaryRows()).isEqualTo(1);
         for(int index=0;index<expected.sections().size();index++){

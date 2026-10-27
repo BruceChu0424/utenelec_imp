@@ -61,7 +61,14 @@ void main() {
       table.facets.keys,
       containsAll(<String>['clientId', 'accountId', 'status']),
     );
-    expect(table.facets['clientId']?.single.value, 'party-1');
+    // Party candidates are paged on demand, not preloaded as a full dictionary.
+    expect(table.facets['clientId'], isEmpty);
+    final clients = await table.facetPageLoaders['clientId']!('', 1);
+    expect(clients.items.single.value, 'party-1');
+    expect(clients.hasMore, isFalse);
+    expect(api.clientQueries.single['page'], 1);
+    expect(api.clientQueries.single['size'], 100);
+    expect(api.clientQueries.single['excludeLegacyFinanceStub'], isTrue);
     expect(table.facets['accountId']?.single.value, 'account-1');
 
     table.onFilterChanged('clientId', 'party-1');
@@ -175,12 +182,25 @@ class _FinanceFilterApi extends ApiClient {
   _FinanceFilterApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final clientQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/clients') {
+      clientQueries.add(Map<String, dynamic>.from(query!));
+      return {
+        'items': [
+          {'id': 'party-1', 'name': '客户甲'},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
     lastQuery = query == null ? null : Map<String, dynamic>.from(query);
     if (path == '/finance/reconciliations') {
       return {

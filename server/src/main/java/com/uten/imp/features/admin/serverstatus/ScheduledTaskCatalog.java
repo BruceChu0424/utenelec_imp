@@ -56,6 +56,8 @@ public final class ScheduledTaskCatalog {
                     "每 10 分钟给已经盘点、还没结算的车间内料仓补做结算; 差报工审核、单个重量或发料记录的, 通知该补的人, 补完自动结算。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",
                     "每 5 分钟刷新销售、采购、生产、库存、委外和应收应付的报表汇总。")),
+            Map.entry("ReportExportWorker.poll", new Entry("报表导出处理",
+                    "每两秒接手已授权的报表导出请求，分批生成完整文件并核对读取权限；过期结果按保留策略清理，原业务记录不改变。")),
             Map.entry("ServerStatusAlertScheduler.scan", new Entry("服务器状态告警推送",
                     "每 5 分钟检查服务器状态, 越线时给持有接收权的人发站内通知。")),
             Map.entry("ScheduledServerUpdateDispatcher.dispatchDue", new Entry("预约服务器更新",

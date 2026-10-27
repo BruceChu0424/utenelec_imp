@@ -30,7 +30,7 @@ class GoodsImportRestoreOwnerScopeTest {
     }
     private static GoodsService service(GoodsRepository repository,OwnerVisibility visibility) {
         var service=new GoodsService(repository,mock(MaterialCategoryRepository.class),mock(ColorRepository.class),mock(UnitRepository.class),mock(MouldRepository.class),mock(TxSessionVars.class),mock(EntityManager.class),mock(CategoryDrivenCodeService.class),visibility,mock(SecurityContextCurrentUser.class),mock(GoodsCostMasker.class),mock(GoodsMasterRelationshipResolver.class));
-        ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(service,"goodsReadScopePolicy"),"ownerScopeEnabled",true);
         return service;
     }
 }

@@ -1,8 +1,11 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/uten_scrollbar_style.dart';
 import '../feedback/uten_motion.dart';
 import 'uten_scrollbar_arrow_buttons.dart';
+import 'uten_scrollbar_rail_delegate.dart';
 
 /// A visible capsule thumb inside a fixed, separate vertical track. The SDK
 /// owns scrolling/dragging and paints neither thumb nor track without overflow.
@@ -37,6 +40,8 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
   bool _overflow = false;
   bool _metricsCheckScheduled = false;
   double _viewportExtent = 0;
+  Set<LogicalKeyboardKey> _axisModifiers = const {};
+  bool _axisModifierPressed = false;
 
   double get _currentViewportExtent =>
       widget.controller.positions.length == 1 &&
@@ -47,7 +52,32 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleKey);
     _scheduleMetricsCheck();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _axisModifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
+    _axisModifierPressed = _hasAxisModifier;
+  }
+
+  bool get _hasAxisModifier =>
+      HardwareKeyboard.instance.logicalKeysPressed.any(_axisModifiers.contains);
+
+  bool _handleKey(KeyEvent _) {
+    final pressed = _hasAxisModifier;
+    if (pressed != _axisModifierPressed) {
+      setState(() => _axisModifierPressed = pressed);
+    }
+    return false;
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleKey);
+    super.dispose();
   }
 
   bool get _hasOverflow {
@@ -101,6 +131,26 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
     });
   }
 
+  void _wheel(PointerSignalEvent event) {
+    if (!widget.visible || !widget.interactive || !_inLane(event)) return;
+    final position = UtenScrollbarRailTarget.resolve(
+      controller: widget.controller,
+    );
+    if (position == null) return;
+    position.handlePointerSignal(
+      context,
+      event,
+      isCurrent: () =>
+          mounted &&
+          identical(
+            position.identity,
+            UtenScrollbarRailTarget.resolve(
+              controller: widget.controller,
+            )?.identity,
+          ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant UtenVerticalScrollbar oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -133,6 +183,7 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
       },
       child: Listener(
         behavior: HitTestBehavior.translucent,
+        onPointerSignal: _wheel,
         onPointerDown: (event) {
           if (widget.visible && widget.interactive && _inLane(event)) {
             setState(() => _pressed = true);
@@ -198,7 +249,10 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
                     controller: widget.controller,
                     thumbVisibility: widget.visible && widget.thumbVisibility,
                     trackVisibility: false,
-                    interactive: widget.visible && widget.interactive,
+                    interactive:
+                        widget.visible &&
+                        widget.interactive &&
+                        !_axisModifierPressed,
                     notificationPredicate: accepts,
                     thumbColor: widget.visible
                         ? visual.thumbColor
@@ -225,7 +279,10 @@ class _UtenVerticalScrollbarState extends State<UtenVerticalScrollbar> {
                       controller: widget.controller,
                       thumbVisibility: widget.visible && widget.thumbVisibility,
                       trackVisibility: false,
-                      interactive: widget.visible && widget.interactive,
+                      interactive:
+                          widget.visible &&
+                          widget.interactive &&
+                          !_axisModifierPressed,
                       notificationPredicate: accepts,
                       scrollbarOrientation: ScrollbarOrientation.right,
                       child: surface,

@@ -1281,14 +1281,16 @@ class _ReceiptApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/clients/dict') {
-      return const [
-        {'id': 'client-1', 'name': '甲客户'},
+    if (path == '/master/clients/lookup') {
+      return [
+        if (query?['ids'].toString().split(',').contains('client-1') ?? false)
+          const {'id': 'client-1', 'name': '甲客户'},
       ];
     }
-    if (path == '/master/suppliers/dict') {
-      return const [
-        {'id': 'agent-1', 'name': '测试外贸代理'},
+    if (path == '/master/suppliers/lookup') {
+      return [
+        if (query?['ids'].toString().split(',').contains('agent-1') ?? false)
+          const {'id': 'agent-1', 'name': '测试外贸代理'},
       ];
     }
     if (path == '/master/accounts/dict') {

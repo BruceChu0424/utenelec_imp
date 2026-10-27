@@ -63,7 +63,7 @@ class GoodsNarrowWritePostgresTest {
         service=new GoodsService(repo,mock(MaterialCategoryRepository.class),mock(ColorRepository.class),mock(UnitRepository.class),
                 mock(MouldRepository.class),mock(TxSessionVars.class),em,mock(CategoryDrivenCodeService.class),visibility,current,
                 mock(GoodsCostMasker.class),mock(GoodsMasterRelationshipResolver.class));
-        ReflectionTestUtils.setField(service,"goodsOwnerScopeEnabled",true);
+        ReflectionTestUtils.setField(ReflectionTestUtils.getField(service,"goodsReadScopePolicy"),"ownerScopeEnabled",true);
         when(repo.findById(id)).thenAnswer(call->Optional.ofNullable(em.find(Goods.class,id)));
         when(repo.save(any(Goods.class))).thenAnswer(call->{em.flush();return call.getArgument(0);});
         when(repo.saveAndFlush(any(Goods.class))).thenAnswer(call->{em.flush();return call.getArgument(0);});

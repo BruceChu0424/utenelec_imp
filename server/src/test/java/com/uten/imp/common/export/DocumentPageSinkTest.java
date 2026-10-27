@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DocumentPageSinkTest {
-    private static DocumentPageSink.Consumer sink(){return new DocumentPageSink.Consumer(){public void begin(DocumentPageSink.Header header){}public void accept(DocumentPageSink.Page page){}};}
+    private static DocumentPageSink.Consumer sink(){return new DocumentPageSink.Consumer(){@Override public void begin(DocumentPageSink.Header header){}@Override public void accept(DocumentPageSink.Page page){}};}
     @Test void nestedScopesRestoreAndWrongThreadCannotRetireAnActiveSink()throws Exception {
         var first=sink();var second=sink();assertNull(DocumentPageSink.current());
         try(var outer=DocumentPageSink.open(first)) {

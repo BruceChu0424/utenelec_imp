@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Optional presentation adapter for one logical rail backed by real viewports.
 /// It owns no ScrollPosition and must never replace business controllers.
@@ -68,6 +70,34 @@ class UtenScrollbarRailTarget {
     } else {
       position!.pointerScroll(delta);
     }
+  }
+
+  /// Uses the same native axis policy over thumbs, tracks and arrow buttons.
+  /// The input binding already normalized the delta; never rescale it here.
+  void handlePointerSignal(
+    BuildContext context,
+    PointerSignalEvent event, {
+    required bool Function() isCurrent,
+  }) {
+    if (!isCurrent()) return;
+    if (event is PointerScrollInertiaCancelEvent) {
+      pointerScroll(0);
+      return;
+    }
+    if (event is! PointerScrollEvent || !acceptsUserOffset) return;
+    final modifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
+    final flipped =
+        event.kind == PointerDeviceKind.mouse &&
+        HardwareKeyboard.instance.logicalKeysPressed.any(modifiers.contains);
+    var delta = flipped ? event.scrollDelta.dx : event.scrollDelta.dy;
+    if (axisDirection == AxisDirection.up) delta = -delta;
+    final target = (pixels + delta).clamp(minScrollExtent, maxScrollExtent);
+    if (delta == 0 || target == pixels) return;
+    GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
+      if (!isCurrent()) return;
+      pointerScroll(delta);
+      (resolved as PointerScrollEvent).respond(allowPlatformDefault: false);
+    });
   }
 
   Future<void> animateTo(

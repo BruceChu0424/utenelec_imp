@@ -66,7 +66,12 @@ class SalesOrderShippablePagePostgresTest {
         jdbc.update("INSERT INTO goods(id,code,name) VALUES(?,'A%_B','螺丝 A%_B')", goods);
     }
     @AfterEach void rollback() throws Exception {
-        if (em != null) em.close(); if (factory != null) factory.close();
+        if (em != null) {
+            em.close();
+        }
+        if (factory != null) {
+            factory.close();
+        }
         if (connection != null) { connection.rollback(); connection.close(); }
     }
 

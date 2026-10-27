@@ -58,7 +58,12 @@ public class ReadScopeVersionAuthority {
 
     @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ, timeout = 15)
     public String scopeFor(String domain, AuthUser suppliedSubject, boolean businessTasks) {
-        if (domain == null || !DOMAINS.contains(domain)) throw new ApiException(ErrorCode.VALIDATION_FAILED, "读取范围类型无效");
+        // Resolve a server-owned policy key rather than carrying raw route text
+        // into authorization selection. Unknown/null/noncanonical keys fail
+        // before any read; valid keys retain their exact existing fingerprint.
+        String requestedDomain = domain;
+        domain = DOMAINS.stream().filter(known -> known.equals(requestedDomain)).findFirst()
+                .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "读取范围类型无效"));
         if (suppliedSubject == null) throw new ApiException(ErrorCode.UNAUTHORIZED);
         if (suppliedSubject.getId() == null) throw changed();
         DatasetRealm realm=datasetRealm();

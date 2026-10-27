@@ -56,6 +56,27 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
         if (database != null) database.close();
     }
 
+    @Test void maintenanceRelationLockReturnsBusyWithoutMutationAndTheSameUndoWorksAfterRelease() throws Exception {
+        Operation op=edited("maintenance relation lock");
+        var permissions=new AtomicReference<>(Set.of("goods:view","goods:edit"));
+        try(Connection maintenance=connection();Connection observer=connection();
+            ServiceSession session=serviceSession(op.actor(),permissions,null)) {
+            execute(maintenance,"LOCK TABLE goods IN SHARE UPDATE EXCLUSIVE MODE");
+            long started=System.nanoTime();
+            ApiException busy=assertInstanceOf(ApiException.class,session.undo(op.id()));
+            assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,busy.getCode());
+            assertTrue(busy.getMessage().contains("正在由其他操作更新"));
+            assertTrue(Duration.ofNanos(System.nanoTime()-started).compareTo(Duration.ofSeconds(2))<0,
+                    "NOWAIT must not wait for a maintenance relation lock");
+            assertEquals("maintenance relation lock changed",scalar(observer,"SELECT name FROM goods WHERE id=?",op.goods()));
+            assertEquals(0,count(observer,"SELECT count(*) FROM goods_operation_history_events WHERE operation_id=?",op.id()));
+            maintenance.rollback();
+            assertNull(session.undo(op.id()));
+            assertEquals("maintenance relation lock",scalar(observer,"SELECT name FROM goods WHERE id=?",op.goods()));
+            assertEquals(1,count(observer,"SELECT count(*) FROM goods_operation_history_events WHERE operation_id=?",op.id()));
+        }
+    }
+
     @Test void twoRequestsForTheSameActorsSameUndoHaveExactlyOneCommit() throws Exception {
         Operation op = edited("double undo");
         try (Connection first = connection(); Connection second = connection(); Connection observer = connection();

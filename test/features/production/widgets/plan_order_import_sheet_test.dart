@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/plan_order_import_sheet.dart';
 
@@ -53,7 +54,17 @@ void main() {
         ),
         findsOneWidget,
       );
+      final inventoryHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('物料分析的子层级齐套结果') ?? false),
+      );
+      expect(inventoryHint, findsOneWidget);
+      await tester.tap(inventoryHint);
+      await tester.pumpAndSettle();
       expect(find.textContaining('物料分析的子层级齐套结果'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       expect(find.textContaining('BOM 缺失'), findsNothing);
       expect(find.textContaining('必须先补资料'), findsNothing);
       expect(find.text('已选 1 个产品'), findsOneWidget);

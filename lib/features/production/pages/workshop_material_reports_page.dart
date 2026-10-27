@@ -31,6 +31,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_h_scroll_area.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -1026,14 +1027,11 @@ class _WorkshopMaterialReportsPageState
                       ? theme.colorScheme.error
                       : null,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_periodText(p.periodNo, p.startDate, p.endDate)),
-                    Text(
-                      '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}',
-                    ),
-                    Text(p.countEvidenceLabel),
+                child: _WasteTrendReadout(
+                  lines: [
+                    _periodText(p.periodNo, p.startDate, p.endDate),
+                    '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}',
+                    p.countEvidenceLabel,
                   ],
                 ),
               ),
@@ -1612,6 +1610,50 @@ class _ReopenReasonDialogState extends State<_ReopenReasonDialog> {
 }
 
 // ---- 耗用差异率折线 ----------------------------------------------------------
+
+/// Keep raw dates and exact rates selectable. At extreme zoom a single numeric
+/// token can be wider than the body; expose that overflow locally rather than
+/// clipping it, shrinking the requested font or inserting copy-visible breaks.
+class _WasteTrendReadout extends StatelessWidget {
+  const _WasteTrendReadout({required this.lines});
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final style = DefaultTextStyle.of(context).style;
+      final scaler = MediaQuery.textScalerOf(context);
+      final direction = Directionality.of(context);
+      var minimumWidth = 0.0;
+      for (final line in lines) {
+        final text = TextPainter(
+          text: TextSpan(text: line, style: style),
+          textDirection: direction,
+          textScaler: scaler,
+          locale: Localizations.maybeLocaleOf(context),
+        )..layout(maxWidth: constraints.maxWidth);
+        minimumWidth = math.max(minimumWidth, text.minIntrinsicWidth);
+        // Numeric/date line-break rules can allow glyph boxes to overhang an
+        // otherwise constrained paragraph. Account for its actual shaped text,
+        // not only the reported intrinsic advance.
+        for (final box in text.getBoxesForSelection(
+          TextSelection(baseOffset: 0, extentOffset: line.length),
+        )) {
+          minimumWidth = math.max(minimumWidth, box.right);
+        }
+        text.dispose();
+      }
+      Widget contents() => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final line in lines) Text(line)],
+      );
+      if (minimumWidth <= constraints.maxWidth) return contents();
+      return UtenHScrollArea(
+        child: SizedBox(width: minimumWidth.ceilToDouble(), child: contents()),
+      );
+    },
+  );
+}
 
 class _WasteTrendChart extends StatefulWidget {
   const _WasteTrendChart({super.key, required this.points});

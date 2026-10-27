@@ -114,7 +114,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
   /// 是否在组件内按编码重排同级节点；服务端已按业务 sortOrder 返回的页面设 false。
   final bool sortByCode;
 
-  /// 无缩进层级色模式（透传 UtenHierarchyTreeView；选择器滑窗窄左栏用）。
+  /// 紧凑层级色模式；仍使用公共树的缩进、连接线与加减展开按钮。
   final bool flatLevelColors;
 
   /// 行右键/长按菜单的宿主动作条目（透传 UtenHierarchyTreeView；菜单由树内置，

@@ -38,7 +38,9 @@ public class ReportExportBuildIdentity {
                 byte[] hash;
                 try(var input=selected.openStream()) {
                     var digest=MessageDigest.getInstance("SHA-256");
-                    input.transferTo(new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(),digest));
+                    try(var hashing=new java.security.DigestOutputStream(java.io.OutputStream.nullOutputStream(),digest)) {
+                        input.transferTo(hashing);
+                    }
                     hash=digest.digest();
                 }
                 entries.put(key,hash);

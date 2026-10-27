@@ -266,6 +266,9 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("report_export_jobs", "data_change", true,
+                    List.of("status", "snapshot_at", "snapshot_identity", "finished_at", "artifact_sha256", "error_message"),
+                    "V938 永久导出请求身份独立保留，审计仅记录作业状态与发布摘要，不复制私有筛选或文件原文；原件删除守卫保持"),
             new ScopedTable("stock_measurement_holds", "data_change", true,
                     List.of("released_at", "verified_unit_id", "verified_by", "evidence_reference", "evidence_sha256", "resolution_note"),
                     "V930: 原数量/金额/重量快照不可改，但原计量依据的一次真实核验会更新六列，不能归只追加或NONE；"
@@ -318,6 +321,9 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("read_authorization_version_lineage",
+                    "V939 服务端固定域与读取范围版本谱系；原授权及归属变更仍按权威源表审计，附属事务版本事件和域字典由不可变触发器永久保留，不复制为第二份通用行审计",
+                    Set.of("read_scope_domains", "read_scope_change_events")),
             new NoneGroup("technical",
                     "技术元数据、计数器、凭证、登录会话运行态与迁移控制: 不是业务数据, 或含凭证不应被复制"
                             + "(auth_sessions/auth_step_up_states 是会话与再认证失败计数, 登录、登出、"

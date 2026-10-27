@@ -241,7 +241,7 @@ class ProcurementOrderClosureEndToEndTest {
 
     @Test void directClosureCannotBeRejectedByFinanceOrReopenedForFurtherReceipts() {
         Fixture f = fixture("closure-reject", "0");
-        String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
+        assertThat(db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order())).isNotBlank();
         var preview = closure.preview("PURCHASE", f.order());
         var pending = closure.submit("PURCHASE", f.order(),
                 new ClosureRequest("CLOSE", "旧库待核对", preview.fingerprint()));

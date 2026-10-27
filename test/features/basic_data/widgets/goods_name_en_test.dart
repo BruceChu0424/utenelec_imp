@@ -3,7 +3,7 @@
 // - the name-only edit button follows the server capability canEditNameEn
 //   (a salesperson without goods:edit can still fix the English name);
 // - the dialog saves through the dedicated endpoint and reloads the detail;
-// - the goods:edit full form carries nameEn so a full save never drops it.
+// - the full form carries nameEn when the sales-field authority permits it.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -241,7 +241,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('goods:edit full form carries nameEn in the save body', (
+  testWidgets('sales-field authority carries nameEn in the full save body', (
     tester,
   ) async {
     final goods = _GoodsRepository(
@@ -251,7 +251,7 @@ void main() {
       tester,
       goods: goods,
       nameEn: _NameEnRepository(),
-      permissions: const {Perm.goodsView, Perm.goodsEdit},
+      permissions: const {Perm.goodsView, Perm.goodsEdit, Perm.goodsSalesEdit},
       canEdit: true,
     );
 

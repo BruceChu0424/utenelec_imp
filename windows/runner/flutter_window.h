@@ -38,6 +38,9 @@ class FlutterWindow : public Win32Window {
   std::wstring last_window_title_;
   std::unique_ptr<ClientUpdateChannel> client_update_channel_;
   void ResetWindowTitleChannel();
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      desktop_window_channel_;
+  void ResetDesktopWindowChannel();
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

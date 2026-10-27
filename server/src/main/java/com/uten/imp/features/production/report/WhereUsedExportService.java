@@ -93,7 +93,7 @@ public class WhereUsedExportService {
                         || !response.columns().equals(columns) || response.rows().size()>PAGE_ROWS
                         || (response.rows().isEmpty()&&processed<expected))throw new IllegalStateException("Document pagination changed or ended early");
                 processed+=response.rows().size();
-                if(processed>expected||processed>maximum)throw new IllegalStateException("Document source row count changed");
+                if(processed>expected)throw new IllegalStateException("Document source row count changed");
                 var sections=sections(columns,response.rows(),unit);
                 for(int index=0;index<sections.size();index++)if(!sections.get(index).rows().isEmpty())
                     sink.accept(new DocumentPageSink.Page("section-"+index,sections.get(index).rows()));

@@ -9,6 +9,7 @@ import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
@@ -210,10 +211,15 @@ void main() {
     await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1400, 0));
     await tester.pumpAndSettle();
     final tree = find.byType(UtenDepartmentTreeView);
+    final panel = find
+        .ancestor(of: tree, matching: find.byType(SizedBox))
+        .first;
+    expect(tester.getSize(panel).width, 160);
+    const contentWidth = 160 - UtenScrollGutter.trackWidth;
     expect(tester.getSize(tree).width, 160);
     final search = find.descendant(of: tree, matching: find.byType(TextField));
-    // 2026-10-18 左缘贴 0 口径：左栏搜索框水平内边距为 0，贴满面板宽。
-    expect(tester.getSize(search).width, 160);
+    // 搜索框贴满内容区；右侧共享滚动轨道独立保留，不把160面板扩大到176。
+    expect(tester.getSize(search).width, contentWidth);
     await tester.enterText(search, 'UT0006');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
@@ -228,7 +234,15 @@ void main() {
     await tester.tap(find.descendant(of: tree, matching: find.text('销售部')));
     await tester.pumpAndSettle();
     expect(repository.requestedDepartments.last, 'sales');
-    expect(tester.getSize(tree).width, 160);
+    final expandedWidth = tester.getSize(tree).width;
+    // Expanding hierarchy controls may raise the shared safety minimum; the
+    // panel must remain compact and keep the reserved rail out of the search.
+    expect(expandedWidth, inInclusiveRange(160, 240));
+    expect(tester.getSize(panel).width, expandedWidth);
+    expect(
+      tester.getSize(search).width,
+      expandedWidth - UtenScrollGutter.trackWidth,
+    );
     expect(tester.takeException(), isNull);
   });
 }

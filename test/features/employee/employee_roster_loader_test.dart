@@ -15,12 +15,21 @@ class _Repository extends Fake implements EmployeeRepository {
           int size,
           String? search,
           String? departmentId,
+          bool includeSubtree,
           Set<String>? statuses,
           String? sort,
           String? order,
         })
       >[];
   final pending = <Completer<PagedResult<EmployeeSummary>>>[];
+  var _requestCreated = Completer<void>();
+
+  Future<void> whenRequested(int count) async {
+    while (calls.length < count) {
+      await _requestCreated.future;
+    }
+  }
+
   @override
   Future<PagedResult<EmployeeSummary>> list({
     int page = 1,
@@ -37,12 +46,16 @@ class _Repository extends Fake implements EmployeeRepository {
       size: size,
       search: search,
       departmentId: departmentId,
+      includeSubtree: includeSubtree,
       statuses: statuses,
       sort: sort,
       order: order,
     ));
     final response = Completer<PagedResult<EmployeeSummary>>();
     pending.add(response);
+    final created = _requestCreated;
+    _requestCreated = Completer<void>();
+    created.complete();
     return response.future;
   }
 }
@@ -75,17 +88,19 @@ void main() {
       },
       search: '张',
       departmentId: 'dept',
+      includeSubtree: true,
       statuses: {'active'},
       sort: 'code',
       order: 'desc',
     );
     repo.pending[0].complete(_page(1, ['a', 'b']));
-    await Future<void>.delayed(Duration.zero);
+    await repo.whenRequested(2);
     expect(repo.calls.length, 2);
     expect(repo.calls[1].page, 2);
     expect(repo.calls[1].size, 100);
     expect(repo.calls[1].search, '张');
     expect(repo.calls[1].departmentId, 'dept');
+    expect(repo.calls[1].includeSubtree, isTrue);
     expect(repo.calls[1].statuses, {'active'});
     expect(repo.calls[1].sort, 'code');
     expect(repo.calls[1].order, 'desc');
@@ -104,7 +119,7 @@ void main() {
       onBatch: (rows, _, more) => batches.add(rows),
     );
     repo.pending[0].complete(_page(1, ['a']));
-    await Future<void>.delayed(Duration.zero);
+    await repo.whenRequested(2);
     current = false;
     repo.pending[1].complete(_page(2, ['stale']));
     await loading;
@@ -121,7 +136,7 @@ void main() {
     );
     final fails = expectLater(loading, throwsA(isA<ApiException>()));
     repo.pending[0].complete(_page(1, ['a']));
-    await Future<void>.delayed(Duration.zero);
+    await repo.whenRequested(2);
     repo.pending[1].completeError(ApiException('NETWORK', '断线'));
     await fails;
     expect(batches.single.single.id, 'a');
@@ -149,7 +164,7 @@ void main() {
     );
     final fails = expectLater(loading, throwsA(isA<ApiException>()));
     repo.pending[0].complete(_page(1, ['a', 'b']));
-    await Future<void>.delayed(Duration.zero);
+    await repo.whenRequested(2);
     repo.pending[1].complete(_page(2, ['b']));
     await fails;
     expect(more, [true, true]);

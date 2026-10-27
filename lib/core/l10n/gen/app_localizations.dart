@@ -21785,7 +21785,7 @@ abstract class AppLocalizations {
   /// No description provided for @goodsImportTemplateHint.
   ///
   /// In zh, this message translates to:
-  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。'**
+  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空或删除整列。更新时保留系统标识；编号留空或缺列保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号。旧文件的系统标识在当前库不存在时，按编号匹配或新增；编号也为空时自动编号。曾被复用的编号必须通过当前货品系统标识确认。'**
   String get goodsImportTemplateHint;
 
   /// No description provided for @goodsImportMergeHint.
@@ -21901,6 +21901,174 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请重新检测当前文件后再提交'**
   String get importRedetectRequired;
+
+  /// No description provided for @goodsImportProblemsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入问题修复'**
+  String get goodsImportProblemsTitle;
+
+  /// No description provided for @goodsImportProblemsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常行可先导入；问题行在表格中修改对应单元格后重新检测。编号留空时，当前货品保留原编号，新货品自动编号。未重新检测的修改不会用于导入。'**
+  String get goodsImportProblemsHint;
+
+  /// No description provided for @goodsImportReadySummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常 {ready} 行 / 问题 {problems} 行'**
+  String goodsImportReadySummary(int ready, int problems);
+
+  /// No description provided for @goodsImportImportReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入正常内容'**
+  String get goodsImportImportReady;
+
+  /// No description provided for @goodsImportApplyCorrections.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用修改并重新检测'**
+  String get goodsImportApplyCorrections;
+
+  /// No description provided for @goodsImportFixSourceFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'此问题涉及文件表头或系统标识，请修改原 Excel 后重新选择。'**
+  String get goodsImportFixSourceFile;
+
+  /// No description provided for @goodsImportPartialOutcome.
+  ///
+  /// In zh, this message translates to:
+  /// **'{filename}: 已保存正常部分 ({summary})。'**
+  String goodsImportPartialOutcome(String filename, String summary);
+
+  /// No description provided for @goodsImportProblemReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'问题原因'**
+  String get goodsImportProblemReason;
+
+  /// No description provided for @goodsImportCodeCorrection.
+  ///
+  /// In zh, this message translates to:
+  /// **'编号'**
+  String get goodsImportCodeCorrection;
+
+  /// No description provided for @goodsImportFieldName.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品名称'**
+  String get goodsImportFieldName;
+
+  /// No description provided for @goodsImportFieldCategory.
+  ///
+  /// In zh, this message translates to:
+  /// **'类别'**
+  String get goodsImportFieldCategory;
+
+  /// No description provided for @goodsImportFieldClientName.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户货品名称'**
+  String get goodsImportFieldClientName;
+
+  /// No description provided for @goodsImportFieldClientModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'客户型号'**
+  String get goodsImportFieldClientModel;
+
+  /// No description provided for @goodsImportFieldSeries.
+  ///
+  /// In zh, this message translates to:
+  /// **'系列'**
+  String get goodsImportFieldSeries;
+
+  /// No description provided for @goodsImportFieldModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'型号'**
+  String get goodsImportFieldModel;
+
+  /// No description provided for @goodsImportFieldSpec.
+  ///
+  /// In zh, this message translates to:
+  /// **'规格'**
+  String get goodsImportFieldSpec;
+
+  /// No description provided for @goodsImportFieldMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'材质'**
+  String get goodsImportFieldMaterial;
+
+  /// No description provided for @goodsImportFieldRearInsert.
+  ///
+  /// In zh, this message translates to:
+  /// **'后模镶件编号'**
+  String get goodsImportFieldRearInsert;
+
+  /// No description provided for @goodsImportFieldPaper.
+  ///
+  /// In zh, this message translates to:
+  /// **'备注'**
+  String get goodsImportFieldPaper;
+
+  /// No description provided for @goodsImportFieldColor.
+  ///
+  /// In zh, this message translates to:
+  /// **'主颜色'**
+  String get goodsImportFieldColor;
+
+  /// No description provided for @goodsImportFieldUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'单位'**
+  String get goodsImportFieldUnit;
+
+  /// No description provided for @goodsImportFieldSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'来源'**
+  String get goodsImportFieldSource;
+
+  /// No description provided for @goodsImportFieldStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get goodsImportFieldStatus;
+
+  /// No description provided for @goodsImportFieldPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'价格'**
+  String get goodsImportFieldPrice;
+
+  /// No description provided for @goodsImportFieldMinOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'最小起订量'**
+  String get goodsImportFieldMinOrder;
+
+  /// No description provided for @goodsImportFieldOrderMultiple.
+  ///
+  /// In zh, this message translates to:
+  /// **'订货倍数'**
+  String get goodsImportFieldOrderMultiple;
+
+  /// No description provided for @goodsImportRestoreNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常内容包含 {count} 条已删除货品，确认导入会按清单恢复这些货品。'**
+  String goodsImportRestoreNotice(int count);
+
+  /// No description provided for @goodsImportDetectionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取或检测文件失败，请重新检测或重新选择文件；仍失败时请将此处提示提供给管理员。'**
+  String get goodsImportDetectionFailed;
 
   /// No description provided for @importRetryPrevious.
   ///

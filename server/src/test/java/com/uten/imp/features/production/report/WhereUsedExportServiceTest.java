@@ -106,7 +106,8 @@ class WhereUsedExportServiceTest {
         }
         final DocumentPageSink.Header[] header={null};var batches=new ArrayList<DocumentPageSink.Page>();
         try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){
-            public void begin(DocumentPageSink.Header value){header[0]=value;}public void accept(DocumentPageSink.Page page){batches.add(page);}
+            @Override
+            public void begin(DocumentPageSink.Header value){header[0]=value;}@Override public void accept(DocumentPageSink.Page page){batches.add(page);}
         })){service.streamDocument(material,"history",null,null,null,null);}
         assertEquals(1001,header[0].expectedPrimaryRows());assertEquals(5,header[0].sections().size());
         assertTrue(header[0].metadata().contains("操作员：服务器姓名(E001)"));
@@ -127,7 +128,7 @@ class WhereUsedExportServiceTest {
         var user=principal(Set.of("production_where_used:view","production_where_used:export"));
         snapshot(user,true,true,java.sql.Connection.TRANSACTION_REPEATABLE_READ);
         assertThrows(IllegalStateException.class,()->service.streamDocument(UUID.randomUUID(),"all",null,null,null,null));
-        var noop=new DocumentPageSink.Consumer(){public void begin(DocumentPageSink.Header header){}public void accept(DocumentPageSink.Page page){}};
+        var noop=new DocumentPageSink.Consumer(){@Override public void begin(DocumentPageSink.Header header){}@Override public void accept(DocumentPageSink.Page page){}};
         try(var sink=DocumentPageSink.open(noop)) {
             for(var invalid:List.of(new Object[]{false,true,java.sql.Connection.TRANSACTION_REPEATABLE_READ},
                     new Object[]{true,false,java.sql.Connection.TRANSACTION_REPEATABLE_READ},new Object[]{true,true,java.sql.Connection.TRANSACTION_READ_COMMITTED})) {
@@ -148,7 +149,7 @@ class WhereUsedExportServiceTest {
         var columns=List.of(ReportColumn.text("goodsName","产品名称"));
         when(query.whereUsedExportPage(material,"all",null,null,1,200,null,null,true)).thenReturn(new ReportTableResponse(columns,rows(0,200),Map.of(),1,200,201,2));
         when(query.whereUsedExportPage(material,"all",null,null,2,200,null,null,false)).thenReturn(new ReportTableResponse(columns,List.of(),Map.of(),2,200,201,2));
-        var noop=new DocumentPageSink.Consumer(){public void begin(DocumentPageSink.Header header){}public void accept(DocumentPageSink.Page page){}};
+        var noop=new DocumentPageSink.Consumer(){@Override public void begin(DocumentPageSink.Header header){}@Override public void accept(DocumentPageSink.Page page){}};
         try(var sink=DocumentPageSink.open(noop)) {
             assertThrows(IllegalStateException.class,()->service.streamDocument(material,"all",null,null,null,null));
         }

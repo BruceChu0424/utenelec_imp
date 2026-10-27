@@ -31,7 +31,8 @@ class ServerOperationFailuresTest {
             assertThat(entry.nextAction()).as(code).isEqualTo(match.group(5));
             assertThat(entry.retrySafe()).as(code).isEqualTo("True".equals(match.group(6)));
         }
-        assertThat(found).hasSize(42).containsExactlyInAnyOrderElementsOf(ServerOperationFailures.codes());
+        assertThat(found).hasSize(43).contains("UPDATE_NOTICE_REQUIRED")
+                .containsExactlyInAnyOrderElementsOf(ServerOperationFailures.codes());
     }
 
     @Test void helperTextAndFlagsCannotOverrideCuratedEarlyPhaseGuidance() throws Exception {
@@ -67,7 +68,7 @@ class ServerOperationFailuresTest {
     }
 
     @Test void verifiedPreconditionFailuresRemainFailedAndPreservedUnlessRecoveryWasRequired() {
-        for (String code : Set.of("CURRENT_VERSION_CHANGED", "CUTOVER_BACKUP_FAILED_RECOVERED")) {
+        for (String code : Set.of("CURRENT_VERSION_CHANGED", "CUTOVER_BACKUP_FAILED_RECOVERED", "UPDATE_NOTICE_REQUIRED")) {
             var view = ServerOperationFailures.project(failure(code), "FAILED", "ACTIVATING");
             assertThat(view.recoveryRequired()).isFalse();assertThat(view.originalServicePreserved()).isTrue();
             assertThat(view.nextAction()).isNotEqualTo("VERIFY_RECOVERY");

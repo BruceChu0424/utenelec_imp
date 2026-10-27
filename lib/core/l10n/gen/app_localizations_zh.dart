@@ -11877,7 +11877,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空。更新时保留系统标识；编号留空保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号；曾被复用的编号必须通过系统标识确认当前货品。';
+      '可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空或删除整列。更新时保留系统标识；编号留空或缺列保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号。旧文件的系统标识在当前库不存在时，按编号匹配或新增；编号也为空时自动编号。曾被复用的编号必须通过当前货品系统标识确认。';
 
   @override
   String get goodsImportMergeHint =>
@@ -11939,6 +11939,98 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get importRedetectRequired => '请重新检测当前文件后再提交';
+
+  @override
+  String get goodsImportProblemsTitle => '导入问题修复';
+
+  @override
+  String get goodsImportProblemsHint =>
+      '正常行可先导入；问题行在表格中修改对应单元格后重新检测。编号留空时，当前货品保留原编号，新货品自动编号。未重新检测的修改不会用于导入。';
+
+  @override
+  String goodsImportReadySummary(int ready, int problems) {
+    return '正常 $ready 行 / 问题 $problems 行';
+  }
+
+  @override
+  String get goodsImportImportReady => '导入正常内容';
+
+  @override
+  String get goodsImportApplyCorrections => '应用修改并重新检测';
+
+  @override
+  String get goodsImportFixSourceFile => '此问题涉及文件表头或系统标识，请修改原 Excel 后重新选择。';
+
+  @override
+  String goodsImportPartialOutcome(String filename, String summary) {
+    return '$filename: 已保存正常部分 ($summary)。';
+  }
+
+  @override
+  String get goodsImportProblemReason => '问题原因';
+
+  @override
+  String get goodsImportCodeCorrection => '编号';
+
+  @override
+  String get goodsImportFieldName => '货品名称';
+
+  @override
+  String get goodsImportFieldCategory => '类别';
+
+  @override
+  String get goodsImportFieldClientName => '客户货品名称';
+
+  @override
+  String get goodsImportFieldClientModel => '客户型号';
+
+  @override
+  String get goodsImportFieldSeries => '系列';
+
+  @override
+  String get goodsImportFieldModel => '型号';
+
+  @override
+  String get goodsImportFieldSpec => '规格';
+
+  @override
+  String get goodsImportFieldMaterial => '材质';
+
+  @override
+  String get goodsImportFieldRearInsert => '后模镶件编号';
+
+  @override
+  String get goodsImportFieldPaper => '备注';
+
+  @override
+  String get goodsImportFieldColor => '主颜色';
+
+  @override
+  String get goodsImportFieldUnit => '单位';
+
+  @override
+  String get goodsImportFieldSource => '来源';
+
+  @override
+  String get goodsImportFieldStatus => '状态';
+
+  @override
+  String get goodsImportFieldPrice => '价格';
+
+  @override
+  String get goodsImportFieldMinOrder => '最小起订量';
+
+  @override
+  String get goodsImportFieldOrderMultiple => '订货倍数';
+
+  @override
+  String goodsImportRestoreNotice(int count) {
+    return '正常内容包含 $count 条已删除货品，确认导入会按清单恢复这些货品。';
+  }
+
+  @override
+  String get goodsImportDetectionFailed =>
+      '读取或检测文件失败，请重新检测或重新选择文件；仍失败时请将此处提示提供给管理员。';
 
   @override
   String get importRetryPrevious => '重试上次提交';

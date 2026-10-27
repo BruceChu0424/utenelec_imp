@@ -60,7 +60,12 @@ class WarehouseHistoryOwnerNamesBatchPostgresTest {
         bean.afterPropertiesSet(); factory = bean.getObject();
     }
 
-    @AfterAll static void close() { if (factory != null) factory.close(); POSTGRES.stop(); }
+    @AfterAll static void close() {
+        if (factory != null) {
+            factory.close();
+        }
+        POSTGRES.stop();
+    }
     @BeforeEach void reset() {
         db.execute("TRUNCATE employees, users"); em = factory.createEntityManager(); names = new EmployeeNameResolver(em); STATEMENTS.clear();
     }

@@ -18,6 +18,43 @@ class GoodsImportError {
   );
 }
 
+/// A source row that needs correction. Values come only from the uploaded file.
+class GoodsImportProblemRow {
+  const GoodsImportProblemRow({
+    required this.rowNum,
+    required this.code,
+    required this.name,
+    required this.categoryPath,
+    this.cells = const {},
+  });
+  final int rowNum;
+  final String code;
+  final String name;
+  final String categoryPath;
+  final Map<String, String> cells;
+
+  factory GoodsImportProblemRow.fromJson(Map<String, dynamic> json) =>
+      GoodsImportProblemRow(
+        rowNum: (json['rowNum'] as num).toInt(),
+        code: json['code'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        categoryPath: json['categoryPath'] as String? ?? '',
+        cells: {
+          for (final entry in (json['cells'] as Map? ?? const {}).entries)
+            entry.key.toString(): entry.value?.toString() ?? '',
+        },
+      );
+}
+
+typedef GoodsImportCorrections = Map<int, Map<String, String>>;
+
+GoodsImportCorrections freezeGoodsImportCorrections(
+  GoodsImportCorrections values,
+) => Map.unmodifiable({
+  for (final entry in values.entries)
+    entry.key: Map<String, String>.unmodifiable(entry.value),
+});
+
 /// 文件中一个非空字段相对当前主档或 BOM 行的变化。
 class GoodsImportChange {
   const GoodsImportChange({
@@ -101,6 +138,8 @@ class GoodsImportReport {
     this.unchangedRows = 0,
     this.fillRows = 0,
     this.conflictRows = 0,
+    this.problemRows = const [],
+    this.readyRowNums = const [],
   });
   final int totalRows;
   final int dataRows;
@@ -120,6 +159,8 @@ class GoodsImportReport {
   final int unchangedRows;
   final int fillRows;
   final int conflictRows;
+  final List<GoodsImportProblemRow> problemRows;
+  final List<int> readyRowNums;
 
   bool get hasErrors => errors.isNotEmpty;
 
@@ -147,6 +188,14 @@ class GoodsImportReport {
         unchangedRows: (j['unchangedRows'] as num?)?.toInt() ?? 0,
         fillRows: (j['fillRows'] as num?)?.toInt() ?? 0,
         conflictRows: (j['conflictRows'] as num?)?.toInt() ?? 0,
+        problemRows: [
+          for (final row in j['problemRows'] as List? ?? const [])
+            GoodsImportProblemRow.fromJson(row as Map<String, dynamic>),
+        ],
+        readyRowNums: [
+          for (final row in j['readyRowNums'] as List? ?? const [])
+            (row as num).toInt(),
+        ],
       );
 }
 

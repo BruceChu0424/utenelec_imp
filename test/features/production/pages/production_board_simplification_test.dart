@@ -8,6 +8,7 @@ import 'package:uten_imp/components/feedback/uten_count_suffix.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
@@ -300,6 +301,14 @@ void main() {
       find.byKey(const Key('production-board-progress-no-permission')),
       findsOneWidget,
     );
+    final guidance = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('production_execution:overview') ?? false),
+    );
+    expect(guidance, findsOneWidget);
+    await tester.tap(guidance);
+    await tester.pumpAndSettle();
     expect(
       find.textContaining('production_execution:overview'),
       findsOneWidget,

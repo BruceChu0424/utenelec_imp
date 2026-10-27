@@ -77,7 +77,12 @@ class PartyLookupSearchContextPostgresTest {
                 null, em, null, null, new EmployeeNameResolver(em));
     }
     @AfterEach void rollback() throws Exception {
-        if (em != null) em.close(); if (factory != null) factory.close();
+        if (em != null) {
+            em.close();
+        }
+        if (factory != null) {
+            factory.close();
+        }
         if (connection != null) {
             connection.rollback();
             if (committedFixture) {

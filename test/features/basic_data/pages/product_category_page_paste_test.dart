@@ -543,13 +543,27 @@ void main() {
     await _pumpPage(tester, goods, bom, withClipboard: true);
     await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
+    final beforePasteRequests = goods.mainPageRequests.length;
     await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
     await tester.tap(find.text('粘贴货品'));
     await tester.pumpAndSettle();
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
     expect(table.currentPage, 1);
     expect(table.totalPages, 8);
+    // A neighbour may finish during the reload, but the settled page and its
+    // rendered continuous window must both retain the located copy first.
+    expect(table.rowsController, isNotNull);
+    expect(table.rowsController!.items.first.id, 'copy-1');
     expect(table.items.first.id, 'copy-1');
+    expect(
+      goods.mainPageRequests.skip(beforePasteRequests),
+      contains((
+        categoryId: 'target-category',
+        page: 1,
+        sort: 'code',
+        order: 'asc',
+      )),
+    );
     expect(table.selectedIds, {'copy-1'});
     expect(find.text('测试插座(1)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -561,6 +575,7 @@ void main() {
     await _pumpPage(tester, goods, bom, withClipboard: true);
     await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
+    final beforePasteRequests = goods.mainPageRequests.length;
     expect(
       tester.widget<MasterDataTableView<GoodsListItem>>(_table).currentPage,
       1,
@@ -575,12 +590,16 @@ void main() {
     expect(table.items.single.id, 'copy-1');
     // The row menu completion must not clear the new selection after paste.
     expect(table.selectedIds, {'copy-1'});
-    expect(goods.mainPageRequests.last, (
-      categoryId: 'target-category',
-      page: 2,
-      sort: 'code',
-      order: 'asc',
-    ));
+    expect(
+      goods.mainPageRequests.skip(beforePasteRequests),
+      contains((
+        categoryId: 'target-category',
+        page: 2,
+        sort: 'code',
+        order: 'asc',
+      )),
+      reason: '定位副本读取目标页，允许随后准备相邻页',
+    );
     expect(find.text('测试插座(1)').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -597,6 +616,7 @@ void main() {
     );
     await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
+    final beforePasteRequests = goods.mainPageRequests.length;
     await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
     await tester.tap(find.text('批量粘贴…'));
     await tester.pumpAndSettle();
@@ -619,12 +639,16 @@ void main() {
       'copy-4',
       'copy-5',
     });
-    expect(goods.mainPageRequests.last, (
-      categoryId: 'target-category',
-      page: 2,
-      sort: 'code',
-      order: 'asc',
-    ));
+    expect(
+      goods.mainPageRequests.skip(beforePasteRequests),
+      contains((
+        categoryId: 'target-category',
+        page: 2,
+        sort: 'code',
+        order: 'asc',
+      )),
+      reason: '定位副本读取目标页，允许随后准备相邻页',
+    );
     // No tester drag/ensureVisible: the product must scroll its own viewport.
     expect(find.text('测试插座(5)').hitTestable(), findsOneWidget);
     expect(find.text('已有货品 21').hitTestable(), findsNothing);

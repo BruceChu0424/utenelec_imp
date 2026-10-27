@@ -45,10 +45,29 @@ public class GoodsImportController {
      */
     private final Semaphore importSlot = new Semaphore(1, true);
 
-    @PostMapping("/detect")
+    @PostMapping(value = "/detect", consumes = "!application/json")
     @PreAuthorize("hasAuthority('goods:import')")
     public GoodsImportReport detect(HttpServletRequest request) throws IOException {
         return withImportSlot(() -> service.detect(read(request)));
+    }
+
+    @PostMapping(value = "/detect", consumes = "application/json")
+    @PreAuthorize("hasAuthority('goods:import')")
+    public GoodsImportReport detectJson(HttpServletRequest request) throws IOException {
+        return withImportSlot(() -> {
+            GoodsImportDetectRequest selection = readJson(request, GoodsImportDetectRequest.class);
+            if (selection == null || selection.file() == null || selection.file().length == 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入检测缺少文件，请重新选择");
+            }
+            if (selection.file().length > MAX_BYTES) throw tooLarge();
+            if (!empty(selection.cellCorrections())) {
+                return service.detect(selection.file(), selection.codeCorrections(), selection.excludedRowNums(),
+                        selection.cellCorrections());
+            }
+            return empty(selection.codeCorrections()) && empty(selection.excludedRowNums())
+                    ? service.detect(selection.file())
+                    : service.detect(selection.file(), selection.codeCorrections(), selection.excludedRowNums());
+        });
     }
 
     @PostMapping(value = "/commit", consumes = "!application/json")
@@ -73,16 +92,7 @@ public class GoodsImportController {
     @PreAuthorize("hasAuthority('goods:import')")
     public GoodsImportResult commitJson(HttpServletRequest request) throws IOException {
         return withImportSlot(() -> {
-            // Bound both encoded JSON and decoded workbook before the POI parser.
-            byte[] body = readBounded(request.getInputStream(), request.getContentLengthLong(),
-                    15L * 1024 * 1024, Path.of(System.getProperty("java.io.tmpdir")));
-            GoodsImportCommitRequest selection;
-            try {
-                selection = new com.fasterxml.jackson.databind.ObjectMapper()
-                        .readValue(body, GoodsImportCommitRequest.class);
-            } catch (com.fasterxml.jackson.core.JsonProcessingException malformed) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交内容无效，请重新检测文件");
-            }
+            GoodsImportCommitRequest selection = readJson(request, GoodsImportCommitRequest.class);
             if (selection == null || selection.file() == null || selection.file().length == 0
                     || selection.planId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入提交缺少文件或检测计划");
@@ -94,8 +104,86 @@ public class GoodsImportController {
             }
             Set<String> keys = selection.replaceRowKeys() == null
                     ? Set.of() : Set.copyOf(selection.replaceRowKeys());
-            return service.commit(selection.planId(), selection.file(), selection.filename(), keys);
+            if (!empty(selection.cellCorrections())) {
+                return service.commit(selection.planId(), selection.file(), selection.filename(), keys,
+                        selection.codeCorrections(), selection.excludedRowNums(), selection.cellCorrections());
+            }
+            return empty(selection.codeCorrections()) && empty(selection.excludedRowNums())
+                    ? service.commit(selection.planId(), selection.file(), selection.filename(), keys)
+                    : service.commit(selection.planId(), selection.file(), selection.filename(), keys,
+                            selection.codeCorrections(), selection.excludedRowNums());
         });
+    }
+
+    private <T> T readJson(HttpServletRequest request, Class<T> type) throws IOException {
+        // Bound both encoded JSON and decoded workbook before the POI parser.
+        byte[] body = readBounded(request.getInputStream(), request.getContentLengthLong(),
+                15L * 1024 * 1024, Path.of(System.getProperty("java.io.tmpdir")));
+        try {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                    .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+            var payload = mapper.readTree(body);
+            if (payload == null) return null;
+            validateWireRows(payload);
+            return mapper.treeToValue(payload, type);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException malformed) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入内容无效，请重新检测文件");
+        }
+    }
+
+    private static boolean empty(java.util.Map<?, ?> values) { return values == null || values.isEmpty(); }
+    private static boolean empty(java.util.Set<?> values) { return values == null || values.isEmpty(); }
+
+    private static void validateWireRows(com.fasterxml.jackson.databind.JsonNode payload) {
+        var corrections = payload.get("codeCorrections");
+        if (corrections != null && !corrections.isNull()) {
+            if (!corrections.isObject()) throw invalidRowSelection();
+            var names = corrections.fieldNames();
+            while (names.hasNext()) {
+                validateRowKey(names.next());
+            }
+        }
+        var cells = payload.get("cellCorrections");
+        if (cells != null && !cells.isNull()) {
+            if (!cells.isObject()) throw invalidRowSelection();
+            var entries = cells.fields();
+            while (entries.hasNext()) {
+                var row = entries.next();
+                validateRowKey(row.getKey());
+                if (!row.getValue().isObject()) throw invalidRowSelection();
+                for (var value : row.getValue()) {
+                    // Do not let Jackson silently coerce a number, boolean or
+                    // null into a different correction than the employee saw.
+                    if (!value.isTextual()) throw invalidRowSelection();
+                }
+            }
+        }
+        var excluded = payload.get("excludedRowNums");
+        if (excluded != null && !excluded.isNull()) {
+            if (!excluded.isArray()) throw invalidRowSelection();
+            var rows = new java.util.HashSet<Integer>();
+            for (var row : excluded) {
+                if (!row.isIntegralNumber() || !row.canConvertToInt() || !rows.add(row.intValue())) {
+                    throw invalidRowSelection();
+                }
+            }
+        }
+    }
+
+    private static void validateRowKey(String key) {
+        // Reject aliases such as "02" before converting to Integer keys;
+        // otherwise Jackson can silently overwrite the same logical row.
+        if (!key.matches("[1-9][0-9]*")) throw invalidRowSelection();
+        try {
+            Integer.parseInt(key);
+        } catch (NumberFormatException invalid) {
+            throw invalidRowSelection();
+        }
+    }
+
+    private static ApiException invalidRowSelection() {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, "导入行号选择无效，请重新检测文件");
     }
 
     @GetMapping("/latest")

@@ -47,7 +47,14 @@ class MasterReadScopeVersionPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();
         factory=bean.getObject();transactions=new JpaTransactionManager(factory);
     }
-    @AfterAll static void close() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void close() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void actor() {
         actor=UUID.randomUUID();employee=employee("actor");owner=employee("owner");
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin) VALUES(?,?,?,'test-fixture-only',false,false)",actor,employee,"master-scope-"+actor);

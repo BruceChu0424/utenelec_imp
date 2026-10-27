@@ -5,7 +5,6 @@
 // 已有显式滚动条的区域声明所有权，避免同一视口重复绘制。
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../components/layout/uten_scroll_gutter.dart';
 import '../../components/layout/uten_vertical_scrollbar.dart';
 import '../../components/layout/uten_page_scrollbar_host.dart';
@@ -74,32 +73,11 @@ class _UtenPositionScrollbar extends StatefulWidget {
 
 class _UtenPositionScrollbarState extends State<_UtenPositionScrollbar> {
   final _controller = ScrollController(debugLabel: 'uten-scrollbar');
-  Set<LogicalKeyboardKey> _axisModifiers = const {};
-  bool _axisModifierPressed = false;
 
   @override
   void initState() {
     super.initState();
     _controller.attach(widget.position);
-    HardwareKeyboard.instance.addHandler(_handleKey);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _axisModifiers = ScrollConfiguration.of(context).pointerAxisModifiers;
-    _axisModifierPressed = _hasAxisModifier;
-  }
-
-  bool get _hasAxisModifier =>
-      HardwareKeyboard.instance.logicalKeysPressed.any(_axisModifiers.contains);
-
-  bool _handleKey(KeyEvent _) {
-    final pressed = _hasAxisModifier;
-    if (pressed != _axisModifierPressed) {
-      setState(() => _axisModifierPressed = pressed);
-    }
-    return false;
   }
 
   @override
@@ -113,7 +91,6 @@ class _UtenPositionScrollbarState extends State<_UtenPositionScrollbar> {
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleKey);
     _controller.detach(widget.position);
     _controller.dispose();
     super.dispose();
@@ -121,11 +98,6 @@ class _UtenPositionScrollbarState extends State<_UtenPositionScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    // The SDK scrollbar's own wheel handler does not apply axis modifiers.
-    // While Shift (or the configured modifier) is held, make its painter pass
-    // input through to the original Scrollable, which owns the native policy.
-    // Trackpads retain their native axes there too; no delta is transformed here.
-    final interactive = !_axisModifierPressed;
     bool accepts(ScrollNotification notification) =>
         notification.depth == 0 && notification.metrics.axis == Axis.vertical;
     return UtenPageScrollbarSource(
@@ -134,7 +106,6 @@ class _UtenPositionScrollbarState extends State<_UtenPositionScrollbar> {
       builder: (context, localVisible) => UtenVerticalScrollbar(
         controller: _controller,
         visible: localVisible,
-        interactive: interactive,
         notificationPredicate: accepts,
         child: UtenScrollGutter(child: widget.child),
       ),

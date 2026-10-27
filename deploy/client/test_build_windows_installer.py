@@ -36,7 +36,10 @@ def setup_fixture(*, architecture="x64", loader="x86", build=2531, strings=None,
 class WindowsSetupSourceTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="uimp setup fixture ")
-        self.root = Path(self.temporary.name)
+        # Windows runners can expose TEMP through its 8.3 alias (RUNNER~1).
+        # The builder resolves publication paths, so fault injections must use
+        # that same filesystem identity rather than an unequal lexical alias.
+        self.root = Path(self.temporary.name).resolve()
         self.bundle = self.root / "runtime bundle"
         for relative in ("uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat",
                          "data/flutter_assets/AssetManifest.bin", UPDATER_PATH):

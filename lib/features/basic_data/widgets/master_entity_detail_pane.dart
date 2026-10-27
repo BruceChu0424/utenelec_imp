@@ -693,9 +693,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       return false;
     }
     await reload(page: targetPage);
+    // A neighbouring response can become the latest page while the table is
+    // still publishing the explicit destination into its continuous window.
+    // Validate against the rendered owner's real layout receipt, not the last
+    // response object or a pre-frame rows snapshot.
+    await WidgetsBinding.instance.endOfFrame;
+    await _tableRows.settled;
     if (!mounted ||
         queryVersion != _queryVersion ||
-        !(_page?.items.any((item) => _c.idOf(item) == id) ?? false)) {
+        !(_tableRows.items.any((item) => _c.idOf(item) == id) ||
+            (_page?.items.any((item) => _c.idOf(item) == id) ?? false))) {
       return false;
     }
     setState(() {

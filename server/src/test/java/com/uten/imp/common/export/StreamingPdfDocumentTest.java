@@ -80,7 +80,7 @@ class StreamingPdfDocumentTest {
         }
         try(var writer=new TabularPdfExportService().openDocumentStream(directory)) {
             writer.begin(header(1));writer.accept(new DocumentPageSink.Page("main",rows(0,1)));
-            assertThrows(IOException.class,()->writer.finish(new OutputStream(){public void write(int value)throws IOException{throw new IOException("injected output failure");}}));
+            assertThrows(IOException.class,()->writer.finish(new OutputStream(){@Override public void write(int value)throws IOException{throw new IOException("injected output failure");}}));
             assertThrows(IllegalStateException.class,()->writer.accept(new DocumentPageSink.Page("main",rows(0,1))));
         }
         assertNoPrivateDirectories();

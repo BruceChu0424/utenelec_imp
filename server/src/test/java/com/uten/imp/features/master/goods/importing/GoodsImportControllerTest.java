@@ -12,6 +12,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Stream;
 import java.util.concurrent.CountDownLatch;
@@ -176,6 +177,243 @@ class GoodsImportControllerTest {
         MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
         controller.detect(valid);
         org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
+    @Test
+    void jsonDetectForwardsCorrectionsWithTheExactOriginalWorkbookBytes() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] bytes = new byte[]{7, 8, 9};
+        Map<Integer, String> corrections = Map.of(2, "NEW001", 3, "");
+        var request = jsonRequest(new GoodsImportDetectRequest(bytes, corrections));
+
+        controller.detectJson(request);
+
+        org.mockito.Mockito.verify(service).detect(bytes, corrections, null);
+    }
+
+    @Test
+    void jsonDetectWithoutCorrectionsRetainsTheLegacyServiceContract() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] bytes = new byte[]{7, 8, 9};
+
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, null)));
+
+        org.mockito.Mockito.verify(service).detect(bytes);
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any());
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any(), any());
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any(), any(), any());
+    }
+
+    @Test
+    void jsonCommitForwardsTheSameCorrectionsAndReviewSelection() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        UUID planId = UUID.randomUUID();
+        byte[] bytes = new byte[]{7, 8, 9};
+        Map<Integer, String> corrections = Map.of(2, "NEW001", 3, "");
+
+        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                bytes, planId, "goods.xlsx", List.of("goods:2"), corrections)));
+
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), corrections, null);
+    }
+
+    @Test
+    void detectHttpMappingsKeepRawUploadsAndCorrectionJsonSeparate() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders
+                .standaloneSetup(new GoodsImportController(service)).build();
+        byte[] bytes = new byte[]{7, 8, 9};
+        Map<Integer, String> corrections = Map.of(2, "NEW001");
+
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/master/goods/import/detect").contentType("application/octet-stream").content(bytes))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/master/goods/import/detect").contentType("application/json")
+                .content(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(
+                        new GoodsImportDetectRequest(bytes, corrections))))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
+
+        org.mockito.Mockito.verify(service).detect(bytes);
+        org.mockito.Mockito.verify(service).detect(bytes, corrections, null);
+    }
+
+    @Test
+    void jsonEndpointsRejectMalformedCorrectionKeysAndDuplicateKeysBeforeServiceCalls() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        for (String invalidCorrections : List.of(
+                "{\"not-a-row\":\"NEW001\"}", "{\"2147483648\":\"NEW001\"}",
+                "{\"2\":\"NEW001\",\"02\":\"OTHER001\"}", "{\"+2\":\"NEW001\"}",
+                "{\" 2\":\"NEW001\"}", "{\"0\":\"NEW001\"}",
+                "{\"2\":\"NEW001\",\"2\":\"OTHER001\"}")) {
+            String json = "{\"file\":\"AQ==\",\"codeCorrections\":" + invalidCorrections + "}";
+            ApiException detected = assertThrows(ApiException.class,
+                    () -> controller.detectJson(jsonRequest(json)));
+            assertEquals(ErrorCode.VALIDATION_FAILED, detected.getCode());
+            String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
+                    + "\",\"codeCorrections\":" + invalidCorrections + "}";
+            ApiException committed = assertThrows(ApiException.class,
+                    () -> controller.commitJson(jsonRequest(commitJson)));
+            assertEquals(ErrorCode.VALIDATION_FAILED, committed.getCode());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+        MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
+        controller.detect(valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
+    @Test
+    void jsonEndpointsForwardExcludedRowsWithTheSameOriginalBytes() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] bytes = new byte[]{7, 8, 9};
+        UUID planId = UUID.randomUUID();
+        java.util.Set<Integer> excluded = java.util.Set.of(2, 4);
+
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, Map.of(), excluded)));
+        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                bytes, planId, "goods.xlsx", List.of(), Map.of(), excluded)));
+
+        org.mockito.Mockito.verify(service).detect(bytes, Map.of(), excluded);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of(), Map.of(), excluded);
+    }
+
+    @Test
+    void jsonEndpointsForwardCellCorrectionsWithTheOriginalWorkbookAndOtherSelections() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] bytes = new byte[]{7, 8, 9};
+        UUID planId = UUID.randomUUID();
+        Map<Integer, String> codes = Map.of(2, "NEW001");
+        java.util.Set<Integer> excluded = java.util.Set.of(4);
+        Map<Integer, Map<String, String>> cells = Map.of(2, Map.of("name", "修正名称", "price", "12.3400"));
+
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, codes, excluded, cells)));
+        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                bytes, planId, "goods.xlsx", List.of("goods:2"), codes, excluded, cells)));
+
+        org.mockito.Mockito.verify(service).detect(bytes, codes, excluded, cells);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), codes, excluded, cells);
+    }
+
+    @Test
+    void emptyCellCorrectionsRetainTheLegacyDetectionAndCommitContracts() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] bytes = new byte[]{7, 8, 9};
+        UUID planId = UUID.randomUUID();
+
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(bytes, Map.of(), java.util.Set.of(), Map.of())));
+        controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                bytes, planId, "goods.xlsx", List.of(), Map.of(), java.util.Set.of(), Map.of())));
+
+        org.mockito.Mockito.verify(service).detect(bytes);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of());
+    }
+
+    @Test
+    void jsonEndpointsRejectCellRowAliasesAndNonStringCellValuesBeforeTheService() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        for (String invalidCells : List.of(
+                "[]", "{\"2\":null}", "{\"2\":[]}", "{\"2\":{\"price\":1}}",
+                "{\"2\":{\"status\":true}}", "{\"2\":{\"name\":null}}", "{\"2\":{\"name\":{}}}",
+                "{\"02\":{\"name\":\"x\"}}", "{\"2147483648\":{\"name\":\"x\"}}",
+                "{\"2\":{\"name\":\"x\"},\"02\":{\"name\":\"y\"}}",
+                "{\"2\":{\"name\":\"x\",\"name\":\"y\"}}")) {
+            String json = "{\"file\":\"AQ==\",\"cellCorrections\":" + invalidCells + "}";
+            assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                    () -> controller.detectJson(jsonRequest(json))).getCode());
+            String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
+                    + "\",\"cellCorrections\":" + invalidCells + "}";
+            assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                    () -> controller.commitJson(jsonRequest(commitJson))).getCode());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of())));
+        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
+    @Test
+    void jsonEndpointsRejectNonIntegerNullAndRepeatedExcludedRowsBeforeTheService() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        for (String invalidRows : List.of("[\"2\"]", "[2.0]", "[null]", "[2,2]", "{}", "[2147483648]", "[true]")) {
+            String json = "{\"file\":\"AQ==\",\"excludedRowNums\":" + invalidRows + "}";
+            assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                    () -> controller.detectJson(jsonRequest(json))).getCode());
+            String commitJson = "{\"file\":\"AQ==\",\"planId\":\"" + UUID.randomUUID()
+                    + "\",\"excludedRowNums\":" + invalidRows + "}";
+            assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
+                    () -> controller.commitJson(jsonRequest(commitJson))).getCode());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+        controller.detectJson(jsonRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of(), java.util.Set.of())));
+        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
+    @Test
+    void jsonDetectRejectsMalformedBase64OrMissingFilesAndReleasesTheSlot() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        for (String invalidJson : List.of("{\"file\":\"!invalid!\"}", "{}", "{\"file\":\"\"}", "null")) {
+            ApiException error = assertThrows(ApiException.class,
+                    () -> controller.detectJson(jsonRequest(invalidJson)));
+            assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        }
+        org.mockito.Mockito.verifyNoInteractions(service);
+        MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
+        controller.detect(valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+    }
+
+    @Test
+    void jsonEndpointsRejectEncodedBodiesOverFifteenMiBBeforeParsing() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        MockHttpServletRequest oversized = new MockHttpServletRequest() {
+            @Override public long getContentLengthLong() { return 15L * 1024 * 1024 + 1; }
+        };
+        oversized.setContentType("application/json");
+        oversized.setContent(new byte[0]);
+
+        assertEquals(ErrorCode.PAYLOAD_TOO_LARGE,
+                assertThrows(ApiException.class, () -> controller.detectJson(oversized)).getCode());
+        assertEquals(ErrorCode.PAYLOAD_TOO_LARGE,
+                assertThrows(ApiException.class, () -> controller.commitJson(oversized)).getCode());
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
+    @Test
+    void jsonEndpointsRejectDecodedFilesOverTenMiBBeforeCallingTheParser() throws Exception {
+        GoodsImportService service = mock(GoodsImportService.class);
+        GoodsImportController controller = new GoodsImportController(service);
+        byte[] oversized = new byte[GoodsImportWorkbookSecurity.MAX_COMPRESSED_BYTES + 1];
+
+        assertEquals(ErrorCode.PAYLOAD_TOO_LARGE, assertThrows(ApiException.class,
+                () -> controller.detectJson(jsonRequest(new GoodsImportDetectRequest(oversized, Map.of())))).getCode());
+        assertEquals(ErrorCode.PAYLOAD_TOO_LARGE, assertThrows(ApiException.class,
+                () -> controller.commitJson(jsonRequest(new GoodsImportCommitRequest(
+                        oversized, UUID.randomUUID(), "too-large.xlsx", List.of(), Map.of())))).getCode());
+        org.mockito.Mockito.verifyNoInteractions(service);
+    }
+
+    private static MockHttpServletRequest jsonRequest(Object body) throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContentType("application/json");
+        request.setContent(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(body));
+        return request;
+    }
+
+    private static MockHttpServletRequest jsonRequest(String json) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setContentType("application/json");
+        request.setContent(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return request;
     }
 
     private static boolean isEmpty(Path directory) throws IOException {

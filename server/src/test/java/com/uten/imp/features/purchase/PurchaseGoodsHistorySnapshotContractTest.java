@@ -28,7 +28,7 @@ class PurchaseGoodsHistorySnapshotContractTest {
     private static final Map<String, List<String>> DIRECT_INSERT_FIXTURES = Map.of(
             "features/operations/workbench/FulfillmentWorkbenchProvisionalStockPostgresTest.java", List.of(
                     "purchase_request_items:select", "purchase_order_items:values",
-                    "purchase_request_items:select", "purchase_request_items:values"),
+                    "purchase_request_items:select", "purchase_request_items:select", "purchase_request_items:values"),
             "features/production/analysis/PreplanExternalSupplySourceGuardPostgresTest.java", List.of(
                     "purchase_request_items:values", "purchase_order_items:values",
                     "purchase_receipt_items:values", "purchase_request_items:values"),

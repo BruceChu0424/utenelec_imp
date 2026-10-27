@@ -8,6 +8,54 @@ import 'package:uten_imp/features/basic_data/repositories/goods_import_repositor
 
 void main() {
   test(
+    'corrected partial detection and commit retain exact file, cells and exclusions',
+    () async {
+      final requests = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: <String, dynamic>{},
+              ),
+            );
+          },
+        ),
+      );
+      final repository = DioGoodsImportRepository(ApiClient(dio));
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      const cells = {
+        3: {'code': '', 'price': '12.50'},
+      };
+      await repository.detect(
+        bytes,
+        cellCorrections: cells,
+        excludedRowNums: {2},
+      );
+      await repository.commit(
+        bytes,
+        planId: 'plan-1',
+        cellCorrections: cells,
+        excludedRowNums: {2},
+      );
+      for (final request in requests) {
+        expect(request.queryParameters, isEmpty);
+        expect(request.contentType, 'application/json');
+        final body = request.data as Map;
+        expect(body['file'], base64Encode(bytes));
+        expect(body['cellCorrections'], {
+          '3': {'code': '', 'price': '12.50'},
+        });
+        expect(body['excludedRowNums'], [2]);
+      }
+    },
+  );
+
+  test(
     'commit binds the detection, exact file and selected conflicts in the body',
     () async {
       late RequestOptions captured;

@@ -67,11 +67,11 @@ class GoodsListScopeProjectionTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("permissions")
-    void listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String ignored, Case example) {
+    void listKeepsTheExistingWritableRulesAndResolvesItsScopeOnce(String scenario, Case example) {
         Fixture fixture = new Fixture(example, false);
         var rows = fixture.service.list(mock(GoodsQueryFilter.class), 1, 100, null, null).getItems();
 
-        assertThat(rows).extracting(GoodsListItem::isWritable).containsExactlyElementsOf(example.writable());
+        assertThat(rows).as(scenario).extracting(GoodsListItem::isWritable).containsExactlyElementsOf(example.writable());
         assertThat(rows).extracting(GoodsListItem::getId)
                 .containsExactlyElementsOf(fixture.goods.stream().map(Goods::getId).toList());
         verify(fixture.visibility, times(example.enabled() ? 1 : 0)).evaluate("goods", "goods:view:all");
@@ -199,7 +199,8 @@ class GoodsListScopeProjectionTest {
                     mock(com.uten.imp.security.TxSessionVars.class), em,
                     mock(com.uten.imp.common.mastercode.CategoryDrivenCodeService.class), visibility, current,
                     mock(GoodsCostMasker.class), relationships);
-            ReflectionTestUtils.setField(service, "goodsOwnerScopeEnabled", example.enabled());
+            ReflectionTestUtils.setField(ReflectionTestUtils.getField(service, "goodsReadScopePolicy"),
+                    "ownerScopeEnabled", example.enabled());
         }
     }
 }

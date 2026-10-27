@@ -52,7 +52,7 @@ final class GoodsActualCostStreamReader {
             if(!inspected.isEmpty())inspect(inspector,inspected);
             cursor(INDEXED_OUTPUTS,args,maximum,resource,row->math.accept(output(row)));
         }
-        math.finish(query.goodsId());
+        math.finish();
         if(math.gapCount>maximum)throw tooMany(maximum);
         List<Revision> selected=List.of();
         var revisionIds=math.objects().stream().map(CostObject::revisionId).filter(Objects::nonNull).distinct().toList();

@@ -248,7 +248,7 @@ public class XlsxExportService {
         }
     }
 
-    private final class DocumentWorkbook implements StreamingDocumentWriter {
+    private static final class DocumentWorkbook implements StreamingDocumentWriter {
         final StreamingWorkbook writer;
         final DocumentPageSink.RowBudget rowBudget=new DocumentPageSink.RowBudget();
         DocumentPageSink.Header document;

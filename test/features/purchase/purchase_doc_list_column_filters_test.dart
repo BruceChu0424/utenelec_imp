@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
@@ -102,7 +103,18 @@ void main() {
       isNull,
     );
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
-    expect(table.facets['supplier']?.single.value, 'supplier-1');
+    // Party candidates now come from an authorized page, independently of the
+    // bounded cache containing names of already-referenced supplier IDs.
+    final supplierPage = await table.facetPageLoaders['supplier']!('', 1);
+    expect(supplierPage.items.single.value, 'supplier-1');
+    expect(supplierPage.hasMore, isFalse);
+    expect(api.supplierCandidateQueries.single['page'], 1);
+    expect(api.supplierCandidateQueries.single['size'], 100);
+    expect(
+      api.supplierCandidateQueries.single.containsKey('selectableOnly'),
+      isFalse,
+      reason: 'historical document filters must retain disabled candidates',
+    );
     expect(table.facets['warehouse']?.single.value, 'warehouse-1');
 
     api.lastQuery = null;
@@ -131,12 +143,25 @@ class _PurchaseFilterApi extends ApiClient {
   _PurchaseFilterApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final supplierCandidateQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == ApiEndpoints.suppliers) {
+      supplierCandidateQueries.add(Map<String, dynamic>.from(query!));
+      return const {
+        'items': [
+          {'id': 'supplier-1', 'name': '供应商甲', 'status': '使用'},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
     lastQuery = query == null ? null : Map<String, dynamic>.from(query);
     return {
       'items': [
@@ -162,7 +187,7 @@ class _PurchaseFilterApi extends ApiClient {
   }) async {
     if (path.contains('suppliers')) {
       return const [
-        {'id': 'supplier-1', 'name': '供应商甲'},
+        {'id': 'supplier-1', 'name': '供应商甲', 'status': '使用'},
       ];
     }
     if (path.contains('warehouses')) {

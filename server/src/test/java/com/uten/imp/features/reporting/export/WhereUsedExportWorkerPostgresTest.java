@@ -76,7 +76,7 @@ class WhereUsedExportWorkerPostgresTest {
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password) VALUES(?,?,'b1_where_used_fixture','test-only-fixture',false)",owner,employee);
         baseFacts=facts();
     }
-    @AfterAll static void stop(){if(factory!=null)factory.close();PG.stop();}
+    @AfterAll static void stop(){if(factory!=null) {factory.close();} PG.stop();}
     @AfterEach void retireFixtureJobs(){SecurityContextHolder.clearContext();db.update("UPDATE report_export_jobs SET status='FAILED',finished_at=clock_timestamp(),lease_until=NULL WHERE status IN ('PENDING','RUNNING')");}
 
     private record Facts(UUID material,List<String> names){}
@@ -132,7 +132,7 @@ class WhereUsedExportWorkerPostgresTest {
         return new Facts(material,IntStream.rangeClosed(1,1001).mapToObj(index->"产品-"+key+"-"+String.format("%04d",index)).toList());
     }
 
-    private final class Harness implements AutoCloseable {
+    private static final class Harness implements AutoCloseable {
         final AtomicReference<AuthUser> principal=new AtomicReference<>(user(PERMISSIONS));
         final SecurityContextCurrentUser users=new SecurityContextCurrentUser();
         final SubmitterPrincipalRestorer restorer=mock(SubmitterPrincipalRestorer.class);
@@ -140,7 +140,7 @@ class WhereUsedExportWorkerPostgresTest {
         final ReportExportSource source;
         final AtomicReference<Runnable> sourceBoundary=new AtomicReference<>(()->{});
         final AtomicBoolean boundaryCalled=new AtomicBoolean();
-        Harness()throws Exception {
+        Harness(Path directory)throws Exception {
             when(restorer.restore(eq(owner),anyLong(),any())).thenAnswer(call->principal.get());
             when(restorer.currentStamps(owner)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1,1)));
             var identity=mock(ReportExportBuildIdentity.class);when(identity.revision()).thenReturn("where-used-fixture-build");
@@ -150,7 +150,7 @@ class WhereUsedExportWorkerPostgresTest {
             EntityManager em=SharedEntityManagerCreator.createSharedEntityManager(factory);
             var employeeNames=mock(EmployeeNameResolver.class);when(employeeNames.nameWithCodeOf(employee)).thenReturn("服务器操作员(E001)");
             var whereUsed=spy(new WhereUsedExportService(new ProductionWhereUsedQueryService(em),users,em,employeeNames));
-            doAnswer(call->{if(boundaryCalled.compareAndSet(false,true))sourceBoundary.get().run();return call.callRealMethod();})
+            doAnswer(call->{if(boundaryCalled.compareAndSet(false,true)) {sourceBoundary.get().run();} return call.callRealMethod();})
                     .when(whereUsed).streamDocument(any(),anyString(),any(),any(),any(),any());
             var constructor=Arrays.stream(ReportExportSource.class.getConstructors()).max(Comparator.comparingInt(java.lang.reflect.Constructor::getParameterCount)).orElseThrow();
             Object[] arguments=Arrays.stream(constructor.getParameterTypes()).map(type->type==WhereUsedExportService.class?whereUsed:mock(type)).toArray();
@@ -172,7 +172,7 @@ class WhereUsedExportWorkerPostgresTest {
 
     @ParameterizedTest @ValueSource(strings={"xlsx","pdf"})
     void independentWhereUsedPermissionsProduceAllRowsAndUnmixedEvidenceThroughRealWorker(String format)throws Exception {
-        Facts facts=baseFacts;try(var harness=new Harness()) {
+        Facts facts=baseFacts;try(var harness=new Harness(directory)) {
             assertFalse(harness.principal.get().getPermissions().contains("production_report:view"));
             assertFalse(harness.principal.get().getPermissions().contains("production_report:export"));
             assertFalse(harness.principal.get().getPermissions().contains("goods:view"));
@@ -208,7 +208,7 @@ class WhereUsedExportWorkerPostgresTest {
     }
 
     @Test void missingIndependentViewOrExportCannotCreateADurableTask()throws Exception {
-        Facts facts=new Facts(UUID.randomUUID(),List.of());try(var harness=new Harness()) {
+        Facts facts=new Facts(UUID.randomUUID(),List.of());try(var harness=new Harness(directory)) {
             long before=db.queryForObject("SELECT count(*) FROM report_export_jobs",Long.class);
             for(var permissions:List.of(Set.of("production_where_used:view"),Set.of("production_where_used:export"),Set.of("production_report:view","production_report:export"))) {
                 harness.principal.set(user(permissions));login(harness.principal.get());
@@ -219,7 +219,7 @@ class WhereUsedExportWorkerPostgresTest {
     }
 
     @Test void commitBetweenWorkerSnapshotAndFirstSourceSqlOnlyAppearsInANewTask()throws Exception {
-        Facts facts=facts();try(var harness=new Harness()) {
+        Facts facts=facts();try(var harness=new Harness(directory)) {
             String lateName="晚提交产品-"+UUID.randomUUID().toString().substring(0,8);
             var inserted=new AtomicBoolean();
             harness.sourceBoundary.set(()->{
@@ -247,7 +247,7 @@ class WhereUsedExportWorkerPostgresTest {
 
     @ParameterizedTest @ValueSource(booleans={false,true})
     void sourceCancellationOrSinkFailureNeverPublishesEvenAfterItsFirstMainPage(boolean fail)throws Exception {
-        Facts facts=baseFacts;try(var harness=new Harness()) {
+        Facts facts=baseFacts;try(var harness=new Harness(directory)) {
             var job=harness.submit(facts,"xlsx");var once=new AtomicBoolean();
             XlsxExportService excel=new XlsxExportService(){@Override public StreamingDocumentWriter openDocumentStream(Path path){
                 var delegate=super.openDocumentStream(path);return new Forward(delegate){@Override public void accept(DocumentPageSink.Page page){
@@ -262,7 +262,7 @@ class WhereUsedExportWorkerPostgresTest {
         }
     }
     @Test void pdfFormattingCancellationAfterSourceCompletionStillCannotPublish()throws Exception {
-        Facts facts=baseFacts;try(var harness=new Harness()) {
+        Facts facts=baseFacts;try(var harness=new Harness(directory)) {
             var job=harness.submit(facts,"pdf");var cancelled=new AtomicBoolean();
             var observedRows=new AtomicLong();
             TabularPdfExportService pdf=new TabularPdfExportService(){@Override public StreamingDocumentWriter openDocumentStream(Path path){
@@ -287,9 +287,9 @@ class WhereUsedExportWorkerPostgresTest {
     }
     private static class Forward implements StreamingDocumentWriter {
         final StreamingDocumentWriter delegate;Forward(StreamingDocumentWriter delegate){this.delegate=delegate;}
-        public void onCheckpoint(Runnable checkpoint){delegate.onCheckpoint(checkpoint);}public void begin(DocumentPageSink.Header header){delegate.begin(header);}
-        public void accept(DocumentPageSink.Page page){delegate.accept(page);}public long primaryRowCount(){return delegate.primaryRowCount();}public long rowCount(){return delegate.rowCount();}
-        public void finish(OutputStream output)throws IOException{delegate.finish(output);}public void close()throws IOException{delegate.close();}
+        @Override public void onCheckpoint(Runnable checkpoint){delegate.onCheckpoint(checkpoint);}@Override public void begin(DocumentPageSink.Header header){delegate.begin(header);}
+        @Override public void accept(DocumentPageSink.Page page){delegate.accept(page);}@Override public long primaryRowCount(){return delegate.primaryRowCount();}@Override public long rowCount(){return delegate.rowCount();}
+        @Override public void finish(OutputStream output)throws IOException{delegate.finish(output);}@Override public void close()throws IOException{delegate.close();}
     }
     private void assertNoTemporaryArtifacts(Path artifact)throws IOException {
         try(var files=Files.list(directory)){assertEquals(artifact==null?List.of():List.of(artifact),files.toList());}

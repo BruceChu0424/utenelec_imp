@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import QuartzCore
 
 class MainFlutterWindow: NSWindow {
   private var clientUpdateChannel: FlutterMethodChannel?
@@ -14,6 +15,20 @@ class MainFlutterWindow: NSWindow {
   private var exitingFullScreenForLogin = false
   private var leftMouseDown: NSEvent?
   private var windowObservers: [NSObjectProtocol] = []
+  private static let loginCornerRadius: CGFloat = 16
+  private struct WindowAppearance {
+    let isOpaque: Bool
+    let backgroundColor: NSColor?
+  }
+  private struct ContentLayerAppearance {
+    let wantsLayer: Bool
+    let cornerRadius: CGFloat
+    let masksToBounds: Bool
+    let maskedCorners: CACornerMask
+  }
+  private var normalWindowAppearance: WindowAppearance?
+  private weak var roundedContentView: NSView?
+  private var normalContentLayerAppearance: ContentLayerAppearance?
 
   // Borderless windows otherwise cannot receive keyboard focus on macOS.
   override var canBecomeKey: Bool { true }
@@ -28,6 +43,9 @@ class MainFlutterWindow: NSWindow {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
+    // applyMode initially saw the nib's content view. Clip the actual Flutter
+    // root after replacement, before it can display its opaque Metal content.
+    updateWindowShape()
     self.setFrame(windowFrame, display: true)
 
     RegisterGeneratedPlugins(registry: flutterViewController)
@@ -146,6 +164,10 @@ class MainFlutterWindow: NSWindow {
 
   private func applyMode(_ mode: DesktopMode) {
     guard appliedMode != mode else { return }
+    if mode == .login && normalWindowAppearance == nil {
+      normalWindowAppearance = WindowAppearance(isOpaque: isOpaque, backgroundColor: backgroundColor)
+    }
+    appliedMode = mode
     leftMouseDown = nil
     let visibleFrame = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
       ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
@@ -179,9 +201,68 @@ class MainFlutterWindow: NSWindow {
       let availableContent = contentRect(forFrameRect: target).size
       contentMinSize = NSSize(width: min(960, availableContent.width), height: min(640, availableContent.height))
     }
-    appliedMode = mode
+    updateWindowShape()
     if isVisible && NSApp.isActive { makeKey() }
     if mode == .main { restoreFullScreenIfNeeded() }
+  }
+
+  private func updateWindowShape() {
+    guard let mode = appliedMode else { return }
+    if mode == .login {
+      // A Flutter-only rounded rectangle would leave an opaque native window
+      // behind it. Clear the window itself, then clip the root layer so every
+      // Flutter/Metal sublayer is inside the same four 16-point corners.
+      isOpaque = false
+      backgroundColor = .clear
+      if let view = contentView {
+        if roundedContentView !== view {
+          restoreContentLayerAppearance()
+          normalContentLayerAppearance = ContentLayerAppearance(
+            wantsLayer: view.wantsLayer,
+            cornerRadius: view.layer?.cornerRadius ?? 0,
+            masksToBounds: view.layer?.masksToBounds ?? false,
+            maskedCorners: view.layer?.maskedCorners ?? [
+              .layerMinXMinYCorner, .layerMaxXMinYCorner,
+              .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
+            ]
+          )
+          roundedContentView = view
+        }
+        view.wantsLayer = true
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        view.layer?.cornerRadius = Self.loginCornerRadius
+        view.layer?.maskedCorners = [
+          .layerMinXMinYCorner, .layerMaxXMinYCorner,
+          .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
+        ]
+        view.layer?.masksToBounds = true
+        CATransaction.commit()
+      }
+    } else {
+      restoreContentLayerAppearance()
+      if let appearance = normalWindowAppearance {
+        backgroundColor = appearance.backgroundColor
+        isOpaque = appearance.isOpaque
+        normalWindowAppearance = nil
+      }
+    }
+    // AppKit recomputes the native shadow after size/backing-scale changes.
+    invalidateShadow()
+  }
+
+  private func restoreContentLayerAppearance() {
+    if let view = roundedContentView, let appearance = normalContentLayerAppearance {
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      view.layer?.cornerRadius = appearance.cornerRadius
+      view.layer?.maskedCorners = appearance.maskedCorners
+      view.layer?.masksToBounds = appearance.masksToBounds
+      CATransaction.commit()
+      view.wantsLayer = appearance.wantsLayer
+    }
+    roundedContentView = nil
+    normalContentLayerAppearance = nil
   }
 
   private func restoreFullScreenIfNeeded() {
@@ -214,6 +295,11 @@ class MainFlutterWindow: NSWindow {
 
   private func observeFullScreenTransitions() {
     let center = NotificationCenter.default
+    for name in [NSWindow.didResizeNotification, NSWindow.didChangeBackingPropertiesNotification] {
+      windowObservers.append(center.addObserver(forName: name, object: self, queue: .main) { [weak self] _ in
+        self?.updateWindowShape()
+      })
+    }
     windowObservers.append(center.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: self, queue: .main) { [weak self] _ in
       guard let self = self else { return }
       self.mainFrame = self.frame

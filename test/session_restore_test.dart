@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
@@ -9,6 +11,9 @@ import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'support/fake_auth_logout_fence.dart';
+
+const _fixtureBase = 'https://staff-restore.example.test/api';
+final _fixtureIssuer = AuthBackendRealmPolicy().issuerFor(_fixtureBase);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,14 +24,17 @@ void main() {
     await storage.saveTokens(
       accessToken: 'old-access',
       refreshToken: 'valid-refresh',
+      issuer: _fixtureIssuer,
+    );
+    final repository = _FailingAuthRepository(
+      ApiException('INTERNAL', '服务器繁忙'),
     );
     final container = ProviderContainer(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue(_fixtureBase),
         secureStorageProvider.overrideWithValue(storage),
         authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
-        authRepositoryProvider.overrideWithValue(
-          _FailingAuthRepository(ApiException('INTERNAL', '服务器繁忙')),
-        ),
+        authRepositoryProvider.overrideWithValue(repository),
       ],
     );
     addTearDown(container.dispose);
@@ -34,6 +42,7 @@ void main() {
     container.read(sessionProvider);
     await pumpEventQueue();
 
+    expect(repository.meCalls, 1);
     expect(await storage.getAccessToken(), 'old-access');
     expect(await storage.getRefreshToken(), 'valid-refresh');
   });
@@ -44,14 +53,17 @@ void main() {
     await storage.saveTokens(
       accessToken: 'old-access',
       refreshToken: 'invalid-refresh',
+      issuer: _fixtureIssuer,
+    );
+    final repository = _FailingAuthRepository(
+      ApiException('UNAUTHORIZED', '会话已过期'),
     );
     final container = ProviderContainer(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue(_fixtureBase),
         secureStorageProvider.overrideWithValue(storage),
         authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
-        authRepositoryProvider.overrideWithValue(
-          _FailingAuthRepository(ApiException('UNAUTHORIZED', '会话已过期')),
-        ),
+        authRepositoryProvider.overrideWithValue(repository),
       ],
     );
     addTearDown(container.dispose);
@@ -59,18 +71,23 @@ void main() {
     container.read(sessionProvider);
     await pumpEventQueue();
 
+    expect(repository.meCalls, 1);
     expect(await storage.getAccessToken(), isNull);
     expect(await storage.getRefreshToken(), isNull);
   });
 }
 
 class _FailingAuthRepository implements AuthRepository {
-  const _FailingAuthRepository(this.error);
+  _FailingAuthRepository(this.error);
 
   final Object error;
+  int meCalls = 0;
 
   @override
-  Future<UserProfile> me() => Future<UserProfile>.error(error);
+  Future<UserProfile> me() {
+    meCalls++;
+    return Future<UserProfile>.error(error);
+  }
 
   @override
   Future<AuthResult> changePassword(String oldPassword, String newPassword) =>

@@ -513,12 +513,13 @@ void main() {
       await tester.enterText(_searchEditable(), '大范围');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      expect(repository.searchPages, [1, 2]);
+      expect(repository.searchPages, [1, 2, 3]);
       expect(repository.contextPages, [1, 2]);
       final table = tester.widget<MasterDataTableView<ClientListItem>>(
         find.byType(MasterDataTableView<ClientListItem>),
       );
       expect(table.items, hasLength(100));
+      expect(table.currentPage, 1);
       expect(table.totalPages, 100);
       final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
         find.byType(UtenCategoryTreeView<ProductCategoryNode>),
@@ -560,7 +561,11 @@ void main() {
               .onPageChange!(2),
         );
         await tester.pumpAndSettle();
-        expect(repository.searchPages, [1, 2, 3]);
+        expect(repository.searchPages, [1, 2, 3, 4]);
+        expect(
+          tester.widget<MasterDataTableView<ClientListItem>>(table).currentPage,
+          2,
+        );
         expect(repository.contextPages, [1, 2, 1, 2]);
         if (versioned) {
           repository.scopeVersion = 'fixture-v2';

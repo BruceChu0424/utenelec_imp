@@ -10,7 +10,7 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
   testWidgets(
-    'candidate entry prepares a hidden page and scroll adopts it without replacing raw input',
+    'candidate entry prepares two hidden pages and scroll adopts them without replacing raw input',
     (tester) async {
       final repository = _PagedCandidatesRepository();
       await _pumpLauncher(tester, repository, size: const Size(1200, 900));
@@ -20,7 +20,7 @@ void main() {
         const Key('cross-reallocation-candidates-list'),
       );
       ListView list() => tester.widget<ListView>(finder);
-      expect(repository.pages, [1, 2]);
+      expect(repository.pages, [1, 2, 3]);
       expect(list().childrenDelegate.estimatedChildCount, 41);
       await tester.enterText(
         find.byKey(const Key('cross-reallocation-qty')),

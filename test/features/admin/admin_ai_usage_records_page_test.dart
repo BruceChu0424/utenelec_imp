@@ -71,8 +71,9 @@ void main() {
       await _pump(tester, repository);
       MasterDataTableView<AiUsageAuditRecord> table() =>
           tester.widget(find.byKey(const Key('ai-records-table')));
-      expect(repository.reads.map((query) => query['page']), [0, 1]);
+      expect(repository.reads.map((query) => query['page']), [0, 1, 2]);
       expect(table().currentPage, 1);
+      expect(table().items.single.id, 'event-0');
       await table().onPageChange!(2);
       await tester.pumpAndSettle();
       expect(table().currentPage, 2);

@@ -6,6 +6,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.admin.DataScopeAdminService;
+import com.uten.imp.features.admin.UserAccountAdminService;
 import com.uten.imp.features.org.employee.EmployeeCommandService;
 import com.uten.imp.features.org.employee.dto.OffboardRequest;
 import com.uten.imp.responsibility.dto.DataHandoverRequest;
@@ -89,6 +90,7 @@ class DataHandoverPostgresTest {
     @Autowired private DataScopeAdminService dataScopes;
     @Autowired private DataHandoverCandidateService candidates;
     @Autowired private EmployeeCommandService employees;
+    @Autowired private UserAccountAdminService accounts;
 
     @AfterEach
     void clearAuthentication() {
@@ -447,7 +449,8 @@ class DataHandoverPostgresTest {
 
         employees.rehire(source.employeeId());
         assertEquals("active", employeeStatus(source.employeeId()));
-        assertEquals("active", accountStatus(source.userId()));
+        assertEquals("disabled", accountStatus(source.userId()),
+                "Rehire restores employment; account recovery remains an explicit support action");
         assertEquals(0, count("select count(*) from user_permission_overrides where user_id=? and active=true",
                 source.userId()));
         assertEquals(true, jdbc.queryForObject(
@@ -460,6 +463,18 @@ class DataHandoverPostgresTest {
                 """, source.userId()));
         assertEquals(false, jdbc.queryForObject(
                 "select remote_access from users where id=?", Boolean.class, source.userId()));
+        accounts.setStatus(source.userId(), "active");
+        assertEquals("active", accountStatus(source.userId()));
+        assertEquals(0, count("select count(*) from user_permission_overrides where user_id=? and active=true",
+                source.userId()), "Explicit account enable must not restore old personal grants");
+        assertEquals(false, jdbc.queryForObject(
+                "select remote_access from users where id=?", Boolean.class, source.userId()));
+        assertEquals(true, jdbc.queryForObject(
+                "select must_change_password from users where id=?", Boolean.class, source.userId()));
+        assertExpiredCredential(jdbc.queryForObject(
+                "select temp_password_expires_at from users where id=?", Object.class, source.userId()));
+        assertEquals(0, count("select count(*) from auth_sessions where user_id=? and revoked_at is null",
+                source.userId()), "Account enable alone cannot resurrect revoked sessions");
         assertThrows(ApiException.class, () -> employees.offboard(source.employeeId(), request));
         assertEquals(source.employeeId(),
                 handoverVisibility.currentResponsible("sales", source.employeeId()));

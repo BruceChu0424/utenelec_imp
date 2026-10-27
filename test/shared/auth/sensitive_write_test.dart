@@ -11,6 +11,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/sensitive_write.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -20,6 +21,9 @@ final _identity = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'A'),
 );
 final _permissions = StateProvider<Set<String>>((ref) => {Perm.goodsEdit});
+final _fixtureIssuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.test/api',
+);
 
 class _Session extends SessionNotifier {
   int intent = 0;
@@ -31,12 +35,13 @@ class _Session extends SessionNotifier {
 
 class _Storage extends SecureStorage {
   _Storage() : super(const FlutterSecureStorage());
-  AuthTokenSnapshot snapshot = const AuthTokenSnapshot(
+  AuthTokenSnapshot snapshot = AuthTokenSnapshot(
     accessToken: 'test-A-token',
     refreshToken: null,
     generation: 1,
     intentGeneration: 1,
     sessionLineage: 'A-first-login',
+    issuer: _fixtureIssuer,
   );
   Completer<void>? snapshotReadStarted;
   Completer<void>? snapshotGate;
@@ -141,12 +146,13 @@ void main() {
       // identity can remain A until a new credential record has already committed.
       final session = container.read(sessionProvider.notifier) as _Session;
       session.intent++;
-      storage.snapshot = const AuthTokenSnapshot(
+      storage.snapshot = AuthTokenSnapshot(
         accessToken: 'new-B-token',
         refreshToken: null,
         generation: 2,
         intentGeneration: 2,
         sessionLineage: 'new-B-session',
+        issuer: _fixtureIssuer,
       );
       expect(container.read(_identity), const AuthenticatedScope(userId: 'A'));
       gate.complete();
@@ -280,6 +286,7 @@ void main() {
           generation: 2,
           intentGeneration: 2,
           sessionLineage: change,
+          issuer: _fixtureIssuer,
         );
       } else if (change == 'permission') {
         container.read(_permissions.notifier).state = {};

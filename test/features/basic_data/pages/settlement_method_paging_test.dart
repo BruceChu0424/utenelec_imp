@@ -145,11 +145,21 @@ Finder get _search => find.descendant(
 );
 void main() {
   testWidgets(
-    'settlement prepares one adjacent page and search wins over a delayed old page',
+    'settlement prepares two adjacent pages and search wins over a delayed old page',
     (tester) async {
       final api = _Api();
       await _pump(tester, api);
-      expect(api.calls, [(page: 1, keyword: ''), (page: 2, keyword: '')]);
+      expect(api.calls, [
+        (page: 1, keyword: ''),
+        (page: 2, keyword: ''),
+        (page: 3, keyword: ''),
+      ]);
+      expect(
+        tester
+            .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
+            .currentPage,
+        1,
+      );
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
@@ -160,13 +170,19 @@ void main() {
       api.nextPage = gate;
       tester
           .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
-          .onPageChange!(3);
+          .onPageChange!(4);
       await tester.pump();
-      expect(api.calls.last, (page: 3, keyword: ''));
+      expect(api.calls.last, (page: 4, keyword: ''));
       await tester.enterText(_search, '末端');
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
-      expect(api.calls.last, (page: 1, keyword: '末端'));
+      expect(api.calls, [
+        (page: 1, keyword: ''),
+        (page: 2, keyword: ''),
+        (page: 3, keyword: ''),
+        (page: 4, keyword: ''),
+        (page: 1, keyword: '末端'),
+      ]);
       expect(
         tester
             .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
@@ -175,7 +191,7 @@ void main() {
             .id,
         'method-9999',
       );
-      gate.complete(api.page(3));
+      gate.complete(api.page(4));
       await tester.pumpAndSettle();
       expect(
         tester
@@ -186,6 +202,12 @@ void main() {
         'method-9999',
       );
       expect(tester.widget<TextField>(_search).controller!.text, '末端');
+      expect(
+        tester
+            .widget<MasterDataTableView<SettlementMethodAdminItem>>(_table)
+            .currentPage,
+        1,
+      );
       expect(tester.takeException(), isNull);
     },
   );

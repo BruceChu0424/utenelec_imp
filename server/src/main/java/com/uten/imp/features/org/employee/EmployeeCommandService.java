@@ -108,7 +108,7 @@ public class EmployeeCommandService {
         if (nn(r.paperArchiveNo())) e.setPaperArchiveNo(r.paperArchiveNo());
         if (nn(r.status())) {
             // 状态机收口：离职必须走 /offboard（账号冻结+任职记录+在途申请驳回），
-            // 离职员工回在职必须走 /rehire（账号启用+任职记录），不允许编辑直改绕过闭环。
+            // 离职员工回在职必须走 /rehire（任职记录；账号恢复另由账号支持办理）。
             if ("resigned".equals(r.status()) && !"resigned".equals(e.getStatus())) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "请将员工通过「离职办理」流程置为离职，以保证账号冻结与任职记录完整");
@@ -722,7 +722,7 @@ public class EmployeeCommandService {
             if ("resigned".equals(employee.getStatus())) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "离职员工恢复在职请使用「复职」功能，以恢复账号和任职记录");
+                        "离职员工恢复在职请使用「复职」功能；账号恢复需由账号支持另行办理");
             }
             if ("probation".equals(employee.getStatus())
                     && "active".equals(requestedStatus)) {

@@ -35,7 +35,9 @@ class _FakeVisitorStaffRepository extends Fake
       items: items,
       page: page,
       size: size,
-      total: items.length,
+      // Both pages describe the same dataset, so accepting page two must not
+      // manufacture a count change that retires the prepared read window.
+      total: items.length + (nextPage == null ? 0 : 1),
       totalPages: nextPage == null ? 1 : 2,
     );
   }
@@ -95,17 +97,11 @@ void _expectHostReviewingReadWindow(
     repo.listCalls.where((call) => call['page'] == 2),
     hasLength(pageTwoReads),
   );
-  expect(
-    repo.listCalls.length,
-    inInclusiveRange(pageTwoReads + 1, pageTwoReads + 2),
-  );
-  expect(
-    repo.listCalls.every(
-      (call) => call['status'] == null && const {1, 2}.contains(call['page']),
-    ),
-    isTrue,
-    reason: '相邻页预读仍在同一查询窗口，不能改变当前可见页或请求其他分类',
-  );
+  expect(repo.listCalls, [
+    {'status': null, 'page': 1},
+    {'status': null, 'page': 2},
+    if (pageTwoReads == 2) {'status': null, 'page': 2},
+  ], reason: '显式重试失败页复用已接受前页；后台预读不能重复失败页或改变分类');
 }
 
 void main() {

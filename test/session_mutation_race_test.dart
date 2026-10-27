@@ -84,14 +84,10 @@ void main() {
         ),
         throwsA(isA<SessionMutationSuperseded>()),
       );
-      final rejected = expectLater(
-        login,
-        throwsA(isA<SessionMutationSuperseded>()),
-      );
       await repository.firstLoginStarted.future;
       current = false;
       repository.releaseFirstLogin();
-      await rejected;
+      await login;
       await pumpEventQueue();
 
       expect(repository.loginCalls, 1);

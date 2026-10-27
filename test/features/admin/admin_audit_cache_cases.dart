@@ -143,8 +143,19 @@ void auditCacheCases() {
           await tester.tap(find.text('重试').first);
           await tester.pumpAndSettle();
           expect(finder, findsOneWidget);
-          expect(calls, hasLength(before + 3));
-          expect(calls.last['page'], silent ? 2 : 91);
+          final retryPages = silent ? [1, 2, 3] : [90, 91, 92, 89, 88];
+          final snapshotKey = sessions ? 'snapshotAuditId' : 'snapshotId';
+          final originalQuery = Map<String, Object?>.of(calls.first)
+            ..remove('page')
+            ..remove(snapshotKey);
+          expect(calls.skip(before + 1), [
+            for (var index = 0; index < retryPages.length; index++)
+              {
+                ...originalQuery,
+                'page': retryPages[index],
+                snapshotKey: index == 0 ? null : 9001,
+              },
+          ]);
           expect(
             tester.widget<MasterDataTableView<dynamic>>(finder).currentPage,
             silent ? 1 : 90,

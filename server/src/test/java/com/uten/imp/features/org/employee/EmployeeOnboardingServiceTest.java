@@ -22,6 +22,9 @@ import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -32,6 +35,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -43,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -83,6 +88,83 @@ class EmployeeOnboardingServiceTest {
         org.mockito.Mockito.lenient().when(currentUser.get()).thenReturn(Optional.of(
                 new com.uten.imp.security.AuthUser(UUID.randomUUID(), UUID.randomUUID(), "fixture-admin",
                         java.util.Set.of("employee:create", "employee:pii:edit", "account:support"), false, true, true)));
+    }
+
+    @ParameterizedTest(name = "onboarding requires {0}, openAccount={2}, value={1}")
+    @MethodSource("missingPrimaryIdentityRequests")
+    void optionalSensitiveColumnsDoNotPermitIncompleteOnboarding(
+            String field, String missing, boolean openAccount) {
+        OnboardingRequest valid = request(UUID.randomUUID(), null, null, "IGNORED");
+        OnboardingRequest.Profile p = valid.profile();
+        OnboardingRequest.Profile incomplete = new OnboardingRequest.Profile(
+                p.code(), p.fullName(), p.gender(),
+                "idType".equals(field) ? missing : p.idType(),
+                "idNumber".equals(field) ? missing : p.idNumber(), p.birthDate(),
+                "phone".equals(field) ? missing : p.phone(), p.email(), p.ethnicity(),
+                p.politicalStatus(), p.maritalStatus(), p.hujiAddress(), p.residenceAddress());
+        OnboardingRequest input = new OnboardingRequest(
+                incomplete, valid.employment(), valid.compensation(), valid.contract(),
+                valid.emergencyContacts(), valid.certificates(), valid.educations(),
+                new OnboardingRequest.Account("custom.hr_1", openAccount));
+
+        ApiException rejected = assertThrows(ApiException.class, () -> service.onboard(input));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, rejected.getCode());
+        verifyNoInteractions(empRepo, sensitiveRepo, piiWriter, compensationRepo, contractRepo,
+                emergencyRepo, credentialRepo, educationRepo, historyRepo, deptRepo, positionRepo,
+                userRepo, masterCodeService, passwordEncoder, passwordGenerator,
+                credentialIssuance, queryService, refreshTokenRepo, sessions);
+    }
+
+    private static Stream<Arguments> missingPrimaryIdentityRequests() {
+        return Stream.of("idType", "idNumber", "phone").flatMap(field ->
+                blankPrimaryValues().flatMap(value -> Stream.of(true, false)
+                        .map(openAccount -> Arguments.of(field, value, openAccount))));
+    }
+
+    private static Stream<String> blankPrimaryValues() {
+        return Stream.of(null, "", " \t ");
+    }
+
+    @ParameterizedTest
+    @MethodSource("blankPrimaryValues")
+    void provisioningRequiresAStoredPhoneBeforeCredentialsAreIssued(String savedPhone) {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setEmployeeId(employee.getId());
+        sensitive.setPhoneEnc("phone-cipher");
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn(savedPhone);
+
+        ApiException rejected = assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId()));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, rejected.getCode());
+        verify(tx, never()).tryDecrypt(any());
+        verify(empRepo, never()).save(any(Employee.class));
+        verify(userRepo, never()).save(any(UserAccount.class));
+        verifyNoInteractions(passwordEncoder, passwordGenerator, credentialIssuance,
+                queryService, refreshTokenRepo, sessions);
+    }
+
+    @Test
+    void aValidPhoneAndExplicitCustomLoginStillProvisionTheRequestedAccount() {
+        Department center = managementCenter();
+        when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
+        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0008");
+        OnboardingRequest valid = request(center.getId(), null, null, "IGNORED");
+        OnboardingRequest input = new OnboardingRequest(
+                valid.profile(), valid.employment(), valid.compensation(), valid.contract(),
+                valid.emergencyContacts(), valid.certificates(), valid.educations(),
+                new OnboardingRequest.Account("custom.hr_1", true));
+
+        EmployeeOnboardingResult result = service.onboard(input);
+
+        assertEquals("custom.hr_1", result.loginAccount());
+        verify(userRepo).existsByLoginAccount("custom.hr_1");
+        verify(userRepo, never()).existsByLoginAccount("13800000000");
     }
 
     @Test

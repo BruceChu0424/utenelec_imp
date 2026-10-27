@@ -10,6 +10,11 @@ import 'package:uten_imp/core/network/interceptors/visitor_auth_interceptor.dart
 import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/owned_dio.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
+
+final _staffIssuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.example.cn/api',
+);
 
 void main() {
   test(
@@ -64,6 +69,7 @@ void main() {
             await storage.saveTokens(
               accessToken: 'old',
               refreshToken: 'refresh',
+              issuer: _staffIssuer,
             );
           }
           final adapters = <_Adapter>[];

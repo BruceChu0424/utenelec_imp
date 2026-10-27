@@ -65,6 +65,31 @@ import '../widgets/employee_transfer_dialog.dart';
 import '../widgets/profile_change_pending_section.dart';
 import '../widgets/employee_contact_edit_dialog.dart';
 
+enum _EmployeeWriteAction {
+  avatar,
+  profile,
+  pii,
+  renewContract,
+  confirm,
+  rehire,
+}
+
+/// Render and live owner checks use the same action projection. Callers pass
+/// their current server-granted permission set; target/status checks stay local.
+bool _allowsEmployeeWrite(
+  Set<String> permissions,
+  _EmployeeWriteAction action,
+) => switch (action) {
+  _EmployeeWriteAction.avatar => permissions.contains(Perm.employeeAvatarEdit),
+  _EmployeeWriteAction.profile => permissions.contains(Perm.employeeEdit),
+  _EmployeeWriteAction.pii => permissions.contains(Perm.employeePiiEdit),
+  _EmployeeWriteAction.renewContract => permissions.contains(
+    Perm.employeeContractRenew,
+  ),
+  _EmployeeWriteAction.confirm => permissions.contains(Perm.employeeConfirm),
+  _EmployeeWriteAction.rehire => permissions.contains(Perm.employeeRehire),
+};
+
 class EmployeeDetailPage extends ConsumerStatefulWidget {
   const EmployeeDetailPage({super.key, required this.employeeId});
 
@@ -349,7 +374,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final canView =
         perms.contains(Perm.attachmentView) &&
         perms.contains(Perm.employeePiiView);
-    final ownerCanManageFiles = perms.contains(Perm.employeeEdit);
+    final ownerCanManageFiles = _allowsEmployeeWrite(
+      perms,
+      _EmployeeWriteAction.profile,
+    );
     final canUploadFiles =
         ownerCanManageFiles && perms.contains(Perm.attachmentUpload);
     if (!canView) {
@@ -374,7 +402,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             ? '暂无档案文件，点击上传合同 / 证件 / 照片(PDF 或图片)'
             : '暂无档案文件',
         categories: const ['合同', '身份证件', '学历证书', '照片', '其他'],
-        onSetAvatar: perms.contains(Perm.employeeAvatarEdit)
+        onSetAvatar: _allowsEmployeeWrite(perms, _EmployeeWriteAction.avatar)
             ? (Attachment attachment) => _onSetAvatar(attachment.id)
             : null,
       ),
@@ -382,7 +410,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _onSetAvatar(String attachmentId) => _withEmployeeAction(
-    Perm.employeeAvatarEdit,
+    _EmployeeWriteAction.avatar,
     (owner, profile, repository) async {
       await _runConfirmedAction('正在设置头像', '已设为头像', () async {
         // TODO(l10n): 补 arb
@@ -504,7 +532,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final resigned = p.status == 'resigned';
     final actions = <Widget>[];
 
-    if (perms.contains(Perm.employeeEdit)) {
+    if (_allowsEmployeeWrite(perms, _EmployeeWriteAction.profile)) {
       actions.add(
         FilledButton.tonalIcon(
           icon: const Icon(Icons.edit_outlined, size: 18),
@@ -528,7 +556,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     // 试用期转正；在职但未登记转正日期（老库导入存量）也显示，走 confirm 补登。
     if ((p.status == 'probation' ||
             (p.status == 'active' && p.confirmedAt == null)) &&
-        perms.contains(Perm.employeeConfirm)) {
+        _allowsEmployeeWrite(perms, _EmployeeWriteAction.confirm)) {
       actions.add(
         FilledButton.icon(
           icon: const Icon(Icons.how_to_reg_outlined, size: 18),
@@ -552,7 +580,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ),
       );
     }
-    if (resigned && perms.contains(Perm.employeeRehire)) {
+    if (resigned && _allowsEmployeeWrite(perms, _EmployeeWriteAction.rehire)) {
       actions.add(
         FilledButton.icon(
           icon: const Icon(Icons.assignment_return_outlined, size: 18),
@@ -654,8 +682,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   // status='resigned' 永久留存，可在花名册"离职"筛选查看。
 
   /// 联系方式与证件(更换手机号 / 备用手机号 / 修改证件信息)写权限：employee:pii:edit。
-  bool get _canPiiEdit =>
-      ref.watch(currentPermissionsProvider).contains(Perm.employeePiiEdit);
+  bool get _canPiiEdit => _allowsEmployeeWrite(
+    ref.watch(currentPermissionsProvider),
+    _EmployeeWriteAction.pii,
+  );
 
   /// 证件号码有问题时的顶部常驻提醒(每个 Tab 都可见，修好之前一直显示)。
   Widget? _identityIssueBanner() {
@@ -878,12 +908,16 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final canEdit =
-        perms.contains(Perm.employeeContractRenew) && _p.status != 'resigned';
+        _allowsEmployeeWrite(perms, _EmployeeWriteAction.renewContract) &&
+        _p.status != 'resigned';
     // 合同附件=PII 级扫描件：与档案文件 Tab 同口径（attachment:view + employee:pii:view）
     final canViewAttachments =
         perms.contains(Perm.attachmentView) &&
         perms.contains(Perm.employeePiiView);
-    final ownerCanManageAttachments = perms.contains(Perm.employeeEdit);
+    final ownerCanManageAttachments = _allowsEmployeeWrite(
+      perms,
+      _EmployeeWriteAction.profile,
+    );
     final items = <Widget>[];
     for (final c in _p.contracts) {
       final Color badgeColor;
@@ -1006,7 +1040,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _showRenewContractDialog(AppLocalizations l10n) =>
-      _withEmployeeAction(Perm.employeeContractRenew, (
+      _withEmployeeAction(_EmployeeWriteAction.renewContract, (
         owner,
         profile,
         repository,
@@ -1095,7 +1129,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   Widget _contactVehicleTab(AppLocalizations l10n) {
     final theme = Theme.of(context);
     final perms = ref.watch(currentPermissionsProvider);
-    final canEdit = perms.contains(Perm.employeeEdit);
+    final canEdit = _allowsEmployeeWrite(perms, _EmployeeWriteAction.profile);
     final canPiiEdit = _canPiiEdit;
     return _scrollTab([
       _section('联系方式', [
@@ -1342,7 +1376,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   /// Capture the operator, target and transport before opening a confirmation.
   /// The public owner keeps intermediate identity/target changes sticky.
   Future<void> _withEmployeeAction(
-    String permission,
+    _EmployeeWriteAction capability,
     Future<void> Function(
       AccountActionOwner owner,
       EmployeeProfile profile,
@@ -1357,7 +1391,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         boundary.identity == null ||
         boundary.identity!.readOnly ||
         _actionBusyTitle != null ||
-        !boundary.permissions.contains(permission)) {
+        !_allowsEmployeeWrite(boundary.permissions, capability)) {
       return;
     }
     final repository = ref.read(employeeRepositoryProvider);
@@ -1368,7 +1402,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           !_disposing &&
           widget.employeeId == profile.id &&
           _profile?.id == profile.id &&
-          ref.read(currentPermissionsProvider).contains(permission),
+          _allowsEmployeeWrite(
+            ref.read(currentPermissionsProvider),
+            capability,
+          ),
       targetChanges: _accountOwnerChanges,
       onInvalidated: () {
         if (mounted && !_disposing) {
@@ -1416,44 +1453,42 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     if (ok) _load();
   }
 
-  Future<void> _onChangePhone() => _withEmployeeAction(Perm.employeePiiEdit, (
-    owner,
-    profile,
-    repository,
-  ) async {
-    final l10n = AppLocalizations.of(context);
-    final newPhone = await showEmployeeChangePhoneDialog(
-      context,
-      profile.phone,
-      hasAccount: _accountStatus(profile) != null,
-    );
-    if (newPhone == null || !mounted || !owner.isCurrent) return;
-    await _runConfirmedAction(
-      l10n.employeeChangePhoneBusy,
-      // The endpoint confirms only the profile update. It does not return
-      // whether a login name changed or a session was revoked.
-      l10n.employeeChangePhoneSuccess,
-      () => repository.changePhone(profile.id, newPhone),
-      owner: owner,
-    );
-  });
+  Future<void> _onChangePhone() => _withEmployeeAction(
+    _EmployeeWriteAction.pii,
+    (owner, profile, repository) async {
+      final l10n = AppLocalizations.of(context);
+      final newPhone = await showEmployeeChangePhoneDialog(
+        context,
+        profile.phone,
+        hasAccount: _accountStatus(profile) != null,
+      );
+      if (newPhone == null || !mounted || !owner.isCurrent) return;
+      await _runConfirmedAction(
+        l10n.employeeChangePhoneBusy,
+        // The endpoint confirms only the profile update. It does not return
+        // whether a login name changed or a session was revoked.
+        l10n.employeeChangePhoneSuccess,
+        () => repository.changePhone(profile.id, newPhone),
+        owner: owner,
+      );
+    },
+  );
 
-  Future<void> _editVehicles() => _withEmployeeAction(Perm.employeeEdit, (
-    owner,
-    profile,
-    repository,
-  ) async {
-    final ok = await showEmployeeVehiclesDialog(context, profile.vehicles);
-    if (ok == null || !mounted || !owner.isCurrent) return;
-    await _runConfirmedAction(
-      '正在保存车辆信息', // TODO(l10n): 补 arb
-      '车辆信息已更新',
-      () => repository.update(profile.id, {'vehicles': ok}),
-      owner: owner,
-    );
-  });
+  Future<void> _editVehicles() => _withEmployeeAction(
+    _EmployeeWriteAction.profile,
+    (owner, profile, repository) async {
+      final ok = await showEmployeeVehiclesDialog(context, profile.vehicles);
+      if (ok == null || !mounted || !owner.isCurrent) return;
+      await _runConfirmedAction(
+        '正在保存车辆信息', // TODO(l10n): 补 arb
+        '车辆信息已更新',
+        () => repository.update(profile.id, {'vehicles': ok}),
+        owner: owner,
+      );
+    },
+  );
 
-  Future<void> _editPhones() => _withEmployeeAction(Perm.employeePiiEdit, (
+  Future<void> _editPhones() => _withEmployeeAction(_EmployeeWriteAction.pii, (
     owner,
     profile,
     repository,
@@ -1718,76 +1753,75 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         '/employee/${widget.employeeId}/offboarding',
   );
 
-  Future<void> _onConfirm() => _withEmployeeAction(Perm.employeeConfirm, (
-    owner,
-    profile,
-    repository,
-  ) async {
-    final l10n = AppLocalizations.of(context);
-    final today = ChinaDateTime.today();
-    DateTime selected = today;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => UtenAlertDialog(
-          title: Text(l10n.employeeConfirmTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(l10n.employeeConfirmBody),
-              const SizedBox(height: UtenSpacing.s12),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text(_fmtDate(selected)),
-                onPressed: () async {
-                  final picked = await showDatePicker(
-                    context: ctx,
-                    initialDate: selected,
-                    firstDate: DateTime(2000),
-                    lastDate: today,
-                    locale: const Locale('zh'),
-                  );
-                  if (picked != null && ctx.mounted && owner.isCurrent) {
-                    setState(() => selected = picked);
-                  }
-                },
+  Future<void> _onConfirm() => _withEmployeeAction(
+    _EmployeeWriteAction.confirm,
+    (owner, profile, repository) async {
+      final l10n = AppLocalizations.of(context);
+      final today = ChinaDateTime.today();
+      DateTime selected = today;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setState) => UtenAlertDialog(
+            title: Text(l10n.employeeConfirmTitle),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l10n.employeeConfirmBody),
+                const SizedBox(height: UtenSpacing.s12),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.event_outlined, size: 18),
+                  label: Text(_fmtDate(selected)),
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: selected,
+                      firstDate: DateTime(2000),
+                      lastDate: today,
+                      locale: const Locale('zh'),
+                    );
+                    if (picked != null && ctx.mounted && owner.isCurrent) {
+                      setState(() => selected = picked);
+                    }
+                  },
+                ),
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l10n.commonCancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(l10n.commonConfirm),
               ),
             ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.commonConfirm),
-            ),
-          ],
         ),
-      ),
-    );
-    if (ok != true || !mounted || !owner.isCurrent) return;
-    await _runConfirmedAction(
-      l10n.employeeConfirmTitle,
-      l10n.employeeConfirmSuccess,
-      () {
-        return repository.confirm(
-          profile.id,
-          confirmedDate: _fmtDate(selected),
-        );
-      },
-      owner: owner,
-    );
-  });
+      );
+      if (ok != true || !mounted || !owner.isCurrent) return;
+      await _runConfirmedAction(
+        l10n.employeeConfirmTitle,
+        l10n.employeeConfirmSuccess,
+        () {
+          return repository.confirm(
+            profile.id,
+            confirmedDate: _fmtDate(selected),
+          );
+        },
+        owner: owner,
+      );
+    },
+  );
 
   static String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}'
       '-${d.day.toString().padLeft(2, '0')}';
 
-  Future<void> _onRehire() => _withEmployeeAction(Perm.employeeRehire, (
+  Future<void> _onRehire() => _withEmployeeAction(_EmployeeWriteAction.rehire, (
     owner,
     profile,
     repository,

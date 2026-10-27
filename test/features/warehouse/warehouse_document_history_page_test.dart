@@ -78,7 +78,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('WASTE-1'), findsOneWidget);
     expect(table(type.value).currentPage, 1);
-    expect(wastes.lastPage, 2, reason: 'the successor is prepared offscreen');
+    expect(
+      wastes.queries,
+      [
+        for (final page in [1, 2, 3])
+          {
+            'page': page,
+            'keyword': 'same-query',
+            'status': null,
+            'billNo': null,
+            'sourceDocNo': null,
+            'dateFrom': '2026-10-01',
+            'dateTo': '2026-10-12',
+          },
+      ],
+      reason: 'only the new domain foreground and its two successors are read',
+    );
+    expect(table(type.value).items.single.billNo, 'WASTE-1');
     expect(wastes.lastStatus, isNull);
     expect(wastes.lastBillNo, isNull);
     expect(wastes.lastSourceDocNo, isNull);
@@ -347,6 +363,7 @@ class _TypeGateway extends _Gateway {
   _TypeGateway(this.type, this.prefix);
   final WarehouseDocumentHistoryType type;
   final String prefix;
+  final queries = <Map<String, Object?>>[];
   String? lastStatus;
   String? lastBillNo;
   String? lastSourceDocNo;
@@ -364,6 +381,15 @@ class _TypeGateway extends _Gateway {
     String? billNo,
     String? sourceDocNo,
   }) async {
+    queries.add({
+      'page': page,
+      'keyword': keyword,
+      'status': status,
+      'billNo': billNo,
+      'sourceDocNo': sourceDocNo,
+      'dateFrom': dateFrom,
+      'dateTo': dateTo,
+    });
     lastPage = page;
     lastStatus = status;
     lastBillNo = billNo;

@@ -114,6 +114,54 @@ class MasterExportSourceTest {
         assertThat(fixture.closed).isTrue();
     }
 
+    record ProjectionFilter(String code, TableColumnProjection projection) { }
+
+    @Test void nestedProjectionValueIdentitySurvivesFreshInstancesAndCallerListMutation() {
+        snapshot(); var fixture=cursor(250);
+        var column=new TableColumnProjection.Column("value","原值",120d,"quantity",null);
+        var requested=new ArrayList<>(List.of(column));
+        var projection=new TableColumnProjection("report","view_sales",requested);
+        AtomicInteger emitted=new AtomicInteger();
+        try(var ignored=ExportPageSink.open(page->{
+            emitted.addAndGet(page.rows().size());
+            requested.clear();
+        })) {
+            var result=MasterExportSource.exportEntities(em,columns,1000,
+                    (page,size)->fixture.page(page,size,new ProjectionFilter("original",
+                            new TableColumnProjection(projection.tableKey(),projection.scope(),projection.columns()))),
+                    MasterExportSourceTest::row);
+            assertThat(result.total()).isEqualTo(250);
+        }
+        assertThat(emitted).hasValue(250);
+        assertThat(fixture.closed).isTrue();
+        verify(fixture.repository,times(1)).count(fixture.specification);
+    }
+
+    @Test void changedNestedProjectionStillRetiresTheOriginalExportCursor() {
+        snapshot(); var fixture=cursor(250);
+        var projection=new AtomicReference<>(new TableColumnProjection("report","view_sales",
+                List.of(new TableColumnProjection.Column("value",null,null,null,null))));
+        try(var ignored=ExportPageSink.open(page->projection.set(new TableColumnProjection("report","view_sales",
+                List.of(new TableColumnProjection.Column("other",null,null,null,null)))))) {
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+                    (page,size)->fixture.page(page,size,new ProjectionFilter("original",projection.get())),
+                    MasterExportSourceTest::row))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("conditions changed");
+        }
+        assertThat(fixture.closed).isTrue();
+        verify(fixture.repository,times(1)).count(fixture.specification);
+    }
+
+    @Test void explicitProjectionSupportDoesNotAdmitUnknownMutableObjects() {
+        snapshot(); var fixture=cursor(1);
+        try(var ignored=ExportPageSink.open(page->{})) {
+            assertThatThrownBy(()->MasterExportSource.exportEntities(em,columns,1000,
+                    (page,size)->fixture.page(page,size,new Object()),MasterExportSourceTest::row))
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unsupported master filter identity");
+        }
+        verify(fixture.repository,never()).count(fixture.specification);
+    }
+
     @SuppressWarnings({"unchecked","rawtypes"})
     private Fixture cursor(int count) {
         var repository=mock(JpaSpecificationExecutor.class);

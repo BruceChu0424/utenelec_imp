@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../shared/models/paged_result.dart';
 import 'paged_read_ahead_policy.dart';
 
@@ -24,6 +25,9 @@ class PagedReadCache<T> {
   static const _equality = DeepCollectionEquality();
   final _pages = <int, PagedResult<T>>{};
   final _pending = <int, Future<PagedResult<T>>>{};
+  // A viewport notification is not a foreground retry. Retain failures only
+  // inside a bounded recent-page window; never retain private row data here.
+  final _failedPrefetchPages = <int>{};
   Object? _scope;
   bool _bound = false;
   int _generation = 0;
@@ -51,6 +55,7 @@ class PagedReadCache<T> {
     _queuedPrefetch = null;
     _pages.clear();
     _pending.clear();
+    _failedPrefetchPages.clear();
     _rows = 0;
     _total = null;
     _revision = null;
@@ -76,6 +81,7 @@ class PagedReadCache<T> {
     _total = result.total;
     _revision = revision;
     _hasRevision = true;
+    _failedPrefetchPages.remove(result.page);
     final previous = _pages.remove(result.page);
     _rows -= previous?.items.length ?? 0;
     if (result.items.length > maximumRows) return;
@@ -173,6 +179,10 @@ class PagedReadCache<T> {
                 _pages.containsKey(target)) {
               continue;
             }
+            if (_failedPrefetchPages.remove(target)) {
+              _failedPrefetchPages.add(target);
+              break;
+            }
             if (!yielded) {
               // Let accepted rows paint before transport/decoding. A fully
               // cached window needs no timer or follow-up layout work.
@@ -189,6 +199,13 @@ class PagedReadCache<T> {
               await read(target, () => job.fetch(target));
             } catch (error) {
               if (job.generation == _generation && job.isCurrent()) {
+                if (!_isRetiredRequest(error)) {
+                  _failedPrefetchPages.remove(target);
+                  _failedPrefetchPages.add(target);
+                  while (_failedPrefetchPages.length > maximumPages) {
+                    _failedPrefetchPages.remove(_failedPrefetchPages.first);
+                  }
+                }
                 job.onError?.call(error);
               }
               // Ordinary navigation retries failures. Never continue a
@@ -204,6 +221,14 @@ class PagedReadCache<T> {
       _prefetchRunning = false;
     }
   }
+
+  static bool _isRetiredRequest(Object error) =>
+      error is ApiException &&
+      const {
+        'REQUEST_STALE',
+        'SESSION_CHANGED',
+        'READ_SCOPE_CHANGED',
+      }.contains(error.code);
 }
 
 class _PagedPrefetchJob<T> {

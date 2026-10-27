@@ -12,17 +12,20 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.utility.MountableFile;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.HexFormat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -60,6 +63,29 @@ class LegacyBootstrapCoordinatorPostgresTest {
                         || name.equals("mapping-version.txt") || name.endsWith(".sql")) {
                     Files.copy(file, legacy.resolve(name));
                 }
+            }
+        }
+        // The complete Python suite also reconciles registered staff tables
+        // with the actual JPA entities. Freeze those reviewed inputs alongside
+        // the scripts; an absent source tree must never become an empty catalog.
+        Path javaDirectory = candidate.resolve("server/src/main/java");
+        Files.createDirectories(javaDirectory);
+        StringBuilder javaManifest = new StringBuilder();
+        try (var files = Files.walk(Path.of("src/main/java"))) {
+            var javaFiles = files.filter(Files::isRegularFile)
+                    .filter(file -> file.getFileName().toString().endsWith(".java"))
+                    .sorted().toList();
+            assertThat(javaFiles).as("canonical Java inputs for Python entity discovery").isNotEmpty();
+            for (Path file : javaFiles) {
+                Path relative = Path.of("src/main/java").relativize(file);
+                byte[] contents = Files.readAllBytes(file);
+                Path target = javaDirectory.resolve(relative);
+                Files.createDirectories(target.getParent());
+                Files.write(target, contents);
+                javaManifest.append(HexFormat.of().formatHex(
+                                MessageDigest.getInstance("SHA-256").digest(contents)))
+                        .append("  server/src/main/java/")
+                        .append(relative.toString().replace('\\', '/')).append('\n');
             }
         }
         // Current child contracts inspect the real mapping and reviewed crosswalk.
@@ -113,6 +139,11 @@ class LegacyBootstrapCoordinatorPostgresTest {
         seedPreservedAdministrator(legacy);
         clusterId = scalar("SELECT system_identifier FROM pg_control_system()");
         shell("mkdir -p /bootstrap/server/legacy_migration /bootstrap/server/src/main/resources/db/migration /bootstrap/server/target");
+        postgres.copyFileToContainer(MountableFile.forHostPath(javaDirectory),
+                ROOT + "/server/src/main/java");
+        put(ROOT + "/server/target/python-entity-sources.sha256", javaManifest.toString());
+        shell("cd /bootstrap && sha256sum --strict -c server/target/python-entity-sources.sha256"
+                + " > /tmp/verified-python-entity-sources.log");
         try (var files = Files.list(legacy)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();

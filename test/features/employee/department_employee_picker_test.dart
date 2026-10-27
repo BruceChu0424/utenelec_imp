@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
+import 'package:uten_imp/components/layout/uten_hierarchy_content_width.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
@@ -487,12 +489,24 @@ void main() {
     await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1400, 0));
     await tester.pumpAndSettle();
     final treeFinder = find.byType(UtenDepartmentTreeView);
-    expect(tester.getSize(treeFinder).width, 160);
+    double compactWidth() {
+      final context = tester.element(treeFinder);
+      final measured = UtenHierarchyContentWidthScope.maybeOf(context)!;
+      expect(measured.chromeWidth, greaterThan(0));
+      return math.max(
+        160,
+        measured.chromeWidth +
+            MediaQuery.textScalerOf(context).scale(64) +
+            UtenScrollGutter.trackWidth,
+      );
+    }
+
+    expect(tester.getSize(treeFinder).width, compactWidth());
     // The tree keeps its minimum width; its search preserves the one trailing
     // scrollbar lane rather than covering that lane with an input hit target.
     expect(
       tester.getSize(_pickerSearch(tester)).width,
-      160 - UtenScrollGutter.trackWidth,
+      tester.getSize(treeFinder).width - UtenScrollGutter.trackWidth,
     );
 
     await tester.tap(find.byTooltip('展开销售部'));
@@ -520,7 +534,7 @@ void main() {
       tester.widget<TextField>(_pickerSearch(tester)).controller!.text,
       '',
     );
-    expect(tester.getSize(treeFinder).width, 160);
+    expect(tester.getSize(treeFinder).width, compactWidth());
     await tester.tap(find.text('张三'));
     await tester.pumpAndSettle();
     expect(result, isNull);

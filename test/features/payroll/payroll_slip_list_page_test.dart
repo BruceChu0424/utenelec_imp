@@ -109,7 +109,7 @@ void main() {
     final repo = await _pumpPage(tester);
     expect(repo.slipCalls.first, {'status': 'UNVIEWED', 'page': 1});
     expect(_table(tester).currentPage, 1);
-    expect(repo.slipCalls.map((call) => call['page']), [1, 2]);
+    expect(repo.slipCalls.map((call) => call['page']), [1, 2, 3]);
     expect(_categories(tester).segments.map((segment) => segment.label), [
       '未查看',
       '已查看',
@@ -125,12 +125,12 @@ void main() {
       reason: 'the prepared page is adopted without another read',
     );
 
+    final beforeCategoryChange = repo.slipCalls.length;
     _categories(tester).onSelectionChanged!(PayrollFilter.viewed);
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.where((call) => call['status'] == 'VIEWED').first, {
-      'status': 'VIEWED',
-      'page': 1,
-    });
+    expect(repo.slipCalls.skip(beforeCategoryChange), [
+      for (final page in [1, 2, 3]) {'status': 'VIEWED', 'page': page},
+    ]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items.map((slip) => slip.status), [
       PayrollSlipStatus.viewed,
@@ -154,28 +154,47 @@ void main() {
 
     _categories(tester).onSelectionChanged!(PayrollFilter.viewed);
     await tester.pumpAndSettle();
+    var beforeFilterChange = repo.slipCalls.length;
     _table(tester).onFilterChanged('status', 'downloaded');
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last, {'status': 'DOWNLOADED', 'page': 1});
+    expect(repo.slipCalls.skip(beforeFilterChange), [
+      for (final page in [1, 2, 3]) {'status': 'DOWNLOADED', 'page': page},
+    ]);
+    expect(_table(tester).currentPage, 1);
+    expect(_table(tester).items.single.status, PayrollSlipStatus.downloaded);
     expect(_categories(tester).selected, {PayrollFilter.viewed});
     expect(_table(tester).filters['status'], 'downloaded');
 
     _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
+    beforeFilterChange = repo.slipCalls.length;
     _table(tester).onFilterChanged('status', null);
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last, {'status': 'VIEWED', 'page': 1});
+    expect(repo.slipCalls.skip(beforeFilterChange), [
+      for (final page in [1, 2, 3]) {'status': 'VIEWED', 'page': page},
+    ]);
+    expect(_table(tester).currentPage, 1);
     expect(_categories(tester).selected, {PayrollFilter.viewed});
     expect(_table(tester).filters['status'], isNull);
 
+    beforeFilterChange = repo.slipCalls.length;
     _table(tester).onFilterChanged('status', 'viewed');
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last, {'status': 'VIEWED_ONLY', 'page': 1});
+    expect(repo.slipCalls.skip(beforeFilterChange), [
+      for (final page in [1, 2, 3]) {'status': 'VIEWED_ONLY', 'page': page},
+    ]);
+    expect(_table(tester).currentPage, 1);
+    expect(_table(tester).items.single.status, PayrollSlipStatus.viewed);
     expect(_categories(tester).selected, {PayrollFilter.viewed});
     expect(_table(tester).filters['status'], 'viewed');
+    beforeFilterChange = repo.slipCalls.length;
     _categories(tester).onSelectionChanged!(PayrollFilter.published);
     await tester.pumpAndSettle();
-    expect(repo.slipCalls.last, {'status': 'UNVIEWED', 'page': 1});
+    expect(repo.slipCalls.skip(beforeFilterChange), [
+      for (final page in [1, 2, 3]) {'status': 'UNVIEWED', 'page': page},
+    ]);
+    expect(_table(tester).currentPage, 1);
+    expect(_table(tester).items.single.status, PayrollSlipStatus.published);
     expect(_table(tester).filters['status'], isNull);
     await tester.pumpWidget(const SizedBox());
   });

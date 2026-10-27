@@ -17,6 +17,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/network/interceptors/device_audit_interceptor.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/warehouse/models/inbound_registration_line.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_sales_outbound.dart';
@@ -43,6 +44,7 @@ import 'inbound_arrival_test_support.dart';
 import 'outbound_weight_fakes.dart';
 
 const _base = 'https://quality-request.invalid/api';
+final _issuer = AuthBackendRealmPolicy().issuerFor(_base);
 
 enum _Action {
   arrival,
@@ -84,12 +86,13 @@ class _Snapshot extends SessionSnapshotNotifier {
 
 class _Credentials extends SecureStorage {
   _Credentials() : super(const FlutterSecureStorage());
-  AuthTokenSnapshot auth = const AuthTokenSnapshot(
+  AuthTokenSnapshot auth = AuthTokenSnapshot(
     accessToken: 'original-A',
     refreshToken: null,
     generation: 1,
     intentGeneration: 1,
     sessionLineage: 'original-A-login',
+    issuer: _issuer,
   );
   Completer<void>? captureGate;
   int gatedReads = 0;
@@ -539,12 +542,13 @@ Future<void> _confirm(WidgetTester tester, _Action action) async {
 
 void _replace(_Session session, _Credentials credentials) {
   session.intent++;
-  credentials.auth = const AuthTokenSnapshot(
+  credentials.auth = AuthTokenSnapshot(
     accessToken: 'replacement-B',
     refreshToken: null,
     generation: 2,
     intentGeneration: 2,
     sessionLineage: 'replacement-B-login',
+    issuer: _issuer,
   );
 }
 

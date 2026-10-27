@@ -34,16 +34,18 @@ class AuthTokenIssuer {
         relays.length > 8 ||
         relays.any((e) => e is! String) ||
         (dataset != null &&
-            (dataset is! String || dataset.isEmpty || dataset.length > 128)))
+            (dataset is! String || dataset.isEmpty || dataset.length > 128))) {
       return null;
+    }
     final url = AuthBackendRealmPolicy.normalize(rawUrl);
     final normalized = relays
         .map((e) => AuthBackendRealmPolicy.normalize(e as String))
         .toList();
     if (url == null ||
         normalized.any((e) => e == null) ||
-        (normalized.isNotEmpty && !normalized.contains(url)))
+        (normalized.isNotEmpty && !normalized.contains(url))) {
       return null;
+    }
     return AuthTokenIssuer._(
       url,
       normalized.whereType<String>().toSet(),
@@ -115,8 +117,9 @@ class AuthBackendRealmPolicy {
   }) {
     final target = normalize(endpoint);
     if (target == null) return false;
-    if (issuer == null)
+    if (issuer == null) {
       return allowLegacy && trustedCompanyEndpoints.contains(target);
+    }
     if (issuer.trustedRelays.isEmpty) return target == issuer.baseUrl;
     return trustedCompanyEndpoints.contains(target) &&
         issuer.trustedRelays.any(trustedCompanyEndpoints.contains);
@@ -137,8 +140,9 @@ class AuthBackendRealmPolicy {
         uri.host.isEmpty ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
-        uri.hasFragment)
+        uri.hasFragment) {
       return null;
+    }
     var path = uri.path;
     while (path.length > 1 && path.endsWith('/')) {
       path = path.substring(0, path.length - 1);

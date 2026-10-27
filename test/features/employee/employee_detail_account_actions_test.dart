@@ -10,6 +10,8 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_segmented_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -36,6 +38,9 @@ class _Accounts extends Fake implements EmployeeRepository {
   int provisions = 0;
   Completer<EmployeeProfile>? pending;
   Completer<void>? lockPending;
+  Completer<void>? phonePending;
+  final phoneChanges = <(String, String)>[];
+  final employeeWrites = <(String, String)>[];
 
   EmployeeProfile profile(String id) => EmployeeProfile.fromJson({
     'id': id,
@@ -65,6 +70,34 @@ class _Accounts extends Fake implements EmployeeRepository {
   }
 
   @override
+  Future<void> changePhone(String id, String newPhone) async {
+    phoneChanges.add((id, newPhone));
+    if (phonePending != null) await phonePending!.future;
+    values['phone'] = newPhone;
+  }
+
+  @override
+  Future<void> confirm(String id, {String? confirmedDate}) async {
+    employeeWrites.add(('confirm', id));
+  }
+
+  @override
+  Future<void> rehire(String id) async {
+    employeeWrites.add(('rehire', id));
+  }
+
+  @override
+  Future<void> renewContract(String id, Map<String, dynamic> body) async {
+    employeeWrites.add(('contract', id));
+  }
+
+  @override
+  Future<EmployeeProfile> update(String id, Map<String, dynamic> body) async {
+    employeeWrites.add((body.keys.single, id));
+    return profile(id);
+  }
+
+  @override
   Future<EmployeeAccountReadiness> accountReadiness(String id) async =>
       const EmployeeAccountReadiness(hasPhone: true);
 
@@ -82,8 +115,14 @@ class _Accounts extends Fake implements EmployeeRepository {
 }
 
 class _Actor extends SessionNotifier {
-  _Actor({this.employeeId});
+  _Actor({
+    this.employeeId,
+    this.piiEdit = false,
+    this.actionPermissions = const {},
+  });
   final String? employeeId;
+  final bool piiEdit;
+  final Set<String> actionPermissions;
 
   @override
   SessionState build() => SessionState(
@@ -93,7 +132,12 @@ class _Actor extends SessionNotifier {
       employeeId: employeeId,
       code: 'HR001',
       name: '人事',
-      permissions: const [Perm.employeeView, Perm.accountSupport],
+      permissions: [
+        Perm.employeeView,
+        Perm.accountSupport,
+        if (piiEdit) Perm.employeePiiEdit,
+        ...actionPermissions,
+      ],
     ),
   );
 
@@ -127,6 +171,8 @@ Future<ProviderContainer> _pump(
   bool dark = false,
   bool settle = true,
   ValueNotifier<String>? selectedEmployee,
+  bool piiEdit = false,
+  Set<String> actionPermissions = const {},
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -139,7 +185,13 @@ Future<ProviderContainer> _pump(
     overrides: [
       apiClientProvider.overrideWithValue(_Api()),
       employeeRepositoryProvider.overrideWithValue(repository),
-      sessionProvider.overrideWith(() => _Actor(employeeId: actorEmployeeId)),
+      sessionProvider.overrideWith(
+        () => _Actor(
+          employeeId: actorEmployeeId,
+          piiEdit: piiEdit,
+          actionPermissions: actionPermissions,
+        ),
+      ),
       sharedPreferencesProvider.overrideWithValue(preferences),
     ],
   );
@@ -199,6 +251,209 @@ Future<ProviderContainer> _pump(
 
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
+
+  for (final action in const [
+    (
+      kind: 'confirm',
+      permission: Perm.employeeConfirm,
+      status: 'probation',
+      category: 0,
+      open: '转正',
+      confirm: '确认',
+    ),
+    (
+      kind: 'rehire',
+      permission: Perm.employeeRehire,
+      status: 'resigned',
+      category: 0,
+      open: '复职',
+      confirm: '确认',
+    ),
+    (
+      kind: 'contract',
+      permission: Perm.employeeContractRenew,
+      status: 'active',
+      category: 1,
+      open: '续签 / 补录合同',
+      confirm: '确认',
+    ),
+    (
+      kind: 'phones',
+      permission: Perm.employeePiiEdit,
+      status: 'active',
+      category: 2,
+      open: '管理备用手机号',
+      confirm: '保存',
+    ),
+    (
+      kind: 'vehicles',
+      permission: Perm.employeeEdit,
+      status: 'active',
+      category: 2,
+      open: '管理车辆',
+      confirm: '保存',
+    ),
+  ]) {
+    for (final changeTarget in [false, true]) {
+      testWidgets('${action.kind}确认${changeTarget ? '跨员工ABA失效' : '原目标正常提交'}', (
+        tester,
+      ) async {
+        final selected = ValueNotifier('emp-6');
+        addTearDown(selected.dispose);
+        final repo = _Accounts({
+          'status': action.status,
+          if (action.kind == 'contract')
+            'contracts': [
+              {
+                'id': 'contract-1',
+                'contractType': 'fixed',
+                'startDate': '2026-01-01',
+                'endDate': '2026-12-31',
+              },
+            ],
+        });
+        final container = await _pump(
+          tester,
+          repo,
+          selectedEmployee: selected,
+          actionPermissions: {action.permission},
+        );
+        if (action.category != 0) {
+          tester
+              .widget<UtenSegmentedFilter<int>>(
+                find.byType(UtenSegmentedFilter<int>),
+              )
+              .onChanged(action.category);
+          await tester.pumpAndSettle();
+        }
+        await tester.ensureVisible(find.text(action.open));
+        await tester.tap(find.text(action.open));
+        await tester.pumpAndSettle();
+        if (changeTarget) {
+          selected.value = 'emp-7';
+          await tester.pumpAndSettle();
+          selected.value = 'emp-6';
+          await tester.pumpAndSettle();
+        }
+        final confirm = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text(action.confirm),
+        );
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(
+          repo.employeeWrites,
+          changeTarget ? isEmpty : [(action.kind, 'emp-6')],
+        );
+        expect(
+          container.read(appNotificationProvider),
+          changeTarget ? isEmpty : hasLength(1),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  Future<void> openPhoneDialog(WidgetTester tester) async {
+    tester
+        .widget<UtenSegmentedFilter<int>>(find.byType(UtenSegmentedFilter<int>))
+        .onChanged(2);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('更换手机号'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '13800138000');
+  }
+
+  for (final hasAccount in [false, true]) {
+    testWidgets(
+      '更号成功只确认手机号事实，${hasAccount ? '已有账号提交相同手机号' : '仅建档员工'}不误报开户或登录名已更换',
+      (tester) async {
+        final repo = _Accounts({
+          'phone': '13800138000',
+          if (hasAccount) 'accountStatus': 'active',
+        });
+        final container = await _pump(tester, repo, piiEdit: true);
+        await openPhoneDialog(tester);
+        expect(
+          find.text(
+            hasAccount
+                ? '已有登录账号时，只有主手机号实际变化且登录名需更新，才会同步为新手机号并使旧会话失效。再次提交相同手机号不会更改现有登录名。'
+                : '该员工尚未开通登录账号。本次仅更新档案中的手机号，不会开通账号。',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('确定更换'));
+        await tester.pumpAndSettle();
+        expect(repo.phoneChanges, [('emp-6', '13800138000')]);
+        expect(repo.provisions, 0);
+        expect(
+          container.read(appNotificationProvider).map((item) => item.message),
+          ['手机号已更新'],
+        );
+        expect(repo.values['accountStatus'], hasAccount ? 'active' : isNull);
+      },
+    );
+  }
+
+  testWidgets('更号确认期员工A-B-A后旧确认不能写入', (tester) async {
+    final selected = ValueNotifier('emp-6');
+    addTearDown(selected.dispose);
+    final repo = _Accounts({'phone': '13900139000'});
+    final container = await _pump(
+      tester,
+      repo,
+      piiEdit: true,
+      selectedEmployee: selected,
+    );
+    await openPhoneDialog(tester);
+    selected.value = 'emp-7';
+    await tester.pumpAndSettle();
+    selected.value = 'emp-6';
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定更换'));
+    await tester.pumpAndSettle();
+    expect(repo.phoneChanges, isEmpty);
+    expect(container.read(appNotificationProvider), isEmpty);
+  });
+
+  testWidgets('更号确认期切换操作者后旧确认不能写入', (tester) async {
+    final repo = _Accounts({'phone': '13900139000'});
+    final container = await _pump(tester, repo, piiEdit: true);
+    await openPhoneDialog(tester);
+    (container.read(sessionProvider.notifier) as _Actor).switchIdentity();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定更换'));
+    await tester.pumpAndSettle();
+    expect(repo.phoneChanges, isEmpty);
+    expect(container.read(appNotificationProvider), isEmpty);
+  });
+
+  for (final error in [false, true]) {
+    testWidgets('更号迟到${error ? '错误' : '成功'}不能刷新或提示给新操作者', (tester) async {
+      final repo = _Accounts({'phone': '13900139000'})
+        ..phonePending = Completer<void>();
+      final container = await _pump(tester, repo, piiEdit: true);
+      await openPhoneDialog(tester);
+      await tester.tap(find.text('确定更换'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(repo.phoneChanges, [('emp-6', '13800138000')]);
+      (container.read(sessionProvider.notifier) as _Actor).switchIdentity();
+      await tester.pumpAndSettle();
+      final reads = repo.reads;
+      if (error) {
+        repo.phonePending!.completeError(
+          ApiException('CONFLICT', '旧操作者的手机号冲突'),
+        );
+      } else {
+        repo.phonePending!.complete();
+      }
+      await tester.pumpAndSettle();
+      expect(repo.reads, reads);
+      expect(container.read(appNotificationProvider), isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('在职停用账号有账号支持权限可按员工UUID进入管理，不自动启用', (tester) async {
     final repo = _Accounts({

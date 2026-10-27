@@ -1,5 +1,5 @@
 // 员工联系方式编辑对话框（ADR-021）：
-// - 更换手机号（新号将同步为登录账号并强制重新登录）
+// - 更换手机号（有账号且登录名实际变化时同步账号并撤销旧会话）
 // - 车辆管理（整体替换：车牌必填，车型/品牌/颜色/备注非必填）
 // - 备用手机号管理（整体替换：号码必填，标签默认「备用」）
 // 文案硬编码中文（与 HR 运维页同惯例）。
@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../models/employee_api_models.dart';
 
 // ============================================================
@@ -18,8 +19,10 @@ import '../models/employee_api_models.dart';
 /// 返回新手机号；取消返回 null。仅做本地格式校验（1 开头 11 位），后端独立校验。
 Future<String?> showEmployeeChangePhoneDialog(
   BuildContext context,
-  String? currentPhone,
-) async {
+  String? currentPhone, {
+  bool? hasAccount,
+}) async {
+  final l10n = AppLocalizations.of(context);
   final controller = TextEditingController();
   String? error;
   try {
@@ -27,12 +30,12 @@ Future<String?> showEmployeeChangePhoneDialog(
       context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => UtenAlertDialog(
-          title: const Text('更换手机号'),
+          title: Text(l10n.employeeChangePhoneTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('当前手机号：${currentPhone ?? '—'}'),
+              Text(l10n.employeeChangePhoneCurrent(currentPhone ?? '—')),
               const SizedBox(height: UtenSpacing.s8),
               Container(
                 padding: const EdgeInsets.all(UtenSpacing.s8),
@@ -43,8 +46,9 @@ Future<String?> showEmployeeChangePhoneDialog(
                   borderRadius: UtenRadius.smAll,
                 ),
                 child: Text(
-                  '手机号即登录账号：更换后该员工的登录账号将同步为新手机号，'
-                  '所有已登录设备会被强制下线，需用新手机号重新登录。',
+                  hasAccount == false
+                      ? l10n.employeeChangePhoneNoAccountNotice
+                      : l10n.employeeChangePhoneAccountNotice,
                   style: Theme.of(ctx).textTheme.bodySmall,
                 ),
               ),
@@ -55,8 +59,8 @@ Future<String?> showEmployeeChangePhoneDialog(
                 maxLength: 11,
                 decoration: UtenInputDecoration(
                   InputDecoration(
-                    labelText: '新手机号',
-                    hintText: '11 位中国大陆手机号',
+                    labelText: l10n.employeeChangePhoneNewLabel,
+                    hintText: l10n.employeeOnboardHintPhone,
                     error: utenFieldError(error),
                   ),
                 ),
@@ -68,18 +72,18 @@ Future<String?> showEmployeeChangePhoneDialog(
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
+              child: Text(l10n.commonCancel),
             ),
             FilledButton(
               onPressed: () {
                 final v = controller.text.trim();
                 if (!RegExp(r'^1[3-9]\d{9}$').hasMatch(v)) {
-                  setState(() => error = '请输入正确的 11 位手机号');
+                  setState(() => error = l10n.employeeOnboardPhoneInvalid);
                   return;
                 }
                 Navigator.pop(ctx, v);
               },
-              child: const Text('确定更换'),
+              child: Text(l10n.employeeChangePhoneConfirm),
             ),
           ],
         ),

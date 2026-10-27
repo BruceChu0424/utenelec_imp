@@ -6,17 +6,18 @@ import 'package:web/web.dart' as web;
 import 'streaming_download_contract.dart';
 
 HttpClientAdapter wrapStreamingDownloads(HttpClientAdapter original) =>
-    _FetchDownloads(original);
+    _FetchApiRequests(original);
 
 @JS()
 extension type _ReadableHeaders(JSObject _) implements JSObject {
   external void forEach(JSFunction callback);
 }
 
-/// Dio's XHR adapter buffers an arraybuffer even for ResponseType.stream.
-/// Fetch is used only after the same Dio auth/audit/scope interceptors run.
-class _FetchDownloads implements HttpClientAdapter {
-  _FetchDownloads(this.original);
+/// XHR both buffers streaming downloads and silently follows API redirects.
+/// Fetch applies the same auth/audit/scope interceptors before dispatch, then
+/// rejects redirects before credentials can escape the approved API endpoint.
+class _FetchApiRequests implements HttpClientAdapter {
+  _FetchApiRequests(this.original);
   final HttpClientAdapter original;
   final _active = <web.AbortController>{};
   bool _closed = false;
@@ -27,10 +28,12 @@ class _FetchDownloads implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    if (options.extra[streamingDownloadRequestKey] != true) {
+    final streamingDownload =
+        options.extra[streamingDownloadRequestKey] == true;
+    if (!streamingDownload && options.followRedirects) {
       return original.fetch(options, requestStream, cancelFuture);
     }
-    if (_closed) throw StateError('Download transport is closed');
+    if (_closed) throw StateError('API transport is closed');
     final abort = web.AbortController();
     _active.add(abort);
     var cancelled = false;
@@ -40,15 +43,20 @@ class _FetchDownloads implements HttpClientAdapter {
         abort.abort();
       }),
     );
-    final body = BytesBuilder(copy: false);
-    if (requestStream != null) {
-      await for (final chunk in requestStream) {
-        if (body.length + chunk.length > maxDownloadErrorBytes) {
-          _active.remove(abort);
-          throw StateError('Download request is too large');
-        }
-        body.add(chunk);
-      }
+    final Uint8List? body;
+    try {
+      // Dio has already encoded JSON, forms and multipart boundaries. Preserve
+      // these exact bytes, with the existing small-body cap only for downloads.
+      body = await _requestBytes(
+        options,
+        requestStream,
+        cancelFuture,
+        maxBytes: streamingDownload ? maxDownloadErrorBytes : null,
+      );
+    } catch (_) {
+      _active.remove(abort);
+      abort.abort();
+      rethrow;
     }
     final headers = web.Headers();
     options.headers.forEach((key, value) {
@@ -62,7 +70,7 @@ class _FetchDownloads implements HttpClientAdapter {
     final init = web.RequestInit(
       method: options.method,
       headers: headers,
-      body: body.length == 0 ? null : body.takeBytes().toJS,
+      body: body?.toJS,
       credentials: options.extra['withCredentials'] == true
           ? 'include'
           : 'omit',
@@ -72,33 +80,73 @@ class _FetchDownloads implements HttpClientAdapter {
     );
     final web.Response response;
     try {
+      if (cancelled) {
+        throw DioException.requestCancelled(
+          requestOptions: options,
+          reason: 'API request cancelled',
+        );
+      }
+      if (body != null) options.onSendProgress?.call(0, body.length);
       var pending = web.window.fetch(options.uri.toString().toJS, init).toDart;
-      final timeout = options.connectTimeout;
-      if (timeout != null && timeout > Duration.zero) {
-        pending = pending.timeout(
-          timeout,
-          onTimeout: () {
-            abort.abort();
-            throw DioException.connectionTimeout(
+      // Fetch does not expose connection/upload completion separately. Use the
+      // earliest configured deadline until headers arrive; no shorter send or
+      // receive limit may be silently replaced by a longer connect limit.
+      final deadlines = <(Duration, DioException)>[
+        if (options.connectTimeout case final timeout?
+            when timeout > Duration.zero)
+          (
+            timeout,
+            DioException.connectionTimeout(
               requestOptions: options,
               timeout: timeout,
-            );
+            ),
+          ),
+        if (body != null &&
+            options.sendTimeout != null &&
+            options.sendTimeout! > Duration.zero)
+          (
+            options.sendTimeout!,
+            DioException.sendTimeout(
+              requestOptions: options,
+              timeout: options.sendTimeout!,
+            ),
+          ),
+        if (options.receiveTimeout case final timeout?
+            when timeout > Duration.zero)
+          (
+            timeout,
+            DioException.receiveTimeout(
+              requestOptions: options,
+              timeout: timeout,
+            ),
+          ),
+      ]..sort((a, b) => a.$1.compareTo(b.$1));
+      if (deadlines.isNotEmpty) {
+        final deadline = deadlines.first;
+        pending = pending.timeout(
+          deadline.$1,
+          onTimeout: () {
+            abort.abort();
+            throw deadline.$2;
           },
         );
       }
       response = await pending;
+      // Fetch has no wire-upload progress event. Report completion only after
+      // response headers arrive, never a fabricated intermediate percentage.
+      if (body != null) options.onSendProgress?.call(body.length, body.length);
     } catch (error) {
       _active.remove(abort);
       if (error is DioException) rethrow;
       if (cancelled) {
         throw DioException.requestCancelled(
           requestOptions: options,
-          reason: 'Download cancelled',
+          reason: 'API request cancelled',
         );
       }
       throw DioException.connectionError(
         requestOptions: options,
-        reason: 'File connection failed',
+        reason: 'API connection failed',
         error: error,
       );
     }
@@ -130,7 +178,7 @@ class _FetchDownloads implements HttpClientAdapter {
           if (cancelled) {
             throw DioException.requestCancelled(
               requestOptions: options,
-              reason: 'Download cancelled',
+              reason: 'API request cancelled',
             );
           }
           yield (next.value as JSUint8Array).toDart;
@@ -164,5 +212,71 @@ class _FetchDownloads implements HttpClientAdapter {
       _active.clear();
     }
     original.close(force: force);
+  }
+}
+
+/// Cancel and time out request-stream preparation without waiting for another
+/// chunk. Browser Fetch owns the subsequent wire upload; connectTimeout bounds
+/// its wait for response headers and Dio handles receive timeouts/progress.
+Future<Uint8List?> _requestBytes(
+  RequestOptions options,
+  Stream<Uint8List>? stream,
+  Future<void>? cancelFuture, {
+  int? maxBytes,
+}) async {
+  if (stream == null) return null;
+  final bytes = BytesBuilder(copy: false);
+  final completed = Completer<Uint8List>();
+  Timer? timeout;
+  late final StreamSubscription<Uint8List> subscription;
+
+  void fail(Object error, [StackTrace? stack]) {
+    if (completed.isCompleted) return;
+    completed.completeError(error, stack);
+    unawaited(subscription.cancel());
+  }
+
+  void watchSendTimeout() {
+    timeout?.cancel();
+    final duration = options.sendTimeout;
+    if (duration == null || duration <= Duration.zero) return;
+    timeout = Timer(duration, () {
+      fail(
+        DioException.sendTimeout(timeout: duration, requestOptions: options),
+      );
+    });
+  }
+
+  subscription = stream.listen(
+    (chunk) {
+      if (completed.isCompleted) return;
+      if (maxBytes != null && bytes.length + chunk.length > maxBytes) {
+        fail(StateError('Download request is too large'));
+        return;
+      }
+      bytes.add(chunk);
+      watchSendTimeout();
+    },
+    onError: fail,
+    onDone: () {
+      if (!completed.isCompleted) completed.complete(bytes.takeBytes());
+    },
+    cancelOnError: true,
+  );
+  watchSendTimeout();
+  unawaited(
+    cancelFuture?.then((_) {
+      fail(
+        DioException.requestCancelled(
+          requestOptions: options,
+          reason: 'API request cancelled',
+        ),
+      );
+    }),
+  );
+  try {
+    return await completed.future;
+  } finally {
+    timeout?.cancel();
   }
 }

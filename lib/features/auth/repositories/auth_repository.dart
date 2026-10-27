@@ -222,8 +222,8 @@ class DurableLogoutAuthRepository
   DurableLogoutAuthRepository(
     this._delegate,
     this._pendingRevocations, {
-    AuthTokenIssuer? issuer,
-  }) : _issuer = issuer;
+    this._issuer,
+  });
 
   final AuthRepository _delegate;
   final PendingRefreshRevocationDrainer _pendingRevocations;

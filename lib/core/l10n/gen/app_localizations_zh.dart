@@ -1403,6 +1403,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeFieldMaritalStatus => '婚姻状况';
 
   @override
+  String get employeeChangePhoneTitle => '更换手机号';
+
+  @override
+  String employeeChangePhoneCurrent(String phone) {
+    return '当前手机号：$phone';
+  }
+
+  @override
+  String get employeeChangePhoneNoAccountNotice =>
+      '该员工尚未开通登录账号。本次仅更新档案中的手机号，不会开通账号。';
+
+  @override
+  String get employeeChangePhoneAccountNotice =>
+      '已有登录账号时，只有主手机号实际变化且登录名需更新，才会同步为新手机号并使旧会话失效。再次提交相同手机号不会更改现有登录名。';
+
+  @override
+  String get employeeChangePhoneNewLabel => '新手机号';
+
+  @override
+  String get employeeChangePhoneConfirm => '确定更换';
+
+  @override
+  String get employeeChangePhoneBusy => '正在更换手机号';
+
+  @override
+  String get employeeChangePhoneSuccess => '手机号已更新';
+
+  @override
   String get employeeFieldPhone => '手机号';
 
   @override

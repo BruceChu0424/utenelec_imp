@@ -9,6 +9,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/admin/models/impersonation.dart';
@@ -448,6 +449,9 @@ class _Fixture {
     final container = ProviderContainer(
       overrides: [
         apiBaseUrlProvider.overrideWithValue(_base),
+        apiClientProvider.overrideWithValue(
+          ApiClient(Dio(BaseOptions(baseUrl: _base))),
+        ),
         secureStorageProvider.overrideWithValue(storage),
         authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
         authRepositoryProvider.overrideWithValue(_AuthRepository(datasetId)),

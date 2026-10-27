@@ -76,10 +76,13 @@ void main() {
       await pumpEventQueue();
       var current = true;
 
-      final login = notifier.login(
-        account: 'first',
-        password: 'secret',
-        isCurrent: () => current,
+      final login = expectLater(
+        notifier.login(
+          account: 'first',
+          password: 'secret',
+          isCurrent: () => current,
+        ),
+        throwsA(isA<SessionMutationSuperseded>()),
       );
       final rejected = expectLater(
         login,

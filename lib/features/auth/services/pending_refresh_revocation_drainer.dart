@@ -141,13 +141,15 @@ final pendingRefreshLogoutTransportProvider = Provider<RefreshTokenRevoker>(
     final endpoint = ref.read(apiBaseUrlProvider);
     if (!ref
         .read(authBackendRealmPolicyProvider)
-        .canUse(entry.issuer, endpoint))
+        .canUse(entry.issuer, endpoint)) {
       return false;
+    }
     final client = ref.read(apiClientProvider);
     if (!ref
         .read(authBackendRealmPolicyProvider)
-        .canUse(entry.issuer, client.baseUrl))
+        .canUse(entry.issuer, client.baseUrl)) {
       return false;
+    }
     await client.post(
       ApiEndpoints.authLogout,
       body: <String, String>{'refreshToken': entry.refreshToken},

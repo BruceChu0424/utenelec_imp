@@ -40,6 +40,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/account_action_owner.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -84,6 +85,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   int _accountRequest = 0;
   bool _accountBusy = false;
   bool _accountWriting = false;
+  bool _disposing = false;
   final _accountOwnerChanges = ValueNotifier<int>(0);
   SensitiveReadBoundary? _profileOwner;
 
@@ -114,6 +116,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
 
   @override
   void dispose() {
+    _disposing = true;
     ++_loadRequest;
     ++_accountRequest;
     _accountOwnerChanges.value++;
@@ -378,16 +381,18 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     ]);
   }
 
-  Future<void> _onSetAvatar(String attachmentId) async {
-    await _runConfirmedAction('正在设置头像', '已设为头像', () async {
-      // TODO(l10n): 补 arb
-      await ref
-          .read(employeeRepositoryProvider)
-          .setAvatar(widget.employeeId, attachmentId);
-      ref.invalidate(employeeAvatarProvider);
-      ref.invalidate(myEmployeeProfileProvider);
-    });
-  }
+  Future<void> _onSetAvatar(String attachmentId) => _withEmployeeAction(
+    Perm.employeeAvatarEdit,
+    (owner, profile, repository) async {
+      await _runConfirmedAction('正在设置头像', '已设为头像', () async {
+        // TODO(l10n): 补 arb
+        await repository.setAvatar(profile.id, attachmentId);
+        if (!owner.isCurrent) return;
+        ref.invalidate(employeeAvatarProvider);
+        ref.invalidate(myEmployeeProfileProvider);
+      }, owner: owner);
+    },
+  );
 
   Widget _scrollTab(List<Widget> children) {
     return RefreshIndicator(
@@ -1000,86 +1005,89 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     );
   }
 
-  Future<void> _showRenewContractDialog(AppLocalizations l10n) async {
-    final formKey = GlobalKey<FormState>();
-    String contractType = 'fixed';
-    String? startDate;
-    String? endDate;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => UtenAlertDialog(
-          title: const Text('续签 / 补录合同'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDropdownField(
-                  label: '合同类型',
-                  value: contractType,
-                  allowClear: false,
-                  items: const [
-                    UtenDropdownItem(value: 'fixed', label: '固定期限'),
-                    UtenDropdownItem(value: 'open', label: '无固定期限'),
-                    UtenDropdownItem(value: 'task', label: '任务期限'),
-                    UtenDropdownItem(value: 'intern', label: '实习'),
+  Future<void> _showRenewContractDialog(AppLocalizations l10n) =>
+      _withEmployeeAction(Perm.employeeContractRenew, (
+        owner,
+        profile,
+        repository,
+      ) async {
+        final formKey = GlobalKey<FormState>();
+        String contractType = 'fixed';
+        String? startDate;
+        String? endDate;
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, setState) => UtenAlertDialog(
+              title: const Text('续签 / 补录合同'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    UtenDropdownField(
+                      label: '合同类型',
+                      value: contractType,
+                      allowClear: false,
+                      items: const [
+                        UtenDropdownItem(value: 'fixed', label: '固定期限'),
+                        UtenDropdownItem(value: 'open', label: '无固定期限'),
+                        UtenDropdownItem(value: 'task', label: '任务期限'),
+                        UtenDropdownItem(value: 'intern', label: '实习'),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => contractType = v ?? 'fixed'),
+                    ),
+                    // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
+                    TextFormField(
+                      errorBuilder: utenTextFieldErrorBuilder,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '开始日期',
+                          hintText: 'YYYY-MM-DD(留空=今天)',
+                        ),
+                      ),
+                      onChanged: (v) =>
+                          startDate = v.trim().isEmpty ? null : v.trim(),
+                    ),
+                    TextFormField(
+                      errorBuilder: utenTextFieldErrorBuilder,
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '结束日期',
+                          hintText: 'YYYY-MM-DD(无固定期限留空)',
+                        ),
+                      ),
+                      onChanged: (v) =>
+                          endDate = v.trim().isEmpty ? null : v.trim(),
+                    ),
                   ],
-                  onChanged: (v) => setState(() => contractType = v ?? 'fixed'),
                 ),
-                // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
-                TextFormField(
-                  errorBuilder: utenTextFieldErrorBuilder,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '开始日期',
-                      hintText: 'YYYY-MM-DD(留空=今天)',
-                    ),
-                  ),
-                  onChanged: (v) =>
-                      startDate = v.trim().isEmpty ? null : v.trim(),
+              ),
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(l10n.commonCancel),
                 ),
-                TextFormField(
-                  errorBuilder: utenTextFieldErrorBuilder,
-                  decoration: const UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '结束日期',
-                      hintText: 'YYYY-MM-DD(无固定期限留空)',
-                    ),
-                  ),
-                  onChanged: (v) =>
-                      endDate = v.trim().isEmpty ? null : v.trim(),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: Text(l10n.commonConfirm),
                 ),
               ],
             ),
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.commonCancel),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.commonConfirm),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (ok != true || !mounted) return;
-    await _runConfirmedAction('续签 / 补录合同', '合同已保存', () {
-      // TODO(l10n): 补 arb
-      return ref.read(employeeRepositoryProvider).renewContract(
-        widget.employeeId,
-        {
-          'contractType': contractType,
-          'startDate': ?startDate,
-          'endDate': ?endDate,
-        },
-      );
-    });
-  }
+        );
+        if (ok != true || !mounted || !owner.isCurrent) return;
+        await _runConfirmedAction('续签 / 补录合同', '合同已保存', () {
+          // TODO(l10n): 补 arb
+          return repository.renewContract(profile.id, {
+            'contractType': contractType,
+            'startDate': ?startDate,
+            'endDate': ?endDate,
+          });
+        }, owner: owner);
+      });
 
   // ============================================================
   // Tab 3：联系与车辆（更换手机号 / 备用手机号 / 车辆管理）
@@ -1110,7 +1118,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               if (canPiiEdit)
                 TextButton.icon(
                   icon: const Icon(Icons.sim_card_outlined, size: 16),
-                  label: const Text('更换手机号'),
+                  label: Text(l10n.employeeChangePhoneTitle),
                   onPressed: _onChangePhone,
                 ),
             ],
@@ -1331,23 +1339,71 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   /// 等待期还能重复打开弹窗重复提交（2026-10-18 修复）。
   String? _actionBusyTitle;
 
+  /// Capture the operator, target and transport before opening a confirmation.
+  /// The public owner keeps intermediate identity/target changes sticky.
+  Future<void> _withEmployeeAction(
+    String permission,
+    Future<void> Function(
+      AccountActionOwner owner,
+      EmployeeProfile profile,
+      EmployeeRepository repository,
+    )
+    action,
+  ) async {
+    final profile = _profile;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    if (profile == null ||
+        boundary != _profileOwner ||
+        boundary.identity == null ||
+        boundary.identity!.readOnly ||
+        _actionBusyTitle != null ||
+        !boundary.permissions.contains(permission)) {
+      return;
+    }
+    final repository = ref.read(employeeRepositoryProvider);
+    final owner = AccountActionOwner(
+      ref,
+      isCurrent: () =>
+          mounted &&
+          !_disposing &&
+          widget.employeeId == profile.id &&
+          _profile?.id == profile.id &&
+          ref.read(currentPermissionsProvider).contains(permission),
+      targetChanges: _accountOwnerChanges,
+      onInvalidated: () {
+        if (mounted && !_disposing) {
+          setState(() => _actionBusyTitle = null);
+        }
+      },
+    );
+    try {
+      if (!owner.isCurrent) return;
+      await action(owner, profile, repository);
+    } finally {
+      owner.dispose();
+    }
+  }
+
   Future<void> _runConfirmedAction(
     String busyTitle,
     String successMessage,
-    Future<void> Function() action,
-  ) async {
-    if (_actionBusyTitle != null) return;
+    Future<void> Function() action, {
+    required AccountActionOwner owner,
+  }) async {
+    if (_actionBusyTitle != null || !owner.isCurrent) return;
     setState(() => _actionBusyTitle = busyTitle);
     try {
       await action();
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       context.appSuccess(successMessage);
       await _load();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !owner.isCurrent) return;
       context.appApiError(e);
     } finally {
-      if (mounted) setState(() => _actionBusyTitle = null);
+      if (mounted && owner.isCurrent) {
+        setState(() => _actionBusyTitle = null);
+      }
     }
   }
 
@@ -1360,41 +1416,57 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     if (ok) _load();
   }
 
-  Future<void> _onChangePhone() async {
-    final newPhone = await showEmployeeChangePhoneDialog(context, _p.phone);
-    if (newPhone == null || !mounted) return;
-    await _runConfirmedAction(
-      '正在更换手机号', // TODO(l10n): 补 arb
-      '手机号已更换，登录账号已同步为新手机号，该员工需重新登录',
-      () => ref
-          .read(employeeRepositoryProvider)
-          .changePhone(widget.employeeId, newPhone),
+  Future<void> _onChangePhone() => _withEmployeeAction(Perm.employeePiiEdit, (
+    owner,
+    profile,
+    repository,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final newPhone = await showEmployeeChangePhoneDialog(
+      context,
+      profile.phone,
+      hasAccount: _accountStatus(profile) != null,
     );
-  }
+    if (newPhone == null || !mounted || !owner.isCurrent) return;
+    await _runConfirmedAction(
+      l10n.employeeChangePhoneBusy,
+      // The endpoint confirms only the profile update. It does not return
+      // whether a login name changed or a session was revoked.
+      l10n.employeeChangePhoneSuccess,
+      () => repository.changePhone(profile.id, newPhone),
+      owner: owner,
+    );
+  });
 
-  Future<void> _editVehicles() async {
-    final ok = await showEmployeeVehiclesDialog(context, _p.vehicles);
-    if (ok == null || !mounted) return;
+  Future<void> _editVehicles() => _withEmployeeAction(Perm.employeeEdit, (
+    owner,
+    profile,
+    repository,
+  ) async {
+    final ok = await showEmployeeVehiclesDialog(context, profile.vehicles);
+    if (ok == null || !mounted || !owner.isCurrent) return;
     await _runConfirmedAction(
       '正在保存车辆信息', // TODO(l10n): 补 arb
       '车辆信息已更新',
-      () => ref.read(employeeRepositoryProvider).update(widget.employeeId, {
-        'vehicles': ok,
-      }),
+      () => repository.update(profile.id, {'vehicles': ok}),
+      owner: owner,
     );
-  }
+  });
 
-  Future<void> _editPhones() async {
-    final ok = await showEmployeePhonesDialog(context, _p.phones);
-    if (ok == null || !mounted) return;
+  Future<void> _editPhones() => _withEmployeeAction(Perm.employeePiiEdit, (
+    owner,
+    profile,
+    repository,
+  ) async {
+    final ok = await showEmployeePhonesDialog(context, profile.phones);
+    if (ok == null || !mounted || !owner.isCurrent) return;
     await _runConfirmedAction(
       '正在保存备用手机号', // TODO(l10n): 补 arb
       '备用手机号已更新',
-      () => ref.read(employeeRepositoryProvider).update(widget.employeeId, {
-        'phones': ok,
-      }),
+      () => repository.update(profile.id, {'phones': ok}),
+      owner: owner,
     );
-  }
+  });
 
   Future<void> _openPermissionSettings() async {
     final owner = ref.read(sensitiveReadBoundaryProvider);
@@ -1646,7 +1718,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         '/employee/${widget.employeeId}/offboarding',
   );
 
-  Future<void> _onConfirm() async {
+  Future<void> _onConfirm() => _withEmployeeAction(Perm.employeeConfirm, (
+    owner,
+    profile,
+    repository,
+  ) async {
     final l10n = AppLocalizations.of(context);
     final today = ChinaDateTime.today();
     DateTime selected = today;
@@ -1672,7 +1748,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                     lastDate: today,
                     locale: const Locale('zh'),
                   );
-                  if (picked != null) setState(() => selected = picked);
+                  if (picked != null && ctx.mounted && owner.isCurrent) {
+                    setState(() => selected = picked);
+                  }
                 },
               ),
             ],
@@ -1691,23 +1769,29 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ),
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted || !owner.isCurrent) return;
     await _runConfirmedAction(
       l10n.employeeConfirmTitle,
       l10n.employeeConfirmSuccess,
       () {
-        return ref
-            .read(employeeRepositoryProvider)
-            .confirm(widget.employeeId, confirmedDate: _fmtDate(selected));
+        return repository.confirm(
+          profile.id,
+          confirmedDate: _fmtDate(selected),
+        );
       },
+      owner: owner,
     );
-  }
+  });
 
   static String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}'
       '-${d.day.toString().padLeft(2, '0')}';
 
-  Future<void> _onRehire() async {
+  Future<void> _onRehire() => _withEmployeeAction(Perm.employeeRehire, (
+    owner,
+    profile,
+    repository,
+  ) async {
     final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
@@ -1727,13 +1811,14 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ],
       ),
     );
-    if (ok != true || !mounted) return;
+    if (ok != true || !mounted || !owner.isCurrent) return;
     await _runConfirmedAction(
       l10n.employeeRehireTitle,
       l10n.employeeRehireSuccess,
-      () => ref.read(employeeRepositoryProvider).rehire(widget.employeeId),
+      () => repository.rehire(profile.id),
+      owner: owner,
     );
-  }
+  });
 
   // ============================================================
   // 通用小部件

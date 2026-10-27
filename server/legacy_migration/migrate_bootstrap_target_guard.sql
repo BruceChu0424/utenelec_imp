@@ -56,7 +56,7 @@ BEGIN
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
     -- The reviewed inventory includes the later archive/file/measurement schema
-    -- through V946. Future root tables still require explicit classification.
+    -- through V948. Future root tables still require explicit classification.
     -- SEED_OR_ADMIN retains the existing explicit master/admin checks above;
     -- it never grants permission to reuse a previous business import.
     CREATE TEMP TABLE bootstrap_target_table_inventory (
@@ -105,6 +105,10 @@ BEGIN
         ('category_master_code_sequences','SEED_OR_ADMIN'),
         ('client_access_change_events','SEED_OR_ADMIN'),
         ('client_categories','SEED_OR_ADMIN'),
+        -- V948 co-owners are live customer responsibility assignments. The
+        -- legacy import maps only the first owner into clients.owner_employee_id
+        -- and never seeds this table; any row proves prior business use.
+        ('client_co_owners','EMPTY'),
         ('client_default_settlement_migration_issues','SEED_OR_ADMIN'),
         ('client_goods_aliases','SEED_OR_ADMIN'),
         ('client_ship_addresses','SEED_OR_ADMIN'),

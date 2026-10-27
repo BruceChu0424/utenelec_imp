@@ -8,11 +8,12 @@ import com.uten.imp.features.auth.model.UserAccountRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
  * 手机号变更后的登录账号同步（ADR-021 §三）：登录账号 = 手机号，
- * 任何手机号改写（HR 编辑 / change-phone / 员工申请 HR 审批合并）都必须走这里，
+ * 任何主手机号实际变更（HR 编辑 / change-phone / 员工申请 HR 审批合并）都必须走这里，
  * 单事务内把 users.login_account 改为新号，吊销全部 refresh token 与服务端会话（立即强制重新登录，
  * 旧访问令牌下一次请求即 401, ADR-110）。
  */
@@ -29,8 +30,14 @@ public class EmployeeLoginAccountSync {
      *
      * @param employeeId       员工
      * @param normalizedPhone  已规范化的 11 位新手机号
+     * @param previousPhoneHash 写入前的主手机号 HMAC；未知为 null
+     * @param currentPhoneHash  写入后的主手机号 HMAC
      */
-    public void syncLoginAccount(UUID employeeId, String normalizedPhone) {
+    public void syncLoginAccount(UUID employeeId, String normalizedPhone,
+                                 String previousPhoneHash, String currentPhoneHash) {
+        // Onboarding permits an explicit login different from the primary phone.
+        // Re-encryption or a repeated field in an unrelated edit must not rename it.
+        if (currentPhoneHash == null || Objects.equals(previousPhoneHash, currentPhoneHash)) return;
         userRepo.findByEmployeeId(employeeId).filter(account -> !account.isDeleted()).ifPresent(account -> {
             if (normalizedPhone.equals(account.getLoginAccount())) {
                 return; // 未变化，不动账号不踢登录

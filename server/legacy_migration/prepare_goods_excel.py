@@ -23,6 +23,7 @@ from prepare_clean_master_data import (color_name, unit_name, ordinary_warehouse
                                       classify_owning_warehouse)
 from audit_goods_quantity_units import audit as audit_quantity_units
 from prepare_workshop_stock_location_policy import CROSSWALK_COLUMNS, AUTHORITY_COLUMNS
+from goods_excel_name import excel_product_name, excel_product_name_evidence, reviewed_excel_product_name
 
 
 ROLE_MAP = {"自制件": "自制", "外购件": "采购", "委外件": "委外"}
@@ -358,7 +359,8 @@ def normalize_current_default_references(goods, fields, dictionary_identities, o
     return records
 
 
-def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: Path, output_dir: Path, files: list[str]):
+def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: Path, output_dir: Path, files: list[str],
+            *, name_review_decisions: Path | None = None):
     source_dir, dictionary_dir, output_dir = source_dir.resolve(), dictionary_dir.resolve(), output_dir.resolve()
     if output_dir in (source_dir, dictionary_dir):
         raise ValueError("Output directory must differ from both input directories")
@@ -378,12 +380,25 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                 raise ValueError(f"Ambiguous legacy goods code: {row[fields['code']]}")
             by_code[code] = row
     excel, workbooks = load_excel(excel_dir, files)
+    decisions, decision_bytes, used_decisions = {}, None, set()
+    if name_review_decisions is not None:
+        decision_bytes = name_review_decisions.read_bytes()
+        review = json.loads(decision_bytes)
+        if review.get("kind") != "reviewed-excel-goods-name-decisions-v1":
+            raise ValueError("Unknown goods-name review decision format")
+        workbook_shas = {book["file"]: book["sha256"] for book in workbooks}
+        for decision in review.get("decisions", []):
+            code = decision.get("code")
+            if (not code or code in decisions or workbook_shas.get(decision.get("source_file")) != decision.get("workbook_sha256")):
+                raise ValueError("Duplicate goods-name decision or original workbook SHA mismatch")
+            decisions[code] = decision
     coded = [row for row in excel if row["values"]["产品编号"]]
     counts = Counter(key(row["values"]["产品编号"]) for row in coded)
     if any(count != 1 for count in counts.values()):
         raise ValueError("Duplicate Excel product code; refusing last-row-wins")
     dictionaries = {}
     dictionary_identities = {}
+    color_tokens = set()
     unit_names = {}
     inputs = [source_dir / "goods.csv", crosswalk]
     reference_mapping = dictionary_dir / "excel_reference_mapping.csv"
@@ -404,6 +419,8 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             dictionary_identities[filename] = {row["legacy_id"] for row in records}
             if filename == "unit.csv":
                 unit_names = {row["legacy_id"]: row["name"] for row in records}
+            if filename == "color.csv":
+                color_tokens = {row["name"] for row in records}
             inputs.append(path)
         else:
             dictionaries[filename] = {}
@@ -433,6 +450,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     workshop_references = []
     ids = stable_new_ids([row["values"]["产品编号"] for row in coded if key(row["values"]["产品编号"]) not in by_code], set(original))
     changes, identities, issues, owning, attributes, continuation = [], [], [], [], [], []
+    name_decorations = []
     quantity_unit_candidates = []
     stats = Counter()
 
@@ -442,18 +460,34 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     for rec in coded:
         values = rec["values"]
         code = values["产品编号"]
+        name = values["产品名称"]
         row = by_code.get(key(code))
+        plain_name, name_reason = excel_product_name_evidence(name, color=values.get("颜色", ""), series=values.get("系列", ""),
+                           legacy_name=None if row is None else row[fields["name"]], color_tokens=color_tokens)
+        if code in decisions:
+            if row is None:
+                raise ValueError("A reviewed goods-name decision requires an existing legacy identity")
+            plain_name, name_reason = reviewed_excel_product_name(decisions[code], code=code,
+                legacy_id=row[fields["legacy_id"]], legacy_name=row[fields["name"]], name=name,
+                color=values.get("颜色", ""), series=values.get("系列", ""),
+                source_file=rec["file"], source_sheet=rec["sheet"], source_row=rec["row"])
+            used_decisions.add(code)
         is_new = row is None
         if is_new:
             row = dict.fromkeys(headers, "")
-            for name, value in {"legacy_id": str(ids[code]), "code": code, "name": values["产品名称"], "status": "使用", "bom_status": "false", "min_qty": "0"}.items():
-                row[fields[name]] = value
+            for field, value in {"legacy_id": str(ids[code]), "code": code, "name": name, "status": "使用", "bom_status": "false", "min_qty": "0"}.items():
+                row[fields[field]] = value
             category, category_method = pick_category(values.get("产品分类", ""))
             row[fields["parent_legacy"]] = category
             goods.append(row)
         else:
             category_method = "preserve_legacy_tree"
         identity = row[fields["legacy_id"]]
+        if plain_name != name:
+            name_decorations.append({"legacy_id": identity, "code": code, "source_name": values["产品名称"],
+                "name": plain_name, "color": values.get("颜色", ""), "model": values.get("产品型号", ""),
+                "series": values.get("系列", ""), "source_file": rec["file"], "source_sheet": rec["sheet"],
+                "source_row": rec["row"], "reason": name_reason})
         identities.append({"legacy_id": identity, "excel_code": code, "kind": "excel_added" if is_new else "same_code",
                            "category_method": category_method, "source_file": rec["file"], "source_row": rec["row"]})
         stats["new_goods" if is_new else "matched_goods"] += 1
@@ -569,6 +603,8 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             if unit_conflict and target in ("min_order", "order_multiple"):
                 attrs[target] = ""
         attributes.append(attrs)
+    if used_decisions != set(decisions):
+        raise ValueError("Reviewed goods-name decision does not identify an exact Excel source row")
     # Preserve reviewed legacy ownership for goods absent from the Excel code
     # list only where every exact-name Excel candidate agrees on one warehouse.
     name_warehouses = defaultdict(set)
@@ -626,6 +662,25 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                 "raw_source_evidence": raw_source_evidence,
                 "evidence_inputs": default_evidence_inputs, "original_excel_workbooks": workbooks})
             handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    # Name cleanup must not change any earlier name-based unit/warehouse/default
+    # evidence policy. Keep the raw source name throughout those reviews, then
+    # separate only the output name after all other fields have been determined.
+    decoration_ids = {item["legacy_id"] for item in name_decorations}
+    retained_changes = [change for change in changes
+                        if not (change["legacy_id"] in decoration_ids and change["field"] == "name")]
+    stats["changed_name"] -= len(changes) - len(retained_changes)
+    changes = retained_changes
+    goods_by_id = {row[fields["legacy_id"]]: row for row in goods}
+    for decoration in name_decorations:
+        row = goods_by_id[decoration["legacy_id"]]
+        if row[fields["name"]] != decoration["source_name"]:
+            raise ValueError("Goods name changed before reviewed display-decoration separation")
+        row[fields["name"]] = decoration["name"]
+        old = original.get(int(decoration["legacy_id"]))
+        if old is not None and old[fields["name"]] != decoration["name"]:
+            changes.append({"legacy_id": decoration["legacy_id"], "code": decoration["code"], "field": "name",
+                            "old": old[fields["name"]], "new": decoration["name"], "reason": "excel_name_without_display_metadata"})
+            stats["changed_name"] += 1
     output_goods = output_dir / "goods.csv"
     write_csv(output_goods, headers, goods)
     write_csv(output_dir / "goods_owning_warehouse.csv", ["goods_legacy_id", "warehouse_code"], owning)
@@ -633,6 +688,11 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
               ["goods_legacy_id", "goods_code", "goods_name", "original_owning_warehouse",
                "workshop_code", "workshop_name", "owning_warehouse", "resolution", "source_file", "source_row"],
               workshop_references)
+    write_csv(output_dir / "goods_excel_name_decorations.csv",
+              ["legacy_id", "code", "source_name", "name", "color", "model", "series", "source_file", "source_sheet", "source_row", "reason"],
+              name_decorations)
+    if decision_bytes is not None:
+        (output_dir / "goods_name_review_decisions.json").write_bytes(decision_bytes)
     # Empty means NOT AUTHORIZED, not an instruction to drop/fallback inventory.
     # The stock consumer rejects these placeholders when workshop references exist.
     write_csv(output_dir / "workshop_stock_location_crosswalk.csv", CROSSWALK_COLUMNS, [])
@@ -672,14 +732,20 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     evidence_inputs, quantity_summary = audit_quantity_units(source_dir, output_dir, quantity_unit_candidates, excel, unit_names)
     inputs = list(dict.fromkeys([*inputs, *evidence_inputs]))
     stats.update({"legacy_goods_rows": len(original), "derived_goods_rows": len(goods), "excel_rows": len(excel),
+                  "excel_name_decorations_separated": len(name_decorations),
                   "excel_coded_rows": len(coded), "price_strategy_rows_archived": len(continuation), "owning_warehouse_rows": len(owning),
                   "issues": len(issues), "source_roles": len(attributes), "source_engineering_review": len(source_review),
                   "workshop_warehouse_references": len(workshop_references),
                   "quantity_unit_review_goods": quantity_summary["candidate_goods"]})
     manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-authority-preserve-quantity-units-reviewed-workshop-location-v5",
+                "namePolicy": "source-proven-excel-display-decoration-v2",
+                "reviewedNameDecisions": None if decision_bytes is None else {
+                    "file": "goods_name_review_decisions.json", "sha256": hashlib.sha256(decision_bytes).hexdigest(),
+                    "review_ids": [decision["review_id"] for decision in decisions.values()]},
                 "generators": [{"file": path.name, "sha256": digest(path)} for path in
                                (Path(__file__), Path(__file__).with_name("prepare_clean_master_data.py"), Path(__file__).with_name("audit_goods_quantity_units.py"),
-                                Path(__file__).with_name("prepare_workshop_stock_location_policy.py"))],
+                                Path(__file__).with_name("prepare_workshop_stock_location_policy.py"),
+                                Path(__file__).with_name("goods_excel_name.py"))],
                 "sourceInputs": [{"path": str(path.resolve()), "sha256": digest(path)} for path in inputs], "workbooks": workbooks,
                 "statistics": dict(stats), "outputs": [{"file": path.name, "sha256": digest(path), "bytes": path.stat().st_size}
                   for path in sorted(output_dir.iterdir()) if path.is_file() and
@@ -697,8 +763,11 @@ def main():
     parser.add_argument("--crosswalk", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--files", nargs="+", default=[f"20260409172229_{i}.xls" for i in (1, 2, 3)])
+    parser.add_argument("--name-review-decisions", type=Path,
+                        help="Optional exact-source reviewed name corrections, bound to workbook SHA and legacy identity")
     args = parser.parse_args()
-    result = prepare(args.source_dir, args.dictionary_dir, args.excel_dir, args.crosswalk, args.output_dir, args.files)
+    result = prepare(args.source_dir, args.dictionary_dir, args.excel_dir, args.crosswalk, args.output_dir, args.files,
+                     name_review_decisions=args.name_review_decisions)
     print(json.dumps(result["statistics"], ensure_ascii=False, indent=2))
 
 

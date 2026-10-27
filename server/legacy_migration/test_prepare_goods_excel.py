@@ -9,6 +9,124 @@ import prepare_goods_excel as subject
 
 
 class GoodsExcelPreparationTest(unittest.TestCase):
+    def test_product_name_separates_only_exact_export_decoration(self):
+        for source, color, series, expected in [
+            ("Hanna一开单带夜光条《白色\\埃及Q120》", "白色", "埃及Q120", "Hanna一开单带夜光条"),
+            ("开关（双语标签）《白色\\Q3-K》", "白色", "Q3-K", "开关（双语标签）"),
+            ("开关(白色)", "白色", "Q3-K", "开关(白色)"),
+            ("产品《安装说明》", "白色", "Q3-K", "产品《安装说明》"),
+            ("开关《K11》", "白色", "Q3-K", "开关《K11》"),
+            ("开关《白色\\Q3-K》", "黑色", "Q3-K", "开关《白色\\Q3-K》"),
+            ("开关《白色/Q3-K》", "白色", "Q3-K", "开关《白色/Q3-K》"),
+            ("《白色\\Q3-K》", "白色", "Q3-K", "《白色\\Q3-K》"),
+            ("开关《\\》", "", "", "开关《\\》"),
+            ("《图案》开关《白色\\Q3-K》", "白色", "Q3-K", "《图案》开关"),
+        ]:
+            with self.subTest(source=source, color=color, series=series):
+                self.assertEqual(subject.excel_product_name(source, color=color, series=series), expected)
+
+    def test_name_decoration_overlay_preserves_source_and_independent_identity_fields(self):
+        source_name = "Hanna一开单带夜光条《白色\\埃及Q120》"
+        record = self.rec(产品名称=source_name, 产品型号="K11", 系列="埃及Q120")
+        before = subject.digest(self.source / "goods.csv")
+        result = self.run_prepare([record])
+        self.assertEqual(subject.digest(self.source / "goods.csv"), before)
+        self.assertEqual(record["values"]["产品名称"], source_name)
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        self.assertEqual((rows[0]["legacy_id"], rows[0]["code"], rows[0]["name"], rows[0]["model"], rows[0]["series"], rows[0]["color_legacy_id"]),
+                         ("17", "KEEP001", "Hanna一开单带夜光条", "K11", "埃及Q120", "345"))
+        _, audit = subject.read_csv(self.output / "goods_excel_name_decorations.csv")
+        self.assertEqual((audit[0]["source_name"], audit[0]["name"], audit[0]["source_row"]),
+                         (source_name, "Hanna一开单带夜光条", "2"))
+        archived = json.loads((self.output / "goods_excel_raw.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(archived["values"]["产品名称"], source_name)
+        self.assertEqual(result["statistics"]["excel_name_decorations_separated"], 1)
+        self.assertEqual(result["namePolicy"], "source-proven-excel-display-decoration-v2")
+        self.assertIn("goods_excel_name.py", {r["file"] for r in result["generators"]})
+        self.assertIn("goods_excel_name_decorations.csv", {r["file"] for r in result["outputs"]})
+
+    def test_new_excel_identity_uses_same_name_policy_and_preserves_genuine_parentheses(self):
+        self.run_prepare([self.rec("NEW001", 产品名称="开关（双语标签）《白色\\Q3-K》", 产品型号="K11", 系列="Q3-K")])
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        new = next(row for row in rows if row["code"] == "NEW001")
+        self.assertEqual((new["name"], new["model"], new["series"]), ("开关（双语标签）", "K11", "Q3-K"))
+        self.assertTrue(int(new["legacy_id"]) < 0)
+
+    def test_output_name_policy_does_not_change_existing_warehouse_name_evidence(self):
+        name = "开关《白色\\Q3-K》"
+        self.run_prepare([self.rec(产品名称=name, 系列="Q3-K", 所属仓库=""),
+                          self.rec("NEW001", 产品名称=name, 系列="Q3-K")])
+        _, owners = subject.read_csv(self.output / "goods_owning_warehouse.csv")
+        self.assertIn({"goods_legacy_id": "17", "warehouse_code": "WH000004"}, owners)
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        self.assertEqual({r["name"] for r in rows}, {"开关"})
+
+    def test_empty_export_tail_requires_exact_legacy_base_and_two_empty_metadata_fields(self):
+        self.assertEqual(subject.excel_product_name("开关《\\》", legacy_name="开关"), "开关")
+        self.assertEqual(subject.excel_product_name("开关《\\》", legacy_name="另一开关"), "开关《\\》")
+        self.assertEqual(subject.excel_product_name("开关《\\》", legacy_name="开关", series="A"), "开关《\\》")
+        self.run_prepare([self.rec(产品名称="旧名称《\\》", 颜色="", 系列="")])
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        self.assertEqual(rows[0]["name"], "旧名称")
+        _, audit = subject.read_csv(self.output / "goods_excel_name_decorations.csv")
+        self.assertEqual(audit[0]["reason"], "legacy_corroborated_empty_export_decoration")
+
+    def test_stale_color_tail_requires_legacy_base_series_and_real_dictionary_token(self):
+        options = dict(legacy_name="旧名称", color_tokens={"白色"}, series="A")
+        self.assertEqual(subject.excel_product_name("旧名称《白色\\A》", **options), "旧名称")
+        self.assertEqual(subject.excel_product_name("旧名称《未知色\\A》", **options), "旧名称《未知色\\A》")
+        self.assertEqual(subject.excel_product_name("旧名称《白色\\B》", **options), "旧名称《白色\\B》")
+        self.run_prepare([self.rec(产品名称="旧名称《白色\\A》", 颜色="", 系列="A")])
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        self.assertEqual((rows[0]["name"], rows[0]["series"]), ("旧名称", "A"))
+        _, audit = subject.read_csv(self.output / "goods_excel_name_decorations.csv")
+        self.assertEqual(audit[0]["reason"], "legacy_and_color_dictionary_corroborated_export_decoration")
+
+    def reviewed_name_fixture(self):
+        raw = "旧名称《未知色\\A》"
+        decision = dict(action="SEPARATE_REVIEWED_EXCEL_DISPLAY_SUFFIX", review_id="fixture-review",
+                        code="KEEP001", legacy_id="17", legacy_name="旧名称", new_name="旧名称", source_name=raw,
+                        color="白色", series="A", source_file="products.xls", source_sheet="产品列表", source_row=2,
+                        workbook_sha256="0" * 64, company_goods_id="verified-company-uuid")
+        path = self.root / "reviewed-names.json"
+        return raw, decision, path
+
+    def test_optional_reviewed_source_decision_is_exact_bound_and_retained_in_output(self):
+        raw, decision, path = self.reviewed_name_fixture()
+        record = self.rec(产品名称=raw, 系列="A", 产品型号="K11")
+        self.run_prepare([record])
+        self.assertEqual(subject.read_csv(self.output / "goods.csv")[1][0]["name"], raw)
+        path.write_text(json.dumps({"kind": "reviewed-excel-goods-name-decisions-v1", "decisions": [decision]}, ensure_ascii=False), encoding="utf-8")
+        result = self.run_prepare([record], name_review_decisions=path)
+        _, rows = subject.read_csv(self.output / "goods.csv")
+        self.assertEqual((rows[0]["name"], rows[0]["model"], rows[0]["series"], rows[0]["color_legacy_id"]),
+                         ("旧名称", "K11", "A", "345"))
+        self.assertEqual((self.output / "goods_name_review_decisions.json").read_bytes(), path.read_bytes())
+        self.assertEqual(result["reviewedNameDecisions"]["sha256"], subject.digest(path))
+        _, audit = subject.read_csv(self.output / "goods_excel_name_decorations.csv")
+        self.assertEqual(audit[0]["reason"], "reviewed_source_name_decision:fixture-review")
+        self.assertEqual(json.loads((self.output / "goods_excel_raw.jsonl").read_text(encoding="utf-8"))["values"]["产品名称"], raw)
+
+    def test_reviewed_source_decision_rejects_workbook_or_identity_drift(self):
+        for field, value, error in [("workbook_sha256", "1" * 64, "workbook SHA mismatch"),
+                                    ("legacy_id", "99", "source facts changed"),
+                                    ("source_name", "另一名称", "source facts changed")]:
+            with self.subTest(field=field):
+                raw, decision, path = self.reviewed_name_fixture()
+                decision[field] = value
+                path.write_text(json.dumps({"kind": "reviewed-excel-goods-name-decisions-v1", "decisions": [decision]}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, error):
+                    self.run_prepare([self.rec(产品名称=raw, 系列="A")], name_review_decisions=path)
+
+    def test_reviewed_company_decision_requires_the_selected_uuid_when_given(self):
+        raw, decision, _ = self.reviewed_name_fixture()
+        arguments = dict(code="KEEP001", legacy_id="17", legacy_name="旧名称", name=raw, color="白色", series="A",
+                         source_file="products.xls", source_sheet="产品列表", source_row=2)
+        self.assertEqual(subject.reviewed_excel_product_name(decision, **arguments,
+                         company_goods_id="verified-company-uuid")[0], "旧名称")
+        with self.assertRaisesRegex(ValueError, "source facts changed"):
+            subject.reviewed_excel_product_name(decision, **arguments, company_goods_id="other-uuid")
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -38,10 +156,11 @@ class GoodsExcelPreparationTest(unittest.TestCase):
         fields.update(values)
         return {"file": "products.xls", "sheet": "产品列表", "row": 2, "parent_code": code, "values": fields}
 
-    def run_prepare(self, records):
+    def run_prepare(self, records, *, name_review_decisions=None):
         workbooks = [{"file": "products.xls", "sha256": "0" * 64, "sheets": [{"columns": list(records[0]["values"])}]}]
         with patch.object(subject, "load_excel", return_value=(records, workbooks)):
-            return subject.prepare(self.source, self.dictionary, self.root, self.crosswalk, self.output, ["products.xls"])
+            return subject.prepare(self.source, self.dictionary, self.root, self.crosswalk, self.output, ["products.xls"],
+                                   name_review_decisions=name_review_decisions)
 
     def test_latest_nonempty_fields_and_source_overlay_preserve_input_and_blank_fields(self):
         before = subject.digest(self.source / "goods.csv")

@@ -76,6 +76,8 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       permissions.contains(Perm.employeePiiEdit);
   bool _canEditCompensationWith(Set<String> permissions) =>
       permissions.contains(Perm.employeeCompensationEdit);
+  bool _canOpenAccountWith(Set<String> permissions) =>
+      permissions.contains(Perm.accountSupport);
   @override
   bool get formDraftBusy => _submitting;
   @override
@@ -458,7 +460,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       return;
     }
     final l10n = AppLocalizations.of(context);
-    if (_openAccount && !permissions.contains(Perm.accountSupport)) {
+    if (_openAccount && !_canOpenAccountWith(permissions)) {
       context.appError(l10n.employeeOnboardAccountPermissionHint);
       return;
     }
@@ -470,7 +472,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
         owner == ref.read(sensitiveReadBoundaryProvider) &&
         _canOnboardWith(ref.read(currentPermissionsProvider)) &&
         (!openAccount ||
-            ref.read(currentPermissionsProvider).contains(Perm.accountSupport));
+            _canOpenAccountWith(ref.read(currentPermissionsProvider)));
     // 兜底复核当前已挂载的各步表单与日期(正常路径在 _next 已分步校验)。
     for (final key in _stepFormKeys) {
       if (key.currentState != null && !key.currentState!.validate()) {
@@ -1364,15 +1366,15 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
           contentPadding: EdgeInsets.zero,
           title: Text(l10n.employeeOnboardOpenAccount),
           subtitle: Text(
-            ref.watch(currentPermissionsProvider).contains(Perm.accountSupport)
+            _canOpenAccountWith(ref.watch(currentPermissionsProvider))
                 ? l10n.employeeOnboardOnlyRecordHint
                 : l10n.employeeOnboardAccountPermissionHint,
           ),
           onChanged:
               _submitting ||
-                  (!ref
-                          .watch(currentPermissionsProvider)
-                          .contains(Perm.accountSupport) &&
+                  (!_canOpenAccountWith(
+                        ref.watch(currentPermissionsProvider),
+                      ) &&
                       !_openAccount)
               ? null
               : (value) => setState(() => _openAccount = value == true),

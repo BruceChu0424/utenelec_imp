@@ -160,6 +160,7 @@ Future<void> _pumpBom(
   bool editMode = true,
   bool expandParent = true,
   bool screenshot = false,
+  bool waitForSnapshot = true,
   ValueChanged<bool>? interactionChanged,
   TargetPlatform platform = TargetPlatform.windows,
 }) async {
@@ -208,6 +209,7 @@ Future<void> _pumpBom(
       ),
     ),
   );
+  if (!waitForSnapshot) return;
   await tester.pumpAndSettle();
 
   if (editMode) await enterBomEdit(tester);
@@ -244,16 +246,17 @@ Future<void> _pumpBom(
 }
 
 void main() {
-  testWidgets('全部展开读取未加载孙层，全部收起剪裁隐藏行勾选', (tester) async {
+  testWidgets('完整预读后全部展开不增加读取，全部收起剪裁隐藏行勾选', (tester) async {
     final repo = _FakeGoodsBomRepository(nestedHasChildren: true);
     await _pumpBom(tester, repo, editMode: false, expandParent: false);
     final expansion = find.byKey(const Key('goods-bom-tree-expansion'));
     expect(find.text('Nested component'), findsNothing);
-    expect(repo.listCalls, ['goods-a']);
+    expect(repo.listCalls, ['goods-a', 'goods-b', 'goods-c']);
+    final readCount = repo.listCalls.length;
     await tester.tap(expansion);
     await tester.pumpAndSettle();
     expect(find.text('Unloaded grandchild'), findsOneWidget);
-    expect(repo.listCalls, containsAll(['goods-b', 'goods-c']));
+    expect(repo.listCalls, hasLength(readCount), reason: '全部展开只投影已接受的完整快照');
     expect(find.text('全部收起'), findsOneWidget);
     final grandchildRow = find.byKey(
       const ValueKey('row:goods-a/row-b/row-c/row-d'),
@@ -266,7 +269,6 @@ void main() {
       find.byKey(const ValueKey('goods-bom-table-true-false')),
     );
     expect(selectedTable.selectedIds, {'goods-c|row-d'});
-    final readCount = repo.listCalls.length;
     await tester.tap(expansion);
     await tester.pumpAndSettle();
     expect(find.text('Nested component'), findsNothing);
@@ -317,24 +319,84 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('全部展开子树读取失败保留原树并允许重试', (tester) async {
+  testWidgets('完整预读失败不发布残缺树，重试与后续失败保留完整快照', (tester) async {
     final repo = _FakeGoodsBomRepository(nestedHasChildren: true)
       ..grandchildReadFailureOnce = StateError('temporary read failure');
     await _pumpBom(tester, repo, editMode: false, expandParent: false);
     final expansion = find.byKey(const Key('goods-bom-tree-expansion'));
-    await tester.tap(expansion);
-    await tester.pumpAndSettle();
+    final tableFinder = find.byKey(
+      const ValueKey('goods-bom-table-true-false'),
+    );
+    MasterDataTableView<dynamic> table() => tester.widget(tableFinder);
+    expect(repo.listCalls, ['goods-a', 'goods-b', 'goods-c']);
+    expect(table().items, isEmpty, reason: '根和子层读取成功也不能发布失败快照的一部分');
+    expect(table().error, '加载组装信息失败');
+    expect(find.text('Parent component'), findsNothing);
+    expect(find.text('Nested component'), findsNothing);
     expect(find.text('Unloaded grandchild'), findsNothing);
     expect(find.text('全部收起'), findsNothing);
     expect(find.text('全部展开'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: tableFinder, matching: find.text('重试')).hitTestable(),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.listCalls, [
+      for (var attempt = 0; attempt < 2; attempt++) ...[
+        'goods-a',
+        'goods-b',
+        'goods-c',
+      ],
+    ]);
+    expect(table().error, isNull);
+    expect(find.text('Parent component'), findsOneWidget);
+    expect(find.text('Nested component'), findsNothing);
+    expect(find.text('Unloaded grandchild'), findsNothing);
+    final readCount = repo.listCalls.length;
     await tester.tap(expansion);
     await tester.pumpAndSettle();
     expect(find.text('Unloaded grandchild'), findsOneWidget);
     expect(find.text('全部收起'), findsOneWidget);
+    expect(repo.listCalls, hasLength(readCount));
+
+    await tester.tap(
+      find.byKey(const Key('master-data-table-select-all')).hitTestable().last,
+    );
+    await tester.pumpAndSettle();
+    const acceptedRelations = {
+      'goods-a|row-b',
+      'goods-b|row-c',
+      'goods-c|row-d',
+    };
+    expect(table().selectedIds, acceptedRelations);
+    final acceptedItems = List<Object?>.of(table().items);
+    expect(acceptedItems, hasLength(3));
+    repo.grandchildReadFailureOnce = StateError('refresh subtree failed');
+    final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
+    final refreshing = state.refresh();
+    await tester.pumpAndSettle();
+    await refreshing;
+    expect(table().items, orderedEquals(acceptedItems));
+    expect(table().selectedIds, acceptedRelations);
+    expect(table().error, '加载组装信息失败');
+    final retrying = state.refresh();
+    await tester.pumpAndSettle();
+    await retrying;
+    expect(table().error, isNull);
+    expect(table().items, hasLength(3));
+    expect(table().selectedIds, acceptedRelations);
+    expect(repo.listCalls, [
+      for (var attempt = 0; attempt < 4; attempt++) ...[
+        'goods-a',
+        'goods-b',
+        'goods-c',
+      ],
+    ]);
+    expect(repo.updatedBody, isNull);
+    expect(repo.batchDeleteCalls, isEmpty);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('全部展开读取返回时页面已退出，不回写旧树', (tester) async {
+  testWidgets('完整预读返回时页面已退出，不回写旧树', (tester) async {
     final pending = Completer<List<GoodsBomItem>>();
     final repo = _FakeGoodsBomRepository(nestedHasChildren: true)
       ..grandchildRead = pending;
@@ -344,9 +406,9 @@ void main() {
       repo,
       editMode: false,
       expandParent: false,
+      waitForSnapshot: false,
       interactionChanged: interactions.add,
     );
-    await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
     for (
       var frame = 0;
       frame < 20 && !repo.listCalls.contains('goods-c');
@@ -355,6 +417,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
     }
     expect(repo.listCalls, contains('goods-c'));
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(table.items, isEmpty, reason: '读取未完成时没有可接受的部分树');
+    expect(find.text('Parent component'), findsNothing);
     final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
     expect(await state.finishEditing(), isTrue, reason: '只读加载不拦离开页面');
     expect(interactions, isNot(contains(true)), reason: '只读展开不向宿主申请导航锁');
@@ -362,6 +429,8 @@ void main() {
     pending.complete([repo.grandchild]);
     await tester.pumpAndSettle();
     expect(find.text('Unloaded grandchild'), findsNothing);
+    expect(repo.updatedBody, isNull);
+    expect(repo.batchDeleteCalls, isEmpty);
     expect(tester.takeException(), isNull);
   });
 

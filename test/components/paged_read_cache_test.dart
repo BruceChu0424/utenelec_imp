@@ -81,6 +81,212 @@ void main() {
   });
 
   test(
+    'a queued preparation never replays a failed speculative page',
+    () async {
+      final cache = PagedReadCache<String>();
+      cache.bind('same reader and query');
+      cache.accept(_page(1));
+      final entered = Completer<void>();
+      final failed = Completer<PagedResult<String>>();
+      final reads = <int>[];
+      final errors = <Object>[];
+      Future<PagedResult<String>> fetch(int page) {
+        reads.add(page);
+        if (reads.length == 1) {
+          entered.complete();
+          return failed.future;
+        }
+        return Future.value(_page(page));
+      }
+
+      Future<void> prepare() => cache.prefetchPages(
+        _page(1),
+        [2, 3],
+        fetch: fetch,
+        isCurrent: () => true,
+        onError: errors.add,
+      );
+      final first = prepare();
+      await entered.future;
+      final queued = prepare();
+      failed.completeError(StateError('temporary page read failure'));
+      await Future.wait([first, queued]);
+      expect(reads, [
+        2,
+      ], reason: 'a queued viewport update is not a foreground retry');
+      expect(errors, hasLength(1));
+      expect(cache.peek(2), isNull);
+      await prepare();
+      expect(reads, [
+        2,
+      ], reason: 'repainting the same window cannot replay the failed page');
+      expect((await cache.read(2, () => fetch(2))).page, 2);
+      await cache.prefetchPages(
+        _page(2),
+        [3],
+        fetch: fetch,
+        isCurrent: () => true,
+      );
+      expect(
+        reads,
+        [2, 2, 3],
+        reason: 'one explicit foreground retry unlocks the healthy successor',
+      );
+    },
+  );
+
+  for (final reset in ['clear', 'scope', 'revision', 'foreground success']) {
+    test(
+      'speculative failure reset by $reset permits a new preparation',
+      () async {
+        final cache = PagedReadCache<String>(maximumPages: 1);
+        PagedResult<String> versioned(int page, String revision) => PagedResult(
+          items: ['row $page'],
+          page: page,
+          size: 1,
+          total: 3,
+          totalPages: 3,
+          readScopeVersion: revision,
+        );
+        cache.bind('reader A');
+        cache.accept(versioned(1, 'v1'));
+        final reads = <int>[];
+        var revision = 'v1';
+        Future<PagedResult<String>> fetch(int page) async {
+          reads.add(page);
+          if (reads.length == 1) throw StateError('temporary read failure');
+          return versioned(page, revision);
+        }
+
+        await cache.prefetchPages(
+          versioned(1, revision),
+          [2],
+          fetch: fetch,
+          isCurrent: () => true,
+        );
+        await cache.prefetchPages(
+          versioned(1, revision),
+          [2],
+          fetch: fetch,
+          isCurrent: () => true,
+        );
+        expect(reads, [2]);
+        switch (reset) {
+          case 'clear':
+            cache.clear();
+          case 'scope':
+            cache.bind('reader B');
+          case 'revision':
+            revision = 'v2';
+            cache.accept(versioned(1, revision));
+          case 'foreground success':
+            await cache.read(2, () => fetch(2));
+            cache.accept(
+              versioned(1, revision),
+            ); // Evict 2 to test its retired failure marker.
+        }
+        await cache.prefetchPages(
+          versioned(1, revision),
+          [2],
+          fetch: fetch,
+          isCurrent: () => true,
+        );
+        expect(reads, reset == 'foreground success' ? [2, 2, 2] : [2, 2]);
+        expect(cache.peek(2)!.readScopeVersion, revision);
+      },
+    );
+  }
+
+  for (final stale in [false, true]) {
+    test(
+      'retired or REQUEST_STALE preparation does not poison a live job: $stale',
+      () async {
+        final cache = PagedReadCache<String>();
+        cache.bind('reader');
+        cache.accept(_page(1));
+        final entered = Completer<void>();
+        final old = Completer<PagedResult<String>>();
+        final reads = <int>[];
+        var current = true;
+        Future<PagedResult<String>> fetch(int page) {
+          reads.add(page);
+          if (reads.length == 1) {
+            entered.complete();
+            return old.future;
+          }
+          return Future.value(_page(page));
+        }
+
+        final first = cache.prefetchPages(
+          _page(1),
+          [2],
+          fetch: fetch,
+          isCurrent: () => current,
+        );
+        await entered.future;
+        final live = cache.prefetchPages(
+          _page(1),
+          [2],
+          fetch: fetch,
+          isCurrent: () => true,
+        );
+        if (!stale) current = false;
+        old.completeError(
+          stale
+              ? ApiException('REQUEST_STALE', 'retired request')
+              : StateError('retired owner'),
+        );
+        await Future.wait([first, live]);
+        expect(reads, [2, 2]);
+        expect(cache.peek(2)!.page, 2);
+      },
+    );
+  }
+
+  test('failed speculation uses a bounded recent-page budget', () async {
+    final cache = PagedReadCache<String>(maximumPages: 2);
+    cache.bind('reader');
+    cache.accept(_page(1));
+    final reads = <int>[];
+    Future<PagedResult<String>> fail(int page) async {
+      reads.add(page);
+      throw StateError('temporary read failure');
+    }
+
+    for (final page in [2, 3, 4]) {
+      await cache.prefetchPages(
+        _page(1),
+        [page],
+        fetch: fail,
+        isCurrent: () => true,
+      );
+    }
+    await cache.prefetchPages(
+      _page(1),
+      [3],
+      fetch: fail,
+      isCurrent: () => true,
+    );
+    expect(reads, [
+      2,
+      3,
+      4,
+    ], reason: 'recent failures still block speculative replay');
+    await cache.prefetchPages(
+      _page(1),
+      [2],
+      fetch: fail,
+      isCurrent: () => true,
+    );
+    expect(reads, [
+      2,
+      3,
+      4,
+      2,
+    ], reason: 'only failures beyond the page budget are retired');
+  });
+
+  test(
     'prefetch prepares two following pages and yields before transport',
     () async {
       final cache = PagedReadCache<String>();

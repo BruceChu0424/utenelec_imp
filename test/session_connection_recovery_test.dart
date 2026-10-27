@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
@@ -14,6 +16,9 @@ import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'support/fake_auth_logout_fence.dart';
+
+const _fixtureBase = 'https://session-recovery.example.test/api';
+final _fixtureIssuer = AuthBackendRealmPolicy().issuerFor(_fixtureBase);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -26,6 +31,7 @@ void main() {
       await storage.saveTokens(
         accessToken: 'offline-access',
         refreshToken: 'valid-refresh',
+        issuer: _fixtureIssuer,
       );
       final repository = _RecoveringAuthRepository();
       final recovery = ConnectionRecoveryController(
@@ -35,6 +41,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: <Override>[
+          apiBaseUrlProvider.overrideWithValue(_fixtureBase),
           secureStorageProvider.overrideWithValue(storage),
           authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
           authRepositoryProvider.overrideWithValue(repository),
@@ -76,6 +83,7 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: <Override>[
+        apiBaseUrlProvider.overrideWithValue(_fixtureBase),
         secureStorageProvider.overrideWithValue(storage),
         authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
         authRepositoryProvider.overrideWithValue(repository),
@@ -109,9 +117,11 @@ void main() {
       await storage.saveTokens(
         accessToken: 'forced-access',
         refreshToken: 'forced-refresh',
+        issuer: _fixtureIssuer,
       );
       final container = ProviderContainer(
         overrides: <Override>[
+          apiBaseUrlProvider.overrideWithValue(_fixtureBase),
           secureStorageProvider.overrideWithValue(storage),
           authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
           authRepositoryProvider.overrideWithValue(

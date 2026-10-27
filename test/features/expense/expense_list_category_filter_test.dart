@@ -113,10 +113,21 @@ void main() {
     );
 
     api.lastQuery = null;
+    final filteredStart = api.queries.length;
     table.onFilterChanged('claimNo', 'BX2026-09-01-0001');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['claimNo'], 'BX2026-09-01-0001');
-    expect(api.lastQuery?['page'], 1, reason: '换单号筛选回第 1 页');
+    final filtered = api.queries.skip(filteredStart).toList();
+    expect(filtered.map((query) => query['page']), [1, 2, 3]);
+    expect(
+      filtered.map((query) => query['claimNo']),
+      everyElement('BX2026-09-01-0001'),
+    );
+    final filteredView = tester.widget<MasterDataTableView<ExpenseClaim>>(
+      find.byKey(const Key('expense-list-table')),
+    );
+    expect(filteredView.currentPage, 1, reason: '换单号筛选回第 1 页，投机页不改变展示');
+    expect(filteredView.items.single.claimNo, 'BX2026-09-01-0001');
 
     tester
         .widget<MasterDataTableView<ExpenseClaim>>(
@@ -203,6 +214,7 @@ class _ExpenseApi extends ApiClient {
         'items': [
           {
             'id': 'claim-1',
+            'claimNo': 'BX2026-09-01-0001',
             'applicantId': 'emp-1',
             'applicantName': '王小明',
             'title': '差旅报销',

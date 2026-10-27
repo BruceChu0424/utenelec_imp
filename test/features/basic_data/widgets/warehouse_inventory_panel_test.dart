@@ -195,7 +195,10 @@ void main() {
         }
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('opened-ledger')), findsNothing);
-        expect(harness.api.queries.length, (visit + 2) * 2);
+        expect(harness.api.queries.map((query) => query['page']), [
+          for (var cycle = 0; cycle < visit + 2; cycle++) ...[1, 2, 3],
+        ]);
+        expect(_table(tester).currentPage, 1);
       }
       expect(tester.takeException(), isNull);
     });
@@ -218,7 +221,7 @@ void main() {
   ) async {
     final harness = await _pump(tester);
     expect(harness.api.queries, [
-      for (final page in [1, 2])
+      for (final page in [1, 2, 3])
         {
           'page': page,
           'size': 30,
@@ -229,6 +232,7 @@ void main() {
         },
     ]);
     expect(_table(tester).items.single.goodsCode, 'M3-001');
+    expect(_table(tester).currentPage, 1);
     expect(_table(tester).embedded, isFalse);
     expect(find.text('0.0001 个'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -254,7 +258,8 @@ void main() {
       tester,
     ) async {
       final harness = await _pump(tester, warehouse: warehouse);
-      expect(harness.api.queries.map((query) => query['page']), [1, 2]);
+      expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
+      expect(_table(tester).currentPage, 1);
       for (final query in harness.api.queries) {
         expect(query['warehouseId'], warehouse.id);
         expect(query['includeLineSide'], isTrue);
@@ -303,9 +308,12 @@ void main() {
   testWidgets('revocation clears old rows and rejects an in-flight response', (
     tester,
   ) async {
-    final harness = await _pump(tester);
     final pending = Completer<Map<String, dynamic>>();
-    harness.api.respond = (_) => pending.future;
+    final api = _InventoryApi()
+      ..respond = (query) =>
+          query['page'] == 3 ? pending.future : Future.value(_result(query));
+    final harness = await _pump(tester, api: api);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
     _table(tester).onPageChange!(3);
     await tester.pump();
     harness.container.read(_permissions.notifier).replace(const {});
@@ -315,7 +323,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('hardware库存货品'), findsNothing);
-    pending.complete(_result({'warehouseId': 'hardware'}, name: '撤权后的旧响应'));
+    pending.complete(
+      _result({'warehouseId': 'hardware', 'page': 3}, name: '撤权后的旧响应'),
+    );
     await tester.pumpAndSettle();
     expect(find.text('撤权后的旧响应'), findsNothing);
     expect(harness.api.queries, hasLength(3));
@@ -324,7 +334,15 @@ void main() {
       Perm.stockView,
     });
     await tester.pumpAndSettle();
-    expect(harness.api.queries, hasLength(5));
+    expect(harness.api.queries.map((query) => query['page']), [
+      1,
+      2,
+      3,
+      1,
+      2,
+      3,
+    ]);
+    expect(_table(tester).currentPage, 1);
     expect(_table(tester).items.single.name, 'hardware库存货品');
   });
 
@@ -344,7 +362,10 @@ void main() {
     expect(find.text('防抖前旧结果'), findsNothing);
     await tester.pumpAndSettle();
     expect(harness.api.queries.last['keyword'], '螺丝');
-    expect(harness.api.queries.last['page'], 2);
+    final searchQueries = harness.api.queries.where(
+      (query) => query['keyword'] == '螺丝',
+    );
+    expect(searchQueries.map((query) => query['page']), [1, 2, 3]);
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).items.single.name, '搜索后的螺丝');
   });
@@ -358,6 +379,7 @@ void main() {
     expect(harness.api.queries.last['page'], 3);
     expect(harness.api.queries.last['warehouseId'], 'hardware');
     expect(harness.api.queries.last['warehouseRelatedOnly'], isTrue);
+    expect(harness.api.queries.map((query) => query['page']), [1, 2, 3]);
     expect(_table(tester).currentPage, 2);
     expect(_table(tester).totalPages, 3);
   });

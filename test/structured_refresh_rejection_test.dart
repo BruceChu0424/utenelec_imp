@@ -12,6 +12,11 @@ import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/network/visitor_session_event_bus.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
+
+final _staffIssuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.example.test/api',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -74,14 +79,17 @@ void main() {
       await storage.saveTokens(
         accessToken: 'revoked-remote-access',
         refreshToken: 'revoked-remote-refresh',
+        issuer: _staffIssuer,
       );
       var expirations = 0;
       final subscription = SessionEventBus.instance.onSessionExpired.listen(
         (_) => expirations++,
       );
       addTearDown(subscription.cancel);
+      var refreshCalls = 0;
       final dio = _staffDio(storage, (request) {
         if (request.path == '/auth/refresh') {
+          refreshCalls++;
           return _jsonResponse(request, 403, <String, String>{
             'code': 'REMOTE_ACCESS_DENIED',
           });
@@ -97,6 +105,7 @@ void main() {
       );
       await pumpEventQueue();
 
+      expect(refreshCalls, 1);
       expect(await storage.getAccessToken(), isNull);
       expect(await storage.getRefreshToken(), isNull);
       expect(expirations, 1);
@@ -110,14 +119,17 @@ void main() {
       await storage.saveTokens(
         accessToken: 'staff-access',
         refreshToken: 'staff-refresh',
+        issuer: _staffIssuer,
       );
       var expirations = 0;
       final subscription = SessionEventBus.instance.onSessionExpired.listen(
         (_) => expirations++,
       );
       addTearDown(subscription.cancel);
+      var refreshCalls = 0;
       final dio = _staffDio(storage, (request) {
         if (request.path == '/auth/refresh') {
+          refreshCalls++;
           return failure.response(request);
         }
         return _jsonResponse(request, 401, <String, String>{
@@ -131,6 +143,7 @@ void main() {
       );
       await pumpEventQueue();
 
+      expect(refreshCalls, 1);
       expect(await storage.getAccessToken(), 'staff-access');
       expect(await storage.getRefreshToken(), 'staff-refresh');
       expect(expirations, 0);

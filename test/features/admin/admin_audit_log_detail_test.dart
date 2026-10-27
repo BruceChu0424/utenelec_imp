@@ -566,7 +566,12 @@ void main() {
         final expectedAnchorTop =
             anchorTop - (scroll.offset - beforeMovement) * zoom;
         await tester.pumpAndSettle();
-        expect(calls.map((call) => call['page']), [...expectedPages, 2]);
+        expect(
+          calls.map((call) => call['page']),
+          expectedPages,
+          reason:
+              'an upward gesture adopts the prepared page without another read',
+        );
         expect(
           calls.where((call) => call['page'] == 2).last[sessions
               ? 'snapshotAuditId'
@@ -799,6 +804,12 @@ void main() {
         .widget<MasterDataTableView<AuditSessionSummary>>(tableFinder)
         .onPageChange!(3);
     await tester.pumpAndSettle();
+    // A fresh retry prepares page two. Fail that speculative request and its
+    // subsequent foreground attempt; only the explicit UI retry may succeed.
+    repository.sessionPageErrors[2] = [
+      StateError('controlled previous-page prefetch failure'),
+      StateError('controlled previous-page foreground failure'),
+    ];
     // A fresh explicit retry clears pages prepared from the old read.
     await Future<void>.sync(
       () => tester
@@ -811,9 +822,6 @@ void main() {
     );
     await _scrollAuditPageUntilBuilt(tester, rowFinder);
     final viewport = tester.getRect(find.byType(CustomScrollView).first);
-    repository.nextSessionError = StateError(
-      'controlled previous-page failure',
-    );
     await tester.sendEventToBinding(
       PointerScrollEvent(
         position: tester.getRect(rowFinder).intersect(viewport).center,
@@ -826,6 +834,7 @@ void main() {
       2,
       3,
       3,
+      2,
       2,
     ]);
     final retry = find.descendant(of: tableFinder, matching: find.text('重试'));
@@ -840,6 +849,8 @@ void main() {
       3,
       2,
       2,
+      2,
+      1,
     ]);
     expect(tester.getTopLeft(rowFinder).dy, closeTo(beforeRetry, 1));
     expect(
@@ -1790,13 +1801,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
     expect(
       repository.listCalls.skip(callsBeforeJump).map((call) => call['page']),
-      [79, 78, 80],
+      [79, 78, 80, 81],
     );
     expect(
       repository.listCalls
           .skip(callsBeforeJump)
           .map((call) => call['snapshotId']),
-      [9001, 9001, 9001],
+      [9001, 9001, 9001, 9001],
     );
     final row79 = find.byKey(const ValueKey('row:120'));
     expect(row79, findsOneWidget);
@@ -1822,13 +1833,13 @@ void main() {
 
     expect(
       repository.listCalls.skip(callsBeforeJump).map((call) => call['page']),
-      [79, 78, 80],
+      [79, 78, 80, 81],
     );
     expect(
       repository.listCalls
           .skip(callsBeforeJump)
           .map((call) => call['snapshotId']),
-      [9001, 9001, 9001],
+      [9001, 9001, 9001, 9001],
     );
     expect(tester.widget<TextFormField>(jumpField).controller!.text, '79');
     expect(find.byKey(const ValueKey('row:121')), findsNothing);
@@ -2237,6 +2248,7 @@ class _AuditRepository implements AuditLogRepository {
   final Map<int, Completer<AuditLogPage>> eventPageGates;
   Object? nextEventError;
   Object? nextSessionError;
+  final sessionPageErrors = <int, List<Object>>{};
   String? readScopeVersion;
   int detailCalls = 0;
   int actorCalls = 0;
@@ -2267,6 +2279,10 @@ class _AuditRepository implements AuditLogRepository {
       'size': size,
       'snapshotAuditId': snapshotAuditId,
     });
+    final pageErrors = sessionPageErrors[page];
+    if (pageErrors != null && pageErrors.isNotEmpty) {
+      throw pageErrors.removeAt(0);
+    }
     if (nextSessionError case final failure?) {
       nextSessionError = null;
       throw failure;

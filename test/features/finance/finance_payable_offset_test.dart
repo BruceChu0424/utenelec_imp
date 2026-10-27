@@ -50,10 +50,17 @@ void main() {
       );
       await tester.tap(find.text('打开贷项'));
       await tester.pumpAndSettle();
-      expect(api.pages, [
-        1,
-        2,
-      ], reason: 'next DTO is prepared before any scroll');
+      expect(
+        api.pages,
+        [1, 2, 3],
+        reason: 'two successor DTOs are prepared without publishing them',
+      );
+      expect(
+        find.byKey(const ValueKey('supplier-offset-target-payable-1')),
+        findsNothing,
+        reason:
+            'prepared successor rows are not published into the current target list',
+      );
       expect(find.textContaining('当前页暂无符合条件'), findsOneWidget);
       await _scrollOffsetTargetsToNextPage(tester);
       await tester.pumpAndSettle();

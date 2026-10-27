@@ -17,6 +17,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/network/interceptors/device_audit_interceptor.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/warehouse/models/inbound_registration_line.dart';
@@ -41,6 +42,7 @@ import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'outbound_weight_fakes.dart';
 
 const _base = 'https://warehouse-request.invalid/api';
+final _issuer = AuthBackendRealmPolicy().issuerFor(_base);
 const _arrival =
     '/warehouse/production-finished-in/arrival-registrations/batch';
 final _permissions = StateProvider<Set<String>>(
@@ -79,12 +81,13 @@ class _Snapshot extends SessionSnapshotNotifier {
 
 class _Credentials extends SecureStorage {
   _Credentials() : super(const FlutterSecureStorage());
-  AuthTokenSnapshot auth = const AuthTokenSnapshot(
+  AuthTokenSnapshot auth = AuthTokenSnapshot(
     accessToken: 'original-A',
     refreshToken: null,
     generation: 1,
     intentGeneration: 1,
     sessionLineage: 'original-A-login',
+    issuer: _issuer,
   );
   ImpersonationRecord? impersonation;
   Completer<void>? captureGate;
@@ -487,12 +490,13 @@ void _replaceIdentity(
   if (change == 'unchanged') return;
   session.intent++;
   if (change == 'same-login') {
-    credentials.auth = const AuthTokenSnapshot(
+    credentials.auth = AuthTokenSnapshot(
       accessToken: 'replacement-A',
       refreshToken: null,
       generation: 2,
       intentGeneration: 2,
       sessionLineage: 'replacement-A-login',
+      issuer: _issuer,
     );
   } else {
     credentials.impersonation = ImpersonationRecord(

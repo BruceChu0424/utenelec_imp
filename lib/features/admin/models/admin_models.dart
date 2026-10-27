@@ -61,7 +61,12 @@ class AdminUserSummary {
 
   bool get authorizationGrantAllowed => currentEmployee && status == 'active';
 
-  bool get passwordResetAllowed => currentEmployee || status == 'disabled';
+  bool get knownAccountState =>
+      const {'active', 'locked', 'disabled'}.contains(status);
+
+  bool get passwordResetAllowed =>
+      status == 'disabled' ||
+      (currentEmployee && const {'active', 'locked'}.contains(status));
 
   String get employeeStatusLabel {
     switch (employeeStatus?.trim()) {
@@ -102,7 +107,7 @@ class AdminUserSummary {
       AdminUserSummary(
         id: json['id'] as String,
         loginAccount: json['loginAccount'] as String? ?? '',
-        status: json['status'] as String? ?? 'active',
+        status: json['status'] as String? ?? 'unknown',
         mustChangePassword: json['mustChangePassword'] as bool? ?? false,
         employeeId: json['employeeId'] as String?,
         employeeStatus: json['employeeStatus'] as String?,

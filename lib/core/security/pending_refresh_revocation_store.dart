@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'auth_refresh_lock.dart';
+import 'auth_token_issuer.dart';
 import 'secure_storage.dart';
 
 /// One refresh token waiting for the public, idempotent logout endpoint.
@@ -12,16 +13,19 @@ class PendingRefreshRevocation {
     required this.refreshToken,
     required this.createdAt,
     required this.expiresAt,
+    this.issuer,
   });
 
   final String refreshToken;
   final DateTime createdAt;
   final DateTime expiresAt;
+  final AuthTokenIssuer? issuer;
 
   Map<String, Object> toJson() => <String, Object>{
     'refreshToken': refreshToken,
     'createdAt': createdAt.millisecondsSinceEpoch,
     'expiresAt': expiresAt.millisecondsSinceEpoch,
+    if (issuer != null) 'issuer': issuer!.toJson(),
   };
 
   static PendingRefreshRevocation? tryParse(Object? value) {
@@ -29,6 +33,8 @@ class PendingRefreshRevocation {
     final refreshToken = value['refreshToken'];
     final createdAt = value['createdAt'];
     final expiresAt = value['expiresAt'];
+    final issuer = AuthTokenIssuer.tryParse(value['issuer']);
+    if (value['issuer'] != null && issuer == null) return null;
     if (refreshToken is! String ||
         refreshToken.isEmpty ||
         refreshToken.length > PendingRefreshRevocationStore.maxTokenLength ||
@@ -43,6 +49,7 @@ class PendingRefreshRevocation {
       refreshToken: refreshToken,
       createdAt: DateTime.fromMillisecondsSinceEpoch(createdAtMillis),
       expiresAt: DateTime.fromMillisecondsSinceEpoch(expiresAtMillis),
+      issuer: issuer,
     );
   }
 }
@@ -88,18 +95,23 @@ class PendingRefreshRevocationStore {
 
   /// Persists [refreshToken] before any best-effort network revocation starts.
   /// Exact duplicates are folded into one newest entry with a fresh expiry.
-  Future<bool> enqueue(String? refreshToken) {
+  Future<bool> enqueue(String? refreshToken, {AuthTokenIssuer? issuer}) {
     if (!_isQueueable(refreshToken)) return Future<bool>.value(false);
     final token = refreshToken!;
     return _lock.synchronized(() async {
       final now = _now();
       final entries = await _readActiveLocked(now);
-      entries.removeWhere((entry) => entry.refreshToken == token);
+      entries.removeWhere(
+        (entry) =>
+            entry.refreshToken == token &&
+            (entry.issuer == issuer || entry.issuer == null && issuer != null),
+      );
       entries.add(
         PendingRefreshRevocation(
           refreshToken: token,
           createdAt: now,
           expiresAt: now.add(retention),
+          issuer: issuer,
         ),
       );
       entries.sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -119,12 +131,22 @@ class PendingRefreshRevocationStore {
     );
   });
 
+  Future<List<PendingRefreshRevocation>> pendingEntries() => _lock.synchronized(
+    () async => List<PendingRefreshRevocation>.unmodifiable(
+      await _readActiveLocked(_now()),
+    ),
+  );
+
   /// Removes only the exact token that received a successful 2xx response.
-  Future<void> remove(String refreshToken) => _lock.synchronized(() async {
-    final entries = await _readActiveLocked(_now());
-    entries.removeWhere((entry) => entry.refreshToken == refreshToken);
-    await _writeLocked(entries);
-  });
+  Future<void> remove(String refreshToken, {AuthTokenIssuer? issuer}) =>
+      _lock.synchronized(() async {
+        final entries = await _readActiveLocked(_now());
+        entries.removeWhere(
+          (entry) =>
+              entry.refreshToken == refreshToken && entry.issuer == issuer,
+        );
+        await _writeLocked(entries);
+      });
 
   Future<List<PendingRefreshRevocation>> _readActiveLocked(DateTime now) async {
     final raw = await _storage.read(_storageKey);
@@ -135,7 +157,7 @@ class PendingRefreshRevocationStore {
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic> ||
-          decoded['version'] != 1 ||
+          (decoded['version'] != 1 && decoded['version'] != 2) ||
           decoded['entries'] is! List<dynamic>) {
         await _storage.delete(_storageKey);
         return parsed;
@@ -147,7 +169,9 @@ class PendingRefreshRevocationStore {
           continue;
         }
         final duplicate = parsed.indexWhere(
-          (candidate) => candidate.refreshToken == entry.refreshToken,
+          (candidate) =>
+              candidate.refreshToken == entry.refreshToken &&
+              candidate.issuer == entry.issuer,
         );
         if (duplicate < 0) {
           parsed.add(entry);
@@ -182,7 +206,7 @@ class PendingRefreshRevocationStore {
     await _storage.write(
       _storageKey,
       jsonEncode(<String, Object>{
-        'version': 1,
+        'version': 2,
         'entries': entries.map((entry) => entry.toJson()).toList(),
       }),
     );

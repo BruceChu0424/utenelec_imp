@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -18,8 +20,21 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 
 const _action = 'goods:edit';
+final _operatorScope = StateProvider<AuthenticatedScope>(
+  (ref) => const AuthenticatedScope(userId: 'manager'),
+);
+
+class _ManagerSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'manager', code: 'M1', name: '经理', permissions: []),
+  );
+}
 
 PageStaffPermissionState _permission({
   String code = _action,
@@ -86,6 +101,7 @@ class _Repository implements PagePermissionDelegationRepository {
   Object? saveFailure;
   int reads = 0;
   final writes = <List<PagePermissionChange>>[];
+  Completer<PagePermissionEmployeeDetail>? pendingSave;
 
   @override
   Future<List<ManagedPermissionDepartment>> managedDepartments(
@@ -145,6 +161,7 @@ class _Repository implements PagePermissionDelegationRepository {
     required List<PagePermissionChange> changes,
   }) async {
     writes.add(List.of(changes));
+    if (pendingSave != null) return pendingSave!.future;
     if (saveFailure != null) throw saveFailure!;
     detail = savedDetail ?? detail;
     if (detailFailsAfterCommit) {
@@ -195,9 +212,10 @@ Future<_Harness> _mount(
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(const {}),
       isSuperAdminProvider.overrideWithValue(false),
-      authenticatedScopeProvider.overrideWithValue(
-        const AuthenticatedScope(userId: 'manager'),
+      authenticatedScopeProvider.overrideWith(
+        (ref) => ref.watch(_operatorScope),
       ),
+      sessionProvider.overrideWith(_ManagerSession.new),
       apiClientProvider.overrideWithValue(_NoNetworkApi()),
       apiBaseUrlProvider.overrideWithValue('https://permission-test.invalid'),
     ],
@@ -258,6 +276,43 @@ Future<void> _saveAndSettle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('operator change removes retained employee permission details', (
+    tester,
+  ) async {
+    final repository = _Repository(_detail([_permission()]));
+    final harness = await _mount(tester, repository);
+    expect(_switch(_action), findsOneWidget);
+    harness.container.read(_operatorScope.notifier).state =
+        const AuthenticatedScope(userId: 'another-manager');
+    await tester.pumpAndSettle();
+    expect(_switch(_action), findsNothing);
+    expect(find.text('登录身份、权限或连接已变化，请关闭并重新打开权限设置。'), findsOneWidget);
+    expect(repository.writes, isEmpty);
+  });
+
+  testWidgets(
+    'late permission save cannot repopulate another operators drawer or refresh their session',
+    (tester) async {
+      final repository = _Repository(_detail([_permission()]));
+      final harness = await _mount(tester, repository);
+      await tester.tap(_switch(_action));
+      await tester.pumpAndSettle();
+      final pending = Completer<PagePermissionEmployeeDetail>();
+      repository.pendingSave = pending;
+      await tester.tap(_save);
+      await tester.pump();
+      expect(repository.writes, hasLength(1));
+      harness.container.read(_operatorScope.notifier).state =
+          const AuthenticatedScope(userId: 'another-manager');
+      pending.complete(
+        _detail([_permission(effective: true, configured: true, version: 8)]),
+      );
+      await tester.pumpAndSettle();
+      expect(_switch(_action), findsNothing);
+      expect(harness.snapshot.refreshCalls, 0);
+      expect(repository.writes, hasLength(1));
+    },
+  );
   testWidgets(
     'inactive manager delegation is OFF and can be explicitly renewed with its current version',
     (tester) async {

@@ -302,11 +302,6 @@ public class EmployeeCommandService {
      * ① 目标员工绑定超管账号 → 拒绝（防止把引导 admin 的账号停掉，全站失去管理入口）；
      * ② 操作人对自己执行 → 拒绝（防止 HR 误把自己账号冻结）。
      */
-    private void assertAccountOperationAllowed(UUID employeeId) {
-        assertAccountOperationAllowed(
-                employeeId, userRepo.findByEmployeeId(employeeId).orElse(null));
-    }
-
     private void assertAccountOperationAllowed(
             UUID employeeId, UserAccount lockedAccount) {
         currentUser.get().ifPresent(u -> {
@@ -366,7 +361,7 @@ public class EmployeeCommandService {
     public void offboard(UUID id, OffboardRequest req) {
         tx.bind();
         tx.bindProfileChangeSnapshotCodecV1();
-        assertAccountOperationAllowed(id);
+        assertAccountOperationAllowed(id, null);
         Employee employee = queryService.requireEmployee(id);
         String resignType = normalizeResignType(req.resignType());
         String reason = req.reason() == null ? "" : req.reason().trim();
@@ -386,6 +381,17 @@ public class EmployeeCommandService {
                 req.effectiveDate(), resignType, reason,
                 handoverReason, checklistCodes);
         if (replayed) return;
+        // The handover coordinator already holds the canonical employee rows.
+        // Load no account entity before this point; promotion/rebinding must be
+        // observed under its user lock (or fail the RR transaction with a conflict).
+        UserAccount lockedAccount = userRepo.findRetainedIdByEmployeeId(id)
+                .map(accountId -> userRepo.findByIdForUpdate(accountId)
+                        .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT, "员工账号在离职办理期间已变化")))
+                .orElse(null);
+        if (lockedAccount != null && !Objects.equals(id, lockedAccount.getEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "员工账号绑定已变化，请刷新后重试");
+        }
+        assertAccountOperationAllowed(id, lockedAccount);
         if ("resigned".equals(employee.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职");
         }
@@ -430,7 +436,8 @@ public class EmployeeCommandService {
 
         // Account disablement is last; any earlier failure rolls back the status, transfers,
         // permissions, history, and this account mutation together.
-        userRepo.findByEmployeeId(id).ifPresent(account -> {
+        if (lockedAccount != null) {
+            UserAccount account = lockedAccount;
             account.setStatus("disabled");
             account.setRemoteAccess(false);
             account.setMustChangePassword(true);
@@ -440,7 +447,7 @@ public class EmployeeCommandService {
             userRepo.save(account);
             refreshTokenRepo.revokeAllByUserId(account.getId());
             sessions.revokeAllForUser(account.getId(), AuthSessionService.REASON_ACCOUNT_STATUS);
-        });
+        }
         dataHandoverService.completeOffboarding(req.requestId(), handoverSummary);
     }
 
@@ -571,7 +578,7 @@ public class EmployeeCommandService {
         empRepo.save(e);
     }
 
-    /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */
+    /** 复职恢复员工身份；账号启用与新临时凭据必须由账号支持显式办理。 */
     @PreAuthorize("hasAuthority('employee:rehire')")
     @Transactional
     public void rehire(UUID id) {
@@ -608,7 +615,7 @@ public class EmployeeCommandService {
         // 新任职不恢复旧个人授权/外网能力；旧密码保持作废 (离职时已置过期)，需由账号支持
         // 重置后把新的临时密码交给员工 (ADR-110)。
         if (lockedAccount != null) {
-            lockedAccount.setStatus("active");
+            lockedAccount.setStatus("disabled");
             lockedAccount.setRemoteAccess(false);
             lockedAccount.setMustChangePassword(true);
             lockedAccount.setTempPasswordExpiresAt(OffsetDateTime.now());

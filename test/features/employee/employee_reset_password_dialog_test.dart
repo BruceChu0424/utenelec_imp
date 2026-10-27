@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/employee/widgets/employee_reset_password_dialog.dart';
@@ -20,6 +22,10 @@ const _confirm = ValueKey('employee-reset-password-confirm');
 const _cancel = ValueKey('employee-reset-password-cancel');
 const _saved = ValueKey('employee-reset-password-saved');
 const _temporaryPassword = 'T8!temporary-Employee2';
+final _apiVersion = StateProvider<int>((ref) => 0);
+
+class _Api extends Fake implements ApiClient {}
+
 const _employee = EmployeeProfile(
   id: 'emp-7',
   code: 'UT0007',
@@ -58,17 +64,23 @@ class _Session extends SessionNotifier {
   void switchAccount() => state = _state(permissions, userId: 'other-hr-user');
 
   void simulateLogout() => state = const SessionState();
+  void changeDataset() =>
+      state = _state(permissions, dataset: 'another-dataset');
 
-  SessionState _state(List<String> permissions, {String userId = 'hr-user'}) =>
-      SessionState(
-        status: AuthStatus.authenticated,
-        user: AppUser(
-          id: userId,
-          code: 'HR001',
-          name: '人事',
-          permissions: permissions,
-        ),
-      );
+  SessionState _state(
+    List<String> permissions, {
+    String userId = 'hr-user',
+    String dataset = 'first-dataset',
+  }) => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: userId,
+      code: 'HR001',
+      name: '人事',
+      permissions: permissions,
+      businessDatasetId: dataset,
+    ),
+  );
 }
 
 class _Results {
@@ -90,6 +102,10 @@ Future<_Results> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWith((ref) {
+          ref.watch(_apiVersion);
+          return _Api();
+        }),
         employeeRepositoryProvider.overrideWithValue(repository),
         sessionProvider.overrideWith(
           () => results.session = _Session(permissions),
@@ -130,6 +146,46 @@ Future<_Results> _open(
 
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
+
+  for (final pending in [false, true]) {
+    testWidgets(
+      'backend change closes reset credentials including late reply=$pending',
+      (tester) async {
+        final gate = Completer<String>();
+        final repository = _ResetRepository()..pending = pending ? gate : null;
+        final results = await _open(tester, repository);
+        await tester.tap(find.byKey(_confirm));
+        if (pending) {
+          await tester.pump();
+        } else {
+          await tester.pumpAndSettle();
+        }
+        results.container.read(_apiVersion.notifier).state++;
+        await tester.pump();
+        if (pending) gate.complete(_temporaryPassword);
+        await tester.pumpAndSettle();
+        expect(find.text(_temporaryPassword), findsNothing);
+        expect(find.byKey(_dialog), findsNothing);
+        expect(repository.employeeIds, ['emp-7']);
+      },
+    );
+  }
+
+  testWidgets(
+    'same user and epoch cannot retain reset credentials after dataset change',
+    (tester) async {
+      final repository = _ResetRepository();
+      final results = await _open(tester, repository);
+      await tester.tap(find.byKey(_confirm));
+      await tester.pumpAndSettle();
+      final epoch = results.container.read(sessionEpochProvider);
+      results.session.changeDataset();
+      await tester.pumpAndSettle();
+      expect(results.container.read(sessionEpochProvider), epoch);
+      expect(find.text(_temporaryPassword), findsNothing);
+      expect(find.byKey(_dialog), findsNothing);
+    },
+  );
 
   testWidgets('取消不调用重置接口，也不返回成功', (tester) async {
     final repository = _ResetRepository();

@@ -14,6 +14,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/providers/shared_providers.dart';
 import 'api_base_url.dart';
 import 'server_selection.dart';
+import '../security/auth_token_issuer.dart';
+
+final authBackendRealmPolicyProvider = Provider<AuthBackendRealmPolicy>(
+  (ref) => AuthBackendRealmPolicy.fromBuildConfiguration(),
+);
 
 /// 当前生效的后端 base URL：据选择模式 + 云端地址 + 本地可达性决定。
 /// - local → 编译期本地地址；

@@ -59,6 +59,8 @@ public class PasswordChangeTransaction {
             // 校验原密码之后、落库之前密码已被别处改掉 (另一台设备改密或管理员重置)。
             throw new ApiException(ErrorCode.CONFLICT, "密码刚被修改过，请重新登录后再改");
         }
+        StaffAuthenticationPolicy.requireCurrentEmployee(userRepo, user);
+        StaffAuthenticationPolicy.requireCurrentTemporaryPassword(user);
 
         // 旧哈希入历史，写新密码
         PasswordHistory history = new PasswordHistory();

@@ -519,6 +519,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
   final baseUrl = ref.watch(apiBaseUrlProvider);
+  final realmPolicy = ref.watch(authBackendRealmPolicyProvider);
   final jsonDecoder = ResponsiveJsonDecoder();
   ref.onDispose(jsonDecoder.dispose);
   Dio auditedDioFactory() {
@@ -543,6 +544,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
       storage: storage,
       baseUrl: baseUrl,
       dioFactory: auditedDioFactory,
+      realmPolicy: realmPolicy,
     ),
   );
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。

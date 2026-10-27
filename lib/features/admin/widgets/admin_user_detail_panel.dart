@@ -41,6 +41,7 @@ import 'admin_permission_templates.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
 import 'set_temporary_password_dialog.dart';
+import 'admin_account_lifecycle_text.dart';
 
 class AdminUserDetailPanel extends ConsumerStatefulWidget {
   const AdminUserDetailPanel({
@@ -471,6 +472,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       );
     }
     if (!_supportTargetAllowed(data)) return actions;
+    if (!user.knownAccountState) return actions;
     final locked = user.status == 'locked';
     final disabled = user.status == 'disabled';
     final label = locked
@@ -598,12 +600,14 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   void _explainAuthorizationRestriction() {
-    final reason = widget.user.authorizationRestrictionReason;
+    final reason = adminAuthorizationRestrictionText(context, widget.user);
     if (reason.isNotEmpty) UtenToast.info(context, reason);
   }
 
   void _explainLifecycleRestriction() {
-    final reason = widget.user.lifecycleRestrictionReason;
+    final reason = widget.user.knownAccountState
+        ? widget.user.lifecycleRestrictionReason
+        : adminAuthorizationRestrictionText(context, widget.user);
     if (reason.isNotEmpty) UtenToast.info(context, reason);
   }
 
@@ -766,7 +770,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   Widget _authorizationRestrictionCard(EffectivePermissions? data) {
     final theme = Theme.of(context);
-    final reason = widget.user.authorizationRestrictionReason;
+    final reason = adminAuthorizationRestrictionText(context, widget.user);
     final canClear = data != null && _hasPersonalOverrides(data);
     return Container(
       width: double.infinity,
@@ -1078,7 +1082,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ? '超级管理员默认拥有全部权限，不能逐项调整'
         : !policyAllows
         ? '这项权限只随超级管理员身份生效，不能逐人授予'
-        : widget.user.authorizationRestrictionReason;
+        : adminAuthorizationRestrictionText(context, widget.user);
 
     final details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1344,7 +1348,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 ),
                 Text(
                   !remoteAccess && !grantAllowed
-                      ? '${widget.user.authorizationRestrictionReason}，不能开放外网访问。'
+                      ? '${adminAuthorizationRestrictionText(context, widget.user)}，不能开放外网访问。'
                       : '$name：${remoteAccessText(context, 'grantHint')}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -1612,7 +1616,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 ),
                 Text(
                   promoteBlocked
-                      ? '${widget.user.authorizationRestrictionReason}，不能授予超级管理员。'
+                      ? '${adminAuthorizationRestrictionText(context, widget.user)}，不能授予超级管理员。'
                       : isSuperAdmin
                       ? '默认拥有全部功能权限、可管理他人授权。'
                       : '设为超级管理员后，该账号拥有全部功能、可管理他人授权。',

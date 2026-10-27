@@ -9,12 +9,18 @@ import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/pending_refresh_revocation_store.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/features/auth/services/pending_refresh_revocation_drainer.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'support/fake_auth_logout_fence.dart';
+
+const _fixtureUrl = 'https://company-lan.example/api';
+final _fixtureIssuer = AuthBackendRealmPolicy.fromBuildConfiguration()
+    .issuerFor(_fixtureUrl);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +35,7 @@ void main() {
       const rawStorage = FlutterSecureStorage();
       final normal = SecureStorage(rawStorage);
       await normal.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -81,6 +88,7 @@ void main() {
     () async {
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -114,6 +122,7 @@ void main() {
     () async {
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -122,9 +131,10 @@ void main() {
       final releaseNetwork = Completer<void>();
       final drainer = PendingRefreshRevocationDrainer(
         store: queue,
-        revoke: (token) async {
+        revoke: (entry) async {
           if (!networkStarted.isCompleted) networkStarted.complete();
           await releaseNetwork.future;
+          return true;
         },
         retryDelays: const <Duration>[Duration(hours: 1)],
       );
@@ -132,6 +142,7 @@ void main() {
       final repository = DurableLogoutAuthRepository(
         _RecordingAuthRepository(),
         drainer,
+        issuer: _fixtureIssuer,
       );
       final container = _container(
         storage: storage,
@@ -164,6 +175,7 @@ void main() {
     () async {
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -201,6 +213,7 @@ void main() {
     () async {
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -232,6 +245,7 @@ void main() {
   test('explicit login safely supersedes an active logout fence', () async {
     final storage = SecureStorage(const FlutterSecureStorage());
     await storage.saveTokens(
+      issuer: _fixtureIssuer,
       accessToken: 'old-access',
       refreshToken: 'old-refresh',
     );
@@ -287,6 +301,7 @@ ProviderContainer _container({
   required ConnectionRecoveryController recovery,
 }) => ProviderContainer(
   overrides: <Override>[
+    apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
     secureStorageProvider.overrideWithValue(storage),
     authRepositoryProvider.overrideWithValue(repository),
     authLogoutFenceProvider.overrideWithValue(fence),

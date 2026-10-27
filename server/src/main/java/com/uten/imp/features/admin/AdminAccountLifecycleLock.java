@@ -22,6 +22,15 @@ final class AdminAccountLifecycleLock {
     private final UserAccountRepository userRepo;
 
     LockedTarget lock(UUID userId) {
+        return lock(userId, false);
+    }
+
+    /** Safe revocation may quarantine a retained account whose employee is already archived. */
+    LockedTarget lockForRevocation(UUID userId) {
+        return lock(userId, true);
+    }
+
+    private LockedTarget lock(UUID userId, boolean allowArchivedEmployee) {
         UserAccountRepository.AccountState initial = userRepo.findAccountStateById(userId)
                 .filter(state -> !state.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "账号不存在"));
@@ -31,7 +40,7 @@ final class AdminAccountLifecycleLock {
         }
 
         Employee employee = employeeRepo.findByIdForUpdate(initialEmployeeId)
-                .filter(candidate -> !candidate.isDeleted())
+                .filter(candidate -> allowArchivedEmployee || !candidate.isDeleted())
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.CONFLICT, "账号绑定的员工档案不存在或已删除"));
         UserAccount account = userRepo.findByIdForUpdate(userId)
@@ -63,6 +72,13 @@ final class AdminAccountLifecycleLock {
                 || !"active".equals(target.account().getStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT, "目标登录账号未启用，不能执行该授权操作");
+        }
+    }
+
+    void requireAccountNotDisabled(LockedTarget target) {
+        if ("disabled".equals(target.account().getStatus())) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "该账号已停用，请使用启用账号操作明确恢复；锁定或解锁不能代替启用");
         }
     }
 

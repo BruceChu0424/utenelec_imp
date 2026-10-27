@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/security/auth_token_issuer.dart';
+import '../../../core/security/pending_refresh_revocation_store.dart';
 import '../../../core/security/secure_storage.dart';
 import '../models/auth_session.dart';
 import '../services/pending_refresh_revocation_drainer.dart';
@@ -13,6 +17,11 @@ abstract interface class AuthRepository {
   Future<void> logout(String? refreshToken);
   Future<AuthResult> changePassword(String oldPassword, String newPassword);
   Future<UserProfile> me();
+}
+
+/// Optional ownership-aware cleanup; the existing AuthRepository API is unchanged.
+abstract interface class IssuerAwareAuthRepository {
+  Future<void> logoutIssued(String? refreshToken, AuthTokenIssuer? issuer);
 }
 
 /// Optional transport capability preserves existing non-MFA test/custom adapters.
@@ -27,11 +36,18 @@ abstract interface class OtpAuthRepository {
 /// Direct network transport. Production callers use the durable decorator
 /// below; the pending-revocation drainer calls this endpoint through its own
 /// dedicated transport so queued logout never recurses through the decorator.
-class DioAuthRepository implements AuthRepository, OtpAuthRepository {
-  DioAuthRepository(this.api, [this.storage]);
+class DioAuthRepository
+    implements AuthRepository, OtpAuthRepository, IssuerAwareAuthRepository {
+  DioAuthRepository(
+    this.api, [
+    this.storage,
+    AuthBackendRealmPolicy? realmPolicy,
+  ]) : _realmPolicy =
+           realmPolicy ?? AuthBackendRealmPolicy.fromBuildConfiguration();
 
   final ApiClient api;
   final SecureStorage? storage;
+  final AuthBackendRealmPolicy _realmPolicy;
 
   @override
   Future<AuthResult> login(String loginAccount, String password) async {
@@ -64,6 +80,12 @@ class DioAuthRepository implements AuthRepository, OtpAuthRepository {
 
   @override
   Future<AuthResult> refresh(String refreshToken) async {
+    final current = await storage?.getAuthTokenSnapshot();
+    if (current == null ||
+        current.refreshToken != refreshToken ||
+        !_realmPolicy.canUse(current.issuer, api.baseUrl)) {
+      throw AuthenticatedRequestScope.changed();
+    }
     final json = await api.post(
       ApiEndpoints.authRefresh,
       body: <String, String>{'refreshToken': refreshToken},
@@ -73,6 +95,28 @@ class DioAuthRepository implements AuthRepository, OtpAuthRepository {
 
   @override
   Future<void> logout(String? refreshToken) async {
+    final current = await storage?.getAuthTokenSnapshot();
+    final raw = refreshToken ?? current?.refreshToken;
+    await logoutIssued(
+      raw,
+      current?.refreshToken == raw ? current?.issuer : null,
+    );
+  }
+
+  @override
+  Future<void> logoutIssued(
+    String? refreshToken,
+    AuthTokenIssuer? issuer,
+  ) async {
+    if (refreshToken == null || refreshToken.isEmpty) return;
+    if (!_realmPolicy.canUse(issuer, api.baseUrl)) {
+      final persistence = storage;
+      if (persistence == null) throw AuthenticatedRequestScope.changed();
+      await PendingRefreshRevocationStore(
+        persistence,
+      ).enqueue(refreshToken, issuer: issuer);
+      return;
+    }
     await api.post(
       ApiEndpoints.authLogout,
       body: <String, String?>{'refreshToken': refreshToken},
@@ -173,15 +217,29 @@ abstract final class RecentMeSnapshot {
 /// Adds durable, encrypted, eventually-consistent server revocation to every
 /// local logout or stale-auth-result eviction without delaying the caller on
 /// network availability.
-class DurableLogoutAuthRepository implements AuthRepository, OtpAuthRepository {
-  DurableLogoutAuthRepository(this._delegate, this._pendingRevocations);
+class DurableLogoutAuthRepository
+    implements AuthRepository, OtpAuthRepository, IssuerAwareAuthRepository {
+  DurableLogoutAuthRepository(
+    this._delegate,
+    this._pendingRevocations, {
+    AuthTokenIssuer? issuer,
+  }) : _issuer = issuer;
 
   final AuthRepository _delegate;
   final PendingRefreshRevocationDrainer _pendingRevocations;
+  final AuthTokenIssuer? _issuer;
 
   @override
   Future<void> logout(String? refreshToken) async {
-    await _pendingRevocations.enqueueAndDrain(refreshToken);
+    await logoutIssued(refreshToken, _issuer);
+  }
+
+  @override
+  Future<void> logoutIssued(
+    String? refreshToken,
+    AuthTokenIssuer? issuer,
+  ) async {
+    await _pendingRevocations.enqueueAndDrain(refreshToken, issuer: issuer);
   }
 
   @override
@@ -221,6 +279,7 @@ final authNetworkRepositoryProvider = Provider<AuthRepository>(
   (ref) => DioAuthRepository(
     ref.watch(apiClientProvider),
     ref.read(secureStorageProvider),
+    ref.watch(authBackendRealmPolicyProvider),
   ),
 );
 
@@ -228,5 +287,8 @@ final authRepositoryProvider = Provider<AuthRepository>(
   (ref) => DurableLogoutAuthRepository(
     ref.watch(authNetworkRepositoryProvider),
     ref.watch(pendingRefreshRevocationDrainerProvider),
+    issuer: ref
+        .watch(authBackendRealmPolicyProvider)
+        .issuerFor(ref.watch(apiBaseUrlProvider)),
   ),
 );

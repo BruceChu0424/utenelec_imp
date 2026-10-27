@@ -19,9 +19,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../shared/providers/shared_providers.dart';
 import 'api_base_url.dart';
+import 'api_endpoint_configuration.dart';
 import 'health_probe.dart';
 
-const _configuredCloudApiBaseUrl = String.fromEnvironment('CLOUD_API_BASE_URL');
 const _kCloudUrlKey = 'uten.server_url_override'; // 仅 Debug 显式覆盖，Release 永不读取
 const _kServerModeKey = 'uten.server_mode'; // auto | local | cloud
 const _kLocalReachableKey = 'uten.local_server_reachable';
@@ -118,7 +118,7 @@ String? resolveTrustedCloudUrl({
 String? readCloudUrl(SharedPreferences? prefs) {
   try {
     return resolveTrustedCloudUrl(
-      configured: _configuredCloudApiBaseUrl,
+      configured: configuredCloudApiBaseUrl,
       storedOverride: prefs?.getString(_kCloudUrlKey),
       releaseMode: kReleaseMode,
       debugOverridesAllowed: kDebugMode && !kIsWeb,

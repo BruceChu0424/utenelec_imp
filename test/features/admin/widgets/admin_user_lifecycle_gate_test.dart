@@ -15,6 +15,24 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
+    'unknown account status is not offered active lock or reset actions',
+    (tester) async {
+      await _pumpPanel(
+        tester,
+        repository: _LifecycleRepository(effective: _effective()),
+        user: _user(status: 'unknown', currentEmployee: true),
+      );
+      expect(
+        find.byKey(const ValueKey('admin-header-account-status')),
+        findsNothing,
+      );
+      await tester.tap(find.text('账号安全').first);
+      await tester.pumpAndSettle();
+      expect(_button(tester, '设置临时密码').onPressed, isNull);
+    },
+  );
+
+  testWidgets(
     '375px resigned account blocks recovery and grants but can clear/reset',
     (tester) async {
       final repository = _LifecycleRepository(
@@ -133,17 +151,21 @@ Future<void> _pumpPanel(
   await tester.pumpAndSettle();
 }
 
-AdminUserSummary _user({required String status, bool remoteAccess = false}) =>
-    AdminUserSummary(
-      id: 'user-1',
-      employeeId: 'employee-1',
-      employeeName: '离职员工',
-      employeeStatus: 'resigned',
-      loginAccount: '13800000000',
-      status: status,
-      mustChangePassword: false,
-      remoteAccess: remoteAccess,
-    );
+AdminUserSummary _user({
+  required String status,
+  bool remoteAccess = false,
+  bool currentEmployee = false,
+}) => AdminUserSummary(
+  id: 'user-1',
+  employeeId: 'employee-1',
+  employeeName: '离职员工',
+  employeeStatus: currentEmployee ? 'active' : 'resigned',
+  currentEmployee: currentEmployee,
+  loginAccount: '13800000000',
+  status: status,
+  mustChangePassword: false,
+  remoteAccess: remoteAccess,
+);
 
 Finder _buttonFinder(String label) => find
     .ancestor(of: find.text(label), matching: find.byType(UtenButton))

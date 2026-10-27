@@ -106,6 +106,9 @@ class AuthSessionPropagationTest {
         when(repository.findAndLockByTokenHash(current.getTokenHash()))
                 .thenReturn(Optional.of(current));
         UserAccountRepository users = mock(UserAccountRepository.class);
+        user.setEmployeeId(UUID.randomUUID());
+        when(users.existsAuthenticatableEmployee(org.mockito.ArgumentMatchers.eq(user.getEmployeeId()),
+                org.mockito.ArgumentMatchers.anyCollection())).thenReturn(true);
         var identity = mock(RefreshTokenRepository.Identity.class);
         when(identity.getUserId()).thenReturn(current.getUserId());
         when(identity.getSessionId()).thenReturn(sessionId);

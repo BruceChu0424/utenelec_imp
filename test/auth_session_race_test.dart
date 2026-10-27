@@ -8,7 +8,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+
+final _issuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.example.cn/api',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +28,7 @@ void main() {
 
     test('错峰到达的旧 401 复用新 access 且不再次刷新', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -72,6 +78,7 @@ void main() {
 
     test('两个拦截器共享存储时只允许一次 refresh', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -120,6 +127,7 @@ void main() {
       'old request is never replayed across a replacement lineage',
       () async {
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'old-access',
           refreshToken: 'old-refresh',
         );
@@ -150,6 +158,7 @@ void main() {
         final responseFuture = dio.get<dynamic>('/protected');
         await refreshStarted.future;
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'new-access',
           refreshToken: 'new-refresh',
         );

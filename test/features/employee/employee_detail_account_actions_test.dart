@@ -10,6 +10,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_segmented_filter.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import '../../support/audit_screenshot_support.dart';
@@ -145,6 +146,14 @@ Future<ProviderContainer> _pump(
   final router = GoRouter(
     routes: [
       GoRoute(
+        path: RouteName.adminPermissions,
+        builder: (_, state) => Scaffold(
+          body: Text(
+            'manage-account-${state.uri.queryParameters['employeeId']}',
+          ),
+        ),
+      ),
+      GoRoute(
         path: '/',
         builder: (_, _) => selectedEmployee == null
             ? const EmployeeDetailPage(employeeId: 'emp-6')
@@ -190,6 +199,26 @@ Future<ProviderContainer> _pump(
 
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
+
+  testWidgets('在职停用账号有账号支持权限可按员工UUID进入管理，不自动启用', (tester) async {
+    final repo = _Accounts({
+      'accountStatus': 'disabled',
+      'accountSupportAllowed': true,
+    });
+    await _pump(tester, repo);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('employee-manage-disabled-account')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('employee-manage-disabled-account')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('manage-account-emp-6'), findsOneWidget);
+    expect(repo.provisions, 0);
+    expect(repo.locks, 0);
+    expect(repo.unlocks, 0);
+    expect(repo.values['accountStatus'], 'disabled');
+  });
 
   testWidgets('员工详情用统一分类栏保留六项与当前选中分类', (tester) async {
     await _pump(tester, _Accounts({'accountStatus': 'active'}));

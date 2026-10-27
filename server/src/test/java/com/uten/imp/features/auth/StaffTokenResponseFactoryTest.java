@@ -46,6 +46,7 @@ class StaffTokenResponseFactoryTest {
                 state(currentEmployeeId, "E2002", false, true, 7, 11);
         when(users.findAccountStateById(detached.getId())).thenReturn(Optional.of(current));
         when(current.getBusinessResetGeneration()).thenReturn(9L);
+        when(current.getTempPasswordExpiresAt()).thenReturn(Instant.now().plusSeconds(3600));
         when(permissions.authorizationSnapshot(detached.getId(), currentEmployeeId, false))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee:view", "stock:view")));
@@ -156,6 +157,7 @@ class StaffTokenResponseFactoryTest {
         when(state.getEmployeeId()).thenReturn(employeeId);
         when(state.getLoginAccount()).thenReturn(loginAccount);
         when(state.getStatus()).thenReturn("active");
+        when(state.getEmployeeStatus()).thenReturn("active");
         when(state.isDeleted()).thenReturn(false);
         when(state.isSuperAdmin()).thenReturn(superAdmin);
         when(state.isMustChangePassword()).thenReturn(mustChangePassword);

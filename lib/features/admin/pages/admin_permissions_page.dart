@@ -764,7 +764,9 @@ class AccountStatusBadge extends StatelessWidget {
       _ => UtenStatusBadgeType.neutral,
     };
     return UtenStatusBadge(
-      label: accountStatusLabel(status),
+      label: const {'active', 'locked', 'disabled'}.contains(status)
+          ? accountStatusLabel(status)
+          : AppLocalizations.of(context).accountStateUnverified,
       type: type,
       size: UtenStatusBadgeSize.small,
     );

@@ -7,9 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/security/pending_refresh_revocation_store.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/features/auth/services/pending_refresh_revocation_drainer.dart';
+
+const _fixtureUrl = 'https://company-lan.example/api';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -90,11 +93,13 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: <Override>[
+        apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
         secureStorageProvider.overrideWithValue(storage),
         authNetworkRepositoryProvider.overrideWithValue(_FastAuthRepository()),
-        pendingRefreshLogoutTransportProvider.overrideWithValue((token) async {
+        pendingRefreshLogoutTransportProvider.overrideWithValue((entry) async {
           transportStarted.complete();
           await releaseTransport.future;
+          return true;
         }),
         connectionRecoveryProvider.overrideWith((ref) => recovery),
       ],
@@ -128,6 +133,7 @@ ProviderContainer _container({
   required ConnectionRecoveryController recovery,
 }) => ProviderContainer(
   overrides: <Override>[
+    apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
     secureStorageProvider.overrideWithValue(storage),
     authNetworkRepositoryProvider.overrideWithValue(_FastAuthRepository()),
     pendingRefreshLogoutTransportProvider.overrideWithValue(transport),
@@ -150,10 +156,11 @@ class _RecoveringLogoutTransport {
   var calls = 0;
   final tokens = <String>[];
 
-  Future<void> call(String token) async {
+  Future<bool> call(PendingRefreshRevocation entry) async {
     calls++;
-    tokens.add(token);
+    tokens.add(entry.refreshToken);
     if (!online) throw StateError('offline');
+    return true;
   }
 }
 

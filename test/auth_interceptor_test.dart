@@ -10,7 +10,12 @@ import 'package:uten_imp/core/network/interceptors/visitor_auth_interceptor.dart
 import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/network/visitor_session_event_bus.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+
+final _issuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.example.cn/api',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +32,7 @@ void main() {
       'rejected access plus remote MFA refresh refusal requires a fresh login without replay',
       () async {
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'expired-access',
           refreshToken: 'refresh',
         );
@@ -51,7 +57,11 @@ void main() {
       'proactive refresh MFA refusal keeps a still-usable access token for verification',
       () async {
         final token = _jwt(iat: 1000, exp: 1030);
-        await storage.saveTokens(accessToken: token, refreshToken: 'refresh');
+        await storage.saveTokens(
+          issuer: _issuer,
+          accessToken: token,
+          refreshToken: 'refresh',
+        );
         final dio = _staffDio(
           storage,
           (request) => request.path == '/auth/refresh'
@@ -71,6 +81,7 @@ void main() {
 
     test('refresh 401 明确失效时清理令牌并只发布一次失效事件', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'invalid-refresh',
       );
@@ -105,7 +116,7 @@ void main() {
     });
 
     test('本地缺少 refresh token 时直接失效且不调用刷新接口', () async {
-      await storage.saveTokens(accessToken: 'old-access');
+      await storage.saveTokens(issuer: _issuer, accessToken: 'old-access');
       var refreshAttempts = 0;
       var expirations = 0;
       final subscription = SessionEventBus.instance.onSessionExpired.listen(
@@ -132,6 +143,7 @@ void main() {
     for (final status in [403, 429, 500, 503]) {
       test('refresh $status 属于瞬态失败，不清理会话', () async {
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'old-access',
           refreshToken: 'valid-refresh',
         );
@@ -168,6 +180,7 @@ void main() {
 
     test('refresh 超时不清理会话，并把真实网络错误交给调用方', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'valid-refresh',
       );
@@ -207,6 +220,7 @@ void main() {
     for (final retryStatus in [401, 403, 500]) {
       test('刷新成功后重放返回 $retryStatus 时保留新会话', () async {
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'old-access',
           refreshToken: 'old-refresh',
         );
@@ -253,6 +267,7 @@ void main() {
 
     test('刷新成功后使用新令牌重放并返回业务响应', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -282,6 +297,7 @@ void main() {
 
     test('并发 401 共用一次 refresh 请求', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -312,6 +328,7 @@ void main() {
 
     test('refresh 200 但响应结构损坏时保留原会话', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'valid-refresh',
       );
@@ -339,6 +356,7 @@ void main() {
 
     test('已标记为鉴权重放的 401 不重复刷新，也不直接销毁会话', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'new-access',
         refreshToken: 'new-refresh',
       );
@@ -370,6 +388,7 @@ void main() {
     });
     test('public auth exchanges never inherit stored authorization', () async {
       await storage.saveTokens(
+        issuer: _issuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -523,6 +542,7 @@ void main() {
       () async {
         final nearExpiry = _jwt(iat: 1000, exp: 1030); // 寿命 30 秒, 首见即临近
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: nearExpiry,
           refreshToken: 'old-refresh',
         );

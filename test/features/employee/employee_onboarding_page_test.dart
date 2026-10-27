@@ -6,6 +6,7 @@
 //    紧急联系人与银行资料；一次性凭据弹窗必须点「我已妥善保存」后才能返回。
 // 注意：Material Stepper 垂直模式会同时构建全部步骤内容(AnimatedCrossFade 收起但
 // 仍在树里)，所有 finder 必须按 label/key 限定作用域，不能用全局顺序下标。
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,13 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../helpers/badge_summary_fixture.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/core/utils/id_card_utils.dart';
@@ -32,6 +40,31 @@ import 'package:uten_imp/core/performance/performance_tier.dart';
 class _FixedPerformanceNotifier extends PerformanceNotifier {
   @override
   PerformanceTier build() => PerformanceTier.standard;
+}
+
+class _Api extends Fake implements ApiClient {}
+
+class _IdleSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => null;
+}
+
+class _OnboardingActor extends SessionNotifier {
+  _OnboardingActor(this.permissions);
+  final Set<String> permissions;
+  @override
+  SessionState build() => identity('hr-user');
+  SessionState identity(String id) => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: id,
+      code: 'HR1',
+      name: '人事',
+      businessDatasetId: 'onboarding-dataset',
+      permissions: permissions.toList(),
+    ),
+  );
+  void change() => state = identity('other-hr');
 }
 
 /// 校验码合法的示例身份证(1949-12-31 出生，第 17 位偶数=女)。
@@ -78,8 +111,10 @@ int _currentStep(WidgetTester tester) =>
 /// 交互用例统一 800×1600 画布：下拉浮层可向上/向下完整展开，不被 600px 顶边裁掉。
 Future<ProviderContainer> _pump(
   WidgetTester tester,
-  _OnboardingRepository repo,
-) async {
+  _OnboardingRepository repo, {
+  bool accountSupport = false,
+  bool authenticated = false,
+}) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -109,12 +144,29 @@ Future<ProviderContainer> _pump(
   );
   final container = ProviderContainer(
     overrides: [
-      currentPermissionsProvider.overrideWithValue({
-        Perm.employeeCreate,
-        Perm.departmentView,
-        Perm.employeePiiEdit,
-        Perm.employeeCompensationEdit,
-      }),
+      if (!authenticated)
+        currentPermissionsProvider.overrideWithValue({
+          Perm.employeeCreate,
+          Perm.departmentView,
+          Perm.employeePiiEdit,
+          Perm.employeeCompensationEdit,
+          if (accountSupport) Perm.accountSupport,
+        }),
+      if (authenticated) ...[
+        sessionProvider.overrideWith(
+          () => _OnboardingActor({
+            Perm.employeeCreate,
+            Perm.departmentView,
+            Perm.employeePiiEdit,
+            Perm.employeeCompensationEdit,
+            if (accountSupport) Perm.accountSupport,
+          }),
+        ),
+        apiClientProvider.overrideWithValue(_Api()),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionSnapshotProvider.overrideWith(_IdleSnapshot.new),
+        fixedBadgeSummaryOverride(),
+      ],
       employeeRepositoryProvider.overrideWithValue(repo),
       performanceProvider.overrideWith(_FixedPerformanceNotifier.new),
       // 草稿自动保存 → formDraftsProvider → apiBaseUrl → localServerReachable，
@@ -156,6 +208,46 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets('没有账号支持权限也可明确只建员工档案，不造登录账号', (tester) async {
+    final repo = _OnboardingRepository();
+    await _pump(tester, repo, authenticated: true);
+    await _fillRequiredAndGoLast(tester);
+    await _tapNext(tester);
+    expect(repo.created!.account.openAccount, isFalse);
+    expect(find.text('Temp@2468'), findsNothing);
+    expect(find.text('员工列表'), findsOneWidget);
+    await _disposePage(tester);
+  });
+
+  testWidgets('入职旧创建成功迟到时不能向另一个操作者展示账号凭据', (tester) async {
+    final pending = Completer<EmployeeOnboardingResult>();
+    final repo = _OnboardingRepository()..pending = pending;
+    final container = await _pump(
+      tester,
+      repo,
+      accountSupport: true,
+      authenticated: true,
+    );
+    await _fillRequiredAndGoLast(tester);
+    final option = find.byKey(
+      const ValueKey('employee-onboarding-open-account'),
+    );
+    expect(option, findsOneWidget);
+    await tester.ensureVisible(option);
+    await tester.tap(option);
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('employee-onboarding-next')));
+    for (var frame = 0; frame < 5 && repo.created == null; frame++) {
+      await tester.pump();
+    }
+    expect(repo.created, isNotNull);
+    (container.read(sessionProvider.notifier) as _OnboardingActor).change();
+    pending.complete(_issuedResult);
+    await tester.pumpAndSettle();
+    expect(find.text('Temp@2468'), findsNothing);
+    expect(find.text('账号已创建'), findsNothing);
+    await _disposePage(tester);
+  });
   testWidgets('入职只授查看部门仍可打开并确认部门，不需要部门编辑权限', (tester) async {
     final container = await _pump(tester, _OnboardingRepository());
     final permissions = container.read(currentPermissionsProvider);
@@ -255,7 +347,7 @@ void main() {
 
   testWidgets('完整 5 步提交：派生档案/教育/紧急联系人/银行资料与凭据弹窗', (tester) async {
     final repo = _OnboardingRepository();
-    await _pump(tester, repo);
+    await _pump(tester, repo, accountSupport: true, authenticated: true);
 
     // 第 1 步：基本信息(性别/出生日期由身份证号自动带出)。
     await tester.enterText(_inputByLabel('姓名'), '李慕白');
@@ -296,6 +388,13 @@ void main() {
     await tester.enterText(_inputByLabel('现居住地'), '北京市朝阳区望京街道');
     await tester.enterText(_inputByLabel('开户银行'), '工商银行北京分行');
     await tester.enterText(_inputByLabel('银行卡号'), '6222020000123456789');
+    final openAccount = find.byKey(
+      const ValueKey('employee-onboarding-open-account'),
+    );
+    expect(openAccount, findsOneWidget);
+    await tester.ensureVisible(openAccount);
+    await tester.tap(openAccount);
+    await tester.pump();
     await _tapNext(tester); // 末步=提交入职
     await tester.pumpAndSettle();
 
@@ -390,15 +489,23 @@ void main() {
 
 class _OnboardingRepository extends Fake implements EmployeeRepository {
   EmployeeOnboardingInput? created;
+  Completer<EmployeeOnboardingResult>? pending;
 
   @override
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input) async {
     created = input;
-    return const EmployeeOnboardingResult(
-      employee: EmployeeProfile(id: 'e-1', code: 'UT0001', fullName: '李慕白'),
-      temporaryPassword: 'Temp@2468',
-      loginAccount: '13800138000',
-    );
+    if (pending != null) return pending!.future;
+    return input.account.openAccount == false
+        ? const EmployeeOnboardingResult(
+            employee: EmployeeProfile(
+              id: 'e-1',
+              code: 'UT0001',
+              fullName: '李慕白',
+            ),
+            temporaryPassword: null,
+            loginAccount: null,
+          )
+        : _issuedResult;
   }
 
   @override
@@ -418,4 +525,24 @@ class _OnboardingRepository extends Fake implements EmployeeRepository {
     total: 0,
     totalPages: 0,
   );
+}
+
+const _issuedResult = EmployeeOnboardingResult(
+  employee: EmployeeProfile(
+    id: 'e-1',
+    code: 'UT0001',
+    fullName: '李慕白',
+    accountStatus: 'active',
+  ),
+  temporaryPassword: 'Temp@2468',
+  loginAccount: '13800138000',
+);
+
+Future<void> _fillRequiredAndGoLast(WidgetTester tester) async {
+  await tester.enterText(_inputByLabel('姓名'), '李慕白');
+  await tester.enterText(_inputByLabel('证件号码'), _validIdNumber);
+  await tester.enterText(_inputByLabel('手机号'), '13800138000');
+  for (var step = 0; step < 4; step++) {
+    await _tapNext(tester);
+  }
 }

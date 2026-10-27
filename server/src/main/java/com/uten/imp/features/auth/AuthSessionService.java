@@ -1,5 +1,6 @@
 package com.uten.imp.features.auth;
 
+import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import lombok.extern.slf4j.Slf4j;
@@ -83,14 +84,10 @@ public class AuthSessionService {
             long authorizationEpoch,
             SessionFacts session,
             String idleTimeoutRaw,
-            boolean remotePolicyEnabled) {
-        public StaffState(UUID employeeId, String loginAccount, String status, boolean mustChangePassword,
-                          boolean superAdmin, boolean remoteAccess, boolean deleted, long authVersion,
-                          long authorizationEpoch, SessionFacts session, String idleTimeoutRaw) {
-            this(employeeId, loginAccount, status, mustChangePassword, superAdmin, remoteAccess, deleted,
-                    authVersion, authorizationEpoch, session, idleTimeoutRaw, true);
-        }
-    }
+            boolean remotePolicyEnabled,
+            String employeeStatus,
+            boolean employeeDeleted,
+            Instant tempPasswordExpiresAt) {}
 
     /** 访客账号状态 + 会话 + 空闲阈值 (同一条 SQL 读出)。 */
     public record VisitorState(String status, SessionFacts session, String idleTimeoutRaw) {}
@@ -153,15 +150,26 @@ public class AuthSessionService {
         List<StaffState> rows = jdbc.query("""
                 SELECT u.employee_id, u.login_account, u.status, u.must_change_password,
                        u.is_super_admin, u.remote_access, u.is_deleted, u.auth_version,
+                       employee.status AS employee_status, COALESCE(employee.is_deleted,true) AS employee_deleted,
+                       u.temp_password_expires_at,
                        a.epoch AS authorization_epoch,
                        sess.sid AS session_sid, sess.last_seen_at, sess.absolute_expires_at, sess.revoked_at,
                        sess.mfa_verified_at, rap.enabled AS remote_policy_enabled,
                        (SELECT value FROM system_settings WHERE key = :idleKey) AS idle_timeout
                 FROM users u
+                LEFT JOIN employees employee ON employee.id=u.employee_id
                 CROSS JOIN authorization_state a
                 CROSS JOIN remote_access_policy rap
                 LEFT JOIN auth_sessions sess
                        ON sess.sid = :sid AND sess.user_id = :owner
+                      AND (:owner = :id OR EXISTS(
+                            SELECT 1 FROM users session_owner
+                            JOIN employees owner_employee ON owner_employee.id=session_owner.employee_id
+                            WHERE session_owner.id=:owner AND session_owner.is_super_admin
+                              AND NOT session_owner.is_deleted AND session_owner.status='active'
+                              AND NOT session_owner.must_change_password
+                              AND NOT owner_employee.is_deleted
+                              AND owner_employee.status IN (:currentEmployeeStatuses)))
                 WHERE u.id = :id
                   AND a.singleton_id = 1
                   AND rap.singleton_id = 1
@@ -170,6 +178,7 @@ public class AuthSessionService {
                         .addValue("id", userId)
                         .addValue("sid", sid)
                         .addValue("owner", sessionOwnerId)
+                        .addValue("currentEmployeeStatuses", CurrentEmployeeStatusPolicy.CURRENT_EMPLOYEE_STATUSES)
                         .addValue("idleKey", SystemSettingKey.SESSION_IDLE_TIMEOUT_MINUTES.key()),
                 (rs, rowNum) -> new StaffState(
                         rs.getObject("employee_id", UUID.class),
@@ -182,7 +191,9 @@ public class AuthSessionService {
                         rs.getLong("auth_version"),
                         rs.getLong("authorization_epoch"),
                         sessionFacts(rs),
-                        rs.getString("idle_timeout"), rs.getBoolean("remote_policy_enabled")));
+                        rs.getString("idle_timeout"), rs.getBoolean("remote_policy_enabled"),
+                        rs.getString("employee_status"), rs.getBoolean("employee_deleted"),
+                        instant(rs.getObject("temp_password_expires_at", OffsetDateTime.class))));
         return rows.stream().findFirst();
     }
 

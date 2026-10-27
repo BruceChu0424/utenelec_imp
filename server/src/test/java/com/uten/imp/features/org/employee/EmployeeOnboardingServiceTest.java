@@ -20,6 +20,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -76,6 +77,13 @@ class EmployeeOnboardingServiceTest {
 
     @InjectMocks
     private EmployeeOnboardingService service;
+
+    @BeforeEach
+    void authorizedCredentialIssuer() {
+        org.mockito.Mockito.lenient().when(currentUser.get()).thenReturn(Optional.of(
+                new com.uten.imp.security.AuthUser(UUID.randomUUID(), UUID.randomUUID(), "fixture-admin",
+                        java.util.Set.of("employee:create", "employee:pii:edit", "account:support"), false, true, true)));
+    }
 
     @Test
     void alwaysAllocatesEmployeeCodeOnServerAndSkipsHistoricalCollision() {
@@ -641,6 +649,6 @@ class EmployeeOnboardingServiceTest {
                 List.of(),
                 List.of(),
                 List.of(),
-                new OnboardingRequest.Account(null));
+                new OnboardingRequest.Account(null, null));
     }
 }

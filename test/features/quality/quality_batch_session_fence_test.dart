@@ -12,6 +12,7 @@ import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/network/network_policy.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/quality/repositories/production_fqc_repository.dart';
 import 'package:uten_imp/features/quality/services/quality_batch_submission.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
@@ -656,6 +657,7 @@ class _Storage extends SecureStorage {
     required AuthTokenSnapshot expected,
     required String accessToken,
     String? refreshToken,
+    AuthTokenIssuer? issuer,
   }) async {
     if (!snapshot.isSameSession(expected)) return false;
     snapshot = AuthTokenSnapshot(
@@ -664,6 +666,7 @@ class _Storage extends SecureStorage {
       generation: snapshot.generation + 1,
       intentGeneration: snapshot.intentGeneration,
       sessionLineage: snapshot.sessionLineage,
+      issuer: issuer ?? snapshot.issuer,
     );
     return true;
   }

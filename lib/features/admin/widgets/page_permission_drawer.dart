@@ -37,6 +37,9 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../employee/widgets/employee_account_provision_flow.dart';
+import '../../employee/repositories/employee_repository.dart'
+    show EmployeeOnboardingResult;
+import '../../../shared/auth/account_action_owner.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import 'perm_catalog_group_section.dart';
 import '../models/admin_models.dart';
@@ -216,12 +219,19 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   bool _detailLoading = false;
   String? _detailError;
   int _detailRequest = 0;
+  int _provisionRequest = 0;
+  bool _provisioning = false;
+  bool _provisionStateUnverified = false;
+  final _provisionTargetChanges = ValueNotifier<int>(0);
+  late final AccountActionOwner _operator;
+  bool _contextInvalidated = false;
   final Map<String, bool> _pending = <String, bool>{};
   bool _saving = false;
   bool _allowClose = false;
   final Set<String> _expandedFamilies = <String>{};
 
   bool get _dirty => _pending.isNotEmpty;
+  bool get _current => mounted && !_contextInvalidated && _operator.isCurrent;
 
   PagePermissionDelegationRepository get _repository =>
       ref.read(pagePermissionDelegationRepositoryProvider);
@@ -229,12 +239,66 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadDepartments());
+    final surface = widget.scope.surfaceKey;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    _operator = AccountActionOwner(
+      ref,
+      isCurrent: () =>
+          mounted &&
+          widget.scope.surfaceKey == surface &&
+          boundary.identity != null &&
+          !boundary.identity!.readOnly,
+      onInvalidated: () => _invalidateContext(),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_current) _loadDepartments();
+    });
+  }
+
+  void _invalidateContext({bool rebuilding = false}) {
+    if (!mounted || _contextInvalidated) return;
+    void clear() {
+      _contextInvalidated = true;
+      _staffRequest++;
+      _detailRequest++;
+      _provisionRequest++;
+      _provisionTargetChanges.value++;
+      _departments = const [];
+      _departmentForest = ManagedPermissionDepartmentForest.fromRows(const []);
+      _departmentId = null;
+      _staff = const [];
+      _selected = null;
+      _pickedStaff = null;
+      _detail = null;
+      _departmentsError = null;
+      _staffError = null;
+      _detailError = null;
+      _pending.clear();
+      _search = '';
+      _saving = false;
+      _provisioning = false;
+    }
+
+    if (rebuilding) {
+      clear();
+    } else {
+      setState(clear);
+    }
+  }
+
+  @override
+  void dispose() {
+    _operator.dispose();
+    _provisionRequest++;
+    _provisionTargetChanges.value++;
+    _provisionTargetChanges.dispose();
+    super.dispose();
   }
 
   // ===== 数据加载（与被替代设置页同一契约：可管理部门 → 分页搜人 → 单人明细）=====
 
   Future<void> _loadDepartments() async {
+    if (!_current) return;
     setState(() {
       _departmentsLoading = true;
       _departmentsError = null;
@@ -244,7 +308,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         widget.scope.surfaceKey,
       );
       final forest = ManagedPermissionDepartmentForest.fromRows(rows);
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _departments = rows;
         _departmentForest = forest;
@@ -255,13 +319,13 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       });
       if (rows.isNotEmpty) await _loadStaff();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _departmentsError = error.message;
         _departmentsLoading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _departmentsError = '可管理部门加载失败，请重试';
         _departmentsLoading = false;
@@ -269,7 +333,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     }
   }
 
-  Future<void> _loadStaff({bool append = false}) async {
+  Future<bool> _loadStaff({bool append = false}) async {
+    if (!_current) return false;
     final departmentId = _departmentId;
     final request = ++_staffRequest;
     final nextPage = append ? _page + 1 : 1;
@@ -288,7 +353,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         search: _search,
         page: nextPage,
       );
-      if (!mounted || request != _staffRequest) return;
+      if (!_current || request != _staffRequest) return false;
       final combined = append
           ? <PagePermissionStaffSummary>[..._staff, ...result.items]
           : result.items;
@@ -301,8 +366,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _loadingMore = false;
         _staffError = null;
       });
+      return true;
     } catch (error) {
-      if (!mounted || request != _staffRequest) return;
+      if (!_current || request != _staffRequest) return false;
       setState(() {
         _staffError = error is ApiException
             ? error.message
@@ -310,16 +376,22 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _staffLoading = false;
         _loadingMore = false;
       });
+      return false;
     }
   }
 
   Future<void> _changeDepartment(String? departmentId) async {
+    if (!_current) return;
     if (departmentId == _departmentId) return;
     if (!await _confirmDiscard()) {
       return;
     }
-    if (!mounted) return;
+    if (!_current) return;
     setState(() {
+      _provisionRequest++;
+      _provisionTargetChanges.value++;
+      _provisioning = false;
+      _provisionStateUnverified = false;
       _detailRequest++;
       _detailLoading = false;
       _departmentId = departmentId;
@@ -338,10 +410,12 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   void _onSearchInput(String _) {
+    if (!_current) return;
     _staffRequest++;
   }
 
   void _onSearch(String value) {
+    if (!_current) return;
     final normalized = value.trim();
     _search = normalized;
     _loadStaff();
@@ -351,10 +425,15 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     PagePermissionStaffSummary employee, {
     bool offerProvision = true,
   }) async {
+    if (!_current || _saving) return;
     if (_selected?.employeeId == employee.employeeId) return;
     if (!await _confirmDiscard()) return;
-    if (!mounted) return;
+    if (!_current) return;
     setState(() {
+      _provisionRequest++;
+      _provisionTargetChanges.value++;
+      _provisioning = false;
+      _provisionStateUnverified = false;
       _detailRequest++;
       _detailLoading = false;
       _selected = employee;
@@ -376,53 +455,110 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   Future<void> _provisionSelectedEmployee(
     PagePermissionStaffSummary employee,
   ) async {
-    final result = await showProvisionSelectedEmployeeAccountFlow(
-      context,
-      ref: ref,
-      employeeId: employee.employeeId,
-      employeeName: employee.fullName ?? '未命名员工',
-      employeeCode: employee.code,
-      hasAccount: employee.hasAccount,
+    if (!_current ||
+        _provisioning ||
+        _selected?.employeeId != employee.employeeId)
+      return;
+    final request = ++_provisionRequest;
+    final owner = AccountActionOwner(
+      ref,
+      isCurrent: () =>
+          mounted &&
+          request == _provisionRequest &&
+          _selected?.employeeId == employee.employeeId,
+      targetChanges: _provisionTargetChanges,
     );
-    if (result == null || !mounted) return;
-
-    await _loadStaff();
-    if (!mounted) return;
-    PagePermissionStaffSummary? refreshed;
-    for (final item in _staff) {
-      if (item.employeeId == employee.employeeId) {
-        refreshed = item;
-        break;
-      }
+    setState(() => _provisioning = true);
+    try {
+      final result = await showProvisionSelectedEmployeeAccountFlow(
+        context,
+        ref: ref,
+        employeeId: employee.employeeId,
+        employeeName: employee.fullName ?? '未命名员工',
+        employeeCode: employee.code,
+        hasAccount: employee.hasAccount,
+        isCurrent: () => owner.isCurrent,
+        ownerChanges: _provisionTargetChanges,
+        onAccountMayHaveChanged: () => _refreshAccountState(employee),
+      );
+      if (result == null || !owner.isCurrent) return;
+      await _refreshAccountState(employee, receipt: result);
+    } finally {
+      owner.dispose();
+      if (_current && request == _provisionRequest)
+        setState(() => _provisioning = false);
     }
-    final updated = refreshed?.hasAccount == true
-        ? refreshed!
-        : PagePermissionStaffSummary(
-            employeeId: employee.employeeId,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-            code: employee.code,
-            fullName: employee.fullName,
-            positionName: employee.positionName,
-            departmentManager: employee.departmentManager,
-            hasAccount: true,
-            accountActive: true,
-            accountStatus: 'active',
-            employmentStatus: employee.employmentStatus,
-          );
-    setState(() {
-      _staff = _staff
-          .map((item) => item.employeeId == updated.employeeId ? updated : item)
-          .toList(growable: false);
-      _selected = updated;
-      _detail = null;
-      _detailError = null;
-      _pending.clear();
-    });
-    await _loadDetail();
+  }
+
+  Future<void> _refreshAccountState(
+    PagePermissionStaffSummary employee, {
+    EmployeeOnboardingResult? receipt,
+  }) async {
+    if (!_current) return;
+    final owner = AccountActionOwner(
+      ref,
+      isCurrent: () => mounted && _selected?.employeeId == employee.employeeId,
+      targetChanges: _provisionTargetChanges,
+    );
+    try {
+      final fresh = await _loadStaff();
+      if (!owner.isCurrent) return;
+      PagePermissionStaffSummary? refreshed;
+      for (final item
+          in fresh ? _staff : const <PagePermissionStaffSummary>[]) {
+        if (item.employeeId == employee.employeeId) {
+          refreshed = item;
+          break;
+        }
+      }
+      final profile = receipt?.employee;
+      final updated =
+          refreshed ??
+          (profile == null
+              ? null
+              : PagePermissionStaffSummary(
+                  employeeId: employee.employeeId,
+                  departmentId: profile.departmentId ?? employee.departmentId,
+                  departmentName:
+                      profile.departmentName ?? employee.departmentName,
+                  code: profile.code,
+                  fullName: profile.fullName,
+                  positionName: profile.positionName ?? employee.positionName,
+                  departmentManager: employee.departmentManager,
+                  hasAccount:
+                      !profile.accountDeleted && receipt!.hasAccountCredentials,
+                  accountActive:
+                      !profile.accountDeleted &&
+                      profile.accountStatus == 'active',
+                  accountStatus: profile.accountDeleted
+                      ? 'deleted'
+                      : profile.accountStatus,
+                  employmentStatus: profile.status ?? employee.employmentStatus,
+                ));
+      if (updated == null) {
+        setState(() => _provisionStateUnverified = true);
+        return;
+      }
+      setState(() {
+        _provisionStateUnverified = false;
+        _staff = _staff
+            .map(
+              (item) => item.employeeId == updated.employeeId ? updated : item,
+            )
+            .toList(growable: false);
+        _selected = updated;
+        _detail = null;
+        _detailError = null;
+        _pending.clear();
+      });
+      await _loadDetail();
+    } finally {
+      owner.dispose();
+    }
   }
 
   Future<void> _loadDetail() async {
+    if (!_current) return;
     final employee = _selected;
     if (employee == null) return;
     if (!employee.hasAccount) {
@@ -449,10 +585,16 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         departmentId: departmentId,
         employeeId: employee.employeeId,
       );
-      if (!mounted ||
+      if (!_current ||
           request != _detailRequest ||
           _selected?.employeeId != employee.employeeId) {
         return;
+      }
+      if (value.employeeId != employee.employeeId ||
+          value.surfaceKey != widget.scope.surfaceKey) {
+        throw const FormatException(
+          'Permission details do not match the selected employee and page',
+        );
       }
       setState(() {
         _detail = value;
@@ -460,7 +602,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _detailLoading = false;
       });
     } catch (error) {
-      if (!mounted || request != _detailRequest) return;
+      if (!_current || request != _detailRequest) return;
       setState(() {
         _detailError = error is ApiException ? error.message : '权限详情加载失败，请重试';
         _detailLoading = false;
@@ -469,6 +611,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<void> _save() async {
+    if (!_current) return;
     final detail = _detail;
     if (detail == null || _pending.isEmpty || _saving) return;
     final byCode = {for (final item in detail.permissions) item.code: item};
@@ -491,14 +634,20 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         employeeId: detail.employeeId,
         changes: changes,
       );
-      if (!mounted) return;
+      if (!_current) return;
+      if (value.employeeId != detail.employeeId ||
+          value.surfaceKey != widget.scope.surfaceKey) {
+        throw const FormatException(
+          'Permission save receipt does not match the selected employee and page',
+        );
+      }
       setState(() {
         _detail = value;
         _pending.clear();
       });
       try {
         await ref.read(sessionSnapshotProvider.notifier).refresh();
-        if (!mounted) return;
+        if (!_current) return;
         if (ref.read(sessionSnapshotProvider).hasError) {
           context.appWarning(
             AppLocalizations.of(context).permissionSavedRefreshPending,
@@ -506,7 +655,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           return;
         }
       } catch (_) {
-        if (mounted) {
+        if (_current) {
           context.appWarning(
             AppLocalizations.of(context).permissionSavedRefreshPending,
           );
@@ -515,7 +664,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       }
       context.appSuccess(AppLocalizations.of(context).permissionSaved);
     } on PagePermissionSaveCommittedError {
-      if (!mounted) return;
+      if (!_current) return;
       final message = AppLocalizations.of(context).permissionSavedDetailPending;
       setState(() {
         _detail = null;
@@ -527,9 +676,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       } catch (_) {
         // The assignment is already committed; session recovery retries separately.
       }
-      if (mounted) context.appWarning(message);
+      if (_current) context.appWarning(message);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!_current) return;
       if (error.code == 'CONFLICT') {
         context.appError('权限已被其他人更新，正在刷新当前员工');
         await _loadDetail();
@@ -544,13 +693,14 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         context.appError(error.message);
       }
     } catch (_) {
-      if (mounted) _markSaveOutcomeUnknown();
+      if (_current) _markSaveOutcomeUnknown();
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (_current) setState(() => _saving = false);
     }
   }
 
   void _markSaveOutcomeUnknown() {
+    if (!_current) return;
     final message = AppLocalizations.of(context).permissionSaveResultUnknown;
     setState(() {
       _detail = null;
@@ -561,6 +711,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<bool> _confirmDiscard() async {
+    if (!_current) return false;
     if (!_dirty) return true;
     final confirmed = await UtenDialog.show(
       context,
@@ -569,12 +720,12 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       confirmLabel: '丢弃',
       danger: true,
     );
-    return mounted && confirmed == true;
+    return _current && confirmed == true;
   }
 
   Future<void> _close() async {
-    if (_saving) return;
-    if (!await _confirmDiscard()) return;
+    if (_saving && _current) return;
+    if (_current && !await _confirmDiscard()) return;
     if (!mounted) return;
     setState(() => _allowClose = true);
     Navigator.of(context).pop();
@@ -590,12 +741,14 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _pending[permission.code] ?? _storedValue(permission);
 
   bool _canEnable(PageStaffPermissionState permission) =>
-      permission.canEnable ?? permission.editable;
+      _current && (permission.canEnable ?? permission.editable);
 
   bool _canDisable(PageStaffPermissionState permission) =>
-      permission.canDisable ??
-      (permission.editable ||
-          (_detail?.superAdminMode == false && permission.delegationEnabled));
+      _current &&
+      (permission.canDisable ??
+          (permission.editable ||
+              (_detail?.superAdminMode == false &&
+                  permission.delegationEnabled)));
 
   bool _canSet(PageStaffPermissionState permission, bool enabled) =>
       enabled ? _canEnable(permission) : _canDisable(permission);
@@ -628,7 +781,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       final confirmed = await _confirmSensitiveGrant([permission]);
       if (!confirmed) return;
     }
-    if (!mounted || _saving || !identical(detail, _detail)) return;
+    if (!_current || _saving || !identical(detail, _detail)) return;
     _setCode(permission, next);
   }
 
@@ -654,7 +807,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               (!enable && permission.configuredEnabled),
         )
         .toList(growable: false);
-    if (!mounted || _saving || !identical(detail, _detail)) return;
+    if (!_current || _saving || !identical(detail, _detail)) return;
     setState(() {
       for (final permission in toChange) {
         if (!enable && permission.configuredEnabled) {
@@ -671,6 +824,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   Future<bool> _confirmSensitiveGrant(
     List<PageStaffPermissionState> permissions,
   ) async {
+    if (!_current) return false;
     final names = permissions
         .map((permission) => '「${permission.name}」')
         .join('、');
@@ -684,7 +838,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       confirmLabel: '确认授权',
       danger: true,
     );
-    return mounted && confirmed == true;
+    return _current && confirmed == true;
   }
 
   // ===== 布局 =====
@@ -692,6 +846,23 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (!_operator.isCurrent && !_contextInvalidated) {
+      _invalidateContext(rebuilding: true);
+    }
+    if (_contextInvalidated) {
+      return Material(
+        child: Column(
+          children: [
+            _header(theme, widget.scope.title),
+            Expanded(
+              child: UtenEmpty(
+                message: AppLocalizations.of(context).permissionContextChanged,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final detail = _detail;
     final title = detail?.surfaceTitle.trim().isNotEmpty == true
         ? detail!.surfaceTitle
@@ -1038,6 +1209,14 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
 
   Widget _permissionView() {
     final employee = _selected!;
+    if (_provisionStateUnverified) {
+      final l10n = AppLocalizations.of(context);
+      return UtenEmpty.error(
+        message: l10n.employeeAccountReceiptIncomplete,
+        actionLabel: l10n.employeeAccountCheckStatus,
+        onAction: () => _refreshAccountState(employee),
+      );
+    }
     if (!employee.hasAccount) {
       final l10n = AppLocalizations.of(context);
       final canProvision = ref
@@ -1050,7 +1229,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             ? l10n.pagePermissionAccountNotProvisionedCanProvision
             : l10n.pagePermissionAccountNotProvisionedNoAccess,
         actionLabel: canProvision ? l10n.employeeActionProvision : null,
-        onAction: canProvision
+        onAction: canProvision && !_provisioning
             ? () => _provisionSelectedEmployee(employee)
             : null,
       );
@@ -1217,9 +1396,14 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<void> _switchPerson() async {
+    if (!_current || _saving) return;
     if (!await _confirmDiscard()) return;
-    if (!mounted) return;
+    if (!_current) return;
     setState(() {
+      _provisionRequest++;
+      _provisionTargetChanges.value++;
+      _provisioning = false;
+      _provisionStateUnverified = false;
       _detailRequest++;
       _detailLoading = false;
       _selected = null;

@@ -623,11 +623,23 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 onPressed: _accountBusy ? null : _onResetPassword,
                 child: const Text('修改密码'),
               ),
+            if (canSupport && status == 'disabled')
+              UtenButton(
+                key: const ValueKey('employee-manage-disabled-account'),
+                icon: Icons.manage_accounts_outlined,
+                onPressed: _accountBusy ? null : _openAccountManagement,
+                child: Text(l10n.employeeAccountManageAction),
+              ),
           ],
         ),
         if (status == 'disabled') ...[
           const SizedBox(height: UtenSpacing.s8),
-          Text('账号已停用；如需恢复，请联系账号管理员处理。', style: theme.textTheme.bodySmall),
+          Text(
+            canSupport
+                ? l10n.employeeAccountDisabledManageHint
+                : l10n.employeeAccountDisabledContactHint,
+            style: theme.textTheme.bodySmall,
+          ),
         ],
       ],
     );
@@ -1410,6 +1422,24 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     context.push(target.toString());
   }
 
+  Future<void> _openAccountManagement() async {
+    final profile = _profile;
+    if (_accountBusy || profile == null || !_maySupportAccount(profile)) return;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final employeeId = profile.id;
+    await context.push(
+      Uri(
+        path: RouteName.adminPermissions,
+        queryParameters: {'employeeId': employeeId},
+      ).toString(),
+    );
+    if (mounted &&
+        widget.employeeId == employeeId &&
+        owner == ref.read(sensitiveReadBoundaryProvider)) {
+      await _load();
+    }
+  }
+
   bool _sameAccountAction(
     int request,
     SensitiveReadBoundary owner,
@@ -1450,6 +1480,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         hasAccount: false,
         isCurrent: () => _sameAccountAction(request, owner, employeeId, null),
         ownerChanges: _accountOwnerChanges,
+        onAccountMayHaveChanged: _load,
       );
       if (result == null ||
           !_sameAccountAction(request, owner, employeeId, null)) {
@@ -1491,6 +1522,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       final changed = await showEmployeeResetPasswordDialog(
         context,
         employee: profile,
+        isCurrent: () => _sameAccountAction(request, owner, employeeId, status),
+        ownerChanges: _accountOwnerChanges,
       );
       if (changed == true &&
           _sameAccountAction(request, owner, employeeId, status)) {

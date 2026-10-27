@@ -186,6 +186,9 @@ class InputTests(unittest.TestCase):
             self.assertEqual(verifier.main(args), 0)
         receipt = json.loads(output.read_text())
         self.assertEqual(receipt['status'], 'INPUTS_VERIFIED_TARGET_NOT_QUERIED')
+        self.assertEqual(receipt['acceptance_scope'], 'SEALED_LEGACY_BOOTSTRAP_ONLY')
+        self.assertEqual(receipt['current_staff_preservation'], 'NOT_EVALUATED')
+        self.assertFalse(receipt['company_data_replacement_authorized'])
         for private in (PRIVATE_HASH, PRIVATE_ACCOUNT, ADMIN):
             self.assertNotIn(private, stdout.getvalue() + output.read_text())
 

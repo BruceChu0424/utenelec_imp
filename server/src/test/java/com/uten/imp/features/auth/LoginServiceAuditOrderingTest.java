@@ -71,12 +71,15 @@ class LoginServiceAuditOrderingTest {
                 remoteAccessPolicy,
                 new StaffLoginTransaction(userRepo, tokenIssuer, audit, tx));
         user = new UserAccount();
+        user.setEmployeeId(java.util.UUID.randomUUID());
         user.setLoginAccount("E001");
         user.setPasswordHash("password-hash");
         user.setStatus("active");
         user.setRemoteAccess(true);
         request = new LoginRequest("E001", "correct-password");
         org.mockito.Mockito.lenient().when(userRepo.findByLoginAccount("E001")).thenReturn(Optional.of(user));
+        org.mockito.Mockito.lenient().when(userRepo.existsAuthenticatableEmployee(
+                org.mockito.ArgumentMatchers.eq(user.getEmployeeId()), org.mockito.ArgumentMatchers.anyCollection())).thenReturn(true);
     }
 
     private void passwordIsCorrect() {
@@ -85,6 +88,40 @@ class LoginServiceAuditOrderingTest {
 
     private void rowLockSeesSameAccount() {
         when(userRepo.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    }
+
+    @Test
+    void aClosedAccountHasTheSameCredentialBoundaryAsAnUnknownLogin() {
+        user.setDeleted(true);
+        user.setStatus("disabled");
+        org.mockito.Mockito.lenient().when(passwordEncoder.matches("correct-password", "password-hash")).thenReturn(true);
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+        assertEquals(ErrorCode.BAD_CREDENTIALS, denied.getCode());
+        verify(passwordEncoder, never()).matches("correct-password", "password-hash");
+        verify(failureRecorder, never()).record(any(), anyString(), anyString(), any(), org.mockito.ArgumentMatchers.anyLong());
+        verify(userRepo, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void temporaryExpiryIsRecheckedOnTheLockedRowBeforeIssuingAnySession() {
+        passwordIsCorrect();
+        user.setMustChangePassword(true);
+        user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(1));
+        UserAccount expired = new UserAccount();
+        expired.setId(user.getId());
+        expired.setEmployeeId(user.getEmployeeId());
+        expired.setLoginAccount(user.getLoginAccount());
+        expired.setPasswordHash(user.getPasswordHash());
+        expired.setStatus("active");
+        expired.setMustChangePassword(true);
+        expired.setTempPasswordExpiresAt(OffsetDateTime.now().minusSeconds(1));
+        when(userRepo.findByIdForUpdate(user.getId())).thenReturn(Optional.of(expired));
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service.login(request, "203.0.113.9"));
+        assertEquals(ErrorCode.UNAUTHORIZED, denied.getCode());
+        verify(tokenIssuer, never()).issueTokens(any());
+        verify(userRepo, never()).save(any());
     }
 
     @Test
@@ -171,7 +208,7 @@ class LoginServiceAuditOrderingTest {
         verify(passwordEncoder).matches("wrong-password", "dummy-hash");
         // 锁定期的每次尝试继续计数 (顺延锁定)
         verify(failureRecorder, org.mockito.Mockito.times(2))
-                .record(user.getId(), "E001", "attempt_while_locked");
+                .record(user.getId(), "E001", "attempt_while_locked", user.getPasswordHash(), user.getAuthVersion());
         verify(tokenIssuer, never()).issueTokens(any());
     }
 
@@ -218,7 +255,7 @@ class LoginServiceAuditOrderingTest {
 
         assertEquals(ErrorCode.BAD_CREDENTIALS, denied.getCode());
         verify(tokenIssuer, never()).issueTokens(user);
-        verify(failureRecorder).record(user.getId(), "E001", "bad_password");
+        verify(failureRecorder).record(user.getId(), "E001", "bad_password", user.getPasswordHash(), user.getAuthVersion());
     }
 
     @Test

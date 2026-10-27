@@ -9,6 +9,45 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get employeeOnboardOpenAccount => '同时开通登录账号';
+
+  @override
+  String get employeeOnboardOnlyRecordHint => '默认只建立员工档案，不创建登录账号。需要开户时请选择此项。';
+
+  @override
+  String get employeeOnboardAccountPermissionHint =>
+      '开通登录账号需要账号支持权限。你仍可只办理员工入职。';
+
+  @override
+  String get employeeAccountReceiptIncomplete =>
+      '服务器回执缺少可核对的账号凭据。请刷新确认账号状态，勿重复开通。';
+
+  @override
+  String get employeeManualLockResetHint => '生成临时密码不会解除人工锁定；需要时请另行解锁账号。';
+
+  @override
+  String get employeeAccountManageAction => '管理账号';
+
+  @override
+  String get employeeAccountCheckStatus => '刷新核对账号状态';
+
+  @override
+  String get employeeAccountDisabledManageHint =>
+      '账号已停用。请到账号管理核对状态，必要时重置临时密码并明确启用。';
+
+  @override
+  String get employeeAccountDisabledContactHint => '账号已停用；如需恢复，请联系账号管理员处理。';
+
+  @override
+  String get permissionContextChanged => '登录身份、权限或连接已变化，请关闭并重新打开权限设置。';
+
+  @override
+  String get accountStateUnverified => '状态待核对';
+
+  @override
+  String get accountStateRefreshRequired => '账号状态未能核对，请刷新后再办理。';
+
+  @override
   String get clientUpdateDetails => '查看详情';
 
   @override
@@ -1544,7 +1583,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。';
+      '提交后自动生成工号(UT 前缀)。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。';
 
   @override
   String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
@@ -1923,7 +1962,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeRehireBody =>
-      '复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。';
+      '复职只恢复员工为在职；账号保持停用，原密码和外网授权不会恢复。若需登录，请由账号支持人员核对后重置临时密码，并单独启用账号。';
 
   @override
   String get employeeRehireSuccess => '复职完成';

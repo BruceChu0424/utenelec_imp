@@ -17,7 +17,9 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/auth/account_action_owner.dart';
+import '../../../shared/auth/account_write_receipt.dart';
+import '../../../core/network/api_exception.dart';
 import '../repositories/employee_repository.dart';
 import 'employee_credential_dialog.dart';
 import 'employee_dialog_error_text.dart';
@@ -37,6 +39,7 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
   required bool hasAccount,
   bool Function()? isCurrent,
   Listenable? ownerChanges,
+  Future<void> Function()? onAccountMayHaveChanged,
 }) async {
   final l10n = AppLocalizations.of(context);
   if (!ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
@@ -48,24 +51,21 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
     return null;
   }
 
-  final owner = ref.read(sensitiveReadBoundaryProvider);
-  if (owner.identity == null ||
-      owner.identity!.actorId != null ||
-      owner.identity!.readOnly) {
+  final owner = AccountActionOwner(
+    ref,
+    isCurrent: isCurrent,
+    targetChanges: ownerChanges,
+  );
+  if (owner.boundary.identity == null ||
+      owner.boundary.identity!.actorId != null ||
+      owner.boundary.identity!.readOnly) {
+    owner.dispose();
     return null;
   }
-  var invalidated = false;
-  final subscription = ref.listenManual(sensitiveReadBoundaryProvider, (
-    old,
-    next,
-  ) {
-    if (old != next) invalidated = true;
-  });
+  var attempted = false;
   bool current() =>
       context.mounted &&
-      !invalidated &&
-      (isCurrent?.call() ?? true) &&
-      owner == ref.read(sensitiveReadBoundaryProvider) &&
+      owner.isCurrent &&
       ref.read(currentPermissionsProvider).contains(Perm.accountSupport);
   try {
     final result = await showDialog<EmployeeOnboardingResult>(
@@ -78,9 +78,15 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
         employeeCode: employeeCode,
         isCurrent: current,
         ownerChanges: ownerChanges,
+        onWriteStarted: () => attempted = true,
       ),
     );
-    if (result == null || !current()) return null;
+    if (result == null || !current()) {
+      if (attempted && current()) {
+        await onAccountMayHaveChanged?.call();
+      }
+      return null;
+    }
     await WidgetsBinding.instance.endOfFrame;
     if (!context.mounted || !current()) return null;
     await showEmployeeCredentialDialog(
@@ -91,7 +97,7 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
     );
     return current() ? result : null;
   } finally {
-    subscription.close();
+    owner.dispose();
   }
 }
 
@@ -103,6 +109,7 @@ class _SelectedEmployeeProvisionDialog extends ConsumerStatefulWidget {
     required this.employeeCode,
     required this.isCurrent,
     required this.ownerChanges,
+    required this.onWriteStarted,
   });
 
   final EmployeeRepository repository;
@@ -111,6 +118,7 @@ class _SelectedEmployeeProvisionDialog extends ConsumerStatefulWidget {
   final String? employeeCode;
   final bool Function() isCurrent;
   final Listenable? ownerChanges;
+  final VoidCallback onWriteStarted;
 
   @override
   ConsumerState<_SelectedEmployeeProvisionDialog> createState() =>
@@ -121,6 +129,8 @@ class _SelectedEmployeeProvisionDialogState
     extends ConsumerState<_SelectedEmployeeProvisionDialog> {
   bool _submitting = false;
   bool _invalidated = false;
+  bool _unknownResponse = false;
+  late final AccountActionOwner _operator;
   ModalRoute<EmployeeOnboardingResult>? _route;
   String? _error;
 
@@ -133,8 +143,14 @@ class _SelectedEmployeeProvisionDialogState
   @override
   void initState() {
     super.initState();
-    ref.listenManual(sensitiveReadBoundaryProvider, (_, _) => _ensureCurrent());
-    widget.ownerChanges?.addListener(_onOwnerChanged);
+    _operator = AccountActionOwner(
+      ref,
+      isCurrent: widget.isCurrent,
+      targetChanges: widget.ownerChanges,
+      onInvalidated: () {
+        _ensureCurrent();
+      },
+    );
     _loadReadiness();
   }
 
@@ -147,7 +163,7 @@ class _SelectedEmployeeProvisionDialogState
 
   bool _ensureCurrent() {
     if (!mounted || _invalidated) return false;
-    if (widget.isCurrent()) return true;
+    if (_operator.isCurrent) return true;
     setState(() {
       _invalidated = true;
       _error = null;
@@ -161,11 +177,9 @@ class _SelectedEmployeeProvisionDialogState
     return false;
   }
 
-  void _onOwnerChanged() => _ensureCurrent();
-
   @override
   void dispose() {
-    widget.ownerChanges?.removeListener(_onOwnerChanged);
+    _operator.dispose();
     super.dispose();
   }
 
@@ -188,17 +202,27 @@ class _SelectedEmployeeProvisionDialogState
   bool get _missingPhone => _readiness?.hasPhone == false;
 
   Future<void> _submit() async {
-    if (_submitting || _checking || _missingPhone || !_ensureCurrent()) return;
+    if (_submitting ||
+        _checking ||
+        _missingPhone ||
+        _unknownResponse ||
+        !_ensureCurrent())
+      return;
     setState(() {
       _submitting = true;
       _error = null;
     });
     var succeeded = false;
     try {
+      widget.onWriteStarted();
       final result = await widget.repository.provisionAccount(
         widget.employeeId,
       );
       if (!mounted || !_ensureCurrent()) return;
+      if (result.employee.id != widget.employeeId ||
+          !result.hasAccountCredentials) {
+        throw const AccountWriteReceiptException();
+      }
       succeeded = true;
       // 先清忙标志再 pop：遮罩的 OverlayEntry 只在宿主 dispose 时才移除, 而本弹窗要走完
       // 退场动画才 dispose; 不清的话外层紧接着推的一次性凭据弹窗会被它盖住、点不动。
@@ -207,12 +231,19 @@ class _SelectedEmployeeProvisionDialogState
     } catch (error) {
       if (!mounted || !_ensureCurrent()) return;
       // 服务端原话(如手机号已被其他账号使用)直接显示，不用笼统的「开通失败」。
-      setState(
-        () => _error = employeeDialogErrorText(
-          error,
-          AppLocalizations.of(context).accountProvisionFailed,
-        ),
-      );
+      setState(() {
+        _unknownResponse =
+            error is AccountWriteReceiptException ||
+            (error is ApiException &&
+                (const {'NETWORK', 'NETWORK_TIMEOUT'}.contains(error.code) ||
+                    (error.httpStatus ?? 0) >= 500));
+        _error = _unknownResponse
+            ? AppLocalizations.of(context).employeeAccountReceiptIncomplete
+            : employeeDialogErrorText(
+                error,
+                AppLocalizations.of(context).accountProvisionFailed,
+              );
+      });
     } finally {
       if (mounted && !succeeded) setState(() => _submitting = false);
     }
@@ -292,7 +323,9 @@ class _SelectedEmployeeProvisionDialogState
           ),
           FilledButton.icon(
             key: const ValueKey('provision-selected-employee-confirm'),
-            onPressed: busy || _missingPhone ? null : _submit,
+            onPressed: busy || _missingPhone || _unknownResponse
+                ? null
+                : _submit,
             icon: busy
                 ? const SizedBox.square(
                     dimension: 18,

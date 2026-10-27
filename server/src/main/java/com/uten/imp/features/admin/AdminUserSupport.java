@@ -100,9 +100,7 @@ class AdminUserSupport {
             if (currentUser.requireId().equals(target.getId())) {
                 throw new ApiException(ErrorCode.FORBIDDEN, "不能取消本人的超级管理员身份");
             }
-            if (userRepo.countBySuperAdminTrueAndDeletedFalse() <= 1) {
-                throw new ApiException(ErrorCode.CONFLICT, "至少需保留一位超级管理员");
-            }
+            // The shared registry coordinator checks current usability under its global lock.
         }
     }
 }

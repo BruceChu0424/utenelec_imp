@@ -18,6 +18,7 @@ import 'package:uten_imp/features/employee/models/employee_id_number_issue.dart'
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/employee/widgets/employee_account_provision_flow.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/account_write_receipt.dart';
 
 const _dialog = ValueKey('provision-selected-employee-dialog');
 const _confirm = ValueKey('provision-selected-employee-confirm');
@@ -58,7 +59,7 @@ class _ProvisionRepository extends Fake implements EmployeeRepository {
   final Object? readinessError;
   final Completer<EmployeeAccountReadiness>? readinessPending;
   final EmployeeIdNumberIssue? provisionedIssue;
-  final ApiException? provisionError;
+  final Object? provisionError;
   final Completer<EmployeeOnboardingResult>? provisionPending;
   int readinessCalls = 0;
   int provisionCalls = 0;
@@ -99,6 +100,7 @@ Future<void> _openFlow(
   _ProvisionRepository repo, {
   bool Function()? isCurrent,
   Listenable? ownerChanges,
+  Future<void> Function()? onAccountMayHaveChanged,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -126,6 +128,7 @@ Future<void> _openFlow(
                 hasAccount: false,
                 isCurrent: isCurrent,
                 ownerChanges: ownerChanges,
+                onAccountMayHaveChanged: onAccountMayHaveChanged,
               ),
               child: const Text('open'),
             ),
@@ -151,6 +154,54 @@ UtenInlineNotice _identityNotice(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets('不可信写回执保留待核对状态，不重复开号并在退出后刷新', (tester) async {
+    var refreshes = 0;
+    final repo = _ProvisionRepository(
+      readiness: const EmployeeAccountReadiness(hasPhone: true),
+      provisionError: const AccountWriteReceiptException(),
+    );
+    await _openFlow(
+      tester,
+      repo,
+      onAccountMayHaveChanged: () async {
+        refreshes++;
+      },
+    );
+    final queuedConfirm = _confirmPressed(tester)!;
+    await tester.tap(find.byKey(_confirm));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('服务器回执缺少可核对的账号凭据'), findsOneWidget);
+    expect(_confirmPressed(tester), isNull);
+    queuedConfirm();
+    await tester.pumpAndSettle();
+    expect(repo.provisionCalls, 1);
+    expect(refreshes, 0);
+    await tester.tap(
+      find.byKey(const ValueKey('provision-selected-employee-cancel')),
+    );
+    await tester.pumpAndSettle();
+    expect(refreshes, 1);
+  });
+
+  testWidgets('确认前取消不伪装写入也不刷新账号结果', (tester) async {
+    var refreshes = 0;
+    final repo = _ProvisionRepository(
+      readiness: const EmployeeAccountReadiness(hasPhone: true),
+    );
+    await _openFlow(
+      tester,
+      repo,
+      onAccountMayHaveChanged: () async {
+        refreshes++;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('provision-selected-employee-cancel')),
+    );
+    await tester.pumpAndSettle();
+    expect(refreshes, 0);
+    expect(repo.provisionCalls, 0);
+  });
   setUp(UtenBusyOverlay.debugResetYield);
 
   testWidgets('证件校验未通过：确认前红色提醒且仍可开通，凭据弹窗也提醒', (tester) async {

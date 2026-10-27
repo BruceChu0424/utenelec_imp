@@ -8,10 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/connection_recovery.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/security/auth_token_issuer.dart';
 import '../../../core/security/pending_refresh_revocation_store.dart';
 import '../../../core/security/secure_storage.dart';
 
-typedef RefreshTokenRevoker = Future<void> Function(String refreshToken);
+typedef RefreshTokenRevoker =
+    Future<bool> Function(PendingRefreshRevocation entry);
 
 /// Eventually sends queued refresh tokens only to the public, idempotent
 /// logout endpoint. It never replays a business mutation.
@@ -47,8 +50,11 @@ class PendingRefreshRevocationDrainer {
   /// Durably queues a token before starting a non-blocking network attempt.
   /// Secure-storage failures are surfaced; network failures are retained and
   /// retried independently so logout/login UI flows do not wait for the wire.
-  Future<bool> enqueueAndDrain(String? refreshToken) async {
-    final queued = await _store.enqueue(refreshToken);
+  Future<bool> enqueueAndDrain(
+    String? refreshToken, {
+    AuthTokenIssuer? issuer,
+  }) async {
+    final queued = await _store.enqueue(refreshToken, issuer: issuer);
     if (queued && !_disposed) unawaited(drain());
     return queued;
   }
@@ -73,20 +79,23 @@ class PendingRefreshRevocationDrainer {
   Future<void> _runDrain() async {
     try {
       while (!_disposed) {
-        final pending = await _store.pendingTokens();
+        final pending = await _store.pendingEntries();
         if (pending.isEmpty) {
           _consecutiveFailures = 0;
           return;
         }
 
-        for (final refreshToken in pending) {
+        var progressed = false;
+        for (final entry in pending) {
           if (_disposed) return;
-          await _revoke(refreshToken);
+          if (!await _revoke(entry)) continue;
           // A failed secure-storage deletion leaves the token queued. The next
           // attempt may duplicate logout, which is deliberately idempotent.
-          await _store.remove(refreshToken);
+          await _store.remove(entry.refreshToken, issuer: entry.issuer);
+          progressed = true;
         }
         _consecutiveFailures = 0;
+        if (!progressed) return;
         // Re-read before returning so an enqueue that raced this snapshot is
         // drained without requiring another wakeup.
       }
@@ -128,13 +137,22 @@ final pendingRefreshRevocationStoreProvider =
 /// Reading [apiClientProvider] at attempt time picks up a post-recovery client
 /// without rebuilding or disposing the single-flight drainer.
 final pendingRefreshLogoutTransportProvider = Provider<RefreshTokenRevoker>(
-  (ref) => (refreshToken) async {
-    await ref
-        .read(apiClientProvider)
-        .post(
-          ApiEndpoints.authLogout,
-          body: <String, String>{'refreshToken': refreshToken},
-        );
+  (ref) => (entry) async {
+    final endpoint = ref.read(apiBaseUrlProvider);
+    if (!ref
+        .read(authBackendRealmPolicyProvider)
+        .canUse(entry.issuer, endpoint))
+      return false;
+    final client = ref.read(apiClientProvider);
+    if (!ref
+        .read(authBackendRealmPolicyProvider)
+        .canUse(entry.issuer, client.baseUrl))
+      return false;
+    await client.post(
+      ApiEndpoints.authLogout,
+      body: <String, String>{'refreshToken': entry.refreshToken},
+    );
+    return true;
   },
 );
 
@@ -153,6 +171,9 @@ final pendingRefreshRevocationDrainerProvider =
           if (previous != null && next > previous) unawaited(drainer.drain());
         },
       );
+      ref.listen<String>(apiBaseUrlProvider, (previous, next) {
+        if (previous != null && previous != next) unawaited(drainer.drain());
+      });
       ref.onDispose(drainer.dispose);
       unawaited(drainer.drain());
       return drainer;

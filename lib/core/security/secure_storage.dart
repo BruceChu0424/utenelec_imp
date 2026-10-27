@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth_refresh_lock.dart';
+import 'auth_token_issuer.dart';
 import 'tab_scoped_store.dart';
 
 /// 员工令牌对的一致性快照。
@@ -24,6 +25,7 @@ class AuthTokenSnapshot {
     required this.generation,
     required this.intentGeneration,
     required this.sessionLineage,
+    this.issuer,
   });
 
   const AuthTokenSnapshot.empty()
@@ -31,13 +33,15 @@ class AuthTokenSnapshot {
       refreshToken = null,
       generation = 0,
       intentGeneration = 0,
-      sessionLineage = null;
+      sessionLineage = null,
+      issuer = null;
 
   final String? accessToken;
   final String? refreshToken;
   final int generation;
   final int intentGeneration;
   final String? sessionLineage;
+  final AuthTokenIssuer? issuer;
 
   bool get hasAccessToken => accessToken != null && accessToken!.isNotEmpty;
   bool get hasRefreshToken => refreshToken != null && refreshToken!.isNotEmpty;
@@ -59,15 +63,17 @@ class AuthTokenSnapshot {
       intentGeneration == other.intentGeneration &&
       sessionLineage == other.sessionLineage &&
       accessToken == other.accessToken &&
-      refreshToken == other.refreshToken;
+      refreshToken == other.refreshToken &&
+      issuer == other.issuer;
 
   Map<String, Object?> toJson() => <String, Object?>{
-    'version': 2,
+    'version': issuer == null ? 2 : 3,
     'generation': generation,
     'intentGeneration': intentGeneration,
     'sessionLineage': sessionLineage,
     'accessToken': accessToken,
     'refreshToken': refreshToken,
+    if (issuer != null) 'issuer': issuer!.toJson(),
   };
 
   static AuthTokenSnapshot? tryParse(String? raw) {
@@ -80,6 +86,15 @@ class AuthTokenSnapshot {
       final lineageValue = decoded['sessionLineage'];
       final access = decoded['accessToken'];
       final refresh = decoded['refreshToken'];
+      final version = decoded['version'];
+      if (version != null && version != 1 && version != 2 && version != 3)
+        return null;
+      final issuer = AuthTokenIssuer.tryParse(decoded['issuer']);
+      if ((decoded['issuer'] != null && issuer == null) ||
+          (version == 3 &&
+              (access != null || refresh != null) &&
+              issuer == null))
+        return null;
       if (generationValue is! num ||
           (intentValue != null && intentValue is! num) ||
           (lineageValue != null && lineageValue is! String) ||
@@ -102,6 +117,7 @@ class AuthTokenSnapshot {
         generation: generation,
         intentGeneration: intentGeneration,
         sessionLineage: lineage,
+        issuer: issuer,
       );
     } catch (_) {
       return null;
@@ -247,13 +263,24 @@ class SecureStorage {
 
   /// Unconditional replacement kept for bootstrap/tests. Production refreshes
   /// must use [saveTokensIfUnchanged], while user operations use an intent.
-  Future<void> saveTokens({String? accessToken, String? refreshToken}) async {
+  Future<void> saveTokens({
+    String? accessToken,
+    String? refreshToken,
+    AuthTokenIssuer? issuer,
+  }) async {
     await _mutateStaffTokens(() async {
       final current = await _readOrMigrateStaffTokensLocked();
       final nextAccess = accessToken ?? current.accessToken;
       final nextRefresh = refreshToken ?? current.refreshToken;
+      final nextIssuer =
+          issuer ??
+          (nextAccess == current.accessToken &&
+                  nextRefresh == current.refreshToken
+              ? current.issuer
+              : null);
       if (nextAccess == current.accessToken &&
-          nextRefresh == current.refreshToken) {
+          nextRefresh == current.refreshToken &&
+          nextIssuer == current.issuer) {
         return;
       }
       await _writeStaffTokenRecord(
@@ -263,6 +290,7 @@ class SecureStorage {
           generation: current.generation + 1,
           intentGeneration: current.intentGeneration + 1,
           sessionLineage: _newIdentifier(),
+          issuer: nextIssuer,
         ),
       );
     });
@@ -302,6 +330,7 @@ class SecureStorage {
       generation: current.generation + 1,
       intentGeneration: intent.intentGeneration,
       sessionLineage: reservedLineage,
+      issuer: clearTokens ? null : current.issuer,
     );
     await _writeStaffTokenRecord(reserved);
     return AuthSessionIntentReservation(
@@ -318,6 +347,7 @@ class SecureStorage {
     required AuthSessionIntent intent,
     required String accessToken,
     required String refreshToken,
+    AuthTokenIssuer? issuer,
   }) => _mutateStaffTokens(() async {
     final current = await _readOrMigrateStaffTokensLocked();
     if (current.intentGeneration != intent.intentGeneration ||
@@ -330,6 +360,7 @@ class SecureStorage {
       generation: current.generation + 1,
       intentGeneration: current.intentGeneration,
       sessionLineage: intent.targetLineage,
+      issuer: issuer,
     );
     await _writeStaffTokenRecord(committed);
     return committed;
@@ -341,6 +372,7 @@ class SecureStorage {
     required AuthTokenSnapshot expected,
     required String accessToken,
     String? refreshToken,
+    AuthTokenIssuer? issuer,
   }) => _mutateStaffTokens(() async {
     final current = await _readOrMigrateStaffTokensLocked();
     if (!current.isSameSession(expected)) return false;
@@ -351,6 +383,7 @@ class SecureStorage {
         generation: current.generation + 1,
         intentGeneration: current.intentGeneration,
         sessionLineage: current.sessionLineage,
+        issuer: issuer ?? current.issuer,
       ),
     );
     return true;
@@ -704,6 +737,7 @@ class SecureStorage {
         generation: stored.generation + 1,
         intentGeneration: stored.intentGeneration,
         sessionLineage: _newIdentifier(),
+        issuer: stored.issuer,
       );
       await _writeStaffTokenRecord(upgraded);
       return upgraded;

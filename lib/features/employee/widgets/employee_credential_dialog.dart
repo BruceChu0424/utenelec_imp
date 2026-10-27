@@ -11,7 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/auth/account_action_owner.dart';
 import '../repositories/employee_repository.dart';
 import '../models/employee_id_number_issue.dart';
 import 'employee_identity_issue_notice.dart';
@@ -22,16 +22,27 @@ Future<void> showEmployeeCredentialDialog(
   EmployeeOnboardingResult result, {
   bool Function()? isCurrent,
   Listenable? ownerChanges,
-}) => showAccountCredentialDialog(
-  context,
-  temporaryPassword: result.temporaryPassword,
-  loginAccount: result.loginAccount,
-  employeeName: result.employee.fullName,
-  employeeCode: result.employee.code,
-  idNumberIssue: result.employee.idNumberIssue,
-  isCurrent: isCurrent,
-  ownerChanges: ownerChanges,
-);
+}) {
+  final password = result.temporaryPassword;
+  final account = result.loginAccount;
+  if (password == null || account == null || !result.hasAccountCredentials) {
+    return Future.error(
+      FormatException(
+        AppLocalizations.of(context).employeeAccountReceiptIncomplete,
+      ),
+    );
+  }
+  return showAccountCredentialDialog(
+    context,
+    temporaryPassword: password,
+    loginAccount: account,
+    employeeName: result.employee.fullName,
+    employeeCode: result.employee.code,
+    idNumberIssue: result.employee.idNumberIssue,
+    isCurrent: isCurrent,
+    ownerChanges: ownerChanges,
+  );
+}
 
 /// 账号支持共用一次性凭据展示；调用方提供真实凭据与持有者边界，不构造员工档案。
 Future<void> showAccountCredentialDialog(
@@ -192,23 +203,19 @@ class _CredentialOwnerGuard extends ConsumerStatefulWidget {
 }
 
 class _CredentialOwnerGuardState extends ConsumerState<_CredentialOwnerGuard> {
-  SensitiveReadBoundary? _owner;
-  ProviderContainer? _container;
+  late final AccountActionOwner _owner;
   ModalRoute<void>? _route;
   bool _invalidated = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.isCurrent != null) {
-      _container = ProviderScope.containerOf(context, listen: false);
-      _owner = _container!.read(sensitiveReadBoundaryProvider);
-      ref.listenManual(
-        sensitiveReadBoundaryProvider,
-        (_, _) => ensureCurrent(),
-      );
-    }
-    widget.ownerChanges?.addListener(_ownerChanged);
+    _owner = AccountActionOwner(
+      ref,
+      isCurrent: () => widget.isCurrent?.call() ?? true,
+      targetChanges: widget.ownerChanges,
+      onInvalidated: () => _invalidate(),
+    );
   }
 
   @override
@@ -221,25 +228,12 @@ class _CredentialOwnerGuardState extends ConsumerState<_CredentialOwnerGuard> {
   void didUpdateWidget(covariant _CredentialOwnerGuard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.ownerChanges != widget.ownerChanges) {
-      oldWidget.ownerChanges?.removeListener(_ownerChanged);
-      widget.ownerChanges?.addListener(_ownerChanged);
+      _owner.watchTargetChanges(widget.ownerChanges);
     }
     ensureCurrent();
   }
 
-  void _ownerChanged() => ensureCurrent();
-
-  bool _valid() {
-    if (_invalidated) return false;
-    try {
-      if (widget.isCurrent?.call() == false) return false;
-      return _owner == null ||
-          _owner == _container?.read(sensitiveReadBoundaryProvider);
-    } catch (_) {
-      // Owner/container may already be deactivated during a caller's dispose.
-      return false;
-    }
-  }
+  bool _valid() => !_invalidated && _owner.isCurrent;
 
   bool ensureCurrent() {
     if (!mounted || _invalidated) return false;
@@ -249,7 +243,7 @@ class _CredentialOwnerGuardState extends ConsumerState<_CredentialOwnerGuard> {
   }
 
   void _invalidate({bool rebuilding = false}) {
-    if (_invalidated) return;
+    if (!mounted || _invalidated) return;
     _invalidated = true;
     if (!rebuilding) setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -260,7 +254,7 @@ class _CredentialOwnerGuardState extends ConsumerState<_CredentialOwnerGuard> {
 
   @override
   void dispose() {
-    widget.ownerChanges?.removeListener(_ownerChanged);
+    _owner.dispose();
     super.dispose();
   }
 

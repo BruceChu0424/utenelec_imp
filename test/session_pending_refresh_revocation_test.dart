@@ -8,11 +8,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/security/pending_refresh_revocation_store.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/features/auth/services/pending_refresh_revocation_drainer.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+const _fixtureUrl = 'https://company-lan.example/api';
+final _fixtureIssuer = AuthBackendRealmPolicy.fromBuildConfiguration()
+    .issuerFor(_fixtureUrl);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +34,7 @@ void main() {
       final preferences = await SharedPreferences.getInstance();
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'current-access',
         refreshToken: 'current-refresh',
       );
@@ -83,7 +90,7 @@ void main() {
       final second = notifier.login(account: 'second', password: 'secret');
       await second;
       networkRepository.releaseFirst();
-      await first;
+      await expectLater(first, throwsA(isA<SessionMutationSuperseded>()));
       await _waitUntil(() => transport.calls == 1);
 
       expect(await storage.getAccessToken(), 'second-access');
@@ -110,6 +117,7 @@ ProviderContainer _container({
   );
   return ProviderContainer(
     overrides: <Override>[
+      apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
       sharedPreferencesProvider.overrideWithValue(preferences),
       secureStorageProvider.overrideWithValue(storage),
       authNetworkRepositoryProvider.overrideWithValue(networkRepository),
@@ -140,7 +148,7 @@ const _profile = UserProfile(
 class _OfflineTransport {
   var calls = 0;
 
-  Future<void> call(String token) async {
+  Future<bool> call(PendingRefreshRevocation entry) async {
     calls++;
     throw StateError('offline');
   }

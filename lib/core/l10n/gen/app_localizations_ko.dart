@@ -9,6 +9,49 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get employeeOnboardOpenAccount => '로그인 계정도 개설';
+
+  @override
+  String get employeeOnboardOnlyRecordHint =>
+      '기본적으로 직원 기록만 생성합니다. 로그인 계정이 필요하면 이 옵션을 선택하세요.';
+
+  @override
+  String get employeeOnboardAccountPermissionHint =>
+      '로그인 계정 개설에는 계정 지원 권한이 필요합니다. 직원 기록은 계속 생성할 수 있습니다.';
+
+  @override
+  String get employeeAccountReceiptIncomplete =>
+      '서버가 확인 가능한 계정 정보를 반환하지 않았습니다. 새로고침하여 계정 상태를 확인하고 중복 개설하지 마세요.';
+
+  @override
+  String get employeeManualLockResetHint =>
+      '임시 비밀번호를 생성해도 수동 잠금은 해제되지 않습니다. 필요하면 별도로 잠금을 해제하세요.';
+
+  @override
+  String get employeeAccountManageAction => '계정 관리';
+
+  @override
+  String get employeeAccountCheckStatus => '새로고침하여 계정 상태 확인';
+
+  @override
+  String get employeeAccountDisabledManageHint =>
+      '계정이 비활성 상태입니다. 계정 관리에서 상태를 확인하고 필요하면 임시 비밀번호를 재설정한 후 명시적으로 활성화하세요.';
+
+  @override
+  String get employeeAccountDisabledContactHint =>
+      '계정이 비활성 상태입니다. 복원이 필요하면 계정 관리자에게 문의하세요.';
+
+  @override
+  String get permissionContextChanged =>
+      '로그인 정보, 권한 또는 연결이 변경되었습니다. 권한 설정을 닫았다가 다시 여세요.';
+
+  @override
+  String get accountStateUnverified => '상태 확인 필요';
+
+  @override
+  String get accountStateRefreshRequired => '계정 상태를 확인하지 못했습니다. 새로고침한 후 계속하세요.';
+
+  @override
   String get clientUpdateDetails => '자세히 보기';
 
   @override
@@ -1605,7 +1648,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '제출 시 사번(UT 접두사)이 자동 생성되고 휴대전화번호가 로그인 계정으로 사용됩니다. 초기 비밀번호는 신분증 번호의 마지막 6자리이며, 6자리 미만이면 시스템이 무작위로 생성합니다(한 번만 표시, 유효기간 있음). 최초 로그인 시 반드시 변경해야 합니다.';
+      '제출 시 사번(UT 접두사)이 생성됩니다. 계정도 개설하는 경우 반환된 로그인 계정과 임시 비밀번호를 사용하세요. 비밀번호는 한 번만 표시되고 유효기간이 있으며 최초 로그인 시 변경해야 합니다.';
 
   @override
   String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
@@ -1998,7 +2041,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeRehireBody =>
-      '직원이 다시 재직 상태가 되고 로그인 계정이 활성화됩니다. 퇴사 시 기존 비밀번호는 폐기되었으므로 계정 지원 담당자에게 비밀번호 재설정을 요청하고 새 임시 비밀번호를 직원에게 직접 전달하세요.';
+      '재입사 시 직원만 재직 상태로 복원됩니다. 계정은 비활성 상태를 유지하며 이전 비밀번호와 외부 접속 권한은 복원되지 않습니다. 로그인이 필요하면 계정 지원 담당자가 신원을 확인하고 임시 비밀번호를 재설정한 후 별도로 계정을 활성화해야 합니다.';
 
   @override
   String get employeeRehireSuccess => '재입사 완료';

@@ -4,7 +4,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/security/pending_refresh_revocation_store.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/auth/services/pending_refresh_revocation_drainer.dart';
+
+const _fixtureUrl = 'https://company-lan.example/api';
+final _fixtureIssuer = AuthBackendRealmPolicy.fromBuildConfiguration()
+    .issuerFor(_fixtureUrl);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,11 +20,14 @@ void main() {
 
   test('successful logout response removes the exact queued token', () async {
     final queue = _queue();
-    await queue.enqueue('pending-token');
+    await queue.enqueue('pending-token', issuer: _fixtureIssuer);
     final revoked = <String>[];
     final drainer = PendingRefreshRevocationDrainer(
       store: queue,
-      revoke: (token) async => revoked.add(token),
+      revoke: (entry) async {
+        revoked.add(entry.refreshToken);
+        return true;
+      },
       retryDelays: const <Duration>[Duration(hours: 1)],
     );
     addTearDown(drainer.dispose);
@@ -34,14 +42,15 @@ void main() {
     'failed response stays queued until a later successful response',
     () async {
       final queue = _queue();
-      await queue.enqueue('pending-token');
+      await queue.enqueue('pending-token', issuer: _fixtureIssuer);
       var fail = true;
       var calls = 0;
       final drainer = PendingRefreshRevocationDrainer(
         store: queue,
-        revoke: (token) async {
+        revoke: (entry) async {
           calls++;
           if (fail) throw StateError('offline');
+          return true;
         },
         retryDelays: const <Duration>[Duration(hours: 1)],
       );
@@ -62,7 +71,7 @@ void main() {
 
   test('concurrent drain wakeups remain single-flight', () async {
     final queue = _queue();
-    await queue.enqueue('pending-token');
+    await queue.enqueue('pending-token', issuer: _fixtureIssuer);
     final started = Completer<void>();
     final release = Completer<void>();
     var calls = 0;
@@ -70,7 +79,7 @@ void main() {
     var maxActive = 0;
     final drainer = PendingRefreshRevocationDrainer(
       store: queue,
-      revoke: (token) async {
+      revoke: (entry) async {
         calls++;
         active++;
         if (active > maxActive) maxActive = active;
@@ -105,15 +114,19 @@ void main() {
     final release = Completer<void>();
     final drainer = PendingRefreshRevocationDrainer(
       store: queue,
-      revoke: (token) async {
+      revoke: (entry) async {
         started.complete();
         await release.future;
+        return true;
       },
       retryDelays: const <Duration>[Duration(hours: 1)],
     );
     addTearDown(drainer.dispose);
 
-    expect(await drainer.enqueueAndDrain('pending-token'), isTrue);
+    expect(
+      await drainer.enqueueAndDrain('pending-token', issuer: _fixtureIssuer),
+      isTrue,
+    );
     await started.future;
 
     expect(drainer.isDraining, isTrue);
@@ -125,14 +138,14 @@ void main() {
 
   test('bounded retry timers never overlap network attempts', () async {
     final queue = _queue();
-    await queue.enqueue('pending-token');
+    await queue.enqueue('pending-token', issuer: _fixtureIssuer);
     var calls = 0;
     var active = 0;
     var maxActive = 0;
     final completed = Completer<void>();
     final drainer = PendingRefreshRevocationDrainer(
       store: queue,
-      revoke: (token) async {
+      revoke: (entry) async {
         calls++;
         active++;
         if (active > maxActive) maxActive = active;
@@ -140,6 +153,7 @@ void main() {
         active--;
         if (calls < 4) throw StateError('transient');
         completed.complete();
+        return true;
       },
       retryDelays: const <Duration>[
         Duration(milliseconds: 1),

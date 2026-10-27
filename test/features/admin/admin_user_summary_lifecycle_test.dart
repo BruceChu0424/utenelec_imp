@@ -3,6 +3,22 @@ import 'package:uten_imp/features/admin/models/admin_models.dart';
 
 void main() {
   test(
+    'unknown or omitted account status cannot imply active or password-reset eligibility',
+    () {
+      for (final status in <String?>[null, '', 'unknown', 'legacy-closed']) {
+        final user = AdminUserSummary.fromJson({
+          'id': 'user-1',
+          'loginAccount': 'synthetic-login',
+          'currentEmployee': true,
+          'employeeStatus': 'active',
+          if (status != null) 'status': status,
+        });
+        expect(user.authorizationGrantAllowed, isFalse);
+        expect(user.passwordResetAllowed, isFalse);
+      }
+    },
+  );
+  test(
     'account support boundary preserves explicit denial and old-server absence',
     () {
       for (final value in [null, false, true]) {

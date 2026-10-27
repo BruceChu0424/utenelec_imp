@@ -45,6 +45,9 @@ class StaffRefreshRemoteAccessTest {
         String rawToken = "valid-refresh-token";
         UserAccount account = new UserAccount();
         account.setStatus("active");
+        account.setEmployeeId(java.util.UUID.randomUUID());
+        when(users.existsAuthenticatableEmployee(org.mockito.ArgumentMatchers.eq(account.getEmployeeId()),
+                org.mockito.ArgumentMatchers.anyCollection())).thenReturn(true);
         account.setRemoteAccess(false);
         RefreshToken token = new RefreshToken();
         token.setUserId(account.getId());

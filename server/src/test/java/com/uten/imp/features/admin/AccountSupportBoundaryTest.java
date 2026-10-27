@@ -688,14 +688,16 @@ class AccountSupportBoundaryTest {
                 sessions,
                 settings,
                 accountNotice,
-                mock(com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService.class));
+                mock(com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService.class),
+                mock(AccountLifecycleCoordinator.class));
     }
 
     private AdminAccountLifecycleLock.LockedTarget lock(
             UserAccount account, Employee employee) {
         AdminAccountLifecycleLock.LockedTarget locked =
                 new AdminAccountLifecycleLock.LockedTarget(employee, account);
-        when(accountLifecycle.lock(account.getId())).thenReturn(locked);
+        org.mockito.Mockito.lenient().when(accountLifecycle.lock(account.getId())).thenReturn(locked);
+        org.mockito.Mockito.lenient().when(accountLifecycle.lockForRevocation(account.getId())).thenReturn(locked);
         return locked;
     }
 }

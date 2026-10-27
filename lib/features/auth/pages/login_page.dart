@@ -139,6 +139,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
         // 恢复经校验的员工目标；首登状态会先由路由守卫转入强制改密。
         context.go(widget.returnTo ?? RouteName.dashboard);
       }
+    } on SessionMutationSuperseded {
+      return;
     } on ApiException catch (e) {
       if (mounted && loginContextEpoch == _loginContextEpoch) {
         setState(() {

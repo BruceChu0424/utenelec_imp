@@ -65,10 +65,13 @@ class PasswordAccessInvalidationTest {
 
     private UserAccount currentAccount() {
         UserAccount user = new UserAccount();
+        user.setEmployeeId(UUID.randomUUID());
+        when(users.existsAuthenticatableEmployee(org.mockito.ArgumentMatchers.eq(user.getEmployeeId()),
+                org.mockito.ArgumentMatchers.anyCollection())).thenReturn(true);
         user.setLoginAccount("E1001");
         user.setPasswordHash("old-hash");
         user.setMustChangePassword(true);
-        AuthUser principal = new AuthUser(user.getId(), UUID.randomUUID(), "E1001", Set.of(),
+        AuthUser principal = new AuthUser(user.getId(), user.getEmployeeId(), "E1001", Set.of(),
                 true, true, false, false, null, sessionId);
         when(currentUser.get()).thenReturn(Optional.of(principal));
         when(settings.readInt(SystemSettingKey.PASSWORD_HISTORY_SIZE)).thenReturn(5);

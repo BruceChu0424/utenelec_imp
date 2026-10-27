@@ -631,7 +631,9 @@ def main(argv=None):
         report.update(database=args.database, manifest_sha256=args.manifest_sha256,
                       frozen_commit=args.frozen_commit, topology_manifest_sha256=expected['topology_manifest_sha256'],
                       topology_summary_sha256=expected['topology_summary_sha256'],
-                      checked_at_utc=datetime.now(timezone.utc).isoformat(), production_acceptance=False)
+                      checked_at_utc=datetime.now(timezone.utc).isoformat(), production_acceptance=False,
+                      acceptance_scope='SEALED_LEGACY_BOOTSTRAP_ONLY',
+                      current_staff_preservation='NOT_EVALUATED', company_data_replacement_authorized=False)
         with args.output.open('x', encoding='utf-8') as stream:
             json.dump(report, stream, ensure_ascii=False, indent=2)
             stream.write('\n')

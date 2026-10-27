@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -51,9 +53,8 @@ class ColorRemarkRuntimeEndToEndTest {
         seed.update("INSERT INTO colors(id,code,name,status) VALUES(?,?,?,'使用')",OLD_COLOR,"OLD-901-"+OLD_COLOR,"pre-column original");
         seed.update("UPDATE colors SET name='pre-column changed' WHERE id=?",OLD_COLOR);
         oldVersion=seed.queryForObject("SELECT max(id) FROM master_record_versions WHERE source_table='colors' AND row_id=?",Long.class,OLD_COLOR);
-        registry.add("spring.datasource.url",DB::getJdbcUrl);
-        registry.add("spring.datasource.username",DB::getUsername);
-        registry.add("spring.datasource.password",DB::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DB::getJdbcUrl,
+                DB::getUsername, DB::getPassword);
         registry.add("uten.bootstrap.admin-login",()->FullChainEndToEndTest.SHARED_ADMIN_LOGIN);
         registry.add("uten.bootstrap.admin-password",()->FullChainEndToEndTest.SHARED_ADMIN_PASSWORD);
         registry.add("uten.jwt.secret",()->FullChainEndToEndTest.SHARED_JWT_SECRET);

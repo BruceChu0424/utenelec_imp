@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.notice.ChainNoticeService;
@@ -64,9 +66,8 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
             .withDatabaseName("planning_catch_up").withUsername("fixture_admin").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         DATABASE.start();
-        registry.add("spring.datasource.url", DATABASE::getJdbcUrl);
-        registry.add("spring.datasource.username", DATABASE::getUsername);
-        registry.add("spring.datasource.password", DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
     }
     // DirtiesContext closes the scheduler and pool first. Ryuk reclaims this private container at JVM exit;
     // stopping PostgreSQL in @AfterAll would race Spring's still-live scheduled tasks during teardown.

@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.asset.application;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -41,8 +43,8 @@ class FinanceAssetReviewRevisionPostgresTest {
     private static final PostgreSQLContainer PG = new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("asset_review").withUsername("fixture_admin").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
-        PG.start(); registry.add("spring.datasource.url", PG::getJdbcUrl);
-        registry.add("spring.datasource.username", PG::getUsername); registry.add("spring.datasource.password", PG::getPassword);
+        PG.start(); FixtureDatabaseProperties.bindSameRole(registry, PG::getJdbcUrl,
+                PG::getUsername, PG::getPassword);
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired FinanceAssetWorkflowService workflow;

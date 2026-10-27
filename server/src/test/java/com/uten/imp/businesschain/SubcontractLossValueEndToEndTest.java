@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.application.port.InventoryValuationPort;
@@ -66,9 +68,8 @@ class SubcontractLossValueEndToEndTest {
             .withDatabaseName("uten_imp");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
         DATABASE.start();
-        registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
-        registry.add("spring.datasource.username",DATABASE::getUsername);
-        registry.add("spring.datasource.password",DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         try {
             var attachments=java.nio.file.Files.createTempDirectory("uten-loss-value-attachments-");
             registry.add("uten.storage.local-dir",attachments::toString);

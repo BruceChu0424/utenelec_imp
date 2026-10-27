@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.application.port.ProductionMutationFootprintPort;
@@ -70,9 +72,8 @@ class MaterialAnalysisStructureScopeEndToEndTest {
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) throws Exception {
         POSTGRES.start();
         var attachments = Files.createTempDirectory("uten-structure-scope-");
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.storage.local-dir", () -> attachments.toString());
         registry.add("uten.jwt.secret", () -> SECRET);
         registry.add("uten.crypto.pgp-master-key", () -> SECRET);

@@ -11,6 +11,12 @@ public record ProcurementOrderPrintDocument(UUID id, String billNo, LocalDate bi
         String settlementMethod, String totalOriginal, boolean priceMasked, String remark,
         String makerName, String reviewerName, String statusLabel, List<PrintLine> lines,
         boolean financeApproved, String orderType) {
+    public ProcurementOrderPrintDocument {
+        // Keep nullable/malformed values available to the owning boundary while
+        // freezing the facts used by both JSON and the authorization digest.
+        lines = lines == null ? null : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(lines));
+    }
+
     @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String contentDigest() { return ProcurementPrintSnapshotDigest.of(this); }
 

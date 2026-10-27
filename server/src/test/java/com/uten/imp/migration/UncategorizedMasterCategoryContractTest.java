@@ -1,6 +1,5 @@
 package com.uten.imp.migration;
 
-import com.uten.imp.features.master.client.dto.ClientSaveRequest;
 import com.uten.imp.features.master.mould.dto.MouldSaveRequest;
 import com.uten.imp.features.master.supplier.dto.SupplierSaveRequest;
 import jakarta.validation.constraints.NotNull;
@@ -38,9 +37,9 @@ class UncategorizedMasterCategoryContractTest {
     }
 
     @Test
-    void everyPublicMasterSaveRequestRequiresCategory() throws Exception {
-        assertThat(ClientSaveRequest.class.getDeclaredField("categoryId").getAnnotation(NotNull.class))
-                .isNotNull();
+    void mouldAndSupplierReplacementRequestsRequireCategory() throws Exception {
+        // Customer saves also carry finance-only patches. Their create and ordinary
+        // update requirements are exercised through ClientSaveRequestServiceBoundaryTest.
         assertThat(MouldSaveRequest.class.getDeclaredField("categoryId").getAnnotation(NotNull.class))
                 .isNotNull();
         assertThat(SupplierSaveRequest.class.getDeclaredField("categoryId").getAnnotation(NotNull.class))

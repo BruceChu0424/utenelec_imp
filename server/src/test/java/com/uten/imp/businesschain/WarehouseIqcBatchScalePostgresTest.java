@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -61,9 +63,8 @@ class WarehouseIqcBatchScalePostgresTest {
         POSTGRES.start();
         restored=WarehouseIqcSnapshotSupport.restore(POSTGRES);
         Path attachments = Files.createTempDirectory("uten-warehouse-iqc-scale-");
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.storage.local-dir", () -> attachments.toString());
         registry.add("uten.jwt.secret", () -> SECRET);
         registry.add("uten.crypto.pgp-master-key", () -> SECRET);

@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -63,9 +65,8 @@ class FinanceDepartmentReferencePostgresTest {
         }
     }
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
-        POSTGRES.start(); properties.add("spring.datasource.url",POSTGRES::getJdbcUrl);
-        properties.add("spring.datasource.username",POSTGRES::getUsername);
-        properties.add("spring.datasource.password",POSTGRES::getPassword);
+        POSTGRES.start(); FixtureDatabaseProperties.bindSameRole(properties, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
     @Autowired MockMvc http;
     @Autowired ObjectMapper json;

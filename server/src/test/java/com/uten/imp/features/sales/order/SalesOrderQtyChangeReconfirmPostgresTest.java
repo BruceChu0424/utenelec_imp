@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest;
 import com.uten.imp.security.AuthUser;
@@ -55,9 +57,8 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     /** 类级共享：号段触发器要求 XD+日期+6 位序号注册格式，序号不重复。 */

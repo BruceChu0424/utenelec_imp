@@ -44,8 +44,13 @@ class MasterDataActionPermissionContractTest {
         for (MasterSpec spec : MASTERS) {
             for (Class<?> layer : List.of(spec.controller(), spec.service())) {
                 assertGateContains(layer, "create", spec.prefix() + ":create");
-                assertGateContains(layer, "update",
-                        spec.prefix() + ":edit", spec.prefix() + ":status");
+                if (spec.prefix().equals("client")) {
+                    PreAuthorize update = assertGateContains(layer, "update", "client:edit", "client:finance");
+                    assertThat(update.value()).doesNotContain("'client:status'");
+                } else {
+                    assertGateContains(layer, "update",
+                            spec.prefix() + ":edit", spec.prefix() + ":status");
+                }
                 assertGateContains(layer, "changeStatus", spec.prefix() + ":status");
                 if (!LIFECYCLE_MASTERS.contains(spec.prefix())) {
                     assertGateContains(layer, "delete", spec.prefix() + ":delete");
@@ -101,7 +106,11 @@ class MasterDataActionPermissionContractTest {
             if (spec.prefix().equals("client")) {
                 // Customers acquire a fresh locked entity before scope checks instead of refreshing a prior read.
                 assertThat(statusCommand).containsSubsequence(
-                        "Client m = requireClientForUpdate(id);", "m.setStatus(req.status());");
+                        "Client m = requireClientForUpdate(id);",
+                        "ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();",
+                        "clientAccessPolicy.requireWritable(m, scope);",
+                        "OptimisticLocks.requireUpToDate(m.getVersion(), req.version());",
+                        "m.setStatus(req.status());");
                 assertThat(methodBody(source, "private Client requireClientForUpdate(UUID id)"))
                         .containsSubsequence(
                                 "em.find(Client.class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)",
@@ -205,7 +214,7 @@ class MasterDataActionPermissionContractTest {
                 .doesNotContain("payment_style:delete");
     }
 
-    private static void assertGateContains(
+    private static PreAuthorize assertGateContains(
             Class<?> type, String methodName, String... authorities) {
         List<java.lang.reflect.Method> methods = Arrays.stream(type.getDeclaredMethods())
                 .filter(method -> method.getName().equals(methodName))
@@ -220,6 +229,7 @@ class MasterDataActionPermissionContractTest {
         for (String authority : authorities) {
             assertThat(gate.value()).contains("'" + authority + "'");
         }
+        return gate;
     }
 
     private static String source(Class<?> type) throws IOException {

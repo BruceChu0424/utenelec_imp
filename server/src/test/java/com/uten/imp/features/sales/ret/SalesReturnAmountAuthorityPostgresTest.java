@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.sales.ret.dto.ReturnItemLine;
@@ -47,9 +49,8 @@ class SalesReturnAmountAuthorityPostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
         POSTGRES.start();
-        properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        properties.add("spring.datasource.username", POSTGRES::getUsername);
-        properties.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(properties, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired SalesReturnService service;

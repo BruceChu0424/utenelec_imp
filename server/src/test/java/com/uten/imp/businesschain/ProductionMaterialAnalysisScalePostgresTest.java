@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -75,9 +77,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
         POSTGRES.start();
         Path attachments = Files.createTempDirectory("uten-production-scale-attachments-");
         registry.add("uten.storage.local-dir", () -> attachments.toString());
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.jwt.secret", () -> TEST_SECRET);
         registry.add("uten.crypto.pgp-master-key", () -> TEST_SECRET);
         registry.add("uten.crypto.hmac-key", () -> TEST_SECRET);

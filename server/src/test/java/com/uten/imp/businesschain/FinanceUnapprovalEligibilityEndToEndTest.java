@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.receipt.FinanceReceiptService;
@@ -60,9 +62,8 @@ class FinanceUnapprovalEligibilityEndToEndTest {
     private static MigratedSchemaBaseline.ScopedDatabase database;
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         database=MigratedSchemaBaseline.openDatabase("finance_unapproval_eligibility");
-        registry.add("spring.datasource.url",database::getJdbcUrl);
-        registry.add("spring.datasource.username",database::getUsername);
-        registry.add("spring.datasource.password",database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         try {
             var attachments=java.nio.file.Files.createTempDirectory("uten-finance-unapproval-attachments-");
             registry.add("uten.storage.local-dir",attachments::toString);

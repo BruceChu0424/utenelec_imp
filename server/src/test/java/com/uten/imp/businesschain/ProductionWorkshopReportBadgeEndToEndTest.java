@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
@@ -59,8 +61,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 class ProductionWorkshopReportBadgeEndToEndTest {
  private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
  @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
-  DATABASE.start();registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
-  registry.add("spring.datasource.username",DATABASE::getUsername);registry.add("spring.datasource.password",DATABASE::getPassword);
+  DATABASE.start();FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
   try{Path attachments=Files.createTempDirectory("uten-workshop-report-badge-");registry.add("uten.storage.local-dir",attachments::toString);}
   catch(java.io.IOException error){throw new IllegalStateException(error);}
  }

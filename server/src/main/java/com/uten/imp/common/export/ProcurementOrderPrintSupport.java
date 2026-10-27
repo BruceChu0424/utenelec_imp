@@ -15,7 +15,65 @@ public final class ProcurementOrderPrintSupport {
         Domain(String table) { this.table = table; }
     }
     private ProcurementOrderPrintSupport() { }
-    public record Facts(Object[] header, Map<UUID,Object[]> lines, String companyName, String reviewerName) { }
+    @com.fasterxml.jackson.annotation.JsonPropertyOrder({"header", "lines", "companyName", "reviewerName"})
+    public static final class Facts {
+        private final Object[] header;
+        private final Map<UUID,Object[]> lines;
+        private final String companyName;
+        private final String reviewerName;
+
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public Facts(@com.fasterxml.jackson.annotation.JsonProperty("header") Object[] header,
+                @com.fasterxml.jackson.annotation.JsonProperty("lines") Map<UUID,Object[]> lines,
+                @com.fasterxml.jackson.annotation.JsonProperty("companyName") String companyName,
+                @com.fasterxml.jackson.annotation.JsonProperty("reviewerName") String reviewerName) {
+            this.header = header == null ? null : header.clone();
+            this.lines = copyRows(lines);
+            this.companyName = companyName;
+            this.reviewerName = reviewerName;
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("header")
+        public Object[] header() {
+            return header == null ? null : header.clone();
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("lines")
+        public Map<UUID,Object[]> lines() {
+            return copyRows(lines);
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("companyName")
+        public String companyName() { return companyName; }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("reviewerName")
+        public String reviewerName() { return reviewerName; }
+
+        @Override public boolean equals(Object other) {
+            return this == other || other instanceof Facts that
+                    && Objects.equals(header, that.header) && Objects.equals(lines, that.lines)
+                    && Objects.equals(companyName, that.companyName) && Objects.equals(reviewerName, that.reviewerName);
+        }
+
+        @Override public int hashCode() {
+            int hash = Objects.hashCode(header);
+            hash = 31 * hash + Objects.hashCode(lines);
+            hash = 31 * hash + Objects.hashCode(companyName);
+            return 31 * hash + Objects.hashCode(reviewerName);
+        }
+
+        @Override public String toString() {
+            return "Facts[header=" + header + ", lines=" + lines + ", companyName=" + companyName
+                    + ", reviewerName=" + reviewerName + "]";
+        }
+    }
+
+    private static Map<UUID,Object[]> copyRows(Map<UUID,Object[]> rows) {
+        if (rows == null) return null;
+        Map<UUID,Object[]> snapshot = new LinkedHashMap<>();
+        rows.forEach((id, row) -> snapshot.put(id, row == null ? null : row.clone()));
+        return Collections.unmodifiableMap(snapshot);
+    }
 
     public static Facts read(EntityManager em, CompanyBrandingReadPort branding,
             EmployeeNameResolver names, Domain domain, UUID id, boolean financeApproved) {
@@ -58,9 +116,11 @@ public final class ProcurementOrderPrintSupport {
     }
 
     public static Object[] line(Facts facts, UUID id) {
-        Object[] row = facts.lines().get(id);
+        // Read the owned snapshot directly so printing n lines does not copy
+        // the entire row map n times; return only a copy of the selected row.
+        Object[] row = facts.lines.get(id);
         if (row == null) throw new ApiException(ErrorCode.CONFLICT, "订货明细已变化，请刷新后重试打印");
-        return row;
+        return row.clone();
     }
     public static boolean financeApproved(Short status, String finance) {
         return status != null && status == 1 && "APPROVED".equals(finance);

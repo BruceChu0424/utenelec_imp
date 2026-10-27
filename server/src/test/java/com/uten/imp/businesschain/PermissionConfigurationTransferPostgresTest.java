@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -42,11 +44,10 @@ class PermissionConfigurationTransferPostgresTest {
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry p) {
         DATABASE.start();
-        p.add("spring.datasource.url",DATABASE::getJdbcUrl);p.add("spring.datasource.username",DATABASE::getUsername);
-        p.add("spring.datasource.password",DATABASE::getPassword);p.add("uten.jwt.secret",()->SECRET);
         // Real migrations belong to this empty fixture database, never the host's dev migrator.
-        p.add("spring.flyway.url",DATABASE::getJdbcUrl);p.add("spring.flyway.user",DATABASE::getUsername);
-        p.add("spring.flyway.password",DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(p, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
+        p.add("uten.jwt.secret",()->SECRET);
         p.add("uten.crypto.pgp-master-key",()->SECRET);p.add("uten.crypto.hmac-key",()->SECRET);
         p.add("uten.bootstrap.admin-login",()->"transfer-bootstrap");p.add("uten.bootstrap.admin-password",()->SECRET+"Aa1!");
     }

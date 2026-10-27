@@ -1,5 +1,7 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.dto.InstantInventoryRow;
@@ -45,9 +47,8 @@ class StockAiInventoryScopePostgresTest {
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         POSTGRES.start();
-        properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        properties.add("spring.datasource.username", POSTGRES::getUsername);
-        properties.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(properties, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     @Autowired DataSource dataSource;

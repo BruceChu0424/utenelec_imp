@@ -1,5 +1,7 @@
 package com.uten.imp.features.expenseclaim;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.expenseclaim.dto.*;
@@ -34,8 +36,8 @@ class ExpenseClaimChainPostgresTest {
     static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine")
         .withDatabaseName("expense_chain").withUsername("fixture_admin").withPassword("uten");
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
-        PG.start();r.add("spring.datasource.url",PG::getJdbcUrl);
-        r.add("spring.datasource.username",PG::getUsername);r.add("spring.datasource.password",PG::getPassword);
+        PG.start();FixtureDatabaseProperties.bindSameRole(r, PG::getJdbcUrl,
+                PG::getUsername, PG::getPassword);
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired ExpenseClaimService claims;

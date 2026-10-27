@@ -78,9 +78,13 @@ public class MasterInlineEditService {
         CurrentAuthorityGuard.requireAll(domain.permission()+":view");
         boolean clientFinancial = entityType.equals("clients") && changes != null && !changes.isEmpty()
                 && com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS.containsAll(changes.keySet());
+        // Resolve finance authority from the server principal alone; the request
+        // content below only decides whether that authority is required.
+        boolean financeAuthorized = com.uten.imp.features.master.client.ClientFinancialPolicy.hasAuthority();
         if (entityType.equals("clients") && changes != null && changes.keySet().stream()
-                .anyMatch(com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS::contains))
-            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+                .anyMatch(com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS::contains)
+                && !financeAuthorized)
+            throw new ApiException(ErrorCode.FORBIDDEN, "客户财务资料仅限具有财务维护权限的人员修改");
         // A financial-only client patch carries no ordinary edit scope: the finance
         // guard above already authorized exactly those fields. The edit check always
         // executes; only its required permission set differs by patch shape.

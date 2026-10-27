@@ -23,5 +23,10 @@ public record ClientAccessBatchUpdateRequest(
         @NotEmpty @Size(max = RequestLimits.BATCH_IDS) List<@NotNull UUID> clientIds,
         UUID ownerEmployeeId,
         @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> viewerEmployeeIds,
-        @NotBlank @Size(max = 1000) String reason) {
+        @NotBlank @Size(max = 1000) String reason,
+        @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> ownerEmployeeIds) {
+    public ClientAccessBatchUpdateRequest(List<UUID> clientIds, UUID ownerEmployeeId,
+            List<UUID> viewerEmployeeIds, String reason) {
+        this(clientIds, ownerEmployeeId, viewerEmployeeIds, reason, null);
+    }
 }

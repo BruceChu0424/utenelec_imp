@@ -121,4 +121,34 @@ class ReportExportServiceTest {
         assertThrows(ApiException.class,()->WorkbenchReportExportSource.validate(new ReportExportRequest(UUID.randomUUID(),"workbench_purchase","tasks",
                 Map.of("dateFrom","not-a-date"),null,null,null)));
     }
+
+    @Test void subcontractTasksKeepIndependentOwnerAuthorityAndOnlyTheMatchingProgressOrHistoryProjection() {
+        var permitted=new AuthUser(owner,user.getEmployeeId(),"tasks",Set.of("subcontract_order:view","subcontract_report:export"),false,true,false);
+        var purchaseOnly=new AuthUser(owner,user.getEmployeeId(),"purchase",Set.of("purchase_order:view","purchase_report:export"),false,true,false);
+        for(String stage:List.of("IN_PROGRESS","COMPLETED")) {
+            var request=new ReportExportRequest(UUID.randomUUID(),"workbench_subcontract","tasks",Map.of("status",stage,"search.goodsCode","A_20%"),null,null,null);
+            assertDoesNotThrow(()->ReportExportService.authorizeRequest(permitted,request));
+            assertThrows(ApiException.class,()->ReportExportService.authorizeRequest(purchaseOnly,request));
+            assertDoesNotThrow(()->WorkbenchReportExportSource.validate(request));
+            assertEquals("view_subcontract",ReportExportSource.scope(request));
+        }
+        for(String stage:List.of("","WAITING_ORDER","DRAW_OPEN"))
+            assertThrows(ApiException.class,()->WorkbenchReportExportSource.validate(new ReportExportRequest(UUID.randomUUID(),
+                    "workbench_subcontract","tasks",Map.of("status",stage),null,null,null)));
+    }
+
+    @Test void taskArtifactsRecheckTheNativeOwnerGenerationAfterAMakerOrHandoverChange() throws Exception {
+        for(String module:List.of("purchase","subcontract")) {
+            var actor=new AuthUser(owner,user.getEmployeeId(),"tasks",Set.of(module+"_order:view",module+"_report:export"),false,true,false);
+            when(users.get()).thenReturn(Optional.of(actor));
+            when(restorer.restore(owner,1,1L)).thenReturn(actor);
+            var request=new ReportExportRequest(UUID.randomUUID(),"workbench_"+module,"tasks",Map.of("status","COMPLETED"),null,null,null);
+            var row=job(request);when(repository.find(request.id())).thenReturn(Optional.of(row));
+            when(readScopes.scopeFor("native_"+module+"_owner",actor)).thenReturn("a".repeat(64));
+            assertEquals(row,service.authorizedArtifact(request.id()));
+            when(readScopes.scopeFor("native_"+module+"_owner",actor)).thenReturn("b".repeat(64));
+            assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.authorizedArtifact(request.id())).getCode());
+            assertEquals(row,service.authorized(request.id()));
+        }
+    }
 }

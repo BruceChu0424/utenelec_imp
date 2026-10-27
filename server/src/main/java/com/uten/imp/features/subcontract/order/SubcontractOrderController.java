@@ -41,6 +41,8 @@ public class SubcontractOrderController {
     private final ProcurementFinanceApprovalService financeApproval;
     private final SubcontractOrderProgressService progressService;
     private final AuditDetailViewRecorder auditViews;
+    @org.springframework.beans.factory.annotation.Autowired
+    private SubcontractOrderPrintService printService;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.common.pricing.ProcurementPriceAssessmentSupport priceAssessment;
 
@@ -109,6 +111,15 @@ public class SubcontractOrderController {
                 result.getBillNo(),
                 result.getLegacyId(),
                 "委外订货单");
+        return result;
+    }
+
+    @GetMapping("/{id}/print-data")
+    @PreAuthorize("hasAnyAuthority('subcontract_order:view','finance_order_approval:view')")
+    public com.uten.imp.common.export.ProcurementOrderPrintDocument printData(@PathVariable UUID id) {
+        var result = printService.read(id);
+        auditViews.record("view_subcontract_order_detail", "subcontract_orders", id,
+                result.billNo(), null, "委外单打印预览");
         return result;
     }
 

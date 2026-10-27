@@ -36,6 +36,7 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.validator,
     this.required = false,
     this.info,
+    this.panelScopeBuilder,
   });
 
   final UtenEmployeePickerLoader loader;
@@ -62,6 +63,9 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
   /// ⓘ 说明（悬停/点按出 Tooltip）——与 fieldLabel(info:) 同一口径。经
   /// UtenInputDecoration 适配后渲染在输入框内的后缀区，不在标签旁。
   final String? info;
+
+  /// Lets the calling workflow own nested picker routes and their authorization.
+  final Widget Function(BuildContext, Widget)? panelScopeBuilder;
 
   @override
   State<UtenEmployeeMultiPicker> createState() =>
@@ -129,13 +133,22 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
     );
     if (initialChanged ||
         widget.enabled != oldWidget.enabled ||
+        widget.panelScopeBuilder != oldWidget.panelScopeBuilder ||
         widget.candidateScopeKey != oldWidget.candidateScopeKey ||
         widget.showDepartmentFilter != oldWidget.showDepartmentFilter) {
       _fieldVersion++;
     }
     if (initialChanged) {
       _selection = List.of(widget.initialSelection);
-      _fieldKey.currentState?.didChange(_selection);
+      // A controlled parent may update the selection while its Form is building.
+      // FormField.didChange also rebuilds that ancestor, so publish after this
+      // frame and discard callbacks superseded by another selection or scope.
+      final version = _fieldVersion;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && version == _fieldVersion) {
+          _fieldKey.currentState?.didChange(_selection);
+        }
+      });
     }
   }
 
@@ -155,6 +168,7 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
       selectedCountLabel: widget.selectedCountLabel,
       clearLabel: widget.clearLabel,
       confirmLabel: widget.confirmLabel,
+      scopeBuilder: widget.panelScopeBuilder,
     );
     if (result == null ||
         !mounted ||

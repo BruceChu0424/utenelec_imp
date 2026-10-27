@@ -646,6 +646,7 @@ public class SubcontractMaterialReturnService {
     }
 
     private MaterialReturnDetail toDetail(SubcontractMaterialReturn r, List<MaterialReturnItemDto> items) {
+        com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.enrich(em, access, "SUBCONTRACT", items);
         boolean priceMasked = subcontractPriceMasked();
         List<MaterialReturnItemDto> safeItems = priceMasked
                 ? items.stream().map(SubcontractMaterialReturnService::maskItemPrices).toList()
@@ -670,7 +671,7 @@ public class SubcontractMaterialReturnService {
     }
 
     private static MaterialReturnItemDto maskItemPrices(MaterialReturnItemDto it) {
-        return new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        MaterialReturnItemDto dto = new MaterialReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getMaterialIssueItemId(), it.getOrderItemId(),
@@ -678,6 +679,8 @@ public class SubcontractMaterialReturnService {
                 it.getParentGoodsSnapshotSource(), it.getParentGoodsSnapshotLockedAt(),
                 it.getParentColorId(), it.getWeight(), it.getSourceDocNo(), it.getRemark(),
                 it.getGirthQty(), it.getIssueNo(), it.getOrderNo());
+        it.copySourceOrderDifferenceTo(dto);
+        return dto;
     }
 
     private SubcontractMaterialReturn requireReturn(UUID id) { return requireReturn(id, false); }

@@ -1,9 +1,21 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/features/basic_data/models/client_access_models.dart';
 import 'package:uten_imp/features/basic_data/widgets/client_access_panel.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 void main() {
   const original = ClientAccessSettings(
@@ -84,8 +96,23 @@ void main() {
     tester,
   ) async {
     ClientAccessUpdate? captured;
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'finance'),
+          ),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientAssign,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        ],
         child: MaterialApp(
           home: Consumer(
             builder: (context, ref, _) => Scaffold(

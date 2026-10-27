@@ -80,6 +80,7 @@ class SalesIntakeReviewActions {
     required this.pickGoods,
     required this.createClient,
     this.canHandoffToQuote = false,
+    this.clientFinancialWritable = false,
     this.rerunSheet,
   });
 
@@ -97,6 +98,7 @@ class SalesIntakeReviewActions {
 
   /// 订货单上有没标价的货品时, 是否提供「改为新建报价单」。
   final bool canHandoffToQuote;
+  final bool clientFinancialWritable;
 
   /// 文件里还有别的工作表也像明细表时, 改为识别那一张(同一个文件、同一套进度弹窗重新识别,
   /// 用新结果整个替换面板, 不把几张表合在一起)。失败/取消返回 null(已提示), 面板保持原样。
@@ -899,7 +901,12 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
           ),
         );
     }
-    final enrichment = client.enrichment;
+    final enrichment = client.enrichment
+        .where(
+          (field) =>
+              field.field != 'taxId' || widget.actions.clientFinancialWritable,
+        )
+        .toList(growable: false);
     if (enrichment.isNotEmpty &&
         _decisions.clientId != null &&
         _decisions.clientId == client.selectedClientId) {

@@ -23,6 +23,29 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class FulfillmentWorkbenchExportControllerTest {
+    @Test void subcontractDownloadRetainsTheCurrentFiltersProjectionAndIndependentAuthority() {
+        var queries=mock(FulfillmentWorkbenchQueryService.class);var writer=mock(XlsxExportService.class);
+        var users=mock(SecurityContextCurrentUser.class);when(users.get()).thenReturn(Optional.empty());
+        var limits=mock(ExportLimitPort.class);when(limits.exportMaxRows()).thenReturn(500);
+        var columns=List.of(new ExportColumn("goods","委外件名称",ExportColumn.TEXT));
+        List<Map<String,Object>> rows=List.of(Map.of("goods","轴套"));
+        var payload=new ExportPayload(columns,rows,1);
+        when(queries.exportSubcontract(eq("IN_PROGRESS"),eq("轴套"),eq(""),isNull(),isNull(),any(),eq(500)))
+                .thenReturn(payload);
+        when(writer.build(eq(columns),eq(rows),isNull(),eq("view_subcontract"))).thenReturn(new byte[]{4,5});
+        var controller=new FulfillmentWorkbenchExportController(queries,writer,new WorkbookDownloadService(),users,mock(AuditService.class),limits);
+        var response=controller.subcontract("IN_PROGRESS","","轴套",null,null,"docNo","desc",null,null,null,null,
+                Map.of("f.planNo","WL-1","search.goodsCode","ABC_20%"),new ExportPasswordRequest(""));
+        assertArrayEquals(new byte[]{4,5},response.getBody());
+        assertTrue(response.getHeaders().getFirst("Content-Disposition").contains("subcontract_tasks.xlsx"));
+        var table=ArgumentCaptor.forClass(FulfillmentWorkbenchTableQuery.class);
+        verify(queries).exportSubcontract(eq("IN_PROGRESS"),eq("轴套"),eq(""),isNull(),isNull(),table.capture(),eq(500));
+        assertEquals(Map.of("planNo","WL-1","search.goodsCode","ABC_20%"),table.getValue().filters());
+        var method=java.util.Arrays.stream(FulfillmentWorkbenchExportController.class.getDeclaredMethods())
+                .filter(candidate->candidate.getName().equals("subcontract")).findFirst().orElseThrow();
+        assertTrue(method.getAnnotation(PreAuthorize.class).value().contains("subcontract_report:export"));
+        assertTrue(method.getAnnotation(PreAuthorize.class).value().contains("subcontract_order:view"));
+    }
     @Test
     void everyDownloadUsesTheCurrentConfiguredLimitAndNeverWritesATruncatedWorkbook() {
         var queries = mock(FulfillmentWorkbenchQueryService.class);

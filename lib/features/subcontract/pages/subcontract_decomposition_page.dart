@@ -45,6 +45,7 @@ import '../widgets/subcontract_draft_task_category.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -56,6 +57,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -64,6 +66,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/export/order_document_selection.dart';
+import '../../../shared/export/order_documents_export.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -80,6 +84,7 @@ import '../widgets/subcontract_application_detail_dialog.dart';
 import '../widgets/subcontract_draw_status.dart';
 import '../widgets/subcontract_draw_task_detail_dialog.dart';
 import '../../../shared/widgets/procurement_order_closure_dialog.dart';
+import '../../../shared/widgets/procurement_difference_column.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/models/procurement_order_closure.dart';
@@ -124,9 +129,13 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
     this.initialOrderItemId,
     this.initialOrderId,
     this.initialKeyword,
+    this.orderDocumentsExport,
   });
 
   final OperationsWorkbenchGateway? repository;
+
+  /// Read-only document output, independent of order creation or approval.
+  final OperationsWorkbenchBatchDocExport? orderDocumentsExport;
 
   /// 「待处理」拍平表的领料行数据源；测试注入，默认取
   /// [subcontractDrawRepositoryProvider]。
@@ -199,6 +208,9 @@ class _SubcontractDecompositionPageState
   final _taskRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
   final _pendingRows = MasterDataTableRowsController<SubcontractPendingRow>();
   bool _closureBusy = false;
+  ({int done, int total})? _docExportProgress;
+  int _docExportQueryRevision = 0;
+  Map<String, Object?>? _docExportQuery;
 
   // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表)：独立数据源、独立选择集 ——
   SubcontractDrawTaskList? _drawData;
@@ -667,6 +679,10 @@ class _SubcontractDecompositionPageState
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;
+    if (!mapEquals(_docExportQuery, query)) {
+      _docExportQueryRevision++;
+      _docExportQuery = query;
+    }
     final categoryScope = _categoryScope;
     final seg = _seg;
     final draft = seg?.code == _draftStage;
@@ -720,7 +736,9 @@ class _SubcontractDecompositionPageState
           // 未选分类时只拉 1 条：仅为取 summary 阶段/异常计数。
           size: listing ? size : 1,
           keyword: keyword,
-          status: listing && seg != null && !seg.history ? seg.code : null,
+          status: listing && seg != null
+              ? (seg.history ? 'COMPLETED' : seg.code)
+              : null,
           exception: listing && seg != null && !seg.history ? exception : null,
           dateFrom: range == null
               ? null
@@ -1297,6 +1315,109 @@ class _SubcontractDecompositionPageState
         .toList(growable: false);
   }
 
+  ({List<ExportOrderDocument> documents, String? issue}) get _exportSelection =>
+      orderDocumentSelection(
+        rows: _selectedTasks,
+        selectedRowCount: _selectedIds.length,
+        documentOf: (task) {
+          final document = task.actionDocument;
+          if (document == null ||
+              !document.canView ||
+              !const {
+                'ORDER',
+                'SUBCONTRACT_ORDER',
+              }.contains(document.docType.toUpperCase())) {
+            return null;
+          }
+          return (id: document.id, number: document.number);
+        },
+        emptyMessage: '请先选择委外任务',
+        unsupportedMessage: '所选任务包含无权查看或未关联委外订货单的行，请重新选择',
+      );
+
+  Map<String, dynamic> get _exportQuery {
+    final range = _seg?.history == true ? _historyTime.range : null;
+    return {
+      'status': _seg?.history == true ? 'COMPLETED' : _seg?.code,
+      if (_keyword.isNotEmpty) 'keyword': _keyword,
+      if (_seg?.history != true && _exception != null) 'exception': _exception,
+      if (range != null) ...{
+        'dateFrom': ChinaDateTime.formatDate(range.start),
+        'dateTo': ChinaDateTime.formatDate(range.end),
+      },
+      if (_sortColumn != null) ...{
+        'sort': _sortColumn,
+        'order': _sortAscending ? 'asc' : 'desc',
+      },
+      for (final entry in _columnFilters.entries)
+        if (entry.value != null)
+          (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+              entry.value,
+    };
+  }
+
+  Future<void> _exportSelectedOrderDocs() async {
+    final export = widget.orderDocumentsExport;
+    if (_docExportProgress != null || export == null) return;
+    final selection = _exportSelection;
+    if (selection.issue case final issue?) {
+      context.appWarning(issue);
+      return;
+    }
+    final generation = _readerGeneration;
+    final query = _queryIdentity;
+    final queryRevision = _docExportQueryRevision;
+    bool current() =>
+        mounted &&
+        generation == _readerGeneration &&
+        queryRevision == _docExportQueryRevision &&
+        mapEquals(query, _queryIdentity);
+    setState(
+      () => _docExportProgress = (done: 0, total: selection.documents.length),
+    );
+    try {
+      await export(
+        context,
+        apiClient: ref.read(apiClientProvider),
+        documents: selection.documents,
+        onProgress: (done, total) {
+          if (current()) {
+            setState(() => _docExportProgress = (done: done, total: total));
+          }
+        },
+        stillCurrent: current,
+      );
+    } finally {
+      if (mounted) setState(() => _docExportProgress = null);
+    }
+  }
+
+  Widget _exportOrderButton() {
+    final progress = _docExportProgress;
+    final selection = _exportSelection;
+    final issue = _loading ? '正在刷新委外任务，请稍候' : selection.issue;
+    return Tooltip(
+      message: issue ?? '把已选任务的委外单导出为 PDF 文件(多份自动打包 zip)',
+      child: UtenButton(
+        key: const Key('subcontract-decomposition-export-docs'),
+        size: UtenButtonSize.large,
+        icon: Icons.print_outlined,
+        isLoading: progress != null,
+        onPressed: issue == null && progress == null
+            ? _exportSelectedOrderDocs
+            : null,
+        onDisabledTap: issue == null ? null : () => context.appWarning(issue),
+        child: Text(
+          progress != null
+              ? '导出单据(${progress.done}/${progress.total})'
+              : selection.documents.isEmpty
+              ? '导出单据'
+              : '导出单据(${selection.documents.length})',
+        ),
+      ),
+    );
+  }
+
   List<ProcurementOrderClosureTarget?> get _selectedClosureTargets => [
     for (final task in _selectedTasks)
       if (task.actionDocument case final document?
@@ -1855,8 +1976,7 @@ class _SubcontractDecompositionPageState
     // 「待处理」= 拍平的一张表(ADR-171 修订二)：领料行钉顶(自有数据源一次拉全) +
     // 委外申请行(工作台投影服务端分页)，不再分「委外申请 / 领料」子分类。
     if (_pendingSeg) return _buildPendingTable(data);
-    // 勾选列只属于「待处理」段(2026-10-08 口径)：进行中/历史的行都已下单，
-    // 摆一列点不动的勾选框只会让人以为按钮坏了。
+    // 进行中勾选同时服务于订单导出和原有结束订单操作。
     final canOrder =
         _orderingSeg &&
         _hasDecomposePermissions &&
@@ -1940,6 +2060,16 @@ class _SubcontractDecompositionPageState
           type: 'number',
           value: (t) => formatQtyWithUnit(t.requiredQty, t.unitName),
         ),
+        procurementDifferenceColumn<OperationsWorkbenchTask>(
+          context: context,
+          scope: ProcurementDifferenceScope.workbench,
+          filterFromRows: false,
+          differenceOf: (task) =>
+              task.isDocumentGrouped || task.actionDocumentRestricted
+              ? null
+              : task.differenceQtyText,
+          unitOf: (task) => task.unitName,
+        ),
         MasterColumnDef(
           key: 'openQty',
           label: '待下单量',
@@ -1978,6 +2108,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'source',
           label: '只读申请',
+          columnSearchEnabled: false,
           width: 180,
           value: (t) => t.actionDocumentRestricted
               ? '无权查看关联申请'
@@ -1987,6 +2118,7 @@ class _SubcontractDecompositionPageState
         ),
       ],
       items: _displayItems,
+      serverColumnSearch: true,
       facets: _tableFacets(data),
       nullCounts: data.nullCounts,
       filters: _columnFilters,
@@ -2056,11 +2188,29 @@ class _SubcontractDecompositionPageState
       // 工具条，大小屏同一张表后两态都有入口（2026-10-09）。
       batchActionsBuilder: (_, _) => [
         _closureSelectionAction(),
+        if ((_seg?.code == _inProgressStage || _seg?.history == true) &&
+            widget.orderDocumentsExport != null)
+          _exportOrderButton(),
         if (_orderingSeg && _hasDecomposePermissions) _createOrderButton(),
       ],
-      toolbarActions: !_orderingSeg || !_hasDecomposePermissions || canOrder
-          ? null
-          : [_createOrderButton()],
+      toolbarActions: [
+        UtenExportButton(
+          key: const Key('subcontract-workbench-export'),
+          endpoint: '/operations/workbench/subcontract/export',
+          report: 'tasks',
+          requiredPermission: Perm.subcontractReportExport,
+          queryParams: _exportQuery,
+          filename: '委外任务',
+          label: '导出表格',
+          type: UtenButtonType.primary,
+          size: UtenButtonSize.large,
+          enabled: !_loading,
+          tableKey:
+              'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
+        ),
+        if (_orderingSeg && _hasDecomposePermissions && !canOrder)
+          _createOrderButton(),
+      ],
       isLoading: _loading && !_backgroundRefresh,
       isRefreshing: _backgroundRefresh,
       error: _data == null ? _error : null,
@@ -2318,6 +2468,23 @@ class _SubcontractDecompositionPageState
               row.orderQty,
               row.unitName,
             ),
+          },
+        ),
+        procurementDifferenceColumn<SubcontractPendingRow>(
+          context: context,
+          scope: ProcurementDifferenceScope.workbench,
+          filterFromRows: false,
+          differenceOf: (row) => switch (row) {
+            SubcontractApplicationRow(:final task)
+                when !task.isDocumentGrouped &&
+                    !task.actionDocumentRestricted =>
+              task.differenceQtyText,
+            SubcontractPendingDrawRow(:final row) => row.differenceQtyText,
+            _ => null,
+          },
+          unitOf: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) => task.unitName,
+            SubcontractPendingDrawRow(:final row) => row.unitName,
           },
         ),
         MasterColumnDef(

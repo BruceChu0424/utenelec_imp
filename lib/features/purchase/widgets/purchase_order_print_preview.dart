@@ -19,10 +19,6 @@ Future<void> showPurchaseOrderPrintPreview(
   required Future<PurchaseOrderPrintDocument> Function() loader,
   Future<bool> Function(Uint8List, String)? printer,
 }) async {
-  if (!document.financeApproved) {
-    context.appWarning('采购单须财务审核通过后才能打印');
-    return;
-  }
   await showDialog<void>(
     context: context,
     builder: (_) => _PurchaseOrderPrintDialog(
@@ -56,11 +52,6 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
     try {
       final current = await widget.loader();
       if (!mounted) return;
-      if (!current.financeApproved) {
-        setState(() => _document = current);
-        context.appWarning('采购单须财务审核通过后才能打印');
-        return;
-      }
       if (current.signature != _document.signature) {
         setState(() => _document = current);
         context.appInfo('单据已变化，已刷新预览，请核对后再打印');
@@ -93,7 +84,7 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
             key: const Key('purchase-print-preview-print'),
             icon: Icons.print_outlined,
             isLoading: _printing,
-            onPressed: _printing || !_document.financeApproved ? null : _print,
+            onPressed: _printing ? null : _print,
             child: const Text('打印'),
           ),
         ],

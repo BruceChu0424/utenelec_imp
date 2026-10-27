@@ -11,8 +11,10 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_order_batch_export.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_order_batch_export.dart';
 import 'package:uten_imp/core/print/isolated_print_pdf.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 
 Map<String, dynamic> _fixture({
   required String id,
@@ -66,8 +68,10 @@ class _FakeApi extends ApiClient {
     this.rejectedIds = const {},
     this.missingProof = false,
     this.proofFailure = false,
+    this.module = 'purchase',
   }) : super(Dio());
 
+  final String module;
   final Set<String> failIds;
   final Set<String> pendingIds;
   final Set<String> rejectedIds;
@@ -82,7 +86,7 @@ class _FakeApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    expectSync(path, '/purchase/orders/print-authorization');
+    expectSync(path, '/$module/orders/print-authorization');
     authorizations.add(body);
     if (proofFailure) throw ApiException('CONFLICT', '采购单已修改，请重新导出');
     return {};
@@ -97,7 +101,7 @@ class _FakeApi extends ApiClient {
     final id = path.split('/')[3];
     if (failIds.contains(id)) throw StateError('boom');
     if (rejectedIds.contains(id)) {
-      throw ApiException('FINANCE_APPROVAL_REQUIRED', '采购单须财务审核通过后才能导出或打印');
+      throw ApiException('FORBIDDEN', '单据已不在可见范围，请刷新后重试');
     }
     final fixture = _fixture(
       id: id,
@@ -119,6 +123,7 @@ Future<void> _run(
   })
   saver,
   void Function(int done, int total)? onProgress,
+  bool subcontract = false,
   bool confirm = true,
   bool dismiss = false,
   bool Function()? stillCurrent,
@@ -152,7 +157,11 @@ Future<void> _run(
     ),
   );
   await tester.pump();
-  final export = exportPurchaseOrderDocumentsBatch(
+  final exporter = subcontract
+      ? exportSubcontractOrderDocumentsBatch
+      : exportPurchaseOrderDocumentsBatch;
+  final label = subcontract ? '委外订货单' : '采购单';
+  final export = exporter(
     captured,
     apiClient: api,
     documents: documents,
@@ -167,7 +176,7 @@ Future<void> _run(
     },
   );
   await tester.pumpAndSettle();
-  expect(find.text('确认导出采购单'), findsOneWidget);
+  expect(find.text('确认导出$label'), findsOneWidget);
   if (api is _FakeApi) expect(api.paths, isEmpty);
   beforeConfirm?.call();
   if (dismiss) {
@@ -178,7 +187,7 @@ Future<void> _run(
     await tester.tap(button);
   }
   await tester.pumpAndSettle();
-  expect(find.text('确认导出采购单'), findsNothing);
+  expect(find.text('确认导出$label'), findsNothing);
   await export;
 }
 
@@ -390,7 +399,7 @@ void main() {
     expect(saved.single, endsWith('.pdf'));
   });
 
-  testWidgets('pending finance response never generates an output', (
+  testWidgets('pending finance response exports with current content proof', (
     tester,
   ) async {
     final api = _FakeApi(const {}, pendingIds: {'order-1'});
@@ -404,27 +413,27 @@ void main() {
         return name;
       },
     );
-    expect(saves, 0);
+    expect(saves, 1);
+    expect(api.authorizations, hasLength(1));
   });
 
-  testWidgets(
-    'a stale approved selection rejected by the server saves nothing',
-    (tester) async {
-      final api = _FakeApi(const {}, rejectedIds: {'order-1'});
-      var saves = 0;
-      await _run(
-        tester,
-        api: api,
-        documents: const [(id: 'order-1', number: 'CD-1')],
-        saver: (bytes, name, {stillCurrent}) async {
-          saves++;
-          return name;
-        },
-      );
-      expect(api.paths, hasLength(1));
-      expect(saves, 0);
-    },
-  );
+  testWidgets('a selection rejected by server data scope saves nothing', (
+    tester,
+  ) async {
+    final api = _FakeApi(const {}, rejectedIds: {'order-1'});
+    var saves = 0;
+    await _run(
+      tester,
+      api: api,
+      documents: const [(id: 'order-1', number: 'CD-1')],
+      saver: (bytes, name, {stillCurrent}) async {
+        saves++;
+        return name;
+      },
+    );
+    expect(api.paths, hasLength(1));
+    expect(saves, 0);
+  });
 
   testWidgets('identity change while confirming prevents requests and saves', (
     tester,
@@ -476,4 +485,89 @@ void main() {
     expect(api.paths, isEmpty);
     expect(saves, 0);
   });
+
+  testWidgets(
+    'subcontract uses its own endpoints and saves one pending order PDF',
+    (tester) async {
+      final api = _FakeApi(
+        const {},
+        module: 'subcontract',
+        pendingIds: {'order-1'},
+      );
+      final saved = <String, Uint8List>{};
+      await _run(
+        tester,
+        api: api,
+        subcontract: true,
+        documents: const [(id: 'order-1', number: 'WD-1')],
+        saver: (bytes, name, {stillCurrent}) async {
+          saved[name] = bytes;
+          return name;
+        },
+      );
+      expect(api.paths, ['/subcontract/orders/order-1/print-data']);
+      expect(api.authorizations, hasLength(1));
+      expect(saved.keys.single, startsWith('委外订货单-'));
+      expect(_isPdf(saved.values.single), isTrue);
+    },
+  );
+
+  testWidgets(
+    'subcontract de-duplicates order lines and reports a denied order',
+    (tester) async {
+      final api = _FakeApi(
+        const {},
+        module: 'subcontract',
+        rejectedIds: {'order-3'},
+      );
+      final saved = <String, Uint8List>{};
+      await _run(
+        tester,
+        api: api,
+        subcontract: true,
+        documents: const [
+          (id: 'order-1', number: 'WD-1'),
+          (id: 'order-1', number: 'WD-1'),
+          (id: 'order-2', number: 'WD-2'),
+          (id: 'order-3', number: 'WD-3'),
+        ],
+        saver: (bytes, name, {stillCurrent}) async {
+          saved[name] = bytes;
+          return name;
+        },
+      );
+      expect(api.paths, hasLength(3));
+      expect(saved.keys.single, '委外订货单批量导出(2份).zip');
+      expect(ZipDecoder().decodeBytes(saved.values.single).files, hasLength(2));
+      final notifications = ProviderScope.containerOf(
+        tester.element(find.byType(Scaffold).first),
+      ).read(appNotificationProvider);
+      expect(
+        notifications
+            .where((value) => value.kind == AppNotificationKind.warning)
+            .map((value) => value.message),
+        contains(contains('已导出 2 份，1 份失败')),
+      );
+    },
+  );
+
+  testWidgets(
+    'subcontract content or authorisation change before save suppresses output',
+    (tester) async {
+      final api = _FakeApi(const {}, module: 'subcontract', proofFailure: true);
+      var saved = false;
+      await _run(
+        tester,
+        api: api,
+        subcontract: true,
+        documents: const [(id: 'order-1', number: 'WD-1')],
+        saver: (bytes, name, {stillCurrent}) async {
+          saved = true;
+          return name;
+        },
+      );
+      expect(api.authorizations, hasLength(1));
+      expect(saved, isFalse);
+    },
+  );
 }

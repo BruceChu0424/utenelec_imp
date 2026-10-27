@@ -18,9 +18,10 @@ String? reportExportJobDomain(String endpoint) {
   final supplemental = supplementalExportJobDomain(endpoint);
   if (supplemental != null) return supplemental;
   if (masterExportJobReport(endpoint) != null) return 'master';
-  if (endpoint == '/operations/workbench/purchase/export') {
-    return 'workbench_purchase';
-  }
+  final workbench = RegExp(
+    r'^/operations/workbench/(purchase|subcontract)/export$',
+  ).firstMatch(endpoint);
+  if (workbench != null) return 'workbench_${workbench.group(1)}';
   if (endpoint == '/production/reports/where-used/export') return 'where_used';
   final match = RegExp(
     r'^/(sales|purchase|subcontract|production|stock|finance)/reports/export$',

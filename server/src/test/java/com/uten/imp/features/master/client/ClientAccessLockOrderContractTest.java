@@ -30,7 +30,8 @@ class ClientAccessLockOrderContractTest {
                 .contains("client.getAccessVersion() != validated.expectedAccessVersion()");
 
         assertThat(source)
-                .contains("ORDER BY employee.id\n                        FOR SHARE OF employee")
+                .contains("ORDER BY employee.id")
+                .contains("(lock ? \" FOR SHARE OF employee\" : \"\")")
                 .contains("ORDER BY account.employee_id, account.id\n                        FOR SHARE OF account")
                 .contains("em.refresh(client, LockModeType.PESSIMISTIC_WRITE)");
     }

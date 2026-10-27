@@ -70,6 +70,8 @@ public class ClientFromDocumentService {
         CurrentAuthorityGuard.requireAll("client:create");
         tx.bind();
         NormalizedRequest normalized = normalize(request);
+        if (normalized.fields().containsKey(ClientDocumentFields.TAX_ID))
+            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
         UUID ownerEmployeeId = clientAccess.requireCurrentEmployeeId();
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:key AS text), 0))")
                 .setParameter("key", LOCK_KEY)

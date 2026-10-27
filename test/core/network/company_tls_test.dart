@@ -138,6 +138,116 @@ class _Fixtures {
       '-out',
       'wrong-ca.crt',
     ]);
+    await generateLanIntermediateProfiles();
+  }
+
+  Future<void> generateLanIntermediateProfiles() async {
+    await run([
+      'req',
+      '-new',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-config',
+      'openssl.cnf',
+      '-subj',
+      '/CN=UTEN TEST ONLY LAN Issuer',
+      '-keyout',
+      'lan-issuer.key',
+      '-out',
+      'lan-issuer.csr',
+    ]);
+    await run([
+      'req',
+      '-new',
+      '-key',
+      'valid.key',
+      '-config',
+      'openssl.cnf',
+      '-subj',
+      '/C=CN/O=UtenElec/CN=imp.utenelec',
+      '-out',
+      'lan-leaf.csr',
+    ]);
+    // Mirror the deployed LAN leaf, including the IP SAN even when connecting
+    // by DNS. Both profiles are valid under OpenSSL; Dart must test its own
+    // certificate verifier, which rejects an issuer's IP name constraint.
+    const dnsConstraints =
+        'permitted;DNS:imp.utenelec,permitted;DNS:erp.utenelec.lan,'
+        'permitted;DNS:utenelec-imp-server';
+    await file('lan-leaf.ext').writeAsString(
+      'basicConstraints=critical,CA:FALSE\n'
+      'keyUsage=critical,digitalSignature,keyEncipherment\n'
+      'extendedKeyUsage=serverAuth\n'
+      'subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n'
+      'subjectAltName=DNS:imp.utenelec,DNS:erp.utenelec.lan,'
+      'DNS:utenelec-imp-server,IP:192.168.1.13\n',
+    );
+    for (final profile in ['lan-dns', 'lan-ip']) {
+      final ipConstraint = profile == 'lan-ip'
+          ? ',permitted;IP:192.168.1.13/255.255.255.255'
+          : '';
+      await file('$profile-issuer.ext').writeAsString(
+        'basicConstraints=critical,CA:TRUE,pathlen:0\n'
+        'keyUsage=critical,keyCertSign,cRLSign\n'
+        'subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n'
+        'nameConstraints=critical,$dnsConstraints$ipConstraint\n',
+      );
+      await run([
+        'x509',
+        '-req',
+        '-in',
+        'lan-issuer.csr',
+        '-CA',
+        'a-ca.crt',
+        '-CAkey',
+        'a-ca.key',
+        '-CAcreateserial',
+        '-days',
+        '3',
+        '-extfile',
+        '$profile-issuer.ext',
+        '-out',
+        '$profile-issuer.crt',
+      ]);
+      await run([
+        'x509',
+        '-req',
+        '-in',
+        'lan-leaf.csr',
+        '-CA',
+        '$profile-issuer.crt',
+        '-CAkey',
+        'lan-issuer.key',
+        '-CAcreateserial',
+        '-days',
+        '3',
+        '-extfile',
+        'lan-leaf.ext',
+        '-out',
+        '$profile-leaf.crt',
+      ]);
+      for (final identity in [
+        ['-verify_ip', '192.168.1.13'],
+        ['-verify_hostname', 'imp.utenelec'],
+      ]) {
+        await run([
+          'verify',
+          '-CAfile',
+          'a-ca.crt',
+          '-untrusted',
+          '$profile-issuer.crt',
+          '-purpose',
+          'sslserver',
+          ...identity,
+          '$profile-leaf.crt',
+        ]);
+      }
+      await file('$profile.crt').writeAsString(
+        '${await file('$profile-leaf.crt').readAsString()}'
+        '${await file('$profile-issuer.crt').readAsString()}',
+      );
+    }
   }
 
   Future<HttpServer> serve(
@@ -172,29 +282,45 @@ class _Fixtures {
     return server;
   }
 
-  HttpClient client(SecurityContext context, int port) =>
-      _RealHttpOverrides().createHttpClient(context)
-        ..findProxy = (_) {
-          return 'DIRECT';
+  HttpClient client(
+    SecurityContext context,
+    int port, {
+    void Function(HandshakeException error)? onHandshakeError,
+  }) => _RealHttpOverrides().createHttpClient(context)
+    ..findProxy = (_) {
+      return 'DIRECT';
+    }
+    ..connectionFactory = (uri, proxyHost, proxyPort) async {
+      final pending = await Socket.startConnect(
+        InternetAddress.loopbackIPv4,
+        port,
+      );
+      final secure = pending.socket.then((socket) async {
+        try {
+          return await SecureSocket.secure(
+            socket,
+            host: uri.host,
+            context: context,
+          );
+        } on HandshakeException catch (error) {
+          onHandshakeError?.call(error);
+          rethrow;
         }
-        ..connectionFactory = (uri, proxyHost, proxyPort) async {
-          final pending = await Socket.startConnect(
-            InternetAddress.loopbackIPv4,
-            port,
-          );
-          final secure = pending.socket.then(
-            (socket) =>
-                SecureSocket.secure(socket, host: uri.host, context: context),
-          );
-          return ConnectionTask.fromSocket(secure, pending.cancel);
-        };
+      });
+      return ConnectionTask.fromSocket(secure, pending.cancel);
+    };
 
-  Future<Dio> dio(HttpServer server, {BaseOptions? options}) async {
+  Future<Dio> dio(
+    HttpServer server, {
+    BaseOptions? options,
+    void Function(HandshakeException error)? onHandshakeError,
+  }) async {
     final ca = await file('a-ca.crt').readAsBytes();
     final trust = native.CompanyTlsTrust.forTesting(
       ca,
       expectedSha256: sha256.convert(ca).toString(),
-      createHttpClient: (context) => client(context, server.port),
+      createHttpClient: (context) =>
+          client(context, server.port, onHandshakeError: onHandshakeError),
     );
     final dio = Dio(options ?? BaseOptions());
     dio.httpClientAdapter = trust.wrapForTesting(
@@ -317,6 +443,68 @@ void main() {
               ),
             ),
           );
+        } finally {
+          dio.close(force: true);
+          await server.close(force: true);
+        }
+      },
+    );
+  }
+
+  for (final host in ['imp.utenelec', '192.168.1.13']) {
+    test(
+      'Dart accepts the DNS-constrained LAN intermediate and four-SAN leaf for $host',
+      () async {
+        var requests = 0;
+        final server = await fixtures.serve(
+          'lan-dns',
+          onRequest: () => requests++,
+        );
+        final dio = await fixtures.dio(server);
+        try {
+          final response = await dio.get<Object?>(
+            'https://$host/actuator/health',
+          );
+          expect(response.statusCode, 200);
+          expect(response.data, {'status': 'UP'});
+          expect(requests, 1);
+        } finally {
+          dio.close(force: true);
+          await server.close(force: true);
+        }
+      },
+    );
+
+    test(
+      'Dart rejects the IP-constrained LAN intermediate before sending HTTP to $host',
+      () async {
+        var requests = 0;
+        final handshakeErrors = <HandshakeException>[];
+        final server = await fixtures.serve(
+          'lan-ip',
+          onRequest: () => requests++,
+        );
+        final dio = await fixtures.dio(
+          server,
+          onHandshakeError: handshakeErrors.add,
+        );
+        try {
+          await expectLater(
+            dio.get<Object?>('https://$host/actuator/health'),
+            throwsA(
+              isA<DioException>().having(
+                companyTlsFailure,
+                'company TLS failure',
+                isNotNull,
+              ),
+            ),
+          );
+          expect(handshakeErrors, isNotEmpty);
+          expect(
+            handshakeErrors.first.toString().toLowerCase(),
+            contains('unsupported name constraint type'),
+          );
+          expect(requests, 0);
         } finally {
           dio.close(force: true);
           await server.close(force: true);

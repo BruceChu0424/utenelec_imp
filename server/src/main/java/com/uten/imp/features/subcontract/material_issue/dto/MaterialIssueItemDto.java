@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 @Getter
 @AllArgsConstructor
-public class MaterialIssueItemDto {
+public class MaterialIssueItemDto extends com.uten.imp.common.finance.ProcurementSourceOrderDifferenceResponse {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

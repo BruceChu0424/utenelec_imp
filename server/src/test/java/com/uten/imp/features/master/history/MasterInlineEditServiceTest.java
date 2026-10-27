@@ -120,6 +120,19 @@ class MasterInlineEditServiceTest {
         assertThrows(ApiException.class,()->service.patch("clients",id,Map.of("version",6),Map.of("name","changed")));
         verify(clients,never()).update(any(),any());
     }
+    @Test void clientFinancialInlineChangeRequiresFinanceBeforeReadingAnyCustomer() {
+        var user=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"sales",Set.of("client:view","client:edit"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));
+        ApiException denied=assertThrows(ApiException.class,()->service.patch("clients",id,Map.of("version",7),Map.of("creditFloor",500)));
+        assertEquals(ErrorCode.FORBIDDEN,denied.getCode());verifyNoInteractions(clients,em);
+    }
+    @Test void financeOnlyInlineChangeUsesFinancialObjectCapability() throws Exception {
+        var user=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"finance",Set.of("client:view","client:finance"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));
+        when(clients.detail(id)).thenReturn(dto(ClientDetail.class,Map.of("id",id,"name","保留客户名","version",7L,"writable",false,"financialWritable",true)));
+        service.patch("clients",id,Map.of("version",7),Map.of("creditFloor",500));
+        verify(clients).update(eq(id),argThat(req->req.getCreditFloor().compareTo(new BigDecimal("500"))==0));
+    }
     @Test void warehousePatchPreservesCurrentFormValuesAndOmitsUnchangedWorkshopReference() throws Exception {
         UUID workshop=UUID.randomUUID();
         when(warehouses.detail(id)).thenReturn(dto(WarehouseDetail.class,Map.of(

@@ -22,11 +22,9 @@ import java.util.UUID;
 public class ClientSaveRequest {
 
     /** 所属客户分类（必填）；官网询盘由服务端绑定系统“未分类”根。 */
-    @NotNull
     private UUID categoryId;
 
     // 标识
-    @NotBlank
     private String name;         // Client_Name
     private String code;         // Number（客户编号）
     private String fullName;     // Full_Name（全称）
@@ -149,5 +147,44 @@ public class ClientSaveRequest {
 
     public boolean hasNameEn() {
         return nameEnPresent;
+    }
+
+    @JsonIgnore
+    private final java.util.Set<String> financialFieldsPresent = new java.util.HashSet<>();
+    public boolean hasFinancialField(String field) { return financialFieldsPresent.contains(field); }
+    @JsonSetter("bank")
+    public void setBank(String value) {
+        this.bank = value;
+        financialFieldsPresent.add("bank");
+    }
+    @JsonSetter("bankAccount")
+    public void setBankAccount(String value) {
+        this.bankAccount = value;
+        financialFieldsPresent.add("bankAccount");
+    }
+    @JsonSetter("taxId")
+    public void setTaxId(String value) {
+        this.taxId = value;
+        financialFieldsPresent.add("taxId");
+    }
+    @JsonSetter("credit")
+    public void setCredit(BigDecimal value) {
+        this.credit = value;
+        financialFieldsPresent.add("credit");
+    }
+    @JsonSetter("initTotal")
+    public void setInitTotal(BigDecimal value) {
+        this.initTotal = value;
+        financialFieldsPresent.add("initTotal");
+    }
+    @JsonSetter("tday")
+    public void setTday(Integer value) {
+        this.tday = value;
+        financialFieldsPresent.add("tday");
+    }
+    @JsonSetter("creditFloor")
+    public void setCreditFloor(BigDecimal value) {
+        this.creditFloor = value;
+        financialFieldsPresent.add("creditFloor");
     }
 }

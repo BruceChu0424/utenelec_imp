@@ -52,7 +52,9 @@ class ProcurementReportUnitsPostgresTest {
                 "suppliers","warehouses","employees","departments","legacy_departments","goods","colors","units","currencies","material_categories","stock_balances");
         EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         visibility=mock(CommercialPriceVisibility.class);when(visibility.canViewPurchaseReport()).thenReturn(true);when(visibility.canViewSubcontractReport()).thenReturn(true);
-        purchase=new PurchaseReportService(em,mock(SystemSettingsService.class));subcontract=new SubcontractReportService(em,mock(SystemSettingsService.class));
+        var settings=mock(SystemSettingsService.class);
+        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(1000);
+        purchase=new PurchaseReportService(em,settings);subcontract=new SubcontractReportService(em,settings);
         ReflectionTestUtils.setField(purchase,"commercialPriceVisibility",visibility);ReflectionTestUtils.setField(subcontract,"commercialPriceVisibility",visibility);
         db.update("INSERT INTO units(id,name) VALUES (?,'个')",UNIT);db.update("INSERT INTO currencies(id,code,name) VALUES (?,'USD','USD'),(?,'CNY','人民币')",USD,CNY);
         db.update("INSERT INTO goods(id,code,name,unit_id) VALUES (?,'REPORT-GOODS','测试货品',?)",GOODS,UNIT);
@@ -197,5 +199,69 @@ class ProcurementReportUnitsPostgresTest {
     private static void receipt(String bill,UUID currency,String qty,String rate,String price,String local){
         UUID doc=UUID.randomUUID();db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,status,currency_id,total_local) VALUES (?,?,?,1,?,?)",doc,bill,DATE,currency,new BigDecimal(local));
         db.update("INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,goods_id,goods_code_snapshot,goods_name_snapshot,unit_id,qty,unit_rate,price,amount_local) VALUES (gen_random_uuid(),?,?,? ,?,'REPORT-GOODS','测试货品',?,?,?,?,?)",doc,bill,DATE,GOODS,UNIT,new BigDecimal(qty),new BigDecimal(rate),new BigDecimal(price),new BigDecimal(local));
+    }
+
+    @Test void requestDifferenceAndActualWorkbenchExpressionsKeepApprovedPhysicalStageFacts() throws Exception {
+        UUID doc=UUID.randomUUID();
+        db.update("INSERT INTO purchase_requests(id,bill_no,bill_date,status) VALUES (?,'DIFF-REQUEST',?,1)",doc,DATE);
+        db.update("""
+                INSERT INTO purchase_request_items(id,request_id,bill_no,bill_date,goods_id,unit_id,qty,gift_qty,ordered_qty,gift_ordered_qty,quantity_semantics)
+                VALUES(gen_random_uuid(),?,'DIFF-REQUEST',?,?,?,10,2,7,1,'CHARGED_PLUS_GIFT_V1')
+                """,doc,DATE,GOODS,UNIT);
+        var report=purchase.requestDetail("DIFF-REQUEST",null,null,null,null,Map.of(),1,20,null,null);
+        assertThat(new BigDecimal(report.rows().getFirst().get("differenceQtyExact").toString())).isEqualByComparingTo("-4");
+        var service=new com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService(
+                mock(EntityManager.class),mock(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchAccessPolicy.class));
+        var method=service.getClass().getDeclaredMethod("enrichTableRows",String.class,String.class);method.setAccessible(true);
+        for(String department:List.of("PURCHASE","SUBCONTRACT")) {
+            String sql=(String)method.invoke(service,"fixture_rows",department);
+            int start=sql.indexOf("CASE WHEN base.action_doc_type='"+department+"_ORDER' THEN (SELECT ");
+            String expression=sql.substring(start,sql.indexOf(" AS difference_qty",start)).strip();
+            String request=department.equals("PURCHASE")?"PURCHASE_REQUEST":"SUBCONTRACT_APPLICATION";
+            for(String fulfilled:List.of("0","8","10.5001")) {
+                BigDecimal result=named.queryForObject("SELECT "+expression+" FROM (VALUES (:type,CAST(NULL AS uuid),8::numeric,CAST(:fulfilled AS numeric))) base(action_doc_type,action_item_id,required_qty,fulfilled_qty)",
+                        Map.of("type",request,"fulfilled",fulfilled),BigDecimal.class);
+                assertThat(result).isEqualByComparingTo(new BigDecimal(fulfilled).subtract(new BigDecimal("8")));
+            }
+        }
+    }
+
+    @ParameterizedTest @ValueSource(strings={"PURCHASE_RECEIPT","PURCHASE_RETURN","SUBCONTRACT_RECEIPT","SUBCONTRACT_RETURN","MATERIAL_ISSUE","MATERIAL_RETURN"})
+    void relatedDocumentReportsAndExportsKeepSourceOrderUnitAndEnforceSourceAccess(String type) {
+        boolean isPurchase=type.startsWith("PURCHASE");boolean isReceipt=type.endsWith("RECEIPT");
+        String prefix=isPurchase?"purchase":"subcontract";
+        String kind=type.startsWith("MATERIAL_")?type.toLowerCase(java.util.Locale.ROOT):isReceipt?"receipt":"return";
+        String parent=switch(kind){case "material_issue"->"issue_id";case "material_return"->"material_return_id";default->kind+"_id";};
+        String bill="DIFF-"+type;
+        UUID doc=UUID.randomUUID(),order=UUID.randomUUID(),item=UUID.randomUUID(),owner=UUID.randomUUID(),sourceUnit=UUID.randomUUID();
+        db.update("INSERT INTO units(id,name) VALUES (?,'箱')",sourceUnit);
+        db.update("INSERT INTO "+prefix+"_orders(id,bill_no,bill_date,status,maker_id) VALUES (?,?,?,1,?)",order,bill+"-ORDER",DATE,owner);
+        db.update("INSERT INTO "+prefix+"_order_items(id,order_id,bill_no,bill_date,goods_id,unit_id,qty,received_qty,returned_qty) VALUES (?,?,?,?,?,?,10,5,1.0001)",item,order,bill+"-ORDER",DATE,GOODS,sourceUnit);
+        db.update("INSERT INTO "+prefix+"_"+kind+"s(id,bill_no,bill_date,status) VALUES (?,?,?,1)",doc,bill,DATE);
+        db.update("INSERT INTO "+prefix+"_"+kind+"_items(id,"+parent+",bill_no,bill_date,goods_id,unit_id,qty,order_item_id) VALUES (gen_random_uuid(),?,?,?,?,?,2,?)",doc,bill,DATE,GOODS,UNIT,item);
+        com.uten.imp.security.DocumentAccessPolicy access=isPurchase?mock(com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy.class)
+                :mock(com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy.class);
+        when(access.hasAuthority(prefix+"_order:view")).thenReturn(true);
+        when(access.nativeReadScope("source_order.maker_id","sourceDifferenceOwners"))
+                .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("source_order.maker_id IN (:sourceDifferenceOwners)","sourceDifferenceOwners",java.util.Set.of(owner)));
+        Object service=isPurchase?purchase:subcontract;ReflectionTestUtils.setField(service,"sourceOrderAccess",access);
+        try {
+            var exported=isPurchase?purchase.export(kind+"/detail",Map.of("billNo",bill),null,null)
+                    :subcontract.export(kind.toUpperCase(java.util.Locale.ROOT)+"/detail",Map.of("billNo",bill),null,null);
+            assertThat(exported.rows()).hasSize(1);
+            assertThat(new BigDecimal(exported.rows().getFirst().get("sourceOrderDifferenceQtyExact").toString())).isEqualByComparingTo("-6.0001");
+            assertThat(exported.rows().getFirst().get("__sourceOrderDifferenceUnitName")).isEqualTo("箱");
+            assertThat(exported.columns()).filteredOn(c->c.key().equals("sourceOrderDifferenceQty")).singleElement()
+                    .satisfies(column->assertThat(column.unitKey()).isEqualTo("__sourceOrderDifferenceUnitName"));
+            when(access.nativeReadScope("source_order.maker_id","sourceDifferenceOwners"))
+                    .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=0",null,java.util.Set.of()));
+            var scoped=isPurchase?purchase.export(kind+"/detail",Map.of("billNo",bill),null,null)
+                    :subcontract.export(kind.toUpperCase(java.util.Locale.ROOT)+"/detail",Map.of("billNo",bill),null,null);
+            assertThat(scoped.rows()).hasSize(1);assertThat(scoped.rows().getFirst().get("sourceOrderDifferenceQty")).isNull();
+            when(access.hasAuthority(prefix+"_order:view")).thenReturn(false);
+            var denied=isPurchase?purchase.export(kind+"/detail",Map.of("billNo",bill),null,null)
+                    :subcontract.export(kind.toUpperCase(java.util.Locale.ROOT)+"/detail",Map.of("billNo",bill),null,null);
+            assertThat(denied.rows()).hasSize(1);assertThat(denied.rows().getFirst().get("sourceOrderDifferenceQty")).isNull();
+        } finally { ReflectionTestUtils.setField(service,"sourceOrderAccess",null); }
     }
 }

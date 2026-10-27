@@ -247,7 +247,7 @@ public class ClientController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('client:edit', 'client:status')")
+    @PreAuthorize("hasAnyAuthority('client:edit', 'client:finance')")
     public ClientDetail update(@PathVariable UUID id, @Valid @RequestBody ClientSaveRequest req) {
         return service.update(id, req);
     }

@@ -52,6 +52,7 @@ void main() {
             currentPermissionsProvider.overrideWithValue({
               Perm.clientView,
               Perm.clientEdit,
+              Perm.clientFinance,
               Perm.clientStatus,
             }),
             isSuperAdminProvider.overrideWithValue(false),
@@ -124,6 +125,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue({
             Perm.clientView,
             Perm.clientEdit,
+            Perm.clientFinance,
           }),
           isSuperAdminProvider.overrideWithValue(false),
           clientRepositoryProvider.overrideWithValue(_FakeClientRepository()),
@@ -184,6 +186,103 @@ void main() {
     expect(find.text('信誉分 -10'), findsOneWidget);
   });
 
+  for (final financeOnly in [false, true]) {
+    testWidgets(financeOnly ? '财务只能修改财务字段，普通资料保持只读' : '销售可修改自己客户且财务字段不回写', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _FakeClientRepository(
+        financialWritable: financeOnly,
+      );
+      final settlementRepo = _FakeReferenceMethodRepository();
+      final currencyRepo = _FakeCurrencyRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sessionProvider.overrideWith(_Session.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'role-test'),
+            ),
+            sharedPreferencesProvider.overrideWithValue(
+              await SharedPreferences.getInstance(),
+            ),
+            apiClientProvider.overrideWithValue(_EmptyApi()),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.clientView,
+              financeOnly ? Perm.clientFinance : Perm.clientEdit,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+            clientRepositoryProvider.overrideWithValue(repo),
+            clientDirectoryRepositoryProvider.overrideWithValue(
+              _FakePartyDirectoryRepository(),
+            ),
+            referenceMethodRepositoryProvider.overrideWithValue(settlementRepo),
+            currencyRepositoryProvider.overrideWithValue(currencyRepo),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PartyDetailPage(partyType: 'client', id: 'client-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('李销售、王销售'), findsWidgets);
+      await tester.tap(find.byKey(const Key('party-detail-edit')));
+      await tester.pumpAndSettle();
+      expect(settlementRepo.calls, financeOnly ? 1 : 0);
+      expect(currencyRepo.calls, financeOnly ? 1 : 0);
+      tester
+          .widget<TabBarView>(find.byType(TabBarView))
+          .controller!
+          .animateTo(0);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(_labeledField('名称')).enabled,
+        financeOnly ? isFalse : isNot(false),
+      );
+      if (!financeOnly) await tester.enterText(_labeledField('联系人'), '销售维护联系人');
+      tester
+          .widget<TabBarView>(find.byType(TabBarView))
+          .controller!
+          .animateTo(1);
+      await tester.pumpAndSettle();
+      for (final label in ['开户行', '期初应收', '铺底额', '结算天数']) {
+        expect(
+          tester.widget<TextField>(_labeledField(label)).enabled,
+          financeOnly ? isNot(false) : isFalse,
+        );
+      }
+      if (financeOnly) await tester.enterText(_labeledField('开户行'), '财务维护银行');
+      await tester.tap(find.byKey(const Key('party-detail-save')));
+      await tester.pumpAndSettle();
+      expect(repo.lastUpdateId, 'client-1');
+      if (financeOnly) {
+        expect(repo.lastUpdateBody?['bank'], '财务维护银行');
+        for (final key in ['name', 'linkman', 'defaultShipmentPolicy']) {
+          expect(repo.lastUpdateBody?.containsKey(key), isFalse);
+        }
+      } else {
+        expect(repo.lastUpdateBody?['linkman'], '销售维护联系人');
+        for (final key in [
+          'bank',
+          'bankAccount',
+          'taxId',
+          'credit',
+          'initTotal',
+          'tday',
+          'defaultSettlementMethodId',
+          'defaultCurrencyId',
+          'creditFloor',
+        ]) {
+          expect(repo.lastUpdateBody?.containsKey(key), isFalse);
+        }
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('客户详情页就地编辑：两张分区表单合并一次提交', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -202,6 +301,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue({
             Perm.clientView,
             Perm.clientEdit,
+            Perm.clientFinance,
             Perm.clientStatus,
           }),
           isSuperAdminProvider.overrideWithValue(false),
@@ -273,6 +373,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue({
             Perm.clientView,
             Perm.clientEdit,
+            Perm.clientFinance,
             Perm.clientStatus,
           }),
           isSuperAdminProvider.overrideWithValue(false),
@@ -332,6 +433,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue({
             Perm.clientView,
             Perm.clientEdit,
+            Perm.clientFinance,
             Perm.clientStatus,
           }),
           isSuperAdminProvider.overrideWithValue(false),
@@ -442,6 +544,7 @@ void main() {
           currentPermissionsProvider.overrideWithValue({
             Perm.clientView,
             Perm.clientEdit,
+            Perm.clientFinance,
             Perm.clientStatus,
           }),
           isSuperAdminProvider.overrideWithValue(false),
@@ -482,7 +585,12 @@ void main() {
 }
 
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({this.nameEn});
+  _FakeClientRepository({
+    this.nameEn,
+    this.financialWritable = true,
+  });
+
+  final bool financialWritable;
 
   final String? nameEn;
   String? lastUpdateId;
@@ -503,6 +611,8 @@ class _FakeClientRepository implements ClientRepository {
     ownerEmployeeName: '李销售',
     defaultShipmentPolicy: 'ALLOW_PARTIAL',
     writable: true,
+    financialWritable: financialWritable,
+    ownerEmployeeNames: const ['李销售', '王销售'],
   );
 
   @override
@@ -607,21 +717,25 @@ class _FakeAliasRepository implements ClientGoodsAliasRepository {
 
 class _FakeReferenceMethodRepository extends ReferenceMethodRepository {
   _FakeReferenceMethodRepository() : super(_EmptyApi());
+  int calls = 0;
 
   @override
-  Future<List<ReferenceMethodOption>> settlementMethods() async => const [
-    ReferenceMethodOption(id: 'sm-1', code: 'M', name: '月结30'),
-  ];
+  Future<List<ReferenceMethodOption>> settlementMethods() async {
+    calls++;
+    return const [ReferenceMethodOption(id: 'sm-1', code: 'M', name: '月结30')];
+  }
 }
 
 class _FakeCurrencyRepository implements CurrencyRepository {
+  int calls = 0;
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 
   @override
-  Future<List<CurrencyListItem>> dict() async => const [
-    CurrencyListItem(id: 'cny', name: '人民币', code: 'CNY'),
-  ];
+  Future<List<CurrencyListItem>> dict() async {
+    calls++;
+    return const [CurrencyListItem(id: 'cny', name: '人民币', code: 'CNY')];
+  }
 }
 
 class _EmptyApi extends ApiClient {

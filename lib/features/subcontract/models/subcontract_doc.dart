@@ -151,6 +151,8 @@ class SubcontractDocItem {
     this.checkQty,
     this.orderQty,
     this.differenceQtyText,
+    this.sourceOrderDifferenceQtyText,
+    this.sourceOrderDifferenceUnitId,
     this.receivedQty,
     this.settledLossQty,
     this.legacyIssuedQty,
@@ -207,8 +209,12 @@ class SubcontractDocItem {
   final double? checkQty;
   final double? orderQty;
 
-  /// Server-authoritative charged delivery variance, separate from settled loss.
+  /// Server-authoritative application ordering or order delivery difference.
   final String? differenceQtyText;
+
+  /// Cumulative delivery difference of the linked order, in that order's unit.
+  final String? sourceOrderDifferenceQtyText;
+  final String? sourceOrderDifferenceUnitId;
   final double? receivedQty;
 
   /// 已核销的结案损耗，按订货行单位返回；不能用子件损耗或数量差额代算。
@@ -270,67 +276,71 @@ class SubcontractDocItem {
   /// 草稿可以保存，提交财务会被拒绝，等研发完善 BOM。
   final bool bomMissing;
 
-  factory SubcontractDocItem.fromJson(Map<String, dynamic> json) =>
-      SubcontractDocItem(
-        extraColumns: BusinessColumn.read(json['extraColumns']),
-        allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
-        bomMissing: json['bomMissing'] == true,
-        id: json['id'] as String?,
-        lineNo: (json['lineNo'] as num?)?.toInt(),
-        goodsId: json['goodsId'] as String?,
-        colorId: json['colorId'] as String?,
-        unitId: json['unitId'] as String?,
-        unitRate: double.tryParse(json['unitRate']?.toString() ?? ''),
-        unitRateText: receiptRecordedDecimal(json, 'unitRate'),
-        qty: double.tryParse(json['qty']?.toString() ?? ''),
-        qtyText: recordedDocumentDecimal(json, 'qty'),
-        price: (json['price'] as num?)?.toDouble(),
-        priceText: receiptRecordedDecimal(json, 'price'),
-        totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),
-        amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
-        amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
-        amountLocal: (json['amountLocal'] as num?)?.toDouble(),
-        amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
-        checkQty: (json['checkQty'] as num?)?.toDouble(),
-        orderQty: (json['orderQty'] as num?)?.toDouble(),
-        differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
-        receivedQty: (json['receivedQty'] as num?)?.toDouble(),
-        settledLossQty: (json['settledLossQty'] as num?)?.toDouble(),
-        legacyIssuedQty: (json['issuedQty'] as num?)?.toDouble(),
-        returnedQty: (json['returnedQty'] as num?)?.toDouble(),
-        wastedQty: (json['wastedQty'] as num?)?.toDouble(),
-        endingQty: (json['endingQty'] as num?)?.toDouble(),
-        standardQty: (json['standardQty'] as num?)?.toDouble(),
-        wasteRate: (json['wasteRate'] as num?)?.toDouble(),
-        cause: json['cause'] as String?,
-        weight: (json['weight'] as num?)?.toDouble(),
-        qtyFromWeight: json['qtyFromWeight'] == true,
-        girthQty: (json['girthQty'] as num?)?.toDouble(),
-        boxQty: (json['boxQty'] as num?)?.toDouble(),
-        parentGoodsId: json['parentGoodsId'] as String?,
-        parentColorId: json['parentColorId'] as String?,
-        applicationItemId: json['applicationItemId'] as String?,
-        orderItemId: json['orderItemId'] as String?,
-        orderId: json['orderId'] as String?,
-        orderBillNo: json['orderBillNo'] as String?,
-        receiptItemId: json['receiptItemId'] as String?,
-        materialIssueItemId: json['materialIssueItemId'] as String?,
-        planItemId: json['planItemId'] as String?,
-        sourceDocNo: json['sourceDocNo'] as String?,
-        atSupplierQty: (json['atSupplierQty'] as num?)?.toDouble(),
-        consumedQty: (json['consumedQty'] as num?)?.toDouble(),
-        frozenUnitQty: (json['frozenUnitQty'] as num?)?.toDouble(),
-        supplierEnding: (json['supplierEnding'] as num?)?.toDouble(),
-        remark: json['remark'] as String?,
-        sourceApplications: [
-          for (final entry
-              in (json['sourceApplications'] as List<dynamic>? ??
-                  const <dynamic>[]))
-            SubcontractSourceApplicationRef.fromJson(
-              entry as Map<String, dynamic>,
-            ),
-        ],
-      );
+  factory SubcontractDocItem.fromJson(
+    Map<String, dynamic> json,
+  ) => SubcontractDocItem(
+    extraColumns: BusinessColumn.read(json['extraColumns']),
+    allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+    bomMissing: json['bomMissing'] == true,
+    id: json['id'] as String?,
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    unitId: json['unitId'] as String?,
+    unitRate: double.tryParse(json['unitRate']?.toString() ?? ''),
+    unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    qty: double.tryParse(json['qty']?.toString() ?? ''),
+    qtyText: recordedDocumentDecimal(json, 'qty'),
+    price: (json['price'] as num?)?.toDouble(),
+    priceText: receiptRecordedDecimal(json, 'price'),
+    totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),
+    amountOriginal: (json['amountOriginal'] as num?)?.toDouble(),
+    amountOriginalText: receiptRecordedDecimal(json, 'amountOriginal'),
+    amountLocal: (json['amountLocal'] as num?)?.toDouble(),
+    amountLocalText: receiptRecordedDecimal(json, 'amountLocal'),
+    checkQty: (json['checkQty'] as num?)?.toDouble(),
+    orderQty: (json['orderQty'] as num?)?.toDouble(),
+    differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
+    sourceOrderDifferenceQtyText: receiptRecordedDecimal(
+      json,
+      'sourceOrderDifferenceQty',
+    ),
+    sourceOrderDifferenceUnitId: json['sourceOrderDifferenceUnitId'] as String?,
+    receivedQty: (json['receivedQty'] as num?)?.toDouble(),
+    settledLossQty: (json['settledLossQty'] as num?)?.toDouble(),
+    legacyIssuedQty: (json['issuedQty'] as num?)?.toDouble(),
+    returnedQty: (json['returnedQty'] as num?)?.toDouble(),
+    wastedQty: (json['wastedQty'] as num?)?.toDouble(),
+    endingQty: (json['endingQty'] as num?)?.toDouble(),
+    standardQty: (json['standardQty'] as num?)?.toDouble(),
+    wasteRate: (json['wasteRate'] as num?)?.toDouble(),
+    cause: json['cause'] as String?,
+    weight: (json['weight'] as num?)?.toDouble(),
+    qtyFromWeight: json['qtyFromWeight'] == true,
+    girthQty: (json['girthQty'] as num?)?.toDouble(),
+    boxQty: (json['boxQty'] as num?)?.toDouble(),
+    parentGoodsId: json['parentGoodsId'] as String?,
+    parentColorId: json['parentColorId'] as String?,
+    applicationItemId: json['applicationItemId'] as String?,
+    orderItemId: json['orderItemId'] as String?,
+    orderId: json['orderId'] as String?,
+    orderBillNo: json['orderBillNo'] as String?,
+    receiptItemId: json['receiptItemId'] as String?,
+    materialIssueItemId: json['materialIssueItemId'] as String?,
+    planItemId: json['planItemId'] as String?,
+    sourceDocNo: json['sourceDocNo'] as String?,
+    atSupplierQty: (json['atSupplierQty'] as num?)?.toDouble(),
+    consumedQty: (json['consumedQty'] as num?)?.toDouble(),
+    frozenUnitQty: (json['frozenUnitQty'] as num?)?.toDouble(),
+    supplierEnding: (json['supplierEnding'] as num?)?.toDouble(),
+    remark: json['remark'] as String?,
+    sourceApplications: [
+      for (final entry
+          in (json['sourceApplications'] as List<dynamic>? ??
+              const <dynamic>[]))
+        SubcontractSourceApplicationRef.fromJson(entry as Map<String, dynamic>),
+    ],
+  );
 }
 
 /// 委外订货行的来源申请引用（V463 合并行多来源）。

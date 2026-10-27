@@ -1,5 +1,18 @@
 # ER 草图
 
+## 客户多人负责人（2026-10-27）
+
+```mermaid
+erDiagram
+    clients ||--o{ client_co_owners : additional_owners
+    employees ||--o{ client_co_owners : employee_id
+    employees o|--o{ clients : primary_owner_employee_id
+    clients ||--o{ client_visibility_grants : read_only_viewers
+    clients ||--o{ client_access_change_events : versioned_access_evidence
+```
+
+主负责人保留在客户主档，其余负责人使用关联表。客户范围按存在关系筛选，避免查询或金额被多人关联重复累计；历史销售单据和审批责任不随客户负责人设置改写，见[修复记录](../99-项目治理/2026-10-27-登录历史与客户资料权限及多人负责人.md)。
+
 ## 采购委外提前结束 (V922/V923)
 
 ```mermaid

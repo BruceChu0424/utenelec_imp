@@ -68,7 +68,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
         registry.addInterceptor(new MasterReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/master/**");
         registry.addInterceptor(new com.uten.imp.common.report.PurchasePrintReadScopeInterceptor(readScopes,currentUser))
-                .addPathPatterns("/api/purchase/orders/*/print-data");
+                .addPathPatterns(com.uten.imp.common.report.ProcurementReadRoutes.printDataPaths().toArray(String[]::new));
         registry.addInterceptor(new com.uten.imp.common.report.LegacyExportReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/**/export");
         // 拦截所有模块的导出端点及工资条 PDF 下载；这些端点均为 POST，

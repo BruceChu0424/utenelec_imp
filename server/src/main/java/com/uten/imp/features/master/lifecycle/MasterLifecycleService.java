@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -218,7 +217,7 @@ public class MasterLifecycleService {
                                 Map<UUID, MasterBatchResult.ItemResult> results) {
         Map<UUID, Row> rows = new LinkedHashMap<>();
         for (Row row : lock(kind, requested.keySet())) rows.put(row.id(), row);
-        Predicate<UUID> writable = access.writableOwner(kind);
+        var writable = access.writableObject(kind, rows.keySet());
         List<Row> allowed = new ArrayList<>();
         for (var entry : requested.entrySet()) {
             UUID id = entry.getKey();
@@ -226,7 +225,7 @@ public class MasterLifecycleService {
             if (row == null) {
                 results.put(id, new MasterBatchResult.ItemResult(id, null, false,
                         kind.noun() + "不存在或已被删除，请刷新后重试"));
-            } else if (!writable.test(row.owner())) {
+            } else if (!writable.test(row.id(), row.owner())) {
                 // 与单条编辑一致：无权写的对象按「不存在」口径处理，不透露它归谁。
                 results.put(id, new MasterBatchResult.ItemResult(id, null, false,
                         kind.noun() + "不存在或你没有修改它的权限"));

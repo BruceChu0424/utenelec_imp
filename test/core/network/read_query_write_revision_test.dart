@@ -31,6 +31,10 @@ void main() {
           '$prefix/sales/orders/shippable-lines/selection',
           '$prefix/master/clients/search-context',
           '$prefix/master/suppliers/search-context',
+          for (final module in ['purchase', 'subcontract']) ...[
+            '$prefix/$module/orders/print-authorization',
+            '$prefix/operations/workbench/$module/export',
+          ],
           for (final domain in [
             'sales',
             'purchase',
@@ -60,6 +64,12 @@ void main() {
         '/report-export-jobs/$id/approve',
         '/report-export-jobs/not-a-uuid/download',
         '/other/report-export-jobs',
+        '/sales/orders/print-authorization',
+        '/purchase/orders/print-authorization/save',
+        '/other/subcontract/orders/print-authorization',
+        '/operations/workbench/warehouse/export',
+        '/operations/workbench/subcontract/export/confirm',
+        '/subcontract/orders/approve',
       ]) {
         expect(
           isBusinessWrite(RequestOptions(method: 'POST', path: route)),
@@ -136,6 +146,10 @@ void main() {
       await dio.post<dynamic>(
         '/procurement/inspection/PURCHASE/receipt-1/decide-batch/receipt',
       );
+      for (final module in ['purchase', 'subcontract']) {
+        await dio.post<dynamic>('/$module/orders/print-authorization');
+        await dio.post<dynamic>('/operations/workbench/$module/export');
+      }
       expect(writes, isEmpty);
       await dio.post<dynamic>('/production/material-analyses/preview');
       await dio.put<dynamic>(

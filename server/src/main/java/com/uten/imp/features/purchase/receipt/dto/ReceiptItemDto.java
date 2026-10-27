@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 收货明细返回 DTO。 */
 @Getter
 
-public class ReceiptItemDto {
+public class ReceiptItemDto extends com.uten.imp.common.finance.ProcurementSourceOrderDifferenceResponse {
     @lombok.Setter private String giftReplacementIntent;
     @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
     @lombok.Setter private BigDecimal giftReturnedQty = BigDecimal.ZERO;

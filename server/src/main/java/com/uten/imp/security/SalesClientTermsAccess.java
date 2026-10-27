@@ -12,6 +12,6 @@ public final class SalesClientTermsAccess {
 
     /** Preserve the existing order-reader entry while allowing every actual sales form. */
     public static final String READ = "hasAuthority('sales_order:view') or " + FORM;
-    public static final String SETTLEMENT_OPTIONS = "hasAuthority('payment_style:view') or " + FORM;
-    public static final String CURRENCY_OPTIONS = "hasAuthority('currency:view') or " + FORM;
+    public static final String SETTLEMENT_OPTIONS = "hasAnyAuthority('payment_style:view','client:finance') or " + FORM;
+    public static final String CURRENCY_OPTIONS = "hasAnyAuthority('currency:view','client:finance') or " + FORM;
 }

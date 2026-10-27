@@ -39,6 +39,7 @@ import '../widgets/client_access_batch_dialog.dart';
 import '../widgets/client_access_panel.dart';
 import '../widgets/client_master_edit.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_edit_owner.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_create_fields.dart';
@@ -249,7 +250,12 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       inlineCreation: (pane) => MasterInlineCreateConfig(
         namespace: 'clients.${pane.categoryId}',
         fields: masterInlineCreateFields(
-          buildClientFields(const {}, const [], l10n: basicDataL10n(context)),
+          buildClientFields(
+            const {},
+            const [],
+            l10n: basicDataL10n(context),
+            financialWritable: perms.contains(Perm.clientFinance),
+          ),
           excluded: {if (!canChangeStatus) 'status'},
           options: {
             'defaultSettlementMethodId': () async => [
@@ -282,105 +288,110 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       icon: Icons.people_outline,
       defaultCodePrefix: 'KH',
       columns: _visibleClientColumns(basicDataL10n(context)),
-      inlineFields: {
-        'name': MasterInlineField<ClientListItem>(
-          key: 'name',
-          read: (row) => row.name,
-          required: true,
-        ),
-        'fullName': MasterInlineField<ClientListItem>(
-          key: 'fullName',
-          read: (row) => row.fullName,
-        ),
-        'nameEn': MasterInlineField<ClientListItem>(
-          key: 'nameEn',
-          read: (row) => row.nameEn,
-        ),
-        'region': MasterInlineField<ClientListItem>(
-          key: 'region',
-          read: (row) => row.region,
-        ),
-        'placeId': MasterInlineField<ClientListItem>(
-          key: 'placeId',
-          read: (row) => row.placeId,
-        ),
-        'legalPerson': MasterInlineField<ClientListItem>(
-          key: 'legalPerson',
-          read: (row) => row.legalPerson,
-        ),
-        'linkman': MasterInlineField<ClientListItem>(
-          key: 'linkman',
-          read: (row) => row.linkman,
-          required: true,
-        ),
-        'mobile': MasterInlineField<ClientListItem>(
-          key: 'mobile',
-          read: (row) => row.mobile,
-        ),
-        'phone': MasterInlineField<ClientListItem>(
-          key: 'phone',
-          read: (row) => row.phone,
-        ),
-        'phone2': MasterInlineField<ClientListItem>(
-          key: 'phone2',
-          read: (row) => row.phone2,
-        ),
-        'fax': MasterInlineField<ClientListItem>(
-          key: 'fax',
-          read: (row) => row.fax,
-        ),
-        'postcode': MasterInlineField<ClientListItem>(
-          key: 'postcode',
-          read: (row) => row.postcode,
-        ),
-        'address': MasterInlineField<ClientListItem>(
-          key: 'address',
-          read: (row) => row.address,
-        ),
-        'bank': MasterInlineField<ClientListItem>(
-          key: 'bank',
-          read: (row) => row.bank,
-        ),
-        'bankAccount': MasterInlineField<ClientListItem>(
-          key: 'bankAccount',
-          read: (row) => row.bankAccount,
-        ),
-        'taxId': MasterInlineField<ClientListItem>(
-          key: 'taxId',
-          read: (row) => row.taxId,
-        ),
-        'website': MasterInlineField<ClientListItem>(
-          key: 'website',
-          read: (row) => row.website,
-        ),
-        'tday': MasterInlineField<ClientListItem>(
-          key: 'tday',
-          read: (row) => row.tday,
-          type: MasterFieldType.integer,
-          validate: (value) => value is int && value < 0 ? '天数不能为负数' : null,
-        ),
-        'creditFloor': MasterInlineField<ClientListItem>(
-          key: 'creditFloor',
-          read: (row) => row.creditFloor,
-          type: MasterFieldType.money,
-        ),
-        'defaultSettlementMethodName': MasterInlineField<ClientListItem>(
-          key: 'defaultSettlementMethodId',
-          read: (row) => row.defaultSettlementMethodId,
-          type: MasterFieldType.custom,
-          cellBuilder: (context, row, field) => MasterInlineOptionsCell(
-            field: field,
-            currentLabel: row.defaultSettlementMethodName,
-            load: () async => [
-              for (final method
-                  in await ref
-                      .read(referenceMethodRepositoryProvider)
-                      .settlementMethods())
-                MasterSelectOption(value: method.id, label: method.name),
-            ],
+      inlineFields:
+          {
+            'name': MasterInlineField<ClientListItem>(
+              key: 'name',
+              read: (row) => row.name,
+              required: true,
+            ),
+            'fullName': MasterInlineField<ClientListItem>(
+              key: 'fullName',
+              read: (row) => row.fullName,
+            ),
+            'nameEn': MasterInlineField<ClientListItem>(
+              key: 'nameEn',
+              read: (row) => row.nameEn,
+            ),
+            'region': MasterInlineField<ClientListItem>(
+              key: 'region',
+              read: (row) => row.region,
+            ),
+            'placeId': MasterInlineField<ClientListItem>(
+              key: 'placeId',
+              read: (row) => row.placeId,
+            ),
+            'legalPerson': MasterInlineField<ClientListItem>(
+              key: 'legalPerson',
+              read: (row) => row.legalPerson,
+            ),
+            'linkman': MasterInlineField<ClientListItem>(
+              key: 'linkman',
+              read: (row) => row.linkman,
+              required: true,
+            ),
+            'mobile': MasterInlineField<ClientListItem>(
+              key: 'mobile',
+              read: (row) => row.mobile,
+            ),
+            'phone': MasterInlineField<ClientListItem>(
+              key: 'phone',
+              read: (row) => row.phone,
+            ),
+            'phone2': MasterInlineField<ClientListItem>(
+              key: 'phone2',
+              read: (row) => row.phone2,
+            ),
+            'fax': MasterInlineField<ClientListItem>(
+              key: 'fax',
+              read: (row) => row.fax,
+            ),
+            'postcode': MasterInlineField<ClientListItem>(
+              key: 'postcode',
+              read: (row) => row.postcode,
+            ),
+            'address': MasterInlineField<ClientListItem>(
+              key: 'address',
+              read: (row) => row.address,
+            ),
+            'bank': MasterInlineField<ClientListItem>(
+              key: 'bank',
+              read: (row) => row.bank,
+            ),
+            'bankAccount': MasterInlineField<ClientListItem>(
+              key: 'bankAccount',
+              read: (row) => row.bankAccount,
+            ),
+            'taxId': MasterInlineField<ClientListItem>(
+              key: 'taxId',
+              read: (row) => row.taxId,
+            ),
+            'website': MasterInlineField<ClientListItem>(
+              key: 'website',
+              read: (row) => row.website,
+            ),
+            'tday': MasterInlineField<ClientListItem>(
+              key: 'tday',
+              read: (row) => row.tday,
+              type: MasterFieldType.integer,
+              validate: (value) => value is int && value < 0 ? '天数不能为负数' : null,
+            ),
+            'creditFloor': MasterInlineField<ClientListItem>(
+              key: 'creditFloor',
+              read: (row) => row.creditFloor,
+              type: MasterFieldType.money,
+            ),
+            'defaultSettlementMethodName': MasterInlineField<ClientListItem>(
+              key: 'defaultSettlementMethodId',
+              read: (row) => row.defaultSettlementMethodId,
+              type: MasterFieldType.custom,
+              cellBuilder: (context, row, field) => MasterInlineOptionsCell(
+                field: field,
+                currentLabel: row.defaultSettlementMethodName,
+                load: () async => [
+                  for (final method
+                      in await ref
+                          .read(referenceMethodRepositoryProvider)
+                          .settlementMethods())
+                    MasterSelectOption(value: method.id, label: method.name),
+                ],
+              ),
+            ),
+          }..removeWhere(
+            (key, field) =>
+                clientFinancialFieldKeys.contains(field.key) &&
+                !perms.contains(Perm.clientFinance),
           ),
-        ),
-      },
       onInlineSave: (id, patch, original) {
         final boundary = ref.read(sensitiveReadBoundaryProvider);
         return ref
@@ -464,11 +475,26 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           ? null
           : '当前访问：${d.accessReasonLabel}，${d.readOnlyActionHint}',
       extraMenuItems: (pane, c) => [
+        if (perms.contains(Perm.clientFinance))
+          UtenMenuItem(
+            label: '维护财务资料',
+            icon: Icons.account_balance_outlined,
+            enabled: c.financialWritable,
+            onTap: () => pane.withDetail(
+              c.id,
+              (detail) => showClientMasterEdit(
+                context,
+                ref,
+                detail,
+                onSaved: () => pane.reload(),
+              ),
+            ),
+          ),
         UtenMenuItem(
           label: '负责人和可见人', // TODO(l10n): 补 arb
           icon: Icons.manage_accounts_outlined,
           enabled: perms.contains(Perm.clientAssign) && c.accessManageable,
-          onTap: () => pane.withDetail(c.id, (d) => _showClientAccess(pane, d)),
+          onTap: () => _showClientAccess(pane, c),
         ),
       ],
       extraBatchMenuItems: (pane, ids) {
@@ -537,7 +563,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   Future<void> _showClientCreate({String? draftCategoryId}) async {
-    final settlementMethods = await _loadSettlementMethods();
+    final settlementMethods =
+        ref.read(currentPermissionsProvider).contains(Perm.clientFinance)
+        ? await _loadSettlementMethods()
+        : const <ReferenceMethodOption>[];
     if (!mounted || settlementMethods == null) return;
     const iv = <String, String>{};
     final categoryId = draftCategoryId ?? _pane?.categoryId;
@@ -552,6 +581,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         iv,
         settlementMethods,
         l10n: basicDataL10n(context),
+        financialWritable: ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.clientFinance),
       ),
       initialValues: const {'status': '使用'},
       fixedValues: {'categoryId': ?categoryId},
@@ -586,18 +618,83 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
 
   Future<void> _showClientAccess(
     MasterEntityPaneController<ClientListItem, ClientDetail> pane,
-    ClientDetail detail,
+    ClientListItem row,
   ) async {
+    // Bind to the actual rendered pane rather than a previously selected category.
+    // Access assignment has its own capability and may be allowed on an unassigned
+    // customer whose ordinary master fields are still read-only.
+    final paneState = pane is State ? pane as State : null;
+    if (!mounted ||
+        paneState == null ||
+        !paneState.mounted ||
+        pane.busy ||
+        !row.accessManageable ||
+        !ref.read(currentPermissionsProvider).contains(Perm.clientAssign)) {
+      return;
+    }
     final repository = ref.read(clientRepositoryProvider);
-    final saved = await showClientAccessPanel(
-      context: context,
-      ref: ref,
-      clientId: detail.id,
-      clientName: detail.name ?? detail.code ?? '客户',
-      loader: repository.access,
-      saver: repository.updateAccess,
+    final saved = await pane.runExclusive(
+      () => showClientAccessPanel(
+        context: paneState.context,
+        ref: ref,
+        clientId: row.id,
+        clientName: row.name ?? row.code ?? '客户',
+        loader: repository.access,
+        saver: repository.updateAccess,
+      ),
     );
-    if (saved != null && mounted) await pane.reload();
+    if (saved != null && mounted && paneState.mounted) await pane.reload();
+  }
+
+  Widget _clientOwnerCell(BuildContext cellContext, ClientListItem row) {
+    if (!row.accessManageable ||
+        !ref.read(currentPermissionsProvider).contains(Perm.clientAssign)) {
+      return Text(
+        row.ownersLabel,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+    return Tooltip(
+      message: '设置负责人和可见人',
+      child: TextButton(
+        key: ValueKey('client-owner-access-${row.id}'),
+        style: TextButton.styleFrom(
+          alignment: Alignment.centerLeft,
+          padding: EdgeInsets.zero,
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        onPressed: () async {
+          if (!cellContext.mounted) return;
+          final paneState = cellContext
+              .findAncestorStateOfType<
+                State<MasterEntityDetailPane<ClientListItem, ClientDetail>>
+              >();
+          if (paneState
+              is MasterEntityPaneController<ClientListItem, ClientDetail>) {
+            await _showClientAccess(
+              paneState
+                  as MasterEntityPaneController<ClientListItem, ClientDetail>,
+              row,
+            );
+          }
+        },
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                row.ownersLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.manage_accounts_outlined, size: 16),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 多选客户批量设负责人/可见人：一个端点一个事务，任一客户被拒则整批不生效
@@ -608,43 +705,76 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     required bool owner,
   }) async {
     if (pane.busy || ids.isEmpty) return;
-    final result = await showClientAccessBatchDialog(
-      context: context,
-      ref: ref,
-      clientCount: ids.length,
-      assignOwner: owner,
+    final clientIds = ids.toList(growable: false);
+    final submission = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.clientView, Perm.clientAssign},
     );
-    if (result == null || !mounted) return;
-    final ok = await pane.runExclusive(
-      () => context.guardRun(
-        () async {
-          await ref
-              .read(clientRepositoryProvider)
-              .updateAccessBatch(
-                ClientAccessBatchUpdate(
-                  clientIds: ids.toList(growable: false),
-                  ownerEmployeeId: owner ? result.employeeIds.first : null,
-                  viewerEmployeeIds: owner ? null : result.employeeIds,
-                  reason: result.reason,
+    try {
+      if (!await submission.bindRequests() ||
+          !mounted ||
+          !submission.isCurrent) {
+        return;
+      }
+      final result = await showClientAccessBatchDialog(
+        context: context,
+        ref: ref,
+        clientCount: clientIds.length,
+        assignOwner: owner,
+        submissionOwner: submission,
+      );
+      if (result == null || !mounted || !submission.isCurrent) return;
+      final ok = await pane.runExclusive(() async {
+        try {
+          await submission.run(
+            () => ref
+                .read(clientRepositoryProvider)
+                .updateAccessBatch(
+                  ClientAccessBatchUpdate(
+                    clientIds: clientIds,
+                    ownerEmployeeIds: owner ? result.employeeIds : null,
+                    viewerEmployeeIds: owner ? null : result.employeeIds,
+                    reason: result.reason,
+                  ),
                 ),
-              );
-        },
-        success: owner ? '已批量设置负责人' : '已批量设置可见人', // TODO(l10n): 补 arb
-        errorFallback: '批量设置失败，请稍后重试', // TODO(l10n): 补 arb
-      ),
-    );
-    if (ok == true && mounted) await pane.reload();
+          );
+          if (!mounted || !submission.isCurrent) return false;
+          context.appSuccess(owner ? '已批量设置负责人' : '已批量设置可见人');
+          return true;
+        } on ApiException catch (error) {
+          if (mounted && submission.isCurrent) context.appError(error.message);
+          return false;
+        } catch (_) {
+          if (mounted && submission.isCurrent) context.appError('批量设置失败，请稍后重试');
+          return false;
+        }
+      });
+      if (ok == true && mounted && submission.isCurrent) await pane.reload();
+    } finally {
+      submission.dispose();
+    }
   }
 
   // ---- 客户列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 
   /// Columns shown in the table: the static list plus 外文名称 (ADR-134),
   /// whose label comes from arb and therefore needs a context.
-  static List<MasterColumnDef<ClientListItem>> _visibleClientColumns(
+  List<MasterColumnDef<ClientListItem>> _visibleClientColumns(
     AppLocalizations l10n,
   ) => [
     for (final c in _clientColumns) ...[
-      c,
+      if (c.key == 'ownerEmployeeName')
+        MasterColumnDef<ClientListItem>(
+          key: c.key,
+          label: c.label,
+          width: c.width,
+          value: c.value,
+          cellBuilder: _clientOwnerCell,
+          cellBuilderHandlesSemantics: true,
+        )
+      else
+        c,
       // ADR-134: 外文名称 right after the full name; the label comes from arb.
       if (c.key == 'fullName')
         MasterColumnDef<ClientListItem>(
@@ -718,9 +848,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       label: '负责人',
       width: 120,
       // 2026-09-14：老库未匹配到员工的行 owner 为空——显示未分配而不是裸数字 ID。
-      value: (m) => (m.ownerEmployeeName?.trim().isNotEmpty ?? false)
-          ? m.ownerEmployeeName
-          : '未分配',
+      value: (m) => m.ownersLabel,
     ),
     MasterColumnDef(
       key: 'legalPerson',

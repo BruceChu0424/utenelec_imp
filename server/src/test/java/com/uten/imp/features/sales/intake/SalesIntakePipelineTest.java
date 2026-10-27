@@ -342,7 +342,7 @@ class SalesIntakePipelineTest {
         IntakeFixture.FixtureDocument doc = fixture.document("UJ23");
         UUID client = fixture.client("CLIENT_B").id();
         lookup.profileOverrides.put(client, new ClientProfile(client, "C-B", "Bravo", "bravo--约旦", null, null, null,
-                "+962-2-0000000", null, "Old address", null, null, "约旦", null, null, null, "使用", List.of(), List.of(), true));
+                "+962-2-0000000", null, "Old address", null, null, "约旦", null, null, null, "使用", List.of(), List.of(), true, true));
         FakeJobContext ctx = FakeJobContext.of("UJ23.xlsx", "XLSX", IntakeFixture.toXlsx(doc), "quote");
         ctx.params.put("clientId", client.toString());
         Map<String, Object> result = run(ctx, false);
@@ -355,6 +355,14 @@ class SalesIntakePipelineTest {
         assertThat(address.get("defaultChecked")).isEqualTo(false);
         Map<String, Object> nameEn = enrichment.stream().filter(e -> "nameEn".equals(e.get("field"))).findFirst().orElseThrow();
         assertThat(nameEn.get("defaultChecked")).isEqualTo(true);
+
+        lookup.profileOverrides.put(client, new ClientProfile(client, "C-B", "Bravo", "bravo--约旦", null, null, null,
+                "+962-2-0000000", null, "Old address", null, null, "约旦", null, null, null, "使用", List.of(), List.of(), true, false));
+        FakeJobContext salesOnly = FakeJobContext.of("UJ23.xlsx", "XLSX", IntakeFixture.toXlsx(doc), "quote");
+        salesOnly.params.put("clientId", client.toString());
+        @SuppressWarnings("unchecked")
+        var ordinaryEnrichment = (List<Map<String,Object>>)((Map<?,?>)run(salesOnly,false).get("client")).get("enrichment");
+        assertThat(ordinaryEnrichment).extracting(e -> e.get("field")).contains("nameEn", "address").doesNotContain("taxId");
 
         lookup.profileOverrides.put(client, new ClientProfile(client, "C-B", "Bravo", null, null, null, null, null, null, null,
                 null, null, "约旦", null, null, null, "使用", List.of(), List.of(), false));

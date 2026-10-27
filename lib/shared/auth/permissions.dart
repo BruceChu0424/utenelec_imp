@@ -181,6 +181,7 @@ abstract final class Perm {
   /// 客户主档（基础资料；已将 client:view 授予全部部门）
   static const clientView = 'client:view';
   static const clientEdit = 'client:edit';
+  static const clientFinance = 'client:finance';
   static const clientExport = 'client:export';
   static const clientViewAll = 'client:view:all';
   static const clientAssign = 'client:assign';

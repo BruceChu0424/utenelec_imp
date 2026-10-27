@@ -749,6 +749,7 @@ public class PurchaseReturnService {
     }
 
     private ReturnDetail toDetail(PurchaseReturn r, List<ReturnItemDto> items) {
+        com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.enrich(em, access, "PURCHASE", items);
         boolean priceMasked = purchasePriceMasked();
         List<ReturnItemDto> safeItems = priceMasked
                 ? items.stream().map(PurchaseReturnService::maskItemPrices).toList()
@@ -777,7 +778,9 @@ public class PurchaseReturnService {
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getReceiptItemId(), it.getOrderItemId(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark());
-        dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftQty(it.getGiftQty());return dto;
+        dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftQty(it.getGiftQty());
+        it.copySourceOrderDifferenceTo(dto);
+        return dto;
     }
 
 

@@ -33,8 +33,9 @@ class ClientNameEnTest {
     private final CategoryDrivenCodeService codes = mock(CategoryDrivenCodeService.class);
     private final ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
     private final ClientCategory category = new ClientCategory();
+    private final EntityManager em = mock(EntityManager.class);
     private final ClientService service = new ClientService(clients, categories, mock(TxSessionVars.class),
-            mock(EntityManager.class), codes, accessPolicy, mock(EmployeeRepository.class),
+            em, codes, accessPolicy, mock(EmployeeRepository.class),
             mock(EmployeeNameResolver.class));
 
     @AfterEach
@@ -53,6 +54,11 @@ class ClientNameEnTest {
 
     @Test
     void updateKeepsLearnedNameWhenTheKeyIsMissingAndClearsItWhenBlank() {
+        when(accessPolicy.canWrite(any(Client.class), org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        var owners = mock(jakarta.persistence.Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(owners);
+        when(owners.setParameter(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(owners);
+        when(owners.getResultList()).thenReturn(java.util.List.of());
         category.setId(UUID.randomUUID());
         when(categories.findById(category.getId())).thenReturn(Optional.of(category));
         when(codes.allocateForUpdate(any(), any(), any(), any(), any()))

@@ -24,12 +24,16 @@ class ClientAccessPolicyTest {
     private final SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
     private final EntityManager entityManager = mock(EntityManager.class);
     private final Query grantQuery = mock(Query.class);
+    private final Query coOwnerQuery = mock(Query.class);
     private final ClientAccessPolicy policy =
             new ClientAccessPolicy(ownerVisibility, currentUser, entityManager);
 
     @BeforeEach
     void setUpGrantQuery() {
-        when(entityManager.createNativeQuery(anyString())).thenReturn(grantQuery);
+        when(entityManager.createNativeQuery(anyString())).thenAnswer(call ->
+                call.getArgument(0,String.class).contains("client_co_owners") ? coOwnerQuery : grantQuery);
+        when(coOwnerQuery.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(coOwnerQuery);
+        when(coOwnerQuery.getResultList()).thenReturn(List.of());
         when(grantQuery.setParameter(anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(grantQuery);
         when(grantQuery.getResultList()).thenReturn(List.of());

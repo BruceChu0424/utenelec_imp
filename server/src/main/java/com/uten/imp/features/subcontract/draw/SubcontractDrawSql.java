@@ -62,8 +62,10 @@ public final class SubcontractDrawSql {
                       FROM subcontract_order_item_sources source
                       WHERE source.order_item_id = oi.id),
                      CASE WHEN oi.application_item_id IS NULL THEN ARRAY[]::uuid[]
-                          ELSE ARRAY[oi.application_item_id] END) AS application_item_ids
-            """;
+                          ELSE ARRAY[oi.application_item_id] END) AS application_item_ids,
+            %s AS difference_qty
+            """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql(
+                    "oi.qty", "oi.received_qty", "oi.returned_qty"));
 
     /** 本订货明细是否挂着仓库还没发出的领料草稿行。 */
     static final String PENDING_DRAFT_EXISTS = """

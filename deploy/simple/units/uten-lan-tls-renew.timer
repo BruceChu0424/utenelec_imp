@@ -1,0 +1,11 @@
+[Unit]
+Description=Check company LAN certificate daily and renew within 30 days of expiry
+
+[Timer]
+OnCalendar=*-*-* 03:45:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=uten-lan-tls-renew.service
+
+[Install]
+WantedBy=timers.target

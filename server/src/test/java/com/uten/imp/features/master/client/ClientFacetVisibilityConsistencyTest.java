@@ -72,7 +72,9 @@ class ClientFacetVisibilityConsistencyTest {
         // 空值计数按 owner_employee_id is null（= 前端列「未分配」）。
         assertThat(sql.getAllValues()).anySatisfy(statement -> {
             assertThat(statement)
-                    .contains("join employees on employees.id = clients.owner_employee_id")
+                    .contains("join employees on (employees.id = clients.owner_employee_id")
+                    .contains("client_co_owners co_owner")
+                    .contains("co_owner.employee_id=employees.id")
                     .contains("group by employees.id, employees.full_name");
         });
         assertThat(sql.getAllValues()).anySatisfy(statement -> {

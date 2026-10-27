@@ -37,6 +37,10 @@ class PartyListNameBatchTest {
     private SupplierService supplierService;
 
     @BeforeEach void services() {
+        Query coOwners = mock(Query.class);
+        when(em.createNativeQuery(contains("client_co_owners"))).thenReturn(coOwners);
+        when(coOwners.setParameter(anyString(),any())).thenReturn(coOwners);
+        when(coOwners.getResultList()).thenReturn(List.of());
         clientService = new ClientService(clients, mock(ClientCategoryRepository.class), null, em,
                 null, access, null, names);
         supplierService = new SupplierService(suppliers, mock(SupplierCategoryRepository.class), null,
@@ -49,10 +53,9 @@ class PartyListNameBatchTest {
         when(clients.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(rows, PageRequest.of(2, 4), 100));
         when(names.namesOf(anyCollection())).thenReturn(Map.of(owner, "历史员工"));
-        var scope = mock(ClientAccessPolicy.ClientScope.class);
+        var scope = new ClientAccessPolicy.ClientScope(
+                new com.uten.imp.security.OwnerVisibility.OwnerScope(false, java.util.Set.of(owner),java.util.Set.of(owner)),java.util.Set.of(),true);
         when(access.evaluate()).thenReturn(scope);
-        when(access.canWrite(rows.get(0), scope)).thenReturn(true);
-        when(access.canManageAccess(rows.get(2), scope)).thenReturn(true);
 
         var result = clientService.list(mock(ClientQueryFilter.class), 3, 4, null, null);
 
@@ -62,8 +65,8 @@ class PartyListNameBatchTest {
                 .containsExactly("历史员工", null, "历史员工", null);
         assertThat(result.getItems()).extracting(row -> row.getId())
                 .containsExactlyElementsOf(rows.stream().map(Client::getId).toList());
-        assertThat(result.getItems()).extracting(row -> row.isWritable()).containsExactly(true, false, false, false);
-        assertThat(result.getItems()).extracting(row -> row.isAccessManageable()).containsExactly(false, false, true, false);
+        assertThat(result.getItems()).extracting(row -> row.isWritable()).containsExactly(true, false, true, false);
+        assertThat(result.getItems()).extracting(row -> row.isAccessManageable()).containsExactly(true, true, true, false);
         assertThat(result.getItems()).allSatisfy(row -> {
             assertThat(row.getEmpId()).isEqualTo("0017. 原文");
             assertThat(row.getCredit()).isEqualByComparingTo("0.0001");

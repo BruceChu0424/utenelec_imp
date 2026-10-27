@@ -42,12 +42,15 @@ class ClientListItem {
     this.categoryId,
     this.ownerEmployeeId,
     this.ownerEmployeeName,
+    this.ownerEmployeeIds = const [],
+    this.ownerEmployeeNames = const [],
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
     this.defaultShipmentPolicy,
     this.defaultCurrencyId,
     this.defaultCurrencyName,
     this.writable = false,
+    this.financialWritable = false,
     this.accessManageable = false,
     this.version,
   });
@@ -86,6 +89,11 @@ class ClientListItem {
   final int? legacyId;
   final String? categoryId; // 所属分类 id（客户资料页"搜客户定位分类"用）
   final String? ownerEmployeeId; // 当前负责人 UUID 真源
+  final List<String> ownerEmployeeIds;
+  final List<String> ownerEmployeeNames;
+  String get ownersLabel => ownerEmployeeNames.isNotEmpty
+      ? ownerEmployeeNames.join('、')
+      : ownerEmployeeName ?? '未分配';
   final String? ownerEmployeeName; // 当前负责人显示名
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
@@ -94,6 +102,7 @@ class ClientListItem {
   final String? defaultShipmentPolicy;
   final String? defaultCurrencyId;
   final String? defaultCurrencyName;
+  final bool financialWritable;
   final bool writable; // 对象范围允许维护；额外查看/单客户共享为 false
   final bool accessManageable; // 服务端已合并 client:assign 与对象范围判断
 
@@ -128,12 +137,23 @@ class ClientListItem {
     categoryId: json['categoryId'] as String?,
     ownerEmployeeId: json['ownerEmployeeId'] as String?,
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
+    ownerEmployeeIds:
+        (json['ownerEmployeeIds'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const [],
+    ownerEmployeeNames:
+        (json['ownerEmployeeNames'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const [],
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
     defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
     defaultCurrencyId: json['defaultCurrencyId'] as String?,
     defaultCurrencyName: json['defaultCurrencyName'] as String?,
     writable: json['writable'] as bool? ?? false,
+    financialWritable: json['financialWritable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
     version: (json['version'] as num?)?.toInt(),
   );
@@ -188,12 +208,15 @@ class ClientDetail {
     this.version,
     this.ownerEmployeeId,
     this.ownerEmployeeName,
+    this.ownerEmployeeIds = const [],
+    this.ownerEmployeeNames = const [],
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
     this.defaultShipmentPolicy,
     this.defaultCurrencyId,
     this.defaultCurrencyName,
     this.writable = false,
+    this.financialWritable = false,
     this.accessManageable = false,
     this.accessReason = ClientAccessReason.unknown,
   });
@@ -235,6 +258,11 @@ class ClientDetail {
   final String? remark; // 备注
   final int? version;
   final String? ownerEmployeeId;
+  final List<String> ownerEmployeeIds;
+  final List<String> ownerEmployeeNames;
+  String get ownersLabel => ownerEmployeeNames.isNotEmpty
+      ? ownerEmployeeNames.join('、')
+      : ownerEmployeeName ?? '未分配';
   final String? ownerEmployeeName;
   final String? defaultSettlementMethodId;
   final String? defaultSettlementMethodName;
@@ -243,6 +271,7 @@ class ClientDetail {
   final String? defaultShipmentPolicy;
   final String? defaultCurrencyId;
   final String? defaultCurrencyName;
+  final bool financialWritable;
   final bool writable;
   final bool accessManageable;
   final String accessReason;
@@ -310,12 +339,23 @@ class ClientDetail {
     version: (json['version'] as num?)?.toInt(),
     ownerEmployeeId: json['ownerEmployeeId'] as String?,
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
+    ownerEmployeeIds:
+        (json['ownerEmployeeIds'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const [],
+    ownerEmployeeNames:
+        (json['ownerEmployeeNames'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const [],
     defaultSettlementMethodId: json['defaultSettlementMethodId'] as String?,
     defaultSettlementMethodName: json['defaultSettlementMethodName'] as String?,
     defaultShipmentPolicy: json['defaultShipmentPolicy'] as String?,
     defaultCurrencyId: json['defaultCurrencyId'] as String?,
     defaultCurrencyName: json['defaultCurrencyName'] as String?,
     writable: json['writable'] as bool? ?? false,
+    financialWritable: json['financialWritable'] as bool? ?? false,
     accessManageable: json['accessManageable'] as bool? ?? false,
     accessReason: json['accessReason'] as String? ?? ClientAccessReason.unknown,
   );

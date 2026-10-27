@@ -75,6 +75,8 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
         Map<String, String> clientFields = request.clientId() == null
                 ? Map.of()
                 : ClientDocumentFields.normalizeAndValidate(request.clientFields());
+        if (clientFields.containsKey(ClientDocumentFields.TAX_ID))
+            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
         if (request.lines().isEmpty() && clientFields.isEmpty() && request.intakeJobId() == null
                 && !hasDocumentLearning(docType, request.docId())) {
             return;

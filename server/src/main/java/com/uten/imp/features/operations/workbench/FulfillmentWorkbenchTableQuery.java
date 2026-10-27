@@ -33,7 +33,7 @@ public record FulfillmentWorkbenchTableQuery(
      */
     static final Map<String, String> SORT_ONLY_FIELDS = Map.of(
             "warehouseName", "NULLIF(warehouse_name,'')", "openQty", "open_qty",
-            "differenceQty", "difference_qty");
+            "differenceQty", "difference_qty", "goodsCode", "goods_code");
     private record FilterField(String key, String expression, String parameter, boolean search) {}
     private static final List<FilterField> FILTER_FIELDS = filterFields();
 

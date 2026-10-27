@@ -58,7 +58,12 @@ public final class SubcontractDrawContracts {
             boolean canDraw,
             BigDecimal materialQty,
             String planNo,
-            List<UUID> applicationItemIds) {
+            List<UUID> applicationItemIds,
+            BigDecimal differenceQty) {
+        /** Cumulative finished-item delivery difference in the order's recorded unit. */
+        public String getDifferenceQtyExact() {
+            return com.uten.imp.common.util.DecimalText.of(differenceQty);
+        }
     }
 
     /** 列表能力位: 是否持有委外领料权限(新页面一律读它, 不在页面里判断权限常量)。 */

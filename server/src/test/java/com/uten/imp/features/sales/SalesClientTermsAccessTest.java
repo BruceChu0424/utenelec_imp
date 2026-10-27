@@ -170,9 +170,19 @@ class SalesClientTermsAccessTest {
         verifyNoInteractions(service, referenceService);
     }
 
+    @Test
+    void customerFinanceCanReadOptionsWithoutReadingSalesOrdersOrClientOrderDefaults() {
+        signIn("client:finance");
+        assertSettlementOptionsReadable();
+        assertCurrencyOptionsReadable();
+        assertThatThrownBy(() -> controller.masterDefaultTerms(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(controller::stats).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(service);
+    }
+
     @ParameterizedTest(name = "dictionary access does not grant master management to {0}")
-    @ValueSource(strings = {"sales_quote:create", "sales_quote:edit"})
-    void quoteFormCannotReadManagementDataOrChangeMasters(String permission) {
+    @ValueSource(strings = {"sales_quote:create", "sales_quote:edit", "client:finance"})
+    void dictionaryReadersCannotReadManagementDataOrChangeMasters(String permission) {
         signIn(permission);
         UUID currencyId = UUID.randomUUID();
         UUID settlementId = UUID.randomUUID();

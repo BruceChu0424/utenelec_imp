@@ -34,7 +34,8 @@ final _scannedReadPostPaths = [
 // Export tasks write reproducible queue/cache state, and selection snapshots
 // only read business facts. Keep these exact POST contracts separate from saves.
 final _businessReadPostPaths = [
-  RegExp(r'^/(?:api/)?purchase/orders/print-authorization$'),
+  RegExp(r'^/(?:api/)?(purchase|subcontract)/orders/print-authorization$'),
+  RegExp(r'^/(?:api/)?operations/workbench/(purchase|subcontract)/export$'),
   RegExp(r'^/(?:api/)?sales/orders/shippable-lines/selection$'),
   RegExp(r'^/(?:api/)?master/(clients|suppliers)/search-context$'),
   RegExp(

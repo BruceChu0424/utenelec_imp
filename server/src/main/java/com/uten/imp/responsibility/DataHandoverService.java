@@ -438,7 +438,7 @@ public class DataHandoverService {
         }
         if (scopes.contains("client")) {
             add(items, "client.owner", "客户负责人(内销、外贸、OEM统一)", "client", count(
-                    "SELECT count(*) FROM clients WHERE owner_employee_id=:source AND is_deleted=false", source.id()), DataHandoverAction.TRANSFER);
+                    "SELECT count(*) FROM clients WHERE is_deleted=false AND (owner_employee_id=:source OR EXISTS(SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id=clients.id AND co_owner.employee_id=:source))", source.id()), DataHandoverAction.TRANSFER);
             add(items, "client.scopeDelegations",
                     "查看该员工全部客户的授权(精确展开到本次转出客户)", "client",
                     count("""
@@ -453,7 +453,7 @@ public class DataHandoverService {
                                     AND history.event_type='rehire')
                               AND EXISTS (
                                   SELECT 1 FROM clients client
-                                  WHERE client.owner_employee_id=:source
+                                  WHERE (client.owner_employee_id=:source OR EXISTS(SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id=client.id AND co_owner.employee_id=:source))
                                     AND client.is_deleted=false)
                             """, source.id()), DataHandoverAction.TRANSFER);
         }
@@ -1122,7 +1122,7 @@ public class DataHandoverService {
 
     private void lockResponsibilityRows(
             UUID sourceId, Set<String> scopes, boolean includeWholePersonExtras) {
-        if (scopes.contains("client")) lock("SELECT id FROM clients WHERE owner_employee_id=:source AND is_deleted=false ORDER BY id FOR UPDATE", sourceId);
+        if (scopes.contains("client")) lock("SELECT id FROM clients WHERE is_deleted=false AND (owner_employee_id=:source OR EXISTS(SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id=clients.id AND co_owner.employee_id=:source)) ORDER BY id FOR UPDATE", sourceId);
         if (scopes.contains("goods")) {
             lock("SELECT id FROM goods WHERE owner_employee_id=:source AND is_deleted=false ORDER BY id FOR UPDATE", sourceId);
             lock("SELECT id FROM moulds WHERE keeper_id=:source AND is_deleted=false ORDER BY id FOR UPDATE", sourceId);

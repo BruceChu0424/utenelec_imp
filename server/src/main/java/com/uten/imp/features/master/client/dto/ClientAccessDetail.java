@@ -9,5 +9,10 @@ public record ClientAccessDetail(
         UUID ownerEmployeeId,
         String ownerEmployeeName,
         long accessVersion,
-        List<ClientAccessViewer> viewers) {
+        List<ClientAccessViewer> viewers,
+        List<ClientAccessViewer> owners) {
+    public ClientAccessDetail(UUID clientId, UUID ownerEmployeeId, String ownerEmployeeName,
+            long accessVersion, List<ClientAccessViewer> viewers) {
+        this(clientId, ownerEmployeeId, ownerEmployeeName, accessVersion, viewers, List.of());
+    }
 }

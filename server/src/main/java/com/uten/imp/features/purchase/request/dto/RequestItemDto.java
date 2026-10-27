@@ -55,6 +55,8 @@ public class RequestItemDto {
     public String getPhysicalPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(getPhysicalPendingQty());}
     public String getPhysicalRemainingQtyExact(){return com.uten.imp.common.util.DecimalText.of(physicalRemainingQty);}
     public String getRemainingGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(remainingGiftQty);}
+    public BigDecimal getDifferenceQty(){return com.uten.imp.common.finance.ProcurementDeliveryDifference.request(quantitySemantics,qty,giftQty,orderedQty,giftOrderedQty);}
+    public String getDifferenceQtyExact(){return com.uten.imp.common.util.DecimalText.of(getDifferenceQty());}
 
     private UUID id;
     private Integer lineNo;

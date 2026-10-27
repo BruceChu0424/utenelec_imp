@@ -9,9 +9,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class PurchasePrintAuthorizationTest {
-    private PurchaseOrderPrintService.PrintDocument document(UUID id,String supplier,boolean masked) {
-        return new PurchaseOrderPrintService.PrintDocument(id,"CD-1",LocalDate.of(2026,10,26),null,"合成公司","000",supplier,"原始联系人","123","仓库",
-                masked?"":"人民币",masked?"":"CNY","现金",masked?null:"1234567890123456.00000001",masked,"原文","制单员","财务审核员","财务已通过",List.of(),true);
+    private com.uten.imp.common.export.ProcurementOrderPrintDocument document(UUID id,String supplier,boolean masked) {
+        return new com.uten.imp.common.export.ProcurementOrderPrintDocument(id,"CD-1",LocalDate.of(2026,10,26),null,"合成公司","000",supplier,"原始联系人","123","仓库",
+                masked?"":"人民币",masked?"":"CNY","现金",masked?null:"1234567890123456.00000001",masked,"原文","制单员","财务审核员","财务已通过",List.of(),true,"PURCHASE");
     }
     @Test void theOpaqueDigestIsStableAndBindsOriginalContentAndPriceMask() throws Exception {
         UUID id=UUID.randomUUID();var original=document(id,"合成供应商",false);

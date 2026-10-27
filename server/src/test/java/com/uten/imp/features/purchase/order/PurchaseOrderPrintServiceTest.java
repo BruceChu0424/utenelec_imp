@@ -109,32 +109,43 @@ class PurchaseOrderPrintServiceTest {
         assertThat(document.lines()).hasSize(1);
     }
 
-    @Test void pendingReconfirmationCannotExportEvenWhenAnEarlierRevisionWasApproved() {
+    @Test void pendingReconfirmationCanExportCurrentFactsWithoutAnApprovalSignature() {
         when(detail.getFinanceApproval().status()).thenReturn("PENDING");
-        assertFinanceApprovalRequired();
-        verifyNoInteractions(em, branding, names);
+        var document = service.read(id);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.statusLabel()).isEqualTo("改量待财务复核");
+        assertThat(document.reviewerName()).isEmpty();
+        assertThat(document.lines()).hasSize(1);
+        verifyNoInteractions(names);
+        verify(em, never()).createNativeQuery(contains("procurement_order_approval_cases"));
     }
 
     @ParameterizedTest
     @CsvSource({"0,DRAFT", "0,PENDING", "0,REJECTED", "1,REJECTED",
             "1,LEGACY_EFFECTIVE", "-1,APPROVED", "2,APPROVED", "0,APPROVED"})
-    void unapprovedOrInactiveDocumentsCannotProducePrintFacts(short status, String financeStatus) {
+    void readableUnapprovedOrInactiveDocumentsKeepTheirRealStatusAndBlankFinanceSignature(short status, String financeStatus) {
         when(detail.getStatus()).thenReturn(status);
         when(detail.getFinanceApproval().status()).thenReturn(financeStatus);
-        assertFinanceApprovalRequired();
-        verifyNoInteractions(em, branding, names);
+        var document = service.read(id);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.reviewerName()).isEmpty();
+        assertThat(document.contentDigest()).matches("[a-f0-9]{64}");
+        verifyNoInteractions(names);
     }
 
-    @Test void missingFinanceProjectionFailsClosed() {
+    @Test void missingFinanceProjectionPrintsReadableHistoricalFactsWithoutInventingApproval() {
         when(detail.getFinanceApproval()).thenReturn(null);
-        assertFinanceApprovalRequired();
-        verifyNoInteractions(em, branding, names);
+        var document = service.read(id);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.statusLabel()).isEqualTo("历史已审");
+        assertThat(document.reviewerName()).isEmpty();
     }
 
-    @Test void missingOrderStatusFailsClosedEvenWhenFinanceProjectionIsApproved() {
+    @Test void missingOrderStatusNeverInventsAnApprovalSignature() {
         when(detail.getStatus()).thenReturn(null);
-        assertFinanceApprovalRequired();
-        verifyNoInteractions(em, branding, names);
+        var document = service.read(id);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.reviewerName()).isEmpty();
     }
 
     @Test void approvedWithoutRecordedReviewerLeavesSignatureBlank() {
@@ -173,17 +184,15 @@ class PurchaseOrderPrintServiceTest {
                 "purchase_orders", id, "采购单打印预览", "CD-1", null);
     }
 
-    @Test void controllerCannotBypassFinanceGuardOrRecordASuccessfulPreviewForRejectedExport() {
+    @Test void controllerRecordsTheCurrentPendingPrintWithoutAdvancingFinance() {
         var recorder = mock(AuditDetailViewRecorder.class);
         var controller = new PurchaseOrderController(orders, mock(ProcurementFinanceApprovalService.class), recorder);
         ReflectionTestUtils.setField(controller, "printService", service);
         when(detail.getFinanceApproval().status()).thenReturn("PENDING");
-
-        assertThatThrownBy(() -> controller.printData(id))
-                .isInstanceOfSatisfying(ApiException.class, failure ->
-                        assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS));
-
-        verifyNoInteractions(recorder, em, branding, names);
+        var document = controller.printData(id);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.reviewerName()).isEmpty();
+        verify(recorder).record("view_purchase_order_detail", "purchase_orders", id, "CD-1", null, "采购单打印预览");
     }
 
     @Test void directClosurePrintStatusDoesNotPresentTheBusinessDecisionAsAFinanceApproval() {
@@ -196,11 +205,4 @@ class PurchaseOrderPrintServiceTest {
         assertThat(PurchaseOrderPrintService.status(detail)).isEqualTo("已结束(历史财务批准)");
     }
 
-    private void assertFinanceApprovalRequired() {
-        assertThatThrownBy(() -> service.read(id))
-                .isInstanceOfSatisfying(ApiException.class, failure -> {
-                    assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS);
-                    assertThat(failure.getMessage()).isEqualTo("仅财务审核通过的采购单可导出单据");
-                });
-    }
 }

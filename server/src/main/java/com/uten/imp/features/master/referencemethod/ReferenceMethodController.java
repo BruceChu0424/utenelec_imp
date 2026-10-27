@@ -8,6 +8,7 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.SalesClientTermsAccess;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -44,7 +45,7 @@ public class ReferenceMethodController {
     private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
-    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.SETTLEMENT_OPTIONS)
+    @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS)
     public List<ReferenceMethodOption> settlement() {
         return service.settlementOptions();
     }

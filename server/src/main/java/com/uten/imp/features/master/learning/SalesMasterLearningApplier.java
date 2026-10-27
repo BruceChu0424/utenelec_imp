@@ -168,7 +168,7 @@ public class SalesMasterLearningApplier {
                 .setParameter("id", clientId)
                 .getResultList();
         if (rows.size() != 1 || Boolean.TRUE.equals(rows.getFirst()[1])) return false;
-        return clientAccess.canWriteOwner((UUID) rows.getFirst()[0], clientAccess.evaluate());
+        return clientAccess.canWrite(clientId, (UUID) rows.getFirst()[0], clientAccess.evaluate());
     }
 
     // ------------------------------------------------------------------
@@ -253,7 +253,10 @@ public class SalesMasterLearningApplier {
                     if (differs(client.getAddress(), value)) { client.setAddress(value); changed.add(key); }
                 }
                 case ClientDocumentFields.TAX_ID -> {
-                    if (differs(client.getTaxId(), value)) { client.setTaxId(value); changed.add(key); }
+                    if (differs(client.getTaxId(), value)) {
+                        com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+                        client.setTaxId(value); changed.add(key);
+                    }
                 }
                 default -> {
                     // 字段白名单已在保存事务里校验过, 这里不会出现。

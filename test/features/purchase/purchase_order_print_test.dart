@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/purchase/models/purchase_order_print_document.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_order_print_preview.dart';
 
@@ -144,20 +143,15 @@ void main() {
 
   for (final status in ['等待财务审核', '改量待财务复核', '财务退回', '已取消', '已反审', '已审']) {
     test(
-      'PDF generation rejects a document without finance approval: $status',
+      'visible order PDF keeps current status without a stale signature: $status',
       () async {
-        await expectLater(
-          buildPurchaseOrderPdf(
-            PurchaseOrderPrintDocument.fromJson(fixture(status: status)),
-          ),
-          throwsA(
-            isA<ApiException>().having(
-              (error) => error.code,
-              'code',
-              'FINANCE_APPROVAL_REQUIRED',
-            ),
-          ),
+        final document = PurchaseOrderPrintDocument.fromJson(
+          fixture(status: status),
         );
+        expect(document.reviewerName, isEmpty);
+        expect(document.statusLabel, status);
+        final bytes = await buildPurchaseOrderPdf(document);
+        expect(ascii.decode(bytes.take(5).toList()), '%PDF-');
       },
     );
   }
@@ -240,6 +234,14 @@ void main() {
       expect(find.text('单据状态：等待财务审核'), findsOneWidget);
       expect(find.text('审核：—'), findsOneWidget);
       expect(find.text('审核：实际财务审核员'), findsNothing);
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const Key('purchase-print-preview-print')));
+        for (var i = 0; i < 100 && printed == 0; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(printed, 1);
       expect(tester.takeException(), isNull);
     },
   );

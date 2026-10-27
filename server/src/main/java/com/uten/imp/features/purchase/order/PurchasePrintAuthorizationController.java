@@ -12,10 +12,10 @@ public class PurchasePrintAuthorizationController {
     private final PurchasePrintAuthorizationService service;
     public PurchasePrintAuthorizationController(PurchasePrintAuthorizationService service){this.service=service;}
     public record DocumentProof(@NotNull UUID id,@NotNull @Pattern(regexp="[0-9a-f]{64}") String contentDigest) { }
-    public record Request(@NotEmpty @Size(max=100) List<@Valid DocumentProof> documents) { }
+    public record Request(@NotEmpty @Size(max=100) List<@NotNull @Valid DocumentProof> documents) { }
     @PostMapping("/api/purchase/orders/print-authorization")
     @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
-    @com.uten.imp.security.StepUpExempt("只读核对原采购打印快照；沿原print-data权限与当前财务批准门槛")
+    @com.uten.imp.security.StepUpExempt("只读核对原采购打印快照；沿原print-data权限与内容摘要")
     @com.uten.imp.audit.AuditedRead("核对已生成的采购打印快照，授权完成不等于文件已交付")
     public ResponseEntity<Void> authorize(@Valid @RequestBody Request request,jakarta.servlet.http.HttpServletRequest servlet){
         com.uten.imp.audit.AuditRequestContext.markControlledRead(servlet);

@@ -101,6 +101,16 @@ class SalesMasterLearningAdapterTest {
     }
 
     @Test
+    void customerTaxIdWithoutFinanceFailsBeforeRegisteringAfterCommitLearning() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        Throwable thrown=catchThrowable(()->adapter.learnAfterCommit(request(Map.of("taxId","TAX-123"))));
+        assertThat(thrown).isInstanceOf(ApiException.class);
+        assertThat(((ApiException)thrown).getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+        assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
+        verify(applier,never()).apply(anyString(),any(),any(),any(),any(),anyMap());
+    }
+
+    @Test
     void learningRunsOnlyAfterCommitInNewTransactionsAndPurgesTheJobLast() {
         Map<String, Object> result = Map.of("lines", List.of(Map.of(
                 "key", "S1R9", "partNo", "GZ23/D", "status", "MATCHED",

@@ -45,6 +45,39 @@ void main() {
     });
   });
 
+  test(
+    'multiple owners preserve authoritative order and use list update contract',
+    () {
+      final settings = ClientAccessSettings.fromJson({
+        'owners': [
+          {'employeeId': 'first', 'name': '甲'},
+          {'employeeId': 'second', 'name': '乙'},
+        ],
+        'ownerEmployeeId': 'first',
+        'ownerEmployeeName': '甲',
+      });
+      expect(settings.effectiveOwners.map((person) => person.employeeId), [
+        'first',
+        'second',
+      ]);
+      const update = ClientAccessUpdate(
+        ownerEmployeeIds: ['first', 'second'],
+        viewerEmployeeIds: [],
+        expectedAccessVersion: 3,
+        reason: '协同负责',
+      );
+      expect(update.toJson()['ownerEmployeeIds'], ['first', 'second']);
+      expect(update.toJson().containsKey('ownerEmployeeId'), isFalse);
+      const batch = ClientAccessBatchUpdate(
+        clientIds: ['client'],
+        ownerEmployeeIds: ['first', 'second'],
+        reason: '交接',
+      );
+      expect(batch.toJson()['ownerEmployeeIds'], ['first', 'second']);
+      expect(batch.toJson().containsKey('viewerEmployeeIds'), isFalse);
+    },
+  );
+
   test('missing optional access fields fail closed to empty values', () {
     final settings = ClientAccessSettings.fromJson(const {});
 

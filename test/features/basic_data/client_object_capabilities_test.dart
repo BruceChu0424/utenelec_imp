@@ -13,6 +13,9 @@ void main() {
       'id': 'client-1',
       'name': '客户一号',
       'writable': false,
+      'financialWritable': true,
+      'ownerEmployeeNames': ['甲', '乙'],
+      'ownerEmployeeIds': ['first', 'second'],
       'accessManageable': true,
       'accessReason': 'UNASSIGNED',
     });
@@ -20,6 +23,8 @@ void main() {
     expect(list.writable, isTrue);
     expect(list.accessManageable, isFalse);
     expect(detail.writable, isFalse);
+    expect(detail.financialWritable, isTrue);
+    expect(detail.ownersLabel, '甲、乙');
     expect(detail.accessManageable, isTrue);
     expect(detail.accessReasonLabel, '待分配(可设置负责人)');
     expect(detail.readOnlyActionHint, '请先设置负责人');
@@ -32,6 +37,8 @@ void main() {
     expect(list.writable, isFalse);
     expect(list.accessManageable, isFalse);
     expect(detail.writable, isFalse);
+    expect(detail.financialWritable, isFalse);
+    expect(list.financialWritable, isFalse);
     expect(detail.accessManageable, isFalse);
     expect(detail.accessReason, ClientAccessReason.unknown);
     expect(detail.accessReasonLabel, '只读(访问来源未标明)');

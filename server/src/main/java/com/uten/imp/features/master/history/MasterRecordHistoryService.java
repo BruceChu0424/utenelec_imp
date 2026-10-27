@@ -11,6 +11,7 @@ import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
+import com.uten.imp.features.master.client.ClientFinancialPolicy;
 import com.uten.imp.features.master.goods.history.GoodsOperationHistoryService;
 import com.uten.imp.security.*;
 import jakarta.persistence.EntityManager;
@@ -135,6 +136,7 @@ public class MasterRecordHistoryService {
       Set.of(
           "warehouse_keepers",
           "client_visibility_grants",
+          "client_co_owners",
           "unit_measurement_profiles",
           "party_activity_records");
   private static final Set<String> NUMBERED =
@@ -538,7 +540,7 @@ public class MasterRecordHistoryService {
     if (!hiddenCategories.isEmpty())
       where.append(" AND NOT(r.is_category AND h.entity_type IN(:hiddenCategories))");
     if (!has(user, "client:assign"))
-      where.append(" AND h.source_table<>'client_visibility_grants'");
+      where.append(" AND h.source_table NOT IN ('client_visibility_grants','client_co_owners')");
     var clientScope =
         allowed.contains("clients") ? clients.nativeReadScope("r", clients.evaluate()) : null;
     if (clientScope != null)
@@ -705,7 +707,7 @@ public class MasterRecordHistoryService {
         + " 'goods_bom_items' THEN '组装信息' WHEN 'platform_record_fields' THEN '扩展信息' WHEN"
         + " 'party_contact_methods' THEN '联系方式' WHEN 'party_addresses' THEN '地址' WHEN"
         + " 'client_ship_addresses' THEN '收货地址' WHEN 'warehouse_keepers' THEN '仓库保管责任' WHEN"
-        + " 'client_visibility_grants' THEN '客户授权' WHEN 'unit_measurement_profiles' THEN"
+        + " 'client_visibility_grants' THEN '客户授权' WHEN 'client_co_owners' THEN '客户负责人' WHEN 'unit_measurement_profiles' THEN"
         + " '计量规则' WHEN 'party_activity_records' THEN '跟进记录' WHEN 'material_categories' THEN"
         + " '分类资料' WHEN 'client_categories' THEN '分类资料' WHEN 'supplier_categories' THEN"
         + " '分类资料' WHEN 'mould_categories' THEN '分类资料' ELSE '基础资料' END)";
@@ -1262,7 +1264,7 @@ public class MasterRecordHistoryService {
       if (!isCategory(fact) && checked.add(fact.recordId()) && domain.table().equals("clients")) {
         JsonNode actual = snapshot("clients", fact.recordId());
         UUID owner = uuidField(actual, "owner_employee_id");
-        if (actual == null || !clients.canWriteOwner(owner, clientScope)) return "当前不能修改此客户";
+        if (actual == null || !clients.canWrite(fact.recordId(), owner, clientScope)) return "当前不能修改此客户";
       }
       if (!isCategory(fact) && goodsScope != null && !goodsScope.seeAll()) {
         JsonNode actual = snapshot("goods", fact.recordId());
@@ -1280,6 +1282,10 @@ public class MasterRecordHistoryService {
     row.current().fieldNames().forEachRemaining(changed::add);
     row.target().fieldNames().forEachRemaining(changed::add);
     changed.removeIf(key -> sameDisplayValue(row.current().get(key), row.target().get(key)));
+    if (row.table().equals("clients")
+        && !has(user, "client:finance")
+        && changed.stream().anyMatch(ClientFinancialPolicy.FINANCIAL_COLUMNS::contains))
+      return "恢复客户财务字段需要当前的客户财务维护权限";
     if (row.table().equals("goods")) {
       if (!has(user, "goods:price:edit") && changed.stream().anyMatch(GOODS_PRICES::contains))
         return "此版本包含无权修改的价格字段";
@@ -1301,7 +1307,7 @@ public class MasterRecordHistoryService {
 
   private boolean readable(AuthUser user, Domain domain, Fact selected, List<Fact> facts) {
     for (Fact f : facts) if (!hasFactPermission(user, domain, f, "view")) return false;
-    if (facts.stream().anyMatch(f -> f.table().equals("client_visibility_grants"))
+    if (facts.stream().anyMatch(f -> Set.of("client_visibility_grants", "client_co_owners").contains(f.table()))
         && !has(user, "client:assign")) return false;
     Set<UUID> checked = new HashSet<>();
     var clientScope = selected.entity().equals("clients") ? clients.evaluate() : null;
@@ -1917,6 +1923,7 @@ public class MasterRecordHistoryService {
           case "client_ship_addresses" -> "收货地址";
           case "warehouse_keepers" -> "仓库保管责任";
           case "client_visibility_grants" -> "客户授权";
+          case "client_co_owners" -> "客户负责人";
           case "unit_measurement_profiles" -> "计量规则";
           case "party_activity_records" -> "跟进记录";
           default -> isCategory(fact) ? "分类资料" : "基础资料";

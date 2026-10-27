@@ -101,6 +101,48 @@ Future<List<CurrencyListItem>?> loadClientCurrencies(
   return null;
 }
 
+/// Financial master-data fields have one shared write policy across every client editor.
+const clientFinancialFieldKeys = <String>{
+  'bank',
+  'bankAccount',
+  'taxId',
+  'credit',
+  'initTotal',
+  'tday',
+  'defaultSettlementMethodId',
+  'defaultCurrencyId',
+  'creditFloor',
+};
+
+MasterFieldDef _clientFieldAccess(
+  MasterFieldDef field, {
+  required bool ordinaryWritable,
+  required bool financialWritable,
+}) {
+  final locked = clientFinancialFieldKeys.contains(field.key)
+      ? !financialWritable
+      : !ordinaryWritable;
+  return MasterFieldDef(
+    key: field.key,
+    label: field.label,
+    type: field.type,
+    required: field.required,
+    hint: field.hint,
+    info: locked && clientFinancialFieldKeys.contains(field.key)
+        ? '财务资料由有维护权限的财务人员修改。'
+        : field.info,
+    group: field.group,
+    options: field.options,
+    selectInteger: field.selectInteger,
+    readOnly: field.readOnly || locked,
+    onAddNew: field.onAddNew,
+    customBuilder: field.customBuilder,
+    legacyDraftKeys: field.legacyDraftKeys,
+    identifierDomain: field.identifierDomain,
+    identifierId: field.identifierId,
+  );
+}
+
 /// 客户主档可编辑字段（与后端 ClientSaveRequest 对齐；含义不明的遗留字段不进表单）。
 ///
 /// [l10n] supplies the labels of fields added after the arb migration (外文名称).
@@ -111,168 +153,187 @@ List<MasterFieldDef> buildClientFields(
   List<CurrencyListItem> currencies = const [],
   bool legacyCreditSnapshot = false,
   bool showAccess = false,
-}) => [
-  // 归属（负责人/可见人）在编辑页只**展示**不编辑：它走独立的 access 接口
-  //（变更原因 + 版本 CAS + 审计事件），混进普通字段提交会绕开那套守卫。
-  // 要改点行菜单「负责人和可见人」（2026-09-11 用户要求编辑页也看得到）。
-  if (showAccess) ...const <MasterFieldDef>[
-    MasterFieldDef(
-      key: 'ownerEmployeeName',
-      label: '负责人',
-      group: '归属',
-      readOnly: true,
-      hint: '未设置',
-      info: '负责人决定这个客户的单据归谁。修改请用列表行右键「负责人和可见人」。',
-    ),
-    MasterFieldDef(
-      key: 'accessViewerNames',
-      label: '可见人',
-      group: '归属',
-      readOnly: true,
-      hint: '未设置',
-      info: '可见人只能查看该客户及其单据，不能修改。修改请用列表行右键「负责人和可见人」。',
-    ),
-  ],
-  ...<MasterFieldDef>[
-    const MasterFieldDef(key: 'name', label: '名称', required: true, group: '基础'),
-    MasterFieldDef(
-      key: 'code',
-      label: '编号',
-      group: '基础',
-      hint: '留空按分类前缀自动生成；手工编号必须唯一',
-      identifierDomain: 'CLIENT',
-      identifierId: iv['_entityId'],
-    ),
-    const MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
-  ],
-  // ADR-134: foreign (usually English) company name, matched against customer
-  // files; also filled in by learning when sales save a document.
-  MasterFieldDef(
-    key: 'nameEn',
-    label: l10n.clientNameEnLabel,
-    hint: l10n.clientNameEnHint,
-    info: l10n.clientNameEnInfo,
-    group: '基础',
-  ),
-  ...const <MasterFieldDef>[
-    MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
-    MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-    // 2026-09-19 口径：除「基础」组（名称/状态）外全部选填——联系人不再必填
-    //（多联系方式在客户详情页按「手机/电话/邮箱…」逐条登记，这里只留快捷字段）。
-    MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
-    MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
-    MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
-    MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
-    MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
-    MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
-    MasterFieldDef(key: 'website', label: '网址', group: '联系'),
-    MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
-    MasterFieldDef(key: 'region', label: '区域', group: '地址'),
-    MasterFieldDef(key: 'placeId', label: '地区', group: '地址'),
-    MasterFieldDef(key: 'address', label: '地址', group: '地址'),
-    MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
-    MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
-    MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
-  ],
-  ...const <MasterFieldDef>[
-    MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
-    MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
-    MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
-  ],
-  MasterFieldDef(
-    key: 'defaultSettlementMethodId',
-    label: '默认结账方式',
-    type: MasterFieldType.select,
-    options: [
-      for (final method in settlementMethods)
-        MasterSelectOption(
-          value: method.id,
-          label: method.code.isEmpty
-              ? method.name
-              : '${method.name} · ${method.code}',
-        ),
-    ],
-    group: '财务',
-    hint: '订单未指定时使用；关联按系统内部编号保存，改名不受影响',
-  ),
-  // V592 默认销售条款（单一事实源）：新建销售订货单选客户后预填这三项；
-  // 每次下单自动记住最新选择，这里可手工预置。货运策略选项词表对齐销售
-  // 订货单（新单只提供两档）；存量历史值(如 CUSTOMER_CONFIRM)按当前值追加
-  // 成选项，防止 select 初值不在选项里被 initState 静默置空、保存时清掉。
-  MasterFieldDef(
-    key: 'defaultShipmentPolicy',
-    label: '默认货运策略',
-    type: MasterFieldType.select,
-    options: [
-      for (final policy in SalesShipmentPolicy.selectable)
-        MasterSelectOption(
-          value: policy,
-          label: salesShipmentPolicyLabel(policy),
-        ),
-      if (iv['defaultShipmentPolicy'] != null &&
-          iv['defaultShipmentPolicy']!.isNotEmpty &&
-          !SalesShipmentPolicy.selectable.contains(iv['defaultShipmentPolicy']))
-        MasterSelectOption(
-          value: iv['defaultShipmentPolicy']!,
-          label:
-              '${salesShipmentPolicyLabel(iv['defaultShipmentPolicy'])}（历史值）',
-        ),
-    ],
-    group: '财务',
-    hint: '新建销售订货单预填；每次下单自动记住最新选择',
-  ),
-  MasterFieldDef(
-    key: 'defaultCurrencyId',
-    label: '默认币种',
-    type: MasterFieldType.select,
-    options: [
-      for (final currency in currencies)
-        MasterSelectOption(
-          value: currency.id,
-          label: currency.code == null || currency.code!.isEmpty
-              ? currency.name ?? currency.id
-              : '${currency.name ?? ''} · ${currency.code}',
-        ),
-    ],
-    group: '财务',
-    hint: '新建销售订货单预填；每次下单自动记住最新选择',
-  ),
-  MasterFieldDef(
-    key: 'credit',
-    label: legacyCreditSnapshot ? '旧库 Credit 快照（只读）' : '信用额度',
-    type: MasterFieldType.money,
-    group: '财务',
-    hint: legacyCreditSnapshot ? '仅用于旧库对照，不参与铺底或发货放行计算' : null,
-  ),
-  ...const <MasterFieldDef>[
-    MasterFieldDef(
-      key: 'initTotal',
-      label: '期初应收',
-      type: MasterFieldType.money,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'creditFloor',
-      label: '铺底额',
-      type: MasterFieldType.money,
-      group: '财务',
-    ),
-    MasterFieldDef(
-      key: 'tday',
-      label: '结算天数',
-      type: MasterFieldType.integer,
-      group: '财务',
-    ),
-    MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
-  ],
-];
+  bool ordinaryWritable = true,
+  bool financialWritable = false,
+}) =>
+    [
+          // 归属（负责人/可见人）在编辑页只**展示**不编辑：它走独立的 access 接口
+          //（变更原因 + 版本 CAS + 审计事件），混进普通字段提交会绕开那套守卫。
+          // 由客户详情的「负责人和可见人」或列表同名入口统一维护。
+          if (showAccess) ...const <MasterFieldDef>[
+            MasterFieldDef(
+              key: 'ownerEmployeeName',
+              label: '负责人',
+              group: '归属',
+              readOnly: true,
+              hint: '未设置',
+              info: '客户可设置多位负责人。请在客户详情点击「负责人和可见人」维护。',
+            ),
+            MasterFieldDef(
+              key: 'accessViewerNames',
+              label: '可见人',
+              group: '归属',
+              readOnly: true,
+              hint: '未设置',
+              info: '可见人只能查看该客户及其单据，不能修改。请在客户详情点击「负责人和可见人」维护。',
+            ),
+          ],
+          ...<MasterFieldDef>[
+            const MasterFieldDef(
+              key: 'name',
+              label: '名称',
+              required: true,
+              group: '基础',
+            ),
+            MasterFieldDef(
+              key: 'code',
+              label: '编号',
+              group: '基础',
+              hint: '留空按分类前缀自动生成；手工编号必须唯一',
+              identifierDomain: 'CLIENT',
+              identifierId: iv['_entityId'],
+            ),
+            const MasterFieldDef(key: 'fullName', label: '全称', group: '基础'),
+          ],
+          // ADR-134: foreign (usually English) company name, matched against customer
+          // files; also filled in by learning when sales save a document.
+          MasterFieldDef(
+            key: 'nameEn',
+            label: l10n.clientNameEnLabel,
+            hint: l10n.clientNameEnHint,
+            info: l10n.clientNameEnInfo,
+            group: '基础',
+          ),
+          ...const <MasterFieldDef>[
+            MasterFieldDef(key: 'clientRank', label: '等级', group: '基础'),
+            MasterFieldDef(
+              key: 'status',
+              label: '状态',
+              type: MasterFieldType.select,
+              options: kMasterStatusOptions,
+              required: true,
+              group: '基础',
+            ),
+            // 2026-09-19 口径：除「基础」组（名称/状态）外全部选填——联系人不再必填
+            //（多联系方式在客户详情页按「手机/电话/邮箱…」逐条登记，这里只留快捷字段）。
+            MasterFieldDef(key: 'linkman', label: '联系人', group: '联系'),
+            MasterFieldDef(key: 'mobile', label: '手机', group: '联系'),
+            MasterFieldDef(key: 'phone', label: '电话', group: '联系'),
+            MasterFieldDef(key: 'phone2', label: '电话2', group: '联系'),
+            MasterFieldDef(key: 'fax', label: '传真', group: '联系'),
+            MasterFieldDef(key: 'email', label: '邮箱', group: '联系'),
+            MasterFieldDef(key: 'website', label: '网址', group: '联系'),
+            MasterFieldDef(key: 'postcode', label: '邮编', group: '联系'),
+            MasterFieldDef(key: 'region', label: '区域', group: '地址'),
+            MasterFieldDef(key: 'placeId', label: '地区', group: '地址'),
+            MasterFieldDef(key: 'address', label: '地址', group: '地址'),
+            MasterFieldDef(key: 'shipAddress', label: '收货地址', group: '地址'),
+            MasterFieldDef(key: 'shipVia', label: '运输方式', group: '地址'),
+            MasterFieldDef(key: 'legalPerson', label: '法人', group: '资质'),
+          ],
+          ...const <MasterFieldDef>[
+            MasterFieldDef(key: 'bank', label: '开户行', group: '财务'),
+            MasterFieldDef(key: 'bankAccount', label: '银行账号', group: '财务'),
+            MasterFieldDef(key: 'taxId', label: '税号', group: '财务'),
+          ],
+          MasterFieldDef(
+            key: 'defaultSettlementMethodId',
+            label: '默认结账方式',
+            type: MasterFieldType.select,
+            options: [
+              for (final method in settlementMethods)
+                MasterSelectOption(
+                  value: method.id,
+                  label: method.code.isEmpty
+                      ? method.name
+                      : '${method.name} · ${method.code}',
+                ),
+            ],
+            group: '财务',
+            hint: '订单未指定时使用；关联按系统内部编号保存，改名不受影响',
+          ),
+          // V592 默认销售条款（单一事实源）：新建销售订货单选客户后预填这三项；
+          // 每次下单自动记住最新选择，这里可手工预置。货运策略选项词表对齐销售
+          // 订货单（新单只提供两档）；存量历史值(如 CUSTOMER_CONFIRM)按当前值追加
+          // 成选项，防止 select 初值不在选项里被 initState 静默置空、保存时清掉。
+          MasterFieldDef(
+            key: 'defaultShipmentPolicy',
+            label: '默认货运策略',
+            type: MasterFieldType.select,
+            options: [
+              for (final policy in SalesShipmentPolicy.selectable)
+                MasterSelectOption(
+                  value: policy,
+                  label: salesShipmentPolicyLabel(policy),
+                ),
+              if (iv['defaultShipmentPolicy'] != null &&
+                  iv['defaultShipmentPolicy']!.isNotEmpty &&
+                  !SalesShipmentPolicy.selectable.contains(
+                    iv['defaultShipmentPolicy'],
+                  ))
+                MasterSelectOption(
+                  value: iv['defaultShipmentPolicy']!,
+                  label:
+                      '${salesShipmentPolicyLabel(iv['defaultShipmentPolicy'])}（历史值）',
+                ),
+            ],
+            group: '财务',
+            hint: '新建销售订货单预填；每次下单自动记住最新选择',
+          ),
+          MasterFieldDef(
+            key: 'defaultCurrencyId',
+            label: '默认币种',
+            type: MasterFieldType.select,
+            options: [
+              for (final currency in currencies)
+                MasterSelectOption(
+                  value: currency.id,
+                  label: currency.code == null || currency.code!.isEmpty
+                      ? currency.name ?? currency.id
+                      : '${currency.name ?? ''} · ${currency.code}',
+                ),
+            ],
+            group: '财务',
+            hint: '新建销售订货单预填；每次下单自动记住最新选择',
+          ),
+          MasterFieldDef(
+            key: 'credit',
+            readOnly: legacyCreditSnapshot,
+            label: legacyCreditSnapshot ? '旧库 Credit 快照（只读）' : '信用额度',
+            type: MasterFieldType.money,
+            group: '财务',
+            hint: legacyCreditSnapshot ? '仅用于旧库对照，不参与铺底或发货放行计算' : null,
+          ),
+          ...const <MasterFieldDef>[
+            MasterFieldDef(
+              key: 'initTotal',
+              label: '期初应收',
+              type: MasterFieldType.money,
+              group: '财务',
+            ),
+            MasterFieldDef(
+              key: 'creditFloor',
+              label: '铺底额',
+              type: MasterFieldType.money,
+              group: '财务',
+            ),
+            MasterFieldDef(
+              key: 'tday',
+              label: '结算天数',
+              type: MasterFieldType.integer,
+              group: '财务',
+            ),
+            MasterFieldDef(key: 'remark', label: '备注', group: '其他'),
+          ],
+        ]
+        .map(
+          (field) => _clientFieldAccess(
+            field,
+            ordinaryWritable: ordinaryWritable,
+            financialWritable: financialWritable,
+          ),
+        )
+        .toList(growable: false);
 
 /// 客户编辑弹窗（分类页与详情页共用）。[onSaved] 在保存成功后回调（刷新各自数据）。
 Future<void> showClientMasterEdit(
@@ -282,11 +343,19 @@ Future<void> showClientMasterEdit(
   String? fallbackCategoryId,
   VoidCallback? onSaved,
 }) async {
-  if (!d.writable) return;
+  final permissions = ref.read(currentPermissionsProvider);
+  final ordinaryWritable = d.writable && permissions.contains(Perm.clientEdit);
+  final financialWritable =
+      d.financialWritable && permissions.contains(Perm.clientFinance);
+  if (!ordinaryWritable && !financialWritable) return;
   final owner = MasterEditOwner(
     context,
     ref,
-    permissions: {Perm.clientView, Perm.clientEdit},
+    permissions: {
+      Perm.clientView,
+      if (ordinaryWritable) Perm.clientEdit,
+      if (financialWritable) Perm.clientFinance,
+    },
   );
   try {
     if (!await owner.bindRequests()) return;
@@ -312,17 +381,26 @@ Future<void> _showClientMasterEditOwned(
   String? fallbackCategoryId,
   VoidCallback? onSaved,
 }) async {
-  final settlementMethods = await loadClientSettlementMethods(
-    context,
-    ref,
-    owner: owner,
-  );
+  final settlementMethods = d.financialWritable
+      ? await loadClientSettlementMethods(context, ref, owner: owner)
+      : const <ReferenceMethodOption>[];
   if (!context.mounted || !owner.isCurrent || settlementMethods == null) return;
   // V592 默认币种下拉；加载失败不阻断编辑（只是该项没有选项）。
-  final currencies =
-      await loadClientCurrencies(context, ref, owner: owner) ??
-      const <CurrencyListItem>[];
+  var currencies = d.financialWritable
+      ? await loadClientCurrencies(context, ref, owner: owner) ??
+            const <CurrencyListItem>[]
+      : const <CurrencyListItem>[];
   if (!context.mounted || !owner.isCurrent) return;
+  if (d.defaultCurrencyId != null &&
+      !currencies.any((currency) => currency.id == d.defaultCurrencyId)) {
+    currencies = [
+      ...currencies,
+      CurrencyListItem(
+        id: d.defaultCurrencyId!,
+        name: '${d.defaultCurrencyName ?? '当前值'}（已停用）',
+      ),
+    ];
+  }
   final permissions = ref.read(currentPermissionsProvider);
   final canAssign =
       permissions.contains(Perm.clientAssign) && d.accessManageable;
@@ -386,7 +464,8 @@ Future<void> _showClientMasterEditOwned(
     'status': d.status ?? '',
     'remark': d.remark ?? '',
     'ownerEmployeeName':
-        access?.ownerEmployeeName ?? d.ownerEmployeeName ?? d.empId ?? '',
+        access?.effectiveOwners.map((item) => item.name).join('、') ??
+        d.ownersLabel,
     'accessViewerNames': access == null
         ? ''
         : access.viewers.map((viewer) => viewer.name).join('、'),
@@ -405,6 +484,9 @@ Future<void> _showClientMasterEditOwned(
       currencies: currencies,
       legacyCreditSnapshot: d.legacyId != null,
       showAccess: true,
+      ordinaryWritable: d.writable && permissions.contains(Perm.clientEdit),
+      financialWritable:
+          d.financialWritable && permissions.contains(Perm.clientFinance),
     ),
     initialValues: iv,
     fixedValues: {

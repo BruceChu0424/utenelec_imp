@@ -324,18 +324,19 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
             if ("EMAIL".equals(contact[0])) contactEmails.add(value);
             else contactPhones.add(value);
         }
-        boolean editable = hasAuthority("client:edit") && clientAccess.canWriteOwner(ownerEmployeeId, scope);
+        boolean editable = hasAuthority("client:edit") && clientAccess.canWrite(clientId, ownerEmployeeId, scope);
         return new ClientProfile(clientId, (String) row[1], (String) row[2], (String) row[3], (String) row[4],
                 (String) row[5], (String) row[6], (String) row[7], (String) row[8], (String) row[9],
                 (String) row[10], (String) row[11], (String) row[12], (UUID) row[13], (UUID) row[14],
-                ownerEmployeeId, (String) row[16], contactEmails, contactPhones, editable);
+                ownerEmployeeId, (String) row[16], contactEmails, contactPhones, editable,
+                hasAuthority("client:finance"));
     }
 
     @Override
     public boolean canLearnClientDocument(UUID clientId) {
         ClientProfile profile = clientProfile(clientId);
         return profile != null && "使用".equals(profile.status())
-                && clientAccess.canWriteOwner(profile.ownerEmployeeId(), clientAccess.evaluate());
+                && clientAccess.canWrite(clientId, profile.ownerEmployeeId(), clientAccess.evaluate());
     }
 
     @Override

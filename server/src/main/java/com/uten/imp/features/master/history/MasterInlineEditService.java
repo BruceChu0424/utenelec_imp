@@ -75,13 +75,22 @@ public class MasterInlineEditService {
         var user=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED,"当前登录状态无效"));
         if(user.getEmployeeId()==null||user.isVisitor()||!user.isAccountNonLocked()||user.isMustChangePassword()||user.getImpersonatedBy()!=null)
             throw new ApiException(ErrorCode.FORBIDDEN,"当前账号不能编辑资料，请核对登录状态");
-        CurrentAuthorityGuard.requireAll(domain.permission()+":view",domain.permission()+":edit");
+        CurrentAuthorityGuard.requireAll(domain.permission()+":view");
+        boolean clientFinancial = entityType.equals("clients") && changes != null && !changes.isEmpty()
+                && com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS.containsAll(changes.keySet());
+        if (entityType.equals("clients") && changes != null && changes.keySet().stream()
+                .anyMatch(com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS::contains))
+            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+        if (!clientFinancial) CurrentAuthorityGuard.requireAll(domain.permission()+":edit");
         boolean versioned=entityType.equals("clients")||entityType.equals("suppliers");
         if(changes==null||changes.isEmpty()||expected==null||!domain.fields().containsAll(changes.keySet())
             ||(versioned?!expected.containsKey("version"):!expected.keySet().containsAll(changes.keySet())))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"只能编辑允许的资料字段，并须提供每个字段的原值");
         tx.bind();
-        if(entityType.equals("clients")&&!clients.detail(id).isWritable())throw new ApiException(ErrorCode.NOT_FOUND,"客户不存在");
+        if(entityType.equals("clients")) {
+            var client = clients.detail(id);
+            if(clientFinancial ? !client.isFinancialWritable() : !client.isWritable()) throw new ApiException(ErrorCode.NOT_FOUND,"客户不存在");
+        }
         if(entityType.equals("accounts")) {
             com.uten.imp.application.concurrency.PaymentStyleHierarchyLock.lock(em);
             em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended('ACCOUNT_MASTER_POPULATION',0))").getSingleResult();
@@ -94,7 +103,7 @@ public class MasterInlineEditService {
         if(versioned)em.clear();
         Object detail=switch(entityType) {case "colors"->colors.detail(id);case "units"->units.detail(id);case "currencies"->currencies.detail(id);case "moulds"->moulds.detail(id);case "accounts"->accounts.detail(id);case "reference-methods"->settlementTerms(id);case "clients"->clients.detail(id);case "suppliers"->suppliers.detail(id);case "warehouses"->warehouses.detail(id);default->throw new IllegalStateException();};
         ObjectNode actual=mapper.valueToTree(detail);
-        if(entityType.equals("clients")&&!actual.path("writable").asBoolean())throw new ApiException(ErrorCode.NOT_FOUND,"客户不存在");
+        if(entityType.equals("clients")&&!actual.path(clientFinancial ? "financialWritable" : "writable").asBoolean())throw new ApiException(ErrorCode.NOT_FOUND,"客户不存在");
         if(versioned) {
             JsonNode version=mapper.valueToTree(expected.get("version"));
             if(!version.isIntegralNumber()||!version.canConvertToLong())throw new ApiException(ErrorCode.VALIDATION_FAILED,"须提供原资料版本");

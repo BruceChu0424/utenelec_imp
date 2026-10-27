@@ -11,8 +11,13 @@ import java.util.UUID;
 
 /** Atomic owner/viewer replacement guarded by the customer's access version. */
 public record ClientAccessUpdateRequest(
-        @NotNull UUID ownerEmployeeId,
+        UUID ownerEmployeeId,
         @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> viewerEmployeeIds,
         @NotNull @PositiveOrZero Long expectedAccessVersion,
-        @NotBlank @Size(max = 1000) String reason) {
+        @NotBlank @Size(max = 1000) String reason,
+        @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<@NotNull UUID> ownerEmployeeIds) {
+    public ClientAccessUpdateRequest(UUID ownerEmployeeId, List<UUID> viewerEmployeeIds,
+            Long expectedAccessVersion, String reason) {
+        this(ownerEmployeeId, viewerEmployeeIds, expectedAccessVersion, reason, null);
+    }
 }

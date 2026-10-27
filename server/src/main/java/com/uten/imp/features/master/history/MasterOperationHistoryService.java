@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
+import com.uten.imp.features.master.client.ClientFinancialPolicy;
 import com.uten.imp.features.master.lifecycle.MasterEntityKind;
 import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
 import com.uten.imp.features.master.warehouse.WarehouseMasterRules;
@@ -178,6 +179,7 @@ public class MasterOperationHistoryService {
             if(changed(row,"status"))needed.add(permission+":status");
             if(row.before()==null&&row.after()!=null&&row.after().hasNonNull("status")&&!"使用".equals(row.after().path("status").asText()))needed.add(permission+":status");
             if(changed(row,"balance_floor"))needed.add("account:warning:manage");
+            if(row.table().equals("clients")&&ClientFinancialPolicy.FINANCIAL_COLUMNS.stream().anyMatch(field->changed(row,field)))needed.add("client:finance");
             if(changed(row,"sort_order"))needed.add(permission+":reorder");
             if(!Objects.equals(snapshot(row.table(),row.id()),row.expected()))return "相关资料已有后续修改，请先撤回后续操作或刷新后处理；没有覆盖任何修改";
         }
@@ -197,7 +199,7 @@ public class MasterOperationHistoryService {
             JsonNode actual=snapshot("clients",clientId);
             UUID owner=optionalUuid(actual,"owner_employee_id");
             if(actual==null||!clientAccess.canRead(clientId,owner,scope))return "你已没有相关客户的查看权限";
-            if(writing&&!clientAccess.canWriteOwner(owner,scope))return "你已没有相关客户的修改权限";
+            if(writing&&!clientAccess.canWrite(clientId,owner,scope))return "你已没有相关客户的修改权限";
             }
         }
         return null;

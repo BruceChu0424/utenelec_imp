@@ -16,6 +16,7 @@ final l10n = lookupAppLocalizations(const Locale('zh'));
 SalesIntakePatch _patch(
   SalesIntakeResult result, {
   required SalesDocType docType,
+  bool clientFinancialWritable = false,
   void Function(SalesIntakeDecisions d)? tweak,
 }) {
   final decisions = SalesIntakeDecisions.initial(result, docType: docType);
@@ -26,6 +27,7 @@ SalesIntakePatch _patch(
     docType: docType,
     jobId: 'job-1',
     l10n: l10n,
+    clientFinancialWritable: clientFinancialWritable,
   );
 }
 
@@ -491,6 +493,40 @@ void main() {
   });
 
   group('客户资料补全与 aiIntake', () {
+    test('销售文件的税号只由财务权限提交，普通联系资料继续补全', () {
+      final json = intakeResultJson();
+      final client = json['client'] as Map<String, dynamic>;
+      (client['enrichment'] as List).add({
+        'field': 'taxId',
+        'label': '税号',
+        'proposed': 'TAX-2026',
+        'defaultChecked': true,
+      });
+      final result = SalesIntakeResult.fromJson(json);
+      final sales = _patch(result, docType: SalesDocType.order);
+      expect(sales.clientFields, {'email': 'buyer@example.com'});
+      final finance = _patch(
+        result,
+        docType: SalesDocType.order,
+        clientFinancialWritable: true,
+      );
+      expect(finance.clientFields['taxId'], 'TAX-2026');
+    });
+
+    test('从文件新建客户去除无权维护的税号，保留客户和联系信息', () {
+      const proposal = SalesIntakeNewClientProposal(
+        name: 'Buyer',
+        email: 'buyer@example.com',
+        taxId: 'TAX-2026',
+      );
+      final sales = proposal.copyWith(includeFinancialFields: false).toJson();
+      expect(sales, {'name': 'Buyer', 'email': 'buyer@example.com'});
+      expect(
+        proposal.copyWith().toJson()['taxId'],
+        'TAX-2026',
+      );
+    });
+
     test('只提交勾选的字段, 且仅在客户仍是识别对上的那个时', () {
       final result = SalesIntakeResult.fromJson(intakeResultJson());
       final patch = _patch(result, docType: SalesDocType.order);

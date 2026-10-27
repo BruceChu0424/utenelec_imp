@@ -15,6 +15,7 @@ List<MasterFieldDef> masterInlineCreateFields(
           key: field.key,
           label: field.label,
           required: field.required,
+          readOnly: field.readOnly,
           type: MasterFieldType.custom,
           group: field.group,
           hint: field.hint,

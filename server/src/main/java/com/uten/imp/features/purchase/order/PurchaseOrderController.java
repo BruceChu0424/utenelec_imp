@@ -99,7 +99,7 @@ public class PurchaseOrderController {
 
     @GetMapping("/{id}/print-data")
     @PreAuthorize("hasAnyAuthority('purchase_order:view','finance_order_approval:view')")
-    public PurchaseOrderPrintService.PrintDocument printData(@PathVariable UUID id) {
+    public com.uten.imp.common.export.ProcurementOrderPrintDocument printData(@PathVariable UUID id) {
         var result = printService.read(id);
         auditViews.record("view_purchase_order_detail", "purchase_orders", id,
                 result.billNo(), null, "采购单打印预览");

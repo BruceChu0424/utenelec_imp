@@ -352,8 +352,9 @@ abstract final class UtenDialog {
     bool waitForExit = false,
     ValueChanged<bool?>? onPopped,
     IconData? icon,
+    Widget Function(BuildContext, Widget)? scopeBuilder,
   }) {
-    Widget builder(BuildContext ctx) => SelectionArea(
+    Widget contentBuilder(BuildContext ctx) => SelectionArea(
       // 弹窗文字可框选复制（准则 §3.4 局部包裹：弹窗是独立路由，自带 region，
       // 不与页面 region 嵌套；TextField 不受影响，自带原生选择）。
       child: UtenAlertDialog(
@@ -406,6 +407,11 @@ abstract final class UtenDialog {
         ],
       ),
     );
+    Widget builder(BuildContext ctx) {
+      final dialog = contentBuilder(ctx);
+      return scopeBuilder?.call(ctx, dialog) ?? dialog;
+    }
+
     if (waitForExit) {
       return showAndWaitForExit<bool>(
         context,

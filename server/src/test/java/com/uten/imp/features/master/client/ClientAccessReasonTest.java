@@ -13,13 +13,19 @@ import static org.mockito.Mockito.mock;
 
 class ClientAccessReasonTest {
 
+    private final EntityManager em = mock(EntityManager.class);
+
     private final ClientAccessPolicy policy = new ClientAccessPolicy(
             mock(OwnerVisibility.class),
             mock(SecurityContextCurrentUser.class),
-            mock(EntityManager.class));
+            em);
 
     @Test
     void detailReasonDistinguishesUnassignedManageableOwnerScopeAndShare() {
+        var query = mock(jakarta.persistence.Query.class);
+        org.mockito.Mockito.when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(query);
+        org.mockito.Mockito.when(query.setParameter(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
+        org.mockito.Mockito.when(query.getResultList()).thenReturn(java.util.List.of());
         UUID caller = UUID.randomUUID();
         UUID delegated = UUID.randomUUID();
         UUID other = UUID.randomUUID();

@@ -17,7 +17,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
+import '../../../shared/widgets/procurement_difference_column.dart';
 import '../../../shared/widgets/legacy_continuation_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -1363,16 +1363,28 @@ class _SubcontractDocDetailPageState
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.returnedQty),
                       ),
-                    if (widget.docType == SubcontractDocType.order)
-                      MasterColumnDef(
-                        key: 'differenceQty',
-                        label: procurementDeliveryDifferenceL10n(context).label,
-                        width: 130,
-                        type: 'number',
-                        info: procurementDeliveryDifferenceL10n(context).hint,
-                        value: (it) => it.differenceQtyText == null
-                            ? '—'
-                            : '${it.differenceQtyText} ${names.unit(it.unitId)}',
+                    if (widget.docType == SubcontractDocType.application ||
+                        widget.docType == SubcontractDocType.order)
+                      procurementDifferenceColumn<SubcontractDocItem>(
+                        context: context,
+                        differenceOf: (it) => it.differenceQtyText,
+                        unitOf: unitOf,
+                        scope: widget.docType == SubcontractDocType.application
+                            ? ProcurementDifferenceScope.request
+                            : ProcurementDifferenceScope.order,
+                      ),
+                    if (widget.docType == SubcontractDocType.receipt ||
+                        widget.docType == SubcontractDocType.returnDoc ||
+                        widget.docType == SubcontractDocType.materialIssue ||
+                        widget.docType == SubcontractDocType.materialReturn)
+                      procurementDifferenceColumn<SubcontractDocItem>(
+                        context: context,
+                        key: 'sourceOrderDifferenceQty',
+                        scope: ProcurementDifferenceScope.sourceOrder,
+                        differenceOf: (it) => it.sourceOrderDifferenceQtyText,
+                        unitOf: (it) => _dictText(
+                          names.unit(it.sourceOrderDifferenceUnitId),
+                        ),
                       ),
                     if (_cfg.showWasted)
                       MasterColumnDef(

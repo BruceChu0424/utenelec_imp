@@ -59,5 +59,7 @@ class WebMvcConfigInterceptorOrderTest {
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.LegacyExportReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(export);
         org.mockito.Mockito.verify(masterRegistration).addPathPatterns("/api/master/**");
+        org.mockito.Mockito.verify(printRegistration).addPathPatterns(
+                "/api/purchase/orders/*/print-data", "/api/subcontract/orders/*/print-data");
     }
 }

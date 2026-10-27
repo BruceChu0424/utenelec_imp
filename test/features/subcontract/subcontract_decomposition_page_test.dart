@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import '../../support/filter_segment_tap.dart';
 import 'fake_subcontract_draw_gateway.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
@@ -19,6 +20,7 @@ import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -47,6 +49,237 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets('visible pending orders export once per document and retire '
+      'when the workbench segment changes', (tester) async {
+    _desktop(tester, const Size(1600, 1000));
+    OperationsWorkbenchTask row(
+      String id,
+      String orderId, {
+      bool canView = true,
+    }) => OperationsWorkbenchTask.fromJson({
+      'taskId': id,
+      'goodsName': '委外件 $id',
+      'supplyRoute': 'SUBCONTRACT',
+      'taskStatus': 'ORDER_PENDING_APPROVAL',
+      'displayStage': 'FINANCE_REVIEW_PENDING',
+      'actionDocType': 'SUBCONTRACT_ORDER',
+      'actionDocId': orderId,
+      'actionDocNo': 'EO-$orderId',
+      'actionDocCanView': canView,
+      'actionDocStatus': '0',
+    }, OperationsWorkbenchDepartment.subcontract);
+    final data = OperationsWorkbenchData(
+      department: OperationsWorkbenchDepartment.subcontract,
+      summary: _inProgressData().summary,
+      capabilities: const OperationsWorkbenchCapabilities(),
+      items: [
+        row('one', 'order-1'),
+        row('two', 'order-1'),
+        row('hidden', 'order-2', canView: false),
+      ],
+      page: 1,
+      size: 50,
+      total: 3,
+      totalPages: 1,
+    );
+    final calls = <List<({String id, String number})>>[];
+    final gate = Completer<void>();
+    bool Function()? current;
+    void Function(int, int)? progress;
+    await tester.pumpWidget(
+      _scope(
+        permissions: {Perm.subcontractOrderView},
+        taskFacts: const {BadgeFact.subcontractTaskInProgress: 3},
+        child: MaterialApp(
+          home: SubcontractDecompositionPage(
+            repository: _Gateway(data),
+            drawRepository: FakeSubcontractDrawGateway(),
+            orderDocumentsExport:
+                (
+                  context, {
+                  required apiClient,
+                  required documents,
+                  onProgress,
+                  stillCurrent,
+                }) async {
+                  calls.add(documents);
+                  current = stillCurrent;
+                  progress = onProgress;
+                  await gate.future;
+                },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.byKey(const Key('subcontract-decomposition-table')),
+    );
+    final button = find.byKey(
+      const Key('subcontract-decomposition-export-docs'),
+    );
+    table.onSelectedIdsChanged!({'one', 'two', 'hidden'});
+    await tester.pump();
+    expect(tester.widget<UtenButton>(button).onPressed, isNull);
+    table.onSelectedIdsChanged!({'one', 'two'});
+    await tester.pump();
+    expect(find.text('导出单据(1)'), findsOneWidget);
+    await tester.tap(button);
+    await tester.pump();
+    expect(calls.single.single.id, 'order-1');
+    expect(current!(), isTrue);
+    progress!(1, 1);
+    await tester.pump();
+    expect(find.text('导出单据(1/1)'), findsOneWidget);
+    await selectFilterSegment(tester, '历史记录');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(current!(), isFalse);
+    expect(button, findsOneWidget);
+    await selectFilterSegment(tester, '进行中');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      current!(),
+      isFalse,
+      reason: 'returning to the same query cannot revive an old export',
+    );
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('table export carries server filters, sorting and terminal '
+      'history scope', (tester) async {
+    _desktop(tester, const Size(1600, 1000));
+    final gateway = _Gateway(_inProgressData());
+    await tester.pumpWidget(
+      _scope(
+        permissions: {Perm.subcontractOrderView, Perm.subcontractReportExport},
+        taskFacts: const {BadgeFact.subcontractTaskInProgress: 3},
+        child: MaterialApp(
+          home: SubcontractDecompositionPage(
+            repository: gateway,
+            drawRepository: FakeSubcontractDrawGateway(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    MasterDataTableView<OperationsWorkbenchTask> table() =>
+        tester.widget(find.byKey(const Key('subcontract-decomposition-table')));
+    expect(table().serverColumnSearch, isTrue);
+    expect(
+      table().columns
+          .singleWhere((column) => column.key == 'source')
+          .supportsKeywordSearch,
+      isFalse,
+    );
+    table().onFilterChanged('search.goods', '开关');
+    await tester.pumpAndSettle();
+    expect(gateway.queries.last['filters'], containsPair('search.goods', '开关'));
+    table().onFilterChanged('status', 'AT_SUPPLIER');
+    await tester.pumpAndSettle();
+    table().onSortChange!('differenceQty', false);
+    await tester.pumpAndSettle();
+    UtenExportButton export() =>
+        tester.widget(find.byKey(const Key('subcontract-workbench-export')));
+    expect(export().queryParams, containsPair('status', 'IN_PROGRESS'));
+    expect(export().queryParams, containsPair('search.goods', '开关'));
+    expect(export().queryParams, containsPair('f.status', 'AT_SUPPLIER'));
+    expect(export().queryParams, containsPair('sort', 'differenceQty'));
+    expect(export().queryParams, containsPair('order', 'desc'));
+    expect(export().endpoint, '/operations/workbench/subcontract/export');
+    expect(export().requiredPermission, Perm.subcontractReportExport);
+    expect(export().report, 'tasks');
+    await selectFilterSegment(tester, '历史记录');
+    await tester.pumpAndSettle();
+    expect(export().queryParams, containsPair('status', 'COMPLETED'));
+    expect(export().queryParams['dateFrom'], isNotNull);
+    expect(export().queryParams['dateTo'], isNotNull);
+    expect(gateway.queries.last['status'], 'COMPLETED');
+    expect(export().queryParams, isNot(contains('f.status')));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'difference follows server facts in pending, dialog and progress',
+    (tester) async {
+      _desktop(tester, const Size(1700, 1000));
+      final gateway = _Gateway(
+        _data(capability: true, firstDifferenceQtyText: '-6.0000'),
+        inProgress: true,
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(
+                rows: [
+                  SubcontractDrawTaskRow.fromJson({
+                    ...drawRowJson(drawRow('draw', unitName: '套')),
+                    'differenceQtyExact': '-7.1250',
+                  }),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final pending = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final difference = pending.columns.singleWhere(
+        (column) => column.key == 'differenceQty',
+      );
+      expect(difference.filterFromRows, isFalse);
+      expect(difference.value(pending.items.first), '-6 件');
+      expect(difference.value(pending.items.last), '—');
+      expect(difference.value(pending.unpagedItems.single), '-7.125 套');
+      pending.onSortChange!('differenceQty', true);
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['sort'], 'differenceQty');
+      expect(gateway.queries.last['order'], 'asc');
+      pending.onRowTap!(pending.items.first);
+      await tester.pumpAndSettle();
+      final dialog = find.byType(Dialog);
+      expect(
+        find.descendant(of: dialog, matching: find.text('差异数')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dialog, matching: find.text('-6 件')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.descendant(of: dialog, matching: find.text('关闭')).last,
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '进行中');
+      await tester.pumpAndSettle();
+      final progress = tester
+          .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+            find.byKey(const Key('subcontract-decomposition-table')),
+          );
+      final progressDifference = progress.columns.singleWhere(
+        (column) => column.key == 'differenceQty',
+      );
+      expect(progressDifference.filterFromRows, isFalse);
+      expect(progressDifference.value(progress.items.first), '-4.125 件');
+      expect(progressDifference.value(progress.items.last), '—');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'pending application projection keeps replacement pages typed and draw rows unpaged',
     (tester) async {
@@ -1393,6 +1626,7 @@ void main() {
         'canCreateOrder': false,
         'goodsCount': 2,
         'openLineCount': 2,
+        'differenceQtyExact': '123',
         'actionItemIds': ['item-a', 'item-b'],
         'bomMissingItemIds': ['item-b'],
         'actionDocType': 'SUBCONTRACT_APPLICATION',
@@ -1430,6 +1664,16 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'differenceQty')
+            .value(table.items.single),
+        '—',
+        reason: 'Grouped legacy documents do not have one additive unit',
+      );
       // 没有未完成的研发任务时只显示「缺 BOM·已通知研发」。
       expect(find.text('缺 BOM·已通知研发'), findsWidgets);
       await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
@@ -2798,6 +3042,7 @@ OperationsWorkbenchData _data({
   bool withSources = false,
   bool onlyFirst = false,
   num firstAllocatedQty = 0,
+  String? firstDifferenceQtyText,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
   summary: const OperationsWorkbenchSummary(
@@ -2816,6 +3061,7 @@ OperationsWorkbenchData _data({
       // （未定商是业务事实，列显「—」）。
       supplierName: '华信加工',
       allocatedQty: firstAllocatedQty,
+      differenceQtyText: firstDifferenceQtyText,
       sources: withSources
           ? SubcontractTaskSource.listFromJson([
               _sourceJson(1, 3),
@@ -2876,6 +3122,8 @@ OperationsWorkbenchTask _order(String id, String displayStage) =>
       'goodsName': '委外件 $id',
       'requiredQty': 10,
       'openQty': 4,
+      'unitName': '件',
+      if (id == 'order-drawable') 'differenceQtyExact': '-4.1250',
       'taskStatus': 'FINANCE_APPROVED',
       'displayStage': displayStage,
       'actionDocType': 'SUBCONTRACT_ORDER',
@@ -3062,7 +3310,9 @@ OperationsWorkbenchTask _task(
   num? orderableQty,
   String? supplierName,
   num allocatedQty = 0,
+  String? differenceQtyText,
 }) => OperationsWorkbenchTask(
+  differenceQtyText: differenceQtyText,
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
   orderableQty: orderableQty,

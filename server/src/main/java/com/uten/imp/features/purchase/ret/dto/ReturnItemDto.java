@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
-public class ReturnItemDto {
+public class ReturnItemDto extends com.uten.imp.common.finance.ProcurementSourceOrderDifferenceResponse {
     @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
     @lombok.Setter private BigDecimal giftQty = BigDecimal.ZERO;
 

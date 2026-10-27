@@ -1134,6 +1134,7 @@ public class SubcontractReceiptService {
     }
 
     private ReceiptDetail toDetail(SubcontractReceipt r, List<ReceiptItemDto> items) {
+        com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.enrich(em, access, "SUBCONTRACT", items);
         // 价格脱敏（V302）：主表金额族 + 明细价格族置 null，priceMasked 标记供前端渲染 ***。
         boolean mask = !priceMasker.canViewSubcontractReceipt();
         ReceiptSourceRef sourceOrder = singleOrderSource(items);
@@ -1161,7 +1162,7 @@ public class SubcontractReceiptService {
 
     /** 明细价格族置 null 的拷贝（price/amountOriginal/amountLocal/returnAmount；其余字段原样保留）。 */
     private static ReceiptItemDto maskItemPrices(ReceiptItemDto it) {
-        return new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        ReceiptItemDto dto = new ReceiptItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), null, null,
@@ -1169,6 +1170,8 @@ public class SubcontractReceiptService {
                 it.getOrderItemId(), it.getOrderId(), it.getOrderBillNo(),
                 it.getSourceDocNo(), it.getRemark(), it.getGirthQty(), it.getStepLegacyId(),
                 null, it.getReturnNo(), it.getOrderNo());
+        it.copySourceOrderDifferenceTo(dto);
+        return dto;
     }
 
     /** 全部明细同属一张委外订货单时返回该订单 (id, billNo)；否则 null。 */

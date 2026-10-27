@@ -26,6 +26,7 @@ import '../../../shared/ai/ai_status_provider.dart';
 import '../../../shared/ai/chat/ai_chat_l10n.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../models/sales_doc.dart';
@@ -447,6 +448,7 @@ Future<SalesIntakeLaunchResult?> _review(
         docType: docType,
         jobId: snapshot.id,
         l10n: l10n,
+        clientFinancialWritable: _canMaintainClientFinancials(ref),
       ),
     );
   }
@@ -493,6 +495,7 @@ Future<SalesIntakeLaunchResult?> _review(
           docType: docType,
           jobId: jobId ?? snapshot.id,
           l10n: l10n,
+          clientFinancialWritable: _canMaintainClientFinancials(ref),
         ),
         file: file,
       ),
@@ -510,6 +513,7 @@ SalesIntakeReviewActions salesIntakeReviewActions(
   )?
   rerunSheet,
 }) => SalesIntakeReviewActions(
+  clientFinancialWritable: _canMaintainClientFinancials(ref),
   pickClient: (context) async {
     final client = await showUtenClientPicker(context, ref);
     if (client == null) return null;
@@ -559,14 +563,22 @@ Future<SalesIntakePickedClient?> _createClientFromDocument(
   final l10n = salesIntakeL10n(context);
   final confirmed = await showDialog<SalesIntakeNewClientProposal>(
     context: context,
-    builder: (_) => _CreateClientDialog(proposal: proposal),
+    builder: (_) => _CreateClientDialog(
+      proposal: proposal.copyWith(
+        includeFinancialFields: _canMaintainClientFinancials(ref),
+      ),
+    ),
   );
   if (confirmed == null || !context.mounted) return null;
   final name = confirmed.name ?? confirmed.fullName ?? confirmed.nameEn ?? '';
   try {
     final id = await ref
         .read(salesIntakeRepositoryProvider)
-        .createClientFromDocument(confirmed);
+        .createClientFromDocument(
+          confirmed.copyWith(
+            includeFinancialFields: _canMaintainClientFinancials(ref),
+          ),
+        );
     if (context.mounted) {
       context.appSuccess(l10n.salesIntakeCreateClientDone(name));
     }
@@ -586,6 +598,10 @@ Future<SalesIntakePickedClient?> _createClientFromDocument(
   }
   return null;
 }
+
+bool _canMaintainClientFinancials(WidgetRef ref) =>
+    ref.read(isSuperAdminProvider) ||
+    ref.read(currentPermissionsProvider).contains(Perm.clientFinance);
 
 class _CreateClientDialog extends StatefulWidget {
   const _CreateClientDialog({required this.proposal});

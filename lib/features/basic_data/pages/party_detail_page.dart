@@ -137,6 +137,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       ref.read(currentPermissionsProvider).contains(perm);
 
   bool get _canEdit => _has(_isClient ? Perm.clientEdit : Perm.supplierEdit);
+  bool get _canEditMaster =>
+      _canEdit || (_isClient && _has(Perm.clientFinance));
+  bool get _masterWritable =>
+      _writable || (_isClient && (_client?.financialWritable ?? false));
   bool get _canStatus =>
       _has(_isClient ? Perm.clientStatus : Perm.supplierStatus);
   bool get _canDelete =>
@@ -549,9 +553,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final rank = _isClient ? _client?.clientRank?.trim() : null;
     final linkman = _isClient ? _client?.linkman : _supplier?.linkman;
     final owner = _isClient
-        ? (_client?.ownerEmployeeName?.trim().isNotEmpty == true
-              ? _client!.ownerEmployeeName
-              : '未分配')
+        ? (_client?.ownersLabel ?? '未分配')
         : (_supplier?.ownerEmployeeName?.trim().isNotEmpty == true
               ? _supplier!.ownerEmployeeName
               : '未分配');
@@ -795,11 +797,19 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
           theme,
           title: '归属与访问',
           icon: Icons.visibility_outlined,
+          trailing: _canAssign && (_client?.accessManageable ?? false)
+              ? TextButton.icon(
+                  onPressed: _busy ? null : _editAccess,
+                  icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+                  label: const Text('修改负责人和可见人'),
+                )
+              : null,
           child: UtenFormGrid(
             columns: 4,
             maxColumns: 4,
             minFieldWidth: 260,
             children: [
+              _kv(theme, '负责人', _client?.ownersLabel),
               _kv(theme, '分类', _client?.categoryName),
               _kv(theme, '当前访问', _client?.accessReasonLabel),
             ],
@@ -1060,6 +1070,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       l10n: basicDataL10n(context),
       currencies: currencyOptions,
       legacyCreditSnapshot: d.legacyId != null,
+      ordinaryWritable: d.writable && _canEdit,
+      financialWritable: d.financialWritable && _has(Perm.clientFinance),
     );
   }
 
@@ -1124,7 +1136,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _saveInlineEdit() async {
-    if (_busy || !_canEdit || !_writable) return;
+    if (_busy || !_canEditMaster || !_masterWritable) return;
     final d = _client;
     final controller = _editController;
     final owner = _editOwner;
@@ -1818,14 +1830,14 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       ]);
       return children;
     }
-    if (_canEdit && _writable) {
+    if (_canEditMaster && _masterWritable) {
       children.add(
         UtenButton(
           key: const Key('party-detail-edit'),
           size: UtenButtonSize.large,
           icon: Icons.edit_outlined,
           onPressed: _busy ? null : _edit,
-          child: const Text('编辑'),
+          child: Text(_isClient && !(_canEdit && _writable) ? '维护财务资料' : '编辑'),
         ),
       );
     }
@@ -1870,7 +1882,13 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }
 
   Future<void> _edit() async {
-    if (_loading || _busy || _openingEditor || !_canEdit || !_writable) return;
+    if (_loading ||
+        _busy ||
+        _openingEditor ||
+        !_canEditMaster ||
+        !_masterWritable) {
+      return;
+    }
     final epoch = _loadEpoch;
     final detail = _client;
     final owner = !_isClient || detail == null
@@ -1878,12 +1896,17 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         : MasterEditOwner(
             context,
             ref,
-            permissions: {Perm.clientView, Perm.clientEdit},
+            permissions: {
+              Perm.clientView,
+              if (_canEdit && detail.writable) Perm.clientEdit,
+              if (_has(Perm.clientFinance) && detail.financialWritable)
+                Perm.clientFinance,
+            },
             isCurrent: () =>
                 epoch == _loadEpoch &&
                 identical(_client, detail) &&
-                _canEdit &&
-                _writable,
+                _canEditMaster &&
+                _masterWritable,
           );
     if (owner != null) {
       _editOwner = owner;
@@ -1914,13 +1937,17 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }) async {
     // 客户：详情页**就地编辑**（分区变输入，不再弹窗）；供应商沿用弹窗。
     if (_isClient && client != null && owner != null) {
-      final settlements =
-          await loadClientSettlementMethods(context, ref, owner: owner) ??
-          const <ReferenceMethodOption>[];
+      final canEditFinancials =
+          client.financialWritable && _has(Perm.clientFinance);
+      final settlements = canEditFinancials
+          ? await loadClientSettlementMethods(context, ref, owner: owner) ??
+                const <ReferenceMethodOption>[]
+          : const <ReferenceMethodOption>[];
       if (!mounted || !owner.isCurrent) return;
-      final currencies =
-          await loadClientCurrencies(context, ref, owner: owner) ??
-          const <CurrencyListItem>[];
+      final currencies = canEditFinancials
+          ? await loadClientCurrencies(context, ref, owner: owner) ??
+                const <CurrencyListItem>[]
+          : const <CurrencyListItem>[];
       if (!mounted || !owner.isCurrent) return;
       setState(() {
         _editSettlements = settlements;
@@ -1928,7 +1955,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         _startInlineEdit(client);
         _editing = true;
       });
-      _tab.animateTo(0);
+      _tab.animateTo(client.writable && _canEdit ? 0 : 1);
       return;
     }
     if (!_isClient && _supplier != null) {

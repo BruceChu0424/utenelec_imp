@@ -7,6 +7,7 @@ import 'package:web/web.dart' as web;
 
 import 'package:uten_imp/core/print/print_pdf_document.dart';
 import 'package:uten_imp/features/purchase/models/purchase_order_pdf_bundle.dart';
+import 'package:uten_imp/features/subcontract/models/subcontract_order_pdf_bundle.dart';
 
 @JS('self')
 external web.DedicatedWorkerGlobalScope get _worker;
@@ -37,11 +38,12 @@ Future<void> _generate(web.MessageEvent event) async {
     final widths = data.getProperty<JSArray<JSNumber>?>('widths'.toJS);
     final font = data.getProperty<JSUint8Array?>('font'.toJS);
     if (version == 3) {
-      if (data.getProperty<JSString>('kind'.toJS).toDart !=
-          'purchase-order-bundle') {
-        throw const FormatException('renderer');
-      }
-      final bytes = await renderPurchaseOrderBundle(
+      final renderer = switch (data.getProperty<JSString>('kind'.toJS).toDart) {
+        'purchase-order-bundle' => renderPurchaseOrderBundle,
+        'subcontract-order-bundle' => renderSubcontractOrderBundle,
+        _ => throw const FormatException('renderer'),
+      };
+      final bytes = await renderer(
         data.getProperty<JSString>('payload'.toJS).toDart,
         font?.toDart,
       );

@@ -15,6 +15,7 @@ import com.uten.imp.features.master.currency.dto.CurrencyListItem;
 import com.uten.imp.features.master.currency.dto.CurrencyQueryFilter;
 import com.uten.imp.features.master.currency.dto.CurrencySaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.SalesClientTermsAccess;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -84,7 +85,7 @@ public class CurrencyController {
 
     /** 全量字典（采购单据选币种用；currency:view 全员有）。 */
     @GetMapping("/dict")
-    @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.CURRENCY_OPTIONS)
+    @PreAuthorize(SalesClientTermsAccess.CURRENCY_OPTIONS)
     public List<CurrencyListItem> dict() {
         return service.dict();
     }

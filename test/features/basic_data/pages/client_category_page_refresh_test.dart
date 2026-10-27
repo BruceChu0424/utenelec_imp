@@ -15,6 +15,7 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/models/client_access_models.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/party_directory_models.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -84,6 +85,50 @@ void main() {
     expect(clients.listCallsAfterSave, isTrue);
   });
 
+  for (final hasAssign in [false, true]) {
+    for (final manageable in [false, true]) {
+      testWidgets('负责人单元格仅在操作权限和对象能力同时允许时直接打开 $hasAssign/$manageable', (
+        tester,
+      ) async {
+        final categories = _FakeClientCategoryRepository();
+        final clients = _FakeClientRepository(
+          includeLegacy: true,
+          accessManageable: manageable,
+          rowWritable: false,
+        );
+        await _pumpPage(
+          tester,
+          categories,
+          clients,
+          extraPermissions: {if (hasAssign) Perm.clientAssign},
+        );
+        await _selectCategory(tester, '成品类');
+        await tester.pumpAndSettle();
+        final action = find.byKey(
+          const ValueKey('client-owner-access-legacy-client'),
+        );
+        if (hasAssign && manageable) {
+          expect(action, findsOneWidget);
+          await tester.ensureVisible(action);
+          await tester.tap(action);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('client-access-panel')),
+            findsOneWidget,
+          );
+          expect(clients.accessCalls, 1);
+          expect(find.text('负责人甲'), findsOneWidget);
+          expect(find.text('负责人乙'), findsOneWidget);
+          expect(find.text('客户详情'), findsNothing);
+        } else {
+          expect(action, findsNothing);
+          expect(clients.accessCalls, 0);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   // 2026-09-16 负责人表头筛选：服务端 empId 桶（值=员工 UUID、label=人名）remap 到
   // ownerEmployeeName 列；选桶回传服务端参数名 ownerEmployeeId。
   testWidgets('负责人表头筛选 empId 桶 remap 到列 key 并回传 ownerEmployeeId', (
@@ -128,7 +173,12 @@ void main() {
     (tester) async {
       final categories = _FakeClientCategoryRepository();
       final clients = _FakeClientRepository(includeLegacy: true);
-      await _pumpPage(tester, categories, clients);
+      await _pumpPage(
+        tester,
+        categories,
+        clients,
+        extraPermissions: {Perm.clientFinance},
+      );
 
       await _selectCategory(tester, '成品类');
       await tester.pumpAndSettle();
@@ -395,7 +445,16 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 
 /// 假客户仓储：记录 list 调用；保存后若列表重拉，调用次数会增加。
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({this.includeLegacy = false, this.facetPayload});
+  _FakeClientRepository({
+    this.includeLegacy = false,
+    this.facetPayload,
+    this.accessManageable = false,
+    this.rowWritable = true,
+  });
+
+  final bool accessManageable;
+  final bool rowWritable;
+  int accessCalls = 0;
 
   final bool includeLegacy;
 
@@ -428,7 +487,7 @@ class _FakeClientRepository implements ClientRepository {
     lastFilters = Map<String, String?>.of(filters);
     return PagedResult(
       items: includeLegacy
-          ? const [
+          ? [
               ClientListItem(
                 id: 'legacy-client',
                 code: 'OLD-001',
@@ -439,7 +498,9 @@ class _FakeClientRepository implements ClientRepository {
                 creditFloor: 50000,
                 status: '使用',
                 legacyId: 101,
-                writable: true,
+                writable: rowWritable,
+                accessManageable: accessManageable,
+                ownerEmployeeNames: const ['负责人甲', '负责人乙'],
               ),
             ]
           : const [],
@@ -466,6 +527,20 @@ class _FakeClientRepository implements ClientRepository {
   );
 
   @override
+  Future<ClientAccessSettings> access(String id) async {
+    accessCalls++;
+    return ClientAccessSettings(
+      clientId: id,
+      accessVersion: 7,
+      owners: const [
+        ClientAccessViewer(employeeId: 'owner-a', name: '负责人甲'),
+        ClientAccessViewer(employeeId: 'owner-b', name: '负责人乙'),
+      ],
+      viewers: const [],
+    );
+  }
+
+  @override
   Future<void> create(Map<String, dynamic> body) async {
     createdBody = Map<String, dynamic>.of(body);
   }
@@ -487,6 +562,7 @@ class _FakeClientRepository implements ClientRepository {
     status: '使用',
     legacyId: 101,
     writable: true,
+    financialWritable: true,
   );
 
   @override

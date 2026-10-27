@@ -33,13 +33,14 @@ class ClientHandoverEventRecorder {
         requireReason(reason, snapshots.size() + scopeDelegationCount);
         int changed = em.createNativeQuery("""
                         UPDATE clients
-                        SET owner_employee_id=:target,
-                            emp_id=:legacy,
+                        SET owner_employee_id=CASE WHEN owner_employee_id=:source THEN :target ELSE owner_employee_id END,
+                            emp_id=CASE WHEN owner_employee_id=:source THEN :legacy ELSE emp_id END,
                             version=version+1,
                             access_version=access_version+1,
                             updated_at=now(),
                             updated_by=:actor
-                        WHERE owner_employee_id=:source AND is_deleted=false
+                        WHERE is_deleted=false AND (owner_employee_id=:source OR EXISTS(
+                            SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id=clients.id AND co_owner.employee_id=:source))
                         """)
                 .setParameter("target", targetEmployeeId)
                 .setParameter("legacy", targetLegacyId == null ? null : targetLegacyId.toString())
@@ -47,8 +48,12 @@ class ClientHandoverEventRecorder {
                 .setParameter("source", sourceEmployeeId)
                 .executeUpdate();
         for (ClientSnapshot snapshot : snapshots) {
+            List<UUID> owners = snapshot.ownerIds().stream()
+                    .map(id -> id.equals(sourceEmployeeId) ? targetEmployeeId : id).distinct().toList();
+            transferCoOwner(snapshot, sourceEmployeeId, targetEmployeeId, owners.getFirst());
+            owners = ownerIds(snapshot.clientId(), owners.getFirst());
             for (UUID recipientId : scopeRecipients) {
-                upsertViewer(snapshot.clientId(), recipientId, actorUserId);
+                if (!owners.contains(recipientId)) upsertViewer(snapshot.clientId(), recipientId, actorUserId);
             }
             if (retainSourceViewer) {
                 upsertViewer(snapshot.clientId(), sourceEmployeeId, actorUserId);
@@ -56,10 +61,12 @@ class ClientHandoverEventRecorder {
                 deactivateViewer(snapshot.clientId(), sourceEmployeeId, actorUserId);
             }
             deactivateViewer(snapshot.clientId(), targetEmployeeId, actorUserId);
+            for (UUID ownerId : owners) if (!ownerId.equals(targetEmployeeId))
+                deactivateViewer(snapshot.clientId(), ownerId, actorUserId);
             List<UUID> resultingViewers = activeViewerIds(snapshot.clientId());
-            insertEvent(snapshot.clientId(), sourceEmployeeId, targetEmployeeId,
+            insertEvent(snapshot.clientId(), snapshot.ownerEmployeeId(), owners.getFirst(),
                     snapshot.viewerIds(), resultingViewers,
-                    snapshot.accessVersion() + 1, reason, actorUserId);
+                    snapshot.accessVersion() + 1, reason, actorUserId, snapshot.ownerIds(), owners);
         }
         int deletedScopes = snapshots.isEmpty() ? 0 : em.createNativeQuery("""
                         DELETE FROM user_data_scopes data_scope
@@ -124,7 +131,7 @@ class ClientHandoverEventRecorder {
                     .toList();
             insertEvent(snapshot.clientId(), snapshot.ownerEmployeeId(),
                     snapshot.ownerEmployeeId(), snapshot.viewerIds(), resultingViewers,
-                    snapshot.accessVersion() + 1, reason, actorUserId);
+                    snapshot.accessVersion() + 1, reason, actorUserId, snapshot.ownerIds(), snapshot.ownerIds());
             changed++;
         }
         return changed;
@@ -135,7 +142,8 @@ class ClientHandoverEventRecorder {
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, owner_employee_id, access_version
                         FROM clients
-                        WHERE owner_employee_id=:source AND is_deleted=false
+                        WHERE is_deleted=false AND (owner_employee_id=:source OR EXISTS(
+                            SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id=clients.id AND co_owner.employee_id=:source))
                         ORDER BY id
                         FOR UPDATE
                         """)
@@ -172,7 +180,7 @@ class ClientHandoverEventRecorder {
             }
             snapshots.add(new ClientSnapshot(
                     clientId, ownerId, ((Number) row[2]).longValue(),
-                    activeViewerIds(clientId)));
+                    activeViewerIds(clientId), ownerIds(clientId, ownerId)));
         }
         return snapshots;
     }
@@ -277,16 +285,16 @@ class ClientHandoverEventRecorder {
             List<UUID> newViewers,
             long resultingVersion,
             String reason,
-            UUID actorUserId) {
+            UUID actorUserId, List<UUID> previousOwners, List<UUID> newOwners) {
         em.createNativeQuery("""
                         INSERT INTO client_access_change_events
                             (client_id, previous_owner_employee_id, new_owner_employee_id,
                              previous_viewer_ids, new_viewer_ids, resulting_access_version,
-                             reason, actor_user_id)
+                             reason, actor_user_id, previous_owner_ids, new_owner_ids)
                         VALUES
                             (:clientId, :previousOwner, :newOwner,
                              CAST(:previousViewers AS UUID[]), CAST(:newViewers AS UUID[]),
-                             :version, :reason, :actor)
+                             :version, :reason, :actor, CAST(:previousOwners AS UUID[]), CAST(:newOwners AS UUID[]))
                         """)
                 .setParameter("clientId", clientId)
                 .setParameter("previousOwner", previousOwnerId)
@@ -296,6 +304,8 @@ class ClientHandoverEventRecorder {
                 .setParameter("version", resultingVersion)
                 .setParameter("reason", reason)
                 .setParameter("actor", actorUserId)
+                .setParameter("previousOwners", uuidArrayLiteral(previousOwners))
+                .setParameter("newOwners", uuidArrayLiteral(newOwners))
                 .executeUpdate();
     }
 
@@ -324,6 +334,31 @@ class ClientHandoverEventRecorder {
             UUID clientId,
             UUID ownerEmployeeId,
             long accessVersion,
-            List<UUID> viewerIds) {
+            List<UUID> viewerIds, List<UUID> ownerIds) {
+    }
+
+    private List<UUID> ownerIds(UUID clientId, UUID primaryOwner) {
+        var owners = new java.util.LinkedHashSet<UUID>();
+        owners.add(primaryOwner);
+        @SuppressWarnings("unchecked") List<Object> rows = em.createNativeQuery("""
+                SELECT employee_id FROM client_co_owners WHERE client_id=:clientId ORDER BY sort_order,employee_id
+                """).setParameter("clientId", clientId).getResultList();
+        rows.stream().map(ClientHandoverEventRecorder::uuid).forEach(owners::add);
+        return List.copyOf(owners);
+    }
+    private void transferCoOwner(ClientSnapshot snapshot, UUID source, UUID target, UUID primary) {
+        // Only source/target employee locks belong to the handover transaction.
+        // Updating unrelated co-owners would invert employee -> customer lock order.
+        if (!snapshot.ownerEmployeeId().equals(source)) {
+            if (snapshot.ownerIds().contains(target)) {
+                em.createNativeQuery("DELETE FROM client_co_owners WHERE client_id=:clientId AND employee_id=:source")
+                        .setParameter("clientId",snapshot.clientId()).setParameter("source",source).executeUpdate();
+            } else {
+                em.createNativeQuery("UPDATE client_co_owners SET employee_id=:target WHERE client_id=:clientId AND employee_id=:source")
+                        .setParameter("target",target).setParameter("clientId",snapshot.clientId()).setParameter("source",source).executeUpdate();
+            }
+        }
+        em.createNativeQuery("DELETE FROM client_co_owners WHERE client_id=:clientId AND employee_id=:primary")
+                .setParameter("clientId",snapshot.clientId()).setParameter("primary",primary).executeUpdate();
     }
 }

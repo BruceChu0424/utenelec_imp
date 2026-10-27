@@ -67,6 +67,8 @@ public class SubcontractReportService {
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
+    @Autowired
+    private com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy sourceOrderAccess;
 
     // ======================== 通用执行器（8 张明细/汇总共用） ========================
 
@@ -314,6 +316,7 @@ public class SubcontractReportService {
     public ReportTableResponse receiptDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String kw,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -336,6 +339,8 @@ public class SubcontractReportService {
                 ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName").totaled("合计退货数量", "unitName","__unitId"),
                 ReportColumn.money("returnedAmount", "退货金额").withUnitLabel("元").totaled("合计退货金额"),
                 ReportColumn.text("returnNo", "委外退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外进仓单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -349,6 +354,8 @@ public class SubcontractReportService {
                        i.returned_qty AS "returnedQty",
                        COALESCE(i.return_amount, returned.amount_local) AS "returnedAmount",
                        i.return_no AS "returnNo", i.order_no AS "orderNo",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -371,7 +378,7 @@ public class SubcontractReportService {
                       AND COALESCE(return_doc.is_deleted,false)=false
                 ) returned ON TRUE
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "SUBCONTRACT", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetBillNo(),
@@ -428,6 +435,7 @@ public class SubcontractReportService {
     public ReportTableResponse returnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String kw,
                                             Map<String, String> facets, int page, int size, String sort, String order) {
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "加工单位", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -448,6 +456,8 @@ public class SubcontractReportService {
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
                 ReportColumn.money("amount", "金额").withUnitLabel("元").totaled("合计金额"),
                 ReportColumn.text("receiptNo", "委外进仓单号", 140),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外退货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -458,6 +468,8 @@ public class SubcontractReportService {
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", i.weight AS "weight", i.girth_qty AS "girth",
                        i.qty AS "qty", un.name AS "unitName", NULL AS "step",
                        i.price AS "price", i.amount_local AS "amount", i.receipt_no AS "receiptNo",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -470,7 +482,7 @@ public class SubcontractReportService {
                 LEFT JOIN colors col ON col.id = i.color_id
                 LEFT JOIN units un ON un.id = i.unit_id
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "SUBCONTRACT", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetBillNo(),
@@ -542,6 +554,8 @@ public class SubcontractReportService {
                 ReportColumn.number("qty", "数量").withUnitKey("__unitName").totaled("合计数量", "unitName","__unitId"),
                 ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName").totaled("合计退货数量", "unitName","__unitId"),
                 ReportColumn.text("returnNo", "材料退货单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外发料单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -550,6 +564,8 @@ public class SubcontractReportService {
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", un.name AS "unitName", i.weight AS "weight",
                        i.box_qty AS "boxQty", i.qty AS "qty", i.returned_qty AS "returnedQty",
                        i.return_no AS "returnNo", i.order_no AS "orderNo",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -564,6 +580,7 @@ public class SubcontractReportService {
                 LEFT JOIN units un ON un.id = i.unit_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "SUBCONTRACT", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetBillNo(),
@@ -630,6 +647,8 @@ public class SubcontractReportService {
                 ReportColumn.number("girth", "围数").withUnitLabel("围"),
                 ReportColumn.number("qty", "数量").withUnitKey("__unitName").totaled("合计数量", "unitName","__unitId"),
                 ReportColumn.text("issueNo", "材料出仓单号", 140), ReportColumn.text("orderNo", "委外订货单号", 140),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳委外材料退货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -637,6 +656,8 @@ public class SubcontractReportService {
                        i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", un.name AS "unitName", i.weight AS "weight",
                        i.girth_qty AS "girth", i.qty AS "qty", i.issue_no AS "issueNo", i.order_no AS "orderNo",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -651,6 +672,7 @@ public class SubcontractReportService {
                 LEFT JOIN units un ON un.id = i.unit_id
                 """;
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "SUBCONTRACT", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 facetBillNo(),

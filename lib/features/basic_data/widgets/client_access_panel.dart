@@ -16,8 +16,11 @@ import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/client_access_models.dart';
 import '../repositories/client_repository.dart';
+import 'client_access_employee_loader.dart';
+import 'master_edit_owner.dart';
 
 typedef ClientAccessLoader =
     Future<ClientAccessSettings> Function(String clientId);
@@ -38,18 +41,35 @@ Future<ClientAccessSettings?> showClientAccessPanel({
   required String clientName,
   required ClientAccessLoader loader,
   required ClientAccessSaver saver,
-}) => showUtenAdaptivePanel<ClientAccessSettings>(
-  context: context,
-  drawerWidth: 480,
-  widthFraction: UtenPanelWidth.content,
-  showDragHandle: true,
-  builder: (_) => ClientAccessPanel(
-    clientId: clientId,
-    clientName: clientName,
-    loader: loader,
-    saver: saver,
-  ),
-);
+}) async {
+  final owner = MasterEditOwner(
+    context,
+    ref,
+    permissions: {Perm.clientView, Perm.clientAssign},
+  );
+  try {
+    if (!await owner.bindRequests() || !context.mounted) return null;
+    final result = await showUtenAdaptivePanel<ClientAccessSettings>(
+      context: context,
+      drawerWidth: 480,
+      widthFraction: UtenPanelWidth.content,
+      showDragHandle: true,
+      builder: (panelContext) => owner.ownDialog(
+        panelContext,
+        ClientAccessPanel(
+          clientId: clientId,
+          clientName: clientName,
+          loader: loader,
+          saver: saver,
+          submissionOwner: owner,
+        ),
+      ),
+    );
+    return owner.isCurrent ? result : null;
+  } finally {
+    owner.dispose();
+  }
+}
 
 class ClientAccessPanel extends ConsumerStatefulWidget {
   const ClientAccessPanel({
@@ -58,12 +78,14 @@ class ClientAccessPanel extends ConsumerStatefulWidget {
     required this.clientName,
     required this.loader,
     required this.saver,
+    this.submissionOwner,
   });
 
   final String clientId;
   final String clientName;
   final ClientAccessLoader loader;
   final ClientAccessSaver saver;
+  final MasterEditOwner? submissionOwner;
 
   @override
   ConsumerState<ClientAccessPanel> createState() => _ClientAccessPanelState();
@@ -75,20 +97,28 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _confirming = false;
   String? _loadError;
   int _accessVersion = 0;
 
-  UtenEmployeePickerItem? _owner;
+  List<UtenEmployeePickerItem> _owners = const [];
   List<UtenEmployeePickerItem> _viewers = const [];
-  String? _initialOwnerId;
-  String? _initialOwnerName;
+  List<String> _initialOwnerIds = const [];
   Set<String> _initialViewerIds = const {};
 
   bool get _dirty {
     final currentViewerIds = _viewers.map((item) => item.id).toSet();
-    return _owner?.id != _initialOwnerId ||
+    return !_sameOrderedIds(
+          _owners.map((item) => item.id).toList(growable: false),
+          _initialOwnerIds,
+        ) ||
         !_sameIds(currentViewerIds, _initialViewerIds);
   }
+
+  bool get _isCurrent => mounted && widget.submissionOwner?.isCurrent != false;
+
+  Future<T> _run<T>(Future<T> Function() action) =>
+      widget.submissionOwner?.run(action) ?? action();
 
   @override
   void initState() {
@@ -103,52 +133,49 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
   }
 
   Future<void> _load() async {
+    if (!mounted || !_isCurrent) return;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final settings = await widget.loader(widget.clientId);
-      if (!mounted) return;
+      final settings = await _run(() => widget.loader(widget.clientId));
+      if (!mounted || !_isCurrent) return;
       _apply(settings);
       _reasonController.clear();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrent) return;
       setState(() => _loadError = error.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!_isCurrent) return;
       setState(() => _loadError = '客户访问设置加载失败，请重试');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (_isCurrent) setState(() => _loading = false);
     }
   }
 
   void _apply(ClientAccessSettings settings) {
-    final ownerId = settings.ownerEmployeeId;
-    final ownerName = settings.ownerEmployeeName?.trim();
+    UtenEmployeePickerItem item(ClientAccessViewer person) =>
+        UtenEmployeePickerItem(
+          id: person.employeeId,
+          name: person.name,
+          employeeCode: person.code,
+          departmentName: person.departmentName,
+        );
+    final owners = settings.effectiveOwners.map(item).toList(growable: false);
+    final ownerIds = owners.map((owner) => owner.id).toSet();
     final viewers = settings.viewers
-        .where((viewer) => viewer.employeeId != ownerId)
-        .map(
-          (viewer) => UtenEmployeePickerItem(
-            id: viewer.employeeId,
-            name: viewer.name,
-            employeeCode: viewer.code,
-            departmentName: viewer.departmentName,
-          ),
-        )
+        .where((viewer) => !ownerIds.contains(viewer.employeeId))
+        .map(item)
         .toList(growable: false);
     setState(() {
       _accessVersion = settings.accessVersion;
-      _owner = ownerId == null || ownerId.isEmpty
-          ? null
-          : UtenEmployeePickerItem(
-              id: ownerId,
-              name: ownerName == null || ownerName.isEmpty ? '未知员工' : ownerName,
-            );
+      _owners = owners;
       _viewers = viewers;
-      _initialOwnerId = ownerId;
-      _initialOwnerName = ownerName;
-      _initialViewerIds = viewers.map((item) => item.id).toSet();
+      _initialOwnerIds = owners
+          .map((owner) => owner.id)
+          .toList(growable: false);
+      _initialViewerIds = viewers.map((person) => person.id).toSet();
     });
   }
 
@@ -156,100 +183,81 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
     String? keyword, {
     bool excludeOwner = false,
   }) async {
-    final repository = ref.read(clientRepositoryProvider);
-    final rows = <ClientAccessCandidate>[];
-    var page = 1;
-    var total = 1;
-    do {
-      final result = await repository.accessCandidates(
-        page: page,
-        size: 100,
-        search: keyword,
-      );
-      if (result.total > 5000) {
-        throw ApiException('VALIDATION_FAILED', '候选人员超过5000人，请输入姓名或工号缩小范围');
-      }
-      if (result.items.isEmpty && rows.length < result.total) {
-        throw ApiException('CONFLICT', '候选人员已变化，请重新搜索');
-      }
-      rows.addAll(result.items);
-      total = result.total;
-      page++;
-    } while (rows.length < total);
-
-    return rows
-        .where(
-          (employee) =>
-              employee.activeAccount &&
-              (!excludeOwner || employee.employeeId != _owner?.id),
-        )
-        .map(
-          (employee) => UtenEmployeePickerItem(
-            id: employee.employeeId,
-            name: employee.name,
-            employeeCode: employee.code,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-            accountStatus: employee.accountStatus,
-            employmentStatus: employee.employmentStatus,
-          ),
-        )
-        .toList(growable: false);
+    final employees = await _run(
+      () => loadClientAccessEmployees(
+        ref.read(clientRepositoryProvider),
+        keyword,
+      ),
+    );
+    return excludeOwner
+        ? employees
+              .where(
+                (employee) => !_owners.any((owner) => owner.id == employee.id),
+              )
+              .toList(growable: false)
+        : employees;
   }
 
-  void _changeOwner(UtenEmployeePickerItem? next) {
-    if (next == null) return;
+  void _changeOwners(List<UtenEmployeePickerItem> next) {
+    final ownerIds = next.map((owner) => owner.id).toSet();
     setState(() {
-      _owner = next;
+      _owners = next;
       _viewers = _viewers
-          .where((viewer) => viewer.id != next.id)
+          .where((viewer) => !ownerIds.contains(viewer.id))
           .toList(growable: false);
     });
   }
 
   Future<void> _save() async {
-    if (_saving || !_dirty) return;
+    if (_saving || _confirming || !_dirty || !_isCurrent) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final owner = _owner;
-    if (owner == null) return;
+    if (_owners.isEmpty) return;
+    final ownerIds = _owners.map((owner) => owner.id).toList(growable: false);
     final reason = _reasonController.text.trim();
     final viewerIds =
         _viewers
             .map((viewer) => viewer.id)
-            .where((id) => id != owner.id)
+            .where((id) => !ownerIds.contains(id))
             .toSet()
             .toList()
           ..sort();
+    setState(() => _confirming = true);
     final confirmed = await UtenDialog.show(
       context,
       title: '确认保存客户访问设置？',
       content: Text(
         '客户：${widget.clientName}\n'
-        '负责人：${owner.name}\n'
+        '负责人：${_owners.map((owner) => owner.name).join('、')}\n'
         '额外只读查看人：${viewerIds.length} 人\n\n'
         '本次修改不会改写历史制单、审批或审计记录。'
-        '${_initialOwnerId != null && _initialOwnerId != owner.id ? '\n\n原负责人${_initialOwnerName?.isNotEmpty == true ? ' ${_initialOwnerName!}' : ''}如仍在职且账号启用，系统会暂时保留其只读查看权以完成在途单据；最终以保存回执为准。' : ''}',
+        '${_initialOwnerIds.toSet().difference(ownerIds.toSet()).isNotEmpty ? '\n\n移出的原负责人如仍在职且账号启用，系统会暂时保留其只读查看权以完成在途单据；最终以保存回执为准。' : ''}',
       ),
       confirmLabel: '确认保存',
+      scopeBuilder: widget.submissionOwner?.ownDialog,
     );
-    if (!mounted || confirmed != true) return;
+    if (!_isCurrent) return;
+    setState(() => _confirming = false);
+    if (confirmed != true) return;
 
     setState(() => _saving = true);
     try {
-      final saved = await widget.saver(
-        widget.clientId,
-        ClientAccessUpdate(
-          ownerEmployeeId: owner.id,
-          viewerEmployeeIds: viewerIds,
-          expectedAccessVersion: _accessVersion,
-          reason: reason,
+      final saved = await _run(
+        () => widget.saver(
+          widget.clientId,
+          ClientAccessUpdate(
+            ownerEmployeeId: ownerIds.first,
+            ownerEmployeeIds: ownerIds,
+            viewerEmployeeIds: viewerIds,
+            expectedAccessVersion: _accessVersion,
+            reason: reason,
+          ),
         ),
       );
-      if (!mounted) return;
+      if (!mounted || !_isCurrent) return;
       context.appSuccess('负责人和可见人已保存；当前额外查看 ${saved.viewers.length} 人');
       Navigator.of(context).pop(saved);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_isCurrent) return;
       if (error.code == 'CONFLICT') {
         context.appError('设置已被其他人更新，已为你刷新最新数据');
         await _load();
@@ -257,23 +265,27 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
         context.appApiError(error);
       }
     } catch (_) {
-      if (mounted) context.appError('保存失败，请稍后重试');
+      if (mounted && _isCurrent) context.appError('保存失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (_isCurrent) setState(() => _saving = false);
     }
   }
 
   Future<void> _cancel() async {
-    if (_saving) return;
+    if (_saving || _confirming || !_isCurrent) return;
     if (_dirty) {
+      setState(() => _confirming = true);
       final discard = await UtenDialog.show(
         context,
         title: '放弃未保存修改？',
         content: const Text('负责人或额外可见人已经修改，离开后不会保存。'),
         confirmLabel: '放弃修改',
         danger: true,
+        scopeBuilder: widget.submissionOwner?.ownDialog,
       );
-      if (!mounted || discard != true) return;
+      if (!mounted || !_isCurrent) return;
+      setState(() => _confirming = false);
+      if (discard != true) return;
     }
     Navigator.of(context).pop();
   }
@@ -282,7 +294,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return PopScope<void>(
-      canPop: !_dirty && !_saving,
+      canPop: !_dirty && !_saving && !_confirming,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_cancel());
       },
@@ -384,23 +396,27 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
               borderRadius: UtenRadius.mdAll,
             ),
             child: Text(
-              '内销、外贸客户使用同一套规则。负责人表示当前业务责任；'
+              '内销、外贸客户使用同一套规则。可同时设置多位负责人，共同维护客户普通资料；'
               '历史制单、审批和审计记录不会被改写。变更负责人时，若原负责人仍在职且账号启用，'
               '系统会暂时保留其单客户只读查看权，以便完成在途单据。',
               style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
             ),
           ),
           const SizedBox(height: UtenSpacing.s16),
-          UtenEmployeePicker(
-            key: ValueKey('client-access-owner-${_owner?.id ?? 'none'}'),
+          UtenEmployeeMultiPicker(
+            key: const ValueKey('client-access-owners'),
             label: '客户负责人',
-            hint: '请选择在册负责人',
+            hint: '请选择一位或多位负责人',
+            info: '第一位是主负责人，承接未指定负责人的新业务；所有选中人员均可共同维护客户普通资料。',
             sheetTitle: '选择客户负责人',
-            initial: _owner,
+            initialSelection: _owners,
+            panelScopeBuilder: widget.submissionOwner?.ownDialog,
             required: true,
-            validator: (value) => value == null ? '请选择客户负责人' : null,
+            enabled: !_saving,
+            selectedCountLabel: (count) => '负责人 $count 人',
+            validator: (selection) => selection.isEmpty ? '请至少选择一位客户负责人' : null,
             loader: (keyword) => _loadEmployees(keyword),
-            onChanged: _changeOwner,
+            onChanged: _changeOwners,
           ),
           const SizedBox(height: UtenSpacing.s16),
           Text(
@@ -413,7 +429,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           const SizedBox(height: UtenSpacing.s8),
           UtenEmployeeMultiPicker(
             key: ValueKey(
-              'client-access-viewers-${_owner?.id ?? 'none'}-'
+              'client-access-viewers-${_owners.map((owner) => owner.id).join(',')}-'
               '${_viewers.map((viewer) => viewer.id).join(',')}',
             ),
             label: '额外只读查看人',
@@ -421,12 +437,15 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             sheetTitle: '选择额外只读查看人',
             emptyMessage: '未找到匹配的在册员工',
             initialSelection: _viewers,
+            panelScopeBuilder: widget.submissionOwner?.ownDialog,
             selectedCountLabel: (count) => '额外查看 $count 人',
             enabled: !_saving,
             loader: (keyword) => _loadEmployees(keyword, excludeOwner: true),
             onChanged: (selection) => setState(() {
               _viewers = selection
-                  .where((viewer) => viewer.id != _owner?.id)
+                  .where(
+                    (viewer) => !_owners.any((owner) => owner.id == viewer.id),
+                  )
                   .toList(growable: false);
             }),
           ),
@@ -463,3 +482,9 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
 
 bool _sameIds(Set<String> left, Set<String> right) =>
     left.length == right.length && left.every(right.contains);
+
+bool _sameOrderedIds(List<String> left, List<String> right) =>
+    left.length == right.length &&
+    Iterable<int>.generate(
+      left.length,
+    ).every((index) => left[index] == right[index]);

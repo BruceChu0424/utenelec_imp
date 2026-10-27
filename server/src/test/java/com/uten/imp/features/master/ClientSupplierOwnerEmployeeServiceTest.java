@@ -69,9 +69,10 @@ class ClientSupplierOwnerEmployeeServiceTest {
                 .thenReturn(new CategoryCodeAllocation("KH000001", 1L, null, true));
 
         ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
+        when(accessPolicy.canWrite(any(com.uten.imp.features.master.client.Client.class), any())).thenReturn(true);
         ClientService service = new ClientService(
                 repo, categories, mock(TxSessionVars.class),
-                mock(EntityManager.class), codes, accessPolicy,
+                projectionEntityManager(), codes, accessPolicy,
                 mock(EmployeeRepository.class), mock(EmployeeNameResolver.class));
         ClientSaveRequest request = new ClientSaveRequest();
         request.setCategoryId(categoryId);
@@ -107,7 +108,7 @@ class ClientSupplierOwnerEmployeeServiceTest {
         when(accessPolicy.requireCurrentEmployeeId()).thenReturn(employeeId);
 
         ClientService service = new ClientService(
-                repo, categories, mock(TxSessionVars.class), mock(EntityManager.class),
+                repo, categories, mock(TxSessionVars.class), projectionEntityManager(),
                 codes, accessPolicy, employees, names);
         ClientSaveRequest request = new ClientSaveRequest();
         request.setCategoryId(categoryId);
@@ -166,6 +167,15 @@ class ClientSupplierOwnerEmployeeServiceTest {
     private static void authenticate(String... permissions) {
         SecurityContextHolder.getContext().setAuthentication(
                 new TestingAuthenticationToken("test", "n/a", permissions));
+    }
+
+    private static EntityManager projectionEntityManager() {
+        var em = mock(EntityManager.class);
+        var owners = mock(jakarta.persistence.Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(owners);
+        when(owners.setParameter(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(owners);
+        when(owners.getResultList()).thenReturn(java.util.List.of());
+        return em;
     }
 
     private static Employee employee(UUID id, int legacyId) {

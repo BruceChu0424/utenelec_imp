@@ -134,6 +134,7 @@ public class ClientService {
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
         Map<UUID, String> ownerNames = p.isEmpty() ? Map.of() : employeeNameResolver.namesOf(
                 p.getContent().stream().map(Client::getOwnerEmployeeId).toList());
+        Map<UUID, List<OwnerReference>> owners = ownerReferences(p.getContent(), ownerNames);
         return new PageResponse<>(
                 p.getContent().stream()
                         // settlementNames 可能为空 Map.of()（不可变），null key 的 get 会抛 NPE，先判空。
@@ -143,7 +144,7 @@ public class ClientService {
                                         ? null
                                         : settlementNames.get(client.getDefaultSettlementMethodId()),
                                 client.getOwnerEmployeeId() == null ? null : ownerNames.get(client.getOwnerEmployeeId()),
-                                accessScope))
+                                accessScope, owners.getOrDefault(client.getId(), List.of())))
                         .toList(),
                 p);
     }
@@ -240,7 +241,7 @@ public class ClientService {
             addEq(ps, cb, root, "placeId", f.placeId());
             addEq(ps, cb, root, "empId", f.empId());
             if (f.ownerEmployeeId() != null) {
-                ps.add(cb.equal(root.get("ownerEmployeeId"), f.ownerEmployeeId()));
+                ps.add(clientAccessPolicy.ownerPredicate(root, q, cb, Set.of(f.ownerEmployeeId())));
             }
             addEq(ps, cb, root, "legalPerson", f.legalPerson());
             addEq(ps, cb, root, "linkman", f.linkman());
@@ -333,7 +334,7 @@ public class ClientService {
                     row.put("region", m.getRegion());
                     row.put("placeId", m.getPlaceId());
                     row.put("ownerEmployeeName",
-                            m.getOwnerEmployeeName() == null || m.getOwnerEmployeeName().isBlank()
+                            !m.getOwnerEmployeeNames().isEmpty() ? String.join("、", m.getOwnerEmployeeNames()) : m.getOwnerEmployeeName() == null || m.getOwnerEmployeeName().isBlank()
                                     ? "未分配" : m.getOwnerEmployeeName());
                     row.put("legalPerson", m.getLegalPerson());
                     row.put("linkman", m.getLinkman());
@@ -425,7 +426,8 @@ public class ClientService {
             List<UUID> ids, String legacyStubClause, ClientAccessPolicy.NativeReadScope accessSql) {
         var fq = em.createNativeQuery(
                 "select employees.id as v, employees.full_name as label, count(*) as c "
-                        + "from clients join employees on employees.id = clients.owner_employee_id "
+                        + "from clients join employees on (employees.id = clients.owner_employee_id "
+                        + "or exists(select 1 from client_co_owners co_owner where co_owner.client_id=clients.id and co_owner.employee_id=employees.id)) "
                         + "where clients.is_deleted = false " + (ids == null ? "" : "and clients.category_id in (:ids) ")
                         + "and clients.owner_employee_id is not null "
                         + legacyStubClause + " and " + accessSql.predicate()
@@ -479,6 +481,8 @@ public class ClientService {
         // 货款类型 V607 起可不填（未分类客户财务放行前有专门闸门要求补选）；
         // 编号 readOnly 不上送 → allocate(null) 按分类前缀自动发号。
         prepareOwnerForCreate(req);
+        requireCoreFields(req);
+        if (!ClientFinancialPolicy.hasAuthority()) requireNewFinancialDefaults(req);
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
         }
@@ -489,20 +493,33 @@ public class ClientService {
                 m.getCategory() == null ? null : m.getCategory().getId(), req.getCode()));
         if (m.getStatus() == null) m.setStatus("使用");
         repo.save(m);
+        em.flush();
         return toDetail(m);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('client:edit', 'client:status')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyAuthority('client:edit', 'client:finance')")
     @Transactional
     public ClientDetail update(UUID id, ClientSaveRequest req) {
         tx.bind();
-        com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:edit");
         Client m = requireClient(id);
-        requireWritable(m);
+        var scope = clientAccessPolicy.evaluate();
+        clientAccessPolicy.requireReadable(m, scope);
+        boolean ordinary = hasOrdinaryEditAuthority() && clientAccessPolicy.canWrite(m, scope);
+        boolean financial = ClientFinancialPolicy.hasAuthority() && clientAccessPolicy.canWrite(m, scope);
+        if (!ordinary && !financial) throw new ApiException(ErrorCode.NOT_FOUND, "客户不存在");
         requireOwnerUnchanged(req, m);
         // 乐观锁：编辑回传的版本与当前不符 → 409（记录已被他人修改）。null 放行（兼容旧客户端）。
         OptimisticLocks.requireUpToDate(m.getVersion(), req.getVersion());
-        requireLegacyCreditSnapshotUnchanged(m, req.getCredit());
+        if (req.hasFinancialField("credit")) requireLegacyCreditSnapshotUnchanged(m, req.getCredit());
+        if (!financial) requireFinancialUnchanged(m, req);
+        if (!ordinary) {
+            requireOrdinaryUnchanged(m, req);
+            applyFinancial(req, m);
+            repo.save(m);
+            em.flush();
+            return toDetail(m, scope);
+        }
+        requireCoreFields(req);
         if (req.getStatus() != null && !Objects.equals(m.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:status");
         }
@@ -513,6 +530,7 @@ public class ClientService {
                 m.getId(), m.getCategory() == null ? null : m.getCategory().getId(),
                 req.getCode(), currentCode));
         repo.save(m);
+        em.flush();
         return toDetail(m);
     }
 
@@ -553,18 +571,8 @@ public class ClientService {
         m.setWebsite(req.getWebsite());
         m.setShipVia(req.getShipVia());
         m.setShipAddress(req.getShipAddress());
-        m.setBank(req.getBank());
-        m.setBankAccount(req.getBankAccount());
-        m.setTaxId(req.getTaxId());
-        m.setCredit(req.getCredit());
-        m.setInitTotal(req.getInitTotal());
-        m.setTday(req.getTday());
-        applyDefaultSettlementMethod(req, m);
         applyDefaultShipmentPolicy(req, m);
-        applyDefaultCurrency(req, m);
-        if (req.getCreditFloor() != null || m.getCreditFloor() == null) {
-            m.setCreditFloor(normalizeCreditFloor(req.getCreditFloor()));
-        }
+        if (ClientFinancialPolicy.hasAuthority()) applyFinancial(req, m);
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
     }
@@ -592,7 +600,7 @@ public class ClientService {
         String settlementMethodName = m.getDefaultSettlementMethodId() == null
                 ? null
                 : settlementMethodNames(List.of(m)).get(m.getDefaultSettlementMethodId());
-        return new ClientDetail(
+        var detail = new ClientDetail(
                 m.getId(), m.getCode(), m.getName(), m.getStatus(), m.getRegion(),
                 m.getLinkman(), m.getLegacyId(),
                 categoryId, categoryName, m.getFullName(), m.getClientRank(),
@@ -611,15 +619,20 @@ public class ClientService {
                 m.getDefaultShipmentPolicy(),
                 m.getDefaultCurrencyId(),
                 currencyName(m.getDefaultCurrencyId()),
-                m.getNameEn());
+                m.getNameEn(), List.of(), List.of(), false);
+        var owners = ownerReferences(List.of(m)).getOrDefault(m.getId(), List.of());
+        detail.setOwnerEmployeeIds(owners.stream().map(OwnerReference::id).toList());
+        detail.setOwnerEmployeeNames(owners.stream().map(OwnerReference::name).toList());
+        detail.setFinancialWritable(ClientFinancialPolicy.hasAuthority() && clientAccessPolicy.canWrite(m, scope));
+        return detail;
     }
 
     private ClientListItem toList(
             Client m,
             String settlementMethodName,
             String ownerEmployeeName,
-            ClientAccessPolicy.ClientScope scope) {
-        return new ClientListItem(
+            ClientAccessPolicy.ClientScope scope, List<OwnerReference> owners) {
+        var item = new ClientListItem(
                 m.getId(), m.getCode(), m.getName(), m.getFullName(), m.getClientXz(),
                 m.getTday(), m.getRegion(), m.getPlaceId(), m.getEmpId(), m.getLegalPerson(),
                 m.getLinkman(), m.getMobile(), m.getPhone(), m.getPhone2(), m.getFax(),
@@ -629,10 +642,114 @@ public class ClientService {
                 m.getOwnerEmployeeId(),
                 ownerEmployeeName,
                 m.getDefaultSettlementMethodId(), settlementMethodName,
-                clientAccessPolicy.canWrite(m, scope),
-                clientAccessPolicy.canManageAccess(m, scope),
+                writableFromOwners(m, scope, owners),
+                scope != null && scope.canAssign() && (m.getOwnerEmployeeId() == null || writableFromOwners(m, scope, owners)),
                 m.getVersion(),
-                m.getNameEn());
+                m.getNameEn(), List.of(), List.of(), false);
+        item.setOwnerEmployeeIds(owners.stream().map(OwnerReference::id).toList());
+        item.setOwnerEmployeeNames(owners.stream().map(owner -> Objects.toString(owner.name(), "未命名员工")).toList());
+        item.setFinancialWritable(ClientFinancialPolicy.hasAuthority() && writableFromOwners(m, scope, owners));
+        return item;
+    }
+
+    private record OwnerReference(UUID id, String name) {}
+    private static boolean writableFromOwners(Client client, ClientAccessPolicy.ClientScope scope,
+            List<OwnerReference> owners) {
+        return scope != null && (scope.ownerScope().seeAll()
+                || owners.stream().anyMatch(owner -> scope.ownerScope().writableOwners().contains(owner.id())));
+    }
+    private Map<UUID, List<OwnerReference>> ownerReferences(List<Client> clients) {
+        return ownerReferences(clients, employeeNameResolver.namesOf(clients.stream().map(Client::getOwnerEmployeeId).toList()));
+    }
+    private Map<UUID, List<OwnerReference>> ownerReferences(List<Client> clients, Map<UUID, String> primaryNames) {
+        if (clients.isEmpty()) return Map.of();
+        var result = new HashMap<UUID, List<OwnerReference>>();
+        for (Client client : clients) {
+            var refs = new ArrayList<OwnerReference>();
+            if (client.getOwnerEmployeeId() != null) refs.add(new OwnerReference(client.getOwnerEmployeeId(),
+                    primaryNames.get(client.getOwnerEmployeeId())));
+            result.put(client.getId(), refs);
+        }
+        // One bounded query per list page, never one lookup per co-owner.
+        var ids = clients.stream().map(Client::getId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) return result;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT co_owner.client_id, employee.id, employee.full_name
+                FROM client_co_owners co_owner JOIN employees employee ON employee.id=co_owner.employee_id
+                WHERE co_owner.client_id IN (:ids)
+                ORDER BY co_owner.client_id, co_owner.sort_order, employee.id
+                """).setParameter("ids", ids));
+        for (var row : rows) result.get((UUID)row[0]).add(new OwnerReference((UUID)row[1], Objects.toString(row[2], "未命名员工")));
+        return result;
+    }
+
+    private static boolean hasOrdinaryEditAuthority() {
+        try { com.uten.imp.security.CurrentAuthorityGuard.requireAll("client:edit"); return true; }
+        catch (ApiException denied) { return false; }
+    }
+
+    private static void requireCoreFields(ClientSaveRequest req) {
+        if (req.getCategoryId() == null || req.getName() == null || req.getName().isBlank())
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户名称及分类必填");
+    }
+
+    private void applyFinancial(ClientSaveRequest req, Client client) {
+        if (req.hasFinancialField("bank")) client.setBank(req.getBank());
+        if (req.hasFinancialField("bankAccount")) client.setBankAccount(req.getBankAccount());
+        if (req.hasFinancialField("taxId")) client.setTaxId(req.getTaxId());
+        if (req.hasFinancialField("credit")) client.setCredit(req.getCredit());
+        if (req.hasFinancialField("initTotal")) client.setInitTotal(req.getInitTotal());
+        if (req.hasFinancialField("tday")) client.setTday(req.getTday());
+        if (req.hasFinancialField("creditFloor")) client.setCreditFloor(normalizeCreditFloor(req.getCreditFloor()));
+        applyDefaultSettlementMethod(req, client);
+        applyDefaultCurrency(req, client);
+    }
+
+    static void requireFinancialUnchanged(Client client, ClientSaveRequest req) {
+        for (String field : ClientFinancialPolicy.FINANCIAL_FIELDS) {
+            boolean present = switch (field) {
+                case "defaultSettlementMethodId" -> req.hasDefaultSettlementMethodReference();
+                case "defaultCurrencyId" -> req.hasDefaultCurrencyReference();
+                default -> req.hasFinancialField(field);
+            };
+            if (!present) continue;
+            Object requested = property(req, field), stored = property(client, field);
+            if (!sameValue(requested, stored)) ClientFinancialPolicy.requireAuthority();
+        }
+    }
+
+    static void requireNewFinancialDefaults(ClientSaveRequest req) {
+        for (String field : ClientFinancialPolicy.FINANCIAL_FIELDS) {
+            Object value = property(req, field);
+            boolean empty = value == null || value instanceof String text && text.isBlank()
+                    || value instanceof BigDecimal decimal && decimal.signum() == 0
+                    || value instanceof Integer integer && integer == 0;
+            if (!empty) ClientFinancialPolicy.requireAuthority();
+        }
+    }
+
+    private static void requireOrdinaryUnchanged(Client client, ClientSaveRequest req) {
+        for (String field : List.of("name", "code", "fullName", "clientRank", "region", "placeId", "legalPerson",
+                "linkman", "mobile", "phone", "phone2", "fax", "postcode", "address", "email", "website",
+                "shipVia", "shipAddress", "status", "remark", "nameEn", "defaultShipmentPolicy")) {
+            Object requested = property(req, field);
+            if (requested != null && !sameValue(requested, property(client, field)))
+                throw new ApiException(ErrorCode.FORBIDDEN, "当前账号只能维护客户财务资料");
+        }
+        if (req.getCategoryId() != null && (client.getCategory() == null
+                || !req.getCategoryId().equals(client.getCategory().getId())))
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号不能修改客户分类");
+    }
+
+    private static Object property(Object bean, String field) {
+        try { return bean.getClass().getMethod("get" + Character.toUpperCase(field.charAt(0)) + field.substring(1)).invoke(bean); }
+        catch (ReflectiveOperationException failure) { throw new IllegalStateException(failure); }
+    }
+    private static boolean sameValue(Object left, Object right) {
+        if (left instanceof BigDecimal a && right instanceof BigDecimal b) return a.compareTo(b) == 0;
+        if (left instanceof String a && (right == null || right instanceof String))
+            return Objects.equals(a.isBlank() ? null : a, right == null || right.toString().isBlank() ? null : right);
+        return Objects.equals(left, right);
     }
 
     private Map<UUID, String> settlementMethodNames(List<Client> clients) {

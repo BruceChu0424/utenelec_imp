@@ -11,6 +11,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/subcontract_task_source.dart';
+import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
 import '../../operations_workbench/models/operations_workbench.dart';
 
 /// 等物料齐套的锁行说明（勾选位锁图标悬浮 / 弹窗红框 / 窄屏卡片提示同一句）。
@@ -119,6 +121,17 @@ class _ApplicationDetailBody extends StatelessWidget {
               Expanded(child: _orderableFact()),
             ],
           ),
+          if (!task.isDocumentGrouped && !task.actionDocumentRestricted) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Tooltip(
+              message: procurementDeliveryDifferenceL10n(context).requestHint,
+              child: _QtyFact(
+                label: procurementDeliveryDifferenceL10n(context).requestLabel,
+                value: _differenceText(),
+                danger: _differenceText().startsWith('-'),
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s12),
           _facts(theme, [
             if ((document?.number ?? '').isNotEmpty)
@@ -157,6 +170,11 @@ class _ApplicationDetailBody extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _differenceText() {
+    final value = formatExactQtyWithUnit(task.differenceQtyText, task.unitName);
+    return value.isEmpty ? '—' : value;
   }
 
   /// 待下单量：单货品行 = 未下单数量 + 单位；归组行 = 待下单行数。

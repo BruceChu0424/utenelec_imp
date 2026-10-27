@@ -113,7 +113,8 @@ class ReadScopePublicationTest {
     @Test void synchronousExportFamiliesKeepTheirOwnAuthorityUntilTheLastBytePublication() {
         var routes=Map.of("/api/master/goods/cost-sheets/actual/export","master_goods","/api/master/clients/export","client",
                 "/api/master/warehouses/export","master_warehouse","/api/sales/reports/export","sales",
-                "/api/admin/audit-logs/export","audit","/api/operations/workbench/purchase/export","native_purchase_owner");
+                "/api/admin/audit-logs/export","audit","/api/operations/workbench/purchase/export","native_purchase_owner",
+                "/api/operations/workbench/subcontract/export","native_subcontract_owner");
         for(var route:routes.entrySet()) {
             reset(authority);
             if(route.getValue().startsWith("native_"))when(authority.scopeFor(route.getValue(),subject,false)).thenReturn("a".repeat(64),"b".repeat(64));
@@ -124,6 +125,47 @@ class ReadScopePublicationTest {
                     MediaType.APPLICATION_OCTET_STREAM,null,new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
             assertEquals(ErrorCode.READ_SCOPE_CHANGED,failure.getCode());assertEquals(0,response.getContentAsByteArray().length);
         }
+    }
+    @Test void bothProcurementPrintSnapshotsKeepTheOriginalOwnerProofUntilJsonPublication() {
+        for(String module:List.of("purchase","subcontract")) for(boolean revoked:List.of(false,true)) {
+            reset(authority);
+            String domain="native_"+module+"_owner";
+            when(authority.scopeFor(domain,subject,false)).thenReturn("a".repeat(64),(revoked?"b":"a").repeat(64));
+            var request=new MockHttpServletRequest("GET","/app/api/"+module+"/orders/"+UUID.randomUUID()+"/print-data");
+            request.setContextPath("/app");
+            var response=new MockHttpServletResponse();
+            new PurchasePrintReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+            assertEquals(domain,proof.domain());assertFalse(proof.businessTasks());
+            var body=Map.of("billNo","原始打印单据","lines",List.of());
+            var advice=new ReportReadScopeAdvice(authority);
+            if(revoked) {
+                var failure=assertThrows(ApiException.class,()->advice.beforeBodyWrite(body,null,MediaType.APPLICATION_JSON,null,
+                        new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+                assertEquals(ErrorCode.READ_SCOPE_CHANGED,failure.getCode());
+                assertNull(response.getHeader(ReadScopePublication.HEADER));
+                assertNull(response.getHeader("X-Uten-Read-Scope-Domain"));
+            } else {
+                assertSame(body,advice.beforeBodyWrite(body,null,MediaType.APPLICATION_JSON,null,
+                        new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+                assertEquals("a".repeat(64),response.getHeader(ReadScopePublication.HEADER));
+                assertEquals(domain+":browse",response.getHeader("X-Uten-Read-Scope-Domain"));
+            }
+            verify(authority,times(2)).scopeFor(domain,subject,false);
+        }
+    }
+    @Test void procurementPrintAndExportScopesDoNotMatchOtherMethodsOrNeighborRoutes() {
+        var print=new PurchasePrintReadScopeInterceptor(authority,users);
+        var export=new LegacyExportReadScopeInterceptor(authority,users);
+        for(String path:List.of("/api/subcontract/orders/not-an-id/print-data","/api/subcontract/orders/"+UUID.randomUUID()+"/print-data/save",
+                "/api/operations/workbench/subcontract/export/confirm")) {
+            var request=new MockHttpServletRequest("GET",path);var response=new MockHttpServletResponse();
+            print.preHandle(request,response,null);export.preHandle(request,response,null);
+            assertNull(request.getAttribute(ReadScopePublication.ATTRIBUTE));
+        }
+        var request=new MockHttpServletRequest("POST","/api/subcontract/orders/"+UUID.randomUUID()+"/print-data");
+        print.preHandle(request,new MockHttpServletResponse(),null);
+        assertNull(request.getAttribute(ReadScopePublication.ATTRIBUTE));verifyNoInteractions(authority);
     }
     @Test void aNativeScopeRevokedWhileCandidateRowsLoadPublishesNeitherRowsNorHeaders() {
         when(authority.scopeFor("native_workshop_tasks",subject,false)).thenReturn("a".repeat(64),"b".repeat(64));

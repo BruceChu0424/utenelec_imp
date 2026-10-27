@@ -27,6 +27,54 @@ import static org.mockito.Mockito.when;
 
 class FulfillmentWorkbenchQueryServiceTest {
 
+    @Test void subcontractExportUsesTheSameTerminalStatusAndBoundTableFiltersAsItsHistoryList() {
+        EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(rows);
+        Object[] value=taskRow("SUBCONTRACT","SUBCONTRACT_ORDER",UUID.randomUUID(),UUID.randomUUID());
+        when(rows.getResultList()).thenReturn(Collections.singletonList(value));
+        var access=fullTaskAccess();
+        when(access.documentAccess("SUBCONTRACT","SUBCONTRACT_ORDER"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true,false));
+        var table=FulfillmentWorkbenchTableQuery.from("docNo","desc",java.util.Map.of(
+                "f.planNo","PP-001","search.goods","轴套"),null,null,null,null);
+        var payload=new FulfillmentWorkbenchQueryService(em,access).exportSubcontract("COMPLETED","轴套","",
+                LocalDate.of(2026,8,1),LocalDate.of(2026,8,31),table,500);
+        assertEquals(1,payload.total());
+        assertEquals("轴套",payload.rows().getFirst().get("goods"));
+        assertEquals(BigDecimal.TEN,payload.rows().getFirst().get("requiredQty"));
+        assertEquals("件",payload.rows().getFirst().get("unitName"));
+        assertEquals("DOC-001",payload.rows().getFirst().get("docNo"));
+        verify(rows).setParameter("status","COMPLETED");
+        verify(rows).setParameter("department","SUBCONTRACT");
+        verify(rows).setParameter("date_from",LocalDate.of(2026,8,1));
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(em).createNativeQuery(sql.capture());
+        assertTrue(sql.getValue().contains("task_status = :status"));
+        assertTrue(sql.getValue().contains(table.filterSql(null)));
+        assertTrue(sql.getValue().contains(table.orderSql()));
+    }
+
+    @Test void subcontractExportRejectsTheDifferentPendingDrawProjectionBeforeReadingAnyFacts() {
+        EntityManager em=mock(EntityManager.class);
+        var service=new FulfillmentWorkbenchQueryService(em,fullTaskAccess());
+        for(String stage:List.of("","WAITING_ORDER","DRAW_OPEN"))
+            org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                    ()->service.exportSubcontract(stage,"","",null,null,null,500));
+        org.mockito.Mockito.verifyNoInteractions(em);
+    }
+
+    @Test void requestAndApplicationRowsExposeTheirApprovedPhysicalStageDifference() throws Exception {
+        var service=new FulfillmentWorkbenchQueryService(mock(EntityManager.class),fullTaskAccess());
+        var enrich=FulfillmentWorkbenchQueryService.class.getDeclaredMethod("enrichTableRows",String.class,String.class);
+        enrich.setAccessible(true);
+        for(String department:List.of("PURCHASE","SUBCONTRACT")) {
+            String sql=(String)enrich.invoke(service,"fixture_rows",department);
+            String type=department.equals("PURCHASE")?"PURCHASE_REQUEST":"SUBCONTRACT_APPLICATION";
+            assertTrue(sql.contains("WHEN base.action_doc_type='"+type+"' THEN ((base.fulfilled_qty)-(base.required_qty))"));
+            assertTrue(sql.contains("difference_item.received_qty"));
+            assertFalse(sql.contains("base.allocated_qty)-(base.required_qty)"));
+        }
+    }
+
     @Test void purchaseExportStreamsEveryAuthorizedSourceRowWithoutTableMetadataQueries() {
         EntityManager em=mock(EntityManager.class);Query rows=mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(rows);
@@ -544,6 +592,9 @@ class FulfillmentWorkbenchQueryServiceTest {
                         null, null, null, null).orderSql());
         assertEquals("difference_qty ASC NULLS LAST, task_id",
                 new FulfillmentWorkbenchTableQuery("differenceQty", "asc", java.util.Map.of(),
+                        null, null, null, null).orderSql());
+        assertEquals("goods_code DESC NULLS LAST, task_id",
+                new FulfillmentWorkbenchTableQuery("goodsCode", "desc", java.util.Map.of(),
                         null, null, null, null).orderSql());
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> new FulfillmentWorkbenchTableQuery("warehouseName", "asc",

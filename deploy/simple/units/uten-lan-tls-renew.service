@@ -1,0 +1,36 @@
+[Unit]
+Description=Verify and renew company LAN HTTPS certificate
+After=nginx.service
+OnFailure=uten-alert@%n.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/uten-lan-tls-renew
+StateDirectory=uten-lan-tls
+StateDirectoryMode=0700
+TimeoutStartSec=5min
+TimeoutStopSec=90s
+LimitCORE=0
+NoNewPrivileges=true
+# nginx -t opens existing www-data:adm logs and probes configured low ports.
+# The root CA key remains hidden by the mount namespace despite DAC access.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_NET_BIND_SERVICE
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+ReadWritePaths=/etc/ssl/certs /var/lib/uten-lan-tls /var/log/nginx
+InaccessiblePaths=-/etc/ssl/private/uten-imp-root-ca.key -/etc/uten-remote-ca -/etc/uten-imp -/etc/uten-imp-postgres -/etc/uten-imp-migrator -/var/lib/postgresql -/run/postgresql -/data -/srv/uten-backup
+

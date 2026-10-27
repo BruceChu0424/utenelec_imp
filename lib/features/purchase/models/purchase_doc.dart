@@ -192,6 +192,8 @@ class PurchaseDocItem {
     this.remainingQty,
     this.remainingQtyText,
     this.differenceQtyText,
+    this.sourceOrderDifferenceQtyText,
+    this.sourceOrderDifferenceUnitId,
     this.receivedQty,
     this.receivedQtyText,
     this.returnedQty,
@@ -258,8 +260,12 @@ class PurchaseDocItem {
   final double? remainingQty;
   final String? remainingQtyText;
 
-  /// Server authority: received - returned - ordered; closing never makes it zero.
+  /// Server authority: application ordering or order delivery difference.
   final String? differenceQtyText;
+
+  /// Cumulative delivery difference of the linked order, in that order's unit.
+  final String? sourceOrderDifferenceQtyText;
+  final String? sourceOrderDifferenceUnitId;
   final double? receivedQty;
   final String? receivedQtyText;
   final double? returnedQty;
@@ -351,6 +357,11 @@ class PurchaseDocItem {
     remainingQty: (json['remainingQty'] as num?)?.toDouble(),
     remainingQtyText: receiptRecordedDecimal(json, 'remainingQty'),
     differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
+    sourceOrderDifferenceQtyText: receiptRecordedDecimal(
+      json,
+      'sourceOrderDifferenceQty',
+    ),
+    sourceOrderDifferenceUnitId: json['sourceOrderDifferenceUnitId'] as String?,
     receivedQty: (json['receivedQty'] as num?)?.toDouble(),
     receivedQtyText: receiptRecordedDecimal(json, 'receivedQty'),
     returnedQty: (json['returnedQty'] as num?)?.toDouble(),

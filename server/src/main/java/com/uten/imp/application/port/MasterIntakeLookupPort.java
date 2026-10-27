@@ -182,7 +182,16 @@ public interface MasterIntakeLookupPort {
                          String linkman, String email, String phone, String mobile, String address,
                          String taxId, String website, String placeId, UUID defaultCurrencyId,
                          UUID defaultSettlementMethodId, UUID ownerEmployeeId, String status,
+                         List<String> contactEmails, List<String> contactPhones, boolean editable,
+                         boolean financialEditable) {
+        public ClientProfile(UUID clientId, String code, String name, String fullName, String nameEn,
+                         String linkman, String email, String phone, String mobile, String address,
+                         String taxId, String website, String placeId, UUID defaultCurrencyId,
+                         UUID defaultSettlementMethodId, UUID ownerEmployeeId, String status,
                          List<String> contactEmails, List<String> contactPhones, boolean editable) {
+            this(clientId,code,name,fullName,nameEn,linkman,email,phone,mobile,address,taxId,website,placeId,
+                    defaultCurrencyId,defaultSettlementMethodId,ownerEmployeeId,status,contactEmails,contactPhones,editable,false);
+        }
         public ClientProfile {
             Objects.requireNonNull(clientId, "clientId");
             contactEmails = contactEmails == null ? List.of() : List.copyOf(contactEmails);

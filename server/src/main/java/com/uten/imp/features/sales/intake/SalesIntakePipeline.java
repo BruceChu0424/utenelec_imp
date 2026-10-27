@@ -1659,7 +1659,7 @@ final class SalesIntakePipeline {
             }
         }
         addField(out, "address", "地址", p.address(), h.buyerAddress);
-        addField(out, "taxId", "税号", p.taxId(), h.taxId);
+        if (p.financialEditable()) addField(out, "taxId", "税号", p.taxId(), h.taxId);
         addField(out, "website", "网址", p.website(), h.website);
         return out;
     }

@@ -20,6 +20,28 @@ class ProcurementDeliveryDifferenceTest {
         assertThat(ProcurementDeliveryDifference.of(null,BigDecimal.ONE,BigDecimal.ZERO)).isNull();
     }
 
+    @Test void requestDifferenceCountsApprovedPhysicalOrdersAndKeepsLegacyGiftsSeparate() {
+        assertThat(ProcurementDeliveryDifference.request(ProcurementQuantities.EXTRA_GIFT,
+                new BigDecimal("10"),new BigDecimal("2"),new BigDecimal("7"),new BigDecimal("1")))
+                .isEqualByComparingTo("-4");
+        assertThat(ProcurementDeliveryDifference.request(ProcurementQuantities.LEGACY,
+                new BigDecimal("10"),new BigDecimal("2"),new BigDecimal("7"),BigDecimal.ZERO))
+                .isEqualByComparingTo("-3");
+        assertThat(ProcurementDeliveryDifference.balance(new BigDecimal("8"),BigDecimal.ZERO))
+                .isEqualByComparingTo("-8");
+        assertThat(ProcurementDeliveryDifference.balance(new BigDecimal("8"),new BigDecimal("8")))
+                .isEqualByComparingTo("0");
+        assertThat(ProcurementDeliveryDifference.balance(new BigDecimal("8"),new BigDecimal("10.5001")))
+                .isEqualByComparingTo("2.5001");
+        assertThat(ProcurementDeliveryDifference.request(ProcurementQuantities.EXTRA_GIFT,
+                BigDecimal.TEN,null,BigDecimal.ONE,BigDecimal.ZERO)).isNull();
+        assertThat(ProcurementDeliveryDifference.request(ProcurementQuantities.EXTRA_GIFT,
+                BigDecimal.TEN,BigDecimal.ONE,null,BigDecimal.ZERO)).isNull();
+        assertThat(ProcurementDeliveryDifference.request(ProcurementQuantities.EXTRA_GIFT,
+                BigDecimal.TEN,BigDecimal.ONE,BigDecimal.ONE,null)).isNull();
+        assertThat(ProcurementDeliveryDifference.balance(null,BigDecimal.ONE)).isNull();
+    }
+
     private BigDecimal difference(String ordered,String received,String returned) {
         return ProcurementDeliveryDifference.of(new BigDecimal(ordered),new BigDecimal(received),new BigDecimal(returned));
     }

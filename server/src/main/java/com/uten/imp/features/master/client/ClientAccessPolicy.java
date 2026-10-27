@@ -65,6 +65,12 @@ public class ClientAccessPolicy {
                 .anyMatch(authority -> ASSIGN.equals(authority.getAuthority())));
     }
 
+    public boolean hasFinanceAuthority() { return ClientFinancialPolicy.hasAuthority(); }
+
+    public boolean financialWritable(Client client, ClientScope scope) {
+        return hasFinanceAuthority() && canWrite(client, scope);
+    }
+
     public Predicate readablePredicate(
             Root<Client> root,
             CriteriaQuery<?> query,
@@ -75,7 +81,7 @@ public class ClientAccessPolicy {
         }
         List<Predicate> allowed = new ArrayList<>();
         if (!scope.ownerScope().visibleOwners().isEmpty()) {
-            allowed.add(root.get("ownerEmployeeId").in(scope.ownerScope().visibleOwners()));
+            allowed.add(ownerPredicate(root, query, cb, scope.ownerScope().visibleOwners()));
         }
         if (scope.canAssign()) {
             allowed.add(cb.isNull(root.get("ownerEmployeeId")));
@@ -110,7 +116,9 @@ public class ClientAccessPolicy {
         String ownerParameter = null;
         if (!scope.ownerScope().visibleOwners().isEmpty()) {
             ownerParameter = OWNER_PARAMETER;
-            allowed.add(prefix + "owner_employee_id IN (:" + ownerParameter + ")");
+            allowed.add("(" + prefix + "owner_employee_id IN (:" + ownerParameter + ") OR EXISTS "
+                    + "(SELECT 1 FROM client_co_owners co_owner WHERE co_owner.client_id = " + prefix + "id "
+                    + "AND co_owner.employee_id IN (:" + ownerParameter + ")))" );
         }
         if (scope.canAssign()) {
             allowed.add(prefix + "owner_employee_id IS NULL");
@@ -138,6 +146,7 @@ public class ClientAccessPolicy {
         if (scope.ownerScope().seeAll()) return true;
         if (ownerEmployeeId == null) return scope.canAssign();
         return scope.ownerScope().visibleOwners().contains(ownerEmployeeId)
+                || hasCoOwner(clientId, scope.ownerScope().visibleOwners())
                 || scope.sharedClientIds().contains(clientId)
                 || scope.viewerEmployeeId() != null
                 && hasActiveShare(clientId, scope.viewerEmployeeId());
@@ -145,7 +154,42 @@ public class ClientAccessPolicy {
 
     public boolean canWrite(Client client, ClientScope scope) {
         if (client == null) return false;
-        return canWriteOwner(client.getOwnerEmployeeId(), scope);
+        return canWrite(client.getId(), client.getOwnerEmployeeId(), scope);
+    }
+
+    public boolean canWrite(UUID clientId, UUID ownerEmployeeId, ClientScope scope) {
+        return canWriteOwner(ownerEmployeeId, scope)
+                || ownerEmployeeId != null && hasCoOwner(clientId, scope.ownerScope().writableOwners());
+    }
+
+    /** Owner filter used by list/count/search; EXISTS preserves one row per customer. */
+    public Predicate ownerPredicate(Root<Client> root, CriteriaQuery<?> query,
+            CriteriaBuilder cb, Set<UUID> employees) {
+        Subquery<Integer> coOwners = query.subquery(Integer.class);
+        Root<ClientCoOwner> coOwner = coOwners.from(ClientCoOwner.class);
+        coOwners.select(cb.literal(1));
+        coOwners.where(cb.equal(coOwner.get("clientId"), root.get("id")),
+                coOwner.get("employeeId").in(employees));
+        return cb.or(root.get("ownerEmployeeId").in(employees), cb.exists(coOwners));
+    }
+
+    private boolean hasCoOwner(UUID clientId, Set<UUID> employees) {
+        if (clientId == null || employees.isEmpty()) return false;
+        return !em.createNativeQuery("""
+                        SELECT 1 FROM client_co_owners co_owner
+                        WHERE co_owner.client_id = :clientId
+                          AND co_owner.employee_id IN (:employees) LIMIT 1
+                        """)
+                .setParameter("clientId", clientId).setParameter("employees", employees)
+                .getResultList().isEmpty();
+    }
+
+    public Set<UUID> writableCoOwnedClientIds(java.util.Collection<UUID> clientIds, ClientScope scope) {
+        if (clientIds == null || clientIds.isEmpty() || scope.ownerScope().writableOwners().isEmpty()) return Set.of();
+        return Set.copyOf(com.uten.imp.common.util.NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT client_id FROM client_co_owners
+                WHERE client_id IN (:ids) AND employee_id IN (:owners)
+                """).setParameter("ids", clientIds).setParameter("owners", scope.ownerScope().writableOwners()), UUID.class));
     }
 
     /** 同 {@link #canWrite(Client, ClientScope)}，供批量命令按锁定行的负责人列判定(不加载实体)。 */
@@ -161,7 +205,7 @@ public class ClientAccessPolicy {
         UUID ownerEmployeeId = client.getOwnerEmployeeId();
         return scope.ownerScope().seeAll()
                 || ownerEmployeeId == null
-                || scope.ownerScope().writableOwners().contains(ownerEmployeeId);
+                || canWrite(client, scope);
     }
 
     /** Server-authoritative explanation for the detail page's object capability. */
@@ -169,7 +213,8 @@ public class ClientAccessPolicy {
         UUID ownerEmployeeId = client == null ? null : client.getOwnerEmployeeId();
         if (ownerEmployeeId == null) return ACCESS_REASON_UNASSIGNED;
         if (canWrite(client, scope)) return ACCESS_REASON_MANAGEABLE;
-        if (scope != null && scope.ownerScope().visibleOwners().contains(ownerEmployeeId)) {
+        if (scope != null && (scope.ownerScope().visibleOwners().contains(ownerEmployeeId)
+                || hasCoOwner(client.getId(), scope.ownerScope().visibleOwners()))) {
             return ACCESS_REASON_OWNER_SCOPE_READ_ONLY;
         }
         // A readable owned customer outside the owner scope can only come from an

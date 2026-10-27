@@ -218,6 +218,7 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'unitId': row.unitId,
       'unitName': row.unitName,
       'orderQty': row.orderQty,
+      'differenceQtyExact': ?row.differenceQtyText,
       'drawnQty': row.drawnQty,
       'pendingQty': row.pendingQty,
       'drawableQty': row.drawableQty,

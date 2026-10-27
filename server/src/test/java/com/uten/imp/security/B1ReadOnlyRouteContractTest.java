@@ -14,13 +14,15 @@ class B1ReadOnlyRouteContractTest {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
         var filter=new ImpersonationWriteGuardFilter(new ObjectMapper(),mock(AuditService.class));
         try {
-            for(String path:List.of("/api/master/clients/search-context","/api/master/suppliers/search-context","/api/sales/orders/shippable-lines/selection")) {
+            for(String path:List.of("/api/master/clients/search-context","/api/master/suppliers/search-context","/api/sales/orders/shippable-lines/selection",
+                    "/api/purchase/orders/print-authorization","/api/subcontract/orders/print-authorization")) {
                 var request=new MockHttpServletRequest("POST","/app"+path);request.setContextPath("/app");
                 var chain=new MockFilterChain();filter.doFilter(request,new MockHttpServletResponse(),chain);assertSame(request,chain.getRequest());
                 for(String method:List.of("PUT","PATCH","DELETE"))assertFalse(ImpersonationWriteGuardFilter.readOnlyB1Query(method,path));
             }
             for(String path:List.of("/api/master/clients/search-context/save","/api/sales/orders/shippable-lines/selection/confirm",
-                    "/api/report-export-jobs","/api/report-export-jobs/"+UUID.randomUUID()+"/download")) {
+                    "/api/subcontract/orders/print-authorization/confirm","/api/subcontract/orders/"+UUID.randomUUID()+"/submit-finance",
+                    "/api/operations/workbench/subcontract/export","/api/report-export-jobs","/api/report-export-jobs/"+UUID.randomUUID()+"/download")) {
                 var chain=new MockFilterChain();var response=new MockHttpServletResponse();
                 filter.doFilter(new MockHttpServletRequest("POST",path),response,chain);assertEquals(403,response.getStatus());assertNull(chain.getRequest());
             }

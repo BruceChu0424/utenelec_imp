@@ -536,6 +536,9 @@ fstab 带 `nofail`，阵列或备份卷出问题时系统照样启动、SSH 不�
 
 ### 9.3 离线托管件
 
+内网 HTTPS 的员工信任安装、受约束签发者和自动续期见 [LAN_TLS.zh-CN.md](LAN_TLS.zh-CN.md)。
+续期服务不读取根 CA 私钥；签发者及叶子密钥需纳入受控托管，根私钥的离线要求保持如下。
+
 两位管理员各自 `age-keygen`，私钥只在自己手里；服务器上只用两把公钥加密，托管件不在服务器上落盘。
 
 - **托管内容**：`/etc/uten-imp/server.env`、`migrator.env`、`paired-internal-backup.json`、

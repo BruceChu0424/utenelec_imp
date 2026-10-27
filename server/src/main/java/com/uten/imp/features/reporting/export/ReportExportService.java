@@ -79,7 +79,7 @@ public class ReportExportService {
             master.validate(request);
         } else if(request.parameters().values().stream().anyMatch(value->value.length()>2000))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选条件过长");
-        if("workbench_purchase".equals(request.domain())) {
+        if(Set.of("workbench_purchase", "workbench_subcontract").contains(request.domain())) {
             if(workbench==null)throw new IllegalStateException("Workbench export adapter is unavailable");
             workbench.validateRequest(request);
         }
@@ -151,7 +151,7 @@ public class ReportExportService {
     public static void authorizeRequest(AuthUser user,ReportExportRequest request) {
         if("goods_actual_cost".equals(request.domain())) {ActualCostReportExportSource.authorize(user);return;}
         if("audit".equals(request.domain())) {AuditReportExportSource.authorize(user);return;}
-        if("workbench_purchase".equals(request.domain())) {WorkbenchReportExportPort.authorize(user);return;}
+        if(Set.of("workbench_purchase", "workbench_subcontract").contains(request.domain())) {WorkbenchReportExportPort.authorize(user,request.domain());return;}
         if(!"master".equals(request.domain())) {authorizeDomain(user,request.domain());return;}
         String permission=MasterReportExportPort.permission(request.report());
         if(user.isVisitor()||user.isMustChangePassword()||!user.isAccountNonLocked()||user.getImpersonatedBy()!=null
@@ -162,7 +162,8 @@ public class ReportExportService {
         return "goods_actual_cost".equals(request.domain())?"master_goods"
                 :"master".equals(request.domain())?MasterReportExportPort.authorityDomain(request.report())
                 :"where_used".equals(request.domain())?"production"
-                :"workbench_purchase".equals(request.domain())?"purchase":request.domain();
+                :com.uten.imp.common.report.ProcurementReadRoutes.workbenchDomainScope(request.domain())!=null
+                    ?com.uten.imp.common.report.ProcurementReadRoutes.workbenchDomainScope(request.domain()):request.domain();
     }
     private AuthUser principal() {
         return users.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));

@@ -153,6 +153,14 @@ void main() {
       reportExportJobDomain('/operations/workbench/purchase/export'),
       'workbench_purchase',
     );
+    expect(
+      reportExportJobDomain('/operations/workbench/subcontract/export'),
+      'workbench_subcontract',
+    );
+    expect(
+      reportExportJobDomain('/operations/workbench/warehouse/export'),
+      isNull,
+    );
     expect(reportExportJobDomain('/stock/reports/export'), 'stock');
   });
 
@@ -486,4 +494,66 @@ void main() {
     await tester.tap(find.text('关闭'));
     await tester.pumpAndSettle();
   });
+
+  for (final module in ['purchase', 'subcontract']) {
+    testWidgets(
+      '$module task export preserves category filters and sort through the durable job',
+      (tester) async {
+        final api = _Api();
+        final preferences = await SharedPreferences.getInstance();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'reader'),
+              ),
+              currentPermissionsProvider.overrideWithValue({}),
+            ],
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: UtenExportButton(
+                  endpoint: '/operations/workbench/$module/export',
+                  report: 'tasks',
+                  queryParams: const {
+                    'status': 'IN_PROGRESS',
+                    'keyword': 'WL-1',
+                    'exception': 'FINANCE_REJECTED',
+                    'f.status': 'WAITING_FINANCE',
+                    'search.goods': '加工件',
+                    'sort': 'needDate',
+                    'order': 'desc',
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('下载表格'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('直接下载'));
+        await tester.pumpAndSettle();
+        expect(find.byType(ReportExportJobDialog), findsOneWidget);
+        final request = api.creates.single;
+        expect(request['domain'], 'workbench_$module');
+        expect(request['report'], 'tasks');
+        expect(request['sort'], 'needDate');
+        expect(request['order'], 'desc');
+        expect(request['parameters'], {
+          'status': 'IN_PROGRESS',
+          'keyword': 'WL-1',
+          'exception': 'FINANCE_REJECTED',
+          'f.status': 'WAITING_FINANCE',
+          'search.goods': '加工件',
+        });
+        expect(api.downloads, isEmpty);
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+      },
+    );
+  }
 }

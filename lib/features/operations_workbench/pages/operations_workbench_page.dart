@@ -14,15 +14,19 @@
 // 主阶段和采购任务中心卡面红数(后端 countPending 的 FINANCE_REJECTED)。
 // 仓库部门两段(待备料/待领取、部分领取)不在合并范围，原样保留。
 //
-// 2026-10-19「进行中」段新增批量导出单据：表格多选 + 右下悬浮「导出单据」，
+// 「进行中/历史记录」批量导出单据：表格多选 + 右下悬浮「导出单据」，
 // 批量导出所选任务关联的采购订货单 PDF（与详情页「打印单据」同一份文件），
-// 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，仅财务已通过的
-// 订货单可勾选，导出前由采购侧统一二次确认。「申请待分解」段的批量下单不变。
+// 单份存 PDF、多份自动打包 zip；能力由 app_router 注入，导出不以财务审核
+// 通过为前提，保留查看权限及快照重授权。「申请待分解」段的批量下单不变。
 import 'dart:async';
-import '../../../shared/export/document_batch_limits.dart';
+import '../../../shared/export/order_document_selection.dart';
+import '../../../shared/export/order_documents_export.dart';
+
+export '../../../shared/export/order_documents_export.dart'
+    show OperationsWorkbenchBatchDocExport;
 
 import 'package:flutter/material.dart';
-import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
+import '../../../shared/widgets/procurement_difference_column.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
@@ -85,20 +89,7 @@ class _WorkbenchSeg {
   int get hashCode => Object.hash(code, history);
 }
 
-/// 「进行中」段批量导出单据能力（2026-10-19）：由 app_router 注入 purchase 侧
-/// 实现（逐单取 print-data 在前端生成与详情页打印一致的采购单 PDF；单份存
-/// PDF、多份打包 zip）。共享工作台页不依赖 purchase feature，与
-/// [OperationsWorkbenchPage.draftCategoryBuilder] 同一解耦模式；测试注入
-/// fake 闭包即可。
-typedef OperationsWorkbenchBatchDocExport =
-    Future<void> Function(
-      BuildContext context, {
-      required ApiClient apiClient,
-      required List<({String id, String number})> documents,
-      void Function(int done, int total)? onProgress,
-      bool Function()? stillCurrent,
-    });
-
+/// 共享工作台通过路由注入采购单据导出及草稿内容，保留领域模块边界。
 class OperationsWorkbenchPage extends ConsumerStatefulWidget {
   const OperationsWorkbenchPage({
     super.key,
@@ -111,8 +102,7 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
   final OperationsWorkbenchDepartment department;
   final OperationsWorkbenchGateway? repository;
 
-  /// 「进行中」段批量导出单据（采购侧）。null = 该段不提供勾选与导出按钮
-  /// （委外/仓库部门恒不注入）。见 [OperationsWorkbenchBatchDocExport]。
+  /// 进行中/历史记录批量导出采购单。null = 不显示订单导出按钮。
   final OperationsWorkbenchBatchDocExport? purchaseOrderBatchExport;
 
   /// The application router composes department-owned draft content here.
@@ -192,11 +182,9 @@ class _OperationsWorkbenchPageState
   /// 批量导出单据的进度（done/total）；null = 不在导出中。导出期间按钮转
   /// 加载态并显示「导出单据(n/N)」。
   ({int done, int total})? _docExportProgress;
+  int _docExportQueryRevision = 0;
+  Map<String, Object?>? _docExportQuery;
   bool _closureBusy = false;
-
-  /// 批量导出单据一次的上限：print-data 逐单请求 + 前端 PDF 生成都是串行
-  /// 重操作，不设上限时一次勾选过百会让按钮长时间转圈且无从 cancel。
-  static const _maxExportDocs = maxWorkbenchDocumentExport;
 
   OperationsWorkbenchGateway get _repository =>
       widget.repository ?? ref.read(operationsWorkbenchRepositoryProvider);
@@ -504,6 +492,10 @@ class _OperationsWorkbenchPageState
     if (!mounted) return;
     final requestId = ++_requestId;
     final query = _queryIdentity;
+    if (!mapEquals(_docExportQuery, query)) {
+      _docExportQueryRevision++;
+      _docExportQuery = query;
+    }
     final categoryScope = _categoryScope;
     final seg = _seg;
     final draft = seg?.code == _draftStage;
@@ -549,7 +541,13 @@ class _OperationsWorkbenchPageState
           // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
           size: listing ? size : 1,
           keyword: keyword,
-          status: seg == null || seg.history || draft ? null : seg.code,
+          status: seg == null || draft
+              ? null
+              : seg.history
+              ? (department == OperationsWorkbenchDepartment.warehouse
+                    ? null
+                    : 'COMPLETED')
+              : seg.code,
           exception: seg == null || seg.history ? null : exception,
           dateFrom: range == null
               ? null
@@ -856,7 +854,10 @@ class _OperationsWorkbenchPageState
     final range = _seg?.history == true ? _historyTime.range : null;
     return {
       if (_keyword.isNotEmpty) 'keyword': _keyword,
-      if (_seg?.history != true && _seg?.code != null) 'status': _seg!.code,
+      if (_seg?.history == true)
+        'status': 'COMPLETED'
+      else if (_seg?.code != null)
+        'status': _seg!.code,
       if (_seg?.history != true && _exception != null) 'exception': _exception,
       if (range != null) ...{
         'dateFrom': ChinaDateTime.formatDate(range.start),
@@ -914,10 +915,8 @@ class _OperationsWorkbenchPageState
             route: issue == null ? _purchaseOrderRoute(selected) : null,
           );
         }
-        // 「进行中」段的行都是已生成的订货单：批量导出与详情页「打印单据」
-        // 同一条链路的采购单 PDF（2026-10-19 用户需求）。能力未注入（非
-        // app_router 构建或测试注入 null）时该段维持只读。
-        if (_seg?.code == _inProgressStage &&
+        // 已关联的订货单沿用详情打印的 PDF；能力未注入时隐藏订单导出动作。
+        if ((_seg?.code == _inProgressStage || _seg?.history == true) &&
             widget.purchaseOrderBatchExport != null) {
           final progress = _docExportProgress;
           final issue = progress != null
@@ -988,8 +987,7 @@ class _OperationsWorkbenchPageState
     return '/purchase/orders/new?requestItemIds=$ids';
   }
 
-  /// 「进行中」段只有财务已通过、可查看的采购订货单可导出。
-  /// 已生效单据的改量待复核/退回仍保留 status=1，必须同时检查权威任务阶段。
+  /// 导出只是读取单据，不以审批状态为前提；权限与快照由服务端复核。
   ({String id, String number})? _exportableOrderDocOf(
     OperationsWorkbenchTask task,
   ) {
@@ -997,40 +995,25 @@ class _OperationsWorkbenchPageState
     if (document == null || !document.canView) return null;
     final type = document.docType.toUpperCase();
     if (type != 'ORDER' && type != 'PURCHASE_ORDER') return null;
-    if (document.status != '1' ||
-        task.taskStatus != 'FINANCE_APPROVED' ||
-        task.progressStatus != 'FINANCE_APPROVED') {
-      return null;
-    }
     return (id: document.id, number: document.number);
   }
 
+  ({List<ExportOrderDocument> documents, String? issue}) _exportSelection(
+    List<OperationsWorkbenchTask> selected,
+  ) => orderDocumentSelection(
+    rows: selected,
+    selectedRowCount: _selectedIds.length,
+    documentOf: _exportableOrderDocOf,
+    emptyMessage: '请先选择采购任务',
+    unsupportedMessage: '所选任务包含无权查看或未关联采购订货单的行，请重新选择',
+  );
+
   List<({String id, String number})> _exportOrderDocumentsOf(
     List<OperationsWorkbenchTask> selected,
-  ) {
-    final documents = <String, ({String id, String number})>{};
-    for (final task in selected) {
-      final document = _exportableOrderDocOf(task);
-      if (document != null) documents.putIfAbsent(document.id, () => document);
-    }
-    return documents.values.toList(growable: false);
-  }
+  ) => _exportSelection(selected).documents;
 
-  String? _purchaseExportIssue(List<OperationsWorkbenchTask> selected) {
-    if (selected.isEmpty) return '请先选择采购任务';
-    // 跨页保留的勾选可能落在刷新后不可导出的行上（锁行勾不进去，但旧
-    // 选择还在集合里），此时给出明确原因而不是让按钮无声失效。
-    if (selected.any((task) => _exportableOrderDocOf(task) == null)) {
-      return '仅财务已通过的采购订货单可导出，请重新选择';
-    }
-    if (selected.length != _selectedIds.length) {
-      return '所选任务已发生变化，请刷新后重新选择';
-    }
-    if (_exportOrderDocumentsOf(selected).length > _maxExportDocs) {
-      return '一次最多导出 $_maxExportDocs 份单据，请分批选择';
-    }
-    return null;
-  }
+  String? _purchaseExportIssue(List<OperationsWorkbenchTask> selected) =>
+      _exportSelection(selected).issue;
 
   Future<void> _exportSelectedOrderDocs() async {
     if (_docExportProgress != null) return;
@@ -1045,6 +1028,13 @@ class _OperationsWorkbenchPageState
     }
     final documents = _exportOrderDocumentsOf(selected);
     final generation = _readerGeneration;
+    final queryRevision = _docExportQueryRevision;
+    final query = _queryIdentity;
+    bool current() =>
+        mounted &&
+        generation == _readerGeneration &&
+        queryRevision == _docExportQueryRevision &&
+        mapEquals(query, _queryIdentity);
     setState(() => _docExportProgress = (done: 0, total: documents.length));
     try {
       await export(
@@ -1052,11 +1042,11 @@ class _OperationsWorkbenchPageState
         apiClient: ref.read(apiClientProvider),
         documents: documents,
         onProgress: (done, total) {
-          if (mounted) {
+          if (current()) {
             setState(() => _docExportProgress = (done: done, total: total));
           }
         },
-        stillCurrent: () => mounted && generation == _readerGeneration,
+        stillCurrent: current,
       );
     } finally {
       if (mounted) setState(() => _docExportProgress = null);
@@ -1690,16 +1680,15 @@ class _DesktopTaskTable extends StatelessWidget {
               : _quantity(item.fulfilledQty, item.unitName),
         ),
         if (mergedStageColumn)
-          MasterColumnDef(
-            key: 'differenceQty',
-            label: procurementDeliveryDifferenceL10n(context).label,
-            width: 130,
-            type: 'number',
-            sortable: true,
-            info: procurementDeliveryDifferenceL10n(context).hint,
-            value: (item) => item.differenceQtyText == null
-                ? '—'
-                : '${item.differenceQtyText} ${item.unitName}'.trim(),
+          procurementDifferenceColumn<OperationsWorkbenchTask>(
+            context: context,
+            differenceOf: (item) =>
+                item.isDocumentGrouped || item.actionDocumentRestricted
+                ? null
+                : item.differenceQtyText,
+            unitOf: (item) => item.unitName,
+            scope: ProcurementDifferenceScope.workbench,
+            filterFromRows: false,
           ),
         MasterColumnDef(
           key: 'openQty',

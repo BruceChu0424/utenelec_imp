@@ -6,6 +6,7 @@
 // (ADR-143 §三「只在服务端算一次」)；客户端只显示，不做任何加减推算。
 // 数量单位：任务行 = 委外件的订货单位；物料行 = 各物料自己的单位。
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 
 /// 「待处理」领料行状态(服务端 status)。档位注释为 ADR-169 十档
 /// （实际取色见 widgets/subcontract_draw_status.dart 的 subcontractDrawCellColor）。
@@ -73,6 +74,7 @@ class SubcontractDrawTaskRow {
     required this.canDraw,
     this.planNo,
     this.applicationItemIds = const [],
+    this.differenceQtyText,
   });
 
   final String orderItemId;
@@ -91,6 +93,10 @@ class SubcontractDrawTaskRow {
 
   /// 订货数量(委外件订货单位)。
   final double orderQty;
+
+  /// Server-authored received − returned − ordered, in [unitName].
+  /// Missing facts remain unknown; draw and material quantities are independent.
+  final String? differenceQtyText;
 
   /// 已领 = 已发齐的完整套数。
   final double drawnQty;
@@ -137,6 +143,7 @@ class SubcontractDrawTaskRow {
         unitId: _string(json, 'unitId'),
         unitName: _string(json, 'unitName') ?? '',
         orderQty: _double(json, 'orderQty'),
+        differenceQtyText: receiptRecordedDecimal(json, 'differenceQty'),
         drawnQty: _double(json, 'drawnQty'),
         pendingQty: _double(json, 'pendingQty'),
         drawableQty: _double(json, 'drawableQty'),

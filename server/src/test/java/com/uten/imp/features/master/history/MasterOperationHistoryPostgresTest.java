@@ -44,7 +44,7 @@ class MasterOperationHistoryPostgresTest {
         var access=mock(MasterObjectAccess.class);when(access.readableLabelOwner(anyString())).thenReturn(owner->true);
         var clientPolicy=mock(ClientAccessPolicy.class);
         when(clientPolicy.canRead(any(UUID.class),nullable(UUID.class),any())).thenReturn(true);
-        when(clientPolicy.canWriteOwner(nullable(UUID.class),any())).thenReturn(true);
+        when(clientPolicy.canWrite(any(UUID.class),nullable(UUID.class),any())).thenReturn(true);
         service=new MasterOperationHistoryService(em,new ObjectMapper(),current,tx,clientPolicy,new MasterReferenceGuard(em,access),new WarehouseMasterRules(em));
     }
     @AfterEach void close() {if(em.getTransaction().isActive()){ em.getTransaction().rollback(); }em.close();}
@@ -103,6 +103,24 @@ class MasterOperationHistoryPostgresTest {
     @Test void financialAndHierarchyFieldsFailClosedInDatabase() {
         inTx(()->{assertNotNull(em.createNativeQuery("SELECT fn_master_history_unsupported('accounts',CAST('{\"init_balance\":1}' AS jsonb),CAST('{\"init_balance\":2}' AS jsonb))").getSingleResult());
             assertNotNull(em.createNativeQuery("SELECT fn_master_history_unsupported('payment_styles',CAST('{\"parent_id\":null}' AS jsonb),CAST('{\"parent_id\":\"00000000-0000-0000-0000-000000000001\"}' AS jsonb))").getSingleResult());return null;});
+    }
+    @Test void customerFinancePermissionIsRecheckedBeforeUndoAndRedo() {
+        UUID client=client();
+        inTx(()->{em.createNativeQuery("UPDATE clients SET credit_floor=100 WHERE id=:id").setParameter("id",client).executeUpdate();return null;});
+        UUID operation=inTx(()->{provenance("/api/master/clients/"+client,"PUT");
+            em.createNativeQuery("UPDATE clients SET credit_floor=200 WHERE id=:id").setParameter("id",client).executeUpdate();return latest();});
+        login(Set.of("client:view","client:edit"),false);
+        var denied=service.list("clients").entries().getFirst();
+        assertFalse(denied.canUndo());assertTrue(denied.blockedReason().contains("client:finance"));
+        assertThrows(ApiException.class,()->inTx(()->service.undo("clients",operation,0)));
+        assertEquals("true",value("SELECT (credit_floor=200)::text FROM clients WHERE id=:id",client));
+        login(Set.of("client:view","client:edit","client:finance"),false);
+        inTx(()->service.undo("clients",operation,0));
+        assertEquals("true",value("SELECT (credit_floor=100)::text FROM clients WHERE id=:id",client));
+        login(Set.of("client:view","client:edit"),false);
+        assertFalse(service.list("clients").entries().getFirst().canRedo());
+        assertThrows(ApiException.class,()->inTx(()->service.redo("clients",operation,1)));
+        assertEquals("true",value("SELECT (credit_floor=100)::text FROM clients WHERE id=:id",client));
     }
     @Test void accountWarningPermissionIsRecheckedForTheLastExactDecimalDigit() {
         UUID account=UUID.randomUUID();

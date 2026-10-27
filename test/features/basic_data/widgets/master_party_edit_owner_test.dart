@@ -45,6 +45,7 @@ final _permissions = StateProvider<Set<String>>(
   (_) => {
     Perm.clientView,
     Perm.clientEdit,
+    Perm.clientFinance,
     Perm.clientStatus,
     Perm.supplierView,
     Perm.supplierEdit,
@@ -183,6 +184,7 @@ class _Harness extends ConsumerWidget {
                 categoryId: 'category-one',
                 version: 1,
                 writable: true,
+                financialWritable: true,
               ),
               onSaved: () => writes.accepted++,
             );

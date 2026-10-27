@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /** Passwords are supplied only when downloading; they are never persisted in the task. */
 public record ReportExportRequest(@NotNull UUID id,
-        @Pattern(regexp="sales|purchase|subcontract|production|stock|finance|where_used|master|workbench_purchase|audit|goods_actual_cost") @NotNull String domain,
+        @Pattern(regexp="sales|purchase|subcontract|production|stock|finance|where_used|master|workbench_purchase|workbench_subcontract|audit|goods_actual_cost") @NotNull String domain,
         @NotBlank @Size(max=100) String report,
         @Size(max=80) Map<@NotBlank @Size(max=120) String, @Size(max=60000) String> parameters,
         @Size(max=100) String sort, @Pattern(regexp="(?i)asc|desc") String order,

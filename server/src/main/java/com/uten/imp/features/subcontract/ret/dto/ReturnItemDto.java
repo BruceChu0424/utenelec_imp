@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 委外退货明细返回 DTO。 */
 @Getter
 @AllArgsConstructor
-public class ReturnItemDto {
+public class ReturnItemDto extends com.uten.imp.common.finance.ProcurementSourceOrderDifferenceResponse {
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

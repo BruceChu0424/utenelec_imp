@@ -68,6 +68,8 @@ public class PurchaseReportService {
 
     @Autowired
     private CommercialPriceVisibility commercialPriceVisibility;
+    @Autowired
+    private com.uten.imp.features.purchase.PurchaseDocumentAccessPolicy sourceOrderAccess;
 
     // ======================== 通用执行器 ========================
 
@@ -370,7 +372,9 @@ public class PurchaseReportService {
                 ReportColumn.text("unitName", "单位", 70),
                 // 申请没有币种字段；价格和金额由申请服务按本币、汇率1保存。
                 ReportColumn.money("price", "单价").withUnitLabel("元"), ReportColumn.money("amount", "金额").withUnitLabel("元"),
-                ReportColumn.number("orderedQty", "采订数量").withUnitKey("__unitName"), ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
+                ReportColumn.number("orderedQty", "采订数量").withUnitKey("__unitName"),
+                ReportColumn.number("differenceQty", "差异数(未下单实物)").withUnitKey("__unitName"),
+                ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
                 ReportColumn.text("salesOrderNo", "销售订货单号", 130), ReportColumn.text("productionPlanNo", "生产计划单号", 130),
                 ReportColumn.money("laborCost", "人工费").withUnitLabel("元"), ReportColumn.text("purchaseReply", "采购回复", 140),
                 ReportColumn.text("__srcId", ""));
@@ -383,11 +387,13 @@ public class PurchaseReportService {
                        col.name AS "colorName", g.model AS "model", gsup.name AS "supplierName",
                        g.c_number AS "customerModel", mc.name AS "categoryName", g.material AS "material", g.spec AS "spec",
                        i.qty AS "qty", un.name AS "unitName", i.price AS "price", i.amount_original AS "amount",
-                       i.ordered_qty AS "orderedQty", i.purchase_order_no AS "purchaseOrderNo",
+                       i.ordered_qty AS "orderedQty", %s AS "differenceQty", i.purchase_order_no AS "purchaseOrderNo",
                        i.sales_order_no AS "salesOrderNo", i.production_plan_no AS "productionPlanNo",
                        g.work_e AS "laborCost", i.purchase_reply AS "purchaseReply",
                        o.id AS "__srcId"
-                """;
+                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.balanceSql(
+                        "(i.qty+CASE WHEN i.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN i.gift_qty ELSE 0 END)",
+                        "(i.ordered_qty+i.gift_ordered_qty)"));
         String fromJoin = """
                 FROM purchase_request_items i
                 JOIN purchase_requests o ON o.id = i.request_id
@@ -557,6 +563,7 @@ public class PurchaseReportService {
     public ReportTableResponse receiptDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                              LocalDate dateFrom, LocalDate dateTo, String kw,
                                              Map<String, String> facets, int page, int size, String sort, String order) {
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 160), ReportColumn.text("warehouseName", "仓库", 120),
@@ -573,6 +580,8 @@ public class PurchaseReportService {
                 ReportColumn.number("weight", "重量").withUnitLabel("千克"), ReportColumn.number("orderQty", "订货数量").withUnitKey("__unitName"),
                 ReportColumn.number("qty", "数量").withUnitKey("__unitName"), ReportColumn.number("giftQty", "备品数").withUnitKey("__unitName"),
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -584,6 +593,8 @@ public class PurchaseReportService {
                        i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material",
                        i.weight AS "weight", oi.qty AS "orderQty", i.qty AS "qty", i.gift_qty AS "giftQty", i.price AS "price",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -602,7 +613,7 @@ public class PurchaseReportService {
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "PURCHASE", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）；
@@ -662,6 +673,7 @@ public class PurchaseReportService {
     public ReportTableResponse returnDetail(String billNo, UUID supplierId, UUID warehouseId, Short status,
                                             LocalDate dateFrom, LocalDate dateTo, String kw,
                                             Map<String, String> facets, int page, int size, String sort, String order) {
+        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 200), ReportColumn.text("supplierName", "供应商", 160),
                 ReportColumn.text("warehouseName", "仓库", 120),
@@ -675,6 +687,8 @@ public class PurchaseReportService {
                 ReportColumn.text("material", "材质", 90),
                 ReportColumn.number("weight", "重量").withUnitLabel("千克"), ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"), ReportColumn.money("amount", "金额").withUnitKey("__currencyName"),
+                ReportColumn.number("sourceOrderDifferenceQty", "订货差异数").withUnitKey("__sourceOrderDifferenceUnitName"),
+                ReportColumn.text("__sourceOrderDifferenceUnitName", ""),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT (o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS "billNo",
@@ -685,6 +699,8 @@ public class PurchaseReportService {
                        i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
                        g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material",
                        i.weight AS "weight", i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
+                       source_order_difference.qty AS "sourceOrderDifferenceQty",
+                       source_order_difference.unit_name AS "__sourceOrderDifferenceUnitName",
                        o.id AS "__srcId"
                 """;
         String fromJoin = """
@@ -695,7 +711,7 @@ public class PurchaseReportService {
                 LEFT JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
                 """;
-        WhereBuilder w = new WhereBuilder("WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false");
+        fromJoin += com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.reportJoin(sourceOrderAccess, "PURCHASE", w);
         ReportQueryKit.addCommonDocFilters(w, billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, "o.bill_no", "i.bill_date");
         List<FacetSpec> specs = List.of(
                 // 2026-09-25 单号列统一：单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。

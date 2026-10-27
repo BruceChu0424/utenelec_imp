@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
+import java.util.Collection;
 import java.util.UUID;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
 /**
@@ -27,19 +29,20 @@ public class MasterObjectAccess {
     @Value("${uten.features.goods-owner-scope-enabled:false}")
     private boolean goodsOwnerScopeEnabled;
 
-    /** 返回「负责人 id → 当前用户能否写」判定；负责人列不存在的主档恒为可写。 */
-    Predicate<UUID> writableOwner(MasterEntityKind kind) {
+    /** 返回「对象 id、负责人 id → 当前用户能否写」判定，客户包含共同负责人。 */
+    BiPredicate<UUID, UUID> writableObject(MasterEntityKind kind, Collection<UUID> ids) {
         return switch (kind) {
             case CLIENT -> {
                 ClientAccessPolicy.ClientScope scope = clientAccessPolicy.evaluate();
-                yield owner -> clientAccessPolicy.canWriteOwner(owner, scope);
+                Set<UUID> coOwnedIds = clientAccessPolicy.writableCoOwnedClientIds(ids, scope);
+                yield (id, owner) -> clientAccessPolicy.canWriteOwner(owner, scope) || coOwnedIds.contains(id);
             }
             case GOODS -> {
-                if (!goodsOwnerScopeEnabled) yield owner -> true;
+                if (!goodsOwnerScopeEnabled) yield (id, owner) -> true;
                 OwnerVisibility.OwnerScope scope = ownerVisibility.evaluate("goods", "goods:view:all");
-                yield owner -> scope.seeAll() || owner == null || scope.writableOwners().contains(owner);
+                yield (id, owner) -> scope.seeAll() || owner == null || scope.writableOwners().contains(owner);
             }
-            default -> owner -> true;
+            default -> (id, owner) -> true;
         };
     }
 

@@ -83,7 +83,7 @@ class MasterRecordHistoryPostgresTest {
     when(access.readableLabelOwner(anyString())).thenReturn(owner -> true);
     clientPolicy = mock(ClientAccessPolicy.class);
     when(clientPolicy.canRead(any(UUID.class), nullable(UUID.class), any())).thenReturn(true);
-    when(clientPolicy.canWriteOwner(nullable(UUID.class), any())).thenReturn(true);
+    when(clientPolicy.canWrite(any(UUID.class), nullable(UUID.class), any())).thenReturn(true);
     when(clientPolicy.nativeReadScope(anyString(), any()))
         .thenReturn(new ClientAccessPolicy.NativeReadScope("1=1", null, Set.of(), null, null));
     history =
@@ -126,6 +126,39 @@ class MasterRecordHistoryPostgresTest {
   void close() {
     if (em.getTransaction().isActive()) em.getTransaction().rollback();
     em.close();
+  }
+
+  @Test
+  void customerFinancialVersionRestoreRequiresCurrentFinancePermission() {
+    UUID client=UUID.randomUUID();
+    inTx(()->{
+      em.createNativeQuery("INSERT INTO clients(id,code,name,status,credit_floor,code_sequence) VALUES(:id,:code,'financial history customer','使用',100,(SELECT coalesce(max(code_sequence),0)+1 FROM clients))")
+          .setParameter("id",client).setParameter("code","H-"+client).executeUpdate();
+      return null;
+    });
+    inTx(()->{
+      provenance();
+      em.createNativeQuery("UPDATE clients SET credit_floor=200 WHERE id=:id")
+          .setParameter("id",client).executeUpdate();
+      return null;
+    });
+    login(Set.of("client:view","client:edit"),false);
+    var revision=service.detail("clients",historyNumber(service.list("clients",client,null,null).entries().getFirst().id()));
+    assertFalse(revision.canRestoreBefore());
+    assertTrue(revision.blockedReason().contains("财务"));
+    assertThrows(ApiException.class,()->inTx(()->{
+      service.restore("clients",historyNumber(revision.id()),revision.expectedHead(),true);
+      return null;
+    }));
+    assertEquals("true",value("SELECT (credit_floor=200)::text FROM clients WHERE id=:id",client));
+    login(Set.of("client:view","client:edit","client:finance"),false);
+    var permitted=service.detail("clients",historyNumber(revision.id()));
+    assertTrue(permitted.canRestoreBefore(),permitted.blockedReason());
+    inTx(()->{
+      service.restore("clients",historyNumber(permitted.id()),permitted.expectedHead(),true);
+      return null;
+    });
+    assertEquals("true",value("SELECT (credit_floor=100)::text FROM clients WHERE id=:id",client));
   }
 
   @Test

@@ -40,6 +40,8 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
   String confirmLabel = '确定',
   String clearLabel = '清空',
   String Function(int count)? selectedCountLabel,
+  // Route ownership remains with the business workflow that opened this picker.
+  Widget Function(BuildContext, Widget)? scopeBuilder,
 }) async {
   final access = EmployeePickerAccess(
     EmployeePickerAccess.containerOf(context),
@@ -49,23 +51,26 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
     final result = await showUtenAdaptivePanel<List<UtenEmployeePickerItem>>(
       context: context,
       drawerWidth: 720,
-      builder: (_) => UtenEmployeeSelectionPanel(
-        loader: loader,
-        departmentTreeLoader: departmentTreeLoader,
-        title: title,
-        multiple: multiple,
-        initialSelection: initialSelection,
-        selectedId: selectedId,
-        departmentName: departmentName,
-        candidateScopeKey: candidateScopeKey,
-        showDepartmentFilter: showDepartmentFilter,
-        searchHint: searchHint,
-        emptyMessage: emptyMessage,
-        emptyDescription: emptyDescription,
-        confirmLabel: confirmLabel,
-        clearLabel: clearLabel,
-        selectedCountLabel: selectedCountLabel,
-      ),
+      builder: (panelContext) {
+        final panel = UtenEmployeeSelectionPanel(
+          loader: loader,
+          departmentTreeLoader: departmentTreeLoader,
+          title: title,
+          multiple: multiple,
+          initialSelection: initialSelection,
+          selectedId: selectedId,
+          departmentName: departmentName,
+          candidateScopeKey: candidateScopeKey,
+          showDepartmentFilter: showDepartmentFilter,
+          searchHint: searchHint,
+          emptyMessage: emptyMessage,
+          emptyDescription: emptyDescription,
+          confirmLabel: confirmLabel,
+          clearLabel: clearLabel,
+          selectedCountLabel: selectedCountLabel,
+        );
+        return scopeBuilder?.call(panelContext, panel) ?? panel;
+      },
     );
     return context.mounted &&
             identical(

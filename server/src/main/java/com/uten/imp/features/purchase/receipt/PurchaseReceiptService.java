@@ -890,6 +890,7 @@ public class PurchaseReceiptService {
     }
 
     private ReceiptDetail toDetail(PurchaseReceipt r, List<ReceiptItemDto> items) {
+        com.uten.imp.common.finance.ProcurementDeliveryDifferenceRead.enrich(em, access, "PURCHASE", items);
         // 价格脱敏（V302）：主表金额族 + 明细价格族置 null，priceMasked 标记供前端渲染 ***。
         boolean mask = !priceMasker.canViewPurchaseReceipt();
         ReceiptSourceRef sourceOrder = singleOrderSource(items);
@@ -932,6 +933,7 @@ public class PurchaseReceiptService {
                 it.getSourceDocNo(), it.getRemark());
         dto.setGiftReplacementIntent(it.getGiftReplacementIntent());
         dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftReturnedQty(it.getGiftReturnedQty());
+        it.copySourceOrderDifferenceTo(dto);
         dto.setGiftStockedQty(it.getGiftStockedQty());dto.setReturnableGiftQty(it.getReturnableGiftQty());return dto;
     }
 

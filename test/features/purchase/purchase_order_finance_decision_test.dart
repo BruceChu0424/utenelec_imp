@@ -3,7 +3,8 @@ import '../../support/native_detail_reader_overrides.dart';
 //
 // 即使当前账号是合格财务审核员、详情投影意外带有 APPROVE/REJECT，业务详情页
 // 也只能展示待审状态(提示「审核期间仅可查看，财务将在订货审批中处理」)；审批唯一入口是「财务 → 订货审批任务中心」。
-// 打印同时要求有效已审单据与财务通过证据，并须经用户再次确认后读取打印投影。
+// 打印只读取有权可见的单据；待审也可打印，保留真实状态且不显示旧审核签名。
+// 用户再次确认后才读取打印投影，打印不改变财务或业务状态。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,7 +89,14 @@ class _RecordingApi extends ApiClient {
         'supplierName': '测试供应商',
         'makerName': '采购李四',
         'reviewerName': '财务王五',
-        'statusLabel': '财务已通过',
+        'financeApproved':
+            orderStatus == kPurchaseStatusApproved &&
+            approvalStatus == 'APPROVED',
+        'statusLabel':
+            orderStatus == kPurchaseStatusApproved &&
+                approvalStatus == 'APPROVED'
+            ? '财务已通过'
+            : '等待财务审核',
         'lines': [
           {
             'id': 'i1',
@@ -200,7 +208,7 @@ void main() {
     (name: '已反审', orderStatus: kPurchaseStatusReversed, approval: 'APPROVED'),
     (name: '已取消', orderStatus: kPurchaseStatusCanceled, approval: 'APPROVED'),
   ]) {
-    testWidgets('${state.name}的采购详情禁止打印', (tester) async {
+    testWidgets('${state.name}的采购详情允许核对后打印', (tester) async {
       final api = _RecordingApi()
         ..approvalStatus = state.approval
         ..orderStatus = state.orderStatus
@@ -208,13 +216,19 @@ void main() {
       await _pump(tester, api);
 
       final printButton = find.byKey(const Key('purchase-order-print'));
-      expect(tester.widget<UtenButton>(printButton).onPressed, isNull);
-      expect(find.byTooltip('财务审核通过后才能打印，改量后须等待财务复核通过'), findsOneWidget);
+      expect(tester.widget<UtenButton>(printButton).onPressed, isNotNull);
       await tester.tap(printButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('确认打印采购单'), findsNothing);
+      expect(find.text('确认打印采购单'), findsOneWidget);
       expect(api.printRequests, isEmpty);
+      await tester.tap(find.text('确认打印'));
+      await tester.pumpAndSettle();
+      expect(api.printRequests, ['/purchase/orders/order-1/print-data']);
+      expect(find.text('预览采购单 PO-2026-001'), findsOneWidget);
+      expect(find.text('单据状态：等待财务审核'), findsOneWidget);
+      expect(find.text('审核：—'), findsOneWidget);
+      expect(api.posts, isEmpty);
       expect(tester.takeException(), isNull);
     });
   }
@@ -269,12 +283,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('确认打印后财务状态被服务端拦截时展示真实原因', (tester) async {
+  testWidgets('确认打印后服务端数据范围拒绝仍展示真实原因', (tester) async {
     final api = _RecordingApi()
       ..approvalStatus = 'APPROVED'
       ..orderStatus = kPurchaseStatusApproved
       ..allowedActions = const []
-      ..printError = ApiException('CONFLICT', '采购单已改量，须等待财务复核通过');
+      ..printError = ApiException('FORBIDDEN', '采购单已不在可见范围，请刷新后重试');
     await _pump(tester, api);
     await tester.tap(find.byKey(const Key('purchase-order-print')));
     await tester.pumpAndSettle();
@@ -287,7 +301,7 @@ void main() {
     ).read(appNotificationProvider);
     expect(notifications, hasLength(1));
     expect(notifications.single.kind, AppNotificationKind.error);
-    expect(notifications.single.message, '采购单已改量，须等待财务复核通过');
+    expect(notifications.single.message, '采购单已不在可见范围，请刷新后重试');
     expect(find.byKey(const Key('purchase-print-preview-print')), findsNothing);
     expect(
       tester

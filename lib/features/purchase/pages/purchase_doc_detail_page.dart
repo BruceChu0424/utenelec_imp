@@ -16,7 +16,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../../shared/presentation/procurement_delivery_difference_l10n.dart';
+import '../../../shared/widgets/procurement_difference_column.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
@@ -517,20 +517,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   String? _error;
 
-  bool get _orderFinanceApproved =>
-      _detail?.status == kPurchaseStatusApproved &&
-      _detail?.financeApproval?.isApproved == true;
-
   Future<void> _printOrder() async {
     if (_openingPrint ||
         _busy ||
         _loading ||
         !nativeReadAccessConfirmed ||
         _detail == null) {
-      return;
-    }
-    if (!_orderFinanceApproved) {
-      context.appWarning('采购单须财务审核通过后才能打印；改量后须等待财务复核通过');
       return;
     }
     final ownsNative = captureNativeOwnership();
@@ -1155,9 +1147,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         actions: [
           if (widget.docType == PurchaseDocType.order)
             Tooltip(
-              message: _orderFinanceApproved
-                  ? '打印采购单'
-                  : '财务审核通过后才能打印，改量后须等待财务复核通过',
+              message: '打印采购单',
               child: UtenButton(
                 key: const Key('purchase-order-print'),
                 icon: Icons.print_outlined,
@@ -1166,7 +1156,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     !_loading &&
                         !_busy &&
                         nativeReadAccessConfirmed &&
-                        _orderFinanceApproved
+                        _detail != null
                     ? _printOrder
                     : null,
                 child: const Text('打印单据'),
@@ -2037,16 +2027,27 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     value: (it) =>
                         '${financeExactTrimmed(it.returnedQtyText ?? it.returnedQty?.toString()) ?? '—'} ${names.unit(it.unitId)}',
                   ),
-                if (widget.docType == PurchaseDocType.order)
-                  MasterColumnDef(
-                    key: 'differenceQty',
-                    label: procurementDeliveryDifferenceL10n(context).label,
-                    width: 130,
-                    type: 'number',
-                    info: procurementDeliveryDifferenceL10n(context).hint,
-                    value: (it) => it.differenceQtyText == null
-                        ? '—'
-                        : '${it.differenceQtyText} ${names.unit(it.unitId)}',
+                if (widget.docType == PurchaseDocType.request ||
+                    widget.docType == PurchaseDocType.order)
+                  procurementDifferenceColumn<PurchaseDocItem>(
+                    context: context,
+                    differenceOf: (it) => it.differenceQtyText,
+                    unitOf: unitOf,
+                    scope: widget.docType == PurchaseDocType.request
+                        ? ProcurementDifferenceScope.request
+                        : ProcurementDifferenceScope.order,
+                  ),
+                if (widget.docType == PurchaseDocType.receipt ||
+                    widget.docType == PurchaseDocType.returnDoc)
+                  procurementDifferenceColumn<PurchaseDocItem>(
+                    context: context,
+                    key: 'sourceOrderDifferenceQty',
+                    scope: ProcurementDifferenceScope.sourceOrder,
+                    differenceOf: (it) => it.sourceOrderDifferenceQtyText,
+                    unitOf: (it) {
+                      final unit = names.unit(it.sourceOrderDifferenceUnitId);
+                      return unit == '—' ? null : unit;
+                    },
                   ),
                 MasterColumnDef(
                   key: 'remark',

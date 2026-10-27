@@ -49,7 +49,7 @@ public class ClientGoodsAliasService {
     public PageResponse<ClientGoodsAliasView> list(UUID clientId, String keyword, int page, int size) {
         ClientAccessPolicy.ClientScope scope = clientAccess.evaluate();
         UUID owner = requireReadableClient(clientId, scope);
-        boolean canDelete = hasClientEdit() && clientAccess.canWriteOwner(owner, scope);
+        boolean canDelete = hasClientEdit() && clientAccess.canWrite(clientId, owner, scope);
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
         String normalized = KeywordSearch.phrase(keyword);
@@ -104,7 +104,7 @@ public class ClientGoodsAliasService {
         tx.bind();
         ClientAccessPolicy.ClientScope scope = clientAccess.evaluate();
         UUID owner = requireReadableClient(clientId, scope);
-        if (!clientAccess.canWriteOwner(owner, scope)) {
+        if (!clientAccess.canWrite(clientId, owner, scope)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "这个客户由其他业务员负责, 你只能查看, 不能删除对照");
         }
         List<Object[]> rows = em.createNativeQuery("""

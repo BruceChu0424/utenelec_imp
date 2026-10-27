@@ -414,7 +414,8 @@ public class SubcontractDrawQueryService {
                 task.drawnQty(), task.pendingQty(), BigDecimal.ZERO, shortQty, task.materialKindCount(),
                 task.readyKindCount(), task.shortKindCount(), task.unplannedShortKindCount(),
                 task.pendingQty().signum() > 0 ? "DRAW_SUBMITTED" : "WAITING_MATERIAL",
-                task.deliverDate(), false, task.materialQty(), task.planNo(), task.applicationItemIds());
+                task.deliverDate(), false, task.materialQty(), task.planNo(), task.applicationItemIds(),
+                task.differenceQty());
     }
 
     /** 选中的开放任务(范围内), 带行级可领/已领/已覆盖套数。 */
@@ -598,7 +599,7 @@ public class SubcontractDrawQueryService {
                 alias + ".drawable_qty", alias + ".short_qty", alias + ".material_kind_count",
                 alias + ".ready_kind_count", alias + ".unplanned_short_kind_count", alias + ".status",
                 alias + ".deliver_date", alias + ".maker_id", alias + ".material_qty",
-                alias + ".plan_no", alias + ".application_item_ids")) + "\n";
+                alias + ".plan_no", alias + ".application_item_ids", alias + ".difference_qty")) + "\n";
     }
 
     private static final int ROW_MAKER = 23;
@@ -616,7 +617,9 @@ public class SubcontractDrawQueryService {
                 canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]),
                 access.hasAuthority("subcontract_application:view")
                         ? sourceIds(r[o + 26])
-                        : List.of());
+                        : List.of(),
+                access.hasAuthority("subcontract_order:view") && r[o + 27] != null
+                        ? decimal(r[o + 27]) : null);
     }
 
     private static List<UUID> sourceIds(Object value) {

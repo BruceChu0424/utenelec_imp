@@ -54,7 +54,7 @@ public class ReportExportSource {
             case "stock" -> stock.export(r.report(),r.parameters(),r.sort(),r.order());
             case "finance" -> finance.export(r.report(),r.parameters(),r.sort(),r.order());
             case "master" -> master.read(r);
-            case "workbench_purchase" -> workbench.read(r);
+            case "workbench_purchase", "workbench_subcontract" -> workbench.read(r);
             case "audit" -> audit.read(r);
             default -> throw new IllegalArgumentException("Unknown export domain");
         };
@@ -63,6 +63,7 @@ public class ReportExportSource {
     public static String scope(ReportExportRequest request) {
         return "master".equals(request.domain())?MasterReportExportPort.projectionScope(request.report())
                 :"workbench_purchase".equals(request.domain())?"view_purchase"
+                :"workbench_subcontract".equals(request.domain())?"view_subcontract"
                 :"audit".equals(request.domain())?"view_admin"
                 :"goods_actual_cost".equals(request.domain())?"view_goods_cost":scope(request.domain());
     }

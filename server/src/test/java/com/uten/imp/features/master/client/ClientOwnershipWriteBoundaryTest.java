@@ -68,6 +68,11 @@ class ClientOwnershipWriteBoundaryTest {
         ClientAccessPolicy accessPolicy = mock(ClientAccessPolicy.class);
         EmployeeRepository employees = mock(EmployeeRepository.class);
         EmployeeNameResolver names = mock(EmployeeNameResolver.class);
+        EntityManager em = mock(EntityManager.class);
+        jakarta.persistence.Query owners = mock(jakarta.persistence.Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenReturn(owners);
+        when(owners.setParameter(org.mockito.ArgumentMatchers.anyString(), any())).thenReturn(owners);
+        when(owners.getResultList()).thenReturn(java.util.List.of());
         ClientCategory category = new ClientCategory();
         category.setId(UUID.randomUUID());
         category.setName("客户分类");
@@ -78,7 +83,7 @@ class ClientOwnershipWriteBoundaryTest {
                 clients,
                 categories,
                 mock(TxSessionVars.class),
-                mock(EntityManager.class),
+                em,
                 codes,
                 accessPolicy,
                 employees,

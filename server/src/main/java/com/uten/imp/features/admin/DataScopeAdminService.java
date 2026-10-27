@@ -191,7 +191,15 @@ public class DataScopeAdminService {
         requireScope(scope);
         String fromClause = switch (scope) {
             case "goods" -> "(SELECT owner_employee_id FROM goods WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE) t";
-            case "client" -> "(SELECT owner_employee_id FROM clients WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE AND (code IS NULL OR lower(code) NOT LIKE 'legacy-fin-cl-%')) t";
+            case "client" -> """
+                    (SELECT id AS client_id, owner_employee_id FROM clients
+                     WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE
+                       AND (code IS NULL OR lower(code) NOT LIKE 'legacy-fin-cl-%')
+                     UNION
+                     SELECT client.id AS client_id, co_owner.employee_id AS owner_employee_id
+                     FROM client_co_owners co_owner JOIN clients client ON client.id=co_owner.client_id
+                     WHERE client.owner_employee_id IS NOT NULL AND client.is_deleted=FALSE
+                       AND (client.code IS NULL OR lower(client.code) NOT LIKE 'legacy-fin-cl-%')) t""";
             case "sales" -> """
                     (SELECT maker_id AS owner_employee_id FROM sales_quotes WHERE maker_id IS NOT NULL AND is_deleted=FALSE
                      UNION ALL SELECT owner_employee_id FROM sales_orders WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE

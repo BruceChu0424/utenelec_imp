@@ -739,6 +739,7 @@ SalesIntakePatch buildSalesIntakePatch({
   required SalesDocType docType,
   required String jobId,
   required AppLocalizations l10n,
+  bool clientFinancialWritable = false,
 }) {
   final masked = result.priceMasked;
   final rows = <SalesIntakePatchRow>[];
@@ -928,6 +929,7 @@ SalesIntakePatch buildSalesIntakePatch({
       decisions.clientId == client.selectedClientId) {
     for (final field in client.enrichment) {
       if (decisions.enrichmentFields[field.field] == true &&
+          (field.field != 'taxId' || clientFinancialWritable) &&
           kSalesIntakeClientFieldKeys.contains(field.field)) {
         clientFields[field.field] = field.proposed;
       }

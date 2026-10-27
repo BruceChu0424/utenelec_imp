@@ -6,6 +6,7 @@ class ClientAccessSettings {
     required this.clientId,
     required this.accessVersion,
     required this.viewers,
+    this.owners = const [],
     this.ownerEmployeeId,
     this.ownerEmployeeName,
   });
@@ -14,6 +15,17 @@ class ClientAccessSettings {
   final String? ownerEmployeeId;
   final String? ownerEmployeeName;
   final int accessVersion;
+  final List<ClientAccessViewer> owners;
+  List<ClientAccessViewer> get effectiveOwners => owners.isNotEmpty
+      ? owners
+      : ownerEmployeeId == null
+      ? const []
+      : [
+          ClientAccessViewer(
+            employeeId: ownerEmployeeId!,
+            name: ownerEmployeeName ?? '未知员工',
+          ),
+        ];
   final List<ClientAccessViewer> viewers;
 
   factory ClientAccessSettings.fromJson(Map<String, dynamic> json) =>
@@ -22,6 +34,11 @@ class ClientAccessSettings {
         ownerEmployeeId: json['ownerEmployeeId'] as String?,
         ownerEmployeeName: json['ownerEmployeeName'] as String?,
         accessVersion: (json['accessVersion'] as num?)?.toInt() ?? 0,
+        owners: (json['owners'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ClientAccessViewer.fromJson)
+            .where((owner) => owner.employeeId.isNotEmpty)
+            .toList(growable: false),
         viewers: (json['viewers'] as List<dynamic>? ?? const [])
             .whereType<Map<String, dynamic>>()
             .map(ClientAccessViewer.fromJson)
@@ -93,19 +110,24 @@ class ClientAccessCandidate {
 
 class ClientAccessUpdate {
   const ClientAccessUpdate({
-    required this.ownerEmployeeId,
+    this.ownerEmployeeId = '',
+    this.ownerEmployeeIds,
     required this.viewerEmployeeIds,
     required this.expectedAccessVersion,
     required this.reason,
   });
 
   final String ownerEmployeeId;
+  final List<String>? ownerEmployeeIds;
   final List<String> viewerEmployeeIds;
   final int expectedAccessVersion;
   final String reason;
 
   Map<String, dynamic> toJson() => {
-    'ownerEmployeeId': ownerEmployeeId,
+    if (ownerEmployeeIds != null)
+      'ownerEmployeeIds': ownerEmployeeIds
+    else
+      'ownerEmployeeId': ownerEmployeeId,
     'viewerEmployeeIds': viewerEmployeeIds,
     'expectedAccessVersion': expectedAccessVersion,
     'reason': reason.trim(),
@@ -114,7 +136,7 @@ class ClientAccessUpdate {
 
 /// 多选客户批量设置负责人/可见人。
 ///
-/// [ownerEmployeeId] 为 null = 不动各客户当前负责人；[viewerEmployeeIds] 为 null =
+/// [ownerEmployeeIds] / [ownerEmployeeId] 都为 null = 不动各客户当前负责人；[viewerEmployeeIds] 为 null =
 /// 不动各客户当前可见人（两者至少给一个）。**不带 expectedAccessVersion**：操作员
 /// 选的是列表里的行而不是某个版本，服务端在同一事务内按各客户自己的版本加锁应用。
 class ClientAccessBatchUpdate {
@@ -122,17 +144,22 @@ class ClientAccessBatchUpdate {
     required this.clientIds,
     required this.reason,
     this.ownerEmployeeId,
+    this.ownerEmployeeIds,
     this.viewerEmployeeIds,
   });
 
   final List<String> clientIds;
   final String? ownerEmployeeId;
+  final List<String>? ownerEmployeeIds;
   final List<String>? viewerEmployeeIds;
   final String reason;
 
   Map<String, dynamic> toJson() => {
     'clientIds': clientIds,
-    if (ownerEmployeeId != null) 'ownerEmployeeId': ownerEmployeeId,
+    if (ownerEmployeeIds != null)
+      'ownerEmployeeIds': ownerEmployeeIds
+    else if (ownerEmployeeId != null)
+      'ownerEmployeeId': ownerEmployeeId,
     if (viewerEmployeeIds != null) 'viewerEmployeeIds': viewerEmployeeIds,
     'reason': reason.trim(),
   };

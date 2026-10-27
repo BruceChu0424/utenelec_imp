@@ -381,18 +381,20 @@ class SalesIntakeNewClientProposal {
 
   bool get hasName => (name ?? fullName ?? nameEn)?.trim().isNotEmpty ?? false;
 
-  SalesIntakeNewClientProposal copyWith({String? name}) =>
-      SalesIntakeNewClientProposal(
-        name: name ?? this.name,
-        fullName: fullName,
-        nameEn: nameEn,
-        linkman: linkman,
-        email: email,
-        phone: phone,
-        address: address,
-        taxId: taxId,
-        placeId: placeId,
-      );
+  SalesIntakeNewClientProposal copyWith({
+    String? name,
+    bool includeFinancialFields = true,
+  }) => SalesIntakeNewClientProposal(
+    name: name ?? this.name,
+    fullName: fullName,
+    nameEn: nameEn,
+    linkman: linkman,
+    email: email,
+    phone: phone,
+    address: address,
+    taxId: includeFinancialFields ? taxId : null,
+    placeId: placeId,
+  );
 
   /// 请求体(服务端 ClientFromDocumentController.Request)。文件里的原文可能超长,
   /// 按服务端各字段长度上限截断, 免得整张新建被 400 挡住(对话框只能改简称)。

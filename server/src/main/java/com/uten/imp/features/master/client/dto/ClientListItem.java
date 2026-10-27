@@ -69,4 +69,8 @@ public class ClientListItem {
 
     /** 外文名称(ADR-134, V742): 列表「外文名称」列; 关键字搜索同样命中。 */
     private String nameEn;
+
+    @lombok.Setter private java.util.List<UUID> ownerEmployeeIds = java.util.List.of();
+    @lombok.Setter private java.util.List<String> ownerEmployeeNames = java.util.List.of();
+    @lombok.Setter private boolean financialWritable;
 }

@@ -59,8 +59,7 @@ class ClientOwnerEmployeeFilterTest {
         CriteriaBuilder cb = mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS);
         captor.getValue().toPredicate(root, null, cb);
 
-        verify(root).get("ownerEmployeeId");
-        verify(cb).equal(any(), eq(owner));
+        verify(accessPolicy).ownerPredicate(root, null, cb, Set.of(owner));
     }
 
     private static ClientQueryFilter filter(UUID ownerEmployeeId) {

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.Set;
 
-/** Original purchase task authority and row semantics, independent of the purchase report family. */
+/** Original procurement task authority and row semantics, independent of the report families. */
 @Component
 @RequiredArgsConstructor
 public class WorkbenchReportExportSource implements WorkbenchReportExportPort {
@@ -26,6 +26,9 @@ public class WorkbenchReportExportSource implements WorkbenchReportExportPort {
     private static FulfillmentWorkbenchTableQuery table(ReportExportQuery request) {
         if(!"tasks".equals(request.report()))throw invalid();
         var p=request.parameters();
+        boolean subcontract = "workbench_subcontract".equals(request.domain());
+        if (!subcontract && !"workbench_purchase".equals(request.domain())) throw invalid();
+        if (subcontract && !Set.of("IN_PROGRESS", "COMPLETED").contains(p.getOrDefault("status", ""))) throw invalid();
         if(p.keySet().stream().anyMatch(key->!Set.of("status","keyword","exception","dateFrom","dateTo","issuedFrom","issuedTo","needFrom","needTo").contains(key)
                 &&!key.startsWith("f.")&&!key.startsWith("search.")))throw invalid();
         try {
@@ -38,10 +41,13 @@ public class WorkbenchReportExportSource implements WorkbenchReportExportPort {
     }
     @Override
     public ExportPayload read(ReportExportQuery request) {
-        authorize(users.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED)));
+        WorkbenchReportExportPort.authorize(users.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED)), request.domain());
         var p=request.parameters();var table=table(request);
+        if ("workbench_subcontract".equals(request.domain()))
+            return queries.exportSubcontract(p.getOrDefault("status",""),p.getOrDefault("keyword",""),p.getOrDefault("exception",""),
+                ReportQueryKit.parseDate(p.get("dateFrom")),ReportQueryKit.parseDate(p.get("dateTo")),table,limits.exportMaxRows());
         return queries.exportPurchase(p.getOrDefault("status",""),p.getOrDefault("keyword",""),p.getOrDefault("exception",""),
                 ReportQueryKit.parseDate(p.get("dateFrom")),ReportQueryKit.parseDate(p.get("dateTo")),table,limits.exportMaxRows());
     }
-    private static ApiException invalid(){return new ApiException(ErrorCode.VALIDATION_FAILED,"采购任务导出条件无效");}
+    private static ApiException invalid(){return new ApiException(ErrorCode.VALIDATION_FAILED,"任务导出条件无效");}
 }

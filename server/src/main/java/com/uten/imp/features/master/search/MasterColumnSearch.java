@@ -66,6 +66,13 @@ public final class MasterColumnSearch {
                 direct(fields, "code", "name", "nameEn", "fullName", "region", "placeId", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax", "postcode", "address", "bank", "bankAccount", "taxId", "website");
                 fields.put("defaultSettlementMethodName", "(SELECT name FROM settlement_methods WHERE id = master.default_settlement_method_id)");
                 owner(fields);
+                String customerOwners = "COALESCE((SELECT string_agg(employee.full_name, '、' ORDER BY responsibility.sort_order, employee.id) "
+                        + "FROM (SELECT master.owner_employee_id AS employee_id, 0 AS sort_order UNION ALL "
+                        + "SELECT co_owner.employee_id, co_owner.sort_order FROM client_co_owners co_owner WHERE co_owner.client_id=master.id) responsibility "
+                        + "JOIN employees employee ON employee.id=responsibility.employee_id), " + fields.get("ownerEmployeeName") + ")";
+                fields.put("ownerEmployeeName", customerOwners);
+                fields.put("ownerEmployeeId", customerOwners);
+                fields.put("empId", customerOwners);
             }
             case SUPPLIER -> {
                 direct(fields, "code", "name", "description", "place", "legalPerson", "linkman", "mobile", "phone", "phone2", "fax", "postcode", "address", "bank", "bankAccount", "taxId", "website", "shipVia", "shipAddress");

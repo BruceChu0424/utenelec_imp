@@ -135,7 +135,7 @@ public class ClientAccessService {
         if (request == null || request.clientIds() == null || request.clientIds().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择要设置的客户");
         }
-        if (request.ownerEmployeeId() == null && request.viewerEmployeeIds() == null) {
+        if (request.ownerEmployeeId() == null && request.ownerEmployeeIds() == null && request.viewerEmployeeIds() == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "请至少设置负责人或可见人其中一项");
         }
@@ -153,7 +153,9 @@ public class ClientAccessService {
             UUID ownerEmployeeId = request.ownerEmployeeId() != null
                     ? request.ownerEmployeeId()
                     : snapshot.getOwnerEmployeeId();
-            if (ownerEmployeeId == null) {
+            List<UUID> owners = request.ownerEmployeeIds() != null ? request.ownerEmployeeIds()
+                    : request.ownerEmployeeId() != null ? List.of(request.ownerEmployeeId()) : activeOwnerIds(snapshot);
+            if (owners.isEmpty()) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
                         "客户「" + clientLabel(snapshot) + "」还没有负责人，本次批量必须同时指定负责人");
@@ -162,10 +164,10 @@ public class ClientAccessService {
                     ? request.viewerEmployeeIds()
                     : activeViewerIds(clientId);
             results.add(applyValidated(clientId, validateRequest(new ClientAccessUpdateRequest(
-                    ownerEmployeeId,
+                    owners.isEmpty() ? null : owners.getFirst(),
                     viewerIds,
                     snapshot.getAccessVersion(),
-                    request.reason()))));
+                    request.reason(), owners))));
         }
         return List.copyOf(results);
     }
@@ -187,11 +189,10 @@ public class ClientAccessService {
         }
 
         Set<UUID> requestedEmployees = new LinkedHashSet<>(validated.viewerEmployeeIds());
-        requestedEmployees.add(validated.ownerEmployeeId());
+        requestedEmployees.addAll(validated.ownerEmployeeIds());
         Set<UUID> lockedEmployees = new LinkedHashSet<>(requestedEmployees);
-        if (snapshot.getOwnerEmployeeId() != null) {
-            lockedEmployees.add(snapshot.getOwnerEmployeeId());
-        }
+        List<UUID> previousOwnerIds = activeOwnerIds(snapshot);
+        lockedEmployees.addAll(previousOwnerIds);
         Map<UUID, EmployeeReference> employees = employeeReferences(lockedEmployees);
 
         // Global order: employees(sorted) -> customer -> users(sorted) -> grants.
@@ -207,6 +208,8 @@ public class ClientAccessService {
         EmployeeReference owner = requireCurrentEmployee(
                 validated.ownerEmployeeId(), employees.get(validated.ownerEmployeeId()),
                 activeAccountEmployees, "客户负责人");
+        for (UUID ownerId : validated.ownerEmployeeIds())
+            requireCurrentEmployee(ownerId, employees.get(ownerId), activeAccountEmployees, "客户负责人");
         for (UUID viewerId : validated.viewerEmployeeIds()) {
             requireCurrentEmployee(
                     viewerId, employees.get(viewerId), activeAccountEmployees, "客户可见人");
@@ -220,6 +223,17 @@ public class ClientAccessService {
         List<UUID> effectiveViewerIds = effectiveViewerIds(
                 previousOwnerId, validated.ownerEmployeeId(),
                 validated.viewerEmployeeIds(), retainPreviousOwner);
+        var effectiveViewers = new LinkedHashSet<>(effectiveViewerIds);
+        for (UUID oldOwnerId : previousOwnerIds) {
+            EmployeeReference oldOwner = employees.get(oldOwnerId);
+            if (!validated.ownerEmployeeIds().contains(oldOwnerId) && oldOwner != null && !oldOwner.deleted()
+                    && CurrentEmployeeStatusPolicy.isCurrentEmployee(oldOwner.status())
+                    && activeAccountEmployees.contains(oldOwnerId)) effectiveViewers.add(oldOwnerId);
+        }
+        effectiveViewers.removeAll(validated.ownerEmployeeIds());
+        if (effectiveViewers.size() > RequestLimits.ADMIN_SCOPE_OWNERS)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "可见人含前负责人数量超过上限");
+        effectiveViewerIds = effectiveViewers.stream().sorted().toList();
 
         UUID actorUserId = currentUser.requireId();
         List<UUID> previousViewerIds = activeViewerIds(clientId);
@@ -227,6 +241,7 @@ public class ClientAccessService {
         replaceViewers(clientId, effectiveViewerIds, actorUserId);
         client.setOwnerEmployeeId(owner.id());
         client.setEmpId(owner.legacyId() == null ? null : owner.legacyId().toString());
+        replaceCoOwners(clientId, validated.ownerEmployeeIds());
         client.setAccessVersion(client.getAccessVersion() + 1);
         em.flush();
 
@@ -238,14 +253,23 @@ public class ClientAccessService {
                 effectiveViewerIds,
                 client.getAccessVersion(),
                 validated.reason(),
-                actorUserId);
+                actorUserId, previousOwnerIds, validated.ownerEmployeeIds());
         return toDetail(client);
     }
 
     private ValidatedRequest validateRequest(ClientAccessUpdateRequest request) {
-        if (request == null || request.ownerEmployeeId() == null) {
+        if (request == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户负责人必填");
         }
+        List<UUID> rawOwners = request.ownerEmployeeIds() == null
+                ? request.ownerEmployeeId() == null ? List.of() : List.of(request.ownerEmployeeId())
+                : request.ownerEmployeeIds();
+        if (rawOwners.isEmpty() || rawOwners.size() > RequestLimits.ADMIN_SCOPE_OWNERS || rawOwners.stream().anyMatch(Objects::isNull))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户负责人必填且不能超过上限");
+        List<UUID> owners = List.copyOf(new LinkedHashSet<>(rawOwners));
+        if (request.ownerEmployeeIds() != null && request.ownerEmployeeId() != null
+                && !request.ownerEmployeeId().equals(owners.getFirst()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "主负责人与负责人列表首项不一致");
         if (request.expectedAccessVersion() == null || request.expectedAccessVersion() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户权限版本不正确");
         }
@@ -264,14 +288,14 @@ public class ClientAccessService {
             if (viewerId == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户可见人不能为空");
             }
-            if (!viewerId.equals(request.ownerEmployeeId())) normalized.add(viewerId);
+            if (!owners.contains(viewerId)) normalized.add(viewerId);
         }
         List<UUID> sorted = normalized.stream().sorted().toList();
         return new ValidatedRequest(
-                request.ownerEmployeeId(),
+                owners.getFirst(),
                 sorted,
                 request.expectedAccessVersion(),
-                reason);
+                reason, owners);
     }
 
     /**
@@ -326,6 +350,9 @@ public class ClientAccessService {
     }
 
     private Map<UUID, EmployeeReference> employeeReferences(Collection<UUID> employeeIds) {
+        return employeeReferences(employeeIds, true);
+    }
+    private Map<UUID, EmployeeReference> employeeReferences(Collection<UUID> employeeIds, boolean lock) {
         if (employeeIds == null || employeeIds.isEmpty()) return Map.of();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT employee.id,
@@ -339,8 +366,7 @@ public class ClientAccessService {
                         LEFT JOIN departments department ON department.id = employee.department_id
                         WHERE employee.id IN (:employeeIds)
                         ORDER BY employee.id
-                        FOR SHARE OF employee
-                        """)
+                        """ + (lock ? " FOR SHARE OF employee" : ""))
                 .setParameter("employeeIds", employeeIds));
         Map<UUID, EmployeeReference> references = new HashMap<>();
         for (Object[] row : rows) {
@@ -399,6 +425,27 @@ public class ClientAccessService {
                 .setParameter("clientId", clientId), UUID.class);
     }
 
+    private List<UUID> activeOwnerIds(Client client) {
+        var owners = new LinkedHashSet<UUID>();
+        if (client.getOwnerEmployeeId() == null) return List.of();
+        owners.add(client.getOwnerEmployeeId());
+        owners.addAll(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT employee_id FROM client_co_owners WHERE client_id=:clientId
+                ORDER BY sort_order, employee_id
+                """).setParameter("clientId", client.getId()), UUID.class));
+        return List.copyOf(owners);
+    }
+
+    private void replaceCoOwners(UUID clientId, List<UUID> owners) {
+        em.createNativeQuery("DELETE FROM client_co_owners WHERE client_id=:clientId")
+                .setParameter("clientId", clientId).executeUpdate();
+        for (int i=1; i<owners.size(); i++) em.createNativeQuery("""
+                INSERT INTO client_co_owners(client_id,employee_id,sort_order)
+                VALUES(:clientId,:employeeId,:sortOrder)
+                """).setParameter("clientId", clientId).setParameter("employeeId", owners.get(i))
+                .setParameter("sortOrder", i).executeUpdate();
+    }
+
     private void replaceViewers(UUID clientId, List<UUID> requestedViewerIds, UUID actorUserId) {
         var revoke = requestedViewerIds.isEmpty()
                 ? em.createNativeQuery("""
@@ -452,15 +499,16 @@ public class ClientAccessService {
             List<UUID> newViewerIds,
             long resultingAccessVersion,
             String reason,
-            UUID actorUserId) {
+            UUID actorUserId, List<UUID> previousOwnerIds, List<UUID> newOwnerIds) {
         em.createNativeQuery("""
                         INSERT INTO client_access_change_events
                             (client_id, previous_owner_employee_id, new_owner_employee_id,
                              previous_viewer_ids, new_viewer_ids, resulting_access_version,
-                             reason, actor_user_id)
+                             reason, actor_user_id, previous_owner_ids, new_owner_ids)
                         VALUES (:clientId, :previousOwnerId, :newOwnerId,
                                 CAST(:previousViewerIds AS UUID[]), CAST(:newViewerIds AS UUID[]),
-                                :resultingAccessVersion, :reason, :actorUserId)
+                                :resultingAccessVersion, :reason, :actorUserId,
+                                CAST(:previousOwnerIds AS UUID[]), CAST(:newOwnerIds AS UUID[]))
                         """)
                 .setParameter("clientId", clientId)
                 .setParameter("previousOwnerId", previousOwnerId)
@@ -470,6 +518,8 @@ public class ClientAccessService {
                 .setParameter("resultingAccessVersion", resultingAccessVersion)
                 .setParameter("reason", reason)
                 .setParameter("actorUserId", actorUserId)
+                .setParameter("previousOwnerIds", uuidArrayLiteral(previousOwnerIds))
+                .setParameter("newOwnerIds", uuidArrayLiteral(newOwnerIds))
                 .executeUpdate();
     }
 
@@ -502,12 +552,19 @@ public class ClientAccessService {
                     .getResultList();
             ownerName = ownerNames.isEmpty() ? null : Objects.toString(ownerNames.getFirst(), null);
         }
+        var ownerIds = activeOwnerIds(client);
+        var refs = employeeReferences(ownerIds, false);
+        List<ClientAccessViewer> owners = ownerIds.stream().map(id -> {
+            var employee = refs.get(id);
+            return new ClientAccessViewer(id, employee == null ? "未命名员工" : employee.name(),
+                    employee == null ? "" : employee.code(), employee == null ? null : employee.departmentName());
+        }).toList();
         return new ClientAccessDetail(
                 client.getId(),
                 client.getOwnerEmployeeId(),
                 ownerName,
                 client.getAccessVersion(),
-                List.copyOf(viewers));
+                List.copyOf(viewers), owners);
     }
 
     private static String uuidArrayLiteral(Collection<UUID> ids) {
@@ -523,7 +580,7 @@ public class ClientAccessService {
             UUID ownerEmployeeId,
             List<UUID> viewerEmployeeIds,
             long expectedAccessVersion,
-            String reason) {
+            String reason, List<UUID> ownerEmployeeIds) {
     }
 
     private record EmployeeReference(

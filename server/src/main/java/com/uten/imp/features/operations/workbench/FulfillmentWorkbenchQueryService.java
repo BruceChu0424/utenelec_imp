@@ -506,13 +506,68 @@ public class FulfillmentWorkbenchQueryService {
     public ExportPayload exportPurchase(
             String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
             FulfillmentWorkbenchTableQuery table, int maxRows) {
+        return exportProcurement("PURCHASE", status, keyword, exception, dateFrom, dateTo, table, maxRows);
+    }
+
+    /** Only the item-backed progress/history tables share this projection; pending draw tasks have their own source. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ExportPayload exportSubcontract(
+            String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
+            FulfillmentWorkbenchTableQuery table, int maxRows) {
+        if (!Set.of("IN_PROGRESS", "COMPLETED").contains(status == null ? "" : status.strip()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请在委外进行中或历史记录表格导出");
+        return exportProcurement("SUBCONTRACT", status, keyword, exception, dateFrom, dateTo, table, maxRows);
+    }
+
+    private ExportPayload exportProcurement(String department,
+            String status, String keyword, String exception, LocalDate dateFrom, LocalDate dateTo,
+            FulfillmentWorkbenchTableQuery table, int maxRows) {
         if (maxRows < 1 || maxRows == Integer.MAX_VALUE) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "系统导出行数上限无效，请检查系统设置");
         }
+        boolean subcontract = "SUBCONTRACT".equals(department);
         return com.uten.imp.common.report.ReportQueryKit.paginateAll(maxRows,
-                (page,size)->queryRows("PURCHASE",status,keyword,exception,dateFrom,dateTo,page,size,table,null,true),
-                FulfillmentWorkbenchPage::total,ignored->purchaseExportColumns(),
-                page->page.items().stream().map(FulfillmentWorkbenchQueryService::purchaseExportRow).toList());
+                (page,size)->queryRows(department,status,keyword,exception,dateFrom,dateTo,page,size,table,null,true),
+                FulfillmentWorkbenchPage::total,ignored->subcontract ? subcontractExportColumns() : purchaseExportColumns(),
+                page->page.items().stream().map(row -> subcontract ? subcontractExportRow(row) : purchaseExportRow(row)).toList());
+    }
+
+    private static Map<String,Object> subcontractExportRow(FulfillmentTaskRow row) {
+        Map<String,Object> values = new LinkedHashMap<>();
+        values.put("status", purchaseStatusLabel(row.displayStage() == null ? row.taskStatus() : row.displayStage()));
+        values.put("planNo", row.planNo());
+        values.put("docNo", row.actionDocRestricted() ? "无权查看关联单据" : row.actionDocNo());
+        values.put("goods", row.goodsName());
+        values.put("goodsCode", row.goodsCode());
+        values.put("colorName", row.colorName());
+        values.put("spec", row.spec());
+        values.put("unitName", row.unitName());
+        values.put("requiredQty", row.requiredQty());
+        values.put("differenceQty", row.differenceQty());
+        values.put("openQty", row.openQty());
+        values.put("issuedAt", row.issuedAt() == null ? null : row.issuedAt()
+                .atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString());
+        values.put("needDate", row.needDate() == null ? null : row.needDate().toString());
+        values.put("orderableQty", row.orderableQty());
+        values.put("source", row.actionDocRestricted() ? "无权查看关联申请" : row.actionDocNo());
+        return values;
+    }
+    private static List<ExportColumn> subcontractExportColumns() {
+        return List.of(
+                new ExportColumn("status", "状态", ExportColumn.TEXT),
+                new ExportColumn("planNo", "来源计划", ExportColumn.TEXT),
+                new ExportColumn("docNo", "委外申请号", ExportColumn.TEXT),
+                new ExportColumn("goods", "委外件名称", ExportColumn.TEXT),
+                new ExportColumn("goodsCode", "编号", ExportColumn.TEXT),
+                new ExportColumn("colorName", "颜色", ExportColumn.TEXT),
+                new ExportColumn("spec", "规格", ExportColumn.TEXT),
+                new ExportColumn("requiredQty", "需求量", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("differenceQty", "差异数", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("openQty", "待下单量", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("issuedAt", "计划下达日期", ExportColumn.DATE),
+                new ExportColumn("needDate", "需求日期", ExportColumn.DATE),
+                new ExportColumn("orderableQty", "可下单", ExportColumn.QTY, null, null, "unitName"),
+                new ExportColumn("source", "只读申请", ExportColumn.TEXT));
     }
     private static Map<String,Object> purchaseExportRow(FulfillmentTaskRow row) {
             Map<String, Object> values = new LinkedHashMap<>();
@@ -572,6 +627,15 @@ public class FulfillmentWorkbenchQueryService {
             case "ORDER_CLOSE_REJECTED" -> "结束申请已退回";
             case "ORDER_CLOSED" -> "已提前结束";
             case "COMPLETED" -> "已完成";
+            case "SHORT_DELIVERY" -> "回厂短交待判定";
+            case "WAITING_MORE_BATCH" -> "分批等待中";
+            case "TOLERANT_SHORT" -> "容差内待结案";
+            case "RECEIVED_PENDING_STOCK" -> "已回厂待入库";
+            case "DRAWABLE" -> "可领料";
+            case "DRAW_SUBMITTED" -> "已提交领料·待仓库发料";
+            case "PARTIAL_RECEIVED" -> "部分回厂";
+            case "AT_SUPPLIER" -> "委外商加工中";
+            case "WAITING_MATERIAL" -> "等待物料";
             default -> status;
         };
     }
@@ -1039,7 +1103,10 @@ public class FulfillmentWorkbenchQueryService {
                     + "_ORDER' THEN (SELECT "
                     + com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("difference_item.qty", "difference_item.received_qty", "difference_item.returned_qty")
                     + " FROM " + (subcontract ? "subcontract" : "purchase")
-                    + "_order_items difference_item WHERE difference_item.id=base.action_item_id) END"
+                    + "_order_items difference_item WHERE difference_item.id=base.action_item_id)"
+                    + " WHEN base.action_doc_type='" + requestType + "' THEN "
+                    + com.uten.imp.common.finance.ProcurementDeliveryDifference.balanceSql("base.required_qty", "base.fulfilled_qty")
+                    + " END"
                 : "NULL::numeric";
         // An order item can have several source issues. Its earliest issue remains
         // the displayed date; later application creation never substitutes for it.

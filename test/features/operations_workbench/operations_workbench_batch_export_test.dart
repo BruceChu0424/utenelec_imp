@@ -1,5 +1,5 @@
 // 采购任务工作台「进行中」段批量导出单据的页面级测试（2026-10-19）：
-// 多选勾选（非财务通过的行锁形不可选）、右下悬浮「导出单据(N)」按钮、点击把
+// 多选勾选(所有可查看的订货单均可导出)、右下悬浮「导出单据(N)」按钮、点击把
 // 去重后的单据交给注入的导出能力、导出中按钮带 n/N 进度、未选择时点按钮给
 // 出原因而不是无声失效。
 import 'dart:async';
@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -23,6 +24,7 @@ class _FakeGateway implements OperationsWorkbenchGateway {
   _FakeGateway(this.data);
 
   OperationsWorkbenchData data;
+  final statuses = <String?>[];
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -41,7 +43,10 @@ class _FakeGateway implements OperationsWorkbenchGateway {
     String? issuedTo,
     String? needFrom,
     String? needTo,
-  }) async => data;
+  }) async {
+    statuses.add(status);
+    return data;
+  }
 }
 
 class _OfflineApi extends ApiClient {
@@ -71,6 +76,7 @@ OperationsWorkbenchTask _task(
   String taskStatus = 'FINANCE_APPROVED',
   String? displayStage,
   String? documentStatus = '1',
+  bool canView = true,
 }) {
   return OperationsWorkbenchTask(
     taskId: id,
@@ -104,7 +110,7 @@ OperationsWorkbenchTask _task(
             path: docType == 'PURCHASE_ORDER'
                 ? '/purchase/orders/$docId'
                 : '/purchase/requests/$docId',
-            canView: true,
+            canView: canView,
             canEdit: false,
             status: documentStatus,
           ),
@@ -165,6 +171,45 @@ Future<void> _pumpPage(
 }
 
 void main() {
+  testWidgets(
+    'history table and document exports use the same terminal scope',
+    (tester) async {
+      final gateway = _FakeGateway(_inProgressData());
+      final calls = <List<({String id, String number})>>[];
+      await _pumpPage(
+        tester,
+        gateway: gateway,
+        export:
+            (
+              context, {
+              required apiClient,
+              required documents,
+              onProgress,
+              stillCurrent,
+            }) async {
+              calls.add(documents);
+            },
+      );
+      await selectFilterSegment(tester, '历史记录');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'COMPLETED');
+      final tableExport = tester.widget<UtenExportButton>(
+        find.byKey(const Key('purchase-workbench-export')),
+      );
+      expect(tableExport.queryParams, containsPair('status', 'COMPLETED'));
+      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+        find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+      );
+      table.onSelectedIdsChanged!({'task-1'});
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const Key('operations-workbench-purchase-export-docs')),
+      );
+      await tester.pumpAndSettle();
+      expect(calls.single.single.id, 'order-1');
+    },
+  );
+
   testWidgets('shared order selection keeps non-exportable rows out of the '
       'floating export action', (tester) async {
     final gateway = _FakeGateway(_inProgressData());
@@ -295,8 +340,8 @@ void main() {
     expect(calls.single.single.id, 'order-1');
   });
 
-  testWidgets('only finance-approved orders can be exported, including '
-      'amendment review and conflicting approval projections', (tester) async {
+  testWidgets('visible orders export before finance approval and during '
+      'amendment review without changing approval state', (tester) async {
     final base = _inProgressData();
     final items = [
       _task('approved', docType: 'ORDER'),
@@ -381,15 +426,16 @@ void main() {
     final exportButton = find.byKey(
       const Key('operations-workbench-purchase-export-docs'),
     );
-    expect(tester.widget<UtenButton>(exportButton).onPressed, isNull);
+    expect(tester.widget<UtenButton>(exportButton).onPressed, isNotNull);
     await tester.tap(exportButton);
     await tester.pump();
     expect(
       calls,
-      isEmpty,
-      reason:
-          'finance review, rejected, conflicting and missing statuses deny export',
+      hasLength(1),
+      reason: 'finance status is a displayed fact, not an output prerequisite',
     );
+    expect(calls.single.single.id, 'doc-1');
+    calls.clear();
     table.onSelectedIdsChanged!({'approved'});
     await tester.pump();
     expect(tester.widget<UtenButton>(exportButton).onPressed, isNotNull);
@@ -398,7 +444,7 @@ void main() {
     expect(calls.single.single.id, 'doc-1');
   });
 
-  testWidgets('refreshing a selected order into finance review blocks the '
+  testWidgets('refreshing a selected order without view access blocks the '
       'entire export instead of silently exporting the other order', (
     tester,
   ) async {
@@ -435,6 +481,7 @@ void main() {
           docId: 'order-2',
           taskStatus: 'ORDER_PENDING_APPROVAL',
           displayStage: 'FINANCE_REVIEW_PENDING',
+          canView: false,
         ),
       ],
       page: 1,
@@ -456,7 +503,7 @@ void main() {
           )
           .read(appNotificationProvider)
           .map((notification) => notification.message),
-      contains('仅财务已通过的采购订货单可导出，请重新选择'),
+      contains('所选任务包含无权查看或未关联采购订货单的行，请重新选择'),
     );
   });
 

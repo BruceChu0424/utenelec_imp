@@ -111,7 +111,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         // V815：管理员按人限额/停用属于授权决定，FULL/authorization 保留前后值。
                         "ai_user_limits",
-                        "client_visibility_grants", "department_permissions",
+                        "client_visibility_grants", "client_co_owners", "department_permissions",
                         "manager_permission_delegations",
                         "organization_permission_leader_assignments",
                         "permission_surface_permissions", "permission_surfaces", "permissions",

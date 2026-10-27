@@ -47,7 +47,13 @@ class DataScopeOwnerCandidateSqlContractTest {
         String clients = sql.getAllValues().get(1);
         assertThat(clients)
                 .contains("owner_employee_id IS NOT NULL")
-                .contains("lower(code) NOT LIKE 'legacy-fin-cl-%'");
+                .contains("lower(code) NOT LIKE 'legacy-fin-cl-%'")
+                .contains("id AS client_id")
+                .contains("client_co_owners co_owner JOIN clients client ON client.id=co_owner.client_id")
+                .contains("client.is_deleted=FALSE")
+                .contains("lower(client.code) NOT LIKE 'legacy-fin-cl-%'")
+                .contains("UNION")
+                .doesNotContain("UNION ALL");
 
         String production = sql.getAllValues().get(6);
         assertThat(production)

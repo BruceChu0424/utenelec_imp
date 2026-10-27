@@ -39,6 +39,7 @@
 | `uten-preview-soffice.py` | `/usr/local/libexec/uten-preview-soffice-isolated` | root 0755 | 仅为独立转换 worker 的 Unix socket 客户端，不在 ERP 身份下执行转换器；先按[worker 验收](../../company-files/PREVIEW_WORKER.zh-CN.md)安装并验证，失败不回退本地转换 |
 | `uten-alert.sh` | `/usr/local/sbin/uten-alert` | root 0755 | 同时装 `../units/uten-alert@.service` |
 | `uten-host-check.sh` | `/usr/local/sbin/uten-host-check` | root 0755 | 同时装 `../units/uten-host-check.{service,timer}` |
+| `uten-lan-tls-renew.py` | `/usr/local/sbin/uten-lan-tls-renew` | root 0755 | 按[内网 HTTPS 与自动续期](../LAN_TLS.zh-CN.md)先受控初始化受限签发者，再装 `../units/uten-lan-tls-renew.{service,timer}` 并实际续签验收 |
 | `uten-alert-smart.sh` | `/usr/local/sbin/uten-alert-smart` | root 0755 | 与主机告警一同安装 |
 | `uten-alert-md.sh` | `/usr/local/sbin/uten-alert-md` | root 0755 | `mdadm.conf` 加 `PROGRAM /usr/local/sbin/uten-alert-md` |
 

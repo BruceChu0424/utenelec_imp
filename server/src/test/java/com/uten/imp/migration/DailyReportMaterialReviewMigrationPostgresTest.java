@@ -223,6 +223,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // V937: verified, append-only identity evidence is preserved independently
         // of business rows; it is an authorization decision with FULL row audit.
         assertTrue(expectedTables.add("employee_identity_aliases"));
+        // V948 splits financial maintenance from ordinary customer editing; extra
+        // writable customer owners live in their own authorization-lineage table.
+        assertTrue(expectedTables.add("client_co_owners"));
         V938_TO_V939_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
@@ -286,6 +289,14 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(7,V938_TO_V939_INDEX_ADDITIONS.size());
         V938_TO_V939_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A retained export/authorization index must not replace an existing index: "+name));
+        // V948 client co-owners: primary key, per-client employee uniqueness and
+        // one reverse lookup for the employee's owned customers.
+        assertNull(expectedIndexes.put("client_co_owners_pkey",
+                "CREATE UNIQUE INDEX client_co_owners_pkey ON public.client_co_owners USING btree (id)"));
+        assertNull(expectedIndexes.put("client_co_owners_client_id_employee_id_key",
+                "CREATE UNIQUE INDEX client_co_owners_client_id_employee_id_key ON public.client_co_owners USING btree (client_id, employee_id)"));
+        assertNull(expectedIndexes.put("idx_client_co_owners_employee",
+                "CREATE INDEX idx_client_co_owners_employee ON public.client_co_owners USING btree (employee_id, client_id)"));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         Map.of("report_export_jobs",List.of("trg_guard_report_export_identity","trg_report_export_jobs_no_truncate"),
                 "read_scope_domains",List.of("trg_read_scope_domains_immutable","trg_read_scope_domains_no_truncate"),

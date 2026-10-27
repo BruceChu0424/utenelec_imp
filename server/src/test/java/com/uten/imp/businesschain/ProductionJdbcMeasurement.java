@@ -349,6 +349,12 @@ final class ProductionJdbcMeasurement {
                 && normalized.contains("group by decision.id")) return "fqc.release_balances";
         // ADR-149: Java 侧的仓库数据范围解析(一次汇总里的解析次数 ≤ 不同范围数, 准则 14)。
         if (normalized.contains("fn_user_warehouse_access(")) return "warehouse.scope_access";
+        // 采购/委外明细响应的「来源订货单交货差异」只读投影(2abf175f3): 每次明细
+        // 组装恰好一条有界读, 由订货单查看权限 + 归属范围闸门把守。
+        if (normalized.startsWith("select item.id, ((item.received_qty)-(item.returned_qty)-(item.qty)), item.unit_id from ")
+                && (normalized.contains("join purchase_orders source_order on source_order.id=item.order_id")
+                        || normalized.contains("join subcontract_orders source_order on source_order.id=item.order_id")))
+            return "finance.source_order_difference";
         if (normalized.startsWith("select segment.id from production_execution_segments segment")
                 && normalized.contains("segment.start_route = 'continuous'")
                 && normalized.contains("posting.recorded_tx_id = pg_current_xact_id()")) return "workshop.arrival_notice_scope";

@@ -131,11 +131,23 @@ class PrelockStatementBudgetEndToEndTest {
         assertEquals(2, mutableOrigins, "one origin check at each of the two protected entry stages");
         assertEquals(1, metadataOrigins, "one bounded pre-save history metadata lookup");
         assertEquals(0, sample.statementsWithLabel("archive.source_origin"), "no new per-line origin discovery");
-        long originalWork = sample.logicalStatements - mutableOrigins - metadataOrigins;
+        // 2abf175f3 给采购/委外单据明细响应补充「来源订货单交货差异」只读投影
+        // (ProcurementDeliveryDifferenceRead, 订货单查看权限+归属范围闸门)。平台字段
+        // 保存桥按既有设计在业务保存前用域 detail 组装一次授权快照, 保存响应再组装
+        // 一次: 每次明细组装恰好一条有界差异读, 共 2 条。不并入
+        // SubcontractGoodsSnapshot 身份快照读(共享帮手, 无权限/范围闸门, 语义不同);
+        // 也不做事务内记忆化——回执/退回审核会在同一事务改 received/returned 后重新
+        // 组装明细, 记忆化会返回旧差异。
+        long sourceOrderDifferences = sample.statementsWithLabel("finance.source_order_difference");
+        assertEquals(2, sourceOrderDifferences,
+                "one bounded source-order difference read per detail assembly (authorization snapshot + save response)");
+        long originalWork = sample.logicalStatements - mutableOrigins - metadataOrigins - sourceOrderDifferences;
         System.out.println("PRELOCK-BUDGET raw=" + sample.logicalStatements + " original=" + originalWork
-                + " mutableOrigin=" + mutableOrigins + " metadataOrigin=" + metadataOrigins);
-        assertTrue(sample.logicalStatements <= MATERIAL_ISSUE_UPDATE_BUDGET + 2 + 1,
-                "raw statements include at most the original budget plus the three bounded safety reads");
+                + " mutableOrigin=" + mutableOrigins + " metadataOrigin=" + metadataOrigins
+                + " sourceOrderDifference=" + sourceOrderDifferences);
+        assertTrue(sample.logicalStatements <= MATERIAL_ISSUE_UPDATE_BUDGET + 2 + 1 + 2,
+                "raw statements include at most the original budget plus the three bounded safety reads"
+                        + " and the two bounded source-order difference reads");
         assertTrue(originalWork <= MATERIAL_ISSUE_UPDATE_BUDGET,
                 "委外发料草稿原业务用了 " + originalWork + " 条语句, 超出预算 " + MATERIAL_ISSUE_UPDATE_BUDGET);
         assertEquals(0, new BigDecimal("4").compareTo(issues.detail(issue).getItems().getFirst().getQty()));

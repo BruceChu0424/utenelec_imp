@@ -56,6 +56,38 @@ class ProductionJdbcMeasurementLabelTest {
         }
     }
 
+    @Test void onlyTheStandaloneSourceOrderDifferenceProjectionGetsItsOwnLabel() {
+        assertEquals("finance.source_order_difference", label(
+                "SELECT item.id, ((item.received_qty)-(item.returned_qty)-(item.qty)), item.unit_id"
+                + " FROM subcontract_order_items item"
+                + " JOIN subcontract_orders source_order ON source_order.id=item.order_id"
+                + " WHERE item.id IN (?, ?) AND NOT item.is_deleted AND NOT source_order.is_deleted AND (1=1)"));
+        assertEquals("finance.source_order_difference", label(
+                "SELECT item.id, ((item.received_qty)-(item.returned_qty)-(item.qty)), item.unit_id"
+                + " FROM purchase_order_items item"
+                + " JOIN purchase_orders source_order ON source_order.id=item.order_id"
+                + " WHERE item.id IN (?) AND NOT item.is_deleted AND NOT source_order.is_deleted"
+                + " AND (source_order.maker_id IN (?))"));
+        for (String sql : List.of(
+                // The report's LATERAL projection keeps its ordinary read label.
+                "SELECT receipt.id FROM purchase_receipts receipt"
+                + " LEFT JOIN LATERAL (SELECT ((source_item.received_qty)-(source_item.returned_qty)-(source_item.qty)) AS qty"
+                + " FROM purchase_order_items source_item"
+                + " JOIN purchase_orders source_order ON source_order.id=source_item.order_id"
+                + " WHERE source_item.id=i.order_item_id) source_order_difference ON TRUE",
+                // Same tables, but not the difference projection shape.
+                "SELECT item.id FROM subcontract_order_items item"
+                + " JOIN subcontract_orders source_order ON source_order.id=item.order_id WHERE item.id IN (?)",
+                "SELECT item.id, item.qty, item.unit_id FROM subcontract_order_items item"
+                + " JOIN subcontract_orders source_order ON source_order.id=item.order_id WHERE item.id IN (?)",
+                // Extra output columns mean it is no longer the standalone projection.
+                "SELECT item.id, ((item.received_qty)-(item.returned_qty)-(item.qty)), item.unit_id, item.qty"
+                + " FROM subcontract_order_items item"
+                + " JOIN subcontract_orders source_order ON source_order.id=item.order_id WHERE item.id IN (?)")) {
+            assertEquals("read.other", label(sql), sql);
+        }
+    }
+
     @Test void commandAndReplayFromTheSameTestKeepBothRawTraceCounts(@TempDir Path directory) throws Exception {
         String property = "uten.jdbc.measurement.trace-directory";
         String previous = System.getProperty(property);

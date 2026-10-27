@@ -99,6 +99,15 @@ class Win32Window {
 
   void CenterClientSize(int width, int height);
   void ConstrainToWorkArea();
+  // A native region clips the actual HWND, including Flutter's child surface,
+  // so the desktop is visible outside all four sign-in corners on Win10/11.
+  void UpdateWindowRegion(UINT dpi = 0);
+
+  bool updating_window_region_ = false;
+  bool login_window_region_applied_ = false;
+  LONG region_width_ = 0;
+  LONG region_height_ = 0;
+  UINT region_dpi_ = 0;
 
   bool main_mode_ = false;
   bool shown_ = false;

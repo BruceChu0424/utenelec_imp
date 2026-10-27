@@ -23,6 +23,7 @@ constexpr DWORD kLoginWindowStyle =
     WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
 constexpr DWORD kMainWindowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
 constexpr UINT kBeginWindowDrag = WM_APP + 0x351;
+constexpr int kLoginCornerRadius = 16;
 
 /// Registry key for app theme preference.
 ///
@@ -152,6 +153,7 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
   CenterClientSize(static_cast<int>(size.width), static_cast<int>(size.height));
+  UpdateWindowRegion();
 
   return OnCreate();
 }
@@ -210,6 +212,48 @@ void Win32Window::ConstrainToWorkArea() {
   }
 }
 
+void Win32Window::UpdateWindowRegion(UINT dpi) {
+  if (updating_window_region_ || !IsWindow(window_handle_)) return;
+  if (main_mode_) {
+    if (!login_window_region_applied_) return;
+    updating_window_region_ = true;
+    if (SetWindowRgn(window_handle_, nullptr, IsWindowVisible(window_handle_))) {
+      login_window_region_applied_ = false;
+      region_width_ = region_height_ = 0;
+      region_dpi_ = 0;
+    }
+    updating_window_region_ = false;
+    return;
+  }
+  if (IsIconic(window_handle_)) return;
+  RECT bounds = {};
+  if (!GetWindowRect(window_handle_, &bounds)) return;
+  const LONG width = bounds.right - bounds.left;
+  const LONG height = bounds.bottom - bounds.top;
+  if (width <= 0 || height <= 0) return;
+  if (dpi == 0) dpi = GetDpiForWindow(window_handle_);
+  if (dpi == 0) dpi = 96;
+  if (login_window_region_applied_ && width == region_width_ &&
+      height == region_height_ && dpi == region_dpi_) return;
+  const int diameter = std::max(2, MulDiv(kLoginCornerRadius * 2, dpi, 96));
+  HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1,
+                                  diameter, diameter);
+  if (region == nullptr) return;
+  // SetWindowRgn sends window-position messages synchronously. Guard against
+  // reentrant WM_SIZE without changing position or entering another size loop.
+  updating_window_region_ = true;
+  if (SetWindowRgn(window_handle_, region, IsWindowVisible(window_handle_))) {
+    // Windows owns and eventually deletes the region after successful transfer.
+    login_window_region_applied_ = true;
+    region_width_ = width;
+    region_height_ = height;
+    region_dpi_ = dpi;
+  } else {
+    DeleteObject(region);
+  }
+  updating_window_region_ = false;
+}
+
 bool Win32Window::SetMainWindowMode(bool main_mode) {
   if (!IsWindow(window_handle_)) return false;
   if (main_mode == main_mode_) return true;
@@ -221,6 +265,12 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
       main_placement_.showCmd = (main_placement_.flags & WPF_RESTORETOMAXIMIZED)
                                     ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
     }
+  }
+  if (main_mode) {
+    // Remove the sign-in shape before normal-frame sizing/maximization. Main
+    // windows retain the operating system's ordinary frame/corner behavior.
+    main_mode_ = true;
+    UpdateWindowRegion();
   }
   // Normalize the maximized/minimized state before replacing frame styles.
   // Keep hidden startup windows hidden until the first rendered frame.
@@ -245,6 +295,7 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
   } else {
     CenterClientSize(main_mode_ ? 1280 : 1000, main_mode_ ? 800 : 680);
   }
+  UpdateWindowRegion();
   return true;
 }
 
@@ -280,7 +331,14 @@ LRESULT CALLBACK Win32Window::WndProc(HWND const window,
     EnableFullDpiSupportIfAvailable(window);
     that->window_handle_ = window;
   } else if (Win32Window* that = GetThisFromHandle(window)) {
-    return that->MessageHandler(window, message, wparam, lparam);
+    const LRESULT result = that->MessageHandler(window, message, wparam, lparam);
+    // Flutter/plugins may handle these messages before the base handler. Keep
+    // the actual HWND shape current after any resulting size/work-area clamp.
+    if (message == WM_SIZE || message == WM_DPICHANGED ||
+        message == WM_DISPLAYCHANGE) {
+      that->UpdateWindowRegion(message == WM_DPICHANGED ? LOWORD(wparam) : 0);
+    }
+    return result;
   }
 
   return DefWindowProc(window, message, wparam, lparam);
@@ -374,6 +432,9 @@ void Win32Window::Destroy() {
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
   }
+  login_window_region_applied_ = false;
+  region_width_ = region_height_ = 0;
+  region_dpi_ = 0;
   if (g_active_window_count == 0) {
     WindowClassRegistrar::GetInstance()->UnregisterWindowClass();
   }

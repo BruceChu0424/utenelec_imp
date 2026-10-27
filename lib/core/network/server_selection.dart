@@ -21,6 +21,7 @@ import '../../shared/providers/shared_providers.dart';
 import 'api_base_url.dart';
 import 'api_endpoint_configuration.dart';
 import 'health_probe.dart';
+import 'company_tls.dart';
 
 const _kCloudUrlKey = 'uten.server_url_override'; // 仅 Debug 显式覆盖，Release 永不读取
 const _kServerModeKey = 'uten.server_mode'; // auto | local | cloud
@@ -179,10 +180,10 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     // Web 只能证明当前 origin 可达，无法据此判断局域网，因此不运行自动切换探针。
     if (_web) return;
     // 缓存只服务首帧；下一事件循环立即新鲜探测，避免外网冷启动先请求不可达的本地服务。
-    _initialTimer = Timer(Duration.zero, probe);
+    _initialTimer = Timer(Duration.zero, _probeInBackground);
     _periodicTimer = Timer.periodic(
       const Duration(seconds: 60),
-      (_) => probe(),
+      (_) => _probeInBackground(),
     );
   }
 
@@ -212,6 +213,8 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     bool reachable;
     try {
       reachable = await _healthProbe();
+    } on CompanyTlsException {
+      rethrow;
     } catch (_) {
       reachable = false;
     }
@@ -220,6 +223,15 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
       await _prefs?.setBool(_kLocalReachableKey, reachable);
       if (!mounted) return;
       state = reachable;
+    }
+  }
+
+  Future<void> _probeInBackground() async {
+    try {
+      await probe();
+    } on CompanyTlsException {
+      // Preserve routing on certificate failure. The foreground login probe
+      // reports the actionable error instead of silently forwarding to cloud.
     }
   }
 

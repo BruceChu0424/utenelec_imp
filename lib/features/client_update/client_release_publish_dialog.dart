@@ -12,6 +12,7 @@ import '../../components/cards/uten_card.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/responsive/dialog_size.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/uten_notify.dart';
@@ -41,6 +42,17 @@ class _PackageIntent {
   }
 }
 
+class _PackageSelection {
+  _PackageSelection(this.kind, this.intent)
+    : bytes = intent.bytes,
+      fileName = intent.fileName;
+
+  final String kind;
+  final _PackageIntent intent;
+  final Uint8List? bytes;
+  final String? fileName;
+}
+
 class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   final _version = TextEditingController();
   final _build = TextEditingController();
@@ -54,6 +66,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   bool _busy = false;
   bool _withdrawing = false;
   double _progress = 0;
+  int _publishGeneration = 0;
   List<ClientRelease> _releases = [];
   late final ApiClient _api;
   late final AuthenticatedScope? _owner;
@@ -121,9 +134,11 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     _metadata = _metadataKey();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({AuthenticatedRequestScope? requestScope}) async {
     try {
-      final scope = await _api.captureRequestScope(isCurrent: () => _current);
+      final scope =
+          requestScope ??
+          await _api.captureRequestScope(isCurrent: () => _current);
       final items = await scope.run(
         () => _api.getList('/admin/client-releases'),
       );
@@ -182,10 +197,17 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     }
   }
 
-  Future<void> _publish([String kind = 'update']) async {
+  Future<void> _publish() async {
     if (_busy || !_current) return;
-    final intent = _packages[kind]!;
-    if (intent.published) return;
+    if (_platform != 'windows' && _packages['update']!.published) return;
+    final store = _isStore;
+    final selections = [
+      for (final kind
+          in _platform == 'windows' ? ['installer', 'update'] : ['update'])
+        if (!_packages[kind]!.published &&
+            (store || _packages[kind]!.bytes != null))
+          _PackageSelection(kind, _packages[kind]!),
+    ];
     final l10n = AppLocalizations.of(context);
     final build = int.tryParse(_build.text.trim());
     final version = _version.text.trim();
@@ -203,87 +225,134 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
         build == null ||
         build <= 0 ||
         build > 2147483647 ||
-        (_isStore
-            ? storeRelease.trustedStoreUri == null
-            : intent.bytes == null)) {
+        selections.isEmpty ||
+        (store && storeRelease.trustedStoreUri == null)) {
       UtenNotify.error(context, l10n.clientUpdatePublishInvalid);
       return;
     }
+    final metadataKey = _metadataKey();
+    final generation = ++_publishGeneration;
+    final metadata = Map<String, Object>.unmodifiable({
+      'platform': _platform,
+      'architecture': _architecture,
+      'version': version,
+      'buildNumber': build,
+      'releaseNotes': _notes.text.trim(),
+      'mandatory': false,
+      if (store) 'storeUrl': _store.text.trim(),
+    });
+    bool current() =>
+        _current &&
+        generation == _publishGeneration &&
+        _metadataKey() == metadataKey;
     setState(() {
       _busy = true;
-      _activeKind = kind;
+      _activeKind = selections.first.kind;
       _progress = 0;
-      intent.result = null;
-      intent.failed = false;
     });
     try {
-      final scope = await _api.captureRequestScope(isCurrent: () => _current);
-      final bytes = intent.bytes;
-      final expectedSha = _isStore ? null : sha256.convert(bytes!).toString();
-      // The same intent survives a lost create/upload/publish response. The
-      // server's idempotent create recovers its durable state on retry.
-      intent.requestId ??= const Uuid().v4();
-      final draft = await scope.run(
-        () => _api.post(
-          '/admin/client-releases',
-          body: {
-            'requestId': intent.requestId,
-            'platform': _platform,
-            'architecture': _architecture,
-            'version': version,
-            'buildNumber': build,
-            'releaseNotes': _notes.text.trim(),
-            'mandatory': false,
-            if (_platform == 'windows') 'packageKind': kind,
-            if (!_isStore) 'fileName': intent.fileName,
-            if (!_isStore) 'expectedSha256': expectedSha,
-            if (_isStore) 'storeUrl': _store.text.trim(),
-          },
-        ),
-      );
-      final id = draft['id'] as String;
-      final alreadyPublished = draft['state'] == 'PUBLISHED';
-      if (!_isStore && !alreadyPublished && draft['sha256'] != expectedSha) {
-        await scope.run(
-          () => _api.uploadClientPackage(
-            '/admin/client-releases/$id/package',
-            bytes!,
-            onProgress: (sent, total) {
-              if (_current && total > 0) {
-                setState(() => _progress = sent / total);
-              }
-            },
-          ),
-        );
-      }
-      // A Windows publication may commit before retaining its latest pair
-      // finishes. Retry that work with the same release, without uploading again.
-      if (_platform == 'windows' || !alreadyPublished) {
-        await scope.run(() => _api.post('/admin/client-releases/$id/publish'));
-      }
-      if (!_current) return;
-      setState(() {
-        intent.result = l10n.clientUpdatePublished;
-        intent.published = true;
-        intent.bytes = null;
-      });
-      await _load();
-    } catch (e) {
-      if (mounted && _current) {
+      // One click owns one immutable selection and authentication scope. Files
+      // commit independently; a failed item does not erase another receipt.
+      final scope = await _api.captureRequestScope(isCurrent: current);
+      for (final selection in selections) {
+        if (!current()) break;
+        await scope.verify();
+        final intent = selection.intent;
         setState(() {
-          intent.result = '此文件尚未确认发布，可重试；其他文件的发布结果保留。';
-          intent.failed = true;
+          _activeKind = selection.kind;
+          _progress = 0;
+          intent.result = null;
+          intent.failed = false;
         });
-        UtenNotify.apiError(context, e);
+        try {
+          await _publishPackage(
+            selection,
+            scope: scope,
+            metadata: metadata,
+            store: store,
+            isCurrent: current,
+          );
+        } catch (e) {
+          if (!mounted || !current()) break;
+          setState(() {
+            intent.result = '此文件尚未确认发布，可重试；其他文件的发布结果保留。';
+            intent.failed = true;
+          });
+          UtenNotify.apiError(context, e);
+        }
       }
+      if (current()) await _load(requestScope: scope);
+    } catch (e) {
+      if (mounted && current()) UtenNotify.apiError(context, e);
     } finally {
       if (mounted) {
         setState(() {
           _busy = false;
           _activeKind = null;
         });
+        _newIntent();
       }
     }
+  }
+
+  Future<void> _publishPackage(
+    _PackageSelection selection, {
+    required AuthenticatedRequestScope scope,
+    required Map<String, Object> metadata,
+    required bool store,
+    required bool Function() isCurrent,
+  }) async {
+    final kind = selection.kind;
+    final intent = selection.intent;
+    final bytes = selection.bytes;
+    final expectedSha = store ? null : sha256.convert(bytes!).toString();
+    // The same intent survives a lost create/upload/publish response. The
+    // server's idempotent create recovers its durable state on retry.
+    intent.requestId ??= const Uuid().v4();
+    final draft = await scope.run(
+      () => _api.post(
+        '/admin/client-releases',
+        body: {
+          'requestId': intent.requestId,
+          ...metadata,
+          if (metadata['platform'] == 'windows') 'packageKind': kind,
+          if (!store) 'fileName': selection.fileName,
+          if (!store) 'expectedSha256': expectedSha,
+        },
+      ),
+    );
+    final id = draft['id'] as String;
+    final alreadyPublished = draft['state'] == 'PUBLISHED';
+    if (!store && !alreadyPublished && draft['sha256'] != expectedSha) {
+      await scope.run(
+        () => _api.uploadClientPackage(
+          '/admin/client-releases/$id/package',
+          bytes!,
+          onProgress: (sent, total) {
+            if (isCurrent() &&
+                _busy &&
+                !_choosing &&
+                !_withdrawing &&
+                _activeKind == kind &&
+                identical(_packages[kind], intent) &&
+                total > 0) {
+              setState(() => _progress = sent / total);
+            }
+          },
+        ),
+      );
+    }
+    // A Windows publication may commit before retaining its latest pair
+    // finishes. Retry that work with the same release, without uploading again.
+    if (metadata['platform'] == 'windows' || !alreadyPublished) {
+      await scope.run(() => _api.post('/admin/client-releases/$id/publish'));
+    }
+    if (!mounted || !isCurrent()) return;
+    setState(() {
+      intent.result = AppLocalizations.of(context).clientUpdatePublished;
+      intent.published = true;
+      intent.bytes = null;
+    });
   }
 
   Future<void> _withdraw(ClientRelease release) async {
@@ -379,16 +448,6 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                     (installer ? '选择完整客户端' : l10n.clientUpdateChooseFile),
               ),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenButton(
-              key: ValueKey('client-release-publish-$kind'),
-              isLoading: active && !_choosing,
-              onPressed: _busy || intent.published || intent.bytes == null
-                  ? null
-                  : () => _publish(kind),
-              icon: Icons.publish_rounded,
-              child: Text(l10n.clientUpdatePublish),
-            ),
             if (active) ...[
               const SizedBox(height: UtenSpacing.s12),
               Text(_choosing ? '正在读取所选文件' : l10n.clientUpdatePublishing),
@@ -425,6 +484,65 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     );
   }
 
+  Widget _publishDialog({
+    required Widget title,
+    required Widget content,
+    required List<Widget> actions,
+  }) {
+    if (_platform != 'windows') {
+      return UtenAlertDialog(
+        maxWidth: 820,
+        title: title,
+        content: content,
+        actions: actions,
+      );
+    }
+    final theme = Theme.of(context);
+    // This is a long publishing workspace. Keep its actions fixed even in the
+    // short-window layout where an alert would scroll its whole surface.
+    return UtenDialogFrame(
+      maxWidth: 820,
+      fillHeight: true,
+      child: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Semantics(
+              namesRoute: true,
+              child: DefaultTextStyle.merge(
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+                child: title,
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+            Expanded(
+              child: SingleChildScrollView(
+                child: DefaultTextStyle.merge(
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1.55,
+                  ),
+                  child: content,
+                ),
+              ),
+            ),
+            const SizedBox(height: UtenSpacing.s16),
+            OverflowBar(
+              alignment: MainAxisAlignment.center,
+              overflowAlignment: OverflowBarAlignment.center,
+              spacing: UtenSpacing.s12,
+              overflowSpacing: UtenSpacing.s8,
+              children: actions,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(clientReleasePublisherProvider);
@@ -439,8 +557,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     final l10n = AppLocalizations.of(context);
     return PopScope(
       canPop: !_busy,
-      child: UtenAlertDialog(
-        maxWidth: 820,
+      child: _publishDialog(
         title: Text(l10n.clientUpdatePublishTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -448,7 +565,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
           children: [
             Text(
               _platform == 'windows'
-                  ? '版本、架构和更新说明填写一次，再分别上传两种文件。每个区域独立发布和记录结果。'
+                  ? '填写版本信息并选择要发布的文件，再点击下方“上传并发布”。每个文件分别显示进度和结果，重试会继续未确认的文件。'
                   : l10n.clientUpdatePublishHint,
             ),
             const SizedBox(height: UtenSpacing.s16),
@@ -601,13 +718,22 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
             onPressed: _busy ? null : () => Navigator.of(context).pop(),
             child: Text(l10n.clientUpdateClose),
           ),
-          if (_platform != 'windows')
-            UtenButton(
-              isLoading: _busy,
-              onPressed: _busy ? null : () => _publish(),
-              icon: Icons.publish_rounded,
-              child: Text(l10n.clientUpdatePublish),
-            ),
+          UtenButton(
+            key: const ValueKey('client-release-publish-batch'),
+            isLoading: _platform == 'windows'
+                ? _busy && !_choosing && !_withdrawing
+                : _busy,
+            onPressed:
+                _busy ||
+                    (_platform == 'windows' &&
+                        !_packages.values.any(
+                          (intent) => !intent.published && intent.bytes != null,
+                        ))
+                ? null
+                : _publish,
+            icon: Icons.publish_rounded,
+            child: Text(l10n.clientUpdatePublish),
+          ),
         ],
       ),
     );

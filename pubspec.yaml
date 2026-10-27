@@ -102,6 +102,7 @@ flutter:
   generate: true
 
   assets:
+    - assets/security/uten-imp-root-ca.crt
     - web/uten_data_codec_worker.js
     - assets/images/
     - assets/icons/

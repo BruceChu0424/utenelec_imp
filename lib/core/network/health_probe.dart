@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'company_tls.dart';
 
 typedef HealthProbeDioFactory = Dio Function(BaseOptions options);
 
@@ -76,10 +77,12 @@ Future<Response<dynamic>?> _probeServer(
     responseType: ResponseType.plain,
     validateStatus: (status) => status != null && status >= 100 && status < 600,
   );
-  final dio = dioFactory?.call(options) ?? Dio(options);
+  final dio = dioFactory?.call(options) ?? createCompanyDio(options);
   try {
     return await dio.get<dynamic>('$origin/actuator/health');
   } on DioException catch (error) {
+    final certificateFailure = companyTlsFailure(error);
+    if (certificateFailure != null) throw certificateFailure;
     return error.response;
   } finally {
     dio.close(force: true);

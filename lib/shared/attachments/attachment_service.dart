@@ -9,6 +9,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/network/company_tls.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/performance/responsive_data_codec.dart';
@@ -16,7 +17,7 @@ import 'attachment.dart';
 
 class AttachmentService {
   AttachmentService(this._api, {Dio? externalDio})
-    : _externalDio = externalDio ?? Dio(),
+    : _externalDio = externalDio ?? createCompanyDio(BaseOptions()),
       _ownsExternalDio = externalDio == null;
 
   final ApiClient _api;

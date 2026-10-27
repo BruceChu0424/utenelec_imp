@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/company_tls.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/network/interceptors/automatic_request_interceptor.dart';
@@ -20,12 +21,12 @@ final visitorApiProvider = Provider<ApiClient>((ref) {
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
   final baseUrl = ref.watch(apiBaseUrlProvider);
   Dio auditedDioFactory() {
-    final client = Dio(buildApiBaseOptions(baseUrl));
+    final client = createCompanyDio(buildApiBaseOptions(baseUrl));
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
     return client;
   }
 
-  final dio = Dio(buildApiBaseOptions(baseUrl));
+  final dio = createCompanyDio(buildApiBaseOptions(baseUrl));
   ref.onDispose(dio.close);
   dio.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
   // 与员工同口径：访客没在操作时发出的请求不续期服务端会话 (ADR-110)。

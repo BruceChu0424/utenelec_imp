@@ -12,8 +12,8 @@ from unittest import mock
 import zipfile
 
 import build_windows_installer as setup
-from package_windows import MANIFEST_NAME, UPDATER_PATH, inspect_executable, inspect_executable_info
-from test_package_windows import fixture_executable
+from package_windows import MANIFEST_NAME, UPDATER_PATH, inspect_executable, inspect_executable_info, required_vc_runtime
+from test_package_windows import fixture_executable, runtime_fixtures
 
 
 def setup_fixture(*, architecture="x64", loader="x86", build=2531, strings=None, product_version=None,
@@ -47,6 +47,7 @@ class WindowsSetupSourceTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"synthetic fixture")
         (self.bundle / "uten_imp.exe").write_bytes(fixture_executable(2531, version=(2, 5, 31)))
+        runtime_fixtures(self.bundle)
         self.output = self.root / "output not created" / "uten-imp-2.5.31-windows-x64-setup.exe"
         self.update_output = self.root / "output not created" / "uten-imp-2.5.31-windows-x64-update.zip"
         self.compiler = self.root / "fixture compiler" / "ISCC.exe"
@@ -81,7 +82,53 @@ class WindowsSetupSourceTest(unittest.TestCase):
         self.assertEqual("windows_setup", plan["mode"])
         self.assertEqual(("x64", "x86"), (plan["architecture"], plan["loaderArchitecture"]))
         self.assertFalse(self.output.parent.exists())
+        self.assertEqual(5, plan["runtimeValidation"]["peModuleCount"])
         runner.assert_not_called()
+
+    def test_missing_crt_blocks_both_outputs_before_compiler_and_preserves_previous_pair(self):
+        self.output.parent.mkdir()
+        self.output.write_bytes(b"previous approved setup")
+        self.update_output.write_bytes(b"previous approved ZIP")
+        (self.bundle / "vcruntime140_1.dll").unlink()
+        runner = mock.Mock(side_effect=AssertionError("Incomplete runtime must never reach ISCC"))
+        with self.assertRaisesRegex(ValueError, "app-local Visual C"):
+            self.build(compiler=self.compiler, compile=True, update_output=self.update_output, runner=runner)
+        runner.assert_not_called()
+        self.assertEqual(b"previous approved setup", self.output.read_bytes())
+        self.assertEqual(b"previous approved ZIP", self.update_output.read_bytes())
+
+    def test_installer_input_and_update_zip_include_same_complete_crt(self):
+        def compiler(command, **options):
+            defines = dict(item[2:].split("=", 1) for item in command if item.startswith("/D") and "=" in item)
+            payload = Path(defines["PayloadDir"])
+            for name in required_vc_runtime("x64"):
+                self.assertEqual((self.bundle / name).read_bytes(), (payload / name).read_bytes())
+            return self.fixture_compiler(command, **options)
+        self.build(compiler=self.compiler, compile=True, update_output=self.update_output, runner=compiler)
+        with zipfile.ZipFile(self.update_output) as archive:
+            for name in required_vc_runtime("x64"):
+                self.assertEqual((self.bundle / name).read_bytes(), archive.read(name))
+
+    def test_shared_builder_preserves_unused_jni_evidence_for_both_artifacts(self):
+        (self.root / "pubspec.yaml").write_text("name: reviewed_fixture\n", encoding="utf-8")
+        (self.root / "lib").mkdir()
+        (self.root / "lib/main.dart").write_text("void main() {}", encoding="utf-8")
+        (self.bundle / "dartjni.dll").write_bytes(fixture_executable(imports=("jvm.dll",)))
+        (self.bundle / "data/flutter_assets/NativeAssetsManifest.json").write_text(
+            '{"format-version":[1,0,0],"native-assets":{}}', encoding="utf-8")
+
+        def compiler(command, **options):
+            defines = dict(item[2:].split("=", 1) for item in command if item.startswith("/D") and "=" in item)
+            self.assertFalse((Path(defines["PayloadDir"]) / "dartjni.dll").exists())
+            return self.fixture_compiler(command, **options)
+
+        result = self.build(compiler=self.compiler, compile=True, update_output=self.update_output,
+                            runner=compiler, source_root=self.root)
+        self.assertEqual("dartjni.dll", result["omittedUnusedNativeArtifacts"][0]["path"])
+        self.assertIn("aotSha256", result["omittedUnusedNativeArtifacts"][0])
+        self.assertTrue((self.bundle / "dartjni.dll").exists())
+        with zipfile.ZipFile(self.update_output) as archive:
+            self.assertNotIn("dartjni.dll", archive.namelist())
 
     def test_local_test_dry_run_is_explicit_and_cannot_emit_a_production_update_zip(self):
         plan = self.build(local_test=True)

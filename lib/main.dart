@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/network/company_tls.dart';
 import 'core/responsive/display_zoom_pointer_binding.dart';
 import 'core/web/browser_drop_guard.dart';
 import 'shared/providers/shared_providers.dart';
@@ -36,6 +37,7 @@ Future<void> bootstrapUtenApp({
   // 在任何插件/默认 binding 初始化之前启用整体缩放的滚轮坐标换算。
   (bindingFactory ?? UtenWidgetsFlutterBinding.new)();
   _warmUpPrimaryFont();
+  await initializeCompanyTls();
 
   // Web 端屏蔽浏览器自带右键菜单：表格行右击要弹 App 自绘的上下文菜单
   // （UtenContextMenu），不屏蔽会两个菜单叠着出。桌面/移动端无此问题，仅 Web 调。

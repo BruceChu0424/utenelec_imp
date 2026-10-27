@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -21,6 +22,10 @@ import 'package:uten_imp/features/client_update/client_update_tile.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+
+final _apiSource = StateProvider<ApiClient>(
+  (ref) => throw UnimplementedError(),
+);
 
 SessionState _identity({
   String id = 'publisher-a',
@@ -63,6 +68,7 @@ class _Api extends ApiClient {
   final uploadedSha = <String, String>{};
   final uploadedBytes = <Uint8List>[];
   int listCalls = 0;
+  int scopeCaptures = 0;
   int publishCalls = 0;
   final publishIds = <String>[];
   int withdrawCalls = 0;
@@ -73,12 +79,16 @@ class _Api extends ApiClient {
   final failCreateKinds = <String>{};
   Completer<Map<String, dynamic>>? delayedCreate;
   Completer<void>? delayedUpload;
+  String? delayedUploadKind;
   Completer<void>? delayedScope;
+  Future<void> Function(String kind)? afterPublish;
+  final uploadProgress = <void Function(int, int)>[];
 
   @override
   Future<AuthenticatedRequestScope> captureRequestScope({
     required bool Function() isCurrent,
   }) async {
+    scopeCaptures++;
     final scope = await super.captureRequestScope(isCurrent: isCurrent);
     final delay = delayedScope;
     if (delay != null) await delay.future;
@@ -144,6 +154,7 @@ class _Api extends ApiClient {
       throw ApiException('CONFLICT', 'fixture package publication rejected');
     }
     published.add(identifier);
+    await afterPublish?.call(kind);
     if (failRetentionOnceKinds.remove(kind)) {
       throw ApiException(
         'PRIMARY_UNAVAILABLE',
@@ -167,9 +178,16 @@ class _Api extends ApiClient {
     packages.add(path);
     expect(creates.last['platform'], anyOf('windows', 'android'));
     uploadedBytes.add(Uint8List.fromList(bytes));
+    uploadProgress.add(onProgress);
     uploadedSha[path.split('/')[3]] = sha256.convert(bytes).toString();
     onProgress(bytes.length, bytes.length);
-    if (delayedUpload != null) await delayedUpload!.future;
+    final kind = creates.lastWhere(
+      (body) => body['requestId'] == path.split('/')[3],
+    )['packageKind'];
+    if (delayedUpload != null &&
+        (delayedUploadKind == null || kind == delayedUploadKind)) {
+      await delayedUpload!.future;
+    }
   }
 }
 
@@ -237,7 +255,8 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(api),
+        _apiSource.overrideWith((ref) => api),
+        apiClientProvider.overrideWith((ref) => ref.watch(_apiSource)),
         sessionProvider.overrideWith(() => session),
       ],
       child: MaterialApp(
@@ -274,15 +293,11 @@ Future<void> _fillStore(WidgetTester tester) async {
   await tester.pump();
 }
 
-Finder _publishAction(String kind) =>
-    find.byKey(ValueKey('client-release-publish-$kind'));
+Finder _publishAction() =>
+    find.byKey(const ValueKey('client-release-publish-batch'));
 
-Future<void> _publish(WidgetTester tester, {String? kind}) async {
-  final action = kind != null
-      ? _publishAction(kind)
-      : _publishAction('update').evaluate().isNotEmpty
-      ? _publishAction('update')
-      : find.text('上传并发布');
+Future<void> _publish(WidgetTester tester) async {
+  final action = _publishAction();
   await tester.ensureVisible(action);
   await tester.tap(action);
   await tester.pumpAndSettle();
@@ -385,28 +400,33 @@ void main() {
     expect(find.text('Windows 更新包（ZIP）'), findsOneWidget);
     expect(find.text('uten-windows-x64-setup.exe'), findsOneWidget);
     expect(find.text('uten-windows-x64.zip'), findsOneWidget);
-    expect(find.text('上传并发布'), findsNWidgets(2));
+    expect(find.text('上传并发布'), findsOneWidget);
+    for (final kind in ['installer', 'update']) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('client-release-area-$kind')),
+          matching: find.text('上传并发布'),
+        ),
+        findsNothing,
+      );
+    }
     expect(api.creates, isEmpty);
     expect(tester.takeException(), isNull);
     await _captureDualUpload(tester, key);
   });
 
   testWidgets(
-    'same Windows version publishes Setup and ZIP separately without losing the other selection',
+    'one footer action publishes both selected Windows packages with shared metadata and scope',
     (tester) async {
       final api = _Api();
       await _pump(tester, api, _Session(_identity()));
       final setup = await _fillWindows(tester, installer: true);
       final update = await _chooseWindows(tester);
-      await _publish(tester, kind: 'installer');
-      expect(api.creates, hasLength(1));
+      final scopesBefore = api.scopeCaptures;
+      await _publish(tester);
       expect(find.text('uten-windows-x64.zip'), findsOneWidget);
-      expect(
-        tester.widget<UtenButton>(_publishAction('update')).onPressed,
-        isNotNull,
-      );
-      await _publish(tester, kind: 'update');
       expect(api.creates, hasLength(2));
+      expect(api.scopeCaptures - scopesBefore, 1);
       expect(api.creates.map((body) => body['packageKind']), [
         'installer',
         'update',
@@ -425,14 +445,7 @@ void main() {
       expect(api.published, hasLength(2));
       expect(api.publishCalls, 2);
       expect(find.text('客户端新版本已发布'), findsNWidgets(2));
-      expect(
-        tester.widget<UtenButton>(_publishAction('installer')).onPressed,
-        isNull,
-      );
-      expect(
-        tester.widget<UtenButton>(_publishAction('update')).onPressed,
-        isNull,
-      );
+      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
       expect(tester.takeException(), isNull);
     },
   );
@@ -444,8 +457,7 @@ void main() {
       await _pump(tester, api, _Session(_identity()));
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
       expect(api.published, hasLength(1));
       expect(
         find.descendant(
@@ -462,15 +474,12 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('客户端新版本已发布'), findsOneWidget);
-      expect(
-        tester.widget<UtenButton>(_publishAction('installer')).onPressed,
-        isNull,
-      );
+      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNotNull);
       final installerCreates = api.creates
           .where((body) => body['packageKind'] == 'installer')
           .length;
       api.failPublishKinds.clear();
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
       expect(
         api.creates.where((body) => body['packageKind'] == 'installer'),
         hasLength(installerCreates),
@@ -491,10 +500,8 @@ void main() {
       await _pump(tester, api, _Session(_identity()));
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
+      await _publish(tester);
       expect(api.creates, hasLength(4));
       expect(api.creates[0]['requestId'], api.creates[2]['requestId']);
       expect(api.creates[1]['requestId'], api.creates[3]['requestId']);
@@ -513,8 +520,7 @@ void main() {
       await _pump(tester, api, _Session(_identity()));
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
       final updateId = api.creates.last['requestId'];
       expect(api.published, hasLength(2));
       expect(api.publishCalls, 2);
@@ -526,7 +532,7 @@ void main() {
         findsOneWidget,
       );
 
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
 
       expect(api.creates, hasLength(3));
       expect(api.creates[1], api.creates[2]);
@@ -552,7 +558,7 @@ void main() {
       final api = _Api()..loseFirstPublishResponse = true;
       await _pump(tester, api, _Session(_identity()));
       await _fillWindows(tester, installer: true);
-      await _publish(tester, kind: 'installer');
+      await _publish(tester);
       final fields = tester
           .widgetList<TextField>(find.byType(TextField))
           .toList();
@@ -566,7 +572,7 @@ void main() {
       await tester.enterText(find.byType(TextField).at(0), '2.5.28 ');
       await tester.enterText(find.byType(TextField).at(1), '02528');
       await tester.pump();
-      await _publish(tester, kind: 'installer');
+      await _publish(tester);
       expect(api.creates, hasLength(2));
       expect(api.creates[0]['requestId'], api.creates[1]['requestId']);
       expect(api.packages, hasLength(1));
@@ -582,11 +588,9 @@ void main() {
       await _pump(tester, api, _Session(_identity()));
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
       await tester.enterText(find.byType(TextField).at(2), '新的共同更新说明');
-      await _publish(tester, kind: 'installer');
-      await _publish(tester, kind: 'update');
+      await _publish(tester);
       expect(api.creates, hasLength(4));
       expect(api.creates[0]['requestId'], isNot(api.creates[2]['requestId']));
       expect(api.creates[1]['requestId'], isNot(api.creates[3]['requestId']));
@@ -611,14 +615,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('uten-windows-x64-setup.exe'), findsNothing);
       expect(find.text('uten-windows-x64.zip'), findsNothing);
-      expect(
-        tester.widget<UtenButton>(_publishAction('installer')).onPressed,
-        isNull,
-      );
-      expect(
-        tester.widget<UtenButton>(_publishAction('update')).onPressed,
-        isNull,
-      );
+      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
       expect(tester.takeException(), isNull);
     },
   );
@@ -631,8 +628,8 @@ void main() {
       await _pump(tester, api, session);
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
-      await tester.ensureVisible(_publishAction('installer'));
-      await tester.tap(_publishAction('installer'));
+      await tester.ensureVisible(_publishAction());
+      await tester.tap(_publishAction());
       await tester.pump();
       expect(api.packages, hasLength(1));
       expect(
@@ -642,10 +639,7 @@ void main() {
         isTrue,
       );
       for (final kind in ['installer', 'update']) {
-        expect(
-          tester.widget<UtenButton>(_publishAction(kind)).onPressed,
-          isNull,
-        );
+        expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
         expect(
           tester
               .widget<UtenButton>(
@@ -675,14 +669,173 @@ void main() {
       await _pump(tester, _Api(), _Session(_identity()), size: size, scale: 2);
       await _fillWindows(tester, installer: true);
       await _chooseWindows(tester);
+      final footer = tester.getRect(_publishAction());
       for (final kind in ['installer', 'update']) {
-        await tester.ensureVisible(_publishAction(kind));
+        await tester.ensureVisible(
+          find.byKey(ValueKey('client-release-choose-$kind')),
+        );
         await tester.pumpAndSettle();
-        expect(_publishAction(kind).hitTestable(), findsOneWidget);
+        expect(tester.getRect(_publishAction()), footer);
+        expect(_publishAction().hitTestable(), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets(
+    'a failed first package does not prevent the other selected upload',
+    (tester) async {
+      final api = _Api()..failPublishKinds.add('installer');
+      await _pump(tester, api, _Session(_identity()));
+      await _fillWindows(tester, installer: true);
+      await _chooseWindows(tester);
+      await _publish(tester);
+
+      expect(api.creates, hasLength(2));
+      expect(api.packages, hasLength(2));
+      expect(api.published, hasLength(1));
+      expect(
+        find.descendant(
+          of: _result('installer'),
+          matching: find.textContaining('尚未确认发布'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: _result('update'),
+          matching: find.text('客户端新版本已发布'),
+        ),
+        findsOneWidget,
+      );
+      final updateId = api.creates[1]['requestId'];
+      api.failPublishKinds.clear();
+      await _publish(tester);
+      expect(api.creates, hasLength(3));
+      expect(api.creates[0]['requestId'], api.creates[2]['requestId']);
+      expect(api.publishIds.where((id) => id == updateId), hasLength(1));
+      expect(api.packages, hasLength(2));
+      expect(api.published, hasLength(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a batch holds one busy operation across repeated activation', (
+    tester,
+  ) async {
+    final api = _Api()..delayedUpload = Completer<void>();
+    await _pump(tester, api, _Session(_identity()));
+    await _fillWindows(tester, installer: true);
+    await _chooseWindows(tester);
+    final captures = api.scopeCaptures;
+    await tester.tap(_publishAction());
+    await tester.tap(_publishAction());
+    await tester.pump();
+
+    expect(api.creates, hasLength(1));
+    expect(api.packages, hasLength(1));
+    expect(api.scopeCaptures - captures, 1);
+    expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
+    api.delayedUpload!.complete();
+    await tester.pumpAndSettle();
+    expect(api.creates, hasLength(2));
+    expect(api.publishCalls, 2);
+    expect(api.scopeCaptures - captures, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a completed file cannot overwrite the next file progress', (
+    tester,
+  ) async {
+    final api = _Api()
+      ..delayedUpload = Completer<void>()
+      ..delayedUploadKind = 'update';
+    await _pump(tester, api, _Session(_identity()));
+    await _fillWindows(tester, installer: true);
+    await _chooseWindows(tester);
+    await tester.tap(_publishAction());
+    await tester.pump();
+    expect(api.packages, hasLength(2));
+    expect(api.published, hasLength(1));
+    api.uploadProgress[1](1, 2);
+    await tester.pump();
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      0.5,
+    );
+    api.uploadProgress[0](1, 10);
+    await tester.pump();
+    expect(
+      tester
+          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
+          .value,
+      0.5,
+    );
+    api.delayedUpload!.complete();
+    await tester.pumpAndSettle();
+    expect(api.published, hasLength(2));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final boundary in ['publisher', 'actor', 'permission', 'server']) {
+    testWidgets(
+      'changing $boundary between packages stops the remaining batch',
+      (tester) async {
+        final api = _Api();
+        final replacement = _Api();
+        final session = _Session(_identity());
+        await _pump(tester, api, session);
+        await _fillWindows(tester, installer: true);
+        await _chooseWindows(tester);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ClientReleasePublishDialog)),
+        );
+        api.afterPublish = (kind) async {
+          if (kind != 'installer') return;
+          switch (boundary) {
+            case 'publisher':
+              session.replace(_identity(id: 'publisher-b'));
+            case 'actor':
+              session.replace(_identity(impersonating: true));
+            case 'permission':
+              session.replace(_identity(permissions: const []));
+            case 'server':
+              container.read(_apiSource.notifier).state = replacement;
+          }
+        };
+        await _publish(tester);
+        expect(api.creates, hasLength(1));
+        expect(api.packages, hasLength(1));
+        expect(api.publishCalls, 1);
+        expect(replacement.creates, isEmpty);
+        expect(find.text('客户端新版本已发布'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'metadata mutation cannot change an in-flight batch or send its second package',
+    (tester) async {
+      final api = _Api()..delayedUpload = Completer<void>();
+      await _pump(tester, api, _Session(_identity()));
+      await _fillWindows(tester, installer: true);
+      await _chooseWindows(tester);
+      await tester.tap(_publishAction());
+      await tester.pump();
+      expect(api.creates, hasLength(1));
+      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text =
+          'changed while pending';
+      api.delayedUpload!.complete();
+      await tester.pumpAndSettle();
+      expect(api.creates.single['releaseNotes'], 'Windows 更新验证');
+      expect(api.creates, hasLength(1));
+      expect(api.publishCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Android keeps its single APK publication flow', (tester) async {
     final api = _Api();
@@ -723,7 +876,7 @@ void main() {
       child: const ClientReleasePublishDialog(packageKind: 'installer'),
     );
     await _fillWindows(tester, installer: true);
-    await _publish(tester, kind: 'installer');
+    await _publish(tester);
     expect(api.creates.single['packageKind'], 'installer');
     expect(api.creates.single['platform'], 'windows');
     expect(api.packages, hasLength(1));
@@ -774,8 +927,8 @@ void main() {
       final session = _Session(_identity());
       await _pump(tester, api, session);
       await _fillWindows(tester);
-      await tester.ensureVisible(_publishAction('update'));
-      await tester.tap(_publishAction('update'));
+      await tester.ensureVisible(_publishAction());
+      await tester.tap(_publishAction());
       await tester.pump();
       expect(api.packages, hasLength(1));
       session.replace(_identity(permissions: const []));

@@ -211,7 +211,7 @@ def _publish_outputs(artifacts: list[tuple[Path, Path, object]]) -> list[dict]:
 def build_windows_setup(bundle: Path, output: Path, *, version: str, build_number: int,
                         architecture: str, compiler: Path | None = None, compile: bool = False,
                         runner=subprocess.run, update_output: Path | None = None,
-                        local_test: bool = False) -> dict:
+                        local_test: bool = False, source_root: Path | None = None) -> dict:
     expected_version = version_numbers(version, build_number)
     if architecture not in ARCHITECTURES:
         raise ValueError("Unsupported setup payload architecture")
@@ -238,7 +238,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
         archive_path = staging / "validated-bootstrap.zip"
         payload = staging / "payload"
         compiler_output = staging / "compiled"
-        package_release(bundle, archive_path, build_number=build_number, architecture=architecture, kind="installer")
+        payload_receipt = package_release(bundle, archive_path, build_number=build_number,
+                                          architecture=architecture, kind="installer", source_root=source_root)
         validate_package(archive_path, build_number=build_number, architecture=architecture, kind="installer")
         payload.mkdir()
         compiler_output.mkdir()
@@ -265,6 +266,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             plan = {"dryRun": True, "compilerFound": compiler is not None, "mode": "windows_setup",
                     "packageKind": "installer", "architecture": architecture, "loaderArchitecture": "x86",
                     "version": version, "buildNumber": build_number, "output": str(output),
+                    "runtimeValidation": payload_receipt["runtimeValidation"],
+                    "omittedUnusedNativeArtifacts": payload_receipt["omittedUnusedNativeArtifacts"],
                     "payloadValidated": True, "command": compiler_command(compiler, Path("<validated-payload>"),
                         Path("<private-output>"), output.stem, version=version,
                         build_number=build_number, architecture=architecture, local_test=local_test)}
@@ -291,7 +294,9 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
                         "packageKind": "update", "version": version}
             artifacts.append((update_path, update_output, validate_update))
         receipts = _publish_outputs(artifacts)
-        result = {**receipts[0], "dryRun": False}
+        result = {**receipts[0], "dryRun": False,
+                  "runtimeValidation": payload_receipt["runtimeValidation"],
+                  "omittedUnusedNativeArtifacts": payload_receipt["omittedUnusedNativeArtifacts"]}
         if update_output is not None:
             result["updatePackage"] = receipts[1]
             result["publication"] = {"atomicAcrossFiles": False, "strategy": "validated-staging-with-task-scoped-rollback"}
@@ -308,13 +313,16 @@ def main() -> None:
     parser.add_argument("--iscc", type=Path)
     parser.add_argument("--update-output", type=Path, help="also prepare an in-place update ZIP from the same payload")
     parser.add_argument("--local-test", action="store_true", help="isolate test installation identity, directory and PE product resources")
+    parser.add_argument("--source-root", type=Path,
+                        help="reviewed source tree when an external bundle needs unused-JNI evidence")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--compile", action="store_true", help="explicitly compile with an already installed ISCC")
     mode.add_argument("--dry-run", action="store_true", help="validate and print the plan (default)")
     args = parser.parse_args()
     print(json.dumps(build_windows_setup(args.bundle, args.output, version=args.version,
         build_number=args.build_number, architecture=args.architecture, compiler=args.iscc,
-        compile=args.compile, update_output=args.update_output, local_test=args.local_test), ensure_ascii=False, indent=2))
+        compile=args.compile, update_output=args.update_output, local_test=args.local_test,
+        source_root=args.source_root), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

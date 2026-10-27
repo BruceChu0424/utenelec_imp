@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import 'server_config.dart';
+import 'company_tls.dart';
 import 'health_probe.dart';
 import 'network_policy.dart';
 
@@ -202,7 +203,7 @@ final connectionRecoveryProvider =
       ConnectionRecoveryController,
       ConnectionRecoveryState
     >((ref) {
-      final healthDio = Dio(
+      final healthDio = createCompanyDio(
         buildApiBaseOptions(
           healthProbeBaseUrl(ref.watch(apiBaseUrlProvider)),
         ).copyWith(

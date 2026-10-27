@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../audit/device_audit_store.dart';
 import '../security/secure_storage.dart';
 import 'server_config.dart';
+import 'company_tls.dart';
 import 'connection_recovery.dart';
 import 'data_write_revision.dart';
 import 'api_error.dart';
@@ -584,6 +585,8 @@ class ApiClient {
   String get baseUrl => _dio.options.baseUrl;
 
   ApiException _convert(DioException e) {
+    final certificateFailure = companyTlsFailure(e);
+    if (certificateFailure != null) return certificateFailure;
     final connectionFailure = _connectionException(e);
     if (connectionFailure != null) return connectionFailure;
     ApiError? body;
@@ -646,7 +649,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
         await authInterceptor.requestBelongsToCurrentIdentity(options),
   );
   Dio auditedDioFactory() {
-    final client = Dio(buildApiBaseOptions(baseUrl));
+    final client = createCompanyDio(buildApiBaseOptions(baseUrl));
     installStreamingDownloadAdapter(client);
     client.transformer = ResponsiveJsonTransformer(jsonDecoder);
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
@@ -654,7 +657,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     return client;
   }
 
-  final dio = Dio(buildApiBaseOptions(baseUrl));
+  final dio = createCompanyDio(buildApiBaseOptions(baseUrl));
   installStreamingDownloadAdapter(dio);
   ref.onDispose(dio.close);
   // Large responses use a native isolate or a same-origin Web Worker. Web's

@@ -1,4 +1,6 @@
 * text=auto
+# The approved public CA is pinned by its exact PEM bytes on every platform.
+assets/security/uten-imp-root-ca.crt -text
 third_party/desktop_drop/** text eol=lf
 third_party/device_info_plus/** text eol=lf
 

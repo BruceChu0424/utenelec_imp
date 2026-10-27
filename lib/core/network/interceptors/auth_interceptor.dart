@@ -8,6 +8,7 @@ import '../../security/auth_refresh_lock.dart';
 import '../../security/auth_token_issuer.dart';
 import '../../security/secure_storage.dart';
 import '../api_exception.dart';
+import '../company_tls.dart';
 import '../authenticated_request_scope.dart';
 import '../network_policy.dart';
 import '../owned_dio.dart';
@@ -22,7 +23,8 @@ class AuthInterceptor extends Interceptor {
     Dio Function()? dioFactory,
     AuthRefreshLock? refreshLock,
     AuthBackendRealmPolicy? realmPolicy,
-  }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl))),
+  }) : _dioFactory =
+           dioFactory ?? (() => createCompanyDio(buildApiBaseOptions(baseUrl))),
        _refreshLock = refreshLock ?? AuthRefreshLock('staff:$baseUrl'),
        _realmPolicy =
            realmPolicy ?? AuthBackendRealmPolicy.fromBuildConfiguration();

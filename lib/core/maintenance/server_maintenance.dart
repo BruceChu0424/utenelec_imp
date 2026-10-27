@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import '../network/company_tls.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -192,7 +193,7 @@ class ServerMaintenanceController extends ChangeNotifier {
 final serverMaintenanceControllerProvider =
     Provider<ServerMaintenanceController>((ref) {
       final apiBase = ref.watch(apiBaseUrlProvider);
-      final dio = Dio(
+      final dio = createCompanyDio(
         BaseOptions(
           connectTimeout: const Duration(seconds: 4),
           sendTimeout: const Duration(seconds: 4),

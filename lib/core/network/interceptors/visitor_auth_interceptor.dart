@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import '../../security/secure_storage.dart';
 import '../api_endpoints.dart';
+import '../company_tls.dart';
 import '../network_policy.dart';
 import '../owned_dio.dart';
 import '../visitor_session_event_bus.dart';
@@ -16,7 +17,8 @@ class VisitorAuthInterceptor extends Interceptor {
     required this.baseUrl,
     // Each call transfers a fresh client's ownership to this interceptor.
     Dio Function()? dioFactory,
-  }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl)));
+  }) : _dioFactory =
+           dioFactory ?? (() => createCompanyDio(buildApiBaseOptions(baseUrl)));
 
   final SecureStorage storage;
   final String baseUrl;

@@ -9,6 +9,32 @@ Windows 首次下载提供可双击安装的 `Setup.exe`，安装后继续由软
 
 ## 首次安装与后续更新
 
+### Windows 运行库不得依赖开发电脑
+
+`windows/CMakeLists.txt` 在 Profile/Release 安装阶段从当前 MSVC 工具链的正式 CRT
+redistributable 目录复制完整的应用本地 DLL 集合，与 `uten_imp.exe` 放在同一目录。
+Windows 10+ 自带的 OS/UCRT/API-set 不从其他软件目录复制；Debug CRT 不得发布。
+
+`package_windows.py` 是安装包与更新 ZIP 的唯一完整性及依赖检查入口：要求根目录的核心 VC
+运行库，读取全部 EXE/DLL 的普通和延迟导入，检查 PE 架构及依赖闭合。开发机 System32
+存在某 DLL 不能替代安装包内的文件；缺库、错误架构、Debug 依赖及不可解析依赖均阻止出包。
+打包后还会独立重读 ZIP 验证，双包构建继续共享同一份已校验 payload。
+
+历史转接依赖可能生成未使用的 `dartjni.dll`；只有源代码、AOT、NativeAssets 和 PE 引用
+共同证明不使用 JNI 时，打包器才可从输出省略并记录证据，不修改原构建目录。
+确实使用 JNI 的构建缺少 JVM 时必须失败，不能靠忽略依赖通过检查。
+
+### 内网 TLS 与下载信誉
+
+原生客户端在启动时加载、核验固定摘要的公开公司 CA，只用于批准的公司内网 HTTPS 来源。
+探针、普通请求、刷新及下载使用同一原生传输入口；Web 继续使用浏览器证书验证。
+员工无需额外导入证书，不修改 Windows 系统信任库，不关闭证书、主机名或账号验证。
+证书错误不会伪装成网络断开后把密码转交外网。CA 轮换须审核新证书及摘要后随客户端发布。
+
+这些检查不等于 Authenticode：当前环境没有已配置的公司代码签名证书/私钥或托管签名凭据。
+Ed25519 发布摘要和 SHA-256 文件校验不能代替 Windows 发行者签名，也不能承诺消除 SmartScreen
+新文件信誉提示。可信发行者签名和浏览器对内网证书的信任仍需各自完成正式配置。
+
 `windows_installer.iss` 使用 Inno Setup 6.5+：首次安装显示目录选择页，默认当前用户目录
 `{localappdata}\Programs\Uten\UIMP`，已有正式安装沿用原目录，创建桌面/开始菜单快捷方式，
 包含固定更新器。安装器、快捷方式及软件外部展示名称为“UTEN”，外部图标使用既有动漫 IP；

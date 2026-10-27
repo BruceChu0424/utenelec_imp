@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/connection_recovery.dart';
+import '../../core/network/company_tls.dart';
 import '../../core/network/server_config.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/shared_providers.dart';
@@ -19,7 +20,7 @@ final platformBrandingCacheProvider = Provider<PlatformBrandingCache>((ref) {
 /// A separate anonymous client: branding is available on the login page and
 /// must never carry staff credentials or follow redirects to another host.
 final platformBrandingDioProvider = Provider<Dio>((ref) {
-  final dio = Dio(
+  final dio = createCompanyDio(
     BaseOptions(
       baseUrl: ref.watch(apiBaseUrlProvider),
       connectTimeout: const Duration(seconds: 5),

@@ -263,7 +263,7 @@ class _ProductionExecutionBatchPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: l10n.productionBatchTitle,
-          leading: UtenBackButton(onPressed: _saving ? null : _back),
+          leading: UtenBackButton(enabled: !_saving, onPressed: _back),
         ),
         body: SafeArea(
           child: Stack(

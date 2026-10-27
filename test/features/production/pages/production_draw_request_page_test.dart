@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
@@ -425,6 +426,19 @@ void main() {
         tester.widget<PopScope>(find.byType(PopScope).first).canPop,
         isFalse,
       );
+      final back = find.byType(UtenBackButton);
+      expect(tester.widget<UtenBackButton>(back).enabled, isFalse);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.descendant(of: back, matching: find.byType(IconButton)),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(back, warnIfMissed: false);
+      await tester.pump();
+      expect(find.byType(ProductionDrawRequestPage), findsOneWidget);
       repository.submitError = null;
       await tester.tap(find.byKey(_submitKey));
       await tester.pumpAndSettle();
@@ -537,6 +551,19 @@ void main() {
       tester.widget<PopScope>(find.byType(PopScope).first).canPop,
       isFalse,
     );
+    final back = find.byType(UtenBackButton);
+    expect(tester.widget<UtenBackButton>(back).enabled, isFalse);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.descendant(of: back, matching: find.byType(IconButton)),
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.tap(back, warnIfMissed: false);
+    await tester.pump();
+    expect(find.byType(ProductionDrawRequestPage), findsOneWidget);
     repository.pendingSubmit!.complete(
       ProductionDrawRequestResult.fromJson(productionDrawRequestResultFixture),
     );

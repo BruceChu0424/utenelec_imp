@@ -5,7 +5,7 @@
 // 审计模式独立于结构编辑，已核对标记持久化在服务端，修改结构后需重新核对。
 //
 // 树结构：一级 = 当前货品的组件清单；组件自身有 BOM（hasChildren）可展开，
-// 展开时对组件 id 再调 list 接口懒加载（对照老系统 001.jpg 的 +/- 树）。
+// 进入时预读全部可达组件，完整快照接受后仍保持折叠；展开仅切换本地显示。
 //
 // 多选批量删除(2026-09-21 用户口径「组件信息最前面加个多选框，可以多选批量
 // 删除」)：表格最前列由 MasterDataTableView 自己渲染勾选框 + 表头三态全选，
@@ -17,7 +17,7 @@
 // 表格：复用全站统一表格组件 MasterDataTableView（与货品资料列表同款）——
 // Excel 风格表头（竖线分隔 + 可拖拽拉宽拉窄）+ 表头/表体横滚同步 +
 // 底部横向滚动条 + 单击行高亮。树形通过「可见节点平铺」表达：
-// 首列「▶/▼」= 该行有子类（点行任意位置展开/收起，loading 显 …），
+// 首列「▶/▼」= 该行有子类（点行任意位置展开/收起已预读的子级），
 // 名称列子类缩进一格（└ 分支符，更深逐级加全角空格）；
 // 编辑模式逐格录入关系字段；名称格输入查找并选择真实货品。型号、规格、材质和
 // 来源在具备该组件主档修改权限时同格编辑，和关系变更一起预览、原子保存。
@@ -94,14 +94,13 @@ export 'bom_component_picker.dart'
         bomComponentSuggestionsProvider,
         bomComponentSinglePickerProvider;
 
-/// 树节点：BOM 行 + 懒加载子级状态。
+/// 树节点：BOM 行 + 已预读子级与独立的展示状态。
 class _BomNode {
   _BomNode(this.item);
 
   GoodsBomItem item;
-  List<_BomNode>? children; // null = 未加载
+  List<_BomNode>? children; // 叶节点为空；有子级的节点在快照发布前全部读完。
   bool expanded = false;
-  bool loading = false;
 }
 
 /// One repository/authority/read generation owns these actual list slots.
@@ -331,10 +330,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   int _loadRevision = 0;
   bool _expandingAll = false;
   int _treeExpansionRevision = 0;
-  bool _expandingPeers = false;
-  int _peerExpansionRevision = 0;
-  final _peerLoadingNodes = <_BomNode>{};
-  final _singleLoadingNodes = <_BomNode, int>{};
   final _pendingBomReads =
       Map<
         GoodsBomRepository,
@@ -557,8 +552,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _switchingMode ||
       _enteringEdit ||
       _finishingEdit ||
-      _expandingAll ||
-      _expandingPeers;
+      _expandingAll;
 
   GoodsBomRepository get _repository =>
       _draft ?? ref.read(goodsBomRepositoryProvider);
@@ -584,7 +578,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         _finishingEdit ||
         // A read-only expansion must not lock navigation. Editing sessions
         // still retain their existing save/discard ownership while it reads.
-        (_writeBusy && (!(_expandingAll || _expandingPeers) || _editMode)) ||
+        (_writeBusy && (!_expandingAll || _editMode)) ||
         _addComponentOpen ||
         _modalInteractions > 0 ||
         _auditBusyRows.isNotEmpty;
@@ -1135,9 +1129,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _loadRevision++;
       _treeExpansionRevision++;
       _expandingAll = false;
-      _invalidatePeerExpansion();
       _retireBomReadScopes();
-      _singleLoadingNodes.clear();
       _clearTableEditors();
       setState(() {
         _draft = null;
@@ -1214,9 +1206,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     if (oldWidget.goodsId != widget.goodsId) {
       _treeExpansionRevision++;
       _expandingAll = false;
-      _invalidatePeerExpansion();
       _retireBomReadScopes();
-      _singleLoadingNodes.clear();
       _clearTableEditors();
       _modeRevision++;
       _roots = null;
@@ -1313,14 +1303,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _treeExpansionRevision++;
       _expandingAll = false;
     }
-    final supersededPeers = _expandingPeers;
-    if (supersededPeers) {
-      _invalidatePeerExpansion();
-    }
-    for (final node in _singleLoadingNodes.keys) {
-      node.loading = false;
-    }
-    _singleLoadingNodes.clear();
     _retireBomReadScopes();
     final revision = ++_loadRevision;
     final goodsId = widget.goodsId;
@@ -1336,7 +1318,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _loading = true;
       _error = null;
     });
-    if (supersededExpansion || supersededPeers) _notifyInteractionChanged();
+    if (supersededExpansion) _notifyInteractionChanged();
     try {
       final roots = await _readTree(
         repository,
@@ -1400,7 +1382,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       final previous = before[index];
       final next = after[index];
       if (previous.expanded != next.expanded ||
-          previous.loading != next.loading ||
           _itemSnapshot(previous.item) != _itemSnapshot(next.item) ||
           !listEquals(previous.item.warnings, next.item.warnings)) {
         return false;
@@ -1517,43 +1498,46 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       for (final node in roots)
         (node, <String>{goodsId}, '$goodsId/${node.item.id}'),
     ];
-    // Breadth-first, at most four independent reads at a time across the entire
-    // level; recursive Future.wait would multiply concurrency at every depth.
-    for (var depth = 0; depth <= 10 && current(); depth++) {
-      final expanded = level
+    // Read every reachable level before publishing, independently of expansion.
+    // Four reads at most; shared parents reuse the same request. Path cycle
+    // detection replaces the old arbitrary ten-level truncation.
+    while (level.isNotEmpty && current()) {
+      if (level.any(
+        (entry) =>
+            entry.$1.item.hasChildren &&
+            entry.$2.contains(entry.$1.item.componentGoodsId),
+      )) {
+        throw ApiException('BOM_CYCLE', '组装信息存在循环引用，请检查组件关系后重试。');
+      }
+      final branches = level
           .where(
             (entry) =>
                 !entry.$2.contains(entry.$1.item.componentGoodsId) &&
                 (entry.$1.item.hasChildren ||
                     _childAppendParents.contains(
                       entry.$1.item.componentGoodsId,
-                    )) &&
-                (expandAll ||
-                    (_occurrenceExpansion[entry.$3] ??
-                        _expandedIds.contains(entry.$1.item.componentGoodsId))),
+                    )),
           )
           .toList();
       final next = <(_BomNode, Set<String>, String)>[];
-      for (var start = 0; start < expanded.length; start += 4) {
+      for (var start = 0; start < branches.length; start += 4) {
         if (!current()) return roots;
         await Future.wait([
-          for (final entry in expanded.skip(start).take(4))
+          for (final entry in branches.skip(start).take(4))
             () async {
               final node = entry.$1;
-              // An edit session cannot become writable with an incomplete
-              // visible snapshot. Read-only refreshes may retain a collapsed
-              // failed subtree and let the user retry its own expand control.
-              try {
-                node.children = await read(node.item.componentGoodsId);
-                node.expanded = true;
-              } catch (_) {
-                if (expandAll || repository is GoodsBomEditDraft) rethrow;
-              }
+              // Fail the entire candidate snapshot if any subtree is missing.
+              // A retry must never mistake a failed read for an empty branch.
+              node.children = await read(node.item.componentGoodsId);
+              node.expanded =
+                  expandAll ||
+                  (_occurrenceExpansion[entry.$3] ??
+                      _expandedIds.contains(node.item.componentGoodsId));
             }(),
         ], eagerError: true);
         await Future<void>.delayed(Duration.zero);
       }
-      for (final entry in expanded) {
+      for (final entry in branches) {
         final node = entry.$1;
         final ancestors = {...entry.$2, node.item.componentGoodsId};
         for (final child in node.children ?? const <_BomNode>[]) {
@@ -1582,15 +1566,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     return current() ? nodes : const [];
   }
 
-  /// Match the bounded snapshot reader and stop corrupt cyclic paths. Each
+  /// Match the snapshot reader and stop corrupt cyclic paths. Each
   /// occurrence keeps its own node while shared assemblies reuse their reads.
   Iterable<_BomNode> _bulkExpandableBranches(List<_BomNode> roots) sync* {
-    Iterable<_BomNode> walk(
-      List<_BomNode> nodes,
-      Set<String> ancestors,
-      int depth,
-    ) sync* {
-      if (depth > 10) return;
+    Iterable<_BomNode> walk(List<_BomNode> nodes, Set<String> ancestors) sync* {
       for (final node in nodes) {
         final id = node.item.componentGoodsId;
         if (ancestors.contains(id)) continue;
@@ -1599,12 +1578,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         }
         yield node;
         if (node.children case final children?) {
-          yield* walk(children, {...ancestors, id}, depth + 1);
+          yield* walk(children, {...ancestors, id});
         }
       }
     }
 
-    yield* walk(roots, {widget.goodsId}, 0);
+    yield* walk(roots, {widget.goodsId});
   }
 
   bool get _allBomBranchesExpanded {
@@ -1621,8 +1600,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         _loading ||
         _writeBusy ||
         _roots == null ||
-        _auditBusyRows.isNotEmpty ||
-        _visibleRows.any((row) => row.node.loading)) {
+        _auditBusyRows.isNotEmpty) {
       return;
     }
     final revision = ++_treeExpansionRevision;
@@ -1744,103 +1722,24 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       });
       return;
     }
-    final targets = [
-      for (final node in branches)
-        if (!node.expanded && !node.loading) node,
-    ];
-    if (targets.isEmpty) return;
-    final token = ++_peerExpansionRevision;
-    final readRevision = _loadRevision;
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
-    final repository = _repository;
-    bool current() =>
-        mounted &&
-        token == _peerExpansionRevision &&
-        readRevision == _loadRevision &&
-        boundary == ref.read(sensitiveReadBoundaryProvider) &&
-        identical(repository, _repository);
+    if (branches.any((node) => node.children == null)) {
+      context.appError('组件信息尚未完整加载，请刷新后重试。');
+      return;
+    }
     setState(() {
-      _expandingPeers = true;
-      _peerLoadingNodes.addAll(targets);
-      for (final node in targets) {
-        node.loading = true;
+      for (final node in branches) {
+        node.expanded = true;
+        _occurrenceExpansion['$parentPath/${node.item.id}'] = true;
       }
+      _visibleRowsCache = null;
     });
-    _notifyInteractionChanged();
-    try {
-      final results = <_BomNode, List<_BomNode>>{};
-      for (var start = 0; start < targets.length && current(); start += 4) {
-        await Future.wait([
-          for (final node in targets.skip(start).take(4))
-            () async {
-              results[node] =
-                  node.children ??
-                  await _nodesForItems(
-                    await _readBomItems(
-                      node.item.componentGoodsId,
-                      repository: repository,
-                      isCurrent: current,
-                    ),
-                    current,
-                  );
-            }(),
-        ], eagerError: true);
-        await Future<void>.delayed(Duration.zero);
-      }
-      if (!current()) return;
-      final masters = repository is GoodsBomEditDraft
-          ? await _prepareMasterValues(
-              results.values.expand((nodes) => nodes),
-              repository,
-              current,
-            )
-          : <String, _BomMasterValues>{};
-      if (!current()) {
-        for (final values in masters.values) {
-          values.dispose();
-        }
-        return;
-      }
-      setState(() {
-        _adoptMasterValues(masters);
-        for (final entry in results.entries) {
-          entry.key.children = entry.value;
-          entry.key.expanded = true;
-          _occurrenceExpansion['$parentPath/${entry.key.item.id}'] = true;
-        }
-        _visibleRowsCache = null;
-      });
-    } catch (error) {
-      if (mounted && current()) context.appApiError(error);
-    } finally {
-      if (mounted && token == _peerExpansionRevision) {
-        setState(() {
-          _peerExpansionRevision++;
-          _expandingPeers = false;
-          for (final node in targets) {
-            node.loading = false;
-          }
-          _peerLoadingNodes.clear();
-        });
-        _notifyInteractionChanged();
-      }
-    }
-  }
-
-  void _invalidatePeerExpansion() {
-    _peerExpansionRevision++;
-    _expandingPeers = false;
-    for (final node in _peerLoadingNodes) {
-      node.loading = false;
-    }
-    _peerLoadingNodes.clear();
   }
 
   /// 可见节点平铺：根 → （展开的）子级递归，级联序号 1 / 1.1 / 1.1.2。
   ///
   /// `ancestorContinuations` 按 [UtenTreeTableCell] 的硬契约累积：长度恒等于
-  /// depth、`[i]` = 深度 i 的祖先后面还有没有兄弟。这里的展开是懒加载的
-  /// （`hasChildren` 是服务端事实，不能从扁平行推），所以保留本地 walk；
+  /// depth、`[i]` = 深度 i 的祖先后面还有没有兄弟。子级已完整预读，
+  /// `hasChildren` 仍采用服务端事实，显示投影仅跟随各 occurrence 的展开状态；
   /// 同口径的通用推导见 `utenTreeProjection`。
   List<_BomRow> get _visibleRows {
     final cached = _visibleRowsCache;
@@ -2009,70 +1908,38 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       });
       return;
     }
-    if (node.loading) return;
-    final repository = _repository;
-    final boundary = ref.read(sensitiveReadBoundaryProvider);
-    final revision = _loadRevision;
-    setState(() {
-      node.loading = true;
-      _singleLoadingNodes[node] = revision;
-    });
-    try {
-      final items = await _readBomItems(id, repository: repository);
-      if (!mounted ||
-          revision != _loadRevision ||
-          boundary != ref.read(sensitiveReadBoundaryProvider) ||
-          !identical(repository, _repository) ||
-          node.item.componentGoodsId != id ||
-          (!node.item.hasChildren && !_childAppendParents.contains(id))) {
-        return;
-      }
-      bool current() =>
-          mounted &&
-          revision == _loadRevision &&
-          boundary == ref.read(sensitiveReadBoundaryProvider) &&
-          identical(repository, _repository);
-      final children = await _nodesForItems(items, current);
-      if (!current()) return;
-      final masters = repository is GoodsBomEditDraft
-          ? await _prepareMasterValues(children, repository, current)
-          : <String, _BomMasterValues>{};
-      if (!current()) {
-        for (final values in masters.values) {
-          values.dispose();
-        }
-        return;
-      }
-      setState(() {
-        _adoptMasterValues(masters);
-        node.children = children;
-        _setOccurrenceExpanded(node, true);
-        _visibleRowsCache = null;
-        node.loading = false;
-      });
-    } catch (_) {
-      if (!mounted ||
-          revision != _loadRevision ||
-          boundary != ref.read(sensitiveReadBoundaryProvider)) {
-        return;
-      }
-      setState(() => node.loading = false);
-      context.appError('加载子级组件失败'); // TODO(l10n): 补 arb
-    } finally {
-      if (_singleLoadingNodes[node] == revision) {
-        _singleLoadingNodes.remove(node);
-        if (mounted && node.loading) {
-          setState(() => node.loading = false);
-        }
-      }
-    }
+    // Every branch is prepared before the candidate tree is accepted. A
+    // missing branch is an invalidated snapshot, never a reason to publish a
+    // loading row or issue a request from an expansion click.
+    context.appError('组件信息尚未完整加载，请刷新后重试。');
   }
 
-  void _setOccurrenceExpanded(_BomNode node, bool expanded) {
-    for (final row in _visibleRows) {
-      if (identical(row.node, node)) {
-        _occurrenceExpansion[row.occurrenceKey] = expanded;
-        break;
+  void _setOccurrenceExpanded(
+    _BomNode node,
+    bool expanded, {
+    bool includeHidden = false,
+  }) {
+    if (includeHidden) {
+      // Audit replacement also invalidates occurrences below collapsed parents.
+      final pending = [(_roots ?? const <_BomNode>[], widget.goodsId)];
+      for (var cursor = 0; cursor < pending.length; cursor++) {
+        final (nodes, parentPath) = pending[cursor];
+        for (final candidate in nodes) {
+          final path = '$parentPath/${candidate.item.id}';
+          if (identical(candidate, node)) {
+            _occurrenceExpansion[path] = expanded;
+          }
+          if (candidate.children case final children?) {
+            pending.add((children, path));
+          }
+        }
+      }
+    } else {
+      for (final row in _visibleRows) {
+        if (identical(row.node, node)) {
+          _occurrenceExpansion[row.occurrenceKey] = expanded;
+          break;
+        }
       }
     }
     node.expanded = expanded;
@@ -2951,6 +2818,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final repository = ref.read(goodsBomRepositoryProvider);
     final boundary = ref.read(sensitiveReadBoundaryProvider);
     final pending = Completer<void>();
+    var refreshStructure = false;
     setState(() {
       _auditBusyRows[key] = pending;
       _auditRevisions.update(
@@ -2976,12 +2844,16 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         for (final node in _auditNodes(row.parentGoodsId, item.id)) {
           // 编辑/重载已换过节点或行时，以新读到的内容为准，旧请求不能覆盖它。
           if (!identical(node.item, originals[node])) continue;
+          refreshStructure =
+              refreshStructure ||
+              (updated.hasChildren &&
+                  (node.item.componentGoodsId != updated.componentGoodsId ||
+                      node.children == null));
           if (node.item.componentGoodsId != updated.componentGoodsId ||
               !updated.hasChildren) {
             structureChanged = structureChanged || node.children != null;
+            _setOccurrenceExpanded(node, false, includeHidden: true);
             node.children = null;
-            node.expanded = false;
-            node.loading = false;
           }
           node.item = updated;
         }
@@ -3013,6 +2885,14 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       if (!pending.isCompleted) pending.complete();
       if (mounted) setState(() {});
       if (mounted) _notifyInteractionChanged();
+      if (refreshStructure &&
+          mounted &&
+          boundary == ref.read(sensitiveReadBoundaryProvider) &&
+          identical(repository, ref.read(goodsBomRepositoryProvider))) {
+        // A concurrent edit can replace the audited component. Prepare its
+        // entire new tree before allowing the new branch to be expanded.
+        unawaited(_load());
+      }
     }
   }
 
@@ -3025,15 +2905,14 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   /// 拖拽移动的网络段进行中（UtenBusyOverlay 遮罩；落点已定，无确认框）。
   bool _moving = false;
 
-  /// 目标行是否在被拖行的子树里（可见部分的前置判断；深度上限 10 与服务端一致）。
+  /// 目标行是否在被拖行的完整预读子树里；不截断合法深层后代。
   bool _isInDraggedSubtree(_BomRow target, List<_BomRow> dragged) {
-    bool within(_BomNode ancestor, _BomNode candidate, [int depth = 0]) {
-      if (depth > 10) return false;
+    bool within(_BomNode ancestor, _BomNode candidate) {
       if (identical(ancestor, candidate)) return true;
       final kids = ancestor.children;
       if (kids == null) return false;
       for (final k in kids) {
-        if (within(k, candidate, depth + 1)) return true;
+        if (within(k, candidate)) return true;
       }
       return false;
     }
@@ -3200,7 +3079,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         onHoverAutoExpand: (target) {
           if (!_canMutate || _loading || _writeBusy) return;
           final node = target.node;
-          if (node.item.hasChildren && !node.expanded && !node.loading) {
+          if (node.item.hasChildren && !node.expanded) {
             _toggle(node);
           }
         },
@@ -3275,7 +3154,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         }
         final id = node.item.componentGoodsId;
         if (!_masterValues.containsKey(id)) ids.add(id);
-        if (node.expanded && node.children != null) {
+        if (node.children != null) {
           await collect(node.children!);
           if (!current()) return;
         }
@@ -3597,14 +3476,11 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             depth: r.depth,
             levelLabel: '组件 ${r.depth + 1} 级',
             title: _treeIdentityTitle(r),
-            subtitle: r.node.loading ? '正在加载下级…' : null,
             hasChildren:
                 r.node.item.hasChildren ||
                 _childAppendParents.contains(r.node.item.componentGoodsId),
             expanded: r.node.expanded,
-            onToggle: r.node.loading || _writeBusy || _loading
-                ? null
-                : () => _toggle(r.node),
+            onToggle: _writeBusy || _loading ? null : () => _toggle(r.node),
             onTogglePeers: _writeBusy || _loading || _auditBusyRows.isNotEmpty
                 ? null
                 : () => unawaited(_togglePeerBomBranches(r)),
@@ -3941,7 +3817,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     final hasExpandableBranches = _bulkExpandableBranches(
       _roots ?? const [],
     ).isNotEmpty;
-    final branchReadPending = visible.any((row) => row.node.loading);
     ref.watch(sensitiveReadBoundaryProvider);
     ref.watch(goodsClipboardProvider);
     final selectedCount = _selectedRowIds.length;
@@ -4103,7 +3978,6 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                           _loading ||
                               _writeBusy ||
                               _auditBusyRows.isNotEmpty ||
-                              branchReadPending ||
                               !hasExpandableBranches
                           ? null
                           : _expandAllBomBranches,

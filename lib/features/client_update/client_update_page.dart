@@ -137,13 +137,10 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           appBar: AppBar(
             toolbarHeight: 72,
             title: Text(l10n.clientUpdateTitle),
-            titleSpacing: UtenSpacing.s4,
-            leadingWidth: UtenBackButton.slotWidth(context) + UtenSpacing.s40,
+            titleSpacing: 0,
+            leadingWidth: UtenBackButton.slotWidth(context) + UtenSpacing.s24,
             leading: Padding(
-              padding: const EdgeInsetsDirectional.only(
-                start: UtenSpacing.s24,
-                end: UtenSpacing.s16,
-              ),
+              padding: const EdgeInsetsDirectional.only(start: UtenSpacing.s24),
               child: UtenBackButton(
                 key: const ValueKey('client-update-back'),
                 onPressed: () {

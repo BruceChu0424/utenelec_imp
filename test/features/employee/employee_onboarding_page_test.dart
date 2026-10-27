@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
@@ -241,6 +242,16 @@ void main() {
       await tester.pump();
     }
     expect(repo.created, isNotNull);
+    final back = find.byType(UtenBackButton);
+    expect(tester.widget<UtenBackButton>(back).enabled, isFalse);
+    expect(
+      tester
+          .widget<IconButton>(
+            find.descendant(of: back, matching: find.byType(IconButton)),
+          )
+          .onPressed,
+      isNull,
+    );
     (container.read(sessionProvider.notifier) as _OnboardingActor).change();
     pending.complete(_issuedResult);
     await tester.pumpAndSettle();
@@ -313,6 +324,13 @@ void main() {
     await tester.enterText(_inputByLabel('证件号码'), _validIdNumber);
     await tester.enterText(_inputByLabel('手机号'), '13800138000');
     expect(IdCardUtils.problemOf(_validIdNumber), isNull, reason: '样例证件号必须合法');
+    await _tapNext(tester);
+    expect(_currentStep(tester), 1);
+
+    final backRect = tester.getRect(find.byType(UtenBackButton));
+    await tester.tapAt(backRect.centerRight - const Offset(1, 0));
+    await tester.pumpAndSettle();
+    expect(_currentStep(tester), 0, reason: '返回键右侧留白也必须可点击');
     await _tapNext(tester);
     expect(_currentStep(tester), 1);
 

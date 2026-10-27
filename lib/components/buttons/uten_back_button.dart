@@ -5,9 +5,8 @@
 // - 默认行为：能 pop 则 pop（go_router 下 push 进来的页面）；
 //   不能 pop（深链 / context.go 直达）则回工作台兜底，保证永远可返回
 // - 视觉与 IconButtonTheme 对齐：圆角 8、前景 textSecondary
-// - 按钮尺寸==图标尺寸（2026-10-24 口径）：桌面端按钮收缩到 24×24，
-//   图标自身落在页面最左缘（x=0），标题不再隔着 40 槽的死区；触屏端
-//   保留 UtenControlMetrics 最小命中区（48+），图标仍贴按钮盒左缘
+// - 图标保持 24，贴按钮左缘；桌面命中区至少 40×40，触屏至少 48×48。
+//   原来标题前的空隙收进按钮内部，视觉左对齐与可点击范围分别维护。
 
 import 'package:flutter/material.dart';
 
@@ -25,7 +24,13 @@ import '../../core/theme/uten_tokens.dart';
 /// UtenBackButton(onPressed: () => context.go(RouteName.notice)) // 自定义去向
 /// ```
 class UtenBackButton extends StatelessWidget {
-  const UtenBackButton({super.key, this.onPressed, this.tooltip, this.color});
+  const UtenBackButton({
+    super.key,
+    this.onPressed,
+    this.tooltip,
+    this.color,
+    this.enabled = true,
+  });
 
   /// 自定义返回行为；为空时走默认逻辑（pop → 兜底回工作台）
   final VoidCallback? onPressed;
@@ -36,30 +41,27 @@ class UtenBackButton extends StatelessWidget {
   /// 图标颜色；默认取 IconButtonTheme 前景色
   final Color? color;
 
-  /// 图标与桌面端按钮的边长（按钮==图标口径）。
+  /// 提交等不可离开状态禁用按钮，避免空回调触发默认返回。
+  final bool enabled;
+
+  /// 图标大小独立于命中区。
   static const double _extent = 24;
 
-  /// 返回键在 UtenAppBar 顶栏占用的 leading 槽宽：桌面 = 按钮宽（24），
-  /// 触屏 = 主题最小命中区。宿主传给 AppBar.leadingWidth，保证标题紧跟。
+  /// 宿主的 leading 槽宽与整个可点击按钮一致，标题无需额外间距。
   static double slotWidth(BuildContext context) =>
-      UtenControlMetrics.usesTouchTargets(context)
-      ? UtenControlMetrics.minimumHitExtent(context)
-      : _extent;
+      UtenControlMetrics.minimumHitExtent(context);
 
   @override
   Widget build(BuildContext context) {
-    final touch = UtenControlMetrics.usesTouchTargets(context);
+    final extent = slotWidth(context);
     return IconButton(
       icon: Icon(Icons.arrow_back_ios_new_rounded, size: _extent, color: color),
       tooltip: tooltip ?? '返回',
       alignment: AlignmentDirectional.centerStart,
       padding: EdgeInsets.zero,
-      // 桌面端收紧到 24×24（UtenControlTheme 会把 IconButton 最小命中区
-      // 钉在 40，必须显式 tight 覆盖）；触屏端交给主题最小命中区。
-      constraints: touch
-          ? null
-          : BoxConstraints.tight(const Size.square(_extent)),
-      onPressed: onPressed ?? () => _defaultBack(context),
+      constraints: BoxConstraints.tight(Size.square(extent)),
+      visualDensity: VisualDensity.standard,
+      onPressed: enabled ? onPressed ?? () => _defaultBack(context) : null,
     );
   }
 

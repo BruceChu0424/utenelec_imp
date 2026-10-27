@@ -470,12 +470,11 @@ class _WarehouseQualityPreStockInPageState
             title: '先入库上架 · ${detail?.billNo ?? widget.receiptId}',
             leading: UtenBackButton(
               color: _saving ? theme.disabledColor : null,
-              onPressed: _saving
-                  ? null
-                  : () => popOrBackTo(
-                      context,
-                      defaultPath: RouteName.warehouseQualityResults,
-                    ),
+              enabled: !_saving,
+              onPressed: () => popOrBackTo(
+                context,
+                defaultPath: RouteName.warehouseQualityResults,
+              ),
             ),
             actions: [
               const UtenFieldHintIcon(

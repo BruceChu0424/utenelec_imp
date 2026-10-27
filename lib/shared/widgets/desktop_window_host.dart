@@ -54,23 +54,27 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
     final login = widget.mode == DesktopWindowMode.login;
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            top: login && !widget.overlayControls
-                ? DesktopWindowHost.controlsHeight
-                : 0,
-            child: widget.child,
-          ),
-          if (login)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: DesktopWindowHost.controlsHeight,
-              child: _LoginWindowControls(controller: _controller),
+      // MaterialApp.builder places this host above the route Navigator. Its
+      // native control tooltips therefore need their own window-sized overlay.
+      child: Overlay.wrap(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              top: login && !widget.overlayControls
+                  ? DesktopWindowHost.controlsHeight
+                  : 0,
+              child: widget.child,
             ),
-        ],
+            if (login)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: DesktopWindowHost.controlsHeight,
+                child: _LoginWindowControls(controller: _controller),
+              ),
+          ],
+        ),
       ),
     );
   }

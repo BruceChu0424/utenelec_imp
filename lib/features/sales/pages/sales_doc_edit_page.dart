@@ -3588,9 +3588,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                     : '编辑${_cfg.shortLabel}')
               : (widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}'),
           leading: UtenBackButton(
-            onPressed: _saving || _uncertainShipmentBody != null
-                ? null
-                : () => popOrBackTo(context, defaultPath: SalesRoutePath.hub),
+            enabled: !(_saving || _uncertainShipmentBody != null),
+            onPressed: () =>
+                popOrBackTo(context, defaultPath: SalesRoutePath.hub),
           ),
           actions: _draftsAction,
         ),

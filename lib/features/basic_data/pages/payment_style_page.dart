@@ -1281,11 +1281,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
           appBar: UtenAppBar(
             title: '收付款类别',
             leading: UtenBackButton(
-              onPressed: _batchBusy
-                  ? null
-                  : () => inlineNavigate(
-                      () => backTo(context, defaultPath: RouteName.basicinfo),
-                    ),
+              enabled: !_batchBusy,
+              onPressed: () => inlineNavigate(
+                () => backTo(context, defaultPath: RouteName.basicinfo),
+              ),
             ),
             actions: [
               MasterOperationHistoryActions(

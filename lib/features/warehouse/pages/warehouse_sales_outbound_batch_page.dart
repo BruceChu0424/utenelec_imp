@@ -759,7 +759,8 @@ class _WarehouseSalesOutboundBatchPageState
           appBar: UtenAppBar(
             title: l10n.warehouseOutboundBatchReview,
             leading: UtenBackButton(
-              onPressed: _saving ? null : () => _leaveBatch(_attempted),
+              enabled: !_saving,
+              onPressed: () => _leaveBatch(_attempted),
             ),
             actions: [
               if (!_attempted)

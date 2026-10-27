@@ -941,7 +941,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       Scaffold(
         appBar: UtenAppBar(
           title: l10n.quoteFinanceReviewTitle,
-          leading: UtenBackButton(onPressed: _busy ? null : _leave),
+          leading: UtenBackButton(enabled: !_busy, onPressed: _leave),
         ),
         body: SafeArea(
           child: Stack(

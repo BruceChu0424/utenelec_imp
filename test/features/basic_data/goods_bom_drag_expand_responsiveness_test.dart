@@ -20,7 +20,7 @@ import '../../support/goods_bom_edit_test_api.dart';
 /// The target precedes the source: expanding its children moves the pressed
 /// source outside the viewport while that source still owns the mouse gesture.
 class _ExpandableBomRepo implements GoodsBomRepository {
-  _ExpandableBomRepo({this.childCount = 1000, this.delayChildren = false})
+  _ExpandableBomRepo({this.childCount = 1000})
     : children = [
         for (var i = 0; i < childCount; i++)
           GoodsBomItem(
@@ -32,7 +32,7 @@ class _ExpandableBomRepo implements GoodsBomRepository {
       ];
 
   final int childCount;
-  final bool delayChildren;
+  bool delayChildren = false;
   final List<GoodsBomItem> children;
   final childRead = Completer<List<GoodsBomItem>>();
   final moveCalls = <List<GoodsBomMove>>[];
@@ -196,11 +196,12 @@ void main() {
   testWidgets('悬停展开千条子件保持视口构建，源行被推离屏仍能移到新子行', (tester) async {
     final repository = _ExpandableBomRepo();
     final api = await _pumpTab(tester, repository);
+    final preparedReads = repository.childReads;
     final gesture = await _pickUpSource(tester);
     await _hoverTarget(tester, gesture);
     await tester.pumpAndSettle();
 
-    expect(repository.childReads, 1);
+    expect(repository.childReads, preparedReads, reason: '悬停展开只使用已完整预读的子级');
     expect(_table(tester).items, hasLength(1003));
     expect(
       _mountedSlots.evaluate().length,
@@ -227,22 +228,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('悬停子级请求未完成时可继续拖到其他落点，不等待加载', (tester) async {
-    final repository = _ExpandableBomRepo(delayChildren: true);
+  testWidgets('完整预读后悬停展开无需请求，可立即拖到其他落点', (tester) async {
+    final repository = _ExpandableBomRepo(childCount: 2);
     final api = await _pumpTab(tester, repository);
+    final preparedReads = repository.childReads;
+    repository.delayChildren = true;
     final gesture = await _pickUpSource(tester);
     await _hoverTarget(tester, gesture);
 
-    expect(repository.childReads, 1);
+    expect(repository.childReads, preparedReads);
     expect(repository.childRead.isCompleted, isFalse);
-    expect(find.text('正在加载下级…'), findsOneWidget);
+    expect(find.text('正在加载下级…'), findsNothing);
+    expect(_table(tester).items, hasLength(5));
     expect(_slot('safe'), findsOneWidget);
 
     await _dropAfter(tester, gesture, 'safe');
     expect(repository.childRead.isCompleted, isFalse);
-    expect(_table(tester).items, hasLength(3));
+    expect(repository.childReads, preparedReads);
+    expect(_table(tester).items, hasLength(5));
     expect(find.text('正在移动组件'), findsNothing);
-    repository.childRead.complete(repository.children);
+    repository.delayChildren = false;
     await tester.pumpAndSettle();
     await saveBomEdit(tester);
 
@@ -255,13 +260,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('悬停子级请求未完成时 ESC 立即取消拖拽，表体仍可选择', (tester) async {
-    final repository = _ExpandableBomRepo(delayChildren: true);
+  testWidgets('预读后的悬停展开可用 ESC 立即取消拖拽，表体仍可选择', (tester) async {
+    final repository = _ExpandableBomRepo(childCount: 2);
     final api = await _pumpTab(tester, repository);
+    final preparedReads = repository.childReads;
+    repository.delayChildren = true;
     final gesture = await _pickUpSource(tester);
     await _hoverTarget(tester, gesture);
 
-    expect(find.text('正在加载下级…'), findsOneWidget);
+    expect(find.text('正在加载下级…'), findsNothing);
+    expect(repository.childReads, preparedReads);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
     await gesture.up();
@@ -272,10 +280,11 @@ void main() {
     await tester.pump();
 
     expect(repository.childRead.isCompleted, isFalse);
+    expect(repository.childReads, preparedReads);
     expect(_table(tester).selectedIds, contains('root|safe'));
     expect(find.byKey(const ValueKey('row-drag-indicator')), findsNothing);
     expect(repository.moveCalls, isEmpty);
-    repository.childRead.complete(repository.children);
+    repository.delayChildren = false;
     await tester.pumpAndSettle();
     await saveBomEdit(tester);
     expect(api.previewCalls, 0);

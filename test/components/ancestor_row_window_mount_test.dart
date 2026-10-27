@@ -31,6 +31,50 @@ class _MountProbeState extends State<_MountProbe> {
 }
 
 void main() {
+  for (final expensive in [false, true]) {
+    testWidgets(
+      'first-frame insertion admission still shares the mount budget: $expensive',
+      (tester) async {
+        final controllers = List.generate(
+          6,
+          (_) => UtenDeferredRowMountController(),
+        );
+        var mounts = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Column(
+                children: [
+                  for (var i = 0; i < controllers.length; i++)
+                    UtenDeferredRowMount(
+                      key: ValueKey(i),
+                      controller: controllers[i],
+                      estimatedExtent: 52,
+                      admitOnFirstFrame: true,
+                      expensive: expensive,
+                      builder: (_) => _MountProbe(i, (_) => mounts++),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+        expect(mounts, expensive ? 1 : 4);
+        expect(
+          find.byType(UtenRowMountPlaceholder),
+          findsNWidgets(expensive ? 5 : 2),
+        );
+        await tester.pumpAndSettle();
+        expect(mounts, 6);
+        expect(
+          controllers.every((controller) => controller.hasMountedContent),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final deferred in [true, false]) {
     testWidgets('new sliver shells preserve deferred=$deferred admission', (
       tester,

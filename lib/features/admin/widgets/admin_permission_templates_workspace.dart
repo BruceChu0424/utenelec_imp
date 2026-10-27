@@ -628,18 +628,7 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),
                     child: SelectableText(selected.description),
                   ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s12,
-                  ),
-                  child: Text(
-                    l.permissionTemplateSensitiveNote,
-                    key: const ValueKey('permission-template-sensitive-note'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+                const SizedBox(height: UtenSpacing.s12),
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: UtenSpacing.s12),

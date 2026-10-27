@@ -1091,7 +1091,7 @@ class _WorkshopMaterialIssueBatchPageState
         child: Scaffold(
           appBar: UtenAppBar(
             title: _isReturn ? '生产退料批量入库' : '生产领料批量出库',
-            leading: UtenBackButton(onPressed: _saving ? null : _close),
+            leading: UtenBackButton(enabled: !_saving, onPressed: _close),
           ),
           floatingActionButtonAnimator:
               FloatingActionButtonAnimator.noAnimation,

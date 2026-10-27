@@ -853,12 +853,11 @@ class _WarehouseSubcontractOutboundEditPageState
           appBar: UtenAppBar(
             title: '委外领料拣货出仓',
             leading: UtenBackButton(
-              onPressed: busy
-                  ? null
-                  : () => backTo(
-                      context,
-                      defaultPath: RouteName.warehouseSubcontractOutbound,
-                    ),
+              enabled: !busy,
+              onPressed: () => backTo(
+                context,
+                defaultPath: RouteName.warehouseSubcontractOutbound,
+              ),
             ),
             actions: [
               UtenAppBarActionButton(

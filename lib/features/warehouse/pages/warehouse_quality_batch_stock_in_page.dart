@@ -519,12 +519,11 @@ class _WarehouseQualityBatchStockInPageState
             title: '批量入库 · ${_receipts.length} 张收货单',
             leading: UtenBackButton(
               color: _saving ? theme.disabledColor : null,
-              onPressed: _saving
-                  ? null
-                  : () => popOrBackTo(
-                      context,
-                      defaultPath: RouteName.warehouseQualityResults,
-                    ),
+              enabled: !_saving,
+              onPressed: () => popOrBackTo(
+                context,
+                defaultPath: RouteName.warehouseQualityResults,
+              ),
             ),
             actions: [
               UtenAppBarActionButton(

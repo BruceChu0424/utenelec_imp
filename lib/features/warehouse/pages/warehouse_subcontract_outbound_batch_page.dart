@@ -1405,9 +1405,8 @@ class _WarehouseSubcontractOutboundBatchPageState
           appBar: UtenAppBar(
             title: l10n.warehouseSubcontractOutboundBatchTitle,
             leading: UtenBackButton(
-              onPressed: _saving || _confirming
-                  ? null
-                  : () => Navigator.of(context).pop(_changed),
+              enabled: !(_saving || _confirming),
+              onPressed: () => Navigator.of(context).pop(_changed),
             ),
           ),
           body: Stack(

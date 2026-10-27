@@ -406,7 +406,8 @@ class _ProductionDrawRequestPageState
           appBar: UtenAppBar(
             title: '领料汇总',
             leading: UtenBackButton(
-              onPressed: _saving || _uncertain ? null : _back,
+              enabled: !(_saving || _uncertain),
+              onPressed: _back,
             ),
             actions: [
               UtenRefreshButton(

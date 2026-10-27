@@ -3334,6 +3334,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   final _localWindowSlots = <Object, _MasterWindowSlot>{};
   final _deferredRowMounts = <Object, UtenDeferredRowMountController>{};
   final _deferredRowHeights = <Object, double>{};
+  List<Object> _fallbackPlanIds = const [];
+  Set<Object> _immediateFallbackMountIds = const {};
   final _measurementRowMounts = <Object, UtenDeferredRowMountController>{};
   bool _deferredFallbackActive = false;
   bool _deferredLeadingEdge = false;
@@ -3345,6 +3347,53 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int _deferredEdgePasses = 0;
   List<String>? _textSelectionColumnKeys;
   List<String>? _textSelectionRowKeys;
+
+  void _trackFallbackInsertion(List<Object> ids, {required bool eligible}) {
+    if (listEquals(ids, _fallbackPlanIds)) {
+      if (!eligible) _immediateFallbackMountIds = const {};
+      return;
+    }
+    final previous = _fallbackPlanIds;
+    _fallbackPlanIds = ids;
+    _immediateFallbackMountIds = const {};
+    if (!eligible || previous.isEmpty) return;
+    final oldIds = previous.toSet();
+    final newIds = ids.toSet();
+    final inserted = newIds.difference(oldIds);
+    // Keep cold loads, replacements, sorting and large expansions staged.
+    // A stable, small insertion may present its first visible rows immediately.
+    if (oldIds.length != previous.length ||
+        newIds.length != ids.length ||
+        inserted.isEmpty ||
+        inserted.length > 4 ||
+        !newIds.containsAll(oldIds) ||
+        !listEquals(ids.where(oldIds.contains).toList(), previous)) {
+      return;
+    }
+    final ready = <Object>{};
+    for (var start = 0; start < ids.length; start++) {
+      if (!inserted.contains(ids[start])) continue;
+      var end = start + 1;
+      while (end < ids.length && inserted.contains(ids[end])) {
+        end++;
+      }
+      final mountedBefore =
+          start > 0 &&
+          _deferredRowMounts[ids[start - 1]]?.hasMountedContent == true;
+      final mountedAfter =
+          end < ids.length &&
+          _deferredRowMounts[ids[end]]?.hasMountedContent == true;
+      if (mountedBefore || mountedAfter) ready.addAll(ids.getRange(start, end));
+      start = end - 1;
+    }
+    if (ready.isEmpty) return;
+    _immediateFallbackMountIds = ready;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (identical(_immediateFallbackMountIds, ready)) {
+        _immediateFallbackMountIds = const {};
+      }
+    });
+  }
 
   /// 手动双击检测（列表页「单击选中、双击打开」）：上次点击的行键与时刻。
   /// 用 package:clock 的 [clock]（widget 测试环境为 fake clock，随 pump 推进）
@@ -5871,11 +5920,31 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         plan.length >= UtenAncestorRowWindow.minimumStagedRows;
     _deferredFallbackActive = stageFallbackRows;
     if (window == null) {
-      final currentIds = {for (var i = 0; i < plan.length; i++) mountId(i)};
+      final orderedIds = [for (var i = 0; i < plan.length; i++) mountId(i)];
+      final stableRowIds =
+          (widget.rowKeyOf != null || widget.idOf != null) &&
+          plan.every((row) {
+            final item = row.item;
+            if (item == null) return true;
+            final id = widget.rowKeyOf?.call(item) ?? widget.idOf?.call(item);
+            return id != null && id.isNotEmpty;
+          });
+      _trackFallbackInsertion(
+        orderedIds,
+        eligible:
+            !_automaticPagination &&
+            widget.onLoadMore == null &&
+            !_prepending &&
+            stableRowIds,
+      );
+      final currentIds = orderedIds.toSet();
       _deferredRowMounts.removeWhere((id, _) => !currentIds.contains(id));
       if (!_prepending) {
         _deferredRowHeights.removeWhere((id, _) => !currentIds.contains(id));
       }
+    } else {
+      _fallbackPlanIds = const [];
+      _immediateFallbackMountIds = const {};
     }
     Widget buildFallbackRow(BuildContext context, int index) {
       if (index >= plan.length || plan[index].item == null) {
@@ -5898,6 +5967,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         estimatedExtent: _deferredRowHeights[id] ?? estimatedRowExtent,
         onExtentMeasured: (height) => _deferredRowHeights[id] = height,
         deferNewMounts: stageFallbackRows,
+        admitOnFirstFrame: _immediateFallbackMountIds.contains(id),
         expensive: _expensiveRowMounts,
         builder: (context) => buildRow(context, index),
       );

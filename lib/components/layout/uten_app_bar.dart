@@ -293,14 +293,14 @@ class _UtenAppBarState extends State<UtenAppBar> {
                   ? const UtenBackButton()
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
-          // 返回键槽宽=按钮宽（2026-10-24 按钮==图标口径）：桌面端按钮收紧到
-          // 24×24，图标落在 x=0 且标题紧随其后（此前 40 宽槽在图标和标题之间
-          // 留出 ~36px 死区）；触屏端槽宽=主题最小命中区。IconButton 型 leading
-          // 会被 AppBar 居中在槽内，按钮自身贴左对齐（UtenBackButton
-          // centerStart）保证图标不缩进。非返回键型 leading 维持默认 56 槽不动。
+          // 图标仍贴左，原有标题前空隙由返回键的命中区接管。
+          // 非返回型 leading 沿用 AppBar 的默认槽宽和标题间距。
           leadingWidth: (showBackButton || leading is UtenBackButton)
               ? UtenBackButton.slotWidth(context)
               : (leading == null && !showBackButton ? 0 : null),
+          titleSpacing: (showBackButton || leading is UtenBackButton)
+              ? 0
+              : null,
           actions: [
             ConstrainedBox(
               constraints: BoxConstraints(maxWidth: actionBudget),

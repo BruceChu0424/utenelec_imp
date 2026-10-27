@@ -362,23 +362,9 @@ class _AdminDepartmentPermViewState
             },
           ),
         ),
-        _scopeNotice(),
-        const SizedBox(height: UtenSpacing.s16),
       ],
     );
   }
-
-  Widget _scopeNotice() => UtenCard(
-    margin: const EdgeInsets.only(top: UtenSpacing.s4),
-    child: Text(
-      '勾选的权限会授予该部门及其下级部门员工。'
-      '只能逐人授予的权限，请到「按员工」配置。',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        height: 1.5,
-      ),
-    ),
-  );
 
   Widget _details({required bool preserveStart}) {
     final theme = Theme.of(context);

@@ -1048,7 +1048,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         child: Scaffold(
           appBar: UtenAppBar(
             title: l10n.hrReconcileTitle,
-            leading: UtenBackButton(onPressed: _busy ? null : _handleLeave),
+            leading: UtenBackButton(enabled: !_busy, onPressed: _handleLeave),
             actions: [
               if (canReadRecords)
                 IconButton(

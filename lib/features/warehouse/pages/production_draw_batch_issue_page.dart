@@ -1002,12 +1002,11 @@ class _ProductionDrawBatchIssuePageState
           appBar: UtenAppBar(
             title: '批量出库详情',
             leading: UtenBackButton(
-              onPressed: _saving
-                  ? null
-                  : () => popOrBackTo(
-                      context,
-                      defaultPath: RouteName.warehouseDrawTasks,
-                    ),
+              enabled: !_saving,
+              onPressed: () => popOrBackTo(
+                context,
+                defaultPath: RouteName.warehouseDrawTasks,
+              ),
             ),
           ),
           body: SafeArea(

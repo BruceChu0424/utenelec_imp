@@ -438,13 +438,11 @@ class _ProductionFinishedBatchStockInPageState
             title: '批量点收 · ${rows.length} 张',
             leading: UtenBackButton(
               color: _busy ? theme.disabledColor : null,
-              onPressed: _busy
-                  ? null
-                  : () => popOrBackTo(
-                      context,
-                      defaultPath:
-                          RouteName.warehouseProductionFinishedInboundTasks,
-                    ),
+              enabled: !_busy,
+              onPressed: () => popOrBackTo(
+                context,
+                defaultPath: RouteName.warehouseProductionFinishedInboundTasks,
+              ),
             ),
           ),
           body: SafeArea(

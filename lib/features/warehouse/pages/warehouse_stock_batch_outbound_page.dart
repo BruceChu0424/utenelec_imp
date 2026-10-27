@@ -475,9 +475,8 @@ class _WarehouseStockBatchOutboundPageState
         appBar: UtenAppBar(
           title: _inbound ? '批量入库核对' : l10n.warehouseStockOutboundTitle,
           leading: UtenBackButton(
-            onPressed: _saving
-                ? null
-                : () => Navigator.of(context).pop(_doneIds.isNotEmpty),
+            enabled: !_saving,
+            onPressed: () => Navigator.of(context).pop(_doneIds.isNotEmpty),
           ),
           actions: [
             UtenAppBarActionButton(

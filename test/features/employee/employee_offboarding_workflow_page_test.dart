@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -95,6 +96,16 @@ void main() {
     expect(find.textContaining('离职员工'), findsWidgets);
     await _fillDepartureAndContinue(tester);
     expect(find.text('当前没有需要移交的责任数据，可不选择默认接手人。'), findsOneWidget);
+
+    final backRect = tester.getRect(find.byType(UtenBackButton));
+    await tester.tapAt(backRect.centerRight - const Offset(1, 0));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Stepper>(find.byType(Stepper)).currentStep,
+      0,
+      reason: '返回键右侧留白沿用向导上一步行为',
+    );
+    await _tapNext(tester);
 
     await _tapNext(tester); // 数据盘点
     expect(find.text('没有需要交接的数据'), findsOneWidget);

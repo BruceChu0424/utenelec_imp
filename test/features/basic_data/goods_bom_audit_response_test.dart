@@ -237,7 +237,7 @@ void main() {
   );
 
   testWidgets(
-    'a subtree GET overlapping audit is reread before adding its nodes',
+    'tree prefetch waits for an overlapping audit before publishing aliases',
     (tester) async {
       final repo = _AuditRepository({
         'goods-a': [
@@ -248,52 +248,42 @@ void main() {
       });
       await _pumpTab(tester, repo);
       await _expand(tester, 'row-left');
-      // A completed audit invalidates this parent's cached alias snapshot.
-      // The next alias must perform a fresh GET, which can overlap a later PUT.
+      final oldSharedAction = _auditButton(tester, _markTooltip, 1).onPressed!;
       await tester.tap(find.byTooltip(_markTooltip).at(1));
       await tester.pump();
+      final rootRead = repo.delayNextList('goods-a');
+      _table(tester).onRetry!();
+      await _pumpFrames(tester);
+      expect(repo.listCalls, ['goods-a', 'goods-shared', 'goods-a']);
+
+      // No new write may start while a complete candidate tree is preparing.
+      oldSharedAction();
+      await tester.pump();
+      expect(repo.requests, hasLength(1));
       repo.tree['goods-shared'] = [
-        _item('row-shared', 'goods-y', '原始组件', audited: true),
+        _item('row-shared', 'goods-y', '最新组件', audited: true),
       ];
       repo.requests.single.result.complete(
-        _item('row-shared', 'goods-y', '原始组件', audited: true),
+        _item('row-shared', 'goods-y', '最新组件', audited: true),
       );
       await _pumpFrames(tester);
-      final staleRead = repo.delayNextList('goods-shared');
-      await tester.tap(
-        find.byKey(const ValueKey('goods-bom-tree-toggle-row-right')),
-      );
-      await _pumpFrames(tester);
-      expect(repo.listCalls, ['goods-a', 'goods-shared', 'goods-shared']);
 
-      await tester.tap(find.byTooltip(_unmarkTooltip));
-      await tester.pump();
-      expect(repo.requests.last.identity, (
-        'goods-shared',
-        'row-shared',
-        false,
-      ));
-      repo.tree['goods-shared'] = [_item('row-shared', 'goods-y', '最新组件')];
-      repo.requests.last.result.complete(
-        _item('row-shared', 'goods-y', '最新组件'),
-      );
-      await _pumpFrames(tester);
-      expect(find.byTooltip(_unmarkTooltip), findsNothing);
-
-      // This GET began before the PUT, but its obsolete snapshot arrives last.
-      staleRead.complete([
-        _item('row-shared', 'goods-y', '过期组件', audited: true),
-      ]);
+      // The root GET began while the audit was pending. Its subtree is read
+      // only after the PUT completes, then the complete alias snapshot appears.
+      rootRead.complete(List.of(repo.tree['goods-a']!));
       await tester.pumpAndSettle();
       expect(repo.listCalls, [
         'goods-a',
         'goods-shared',
-        'goods-shared',
+        'goods-a',
         'goods-shared',
       ]);
+      final preparedReads = List<String>.of(repo.listCalls);
+      await _expand(tester, 'row-right');
       expect(find.text('最新组件'), findsNWidgets(2));
-      expect(find.text('过期组件'), findsNothing);
-      expect(find.byTooltip(_unmarkTooltip), findsNothing);
+      expect(find.text('原始组件'), findsNothing);
+      expect(find.byTooltip(_unmarkTooltip), findsNWidgets(2));
+      expect(repo.listCalls, preparedReads, reason: '别名展开只展示已准备的完整快照');
       expect(tester.takeException(), isNull);
     },
   );
@@ -316,18 +306,21 @@ void main() {
 
         await tester.tap(find.byTooltip(_markTooltip).first);
         await tester.pump();
-        repo.requests.single.result.complete(
-          _item(
-            'row-a1',
-            changedIdentity ? 'goods-new' : 'goods-x',
-            '变更后的父组件',
-            audited: true,
-            hasChildren: changedIdentity,
-          ),
+        final updated = _item(
+          'row-a1',
+          changedIdentity ? 'goods-new' : 'goods-x',
+          '变更后的父组件',
+          audited: true,
+          hasChildren: changedIdentity,
         );
+        repo.tree['goods-a'] = [updated];
+        repo.requests.single.result.complete(updated);
         await tester.pumpAndSettle();
 
-        expect(repo.listCalls, loaded);
+        final preparedReads = changedIdentity
+            ? [...loaded, 'goods-a', 'goods-new']
+            : loaded;
+        expect(repo.listCalls, preparedReads);
         expect(find.text('变更后的父组件'), findsOneWidget);
         expect(find.text('旧子件'), findsNothing);
         expect(_table(tester).selectedIds, isEmpty);
@@ -340,31 +333,108 @@ void main() {
           await _expand(tester, 'row-a1');
           expect(find.text('新子件'), findsOneWidget);
           expect(find.text('旧子件'), findsNothing);
-          expect(repo.listCalls, [...loaded, 'goods-new']);
+          expect(repo.listCalls, preparedReads, reason: '新组件子树在审计回包后已预读');
         }
         expect(tester.takeException(), isNull);
       },
     );
   }
 
+  testWidgets('replacing an audited shared component also resets hidden aliases', (
+    tester,
+  ) async {
+    final repo = _AuditRepository({
+      'goods-a': [
+        _item('row-left', 'goods-shared', '左装配', hasChildren: true),
+        _item('row-right', 'goods-shared', '右装配', hasChildren: true),
+      ],
+      'goods-shared': [
+        _item('row-shared', 'goods-old', '共同父组件', hasChildren: true),
+      ],
+      'goods-old': [_item('row-old', 'old-leaf', '旧子件')],
+      'goods-new': [_item('row-new', 'new-leaf', '新子件')],
+    });
+    await _pumpTab(tester, repo);
+    await _expand(tester, 'row-left');
+    await _expand(tester, 'row-shared');
+    await _expand(tester, 'row-right');
+    await tester.tap(
+      find.byKey(const ValueKey('goods-bom-tree-toggle-row-shared')).last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('旧子件'), findsNWidgets(2));
+    await _expand(tester, 'row-right');
+    expect(find.text('旧子件'), findsOneWidget);
+
+    await tester.tap(find.byTooltip(_markTooltip).at(1));
+    await tester.pump();
+    final updated = _item(
+      'row-shared',
+      'goods-new',
+      '新的共同父组件',
+      audited: true,
+      hasChildren: true,
+    );
+    repo.tree['goods-shared'] = [updated];
+    repo.requests.single.result.complete(updated);
+    await tester.pumpAndSettle();
+    final preparedReads = List<String>.of(repo.listCalls);
+    await _expand(tester, 'row-right');
+
+    final aliases = tester.widgetList<UtenTreeTableCell>(
+      find.byKey(const ValueKey('goods-bom-tree-cell-row-shared')),
+    );
+    expect(aliases.map((cell) => cell.expanded), [false, false]);
+    expect(find.text('新子件'), findsNothing);
+    expect(find.text('旧子件'), findsNothing);
+    expect(repo.listCalls, preparedReads, reason: '重新打开别名只使用完整预读快照');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('audit turning an existing component into a branch prefetches it', (
+    tester,
+  ) async {
+    final repo = _AuditRepository({
+      'goods-a': [_item('row-a1', 'goods-x', '原叶组件')],
+    });
+    await _pumpTab(tester, repo);
+    await tester.tap(find.byTooltip(_markTooltip));
+    await tester.pump();
+    final updated = _item(
+      'row-a1',
+      'goods-x',
+      '已有下级的组件',
+      audited: true,
+      hasChildren: true,
+    );
+    repo.tree['goods-a'] = [updated];
+    repo.tree['goods-x'] = [_item('row-child', 'goods-y', '新下级')];
+    repo.requests.single.result.complete(updated);
+    await tester.pumpAndSettle();
+
+    expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
+    expect(find.text('新下级'), findsNothing);
+    await _expand(tester, 'row-a1');
+    expect(find.text('新下级'), findsOneWidget);
+    expect(repo.listCalls, ['goods-a', 'goods-a', 'goods-x']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'an old subtree expansion cannot attach beneath a changed component',
+    'an older tree prefetch cannot attach beneath a refreshed component',
     (tester) async {
       final repo = _AuditRepository({
         'goods-a': [_item('row-a1', 'goods-x', '原父组件', hasChildren: true)],
+        'goods-x': [_item('row-x1', 'goods-y', '旧子件')],
         'goods-new': [_item('row-new1', 'goods-z', '新子件')],
       });
       await _pumpTab(tester, repo);
       final oldChildren = repo.delayNextList('goods-x');
-      await tester.tap(
-        find.byKey(const ValueKey('goods-bom-tree-toggle-row-a1')),
-      );
+      _table(tester).onRetry!();
       await _pumpFrames(tester);
-      expect(repo.listCalls, ['goods-a', 'goods-x']);
+      expect(repo.listCalls, ['goods-a', 'goods-x', 'goods-a', 'goods-x']);
 
-      await tester.tap(find.byTooltip(_markTooltip));
-      await tester.pump();
-      repo.requests.single.result.complete(
+      repo.tree['goods-a'] = [
         _item(
           'row-a1',
           'goods-new',
@@ -372,7 +442,8 @@ void main() {
           audited: true,
           hasChildren: true,
         ),
-      );
+      ];
+      _table(tester).onRetry!();
       await _pumpFrames(tester);
       oldChildren.complete([_item('row-x1', 'goods-y', '旧子件')]);
       await tester.pumpAndSettle();
@@ -386,7 +457,14 @@ void main() {
       expect(cell.subtitle, isNull);
       await _expand(tester, 'row-a1');
       expect(find.text('新子件'), findsOneWidget);
-      expect(repo.listCalls, ['goods-a', 'goods-x', 'goods-new']);
+      expect(repo.listCalls, [
+        'goods-a',
+        'goods-x',
+        'goods-a',
+        'goods-x',
+        'goods-a',
+        'goods-new',
+      ]);
       expect(tester.takeException(), isNull);
     },
   );

@@ -71,6 +71,7 @@ class UtenDeferredRowMount extends StatefulWidget {
     required this.builder,
     required this.estimatedExtent,
     this.deferNewMounts = true,
+    this.admitOnFirstFrame = false,
     this.expensive = true,
     this.onExtentMeasured,
   });
@@ -78,6 +79,10 @@ class UtenDeferredRowMount extends StatefulWidget {
   final WidgetBuilder builder;
   final double estimatedExtent;
   final bool deferNewMounts;
+
+  /// A small insertion beside already mounted content can skip the empty
+  /// shell frame. Admission still consumes the shared per-frame mount budget.
+  final bool admitOnFirstFrame;
   final bool expensive;
   final ValueChanged<double>? onExtentMeasured;
   @override
@@ -161,7 +166,7 @@ class _UtenDeferredRowMountState extends State<UtenDeferredRowMount> {
     if (!_admitted &&
         _active &&
         (!widget.deferNewMounts ||
-            (_shellLaidOut &&
+            ((_shellLaidOut || widget.admitOnFirstFrame) &&
                 _RowMountBudget.take(expensive: widget.expensive)))) {
       _admitted = true;
       _needsLayout = true;

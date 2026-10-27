@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -633,10 +634,10 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       child: Scaffold(
         appBar: UtenAppBar(
           title: l10n.employeeOnboardTitle,
-          leading: IconButton(
+          leading: UtenBackButton(
             tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-            onPressed: _submitting ? null : _backOrClose,
-            icon: const Icon(Icons.arrow_back_rounded),
+            enabled: !_submitting,
+            onPressed: _backOrClose,
           ),
         ),
         // 2026-09-14 UI 统一口径：向导操作走右下悬浮组（上一步 secondary /

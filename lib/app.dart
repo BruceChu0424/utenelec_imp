@@ -13,6 +13,7 @@ import 'core/platform/platform_window_title.dart';
 import 'core/platform/desktop_window.dart';
 import 'core/responsive/display_zoom.dart';
 import 'core/router/app_router.dart';
+import 'core/router/page_resume_provider.dart';
 import 'core/router/route_names.dart';
 import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
@@ -213,23 +214,24 @@ class UtenApp extends ConsumerWidget {
             ),
           ),
         );
-        return ListenableBuilder(
-          listenable: router.routeInformationProvider,
+        return Consumer(
           child: appContent,
-          builder: (context, child) => DesktopWindowHost(
-            overlayControls:
-                router.routeInformationProvider.value.uri.path ==
-                RouteName.login,
-            // Rescue has its own access checks and needs the regular workspace
-            // even when the business session is unavailable.
-            mode:
-                session.isLoggedIn ||
-                    router.routeInformationProvider.value.uri.path ==
-                        RouteName.disasterRecovery
-                ? DesktopWindowMode.main
-                : DesktopWindowMode.login,
-            child: child!,
-          ),
+          builder: (context, ref, child) {
+            // push keeps the address at its source route. Use the actual top
+            // page so login's transparent drag strip cannot cover recovery.
+            // The shared route observer defers notifications out of build.
+            final location = ref.watch(
+              pageResumeProvider.select((state) => state.location),
+            );
+            return DesktopWindowHost(
+              overlayControls: location == RouteName.login,
+              // Recovery needs the regular workspace without a business session.
+              mode: session.isLoggedIn || location == RouteName.disasterRecovery
+                  ? DesktopWindowMode.main
+                  : DesktopWindowMode.login,
+              child: child!,
+            );
+          },
         );
       },
 

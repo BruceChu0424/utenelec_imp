@@ -329,7 +329,7 @@ class _SubcontractDrawRequestPageState
       child: Scaffold(
         appBar: UtenAppBar(
           title: '委外领料',
-          leading: UtenBackButton(onPressed: _saving ? null : _back),
+          leading: UtenBackButton(enabled: !_saving, onPressed: _back),
           actions: [
             UtenRefreshButton(
               key: const Key('subcontract-draw-request-refresh'),

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -191,8 +192,8 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
         const SizedBox(height: UtenSpacing.s16),
         Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
+            UtenBackButton(
+              tooltip: MaterialLocalizations.of(context).backButtonTooltip,
               onPressed: () => context.go(RouteName.entry),
             ),
             Text(

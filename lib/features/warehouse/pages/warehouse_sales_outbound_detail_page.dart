@@ -433,12 +433,11 @@ class _WarehouseSalesOutboundDetailPageState
           appBar: UtenAppBar(
             title: '销售出库详情',
             leading: UtenBackButton(
-              onPressed: _acting
-                  ? null
-                  : () => popOrBackTo(
-                      context,
-                      defaultPath: '/warehouse/sales-outbound',
-                    ),
+              enabled: !_acting,
+              onPressed: () => popOrBackTo(
+                context,
+                defaultPath: '/warehouse/sales-outbound',
+              ),
             ),
             actions: [
               UtenAppBarActionButton(

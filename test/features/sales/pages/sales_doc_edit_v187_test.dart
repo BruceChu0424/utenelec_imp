@@ -7,6 +7,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -77,6 +78,19 @@ void main() {
         tester.widget<PopScope>(find.byType(PopScope).first).canPop,
         isFalse,
       );
+      final back = find.byType(UtenBackButton);
+      expect(tester.widget<UtenBackButton>(back).enabled, isFalse);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.descendant(of: back, matching: find.byType(IconButton)),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(back, warnIfMissed: false);
+      await tester.pump();
+      expect(find.byType(SalesDocEditPage), findsOneWidget);
       await tester.tap(find.text('重试确认开单'));
       await tester.pumpAndSettle();
       expect(api.batchBodies, hasLength(2));

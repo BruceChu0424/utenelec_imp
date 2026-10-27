@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -395,11 +396,7 @@ class _EmployeeOffboardingWorkflowPageState
       return Scaffold(
         appBar: UtenAppBar(
           title: '离职办理',
-          leading: IconButton(
-            tooltip: '返回',
-            onPressed: _backOrClose,
-            icon: const Icon(Icons.arrow_back_rounded),
-          ),
+          leading: UtenBackButton(tooltip: '返回', onPressed: _backOrClose),
         ),
         body: UtenEmpty.error(
           message: _loadError,
@@ -417,10 +414,10 @@ class _EmployeeOffboardingWorkflowPageState
         appBar: UtenAppBar(
           title: '离职办理',
           subtitle: '${_employee!.fullName ?? '未命名员工'} · ${_employee!.code}',
-          leading: IconButton(
+          leading: UtenBackButton(
             tooltip: '返回',
-            onPressed: _submitting ? null : _backOrClose,
-            icon: const Icon(Icons.arrow_back_rounded),
+            enabled: !_submitting,
+            onPressed: _backOrClose,
           ),
         ),
         body: UtenContentContainer.narrow(

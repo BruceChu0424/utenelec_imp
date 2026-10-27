@@ -133,6 +133,7 @@ Future<GoodsBomEditTestApi> _pump(
   WidgetTester tester,
   _TreeRepo repo, {
   bool editing = false,
+  bool settle = true,
   Size size = const Size(1800, 1100),
   double fontScale = 1,
   TargetPlatform platform = TargetPlatform.windows,
@@ -181,7 +182,13 @@ Future<GoodsBomEditTestApi> _pump(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+  }
   if (editing) await enterBomEdit(tester);
   return api;
 }
@@ -223,15 +230,6 @@ _TreeRepo _twelvePendingBranches() {
   return repo;
 }
 
-Future<void> _tapTwelveBranches(WidgetTester tester) async {
-  for (var index = 0; index < 12; index++) {
-    final toggle = _toggle('root/row-$index', 'row-$index');
-    await tester.ensureVisible(toggle);
-    await tester.tap(toggle);
-    await tester.pump();
-  }
-}
-
 void _completePendingBranches(_TreeRepo repo) {
   for (final entry in repo.pending.entries) {
     if (!entry.value.isCompleted) entry.value.complete(repo.tree[entry.key]!);
@@ -239,6 +237,51 @@ void _completePendingBranches(_TreeRepo repo) {
 }
 
 void main() {
+  testWidgets('预读完整保留超过十层的合法组件树', (tester) async {
+    final repo = _TreeRepo();
+    repo.tree['root'] = [_item('node-0', 'g-0')];
+    for (var depth = 0; depth < 14; depth++) {
+      repo.tree['g-$depth'] = [
+        _item('node-${depth + 1}', 'g-${depth + 1}', branch: depth < 13),
+      ];
+    }
+    await _pump(tester, repo);
+    expect(repo.calls, hasLength(15), reason: '根与全部十四个有子级父件均已预读');
+    expect(repo.count('g-13'), 1);
+    expect(_row('root/node-0/node-1'), findsNothing);
+    final reads = repo.calls.length;
+    await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(table.items, hasLength(15), reason: '展示投影不能在第十层静默截断');
+    final deepest = find.byKey(const ValueKey('goods-bom-tree-cell-node-14'));
+    expect(tester.widget<UtenTreeTableCell>(deepest).depth, 14);
+    expect(repo.calls, hasLength(reads), reason: '全部展开只切换已预读快照');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('路径成环明确报错可重试，不无限请求或发布残缺树', (tester) async {
+    final repo = _TreeRepo();
+    repo.tree['root'] = [_item('root-a', 'assembly-a')];
+    repo.tree['assembly-a'] = [_item('a-root', 'root')];
+    await _pump(tester, repo);
+    expect(repo.calls, ['root', 'assembly-a']);
+    expect(find.text('组装信息存在循环引用，请检查组件关系后重试。'), findsOneWidget);
+    expect(_row('root/root-a'), findsNothing);
+    repo.tree['assembly-a'] = [_item('valid-leaf', 'leaf', branch: false)];
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(_row('root/root-a'), findsOneWidget);
+    expect(_row('root/root-a/valid-leaf'), findsNothing);
+    await tester.tap(_toggle('root/root-a', 'root-a'));
+    await tester.pump();
+    expect(_row('root/root-a/valid-leaf'), findsOneWidget);
+    expect(repo.calls, ['root', 'assembly-a', 'root', 'assembly-a']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('树展开收起逐帧保留已经呈现的名称列宽', (tester) async {
     final repo = _TreeRepo();
     repo.tree['root'] = [
@@ -270,69 +313,79 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('普通十二箭头连点只发送四次，失败释放槽且可重试', (tester) async {
+  testWidgets('整树预读只并发四次，失败立即显示重试且不发布残缺树', (tester) async {
     final repo = _twelvePendingBranches();
-    await _pump(tester, repo);
-    await _tapTwelveBranches(tester);
-    expect(repo.calls.length, 5, reason: '一个根清单和四个实际子清单，其余八个排队');
+    await _pump(tester, repo, settle: false);
+    expect(repo.calls.length, 5, reason: '根清单与四个实际子清单，其余尚未发送');
     expect(repo.peak, 4);
+    expect(_row('root/row-0'), findsNothing);
     repo.pending['goods-0']!.completeError(StateError('first read failed'));
-    for (var frame = 0; frame < 10 && repo.count('goods-4') == 0; frame++) {
-      await tester.pump(const Duration(milliseconds: 20));
-    }
-    expect(repo.count('goods-4'), 1, reason: '失败立即把实际请求槽交给排队读取');
+    await tester.pumpAndSettle();
+    expect(find.text('加载组装信息失败'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+    expect(repo.active, 3, reason: '失败不用等待其他慢响应才显示重试');
     _completePendingBranches(repo);
     await tester.pumpAndSettle();
-    expect(repo.peak, 4);
-    expect(repo.calls.length, 13);
-    repo.pending.remove('goods-0');
-    final first = _toggle('root/row-0', 'row-0');
-    await tester.ensureVisible(first);
-    await tester.tap(first);
+    expect(repo.calls, hasLength(5), reason: '失败后不继续准备和发布残缺快照');
+    repo.pending.clear();
+    await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
+    expect(repo.peak, lessThanOrEqualTo(4));
     expect(repo.count('goods-0'), 2);
+    expect(_row('root/row-0/child-0'), findsNothing, reason: '完整预读后默认仍折叠');
+    final reads = repo.calls.length;
+    await tester.tap(_toggle('root/row-0', 'row-0'));
+    await tester.pump();
+    expect(
+      tester
+          .widget<UtenTreeTableCell>(
+            find.byKey(const ValueKey('goods-bom-tree-cell-row-0')),
+          )
+          .expanded,
+      isTrue,
+    );
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const ValueKey('goods-bom-table-true-false')),
+    );
+    expect(table.items, hasLength(13));
     expect(_row('root/row-0/child-0'), findsOneWidget);
+    expect(repo.calls, hasLength(reads));
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('普通排队时刷新退休未发请求，新代不等待旧慢请求', (tester) async {
+  testWidgets('整树预读时刷新退休旧队列，新代不等待旧慢请求且丢弃迟到回包', (tester) async {
     final repo = _twelvePendingBranches();
-    await _pump(tester, repo);
-    await _tapTwelveBranches(tester);
+    await _pump(tester, repo, settle: false);
+    repo.tree['root'] = [_item('row-11', 'goods-11')];
+    repo.pending.remove('goods-11');
     final refreshing = tester
         .state<GoodsBomTabState>(find.byType(GoodsBomTab))
         .refresh();
     await tester.pumpAndSettle();
     await refreshing;
     expect(repo.count('root'), 2);
-    expect(repo.calls.length, 6);
-    final last = _toggle('root/row-11', 'row-11');
-    await tester.ensureVisible(last);
-    await tester.tap(last);
+    expect(repo.count('goods-11'), 1, reason: '新代有独立槽，不等旧四个慢GET');
+    expect(_row('root/row-11/child-11'), findsNothing);
+    await tester.tap(_toggle('root/row-11', 'row-11'));
     await tester.pump();
-    expect(repo.count('goods-11'), 1, reason: '新读取代次有独立槽，不等旧四个慢GET');
+    expect(_row('root/row-11/child-11'), findsOneWidget);
     _completePendingBranches(repo);
     await tester.pumpAndSettle();
     for (var index = 4; index < 11; index++) {
-      expect(repo.count('goods-$index'), 0, reason: '退休的旧排队项未发送');
+      expect(repo.count('goods-$index'), 0, reason: '旧代尚未发送的后续子层被退休');
     }
     for (var index = 0; index < 4; index++) {
-      expect(
-        _row('root/row-$index/child-$index'),
-        findsNothing,
-        reason: '旧已发回包不发布',
-      );
+      expect(_row('root/row-$index'), findsNothing, reason: '旧已发回包不能发布');
     }
     expect(_row('root/row-11/child-11'), findsOneWidget);
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('普通排队时离开页面不再发送旧队列且观察已发请求完成', (tester) async {
+  testWidgets('整树预读时离开页面不再发送旧队列且观察已发请求完成', (tester) async {
     final repo = _twelvePendingBranches();
-    await _pump(tester, repo);
-    await _tapTwelveBranches(tester);
+    await _pump(tester, repo, settle: false);
     expect(repo.calls.length, 5);
     await tester.pumpWidget(const SizedBox.shrink());
     _completePendingBranches(repo);
@@ -383,8 +436,8 @@ void main() {
     expect(_row('root/root-c/a-x'), findsOneWidget);
     expect(repo.count('assembly-a'), 1);
     expect(repo.count('assembly-b'), 1);
-    expect(repo.count('shared-x'), 0, reason: 'Ctrl不递归请求孙层');
-    expect(repo.count('deep-leaf'), 0);
+    expect(repo.count('shared-x'), 1, reason: '进入时已经预读孙层，Ctrl仅切换同层显示');
+    expect(repo.count('deep-leaf'), 1);
     final calls = repo.calls.length;
     await _ctrlTap(tester, _toggle('root/root-b', 'root-b'));
     expect(_row('root/root-a/a-x'), findsNothing);
@@ -419,8 +472,8 @@ void main() {
     expect(_row('root/root-c/a-x/shared-leaf'), findsNothing);
     expect(repo.count('shared-x'), 1);
     expect(repo.count('part-y'), 1);
-    expect(repo.count('part-z'), 0);
-    expect(repo.count('deep-leaf'), 0);
+    expect(repo.count('part-z'), 1);
+    expect(repo.count('deep-leaf'), 1);
     final refreshing = tester
         .state<GoodsBomTabState>(find.byType(GoodsBomTab))
         .refresh();
@@ -466,30 +519,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('共享组件普通展开并发去重，完成后其他alias复用同代快照', (tester) async {
+  testWidgets('慢子层预读完成前不发布树，完成后别名单帧展开无新请求和空行', (tester) async {
     final repo = _TreeRepo();
     final pending = Completer<List<GoodsBomItem>>();
     repo.pending['assembly-a'] = pending;
-    await _pump(tester, repo);
-    await tester.tap(_toggle('root/root-a', 'root-a'));
-    await tester.pump();
-    await tester.tap(_toggle('root/root-c', 'root-c'));
-    await tester.pump();
-    expect(repo.count('assembly-a'), 1);
+    await _pump(tester, repo, settle: false);
+    expect(repo.count('assembly-a'), 1, reason: '共享父件的预读请求去重');
+    expect(_row('root/root-a'), findsNothing);
+    expect(_row('root/root-a/a-x'), findsNothing);
+    expect(find.text('正在加载下级…'), findsNothing);
     pending.complete(repo.tree['assembly-a']!);
     await tester.pumpAndSettle();
-    expect(_row('root/root-a/a-x'), findsOneWidget);
-    expect(_row('root/root-c/a-x'), findsOneWidget);
+    expect(_row('root/root-a'), findsOneWidget);
+    expect(_row('root/root-a/a-x'), findsNothing);
+    expect(repo.count('deep-leaf'), 1, reason: '所有可达深层也在发布前预读');
     final count = repo.calls.length;
+    await tester.tap(_toggle('root/root-a', 'root-a'));
+    await tester.pump();
+    expect(_row('root/root-a/a-x'), findsOneWidget);
+    expect(find.text('正在加载下级…'), findsNothing);
     await tester.tap(_toggle('root/root-c', 'root-c'));
-    await tester.pumpAndSettle();
-    await tester.tap(_toggle('root/root-c', 'root-c'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    expect(_row('root/root-c/a-x'), findsOneWidget);
     expect(repo.calls, hasLength(count));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('慢Ctrl连点忽略，展开收起切换保全编辑原文及控制器', (tester) async {
+  testWidgets('Ctrl展开收起只切换本地树，保全编辑原文及控制器', (tester) async {
     final repo = _TreeRepo();
     final api = await _pump(tester, repo, editing: true);
     final activateQty = find.byKey(
@@ -507,17 +563,8 @@ void main() {
     repo.pending['assembly-b'] = b;
     await _ctrlTap(tester, _toggle('root/root-a', 'root-a'), settle: false);
     await tester.pump();
-    await _ctrlTap(tester, _toggle('root/root-b', 'root-b'), settle: false);
-    expect(repo.count('assembly-a'), 1);
-    expect(repo.count('assembly-b'), 1);
-    expect(
-      await tester
-          .state<GoodsBomTabState>(find.byType(GoodsBomTab))
-          .finishEditing(),
-      isFalse,
-    );
-    a.complete(repo.tree['assembly-a']!);
-    b.complete(repo.tree['assembly-b']!);
+    expect(repo.count('assembly-a'), 2);
+    expect(repo.count('assembly-b'), 2);
     await tester.pumpAndSettle();
     expect(_row('root/root-c/a-x'), findsOneWidget);
     expect(tester.widget<TextField>(qty).controller, same(controller));
@@ -594,29 +641,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Ctrl一支失败立即退busy，不等待挂起兄弟，重试合并原挂起请求', (tester) async {
+  testWidgets('预读失败立即可重试，新快照不等待旧代挂起兄弟', (tester) async {
     final repo = _TreeRepo();
     final pending = Completer<List<GoodsBomItem>>();
     repo.pending['assembly-b'] = pending;
     repo.failOnce.add('assembly-a');
-    await _pump(tester, repo);
-    await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
+    await _pump(tester, repo, settle: false);
     expect(pending.isCompleted, isFalse);
-    expect(_row('root/root-a/a-x'), findsNothing);
-    expect(
-      tester.widget<IconButton>(_toggle('root/root-a', 'root-a')).onPressed,
-      isNotNull,
-      reason: '一个兄弟失败后不等待另一个慢响应就恢复重试入口',
-    );
-    await _ctrlTap(tester, _toggle('root/root-a', 'root-a'), settle: false);
-    await tester.pump();
-    expect(repo.count('assembly-a'), 2);
-    expect(repo.count('assembly-b'), 1, reason: '重试共享仍进行中的真实GET');
-    pending.complete(repo.tree['assembly-b']!);
+    expect(find.text('加载组装信息失败'), findsOneWidget);
+    expect(_row('root/root-a'), findsNothing);
+    repo.pending.remove('assembly-b');
+    await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
+    expect(repo.count('assembly-a'), 2);
+    expect(repo.count('assembly-b'), 2, reason: '重试用独立读取代次');
+    expect(_row('root/root-a/a-x'), findsNothing);
+    final reads = repo.calls.length;
+    await _ctrlTap(tester, _toggle('root/root-a', 'root-a'));
     expect(_row('root/root-a/a-x'), findsOneWidget);
     expect(_row('root/root-b/b-x'), findsOneWidget);
     expect(_row('root/root-c/a-x'), findsOneWidget);
+    pending.complete([_item('stale-child', 'stale-leaf', branch: false)]);
+    await tester.pumpAndSettle();
+    expect(_row('root/root-b/stale-child'), findsNothing);
+    expect(repo.calls, hasLength(reads));
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });
@@ -759,7 +807,7 @@ void main() {
     final bounds = tester.getRect(_row('root/root-a'));
     expect(tester.getRect(qty).top, greaterThanOrEqualTo(bounds.top));
     expect(tester.getRect(qty).bottom, lessThanOrEqualTo(bounds.bottom));
-    expect(repo.count('assembly-a'), 1);
+    expect(repo.count('assembly-a'), 2, reason: '查询和编辑快照各准备一次，显示切换不新增读取');
     expect(repo.writes, 0);
     expect(tester.takeException(), isNull);
   });

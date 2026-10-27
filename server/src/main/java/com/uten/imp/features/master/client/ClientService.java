@@ -647,7 +647,10 @@ public class ClientService {
                 m.getVersion(),
                 m.getNameEn(), List.of(), List.of(), false);
         item.setOwnerEmployeeIds(owners.stream().map(OwnerReference::id).toList());
-        item.setOwnerEmployeeNames(owners.stream().map(owner -> Objects.toString(owner.name(), "未命名员工")).toList());
+        // 首负责人名字解析不到(老库未匹配/悬空引用)不进多负责人展示，表格与导出兜底「未分配」；
+        // 共同负责人行由 JOIN employees 保证存在，名字空时在 ownerReferences 里显「未命名员工」。
+        item.setOwnerEmployeeNames(owners.stream().map(OwnerReference::name)
+                .filter(name -> name != null && !name.isBlank()).toList());
         item.setFinancialWritable(ClientFinancialPolicy.hasAuthority() && writableFromOwners(scope, owners));
         return item;
     }

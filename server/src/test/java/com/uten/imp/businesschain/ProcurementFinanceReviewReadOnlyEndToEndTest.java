@@ -101,11 +101,11 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         line.setRequestItemId(source.getItems().getFirst().getId());
         orderRequest.setItems(List.of(line));
         var order = orders.create(orderRequest);
-        assertExportBlocked(order.getId());
+        assertExportShowsPendingWithoutApprovalSignature(order.getId(), "草稿");
         UUID itemId = order.getItems().getFirst().getId();
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         var submitted = finance.submit("PURCHASE", order.getId());
-        assertExportBlocked(order.getId());
+        assertExportShowsPendingWithoutApprovalSignature(order.getId(), "等待财务审核");
         String original = snapshot(submitted.caseId());
 
         line.setPrice(BigDecimal.ZERO);
@@ -148,7 +148,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
                 List.of(new OrderQtyChangeItem(itemId, new BigDecimal("2")))));
         assertThat(changed.getStatus()).isEqualTo((short) 1);
         assertThat(changed.getFinanceApproval().status()).isEqualTo("PENDING");
-        assertExportBlocked(order.getId());
+        assertExportShowsPendingWithoutApprovalSignature(order.getId(), "改量待财务复核");
 
         fixture.loginAs(reviewer);
         var reconfirmation = changed.getFinanceApproval();
@@ -159,7 +159,7 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         assertThat(new BigDecimal(prints.read(order.getId()).lines().getFirst().chargedQty()))
                 .isEqualByComparingTo("2");
         orders.reverse(order.getId());
-        assertExportBlocked(order.getId());
+        assertExportShowsPendingWithoutApprovalSignature(order.getId(), "已反审");
     }
 
     @Test void independentSubcontractCanBeReviewedAndRejectedWithoutChangingTotalInputOrMaterialIdentity() {
@@ -219,11 +219,15 @@ class ProcurementFinanceReviewReadOnlyEndToEndTest {
         return db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?", String.class, caseId);
     }
 
-    private void assertExportBlocked(UUID orderId) {
-        assertThatThrownBy(() -> prints.read(orderId))
-                .isInstanceOfSatisfying(ApiException.class, failure -> {
-                    assertThat(failure.getCode()).isEqualTo(ErrorCode.BUSINESS);
-                    assertThat(failure.getMessage()).isEqualTo("仅财务审核通过的采购单可导出单据");
-                });
+    /**
+     * 2026-10-27 起采购/委外打印与批量输出取消财务审核前提（见 docs/99-项目治理/
+     * 2026-10-27-采购委外导出与差异数同步及分析恢复检查.md）：导出是只读事实快照，
+     * 待审状态如实显示，财务未通过不得生成审核人签名，也不得伪称已通过。
+     */
+    private void assertExportShowsPendingWithoutApprovalSignature(UUID orderId, String statusLabel) {
+        var document = prints.read(orderId);
+        assertThat(document.financeApproved()).isFalse();
+        assertThat(document.reviewerName()).isEmpty();
+        assertThat(document.statusLabel()).isEqualTo(statusLabel);
     }
 }

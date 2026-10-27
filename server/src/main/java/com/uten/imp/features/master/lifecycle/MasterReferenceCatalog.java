@@ -640,6 +640,9 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "成本导入映射的产品身份快照；正式成本引用由成本单守卫覆盖", "goods_cost_import_mappings", "goods_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户收货地址", "client_ship_addresses", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "客户可见人授权", "client_visibility_grants", "client_id");
+        // V948: 多负责人是客户自己的责任配置(首负责人仍在 clients.owner_employee_id), 停用客户后自然失效;
+        // 员工离职前的责任交接由 trg_client_co_owner_offboarding 强制, 不算在办业务引用。
+        exempt(out, ExemptReason.OWN_CONFIG, "客户共同负责人(多负责人配置)", "client_co_owners", "client_id");
         exempt(out, ExemptReason.OWN_CONFIG, "货品在仓库里的默认存放位置", "warehouse_goods_place_preferences",
                 "goods_id", "color_id", "warehouse_id");
         // V693(ADR-115): 负责关系是仓库自己的附属设置, 删仓库后负责人自然失效, 不算「还在用」。

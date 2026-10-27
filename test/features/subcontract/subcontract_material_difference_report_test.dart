@@ -35,11 +35,11 @@ void main() {
                 Perm.subcontractReportExport,
               }),
             ],
-            child: MaterialApp(
-              locale: const Locale('zh'),
+            child: const MaterialApp(
+              locale: Locale('zh'),
               supportedLocales: AppLocalizations.supportedLocales,
               localizationsDelegates: AppLocalizations.localizationsDelegates,
-              home: const SubcontractReportTablePage(
+              home: SubcontractReportTablePage(
                 kind: SubcontractReportKind.detail,
               ),
             ),

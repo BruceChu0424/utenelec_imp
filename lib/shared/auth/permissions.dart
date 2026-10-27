@@ -614,6 +614,10 @@ abstract final class Perm {
   static const stockDocDelete = 'stock_doc:delete';
   static const stockDocApprove = 'stock_doc:approve';
 
+  /// V801 专用处置通道；动作仍由服务端 capability 和各自权限裁决。
+  static const stockDefectiveTransfer = 'stock:defective_transfer';
+  static const stockDefectiveRelease = 'stock:defective_release';
+
   /// 产成品先入库后质检(V597)：送检登记时承诺「合格按登记的成品仓与库位自动点收」，
   /// 仓库不再点第二次；独立于 stock_doc:approve(它同时是登记与点收的按钮码)。
   static const productionFinishedInBeforeInspection =

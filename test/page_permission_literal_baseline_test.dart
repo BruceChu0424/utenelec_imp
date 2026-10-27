@@ -75,6 +75,12 @@ final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
 //     的任务类型→动作码映射一一对应；接管仍为 isSuperAdmin || employee:task_takeover。
 //   · production_plan_list_page 在表格化选择器重排中合并重复的 productionPlanApprove
 //     预演净 -1，不占登记额度；登记后全量 676，仍守 677 基线。
+// 2026-10-27: V948 customer finance/owner guards and subcontract export were
+// reviewed against ClientFinancialPolicy, ClientAccessPolicy/Service and
+// FulfillmentWorkbenchExportController. Finance UI always intersects the server
+// financialWritable capability; owner updates require accessManageable + assign
+// and retain request-epoch rechecks. Export requires the native report grant.
+// Only the four exact source/token maps change; the global cap remains 677.
 const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> tokens})>{
   'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
     legacyCount: 4,
@@ -141,6 +147,7 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.clientAssign': 1,
       'Perm.clientDelete': 2,
       'Perm.clientEdit': 2,
+      'Perm.clientFinance': 5,
       'Perm.clientStatus': 3,
       'Perm.clientView': 5,
       'Perm.subcontractOrderView': 4,
@@ -184,7 +191,8 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 2,
     tokens: {
       'Perm.clientAssign': 1,
-      'Perm.clientEdit': 1,
+      'Perm.clientEdit': 3,
+      'Perm.clientFinance': 3,
       'Perm.clientStatus': 1,
       'Perm.clientView': 1,
     },
@@ -347,18 +355,20 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   'lib/features/basic_data/pages/client_category_page.dart': (
     legacyCount: 13,
     tokens: {
-      'Perm.clientCategoryView': 1,
+      'Perm.clientAssign': 5,
       'Perm.clientCategoryCreate': 1,
-      'Perm.clientCategoryEdit': 1,
       'Perm.clientCategoryDelete': 1,
+      'Perm.clientCategoryEdit': 1,
       'Perm.clientCategoryMove': 1,
       'Perm.clientCategoryReorder': 1,
+      'Perm.clientCategoryView': 1,
       'Perm.clientCreate': 1,
-      'Perm.clientEdit': 1,
       'Perm.clientDelete': 1,
-      'Perm.clientStatus': 2,
+      'Perm.clientEdit': 1,
       'Perm.clientExport': 1,
-      'Perm.clientAssign': 2,
+      'Perm.clientFinance': 5,
+      'Perm.clientStatus': 2,
+      'Perm.clientView': 1,
     },
   ),
   'lib/features/basic_data/pages/mould_category_page.dart': (
@@ -701,6 +711,7 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.subcontractOrderDecompose': 1,
       'Perm.subcontractOrderSubmitFinance': 1,
       'Perm.subcontractOrderView': 1,
+      'Perm.subcontractReportExport': 1,
     },
   ),
   'lib/features/subcontract/pages/subcontract_doc_detail_page.dart': (
@@ -852,7 +863,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      249, // Eight exact new guards; the global cap stays677.
+      269, // Exact reviewed guards only; the global cap stays 677.
     );
   });
 

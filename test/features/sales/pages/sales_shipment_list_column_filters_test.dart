@@ -10,12 +10,16 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 late SharedPreferences _preferences;
 
@@ -30,6 +34,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _ShipmentFilterApi();
+    final clientsRepository = _YieldingClientRepository(api);
     final router = GoRouter(
       initialLocation: '/sales/shipments?status=draft',
       routes: [
@@ -52,6 +57,7 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           apiClientProvider.overrideWithValue(api),
+          clientRepositoryProvider.overrideWithValue(clientsRepository),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
           ),
@@ -85,7 +91,10 @@ void main() {
       containsAll(SalesShipmentStage.segments),
     );
     expect(table.facets['client'], isEmpty);
-    final clients = await table.facetPageLoaders['client']!('', 1);
+    final clients = (await tester.runAsync(
+      () => table.facetPageLoaders['client']!('', 1),
+    ))!;
+    expect(clientsRepository.completedCheckpoints, 1);
     expect(clients.items.single.value, 'client-1');
     expect(clients.hasMore, isFalse);
     expect(api.clientCandidateQueries.single['page'], 1);
@@ -123,6 +132,34 @@ void main() {
     expect(api.lastQuery?['financeAudit'], 1);
     expect(tester.takeException(), isNull);
   });
+}
+
+/// A responsive repository may yield even for one row when its first decode
+/// exceeds the time slice. Force that real timer turn without CPU contention.
+class _YieldingClientRepository extends DioClientRepository {
+  _YieldingClientRepository(super.api);
+
+  int completedCheckpoints = 0;
+
+  @override
+  Future<PagedResult<ClientListItem>> search(
+    String keyword, {
+    int page = 1,
+    int size = 20,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  }) async {
+    final result = await super.search(
+      keyword,
+      page: page,
+      size: size,
+      excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+      selectableOnly: selectableOnly,
+    );
+    await UiWorkBudget(maxItems: 1).checkpoint();
+    completedCheckpoints++;
+    return result;
+  }
 }
 
 class _ShipmentFilterApi extends ApiClient {

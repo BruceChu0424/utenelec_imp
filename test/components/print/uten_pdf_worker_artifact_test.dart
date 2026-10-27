@@ -30,6 +30,10 @@ void main() {
           'lib/core/performance/ui_work_budget.dart',
           'lib/features/purchase/models/purchase_order_pdf_bundle.dart',
           'lib/features/purchase/models/purchase_order_pdf.dart',
+          'lib/features/subcontract/models/subcontract_order_pdf_bundle.dart',
+          'lib/shared/export/order_document_bundle.dart',
+          'lib/shared/print/procurement_order_pdf.dart',
+          'lib/shared/print/procurement_order_print_document.dart',
           'pubspec.lock',
         ]),
       );

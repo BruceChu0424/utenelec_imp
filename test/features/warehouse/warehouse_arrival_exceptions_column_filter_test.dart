@@ -45,10 +45,9 @@ void main() {
       containsAll(<String>['supplierName', 'warehouseName', 'status']),
     );
     expect(table.facets['supplierName'], isEmpty);
-    final supplierCandidates = await table.facetPageLoaders['supplierName']!(
-      '',
-      1,
-    );
+    final supplierCandidates = (await tester.runAsync(
+      () => table.facetPageLoaders['supplierName']!('', 1),
+    ))!;
     expect(supplierCandidates.items.single.value, 'supplier-1');
     expect(table.facets['warehouseName']?.single.value, 'warehouse-1');
     expect(

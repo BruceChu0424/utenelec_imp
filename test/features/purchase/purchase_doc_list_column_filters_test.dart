@@ -105,7 +105,9 @@ void main() {
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
     // Party candidates now come from an authorized page, independently of the
     // bounded cache containing names of already-referenced supplier IDs.
-    final supplierPage = await table.facetPageLoaders['supplier']!('', 1);
+    final supplierPage = (await tester.runAsync(
+      () => table.facetPageLoaders['supplier']!('', 1),
+    ))!;
     expect(supplierPage.items.single.value, 'supplier-1');
     expect(supplierPage.hasMore, isFalse);
     expect(api.supplierCandidateQueries.single['page'], 1);

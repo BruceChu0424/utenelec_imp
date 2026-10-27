@@ -63,7 +63,9 @@ void main() {
     );
     // Party candidates are paged on demand, not preloaded as a full dictionary.
     expect(table.facets['clientId'], isEmpty);
-    final clients = await table.facetPageLoaders['clientId']!('', 1);
+    final clients = (await tester.runAsync(
+      () => table.facetPageLoaders['clientId']!('', 1),
+    ))!;
     expect(clients.items.single.value, 'party-1');
     expect(clients.hasMore, isFalse);
     expect(api.clientQueries.single['page'], 1);

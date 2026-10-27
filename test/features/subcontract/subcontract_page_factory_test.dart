@@ -274,7 +274,9 @@ void main() {
     );
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
     expect(table.facets['supplier'], isEmpty);
-    final suppliers = await table.facetPageLoaders['supplier']!('', 1);
+    final suppliers = (await tester.runAsync(
+      () => table.facetPageLoaders['supplier']!('', 1),
+    ))!;
     expect(suppliers.items.single.value, 'supplier-1');
     expect(suppliers.hasMore, isFalse);
     expect(api.supplierCandidateQueries.single['page'], 1);

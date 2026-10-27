@@ -29,8 +29,8 @@ class DesktopLoginLayout extends StatelessWidget {
             double.infinity,
           );
       final compact =
-          constraints.maxWidth < 820 * accessibilityScale ||
-          constraints.maxHeight < 520 * accessibilityScale;
+          constraints.maxWidth < 680 * accessibilityScale ||
+          constraints.maxHeight < 440 * accessibilityScale;
       // Construct exactly one form, including when display zoom changes the
       // layout. Authentication state belongs to LoginPage, never this layout.
       final form = formBuilder(compact);
@@ -78,14 +78,14 @@ class DesktopLoginLayout extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            flex: 55,
+            flex: 45,
             child: _DesktopBrandPanel(
               key: const Key('desktop-login-brand-panel'),
               branding: branding,
             ),
           ),
           Expanded(
-            flex: 45,
+            flex: 55,
             child: _DesktopFormPanel(
               key: const Key('desktop-login-form-panel'),
               form: form,
@@ -115,20 +115,22 @@ class _DesktopBrandPanel extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(top: DesktopWindowHost.controlsHeight),
         child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s32),
+          padding: const EdgeInsets.all(UtenSpacing.s24),
           child: LayoutBuilder(
             builder: (context, constraints) {
               if (!branding.usesDefaultArtwork) {
-                return const Center(child: UtenWordmarkLogo(height: 72));
+                return const Center(
+                  child: UtenWordmarkLogo(width: 200, height: 60),
+                );
               }
-              const logoHeight = 210 / (405 / 74);
+              const logoHeight = 170 / (405 / 74);
               final mascotSize = math.min(
-                300.0,
+                220.0,
                 math.min(
                   constraints.maxWidth,
                   math.max(
                     0.0,
-                    constraints.maxHeight - UtenSpacing.s24 - logoHeight,
+                    constraints.maxHeight - UtenSpacing.s20 - logoHeight,
                   ),
                 ),
               );
@@ -137,8 +139,8 @@ class _DesktopBrandPanel extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     UtenBrandMascot.size(mascotSize),
-                    const SizedBox(height: UtenSpacing.s24),
-                    const UtenWordmarkLogo(width: 210, height: logoHeight),
+                    const SizedBox(height: UtenSpacing.s20),
+                    const UtenWordmarkLogo(width: 170, height: logoHeight),
                   ],
                 ),
               );
@@ -170,10 +172,10 @@ class _DesktopFormPanel extends StatelessWidget {
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(40, 24, 40, 28),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 360),
+                    constraints: const BoxConstraints(maxWidth: 340),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -181,7 +183,7 @@ class _DesktopFormPanel extends StatelessWidget {
                         Text(
                           copy.welcome,
                           style: theme.textTheme.headlineMedium?.copyWith(
-                            fontSize: 30,
+                            fontSize: 26,
                             height: 1.25,
                             letterSpacing: -0.4,
                             fontWeight: FontWeight.w700,
@@ -196,7 +198,7 @@ class _DesktopFormPanel extends StatelessWidget {
                             height: 1.6,
                           ),
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: UtenSpacing.s20),
                         form,
                       ],
                     ),

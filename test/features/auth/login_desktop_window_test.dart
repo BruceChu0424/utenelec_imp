@@ -64,13 +64,13 @@ void main() {
 
   for (final platform in [TargetPlatform.windows, TargetPlatform.macOS]) {
     for (final size in [
-      const Size(1000, 680),
+      const Size(800, 540),
       const Size(460, 720),
-      const Size(1000, 440),
+      const Size(800, 360),
     ]) {
-      for (final zoom in [1.0, 1.5, 2.0]) {
+      for (final zoom in [1.0, 1.15, 1.5, 2.0]) {
         testWidgets(
-          '${platform.name} ${size.width.toInt()}x${size.height.toInt()} at ${zoom * 100}%: MFA remains usable in the login window',
+          '${platform.name} ${size.width.toInt()}x${size.height.toInt()} at ${(zoom * 100).round()}%: MFA remains usable in the login window',
           (tester) async {
             tester.view.physicalSize = size;
             tester.view.devicePixelRatio = 1;
@@ -127,7 +127,9 @@ void main() {
             expect(find.byType(AccountField), findsOneWidget);
             expect(find.byType(Form), findsOneWidget);
             expect(find.byType(UtenButton), findsOneWidget);
-            if (size.width == 1000 && size.height >= 520 && zoom == 1) {
+            final splitExpected =
+                size.width / zoom >= 680 && size.height / zoom >= 440;
+            if (splitExpected) {
               final brandPanel = find.byKey(
                 const Key('desktop-login-brand-panel'),
               );
@@ -136,20 +138,21 @@ void main() {
               );
               expect(brandPanel, findsOneWidget);
               expect(formPanel, findsOneWidget);
-              expect(
-                find.descendant(
-                  of: brandPanel,
-                  matching: find.byType(UtenBrandMascot),
-                ),
-                findsOneWidget,
+              final mascotFinder = find.descendant(
+                of: brandPanel,
+                matching: find.byType(UtenBrandMascot),
               );
-              expect(
-                find.descendant(
-                  of: brandPanel,
-                  matching: find.byType(UtenWordmarkLogo),
-                ),
-                findsOneWidget,
+              final logoFinder = find.descendant(
+                of: brandPanel,
+                matching: find.byType(UtenWordmarkLogo),
               );
+              expect(mascotFinder, findsOneWidget);
+              expect(logoFinder, findsOneWidget);
+              final mascot = tester.widget<UtenBrandMascot>(mascotFinder);
+              expect(mascot.width, greaterThan(0));
+              expect(mascot.width, lessThanOrEqualTo(220));
+              expect(mascot.height, mascot.width);
+              expect(tester.widget<UtenWordmarkLogo>(logoFinder).width, 170);
               expect(
                 find.descendant(of: brandPanel, matching: find.byType(Text)),
                 findsNothing,
@@ -169,6 +172,10 @@ void main() {
               );
               final brandBounds = tester.getRect(brandPanel);
               final formBounds = tester.getRect(formPanel);
+              expect(brandBounds.width, closeTo(360, 0.01));
+              expect(formBounds.width, closeTo(440, 0.01));
+              expect(brandBounds.height, closeTo(540, 0.01));
+              expect(formBounds.height, closeTo(540, 0.01));
               expect(brandBounds.right, lessThanOrEqualTo(formBounds.left));
               expect(brandBounds.top, lessThan(formBounds.bottom));
               expect(formBounds.top, lessThan(brandBounds.bottom));
@@ -176,6 +183,17 @@ void main() {
                 tester.getCenter(_account).dx,
                 greaterThan(size.width / 2),
               );
+              for (final field in [_account, _password]) {
+                final fieldBounds = tester.getRect(field);
+                expect(
+                  fieldBounds.left,
+                  greaterThanOrEqualTo(formBounds.left - 0.01),
+                );
+                expect(
+                  fieldBounds.right,
+                  lessThanOrEqualTo(formBounds.right + 0.01),
+                );
+              }
             } else {
               expect(
                 find.byKey(const Key('desktop-login-brand-panel')),
@@ -259,5 +277,6 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
       tester.view.physicalSize.height / tester.view.devicePixelRatio;
   expect(bounds.center.dy, greaterThanOrEqualTo(36));
   expect(bounds.center.dy, lessThan(windowHeight));
+  expect(finder.hitTestable(), findsOneWidget);
   expect(tester.takeException(), isNull);
 }

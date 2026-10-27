@@ -293,7 +293,7 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
     SetWindowPlacement(window_handle_, &placement);
     ConstrainToWorkArea();
   } else {
-    CenterClientSize(main_mode_ ? 1280 : 1000, main_mode_ ? 800 : 680);
+    CenterClientSize(main_mode_ ? 1280 : 800, main_mode_ ? 800 : 540);
   }
   UpdateWindowRegion();
   return true;

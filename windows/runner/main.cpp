@@ -28,7 +28,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Point origin(10, 10);
   // Sign in starts with the custom-framed brand/form split, before Flutter's
   // first frame. Authentication restores the normal application frame.
-  Win32Window::Size size(1000, 680);
+  Win32Window::Size size(800, 540);
   if (!window.Create(L"UTEN", origin, size)) {
     return EXIT_FAILURE;
   }

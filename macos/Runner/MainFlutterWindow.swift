@@ -181,7 +181,7 @@ class MainFlutterWindow: NSWindow {
       titlebarAppearsTransparent = true
       isMovableByWindowBackground = false
       hasShadow = true
-      let size = NSSize(width: min(1000, visibleFrame.width), height: min(680, visibleFrame.height))
+      let size = NSSize(width: min(800, visibleFrame.width), height: min(540, visibleFrame.height))
       let origin = NSPoint(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2)
       setFrame(NSRect(origin: origin, size: size), display: true)
     } else {

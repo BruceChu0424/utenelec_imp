@@ -521,10 +521,7 @@ void main() {
       );
       final sales = proposal.copyWith(includeFinancialFields: false).toJson();
       expect(sales, {'name': 'Buyer', 'email': 'buyer@example.com'});
-      expect(
-        proposal.copyWith().toJson()['taxId'],
-        'TAX-2026',
-      );
+      expect(proposal.copyWith().toJson()['taxId'], 'TAX-2026');
     });
 
     test('只提交勾选的字段, 且仅在客户仍是识别对上的那个时', () {

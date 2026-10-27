@@ -192,9 +192,7 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(1500, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      final repo = _FakeClientRepository(
-        financialWritable: financeOnly,
-      );
+      final repo = _FakeClientRepository(financialWritable: financeOnly);
       final settlementRepo = _FakeReferenceMethodRepository();
       final currencyRepo = _FakeCurrencyRepository();
       await tester.pumpWidget(
@@ -585,10 +583,7 @@ void main() {
 }
 
 class _FakeClientRepository implements ClientRepository {
-  _FakeClientRepository({
-    this.nameEn,
-    this.financialWritable = true,
-  });
+  _FakeClientRepository({this.nameEn, this.financialWritable = true});
 
   final bool financialWritable;
 

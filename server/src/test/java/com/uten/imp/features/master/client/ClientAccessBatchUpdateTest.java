@@ -135,7 +135,7 @@ class ClientAccessBatchUpdateTest {
                 source.indexOf("private static String clientLabel("));
 
         assertThat(batch).contains(".sorted()");
-        assertThat(batch).contains("snapshot.getOwnerEmployeeId()");
+        assertThat(batch).contains("activeOwnerIds(snapshot)");
         assertThat(batch).contains("activeViewerIds(clientId)");
         assertThat(batch).contains("snapshot.getAccessVersion()");
     }

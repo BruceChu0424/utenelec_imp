@@ -206,10 +206,12 @@ public class GoodsBomPasteService {
                                  Map<UUID, String> colorNames, boolean merge) {
         tx.bind();
         boolean replace = request.mode() == BomPasteRequest.Mode.REPLACE;
-        if (replace) {
-            // 替换会删掉粘贴清单外的现有组件，要同时有删除组件的权限。
-            CurrentAuthorityGuard.requireAll("goods:bom:delete");
-        }
+        // 替换会删掉粘贴清单外的现有组件，要同时有删除组件的权限。
+        // The decision resolves from the principal alone; the mode only decides
+        // whether that permission is required.
+        boolean bomDeleteAllowed = CurrentAuthorityGuard.hasAll("goods:bom:delete");
+        if (replace && !bomDeleteAllowed)
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:bom:delete");
         Map<UUID, List<UUID>> expected = new LinkedHashMap<>();
         for (BomPasteRequest.Target target : request.targets()) {
             expected.putIfAbsent(target.goodsId(), target.expectedItemIds());
@@ -278,9 +280,12 @@ public class GoodsBomPasteService {
                 }
             }
         }
-        if (merge && kept.values().stream().anyMatch(rows -> !rows.isEmpty())) {
-            CurrentAuthorityGuard.requireAll("goods:bom:edit");
-        }
+        // Merging into kept existing rows edits them; the decision resolves from
+        // the principal alone and the pasted content only decides whether the
+        // permission is required.
+        boolean bomEditAllowed = CurrentAuthorityGuard.hasAll("goods:bom:edit");
+        if (merge && kept.values().stream().anyMatch(rows -> !rows.isEmpty()) && !bomEditAllowed)
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:bom:edit");
 
         // ---- 组件行 ----
         Set<UUID> seenComponents = new HashSet<>();

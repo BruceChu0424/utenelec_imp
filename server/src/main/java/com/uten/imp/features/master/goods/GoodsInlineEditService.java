@@ -61,12 +61,14 @@ public class GoodsInlineEditService {
                 || changes == null || changes.isEmpty() || !EDITABLE.containsAll(changes.keySet())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "须提供原货品版本，且只能编辑允许的资料字段");
         }
-        if (changes.containsKey("price") || changes.containsKey("discount")) {
-            CurrentAuthorityGuard.requireAll("goods:price:edit");
-        }
-        if (changes.containsKey("discount")) {
-            CurrentAuthorityGuard.requireAll("goods:discount:view");
-        }
+        // Resolve both permission decisions from the principal alone; the edited
+        // keys below only decide whether each permission is required.
+        boolean priceEditAllowed = CurrentAuthorityGuard.hasAll("goods:price:edit");
+        boolean discountViewAllowed = CurrentAuthorityGuard.hasAll("goods:discount:view");
+        if ((changes.containsKey("price") || changes.containsKey("discount")) && !priceEditAllowed)
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:price:edit");
+        if (changes.containsKey("discount") && !discountViewAllowed)
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:discount:view");
         tx.bind();
         // Resolve visibility before locking; a foreign object's existence is
         // never disclosed by the lock result. The locked read below is current.

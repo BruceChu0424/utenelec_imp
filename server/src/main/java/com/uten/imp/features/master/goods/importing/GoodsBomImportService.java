@@ -313,10 +313,12 @@ public class GoodsBomImportService {
         if (stateFingerprint == null || !stateFingerprint.startsWith("v1:")) {
             throw new ApiException(ErrorCode.CONFLICT, "缺少有效的导入检测记录，请重新检测文件后提交（旧版客户端请先升级）");
         }
-        if (mode == BomPasteRequest.Mode.REPLACE) {
-            // 替换会删掉文件外的现有组件，与粘贴命令同口径要删除权(paste 内也会再查)。
-            CurrentAuthorityGuard.requireAll("goods:bom:delete");
-        }
+        // 替换会删掉文件外的现有组件，与粘贴命令同口径要删除权(paste 内也会再查)。
+        // The decision resolves from the principal alone; the mode only decides
+        // whether that permission is required.
+        boolean bomDeleteAllowed = CurrentAuthorityGuard.hasAll("goods:bom:delete");
+        if (mode == BomPasteRequest.Mode.REPLACE && !bomDeleteAllowed)
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:bom:delete");
         Parsed parsed = parseAndValidate(goodsId, xlsx);
         if (!parsed.errors().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

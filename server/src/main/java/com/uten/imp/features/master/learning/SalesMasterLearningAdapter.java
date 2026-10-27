@@ -75,8 +75,12 @@ public class SalesMasterLearningAdapter implements SalesMasterLearningPort {
         Map<String, String> clientFields = request.clientId() == null
                 ? Map.of()
                 : ClientDocumentFields.normalizeAndValidate(request.clientFields());
-        if (clientFields.containsKey(ClientDocumentFields.TAX_ID))
-            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+        // Resolve finance authority from the principal alone; the learned field
+        // set below only decides whether that authority is required.
+        boolean financeAuthorized = com.uten.imp.features.master.client.ClientFinancialPolicy.hasAuthority();
+        if (clientFields.containsKey(ClientDocumentFields.TAX_ID) && !financeAuthorized)
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,
+                    "客户财务资料仅限具有财务维护权限的人员修改");
         if (request.lines().isEmpty() && clientFields.isEmpty() && request.intakeJobId() == null
                 && !hasDocumentLearning(docType, request.docId())) {
             return;

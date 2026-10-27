@@ -232,6 +232,9 @@ public class SalesMasterLearningApplier {
         if (!clientAccess.canWrite(client, clientAccess.evaluate())) return List.of();
         Set<String> changed = new HashSet<>();
         Map<String, String> contacts = new LinkedHashMap<>();
+        // Resolve finance authority from the principal alone; the applied field
+        // below only decides whether that authority is required.
+        boolean financeAuthorized = com.uten.imp.features.master.client.ClientFinancialPolicy.hasAuthority();
         for (Map.Entry<String, String> entry : fields.entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue();
@@ -254,7 +257,10 @@ public class SalesMasterLearningApplier {
                 }
                 case ClientDocumentFields.TAX_ID -> {
                     if (differs(client.getTaxId(), value)) {
-                        com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+                        if (!financeAuthorized)
+                            throw new com.uten.imp.common.web.ApiException(
+                                    com.uten.imp.common.web.ErrorCode.FORBIDDEN,
+                                    "客户财务资料仅限具有财务维护权限的人员修改");
                         client.setTaxId(value); changed.add(key);
                     }
                 }

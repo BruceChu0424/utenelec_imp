@@ -37,4 +37,18 @@ public final class CurrentAuthorityGuard {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：" + missing);
         }
     }
+
+    /**
+     * Resolves every required authority from the current principal without a
+     * conditional guard: callers evaluate this unconditionally and only the
+     * request content decides whether the result is required.
+     */
+    public static boolean hasAll(String... authorities) {
+        try {
+            requireAll(authorities);
+            return true;
+        } catch (ApiException denied) {
+            return false;
+        }
+    }
 }

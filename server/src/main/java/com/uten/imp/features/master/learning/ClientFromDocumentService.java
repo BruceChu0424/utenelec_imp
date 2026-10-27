@@ -70,8 +70,11 @@ public class ClientFromDocumentService {
         CurrentAuthorityGuard.requireAll("client:create");
         tx.bind();
         NormalizedRequest normalized = normalize(request);
-        if (normalized.fields().containsKey(ClientDocumentFields.TAX_ID))
-            com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
+        // Resolve finance authority from the principal alone; the learned field
+        // set below only decides whether that authority is required.
+        boolean financeAuthorized = com.uten.imp.features.master.client.ClientFinancialPolicy.hasAuthority();
+        if (normalized.fields().containsKey(ClientDocumentFields.TAX_ID) && !financeAuthorized)
+            throw new ApiException(ErrorCode.FORBIDDEN, "客户财务资料仅限具有财务维护权限的人员修改");
         UUID ownerEmployeeId = clientAccess.requireCurrentEmployeeId();
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:key AS text), 0))")
                 .setParameter("key", LOCK_KEY)

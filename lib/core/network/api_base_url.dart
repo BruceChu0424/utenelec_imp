@@ -1,13 +1,12 @@
 import 'package:flutter/foundation.dart';
-
-const _configuredApiBaseUrl = String.fromEnvironment('API_BASE_URL');
+import 'api_endpoint_configuration.dart';
 
 /// 公司内网后端地址。原生 Release 必须在构建时固定为 HTTPS；Web Release
 /// 固定走同源 `/api`，由内外网域名（split-horizon DNS）决定实际站点。
 
 /// Validated backend base URL shared by staff and visitor clients.
 final String apiBaseUrl = resolveApiBaseUrl(
-  _configuredApiBaseUrl,
+  configuredLocalApiBaseUrl,
   releaseMode: kReleaseMode,
   web: kIsWeb,
 );

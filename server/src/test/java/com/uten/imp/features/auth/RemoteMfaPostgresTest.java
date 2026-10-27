@@ -64,13 +64,18 @@ class RemoteMfaPostgresTest {
         when(refresh.revokeAllByUserId(any())).thenAnswer(inv->jdbc.update(
                 "UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=? AND revoked_at IS NULL",(Object)inv.getArgument(0)));
         users=mock(UserAccountRepository.class);
+        when(users.existsAuthenticatableEmployee(any(),org.mockito.ArgumentMatchers.anyCollection())).thenAnswer(inv->jdbc.query(
+                "SELECT status,is_deleted FROM employees WHERE id=?",
+                (rs,n)->!rs.getBoolean("is_deleted") && inv.<java.util.Collection<String>>getArgument(1).contains(rs.getString("status")),
+                (Object)inv.getArgument(0)).stream().anyMatch(Boolean.TRUE::equals));
         when(users.findByIdForUpdate(any())).thenAnswer(inv->jdbc.query(
-                "SELECT id,employee_id,login_account,status,is_deleted,remote_access,must_change_password,is_super_admin FROM users WHERE id=? FOR UPDATE",
+                "SELECT id,employee_id,login_account,status,is_deleted,remote_access,must_change_password,is_super_admin,temp_password_expires_at FROM users WHERE id=? FOR UPDATE",
                 (rs,n)->{
                     UserAccount u=new UserAccount();u.setId(rs.getObject("id",UUID.class));
                     u.setEmployeeId(rs.getObject("employee_id",UUID.class));u.setLoginAccount(rs.getString("login_account"));
                     u.setStatus(rs.getString("status"));u.setDeleted(rs.getBoolean("is_deleted"));
                     u.setRemoteAccess(rs.getBoolean("remote_access"));u.setMustChangePassword(rs.getBoolean("must_change_password"));
+                    u.setTempPasswordExpiresAt(rs.getObject("temp_password_expires_at",OffsetDateTime.class));
                     u.setSuperAdmin(rs.getBoolean("is_super_admin"));return u;
                 },(Object)inv.getArgument(0)).stream().findFirst());
         SecretCipherProperties cipherProperties=new SecretCipherProperties();
@@ -222,6 +227,19 @@ class RemoteMfaPostgresTest {
         jdbc.update("UPDATE users SET is_super_admin=false WHERE id=?",admin.getId());
         assertError(()->mfa.reset(target,"Stale authority"),ErrorCode.FORBIDDEN);
         assertThat(jdbc.queryForObject("SELECT enabled_at IS NOT NULL FROM staff_mfa WHERE user_id=?",Boolean.class,target)).isTrue();
+    }
+
+    @Test void aDepartedAdministratorCannotResetFactorsUsingAnEarlierPrincipalSnapshot() {
+        enroll();UUID target=principal.getId();AuthUser admin=newUser(true);authenticate(admin);
+        jdbc.update("UPDATE employees SET status='resigned' WHERE id=?",admin.getEmployeeId());
+        assertError(()->mfa.reset(target,"Stale employee identity"),ErrorCode.FORBIDDEN);
+        assertThat(jdbc.queryForObject("SELECT enabled_at IS NOT NULL FROM staff_mfa WHERE user_id=?",Boolean.class,target)).isTrue();
+    }
+
+    @Test void aTemporaryCredentialExpiringAfterTheRequestPrincipalWasReadCannotBeginEnrollment() {
+        jdbc.update("UPDATE users SET must_change_password=true,temp_password_expires_at=now()-interval '1 second' WHERE id=?",principal.getId());
+        assertError(mfa::beginEnrollment,ErrorCode.UNAUTHORIZED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM staff_mfa WHERE user_id=?",Integer.class,principal.getId())).isZero();
     }
 
     @Test void sessionRevocationPreservesFactorsAndPolicyButNeverRevivesOldActiveOrPendingSessions() {

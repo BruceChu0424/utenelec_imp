@@ -60,5 +60,6 @@ class RemoteMfaLoginTest {
     }
 
     private UserAccount user(){var u=new UserAccount();u.setLoginAccount("E1");u.setPasswordHash("hash");u.setMustChangePassword(false);u.setRemoteAccess(true);
+        u.setEmployeeId(java.util.UUID.randomUUID());when(users.existsAuthenticatableEmployee(eq(u.getEmployeeId()),anyCollection())).thenReturn(true);
         when(users.findByLoginAccount("E1")).thenReturn(Optional.of(u));return u;}
 }

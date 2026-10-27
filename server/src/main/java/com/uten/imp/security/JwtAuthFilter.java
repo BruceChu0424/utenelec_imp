@@ -182,7 +182,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         UUID sessionOwner = impersonatedBy != null ? impersonatedBy : userId;
         AuthSessionService.StaffState user =
                 sessions.loadStaff(userId, sessionId, sessionOwner).orElse(null);
-        if (user == null || user.deleted() || !"active".equals(user.status())) {
+        if (user == null || user.deleted() || !"active".equals(user.status())
+                || !com.uten.imp.features.auth.StaffAuthenticationPolicy.currentEmployee(
+                    user.employeeId(), user.employeeDeleted(), user.employeeStatus())
+                || com.uten.imp.features.auth.StaffAuthenticationPolicy.temporaryPasswordExpired(
+                    user.mustChangePassword(), user.tempPasswordExpiresAt())) {
             return Resolution.rejected("account_state_changed");
         }
         Long tokenAuthVersion = numericClaim(claims, "av");

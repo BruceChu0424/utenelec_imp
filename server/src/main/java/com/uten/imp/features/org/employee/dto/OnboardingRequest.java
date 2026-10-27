@@ -65,8 +65,9 @@ public record OnboardingRequest(
             String degree, String school, String major, LocalDate startDate, LocalDate endDate
     ) {}
 
-    /** loginAccount 默认 = 手机号。账号权限只来自全员基础包与部门配置(ADR-109 无角色)。 */
+    /** Explicit false creates only the profile. Missing/null keeps the legacy credential intent. */
     public record Account(
-            String loginAccount
+            String loginAccount,
+            Boolean openAccount
     ) {}
 }

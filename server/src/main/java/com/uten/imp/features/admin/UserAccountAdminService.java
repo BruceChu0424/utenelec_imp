@@ -72,6 +72,7 @@ public class UserAccountAdminService {
     private final SystemSettingsService settings;
     private final AccountSecurityNoticePort accountNotice;
     private final com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService remoteAccessSettings;
+    private final AccountLifecycleCoordinator lifecycleCoordinator;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -203,11 +204,15 @@ public class UserAccountAdminService {
         if (!List.of("active", "locked", "disabled").contains(status)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的账号状态");
         }
-        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        AdminAccountLifecycleLock.LockedTarget locked = "disabled".equals(status)
+                ? accountLifecycle.lockForRevocation(id) : accountLifecycle.lock(id);
         UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
         if (!"disabled".equals(status)) {
             accountLifecycle.requireCurrentEmployee(locked);
+        }
+        if ("locked".equals(status)) {
+            accountLifecycle.requireAccountNotDisabled(locked);
         }
         boolean statusChanged = !status.equals(user.getStatus());
         boolean manualLockChanged =
@@ -256,6 +261,7 @@ public class UserAccountAdminService {
         UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
         accountLifecycle.requireCurrentEmployee(locked);
+        accountLifecycle.requireAccountNotDisabled(locked);
         boolean changed = !"active".equals(user.getStatus())
                 || user.getFailedAttempts() != 0
                 || user.getLockedUntil() != null;
@@ -283,6 +289,11 @@ public class UserAccountAdminService {
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
         UserAccount user = locked.account();
         support.requirePasswordResetAllowed(user);
+        boolean disabled = "disabled".equals(user.getStatus());
+        boolean manuallyLocked = "locked".equals(user.getStatus()) && user.getLockedUntil() == null;
+        if (!disabled) {
+            accountLifecycle.requireCurrentEmployee(locked);
+        }
         String temporaryPassword = temporaryPasswordGenerator.generate();
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
@@ -290,8 +301,7 @@ public class UserAccountAdminService {
                 settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)));
         user.setFailedAttempts(0);
         user.setLockedUntil(null);
-        if (!"disabled".equals(user.getStatus())) {
-            accountLifecycle.requireCurrentEmployee(locked);
+        if (!disabled && !manuallyLocked) {
             user.setStatus("active");
         }
         userRepo.save(user);
@@ -393,7 +403,10 @@ public class UserAccountAdminService {
     @Transactional
     public void setSuperAdmin(UUID id, boolean superAdmin) {
         tx.bind();
-        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        lifecycleCoordinator.lock();
+        lifecycleCoordinator.requireCurrentAdministrator(support.requireCurrentUser());
+        AdminAccountLifecycleLock.LockedTarget locked = superAdmin
+                ? accountLifecycle.lock(id) : accountLifecycle.lockForRevocation(id);
         UserAccount user = locked.account();
         if (superAdmin == user.isSuperAdmin()) {
             return;
@@ -403,6 +416,7 @@ public class UserAccountAdminService {
             accountLifecycle.requireActiveAccount(locked);
         }
         support.requireSuperAdminToggle(user, superAdmin);
+        if (!superAdmin) lifecycleCoordinator.requireAdministratorSurvives(id);
         user.setSuperAdmin(superAdmin);
         if (!superAdmin && user.isMustChangePassword() && user.getTempPasswordExpiresAt() == null) {
             // 只有超管的初始密码可以不设过期 (引导管理员, V682); 降为普通账号后与所有临时凭据同口径:
@@ -434,7 +448,8 @@ public class UserAccountAdminService {
         // serializing concurrent grants with policy-limit changes.
         if (remoteAccess) remoteAccessSettings.requireGrantCapacity(id);
         tx.bind();
-        AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
+        AdminAccountLifecycleLock.LockedTarget locked = remoteAccess
+                ? accountLifecycle.lock(id) : accountLifecycle.lockForRevocation(id);
         UserAccount user = locked.account();
         support.requireAuthorizationTarget(user);
         if (remoteAccess) {

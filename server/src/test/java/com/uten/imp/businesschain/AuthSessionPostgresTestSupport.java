@@ -61,7 +61,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-login=auth-session-admin",
         "uten.bootstrap.admin-password=AuthSessionBoot-1!"
 })
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(print = org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint.NONE)
 @ContextConfiguration(initializers = AuthSessionPostgresTestSupport.DatabaseInitializer.class)
 @Import({AuthSessionPostgresTestSupport.ClockOverride.class, ProductionJdbcMeasurement.Configuration.class})
 abstract class AuthSessionPostgresTestSupport {

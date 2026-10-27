@@ -1,6 +1,7 @@
 // 员工仓库：分页列表/详情/入职/调岗/离职/复职。
 // 注：禁止删除员工——离职即终态（status='resigned' 永久留存），无 delete 能力。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/account_write_receipt.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -144,13 +145,16 @@ class DioEmployeeRepository
   @override
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input) async {
     final json = await api.post(ApiEndpoints.employees, body: input.toJson());
-    return _credentialResult(json, '入职响应缺少员工资料或一次性临时密码');
+    return _credentialResult(
+      json,
+      expectAccount: input.account.openAccount != false,
+    );
   }
 
   @override
   Future<EmployeeOnboardingResult> provisionAccount(String id) async {
     final json = await api.post(ApiEndpoints.employeeAccount(id));
-    return _credentialResult(json, '开通账号响应缺少员工资料或一次性临时密码');
+    return _credentialResult(json, expectedEmployeeId: id);
   }
 
   @override
@@ -210,26 +214,41 @@ class DioEmployeeRepository
 
   /// 解析入职/补开账号的统一响应：{ employee, temporaryPassword, loginAccount }。
   EmployeeOnboardingResult _credentialResult(
-    Map<String, dynamic> json,
-    String formatError,
-  ) {
+    Map<String, dynamic> json, {
+    bool expectAccount = true,
+    String? expectedEmployeeId,
+  }) {
     final employee = json['employee'];
     final temporaryPassword = json['temporaryPassword'];
-    if (employee is! Map<String, dynamic> ||
-        temporaryPassword is! String ||
-        temporaryPassword.trim().isEmpty) {
-      throw FormatException(formatError);
-    }
+    if (employee is! Map<String, dynamic>)
+      throw const AccountWriteReceiptException();
     final profile = EmployeeProfile.fromJson(employee);
-    // 登录账号：优先取后端返回（=手机号）；缺失时回退手机号/工号，保证弹窗总能展示。
-    final loginAccountRaw = (json['loginAccount'] as String?)?.trim();
-    final loginAccount = loginAccountRaw != null && loginAccountRaw.isNotEmpty
-        ? loginAccountRaw
-        : (profile.phone?.isNotEmpty == true ? profile.phone! : profile.code);
+    if (expectedEmployeeId != null && profile.id != expectedEmployeeId) {
+      throw const AccountWriteReceiptException();
+    }
+    if (!expectAccount) {
+      if (temporaryPassword != null ||
+          json['loginAccount'] != null ||
+          (!profile.accountDeleted && profile.accountStatus != null)) {
+        throw const AccountWriteReceiptException();
+      }
+      return EmployeeOnboardingResult(
+        employee: profile,
+        temporaryPassword: null,
+        loginAccount: null,
+      );
+    }
+    final loginAccount = json['loginAccount'];
+    if (temporaryPassword is! String ||
+        temporaryPassword.trim().isEmpty ||
+        loginAccount is! String ||
+        loginAccount.trim().isEmpty) {
+      throw const AccountWriteReceiptException();
+    }
     return EmployeeOnboardingResult(
       employee: profile,
       temporaryPassword: temporaryPassword,
-      loginAccount: loginAccount,
+      loginAccount: loginAccount.trim(),
     );
   }
 
@@ -295,10 +314,14 @@ class EmployeeOnboardingResult {
   });
 
   final EmployeeProfile employee;
-  final String temporaryPassword;
+  final String? temporaryPassword;
 
   /// 登录账号（默认=手机号），凭据弹窗展示给 HR。
-  final String loginAccount;
+  final String? loginAccount;
+
+  bool get hasAccountCredentials =>
+      temporaryPassword?.trim().isNotEmpty == true &&
+      loginAccount?.trim().isNotEmpty == true;
 }
 
 /// 开号前就绪检查结果(GET /org/employees/{id}/account/readiness)。

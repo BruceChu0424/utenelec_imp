@@ -9,8 +9,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/auth/session_epoch_provider.dart';
-import '../../../shared/providers/session_provider.dart';
+import '../../../shared/auth/account_action_owner.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import 'employee_dialog_error_text.dart';
@@ -18,16 +17,28 @@ import 'employee_dialog_error_text.dart';
 Future<bool?> showEmployeeResetPasswordDialog(
   BuildContext context, {
   required EmployeeProfile employee,
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
 }) => showDialog<bool>(
   context: context,
   barrierDismissible: false,
-  builder: (_) => _EmployeeResetPasswordDialog(employee: employee),
+  builder: (_) => _EmployeeResetPasswordDialog(
+    employee: employee,
+    isCurrent: isCurrent,
+    ownerChanges: ownerChanges,
+  ),
 );
 
 class _EmployeeResetPasswordDialog extends ConsumerStatefulWidget {
-  const _EmployeeResetPasswordDialog({required this.employee});
+  const _EmployeeResetPasswordDialog({
+    required this.employee,
+    required this.isCurrent,
+    required this.ownerChanges,
+  });
 
   final EmployeeProfile employee;
+  final bool Function()? isCurrent;
+  final Listenable? ownerChanges;
 
   @override
   ConsumerState<_EmployeeResetPasswordDialog> createState() =>
@@ -38,8 +49,7 @@ class _EmployeeResetPasswordDialogState
     extends ConsumerState<_EmployeeResetPasswordDialog> {
   bool _submitting = false;
   bool _invalidated = false;
-  late final String? _userId;
-  late final int _sessionEpoch;
+  late final AccountActionOwner _owner;
   ModalRoute<bool>? _route;
   String? _temporaryPassword;
   String? _error;
@@ -47,12 +57,20 @@ class _EmployeeResetPasswordDialogState
   @override
   void initState() {
     super.initState();
-    _userId = ref.read(sessionProvider).user?.id;
-    _sessionEpoch = ref.read(sessionEpochProvider);
+    _owner = AccountActionOwner(
+      ref,
+      isCurrent: () => widget.isCurrent?.call() ?? true,
+      targetChanges: widget.ownerChanges,
+      onInvalidated: _invalidate,
+    );
     // 普通 token/profile 刷新保留身份和纪元；退出、切换身份、重新登录或撤权
     // 都永久终止本次凭据展示，即使同一帧又恢复权限也不能接纳旧响应。
-    ref.listenManual(sessionProvider, (_, _) => _ensureCurrent());
-    ref.listenManual(sessionEpochProvider, (_, _) => _ensureCurrent());
+  }
+
+  @override
+  void dispose() {
+    _owner.dispose();
+    super.dispose();
   }
 
   @override
@@ -64,15 +82,19 @@ class _EmployeeResetPasswordDialogState
 
   bool _ensureCurrent() {
     if (!mounted || _invalidated) return false;
-    final session = ref.read(sessionProvider);
-    if (_userId != null &&
-        session.status == AuthStatus.authenticated &&
-        !session.isImpersonating &&
-        session.user?.id == _userId &&
-        ref.read(sessionEpochProvider) == _sessionEpoch &&
-        session.user!.permissions.contains(Perm.accountSupport)) {
+    if (_owner.boundary.identity != null &&
+        _owner.boundary.identity!.actorId == null &&
+        !_owner.boundary.identity!.readOnly &&
+        _owner.isCurrent &&
+        _owner.boundary.permissions.contains(Perm.accountSupport)) {
       return true;
     }
+    _invalidate();
+    return false;
+  }
+
+  void _invalidate() {
+    if (!mounted || _invalidated) return;
     setState(() {
       _invalidated = true;
       _temporaryPassword = null;
@@ -86,7 +108,6 @@ class _EmployeeResetPasswordDialogState
         route.navigator?.removeRoute(route, false);
       }
     });
-    return false;
   }
 
   Future<void> _copyPassword() async {
@@ -155,7 +176,7 @@ class _EmployeeResetPasswordDialogState
                 ),
                 if (employee.accountStatus == 'locked') ...[
                   const SizedBox(height: UtenSpacing.s12),
-                  const Text('修改后该账号会解除锁定。'),
+                  Text(l10n.employeeManualLockResetHint),
                 ],
                 const SizedBox(height: UtenSpacing.s12),
                 const Text('确认后需要验证你本人的登录密码。'),

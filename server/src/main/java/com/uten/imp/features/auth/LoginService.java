@@ -90,7 +90,7 @@ public class LoginService {
 
         // ① 短读事务 (仓库方法自带只读事务, 返回脱管快照)
         UserAccount user = userRepo.findByLoginAccount(req.loginAccount()).orElse(null);
-        if (user == null) {
+        if (user == null || user.isDeleted() || !StaffAuthenticationPolicy.currentEmployee(userRepo, user)) {
             // 账号不存在：跑一次 dummy 校验抹平时序，再抛同样的 BAD_CREDENTIALS（防枚举）
             passwordEncoder.matches(req.password(), dummyHash);
             audit.logExplicit(null, req.loginAccount(), "login_failed", "users", null, "account_not_found");
@@ -101,13 +101,13 @@ public class LoginService {
         // 只跑 dummy 哈希抹平时序, 继续计数并顺延锁定, 返回与错密码完全相同的结果。
         if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
             passwordEncoder.matches(req.password(), dummyHash);
-            failureRecorder.record(user.getId(), user.getLoginAccount(), "attempt_while_locked");
+            failureRecorder.record(user.getId(), user.getLoginAccount(), "attempt_while_locked", user.getPasswordHash(), user.getAuthVersion());
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
         }
 
         // ② 事务外校验密码
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
-            failureRecorder.record(user.getId(), user.getLoginAccount(), "bad_password");
+            failureRecorder.record(user.getId(), user.getLoginAccount(), "bad_password", user.getPasswordHash(), user.getAuthVersion());
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);  // 与账号不存在同消息
         }
         // 密码正确后，才告知停用/管理员锁定/临时密码过期/外网授权
@@ -136,8 +136,7 @@ public class LoginService {
         }
         // 临时密码有效期: 开通账号与重置密码都写 tempPasswordExpiresAt; 过期后临时密码不再可用,
         // 提示员工重新找管理员设置（密码已校验正确才提示，不助枚举）。
-        if (user.isMustChangePassword() && user.getTempPasswordExpiresAt() != null
-                && !user.getTempPasswordExpiresAt().isAfter(OffsetDateTime.now())) {
+        if (StaffAuthenticationPolicy.temporaryPasswordExpired(user)) {
             audit.logExplicit(user.getId(), user.getLoginAccount(), "login_failed",
                     "users", user.getId().toString(), "temporary_password_expired");
             throw new ApiException(ErrorCode.UNAUTHORIZED,

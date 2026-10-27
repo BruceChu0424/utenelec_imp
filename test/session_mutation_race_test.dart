@@ -9,12 +9,18 @@ import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/tab_scoped_store.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'support/fake_auth_logout_fence.dart';
+
+const _fixtureUrl = 'https://company-lan.example/api';
+final _fixtureIssuer = AuthBackendRealmPolicy.fromBuildConfiguration()
+    .issuerFor(_fixtureUrl);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -103,7 +109,7 @@ void main() {
     expect(await storage.getAccessToken(), 'second-access');
 
     repository.releaseFirstLogin();
-    await first;
+    await expectLater(first, throwsA(isA<SessionMutationSuperseded>()));
 
     expect(repository.loginCalls, 2);
     expect(await storage.getAccessToken(), 'second-access');
@@ -144,6 +150,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues(<String, String>{});
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'current-access',
         refreshToken: 'current-refresh',
       );
@@ -170,7 +177,10 @@ void main() {
       );
 
       repository.releasePasswordChange();
-      await passwordChange;
+      await expectLater(
+        passwordChange,
+        throwsA(isA<SessionMutationSuperseded>()),
+      );
       expect(await storage.getAccessToken(), isNull);
       expect(await storage.getRefreshToken(), isNull);
       expect(
@@ -188,6 +198,7 @@ void main() {
         const FlutterSecureStorage(),
       );
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'initial-access',
         refreshToken: 'initial-refresh',
       );
@@ -217,6 +228,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues(<String, String>{});
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'expired-access',
         refreshToken: 'rejected-refresh',
       );
@@ -247,6 +259,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues(<String, String>{});
       final storage = SecureStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'offline-access',
         refreshToken: 'valid-refresh',
       );
@@ -260,6 +273,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: <Override>[
+          apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
           secureStorageProvider.overrideWithValue(storage),
           authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
           authRepositoryProvider.overrideWithValue(repository),
@@ -295,6 +309,7 @@ void main() {
       sessionScope: _InMemoryTabScope(),
     );
     await thisTab.saveTokens(
+      issuer: _fixtureIssuer,
       accessToken: 'first-access',
       refreshToken: 'first-refresh',
     );
@@ -311,6 +326,7 @@ void main() {
     await otherTab.clearForLogoutIntent();
     final login = await otherTab.beginSessionIntent(clearTokens: true);
     await otherTab.commitSessionIntentTokens(
+      issuer: _fixtureIssuer,
       intent: login.intent,
       accessToken: 'second-access',
       refreshToken: 'second-refresh',
@@ -333,6 +349,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues(<String, String>{});
       final storage = _FailingLogoutStorage(const FlutterSecureStorage());
       await storage.saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'old-access',
         refreshToken: 'old-refresh',
       );
@@ -343,6 +360,7 @@ void main() {
       );
       final container = ProviderContainer(
         overrides: <Override>[
+          apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
           secureStorageProvider.overrideWithValue(storage),
           authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
           authRepositoryProvider.overrideWithValue(repository),
@@ -418,6 +436,7 @@ ProviderContainer _container(SecureStorage storage, AuthRepository repository) {
   );
   return ProviderContainer(
     overrides: <Override>[
+      apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
       secureStorageProvider.overrideWithValue(storage),
       authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
       authRepositoryProvider.overrideWithValue(repository),
@@ -534,6 +553,7 @@ class _RotateBeforeAtomicClearStorage extends SecureStorage {
     if (!_rotated) {
       _rotated = true;
       await saveTokens(
+        issuer: _fixtureIssuer,
         accessToken: 'rotated-access',
         refreshToken: 'rotated-refresh',
       );

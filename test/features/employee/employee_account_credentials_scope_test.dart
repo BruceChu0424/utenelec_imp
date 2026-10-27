@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -12,6 +13,8 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 const _secret = 'Synthetic-Private-Once-Only!44';
 
 class _Api extends Fake implements ApiClient {}
+
+final _apiVersion = StateProvider<int>((ref) => 0);
 
 class _Actor extends SessionNotifier {
   @override
@@ -38,12 +41,15 @@ class _Actor extends SessionNotifier {
 Future<(ProviderContainer, GlobalKey<NavigatorState>)> _open(
   WidgetTester tester,
   ValueNotifier<int> owner,
-  bool Function() current, {
+  bool Function()? current, {
   String? title,
 }) async {
   final container = ProviderContainer(
     overrides: [
-      apiClientProvider.overrideWithValue(_Api()),
+      apiClientProvider.overrideWith((ref) {
+        ref.watch(_apiVersion);
+        return _Api();
+      }),
       sessionProvider.overrideWith(() => _Actor()),
     ],
   );
@@ -83,6 +89,37 @@ Future<(ProviderContainer, GlobalKey<NavigatorState>)> _open(
 }
 
 void main() {
+  testWidgets('明确目标变更信号即使旧回调仍返回true也不能保留凭据', (tester) async {
+    final owner = ValueNotifier(0);
+    addTearDown(owner.dispose);
+    await _open(tester, owner, () => true);
+    owner.value++;
+    await tester.pumpAndSettle();
+    expect(find.text(_secret), findsNothing);
+  });
+  testWidgets('default credential caller still closes on actor replacement', (
+    tester,
+  ) async {
+    final owner = ValueNotifier(0);
+    addTearDown(owner.dispose);
+    final (container, _) = await _open(tester, owner, null);
+    (container.read(sessionProvider.notifier) as _Actor).change();
+    await tester.pumpAndSettle();
+    expect(find.text(_secret), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+  });
+
+  testWidgets('default credential caller still closes on backend replacement', (
+    tester,
+  ) async {
+    final owner = ValueNotifier(0);
+    addTearDown(owner.dispose);
+    final (container, _) = await _open(tester, owner, null);
+    container.read(_apiVersion.notifier).state++;
+    await tester.pumpAndSettle();
+    expect(find.text(_secret), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+  });
   testWidgets('同scope切目标后owner通知立即清空凭据且恢复原目标不复活', (tester) async {
     final owner = ValueNotifier(0);
     addTearDown(owner.dispose);

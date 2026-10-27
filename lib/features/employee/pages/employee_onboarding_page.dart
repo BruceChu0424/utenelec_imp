@@ -40,6 +40,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/id_card_utils.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/account_write_receipt.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -115,6 +117,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     'gender': _gender,
     'employmentType': _employmentType,
     'status': _status,
+    'openAccount': _openAccount,
     'departmentId': _departmentId,
     'departments': draftDepartments(_departmentSelection),
     'position': _position.position == null
@@ -166,6 +169,11 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     _gender = data['gender'] as String?;
     _employmentType = data['employmentType'] as String? ?? 'regular';
     _status = data['status'] as String? ?? 'probation';
+    // Older drafts represented the previous implicit-account intent. Keep that
+    // visible, requiring support permission or an explicit choice to turn it off.
+    _openAccount = data.containsKey('openAccount')
+        ? data['openAccount'] == true
+        : true;
     _departmentId = data['departmentId'] as String?;
     _departmentSelection = restoreDraftDepartments(data['departments']);
     _position = data['position'] != null
@@ -262,6 +270,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   List<_EducationEntry> _educations = const [];
   List<_EmergencyContactEntry> _contacts = const [];
   bool _submitting = false;
+  bool _openAccount = false;
 
   @override
   void initState() {
@@ -448,6 +457,19 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       return;
     }
     final l10n = AppLocalizations.of(context);
+    if (_openAccount && !permissions.contains(Perm.accountSupport)) {
+      context.appError(l10n.employeeOnboardAccountPermissionHint);
+      return;
+    }
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final openAccount = _openAccount;
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        _canOnboardWith(ref.read(currentPermissionsProvider)) &&
+        (!openAccount ||
+            ref.read(currentPermissionsProvider).contains(Perm.accountSupport));
     // 兜底复核当前已挂载的各步表单与日期(正常路径在 _next 已分步校验)。
     for (final key in _stepFormKeys) {
       if (key.currentState != null && !key.currentState!.validate()) {
@@ -548,29 +570,41 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
                 compensation: compensation,
                 educations: educations,
                 emergencyContacts: emergencyContacts,
+                account: AccountInput(openAccount: openAccount),
               ),
             ),
       );
       await completeFormDraft();
-      if (!mounted) return;
+      if (!current()) return;
       // 一次性凭据弹窗前必须先撤遮罩：遮罩是 root Overlay 的裸图层, Navigator 每次重排
       // 都把它重新抬到最顶, 而这个弹窗 barrierDismissible=false 且 PopScope 挡掉返回键,
       // 唯一出口「我已安全保存」被遮罩吃掉点击; 遮罩又要等这行 await 返回才撤 —— 互相
       // 等待会把页面彻底卡死, 临时密码再也拿不出来(员工却已经建好了)。
       setState(() => _submitting = false);
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      await showEmployeeCredentialDialog(context, onboardingResult);
-      if (!mounted) return;
+      if (!current()) return;
+      if (openAccount) {
+        await showEmployeeCredentialDialog(
+          context,
+          onboardingResult,
+          isCurrent: current,
+        );
+      }
+      if (!current()) return;
       context.appSuccess(l10n.employeeOnboardSuccess);
       context.pop();
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       context.appApiError(e, fallback: l10n.employeeOnboardSubmitFailed);
     } catch (error) {
-      if (!mounted) return;
+      if (!current()) return;
       context.appError(
-        describeSubmitError(error, fallback: l10n.employeeOnboardSubmitFailed),
+        error is AccountWriteReceiptException
+            ? l10n.employeeAccountReceiptIncomplete
+            : describeSubmitError(
+                error,
+                fallback: l10n.employeeOnboardSubmitFailed,
+              ),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -1322,6 +1356,27 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
           ],
         ),
         const SizedBox(height: UtenSpacing.s16),
+        CheckboxListTile(
+          key: const ValueKey('employee-onboarding-open-account'),
+          value: _openAccount,
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          title: Text(l10n.employeeOnboardOpenAccount),
+          subtitle: Text(
+            ref.watch(currentPermissionsProvider).contains(Perm.accountSupport)
+                ? l10n.employeeOnboardOnlyRecordHint
+                : l10n.employeeOnboardAccountPermissionHint,
+          ),
+          onChanged:
+              _submitting ||
+                  (!ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.accountSupport) &&
+                      !_openAccount)
+              ? null
+              : (value) => setState(() => _openAccount = value == true),
+        ),
+        const SizedBox(height: UtenSpacing.s12),
         _noteBanner(l10n.employeeOnboardNote),
       ],
     ),

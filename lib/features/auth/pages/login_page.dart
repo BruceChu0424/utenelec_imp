@@ -164,6 +164,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
     } on LoginServerPreparationCancelled {
       // A newer connection choice owns the UI; no credentials were sent.
       return;
+    } on SessionMutationSuperseded {
+      return;
     } on ApiException catch (e) {
       if (isCurrentLogin()) {
         setState(() {

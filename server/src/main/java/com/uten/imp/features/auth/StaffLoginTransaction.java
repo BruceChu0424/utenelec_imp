@@ -60,6 +60,8 @@ public class StaffLoginTransaction {
                 || manuallyLocked) {
             throw new ApiException(ErrorCode.BAD_CREDENTIALS);
         }
+        StaffAuthenticationPolicy.requireCurrentEmployee(userRepo, user);
+        StaffAuthenticationPolicy.requireCurrentTemporaryPassword(user);
         // 成功：清失败计数与暴力临时锁；仅暴力临时锁(lockedUntil 已到期)恢复 status，
         // 不再无条件回写 active(保留管理员手动锁/停用语义)
         user.setFailedAttempts(0);

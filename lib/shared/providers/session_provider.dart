@@ -14,12 +14,22 @@ import '../../core/network/server_config.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/security/auth_logout_fence.dart';
 import '../../core/security/secure_storage.dart';
+import '../../core/security/auth_token_issuer.dart';
+import '../../features/auth/services/pending_refresh_revocation_drainer.dart';
 import '../../features/admin/repositories/impersonation_repository.dart';
 import '../../features/auth/models/auth_session.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../models/user.dart';
 
 enum AuthStatus { unauthenticated, authenticated, mustChangePassword }
+
+/// The operation lost its intent or backend owner. UI callers must not report
+/// success, navigate, remember credentials or log out a newer session.
+class SessionMutationSuperseded implements Exception {
+  const SessionMutationSuperseded();
+  @override
+  String toString() => 'Authentication operation superseded';
+}
 
 class SessionState {
   const SessionState({
@@ -115,6 +125,19 @@ class SessionProfileRead {
   final String backend;
 }
 
+class _SessionOperationOwner {
+  const _SessionOperationOwner(
+    this.epoch,
+    this.backend,
+    this.repository,
+    this.issuer,
+  );
+  final int epoch;
+  final String backend;
+  final AuthRepository repository;
+  final AuthTokenIssuer issuer;
+}
+
 class SessionNotifier extends Notifier<SessionState> {
   bool _restoreInProgress = false;
   bool _restoreRequested = false;
@@ -140,6 +163,7 @@ class SessionNotifier extends Notifier<SessionState> {
   // successfully reaches secure storage.
   bool _localStorageFailClosed = false;
   String? _visibleSessionLineage;
+  AuthTokenIssuer? _visibleIssuer;
 
   static const _profileGenerationKey = '_utenAuthTokenGeneration';
   static const _profileIntentKey = '_utenAuthIntentGeneration';
@@ -148,6 +172,23 @@ class SessionNotifier extends Notifier<SessionState> {
   @override
   SessionState build() {
     _requestOwnerDisposed = false;
+    ref.listen<String>(apiBaseUrlProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      ++_sessionMutationEpoch;
+      ++_impersonationIntentEpoch;
+      final policy = ref.read(authBackendRealmPolicyProvider);
+      if (state.isLoggedIn &&
+          !policy.canUse(
+            _visibleIssuer ?? policy.legacyIssuerFor(previous),
+            next,
+          )) {
+        state = const SessionState();
+      }
+      if (state.status == AuthStatus.unauthenticated &&
+          !_localStorageFailClosed) {
+        unawaited(_restore());
+      }
+    });
     // 模拟身份绝不跨重启恢复（安全）：必须先 await 清掉残留模拟键，再恢复会话。
     // 否则 _restore→/auth/me 抢跑读到残留模拟 token，会以目标身份冷启动（actor=null，无横幅无出口）。
     unawaited(_clearImpersonationThenRestore());
@@ -187,6 +228,38 @@ class SessionNotifier extends Notifier<SessionState> {
   }
 
   AuthRepository get _auth => ref.read(authRepositoryProvider);
+  _SessionOperationOwner _operationOwner(int epoch) {
+    final backend = ref.read(apiBaseUrlProvider);
+    return _SessionOperationOwner(
+      epoch,
+      backend,
+      _auth,
+      ref.read(authBackendRealmPolicyProvider).issuerFor(backend),
+    );
+  }
+
+  // Resolve every lazy provider before reserving the user-operation epoch.
+  // Reading the endpoint can synchronously run the backend-change listener.
+  _SessionOperationOwner _beginOperationOwner() {
+    final backend = ref.read(apiBaseUrlProvider);
+    final repository = _auth;
+    final issuer = ref.read(authBackendRealmPolicyProvider).issuerFor(backend);
+    return _SessionOperationOwner(
+      ++_sessionMutationEpoch,
+      backend,
+      repository,
+      issuer,
+    );
+  }
+
+  bool _operationCurrent(_SessionOperationOwner owner) {
+    if (_requestOwnerDisposed) return false;
+    final backend = ref.read(apiBaseUrlProvider);
+    return !_requestOwnerDisposed &&
+        owner.epoch == _sessionMutationEpoch &&
+        backend == owner.backend;
+  }
+
   AuthLogoutFence get _logoutFence => ref.read(authLogoutFenceProvider);
   SecureStorage get _storage => ref.read(secureStorageProvider);
   ImpersonationRepository get _impersonationRepo =>
@@ -270,6 +343,9 @@ class SessionNotifier extends Notifier<SessionState> {
           observedIntentEpoch != requestIntentEpoch ||
           current.generation != generation.toInt() ||
           current.intentGeneration != intent.toInt() ||
+          !ref
+              .read(authBackendRealmPolicyProvider)
+              .canUse(current.issuer, ref.read(apiBaseUrlProvider)) ||
           current.sessionLineage != lineage ||
           _visibleSessionLineage != lineage) {
         return;
@@ -386,13 +462,19 @@ class SessionNotifier extends Notifier<SessionState> {
   /// Returns true when the record changed during /auth/me and the latest
   /// generation must be read again.
   Future<bool> _restoreCurrentTokens(int observedEpoch) async {
+    final owner = _operationOwner(observedEpoch);
     if (_localStorageFailClosed) return false;
     final submitted = await _storage.getAuthTokenSnapshot();
-    if (!submitted.hasRefreshToken) return false;
+    if (!submitted.hasRefreshToken ||
+        !ref
+            .read(authBackendRealmPolicyProvider)
+            .canUse(submitted.issuer, owner.backend)) {
+      return false;
+    }
     try {
-      final profile = await _auth.me();
+      final profile = await owner.repository.me();
       final current = await _storage.getAuthTokenSnapshot();
-      if (_localStorageFailClosed || observedEpoch != _sessionMutationEpoch) {
+      if (_localStorageFailClosed || !_operationCurrent(owner)) {
         return false;
       }
       if (!current.isSameSession(submitted)) {
@@ -406,6 +488,7 @@ class SessionNotifier extends Notifier<SessionState> {
         user: _toAppUser(profile),
       );
     } on ApiException catch (error) {
+      if (!_operationCurrent(owner)) return false;
       if (const {
         'UNAUTHORIZED',
         'ACCOUNT_LOCKED',
@@ -431,167 +514,180 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// Login first reserves a cross-tab replacement intent and tombstones the old
   /// session. Only that exact latest intent may commit the network response.
-  ///
-  /// [isCurrent] optionally binds this operation to its caller's input/owner
-  /// lifetime. It only narrows the existing session ownership checks; token
-  /// ordering, storage and stale-result revocation remain centralized here.
-  /// A throwing or disposed caller is no longer current. Direct callers may
-  /// omit the callback and retain the existing session-intent contract.
   Future<void> login({
     required String account,
     required String password,
     String? otpCode,
     bool Function()? isCurrent,
   }) async {
-    if (!_isAuthCallerCurrent(isCurrent)) return;
-    final operationEpoch = ++_sessionMutationEpoch;
+    // A retired caller must not advance any session intent or touch storage.
+    if (_requestOwnerDisposed || !_isAuthCallerCurrent(isCurrent)) {
+      throw const SessionMutationSuperseded();
+    }
+    final owner = _beginOperationOwner();
     bool current() =>
-        operationEpoch == _sessionMutationEpoch &&
-        _isAuthCallerCurrent(isCurrent);
+        _isAuthCallerCurrent(isCurrent) && _operationCurrent(owner);
     state = const SessionState();
     _localStorageFailClosed = true;
-    // 新登录（可能换账号）：清模拟身份，避免上一个会话的模拟 token 串到新身份。
     unawaited(_storage.clearAllImpersonation());
-
-    final reservation =
-        await _serializeSessionCommit<AuthSessionIntentReservation?>(() async {
-          if (!current()) return null;
-          final reserved = await _storage.beginSessionIntent(clearTokens: true);
-          if (current()) {
-            // The new tombstone is authoritative before the durable logout
-            // fence is removed. A failed clear leaves this login fail-closed.
-            await _logoutFence.clear();
-          }
-          return reserved;
-        });
-    if (reservation == null) return;
-    await _revokeRemote(refresh: reservation.previous.refreshToken);
-    if (!current()) return;
-
-    _rememberVisibleRecord(reservation.reserved);
-    _localStorageFailClosed = false;
-
-    final auth = _auth;
-    final AuthResult result;
-    if (otpCode != null && otpCode.isNotEmpty) {
-      if (auth is! OtpAuthRepository) {
-        throw StateError('Authenticator login is unavailable');
-      }
-      result = await (auth as OtpAuthRepository).loginWithOtp(
-        account,
-        password,
-        otpCode,
-      );
-    } else {
-      result = await auth.login(account, password);
-    }
-    if (!current()) {
-      await _revokeRemote(refresh: result.refreshToken);
-      return;
-    }
+    AuthResult? accepted;
     var committedLocally = false;
-    await _serializeSessionCommit(() async {
-      if (!current()) {
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
-      final committed = await _commitAuthResult(
-        operationEpoch,
-        reservation.intent,
-        result,
-        isCurrent: isCurrent,
+    try {
+      final reservation =
+          await _serializeSessionCommit<AuthSessionIntentReservation?>(
+            () async {
+              if (!current()) return null;
+              final reserved = await _storage.beginSessionIntent(
+                clearTokens: true,
+              );
+              if (current()) await _logoutFence.clear();
+              return reserved;
+            },
+          );
+      if (reservation == null) throw const SessionMutationSuperseded();
+      // The cleared previous record owns its own issuer, even after the caller
+      // retires. Never relabel it with the newly selected endpoint's issuer.
+      await _revokeRemote(
+        refresh: reservation.previous.refreshToken,
+        issuer: reservation.previous.issuer,
+        repository: owner.repository,
+        backend: owner.backend,
       );
-      if (committed == null) {
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
-      if (!current()) {
-        await _storage.clearTokensIfUnchanged(committed);
-        await _revokeRemote(refresh: result.refreshToken);
-        return;
-      }
-
-      ++_sessionMutationEpoch;
+      if (!current()) throw const SessionMutationSuperseded();
+      _rememberVisibleRecord(reservation.reserved);
       _localStorageFailClosed = false;
-      _rememberVisibleRecord(committed);
-      state = SessionState(
-        status: result.mustChangePassword
-            ? AuthStatus.mustChangePassword
-            : AuthStatus.authenticated,
-        user: _toAppUser(result.user),
-      );
-      committedLocally = true;
-    });
-    if (committedLocally) {
+      final auth = owner.repository;
+      if (otpCode != null && otpCode.isNotEmpty) {
+        if (auth is! OtpAuthRepository) {
+          throw StateError('Authenticator login is unavailable');
+        }
+        accepted = await (auth as OtpAuthRepository).loginWithOtp(
+          account,
+          password,
+          otpCode,
+        );
+      } else {
+        accepted = await auth.login(account, password);
+      }
+      final result = accepted;
+      if (!current()) throw const SessionMutationSuperseded();
+      await _serializeSessionCommit(() async {
+        if (!current()) return;
+        final committed = await _commitAuthResult(
+          owner,
+          reservation.intent,
+          result,
+          isCurrent: isCurrent,
+        );
+        if (committed == null) return;
+        if (!current()) {
+          await _storage.clearTokensIfUnchanged(committed);
+          return;
+        }
+        ++_sessionMutationEpoch;
+        _localStorageFailClosed = false;
+        _rememberVisibleRecord(committed);
+        state = SessionState(
+          status: result.mustChangePassword
+              ? AuthStatus.mustChangePassword
+              : AuthStatus.authenticated,
+          user: _toAppUser(result.user),
+        );
+        committedLocally = true;
+      });
+      if (!committedLocally) throw const SessionMutationSuperseded();
       unawaited(_saveLoginAccountBestEffort(account));
+    } catch (error, stack) {
+      if (accepted != null && !committedLocally) {
+        await _revokeRemote(
+          refresh: accepted.refreshToken,
+          issuer: owner.issuer.withDataset(accepted.user.businessDatasetId),
+          repository: owner.repository,
+          backend: owner.backend,
+        );
+      }
+      if (error is SessionMutationSuperseded ||
+          !current() && !committedLocally) {
+        throw const SessionMutationSuperseded();
+      }
+      Error.throwWithStackTrace(error, stack);
     }
   }
 
-  /// Password change reserves a global intent while preserving the active
-  /// credentials needed by the authenticated network call. Its response moves
-  /// the session to the reserved new lineage.
   Future<void> changePassword({
     required String oldPassword,
     required String newPassword,
   }) async {
-    final operationEpoch = ++_sessionMutationEpoch;
-    // 改密使 admin 旧令牌失效；同步清模拟身份。
+    final owner = _beginOperationOwner();
     unawaited(_storage.clearAllImpersonation());
     final reservation = await _serializeSessionCommit(
       () => _storage.beginSessionIntent(clearTokens: false),
     );
-    if (operationEpoch != _sessionMutationEpoch) return;
+    if (!_operationCurrent(owner) ||
+        !ref
+            .read(authBackendRealmPolicyProvider)
+            .canUse(reservation.previous.issuer, owner.backend)) {
+      throw const SessionMutationSuperseded();
+    }
     _rememberVisibleRecord(reservation.reserved);
-
-    // 服务端一旦接受改密，密码即已生效，其后只差本机会话收尾。
-    // 收尾抛出意外异常（解析 / 安全存储落盘）时不能与「未改成」混为一谈：
-    // 记录真实原因、尽力吊销新签发的刷新令牌，改抛 [PasswordChangeCommittedError]
-    // 引导用户用新密码重新登录。
     AuthResult? accepted;
+    var committedLocally = false;
     try {
-      final result = await _auth.changePassword(oldPassword, newPassword);
-      accepted = result;
+      accepted = await owner.repository.changePassword(
+        oldPassword,
+        newPassword,
+      );
+      final result = accepted;
+      final previousDataset = reservation.previous.issuer?.businessDatasetId;
+      if (previousDataset != null &&
+          result.user.businessDatasetId != previousDataset) {
+        throw const SessionMutationSuperseded();
+      }
       await _serializeSessionCommit(() async {
-        if (operationEpoch != _sessionMutationEpoch) {
-          await _revokeRemote(refresh: result.refreshToken);
-          return;
-        }
+        if (!_operationCurrent(owner)) return;
         final committed = await _commitAuthResult(
-          operationEpoch,
+          owner,
           reservation.intent,
           result,
         );
-        if (committed == null) {
-          await _revokeRemote(refresh: result.refreshToken);
-          return;
-        }
-        if (operationEpoch != _sessionMutationEpoch) {
+        if (committed == null) return;
+        if (!_operationCurrent(owner)) {
           await _storage.clearTokensIfUnchanged(committed);
-          await _revokeRemote(refresh: result.refreshToken);
           return;
         }
-
         ++_sessionMutationEpoch;
         _rememberVisibleRecord(committed);
         state = SessionState(
           status: AuthStatus.authenticated,
           user: _toAppUser(result.user),
         );
+        committedLocally = true;
       });
-    } on ApiException {
-      rethrow;
-    } catch (error, stackTrace) {
+      if (!committedLocally) throw const SessionMutationSuperseded();
+    } catch (error, stack) {
+      if (accepted != null && !committedLocally) {
+        await _revokeRemote(
+          refresh: accepted.refreshToken,
+          issuer: owner.issuer.withDataset(accepted.user.businessDatasetId),
+          repository: owner.repository,
+          backend: owner.backend,
+        );
+      }
+      if (error is SessionMutationSuperseded ||
+          !_operationCurrent(owner) && !committedLocally) {
+        throw const SessionMutationSuperseded();
+      }
+      if (error is ApiException) Error.throwWithStackTrace(error, stack);
       debugPrint(
-        '[auth] change-password accepted by server but local commit failed: '
-        '$error\n$stackTrace',
+        '[auth] password-change completion failed (${error.runtimeType})',
       );
-      await _revokeRemote(refresh: accepted?.refreshToken);
       throw const PasswordChangeCommittedError();
     }
   }
 
   Future<void> logout() {
-    final operationEpoch = ++_sessionMutationEpoch;
+    final owner = _beginOperationOwner();
+    final operationEpoch = owner.epoch;
     state = const SessionState();
     _localStorageFailClosed = true;
     // 登出同时清除可能残留的模拟身份键。
@@ -613,6 +709,9 @@ class SessionNotifier extends Notifier<SessionState> {
       final cleared = await _clearForLogoutWithRetry(
         beforeClear: (previous) => _revokeRemote(
           refresh: previous.refreshToken,
+          issuer: previous.issuer,
+          repository: owner.repository,
+          backend: owner.backend,
           propagateFailure: true,
         ),
       );
@@ -648,23 +747,24 @@ class SessionNotifier extends Notifier<SessionState> {
   }
 
   Future<AuthTokenSnapshot?> _commitAuthResult(
-    int operationEpoch,
+    _SessionOperationOwner owner,
     AuthSessionIntent intent,
     AuthResult result, {
     bool Function()? isCurrent,
   }) async {
-    if (operationEpoch != _sessionMutationEpoch ||
-        !_isAuthCallerCurrent(isCurrent)) {
-      return null;
-    }
+    bool current() =>
+        _isAuthCallerCurrent(isCurrent) && _operationCurrent(owner);
+    if (!current()) return null;
     final committed = await _storage.commitSessionIntentTokens(
       intent: intent,
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
+      issuer: owner.issuer.withDataset(result.user.businessDatasetId),
     );
     if (committed == null) return null;
-    if (operationEpoch != _sessionMutationEpoch ||
-        !_isAuthCallerCurrent(isCurrent)) {
+    // Writing to secure storage is asynchronous. Retire only this exact record
+    // if either owner or caller lost authority while the write was in flight.
+    if (!current()) {
       await _storage.clearTokensIfUnchanged(committed);
       return null;
     }
@@ -672,8 +772,8 @@ class SessionNotifier extends Notifier<SessionState> {
   }
 
   bool _isAuthCallerCurrent(bool Function()? isCurrent) {
-    if (isCurrent == null) return true;
     if (_requestOwnerDisposed) return false;
+    if (isCurrent == null) return true;
     try {
       return isCurrent();
     } catch (_) {
@@ -691,6 +791,7 @@ class SessionNotifier extends Notifier<SessionState> {
 
   void _rememberVisibleRecord(AuthTokenSnapshot snapshot) {
     _visibleSessionLineage = snapshot.sessionLineage;
+    _visibleIssuer = snapshot.issuer;
   }
 
   Future<T> _serializeSessionCommit<T>(Future<T> Function() commit) async {
@@ -708,16 +809,30 @@ class SessionNotifier extends Notifier<SessionState> {
   Future<void> _revokeRemote({
     required String? refresh,
     bool propagateFailure = false,
+    AuthTokenIssuer? issuer,
+    AuthRepository? repository,
+    String? backend,
   }) async {
     if (refresh == null || refresh.isEmpty) return;
+    final receiver = repository ?? _auth;
+    final String destination = backend ?? ref.read(apiBaseUrlProvider);
     try {
-      await _auth.logout(refresh);
-    } catch (error, stackTrace) {
-      if (propagateFailure) {
-        Error.throwWithStackTrace(error, stackTrace);
+      if (receiver is IssuerAwareAuthRepository) {
+        await (receiver as IssuerAwareAuthRepository).logoutIssued(
+          refresh,
+          issuer,
+        );
+      } else if (ref
+          .read(authBackendRealmPolicyProvider)
+          .canUse(issuer, destination)) {
+        await receiver.logout(refresh);
+      } else {
+        await ref
+            .read(pendingRefreshRevocationDrainerProvider)
+            .enqueueAndDrain(refresh, issuer: issuer);
       }
-      // Superseded login/password responses already lost ownership of local
-      // state. Their queueing failure must not revive or overwrite the winner.
+    } catch (error, stackTrace) {
+      if (propagateFailure) Error.throwWithStackTrace(error, stackTrace);
     }
   }
 

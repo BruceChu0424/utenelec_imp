@@ -2,6 +2,9 @@ package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
+import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
+import com.uten.imp.common.identity.LoginAccountNames;
+import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.util.IdCardProblem;
 import com.uten.imp.common.util.IdCardUtil;
@@ -99,17 +102,36 @@ public class EmployeeOnboardingService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "必填项缺失");
         }
         assertHireDateNotFuture(em.hireDate());
+        boolean openAccount = req.account() == null || !Boolean.FALSE.equals(req.account().openAccount());
+        boolean currentEmployee = CurrentEmployeeStatusPolicy.isCurrentEmployee(em.status());
+        if (!currentEmployee && !"resigned".equals(em.status())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不支持的员工状态");
+        }
+        if (openAccount) {
+            if (!currentEmployee) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                        "离职档案不能开通登录账号，请先办理复职；也可只保存档案暂不开户");
+            }
+            var actor = currentUser.get().orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
+            if (!actor.isSuperAdmin() && !actor.getPermissions().contains("account:support")) {
+                throw new ApiException(ErrorCode.FORBIDDEN,
+                        "开户需账号支持权限；可取消开户只保存员工档案，或由具备权限的管理员开通账号");
+            }
+        }
+        String normalizedPhone = ChinaMobileNumber.normalize(p.phone()).orElseThrow(() ->
+                new ApiException(ErrorCode.VALIDATION_FAILED, "中国大陆手机号格式不正确"));
+        String requestedLogin = req.account() == null ? null : req.account().loginAccount();
+        String loginAccount = !openAccount ? null : isBlank(requestedLogin) ? normalizedPhone
+                : LoginAccountNames.normalizeNew(requestedLogin).orElseThrow(() ->
+                    new ApiException(ErrorCode.VALIDATION_FAILED, "登录账号须为1至128个字符，不能包含内部空白、控制或不可见字符"));
+        if (openAccount && userRepo.existsByLoginAccount(loginAccount)) {
+            throw new ApiException(ErrorCode.CONFLICT, "登录账号已存在");
+        }
         // 入职工号完全由服务端分配。profile.code 仅为旧客户端兼容字段，故意忽略，避免缓存客户端
         // 重放已使用的工号。将序列抬到历史最大后缀；循环只是迁移外数据的防御兜底。
         String code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
         while (empRepo.existsByCode(code)) {
             code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
-        }
-        // 登录账号默认 = 手机号（不再用工号）。
-        String loginAccount = isBlank(req.account() != null ? req.account().loginAccount() : null)
-                ? p.phone().trim() : req.account().loginAccount();
-        if (userRepo.existsByLoginAccount(loginAccount)) {
-            throw new ApiException(ErrorCode.CONFLICT, "登录账号已存在");
         }
         // 身份证校验 + 派生
         LocalDate birthDate = p.birthDate();
@@ -126,7 +148,7 @@ public class EmployeeOnboardingService {
             gender = IdCardUtil.gender(normalizedIdNumber);
         }
 
-        String temporaryPassword = initialPassword(p.idType(), normalizedIdNumber);
+        String temporaryPassword = openAccount ? initialPassword(p.idType(), normalizedIdNumber) : null;
 
         Department dept = deptRepo.findById(em.departmentId())
                 .filter(department -> !department.isDeleted())
@@ -268,7 +290,10 @@ public class EmployeeOnboardingService {
         }
 
         // 新账号初始密码取规范证件号后六位 (不足六位时随机)；不更改已存在账号的密码。
-        createAccount(e, loginAccount, temporaryPassword);
+        if (openAccount) {
+            UserAccount account = createAccount(e, loginAccount, temporaryPassword);
+            credentialIssuance.requireCanIssueCredentials(account);
+        }
 
         return new EmployeeOnboardingResult(queryService.detail(e.getId()), temporaryPassword, loginAccount);
     }
@@ -292,7 +317,7 @@ public class EmployeeOnboardingService {
         Employee e = empRepo.findByIdForUpdate(employeeId)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
-        if ("resigned".equals(e.getStatus())) {
+        if (!CurrentEmployeeStatusPolicy.isCurrentEmployee(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "离职员工必须先完成复职流程，不能开通登录账号");
         }
         UserAccount retained = userRepo.findRetainedIdByEmployeeId(employeeId)
@@ -315,10 +340,12 @@ public class EmployeeOnboardingService {
                         ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号"));
 
         // 手机号存的是规范化 11 位（ChinaMobileNumber.normalize），直接作登录账号，与用户输入一致。
-        String loginAccount = tx.decrypt(s.getPhoneEnc());
-        if (isBlank(loginAccount)) {
+        String savedPhone = tx.decrypt(s.getPhoneEnc());
+        if (isBlank(savedPhone)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
         }
+        String loginAccount = ChinaMobileNumber.normalize(savedPhone).orElseThrow(() ->
+                new ApiException(ErrorCode.VALIDATION_FAILED, "已登记的手机号格式不正确，请先核对主手机号后再开通账号"));
         boolean loginTaken = retained == null
                 ? userRepo.existsByLoginAccount(loginAccount)
                 : userRepo.existsByLoginAccountAndIdNot(loginAccount, retained.getId());

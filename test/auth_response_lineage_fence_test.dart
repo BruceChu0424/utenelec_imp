@@ -7,7 +7,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/interceptors/auth_interceptor.dart';
 import 'package:uten_imp/core/network/network_policy.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+
+final _issuer = AuthBackendRealmPolicy().issuerFor(
+  'https://erp.example.cn/api',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +27,7 @@ void main() {
       () async {
         final storage = SecureStorage(const FlutterSecureStorage());
         await storage.saveTokens(
+          issuer: _issuer,
           accessToken: 'old-access',
           refreshToken: 'old-refresh',
         );
@@ -45,6 +51,7 @@ void main() {
 
         final replacement = await storage.beginSessionIntent(clearTokens: true);
         await storage.commitSessionIntentTokens(
+          issuer: _issuer,
           intent: replacement.intent,
           accessToken: 'new-access',
           refreshToken: 'new-refresh',
@@ -71,6 +78,7 @@ void main() {
   test('same-lineage refresh does not discard an in-flight response', () async {
     final storage = SecureStorage(const FlutterSecureStorage());
     await storage.saveTokens(
+      issuer: _issuer,
       accessToken: 'old-access',
       refreshToken: 'refresh',
     );
@@ -87,6 +95,7 @@ void main() {
     await requestStarted.future;
     expect(
       await storage.saveTokensIfUnchanged(
+        issuer: _issuer,
         expected: submitted,
         accessToken: 'rotated-access',
         refreshToken: 'rotated-refresh',

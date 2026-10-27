@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -79,6 +80,7 @@ class _CommitFailingStorage extends SecureStorage {
     required AuthSessionIntent intent,
     required String accessToken,
     required String refreshToken,
+    AuthTokenIssuer? issuer,
   }) async {
     throw StateError('secure storage write failed');
   }

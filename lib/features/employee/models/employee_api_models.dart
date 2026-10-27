@@ -559,11 +559,13 @@ class EmployeeOnboardingInput {
 /// 入职开通的登录账号：只带登录名(默认手机号)；权限只来自全员基础包与所在部门配置，
 /// 入职接口不接受任何角色/权限参数(ADR-109)。
 class AccountInput {
-  const AccountInput({this.loginAccount});
+  const AccountInput({this.loginAccount, this.openAccount});
   final String? loginAccount;
+  final bool? openAccount;
 
   Map<String, dynamic> toJson() => {
     if (loginAccount != null) 'loginAccount': loginAccount,
+    'openAccount': ?openAccount,
   };
 }
 

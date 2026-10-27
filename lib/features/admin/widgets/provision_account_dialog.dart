@@ -52,6 +52,7 @@ class _ProvisionAccountDialogState
     extends ConsumerState<_ProvisionAccountDialog> {
   final _candidates = <String, AccountProvisionCandidate>{};
   bool _provisioning = false;
+  int _candidateRevision = 0;
 
   Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
     final rows = await ref
@@ -109,6 +110,14 @@ class _ProvisionAccountDialogState
         employeeName: candidate.name,
         employeeCode: candidate.code,
         hasAccount: false,
+        onAccountMayHaveChanged: () async {
+          if (!mounted) return;
+          setState(() {
+            _candidateRevision++;
+            _candidates.clear();
+          });
+          widget.onProvisioned();
+        },
       );
       if (!mounted || result == null) return;
       Navigator.pop(context);
@@ -124,6 +133,7 @@ class _ProvisionAccountDialogState
     child: AbsorbPointer(
       absorbing: _provisioning,
       child: UtenEmployeeSelectionPanel(
+        candidateScopeKey: _candidateRevision,
         loader: _load,
         multiple: true,
         title: '选择开通账号的员工',

@@ -69,6 +69,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       // （强制模式优先恢复经校验的目标路由，重新经过权限守卫）。
       context.appSuccess('密码已修改');
       context.go(widget.returnTo ?? RouteName.dashboard);
+    } on SessionMutationSuperseded {
+      return;
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'REAUTH_LOCKED') {

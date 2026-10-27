@@ -115,10 +115,13 @@ public class StaffRefreshTransaction {
                 && user.getLockedUntil().isAfter(OffsetDateTime.now())) {
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED);
         }
-        if ("locked".equals(user.getStatus()) && user.getLockedUntil() == null) {
+        if ("locked".equals(user.getStatus())) {
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED,
-                    "账号已被管理员锁定，请联系管理员解锁");
+                    user.getLockedUntil() == null ? "账号已被管理员锁定，请联系管理员解锁"
+                            : "请使用密码重新登录以解除临时锁定");
         }
+        StaffAuthenticationPolicy.requireCurrentEmployee(userRepo, user);
+        StaffAuthenticationPolicy.requireCurrentTemporaryPassword(user);
 
         // Reject before issuing a replacement or mutating the current token family.
         remoteAccessPolicy.requireStaffAccess(user);

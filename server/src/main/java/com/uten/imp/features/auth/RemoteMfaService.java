@@ -200,7 +200,9 @@ public class RemoteMfaService {
             // two administrators resetting one another must not take opposite lock orders.
             var actor = sessions.loadStaff(principal.getId(), principal.getSessionId(), principal.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
-            if (!actor.superAdmin() || actor.deleted() || !"active".equals(actor.status()))
+            if (!actor.superAdmin() || actor.deleted() || !"active".equals(actor.status())
+                    || !StaffAuthenticationPolicy.currentEmployee(actor.employeeId(), actor.employeeDeleted(), actor.employeeStatus())
+                    || StaffAuthenticationPolicy.temporaryPasswordExpired(actor.mustChangePassword(), actor.tempPasswordExpiresAt()))
                 throw new ApiException(ErrorCode.FORBIDDEN);
             if (AuthSessionService.evaluate(actor.session(), AuthSessionService.idleTimeoutMinutes(actor.idleTimeoutRaw()), sessions.now())
                     != AuthSessionService.Verdict.ACTIVE) throw new ApiException(ErrorCode.UNAUTHORIZED);
@@ -281,6 +283,8 @@ public class RemoteMfaService {
         if ((!"active".equals(user.getStatus()) && !expiredTemporaryLock)
                 || user.getLockedUntil() != null && user.getLockedUntil().toInstant().isAfter(sessions.now()))
             throw new ApiException(ErrorCode.ACCOUNT_LOCKED);
+        StaffAuthenticationPolicy.requireCurrentEmployee(users, user);
+        StaffAuthenticationPolicy.requireCurrentTemporaryPassword(user);
         return user;
     }
 

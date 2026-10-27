@@ -100,6 +100,78 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @employeeOnboardOpenAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'同时开通登录账号'**
+  String get employeeOnboardOpenAccount;
+
+  /// No description provided for @employeeOnboardOnlyRecordHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认只建立员工档案，不创建登录账号。需要开户时请选择此项。'**
+  String get employeeOnboardOnlyRecordHint;
+
+  /// No description provided for @employeeOnboardAccountPermissionHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通登录账号需要账号支持权限。你仍可只办理员工入职。'**
+  String get employeeOnboardAccountPermissionHint;
+
+  /// No description provided for @employeeAccountReceiptIncomplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器回执缺少可核对的账号凭据。请刷新确认账号状态，勿重复开通。'**
+  String get employeeAccountReceiptIncomplete;
+
+  /// No description provided for @employeeManualLockResetHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成临时密码不会解除人工锁定；需要时请另行解锁账号。'**
+  String get employeeManualLockResetHint;
+
+  /// No description provided for @employeeAccountManageAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理账号'**
+  String get employeeAccountManageAction;
+
+  /// No description provided for @employeeAccountCheckStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新核对账号状态'**
+  String get employeeAccountCheckStatus;
+
+  /// No description provided for @employeeAccountDisabledManageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已停用。请到账号管理核对状态，必要时重置临时密码并明确启用。'**
+  String get employeeAccountDisabledManageHint;
+
+  /// No description provided for @employeeAccountDisabledContactHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号已停用；如需恢复，请联系账号管理员处理。'**
+  String get employeeAccountDisabledContactHint;
+
+  /// No description provided for @permissionContextChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份、权限或连接已变化，请关闭并重新打开权限设置。'**
+  String get permissionContextChanged;
+
+  /// No description provided for @accountStateUnverified.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态待核对'**
+  String get accountStateUnverified;
+
+  /// No description provided for @accountStateRefreshRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号状态未能核对，请刷新后再办理。'**
+  String get accountStateRefreshRequired;
+
   /// No description provided for @clientUpdateDetails.
   ///
   /// In zh, this message translates to:
@@ -3013,7 +3085,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。'**
+  /// **'提交后自动生成工号(UT 前缀)。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。'**
   String get employeeOnboardNote;
 
   /// No description provided for @employeeOnboardCodeAutoNote.
@@ -3739,7 +3811,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeRehireBody.
   ///
   /// In zh, this message translates to:
-  /// **'复职后员工状态将恢复为「在职」，登录账号重新启用。离职时原密码已作废，需请账号支持人员为其重置密码，并把新的临时密码当面交给员工。'**
+  /// **'复职只恢复员工为在职；账号保持停用，原密码和外网授权不会恢复。若需登录，请由账号支持人员核对后重置临时密码，并单独启用账号。'**
   String get employeeRehireBody;
 
   /// No description provided for @employeeRehireSuccess.

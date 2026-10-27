@@ -171,6 +171,9 @@ public class StaffTokenResponseFactory {
                 && Objects.equals(before.getEmployeeId(), after.getEmployeeId())
                 && Objects.equals(before.getLoginAccount(), after.getLoginAccount())
                 && before.isSuperAdmin() == after.isSuperAdmin()
+                && Objects.equals(before.getEmployeeStatus(), after.getEmployeeStatus())
+                && before.isEmployeeDeleted() == after.isEmployeeDeleted()
+                && Objects.equals(before.getTempPasswordExpiresAt(), after.getTempPasswordExpiresAt())
                 && before.isMustChangePassword() == after.isMustChangePassword();
     }
 
@@ -181,7 +184,10 @@ public class StaffTokenResponseFactory {
                 || !"active".equals(state.getStatus())
                 || state.getEmployeeId() == null
                 || state.getLoginAccount() == null
-                || state.getLoginAccount().isBlank()) {
+                || state.getLoginAccount().isBlank()
+                || !StaffAuthenticationPolicy.currentEmployee(state.getEmployeeId(), state.isEmployeeDeleted(), state.getEmployeeStatus())
+                || StaffAuthenticationPolicy.temporaryPasswordExpired(state.isMustChangePassword(),
+                    state.getTempPasswordExpiresAt())) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
         if (state.getBusinessDatasetId() == null) {

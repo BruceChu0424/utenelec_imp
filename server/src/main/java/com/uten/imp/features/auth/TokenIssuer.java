@@ -83,7 +83,9 @@ public class TokenIssuer {
 
     /**
      * Idempotently revoke by refresh-token possession alone. Missing, unknown and
-     * already-revoked tokens are deliberately indistinguishable no-ops.
+     * ordinarily revoked tokens are deliberately indistinguishable no-ops. A token
+     * already rotated by a competing refresh still closes its original session;
+     * it never follows the replacement chain or affects a newer login session.
      *
      * <p>The server-side session is revoked together with the refresh token, so the
      * access token issued in that session stops working on its very next request
@@ -102,17 +104,18 @@ public class TokenIssuer {
         }
         RefreshToken token = refreshTokenRepo
                 .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
-                .filter(row -> row.getRevokedAt() == null)
                 .orElse(null);
         if (token == null) {
             return;
         }
+        boolean rotated = token.getRevokedAt() != null && token.getReplacedBy() != null;
+        if (token.getRevokedAt() != null && !rotated) return;
         UUID userId = token.getUserId();
         UUID tokenId = token.getId();
         UUID sessionId = token.getSessionId();
-        refreshTokenService.revoke(token, null);
-        sessions.revoke(sessionId, AuthSessionService.REASON_LOGOUT);
-        scheduleLogoutAudit(userId, tokenId, sessionId);
+        if (!rotated) refreshTokenService.revoke(token, null);
+        boolean closed = sessions.revoke(sessionId, AuthSessionService.REASON_LOGOUT);
+        if (!rotated || closed) scheduleLogoutAudit(userId, tokenId, sessionId);
     }
 
     private void scheduleLogoutAudit(

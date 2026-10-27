@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'admin_account_lifecycle_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -180,7 +181,10 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     final selected = selection.map((item) => item.id).toSet();
     if (_sameIds(previous, selected)) return;
     if (!widget.user.authorizationGrantAllowed && selected.isNotEmpty) {
-      UtenToast.info(context, widget.user.authorizationRestrictionReason);
+      UtenToast.info(
+        context,
+        adminAuthorizationRestrictionText(context, widget.user),
+      );
       setState(() => _bumpRevision(scope));
       return;
     }
@@ -311,7 +315,10 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     final employeeId = widget.user.employeeId;
     if (employeeId == null || employeeId.isEmpty) return;
     if (!widget.user.authorizationGrantAllowed) {
-      UtenToast.info(context, widget.user.authorizationRestrictionReason);
+      UtenToast.info(
+        context,
+        adminAuthorizationRestrictionText(context, widget.user),
+      );
       return;
     }
     final result = await showAdminDataHandoverPanel(
@@ -383,7 +390,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
           if (authorizationBlocked && !permissions.superAdmin) ...[
             const SizedBox(height: UtenSpacing.s12),
             _notice(
-              '${widget.user.authorizationRestrictionReason}。'
+              '${adminAuthorizationRestrictionText(context, widget.user)}。'
               '不能新增额外查看范围；已有范围仍可一键清空。',
               Icons.lock_person_outlined,
             ),

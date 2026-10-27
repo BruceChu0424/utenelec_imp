@@ -629,6 +629,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   final storage = ref.watch(secureStorageProvider);
   final deviceAuditStore = ref.watch(deviceAuditStoreProvider);
   final baseUrl = ref.watch(apiBaseUrlProvider);
+  final realmPolicy = ref.watch(authBackendRealmPolicyProvider);
   final jsonDecoder = ResponsiveJsonDecoder();
   ref.onDispose(jsonDecoder.dispose);
   late final AuthInterceptor authInterceptor;
@@ -669,6 +670,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     storage: storage,
     baseUrl: baseUrl,
     dioFactory: auditedDioFactory,
+    realmPolicy: realmPolicy,
   );
   dio.interceptors.add(authInterceptor);
   dio.interceptors.add(readScope);

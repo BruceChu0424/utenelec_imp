@@ -54,14 +54,15 @@ class EmployeeOffboardHandoverContractTest {
         int binding = source.indexOf(
                 "!Objects.equals(id, lockedAccount.getEmployeeId())", accountLock);
         int employeeActive = source.indexOf("e.setStatus(\"active\")", binding);
-        int accountActive = source.indexOf(
-                "lockedAccount.setStatus(\"active\")", employeeActive);
+        int accountDisabled = source.indexOf(
+                "lockedAccount.setStatus(\"disabled\")", employeeActive);
         assertThat(employeeLock).isGreaterThan(rehire);
         assertThat(accountId).isGreaterThan(employeeLock);
         assertThat(accountLock).isGreaterThan(accountId);
         assertThat(binding).isGreaterThan(accountLock);
         assertThat(employeeActive).isGreaterThan(binding);
-        assertThat(accountActive).isGreaterThan(employeeActive);
+        assertThat(accountDisabled).isGreaterThan(employeeActive);
+        assertThat(source.substring(employeeActive)).doesNotContain("lockedAccount.setStatus(\"active\")");
     }
 
     @Test

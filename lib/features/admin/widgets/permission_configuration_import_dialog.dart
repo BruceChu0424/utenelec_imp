@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'admin_account_lifecycle_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -244,7 +245,9 @@ class _ImportState extends ConsumerState<PermissionConfigurationImportDialog> {
           );
           if (!mounted || !_current) return;
           if (!account.authorizationGrantAllowed) {
-            context.appError(account.authorizationRestrictionReason);
+            context.appError(
+              adminAuthorizationRestrictionText(context, account),
+            );
             return;
           }
           _edit(() {

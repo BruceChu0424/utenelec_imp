@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -42,10 +43,15 @@ public class LoginFailureRecorder {
      * 让锁定期内不断试密码的人一直拿不到结果。
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void record(UUID userId, String loginAccount, String reason) {
+    public void record(UUID userId, String loginAccount, String reason, String observedPasswordHash, long observedAuthVersion) {
         tx.bindActor(userId, loginAccount);
         UserAccount user = userRepo.findByIdForUpdate(userId).orElse(null);
-        if (user == null) {
+        if (user == null || user.isDeleted()
+                || !Objects.equals(user.getLoginAccount(), loginAccount)
+                || !Objects.equals(user.getPasswordHash(), observedPasswordHash)
+                || user.getAuthVersion() != observedAuthVersion) {
+            // A completed hash check belongs only to the credential generation it observed.
+            // Closing, renaming, resetting or administratively unlocking must not inherit late failures.
             return;
         }
 

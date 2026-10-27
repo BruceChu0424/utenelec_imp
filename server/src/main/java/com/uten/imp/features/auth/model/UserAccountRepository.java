@@ -17,6 +17,15 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
 
     Optional<UserAccount> findByLoginAccount(String loginAccount);
 
+    /** Scalar current identity check after locking the account; no inverse employee lock order. */
+    @Query(value = """
+            SELECT EXISTS(SELECT 1 FROM employees employee
+              WHERE employee.id=:employeeId AND NOT employee.is_deleted
+                AND employee.status IN (:statuses))
+            """, nativeQuery = true)
+    boolean existsAuthenticatableEmployee(@Param("employeeId") UUID employeeId,
+                                         @Param("statuses") Collection<String> statuses);
+
     Optional<UserAccount> findByEmployeeId(UUID employeeId);
 
     /** Identity-only lookup after locking the employee; includes a retained unopened account. */
@@ -74,6 +83,9 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
         boolean isSuperAdmin();
         boolean isRemoteAccess();
         boolean isDeleted();
+        String getEmployeeStatus();
+        boolean isEmployeeDeleted();
+        java.time.Instant getTempPasswordExpiresAt();
         long getAuthVersion();
         long getAuthorizationEpoch();
         long getBusinessResetGeneration();
@@ -88,11 +100,15 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
                    u.is_super_admin AS "superAdmin",
                    u.remote_access AS "remoteAccess",
                    u.is_deleted AS "deleted",
+                   employee.status AS "employeeStatus",
+                   COALESCE(employee.is_deleted,true) AS "employeeDeleted",
+                   u.temp_password_expires_at AS "tempPasswordExpiresAt",
                    u.auth_version AS "authVersion",
                    s.epoch AS "authorizationEpoch",
                    s.business_reset_generation AS "businessResetGeneration",
                    s.business_dataset_id AS "businessDatasetId"
             FROM users u
+            LEFT JOIN employees employee ON employee.id=u.employee_id
             CROSS JOIN authorization_state s
             WHERE u.id = :id
               AND s.singleton_id = 1

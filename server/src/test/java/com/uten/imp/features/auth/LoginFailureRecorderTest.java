@@ -46,7 +46,7 @@ class LoginFailureRecorderTest {
     @Test
     void transactionIsIndependentFromTheThrowingLoginFlow() throws Exception {
         Method method = LoginFailureRecorder.class
-                .getMethod("record", UUID.class, String.class, String.class);
+                .getMethod("record", UUID.class, String.class, String.class, String.class, long.class);
         Transactional transactional = method.getAnnotation(Transactional.class);
 
         assertNotNull(transactional);
@@ -61,7 +61,7 @@ class LoginFailureRecorderTest {
         when(settings.readInt(SystemSettingKey.LOCKOUT_THRESHOLD)).thenReturn(3);
         when(settings.readInt(SystemSettingKey.LOCKOUT_MINUTES)).thenReturn(20);
 
-        recorder.record(account.getId(), account.getLoginAccount(), "bad_password");
+        recorder.record(account.getId(), account.getLoginAccount(), "bad_password", account.getPasswordHash(), account.getAuthVersion());
 
         verify(tx).bindActor(account.getId(), account.getLoginAccount());
         assertEquals(3, account.getFailedAttempts());
@@ -83,7 +83,7 @@ class LoginFailureRecorderTest {
         when(userRepo.findByIdForUpdate(account.getId()))
                 .thenReturn(Optional.of(account));
 
-        recorder.record(account.getId(), account.getLoginAccount(), "bad_password");
+        recorder.record(account.getId(), account.getLoginAccount(), "bad_password", account.getPasswordHash(), account.getAuthVersion());
 
         assertEquals(11, account.getFailedAttempts());
         assertEquals("disabled", account.getStatus());

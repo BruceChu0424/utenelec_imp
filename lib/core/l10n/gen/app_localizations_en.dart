@@ -9,6 +9,50 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get employeeOnboardOpenAccount => 'Also open a login account';
+
+  @override
+  String get employeeOnboardOnlyRecordHint =>
+      'By default, only an employee record is created. Select this option if a login account is needed.';
+
+  @override
+  String get employeeOnboardAccountPermissionHint =>
+      'Opening a login account requires account support permission. You can still create the employee record.';
+
+  @override
+  String get employeeAccountReceiptIncomplete =>
+      'The server did not return verifiable account credentials. Refresh and check the account status; do not provision it again.';
+
+  @override
+  String get employeeManualLockResetHint =>
+      'A temporary password does not remove a manual lock. Unlock the account separately if needed.';
+
+  @override
+  String get employeeAccountManageAction => 'Manage account';
+
+  @override
+  String get employeeAccountCheckStatus => 'Refresh and check account status';
+
+  @override
+  String get employeeAccountDisabledManageHint =>
+      'The account is disabled. Check it in account management, reset a temporary password if needed, and explicitly enable it.';
+
+  @override
+  String get employeeAccountDisabledContactHint =>
+      'The account is disabled. Contact an account administrator if it needs to be restored.';
+
+  @override
+  String get permissionContextChanged =>
+      'Your sign-in, permissions, or connection changed. Close and reopen permission settings.';
+
+  @override
+  String get accountStateUnverified => 'Status needs verification';
+
+  @override
+  String get accountStateRefreshRequired =>
+      'The account status could not be verified. Refresh before continuing.';
+
+  @override
   String get clientUpdateDetails => 'View details';
 
   @override
@@ -1638,7 +1682,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      'Submitting auto-generates the employee code (UT prefix) and uses the phone number as the login account. The initial password is the last six characters of the ID number, or a system-generated random password when it is shorter than six characters (shown once, time-limited). It must be changed at first sign-in.';
+      'Submitting generates the employee code (UT prefix). If you also open an account, use the returned login account and temporary password. The password is shown once, expires, and must be changed at first sign-in.';
 
   @override
   String get employeeOnboardCodeAutoNote =>
@@ -2044,7 +2088,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeRehireBody =>
-      'The employee will become Active again and the login account will be re-enabled. The old password was voided at departure: ask account support to reset it and hand the new temporary password to the employee in person.';
+      'Rehire restores the employee to Active. The account stays disabled; the old password and remote access are not restored. Account support must verify the employee, reset the temporary password, and enable the account separately if login is needed.';
 
   @override
   String get employeeRehireSuccess => 'Rehired';

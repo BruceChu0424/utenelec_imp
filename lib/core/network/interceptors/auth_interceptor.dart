@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 
 import '../../security/auth_refresh_lock.dart';
+import '../../security/auth_token_issuer.dart';
 import '../../security/secure_storage.dart';
 import '../api_exception.dart';
 import '../authenticated_request_scope.dart';
@@ -20,13 +21,17 @@ class AuthInterceptor extends Interceptor {
     // Each call transfers a fresh client's ownership to this interceptor.
     Dio Function()? dioFactory,
     AuthRefreshLock? refreshLock,
+    AuthBackendRealmPolicy? realmPolicy,
   }) : _dioFactory = dioFactory ?? (() => Dio(buildApiBaseOptions(baseUrl))),
-       _refreshLock = refreshLock ?? AuthRefreshLock('staff:$baseUrl');
+       _refreshLock = refreshLock ?? AuthRefreshLock('staff:$baseUrl'),
+       _realmPolicy =
+           realmPolicy ?? AuthBackendRealmPolicy.fromBuildConfiguration();
 
   final SecureStorage storage;
   final String baseUrl;
   final Dio Function() _dioFactory;
   final AuthRefreshLock _refreshLock;
+  final AuthBackendRealmPolicy _realmPolicy;
 
   static const _requestLineageKey = '_utenAuthRequestLineage';
   static const _requestIdentityKey = '_utenAuthRequestIdentity';
@@ -55,6 +60,18 @@ class AuthInterceptor extends Interceptor {
     // Capture the operation binding before the first await. Retries retain the
     // original object even when their interceptor callbacks run in another Zone.
     final scope = AuthenticatedRequestScope.attach(options);
+    try {
+      _requireConfiguredEndpoint(options);
+    } on ApiException catch (error) {
+      handler.reject(
+        _localSessionBoundaryError(
+          options,
+          code: error.code,
+          message: error.message,
+        ),
+      );
+      return;
+    }
     if (_isPublicAuthExchange(options.path)) {
       // Login, refresh, and logout must remain reachable even when the local
       // secure token record is unavailable. Never leak a stale bearer header
@@ -69,6 +86,7 @@ class AuthInterceptor extends Interceptor {
     try {
       scope?.checkCurrent();
       final initial = await _readContext();
+      _requireIssuer(initial.auth, options.baseUrl);
       final identity = AuthenticatedRequestIdentity.fromRecords(
         options.baseUrl,
         initial.auth,
@@ -103,6 +121,7 @@ class AuthInterceptor extends Interceptor {
       // Re-read after every credential/refresh await. Never adopt a new identity
       // or preserve an old admin header after entering impersonation.
       final current = await _readContext();
+      _requireIssuer(current.auth, options.baseUrl);
       _requireIdentity(
         options,
         AuthenticatedRequestIdentity.fromRecords(
@@ -126,11 +145,19 @@ class AuthInterceptor extends Interceptor {
       if (scope != null && !current.auth.hasAccessToken) {
         throw AuthenticatedRequestScope.changed();
       }
+      final ownedAccess =
+          impersonation?.accessToken ?? current.auth.accessToken;
+      final suppliedHeader = _authorizationHeader(options);
+      if (suppliedHeader != null &&
+          options.extra[_autoAuthorizationKey] != true &&
+          (ownedAccess == null || suppliedHeader != 'Bearer $ownedAccess')) {
+        throw AuthenticatedRequestScope.changed();
+      }
       options.extra[_usedImpersonationKey] = impersonation != null;
       if (_authorizationHeader(options) == null ||
           options.extra[_autoAuthorizationKey] == true) {
         _removeAuthorizationHeader(options);
-        final access = impersonation?.accessToken ?? current.auth.accessToken;
+        final access = ownedAccess;
         if (access != null && access.isNotEmpty) {
           options.headers['Authorization'] = 'Bearer $access';
           options.extra[_autoAuthorizationKey] = true;
@@ -163,6 +190,8 @@ class AuthInterceptor extends Interceptor {
   Future<bool> requestBelongsToCurrentIdentity(RequestOptions options) async {
     try {
       final current = await _readContext();
+      _requireConfiguredEndpoint(options);
+      _requireIssuer(current.auth, options.baseUrl);
       _requireIdentity(
         options,
         AuthenticatedRequestIdentity.fromRecords(
@@ -174,6 +203,32 @@ class AuthInterceptor extends Interceptor {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  void _requireIssuer(AuthTokenSnapshot tokens, String endpoint) {
+    if (tokens.hasTokens && !_realmPolicy.canUse(tokens.issuer, endpoint)) {
+      throw AuthenticatedRequestScope.changed();
+    }
+  }
+
+  void _requireConfiguredEndpoint(RequestOptions options) {
+    final configured = AuthBackendRealmPolicy.normalize(baseUrl);
+    final actualBase = AuthBackendRealmPolicy.normalize(options.baseUrl);
+    if (configured == null || configured != actualBase) {
+      throw AuthenticatedRequestScope.changed();
+    }
+    final expected = Uri.parse(configured);
+    final actual = Uri.base.resolveUri(options.uri).normalizePath();
+    final prefix = expected.path == '/' ? '' : expected.path;
+    if (actual.scheme.toLowerCase() != expected.scheme ||
+        actual.host.toLowerCase() != expected.host ||
+        actual.port != expected.port ||
+        actual.userInfo.isNotEmpty ||
+        (prefix.isNotEmpty &&
+            actual.path != prefix &&
+            !actual.path.startsWith('$prefix/'))) {
+      throw AuthenticatedRequestScope.changed();
     }
   }
 
@@ -384,6 +439,7 @@ class AuthInterceptor extends Interceptor {
     final AuthTokenSnapshot latest;
     try {
       latest = await storage.getAuthTokenSnapshot();
+      _requireIssuer(latest, err.requestOptions.baseUrl);
     } catch (_) {
       handler.next(_sessionCheckUnavailableError(err.requestOptions));
       return;
@@ -459,6 +515,7 @@ class AuthInterceptor extends Interceptor {
     String requestLineage,
   ) async {
     var current = await storage.getAuthTokenSnapshot();
+    _requireIssuer(current, baseUrl);
     if (current.sessionLineage != requestLineage) {
       return const TokenRefreshResult.rejected();
     }
@@ -476,13 +533,33 @@ class AuthInterceptor extends Interceptor {
     // active token. Refresh that exact latest record and preserve its lineage.
     final submitted = current;
     try {
-      final response = await withOwnedDio(
-        _dioFactory,
-        (dio) => dio.post<dynamic>(
+      final response = await withOwnedDio(_dioFactory, (dio) async {
+        _requireIssuer(submitted, dio.options.baseUrl);
+        // This runs after existing async audit interceptors, at actual dispatch.
+        dio.interceptors.add(
+          InterceptorsWrapper(
+            onRequest: (options, handler) {
+              try {
+                _requireConfiguredEndpoint(options);
+                _requireIssuer(submitted, options.baseUrl);
+                handler.next(options);
+              } on ApiException catch (error) {
+                handler.reject(
+                  _localSessionBoundaryError(
+                    options,
+                    code: error.code,
+                    message: error.message,
+                  ),
+                );
+              }
+            },
+          ),
+        );
+        return dio.post<dynamic>(
           '/auth/refresh',
           data: <String, String?>{'refreshToken': submitted.refreshToken},
-        ),
-      );
+        );
+      });
       final data = response.data;
       final body = data is Map<String, dynamic> ? data : null;
       final access = body?['accessToken'] as String?;
@@ -492,6 +569,7 @@ class AuthInterceptor extends Interceptor {
           expected: submitted,
           accessToken: access,
           refreshToken: newRefresh,
+          issuer: submitted.issuer ?? _realmPolicy.legacyIssuerFor(baseUrl),
         );
         if (!saved) {
           return _resultForLatestSession(
@@ -570,6 +648,8 @@ class AuthInterceptor extends Interceptor {
   Future<bool> _requestSessionMatches(RequestOptions options) async {
     if (!options.extra.containsKey(_requestIdentityKey)) return false;
     final current = await _readContext();
+    _requireConfiguredEndpoint(options);
+    _requireIssuer(current.auth, options.baseUrl);
     final identity = AuthenticatedRequestIdentity.fromRecords(
       options.baseUrl,
       current.auth,

@@ -196,7 +196,7 @@ class SecurityCorsAuditIntegrationTest {
                         employeeId, "E1001", "active", false, false, false, false, 7L, 11L,
                         new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
                                 now.minusSeconds(10), now.plusSeconds(86_400), null),
-                        "30")));
+                        "30", true, "active", false, null)));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee:view")));
@@ -320,7 +320,7 @@ class SecurityCorsAuditIntegrationTest {
                 new com.uten.imp.features.auth.AuthSessionService.StaffState(
                         employeeId, "csrf-staff", "active", false, false, false, false, 7L, 11L,
                         new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
-                                now.minusSeconds(10), now.plusSeconds(86_400), null), "30")));
+                                now.minusSeconds(10), now.plusSeconds(86_400), null), "30", true, "active", false, null)));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("employee:view")));
     }

@@ -27,6 +27,7 @@ public class MaterialReturnItemDto extends com.uten.imp.common.finance.Procureme
     private BigDecimal amountLocal;
     private UUID materialIssueItemId;
     private UUID orderItemId;
+    @Override public UUID getOrderItemId() { return orderItemId; }
     private UUID parentGoodsId;
     private String parentGoodsCodeSnapshot;
     private String parentGoodsNameSnapshot;

@@ -37,7 +37,7 @@ cryptnet.dll cryptsp.dll d2d1.dll d3d9.dll d3d11.dll d3d12.dll d3dcompiler_47.dl
 dcomp.dll devobj.dll dhcpcsvc.dll dnsapi.dll dsound.dll dwmapi.dll dwrite.dll
 dxcore.dll dxgi.dll dxva2.dll gdi32.dll gdi32full.dll glu32.dll hid.dll imagehlp.dll
 imm32.dll iphlpapi.dll kernel32.dll kernelbase.dll mpr.dll msacm32.dll msasn1.dll
-msctf.dll msimg32.dll msvcrt.dll ncrypt.dll netapi32.dll ntdll.dll ole32.dll
+msctf.dll mscoree.dll msimg32.dll msvcrt.dll ncrypt.dll netapi32.dll ntdll.dll ole32.dll
 oleacc.dll oleaut32.dll opengl32.dll powrprof.dll propsys.dll psapi.dll rpcrt4.dll
 secur32.dll setupapi.dll shcore.dll shell32.dll shlwapi.dll sspicli.dll ucrtbase.dll
 user32.dll userenv.dll usp10.dll uxtheme.dll version.dll wer.dll winhttp.dll

@@ -38,6 +38,7 @@ public class MaterialIssueItemDto extends com.uten.imp.common.finance.Procuremen
     private BigDecimal consumedQty;
     private BigDecimal frozenUnitQty;
     private UUID orderItemId;
+    @Override public UUID getOrderItemId() { return orderItemId; }
     /** 来源发料计划行（V304）；计划生成的出仓单必填。 */
     private UUID planItemId;
     private UUID parentGoodsId;

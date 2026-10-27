@@ -44,9 +44,14 @@ namespace Fixture$fixtureTypeId {
     $compiler = Join-Path ([Environment]::GetFolderPath('Windows')) 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
     & $compiler /nologo /target:winexe /platform:x64 "/out:$(Join-Path $Directory 'uten_imp.exe')" $fixtureSource
     if ($LASTEXITCODE -ne 0) { throw 'Fixture executable compilation failed.' }
-    foreach ($relative in @('flutter_windows.dll', 'data\app.so', 'data\icudtl.dat', 'data\flutter_assets\AssetManifest.bin')) {
+    # Data payloads stay opaque text (app.so must not sniff as a mixed-mode PE).
+    foreach ($relative in @('data\app.so', 'data\icudtl.dat', 'data\flutter_assets\AssetManifest.bin')) {
         [IO.File]::WriteAllText((Join-Path $Directory $relative), "fixture-$BuildNumber")
     }
+    # Packaging validates PE imports and app-local VC++ closure on every module,
+    # so the fixture runtime DLLs are genuine PE stubs from the shared builder.
+    & $Python -c "import sys; sys.path.insert(0, r'$PSScriptRoot'); from pathlib import Path; from test_package_windows import runtime_fixtures; runtime_fixtures(Path(r'$Directory'))"
+    if ($LASTEXITCODE -ne 0) { throw 'Fixture runtime modules failed.' }
 }
 
 function Stop-OwnedClient([string]$Directory) {
@@ -79,7 +84,10 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
     if ($WithPreviousManifest -or $WithInstallerManifest) {
         # Exercise a subsequent update: the old manifest owns a retired plugin,
         # which must disappear on success and be restored on startup rollback.
-        [IO.File]::WriteAllText($obsoleteLibrary, 'obsolete-build-1')
+        # It is packaged, so it must also be a genuine PE module.
+        & $Python -c "import sys; sys.path.insert(0, r'$PSScriptRoot'); from pathlib import Path; from test_package_windows import fixture_executable; Path(r'$obsoleteLibrary').write_bytes(fixture_executable(imports=('KERNEL32.dll',)))"
+        if ($LASTEXITCODE -ne 0) { throw 'Retired fixture library creation failed.' }
+        $obsoleteHash = (Get-FileHash -LiteralPath $obsoleteLibrary -Algorithm SHA256).Hash
         $oldPackage = Join-Path $testRoot "$Name\previous-release.zip"
         $oldKind = if ($WithInstallerManifest) { 'installer' } else { 'update' }
         & $Python $packager --bundle $install --output $oldPackage --build-number 1 --architecture x64 --kind $oldKind | Out-Null
@@ -169,7 +177,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
         if ($WithPreviousManifest -or $WithInstallerManifest) {
             if ($shouldFail) {
                 if (-not [IO.File]::Exists($obsoleteLibrary) -or
-                    [IO.File]::ReadAllText($obsoleteLibrary) -ne 'obsolete-build-1') {
+                    (Get-FileHash -LiteralPath $obsoleteLibrary -Algorithm SHA256).Hash -cne $obsoleteHash) {
                     throw 'Rollback failed to restore a removed previous-release library.'
                 }
             } elseif ([IO.File]::Exists($obsoleteLibrary)) {

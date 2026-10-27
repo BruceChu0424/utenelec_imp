@@ -150,9 +150,6 @@ public class ClientAccessService {
         for (UUID clientId : clientIds) {
             Client snapshot = requireClient(clientId);
             requireAccessAdministration(snapshot);
-            UUID ownerEmployeeId = request.ownerEmployeeId() != null
-                    ? request.ownerEmployeeId()
-                    : snapshot.getOwnerEmployeeId();
             List<UUID> owners = request.ownerEmployeeIds() != null ? request.ownerEmployeeIds()
                     : request.ownerEmployeeId() != null ? List.of(request.ownerEmployeeId()) : activeOwnerIds(snapshot);
             if (owners.isEmpty()) {

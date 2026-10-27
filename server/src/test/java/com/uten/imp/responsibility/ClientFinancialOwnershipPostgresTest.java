@@ -48,7 +48,10 @@ class ClientFinancialOwnershipPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none","hibernate.physical_naming_strategy","org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy"));
         bean.afterPropertiesSet(); factory=bean.getObject();
     }
-    @AfterAll static void stop() throws Exception { if(factory!=null)factory.close(); if(database!=null)database.close(); }
+    @AfterAll static void stop() throws Exception {
+        if (factory != null) factory.close();
+        if (database != null) database.close();
+    }
     @BeforeEach void prepare() {
         em=factory.createEntityManager();
         inTx(()->{
@@ -71,7 +74,11 @@ class ClientFinancialOwnershipPostgresTest {
         clients=new ClientService(repositories.getRepository(ClientRepository.class),repositories.getRepository(ClientCategoryRepository.class),tx,em,codes,policy,mock(EmployeeRepository.class),new EmployeeNameResolver(em));
         login(primary,Set.of("client:view","client:edit"),false);
     }
-    @AfterEach void close() { SecurityContextHolder.clearContext(); if(em.getTransaction().isActive())em.getTransaction().rollback(); em.close(); }
+    @AfterEach void close() {
+        SecurityContextHolder.clearContext();
+        if (em.getTransaction().isActive()) em.getTransaction().rollback();
+        em.close();
+    }
 
     @Test void salesCanEditOwnProfileAndOmittedFinanceIsPreservedWhileTamperingFails() {
         inTx(()->{var req=ordinary();req.setName("客户新名称");clients.update(client,req);return null;});
@@ -223,7 +230,16 @@ class ClientFinancialOwnershipPostgresTest {
     }
     private String value(String sql,UUID id) {return Objects.toString(em.createNativeQuery(sql).setParameter("id",id).getSingleResult(),null);}
     private <T>T inTx(Supplier<T> work) {
-        em.getTransaction().begin();try{T result=work.get();em.getTransaction().commit();em.clear();return result;}
-        catch(RuntimeException|Error failure){if(em.getTransaction().isActive())em.getTransaction().rollback();em.clear();throw failure;}
+        em.getTransaction().begin();
+        try {
+            T result=work.get();
+            em.getTransaction().commit();
+            em.clear();
+            return result;
+        } catch (RuntimeException|Error failure) {
+            if (em.getTransaction().isActive()) em.getTransaction().rollback();
+            em.clear();
+            throw failure;
+        }
     }
 }

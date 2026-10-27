@@ -54,6 +54,7 @@ public class ReturnItemDto extends com.uten.imp.common.finance.ProcurementSource
     private BigDecimal amountLocal;
     private UUID receiptItemId;
     private UUID orderItemId;
+    @Override public UUID getOrderItemId() { return orderItemId; }
     private BigDecimal weight;
     private String sourceDocNo;
     private String remark;

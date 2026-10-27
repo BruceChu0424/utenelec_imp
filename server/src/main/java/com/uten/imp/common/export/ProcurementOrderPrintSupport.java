@@ -63,7 +63,7 @@ public final class ProcurementOrderPrintSupport {
         }
 
         @Override public String toString() {
-            return "Facts[header=" + header + ", lines=" + lines + ", companyName=" + companyName
+            return "Facts[header=" + Arrays.toString(header) + ", lines=" + lines + ", companyName=" + companyName
                     + ", reviewerName=" + reviewerName + "]";
         }
     }

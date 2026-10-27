@@ -642,18 +642,18 @@ public class ClientService {
                 m.getOwnerEmployeeId(),
                 ownerEmployeeName,
                 m.getDefaultSettlementMethodId(), settlementMethodName,
-                writableFromOwners(m, scope, owners),
-                scope != null && scope.canAssign() && (m.getOwnerEmployeeId() == null || writableFromOwners(m, scope, owners)),
+                writableFromOwners(scope, owners),
+                scope != null && scope.canAssign() && (m.getOwnerEmployeeId() == null || writableFromOwners(scope, owners)),
                 m.getVersion(),
                 m.getNameEn(), List.of(), List.of(), false);
         item.setOwnerEmployeeIds(owners.stream().map(OwnerReference::id).toList());
         item.setOwnerEmployeeNames(owners.stream().map(owner -> Objects.toString(owner.name(), "未命名员工")).toList());
-        item.setFinancialWritable(ClientFinancialPolicy.hasAuthority() && writableFromOwners(m, scope, owners));
+        item.setFinancialWritable(ClientFinancialPolicy.hasAuthority() && writableFromOwners(scope, owners));
         return item;
     }
 
     private record OwnerReference(UUID id, String name) {}
-    private static boolean writableFromOwners(Client client, ClientAccessPolicy.ClientScope scope,
+    private static boolean writableFromOwners(ClientAccessPolicy.ClientScope scope,
             List<OwnerReference> owners) {
         return scope != null && (scope.ownerScope().seeAll()
                 || owners.stream().anyMatch(owner -> scope.ownerScope().writableOwners().contains(owner.id())));
@@ -706,15 +706,19 @@ public class ClientService {
     }
 
     static void requireFinancialUnchanged(Client client, ClientSaveRequest req) {
+        // Resolve authority from the server principal alone so the per-field loop
+        // below never conditions an authorization check on request content.
+        boolean authorized = ClientFinancialPolicy.hasAuthority();
         for (String field : ClientFinancialPolicy.FINANCIAL_FIELDS) {
             boolean present = switch (field) {
                 case "defaultSettlementMethodId" -> req.hasDefaultSettlementMethodReference();
                 case "defaultCurrencyId" -> req.hasDefaultCurrencyReference();
                 default -> req.hasFinancialField(field);
             };
-            if (!present) continue;
-            Object requested = property(req, field), stored = property(client, field);
-            if (!sameValue(requested, stored)) ClientFinancialPolicy.requireAuthority();
+            Object requested = present ? property(req, field) : null;
+            Object stored = property(client, field);
+            if (present && !sameValue(requested, stored) && !authorized)
+                throw new ApiException(ErrorCode.FORBIDDEN, "客户财务资料仅限具有财务维护权限的人员修改");
         }
     }
 

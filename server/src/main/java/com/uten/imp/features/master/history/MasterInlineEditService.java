@@ -81,7 +81,11 @@ public class MasterInlineEditService {
         if (entityType.equals("clients") && changes != null && changes.keySet().stream()
                 .anyMatch(com.uten.imp.features.master.client.ClientFinancialPolicy.FINANCIAL_FIELDS::contains))
             com.uten.imp.features.master.client.ClientFinancialPolicy.requireAuthority();
-        if (!clientFinancial) CurrentAuthorityGuard.requireAll(domain.permission()+":edit");
+        // A financial-only client patch carries no ordinary edit scope: the finance
+        // guard above already authorized exactly those fields. The edit check always
+        // executes; only its required permission set differs by patch shape.
+        CurrentAuthorityGuard.requireAll(clientFinancial ? new String[0]
+                : new String[]{domain.permission() + ":edit"});
         boolean versioned=entityType.equals("clients")||entityType.equals("suppliers");
         if(changes==null||changes.isEmpty()||expected==null||!domain.fields().containsAll(changes.keySet())
             ||(versioned?!expected.containsKey("version"):!expected.keySet().containsAll(changes.keySet())))

@@ -23,6 +23,119 @@ class EmployeeAccountReprovisionPostgresTest extends AuthSessionPostgresTestSupp
     com.uten.imp.features.org.employee.EmployeeOnboardingService onboarding;
 
     @Test
+    void unrelatedEmployeeEditWithUnchangedPrimaryPhonePreservesAnAllowedCustomLoginAndSession() throws Exception {
+        String admin = adminToken();
+        CustomLogin custom = customLoginEmployee(admin);
+        Employee employee = custom.employee();
+        String before = accountHash(UUID.fromString(employee.userId()));
+        var saved = mvc.perform(json(put("/api/org/employees/" + employee.employeeId()),
+                Map.of("phone", "+86 " + custom.primaryPhone(), "seatNo", "phone-sync-regression"), admin)).andReturn();
+        assertEquals(200, saved.getResponse().getStatus(), body(saved));
+        assertEquals(employee.loginAccount(), jdbc.queryForObject("SELECT login_account FROM users WHERE id=?",
+                String.class, UUID.fromString(employee.userId())));
+        assertEquals(before, accountHash(UUID.fromString(employee.userId())));
+        assertEquals(200, me(employee.accessToken()).getResponse().getStatus());
+    }
+
+    @Test
+    void approvalOfAnUnchangedPrimaryPhonePreservesAnAllowedCustomLoginAndSession() throws Exception {
+        String admin = adminToken();
+        CustomLogin custom = customLoginEmployee(admin);
+        Employee employee = custom.employee();
+        String before = accountHash(UUID.fromString(employee.userId()));
+        var submitted = mvc.perform(json(post("/api/profile/me/changes"), Map.of(
+                "changes", java.util.List.of(Map.of("fieldCode", "phone", "fieldLabel", "Phone",
+                        "newValue", custom.primaryPhone())), "idemKey", "same-phone-" + UUID.randomUUID()),
+                employee.accessToken()).header("X-Uten-Step-Up", stepUp(employee.accessToken(), EMPLOYEE_PASSWORD)))
+                .andReturn();
+        assertEquals(200, submitted.getResponse().getStatus(), body(submitted));
+        UUID batch = UUID.fromString(json(submitted).path("batchId").asText());
+        var reviewed = mvc.perform(json(post("/api/hr/profile-changes/" + batch + "/review"),
+                Map.of("action", "approve"), admin)).andReturn();
+        assertEquals(200, reviewed.getResponse().getStatus(), body(reviewed));
+        assertEquals(employee.loginAccount(), jdbc.queryForObject("SELECT login_account FROM users WHERE id=?",
+                String.class, UUID.fromString(employee.userId())));
+        assertEquals(before, accountHash(UUID.fromString(employee.userId())));
+        assertEquals("applied", jdbc.queryForObject("SELECT status FROM profile_change_requests WHERE batch_id=?",
+                String.class, batch));
+        assertEquals(200, me(employee.accessToken()).getResponse().getStatus());
+    }
+
+    @Test
+    void dedicatedCommandWithUnchangedPrimaryPhoneAlsoPreservesTheCustomLogin() throws Exception {
+        String admin = adminToken();
+        CustomLogin custom = customLoginEmployee(admin);
+        Employee employee = custom.employee();
+        String before = accountHash(UUID.fromString(employee.userId()));
+        var unchanged = mvc.perform(json(post("/api/org/employees/" + employee.employeeId() + "/change-phone"),
+                Map.of("newPhone", custom.primaryPhone()), admin)).andReturn();
+        assertEquals(200, unchanged.getResponse().getStatus(), body(unchanged));
+        assertEquals(before, accountHash(UUID.fromString(employee.userId())));
+        assertEquals(200, me(employee.accessToken()).getResponse().getStatus());
+    }
+
+    @Test
+    void dedicatedRealPhoneChangeStillMovesTheLoginRevokesOldSessionAndAdvancesEmployeeVersion() throws Exception {
+        String admin = adminToken();
+        CustomLogin custom = customLoginEmployee(admin);
+        Employee employee = custom.employee();
+        UUID staff = UUID.fromString(employee.employeeId());
+        int version = jdbc.queryForObject("SELECT version FROM employees WHERE id=?", Integer.class, staff);
+        String next = unusedPhone();
+        var changed = mvc.perform(json(post("/api/org/employees/" + staff + "/change-phone"),
+                Map.of("newPhone", "+86-" + next), admin)).andReturn();
+        assertEquals(200, changed.getResponse().getStatus(), body(changed));
+        assertEquals(next, jdbc.queryForObject("SELECT login_account FROM users WHERE id=?",
+                String.class, UUID.fromString(employee.userId())));
+        assertEquals(version + 1, jdbc.queryForObject("SELECT version FROM employees WHERE id=?", Integer.class, staff));
+        assertEquals(401, me(employee.accessToken()).getResponse().getStatus());
+        login(next, EMPLOYEE_PASSWORD);
+    }
+
+    @Test
+    void realPhoneChangeToAnotherCustomLoginRollsBackPiiAccountAndEmployeeVersion() throws Exception {
+        String admin = adminToken();
+        CustomLogin target = customLoginEmployee(admin), owner = customLoginEmployee(admin);
+        Employee employee = target.employee();
+        UUID staff = UUID.fromString(employee.employeeId());
+        String accountBefore = accountHash(UUID.fromString(employee.userId()));
+        String sensitiveBefore = jdbc.queryForObject("SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",
+                String.class, staff);
+        int version = jdbc.queryForObject("SELECT version FROM employees WHERE id=?", Integer.class, staff);
+        var refused = mvc.perform(json(post("/api/org/employees/" + staff + "/change-phone"),
+                Map.of("newPhone", owner.employee().loginAccount()), admin)).andReturn();
+        assertEquals(409, refused.getResponse().getStatus(), body(refused));
+        assertEquals(accountBefore, accountHash(UUID.fromString(employee.userId())));
+        assertEquals(sensitiveBefore, jdbc.queryForObject("SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",
+                String.class, staff));
+        assertEquals(version, jdbc.queryForObject("SELECT version FROM employees WHERE id=?", Integer.class, staff));
+        assertEquals(200, me(employee.accessToken()).getResponse().getStatus());
+    }
+
+    private record CustomLogin(Employee employee, String primaryPhone) {}
+
+    private CustomLogin customLoginEmployee(String admin) throws Exception {
+        String primary = unusedPhone(), login;
+        do { login = unusedPhone(); } while (primary.equals(login));
+        UUID department = jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_ENG' AND NOT is_deleted", UUID.class);
+        String hired = java.time.LocalDate.now().minusDays(1).toString();
+        var request = Map.of("profile", Map.of("fullName", "Synthetic custom login " + UUID.randomUUID(),
+                        "idType", "其他", "idNumber", "CUSTOM-" + UUID.randomUUID(), "phone", primary),
+                "employment", Map.of("departmentId", department, "hireDate", hired, "confirmedAt", hired,
+                        "employmentType", "regular", "status", "active"),
+                "emergencyContacts", java.util.List.of(), "certificates", java.util.List.of(),
+                "educations", java.util.List.of(), "account", Map.of("loginAccount", login));
+        var created = mvc.perform(json(post("/api/org/employees"), request, admin)).andReturn();
+        assertEquals(200, created.getResponse().getStatus(), body(created));
+        String temporary = json(created).path("temporaryPassword").asText();
+        var initial = login(login, temporary);
+        var permanent = changePassword(initial.path("accessToken").asText(), temporary, EMPLOYEE_PASSWORD);
+        String user = jdbc.queryForObject("SELECT id::text FROM users WHERE login_account=?", String.class, login);
+        return new CustomLogin(new Employee(login, user, json(created).path("employee").path("id").asText(),
+                temporary, permanent.path("accessToken").asText(), permanent.path("refreshToken").asText()), primary);
+    }
+
+    @Test
     void editingPrimaryPhoneDoesNotReclaimAnArchivedLoginBeforeExplicitProvisioning() throws Exception {
         String admin=adminToken();Employee employee=newEmployee(admin,"DEPT_ENG");
         retire(employee);admin=adminToken();

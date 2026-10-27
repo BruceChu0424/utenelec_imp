@@ -53,11 +53,12 @@ public class ProfileFieldApplier {
         BiConsumer<Employee, String> phoneWriter = (emp, newValue) -> {
             EmployeeSensitive s = sensitiveRepo.findByEmployeeId(emp.getId())
                     .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
+            String previousPhoneHash = s.getPhoneHash();
             piiWriter.applyPhone(s, newValue);
             sensitiveRepo.save(s);
             // ADR-021：手机号 = 登录账号，审批合并/直改手机号后同步登录账号并踢会话
             loginAccountSync.syncLoginAccount(emp.getId(), com.uten.imp.common.util
-                    .ChinaMobileNumber.normalize(newValue).orElseThrow());
+                    .ChinaMobileNumber.normalize(newValue).orElseThrow(), previousPhoneHash, s.getPhoneHash());
         };
         this.fields = Map.ofEntries(
                 Map.entry(ProfileFieldPolicy.Field.FULL_NAME,

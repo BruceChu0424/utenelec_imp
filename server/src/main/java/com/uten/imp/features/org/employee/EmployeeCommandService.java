@@ -257,9 +257,10 @@ public class EmployeeCommandService {
     /** A phone edit and its login-account/session change are one command boundary (ADR-021). */
     private void applyPhoneChange(UUID employeeId, EmployeeSensitive sensitive, String phone) {
         if (isBlank(phone)) return;
+        String previousPhoneHash = sensitive.getPhoneHash();
         piiWriter.applyPhone(sensitive, phone);
         String normalized = com.uten.imp.common.util.ChinaMobileNumber.normalize(phone).orElseThrow();
-        loginAccountSync.syncLoginAccount(employeeId, normalized);
+        loginAccountSync.syncLoginAccount(employeeId, normalized, previousPhoneHash, sensitive.getPhoneHash());
     }
 
     /** HR may maintain normal employees, but encrypted PII/compensation of a super admin is immutable here. */
@@ -519,12 +520,13 @@ public class EmployeeCommandService {
                         ErrorCode.VALIDATION_FAILED, "中国大陆手机号格式不正确"));
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "敏感信息不存在"));
+        String previousPhoneHash = s.getPhoneHash();
         piiWriter.applyPhone(s, normalized);
         sensitiveRepo.save(s);
         e.setVersion(e.getVersion() + 1);
         empRepo.save(e);
         // 同步登录账号并吊销会话；员工无登录账号时仅改档案
-        loginAccountSync.syncLoginAccount(id, normalized);
+        loginAccountSync.syncLoginAccount(id, normalized, previousPhoneHash, s.getPhoneHash());
     }
 
     /**

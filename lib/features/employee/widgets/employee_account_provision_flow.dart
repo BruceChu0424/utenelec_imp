@@ -206,8 +206,9 @@ class _SelectedEmployeeProvisionDialogState
         _checking ||
         _missingPhone ||
         _unknownResponse ||
-        !_ensureCurrent())
+        !_ensureCurrent()) {
       return;
+    }
     setState(() {
       _submitting = true;
       _error = null;

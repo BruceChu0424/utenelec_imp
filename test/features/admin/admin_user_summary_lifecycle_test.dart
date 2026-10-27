@@ -11,7 +11,7 @@ void main() {
           'loginAccount': 'synthetic-login',
           'currentEmployee': true,
           'employeeStatus': 'active',
-          if (status != null) 'status': status,
+          'status': ?status,
         });
         expect(user.authorizationGrantAllowed, isFalse);
         expect(user.passwordResetAllowed, isFalse);

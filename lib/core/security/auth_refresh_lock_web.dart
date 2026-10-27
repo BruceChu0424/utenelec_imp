@@ -6,6 +6,8 @@ import 'dart:math';
 
 import 'package:web/web.dart' as web;
 
+import '../async/serial_task_queue.dart';
+
 /// Serializes staff token refreshes in this isolate and across same-origin tabs.
 ///
 /// Web Locks is the primary mechanism. Browsers without that API use a short,
@@ -37,25 +39,18 @@ class AuthRefreshLock {
 
   final String _scopeHash;
   final String _owner;
-  Future<void> _tail = Future<void>.value();
+  final _operations = SerialTaskQueue();
 
   String get _lockName => 'uten-auth-refresh-$_scopeHash';
   String get _leaseKey => 'uten.auth.refresh.lease.$_scopeHash';
 
-  Future<T> synchronized<T>(Future<T> Function() action) async {
-    final predecessor = _tail;
-    final release = Completer<void>();
-    _tail = release.future;
-    await predecessor;
-    try {
-      if (web.window.navigator.has('locks')) {
-        return await _withWebLock(action);
-      }
-      return await _withLease(action);
-    } finally {
-      release.complete();
-    }
-  }
+  Future<T> synchronized<T>(Future<T> Function() action) =>
+      _operations.run(() async {
+        if (web.window.navigator.has('locks')) {
+          return await _withWebLock(action);
+        }
+        return await _withLease(action);
+      });
 
   Future<T> _withWebLock<T>(Future<T> Function() action) {
     final result = Completer<T>();

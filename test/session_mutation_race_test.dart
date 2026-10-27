@@ -35,16 +35,26 @@ void main() {
       addTearDown(container.dispose);
       final notifier = container.read(sessionProvider.notifier);
       await pumpEventQueue();
+      final before = await storage.getAuthTokenSnapshot();
+      final userIntentBefore = notifier.userIntentEpoch;
 
-      await notifier.login(
-        account: 'first',
-        password: 'secret',
-        isCurrent: () => false,
+      await expectLater(
+        notifier.login(
+          account: 'first',
+          password: 'secret',
+          isCurrent: () => false,
+        ),
+        throwsA(isA<SessionMutationSuperseded>()),
       );
 
       expect(repository.loginCalls, 0);
       expect(await storage.getAccessToken(), isNull);
       expect(await storage.getRefreshToken(), isNull);
+      expect(
+        (await storage.getAuthTokenSnapshot()).isSameSession(before),
+        isTrue,
+      );
+      expect(notifier.userIntentEpoch, userIntentBefore);
       expect(
         container.read(sessionProvider).status,
         AuthStatus.unauthenticated,
@@ -71,10 +81,14 @@ void main() {
         password: 'secret',
         isCurrent: () => current,
       );
+      final rejected = expectLater(
+        login,
+        throwsA(isA<SessionMutationSuperseded>()),
+      );
       await repository.firstLoginStarted.future;
       current = false;
       repository.releaseFirstLogin();
-      await login;
+      await rejected;
       await pumpEventQueue();
 
       expect(repository.loginCalls, 1);

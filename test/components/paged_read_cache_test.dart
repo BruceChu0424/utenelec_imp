@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/paged_list_controller.dart';
+import 'package:uten_imp/components/data_display/paged_read_ahead_policy.dart';
 import 'package:uten_imp/components/data_display/paged_read_cache.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -80,7 +81,7 @@ void main() {
   });
 
   test(
-    'prefetch stops at adjacent pages and yields before transport',
+    'prefetch prepares two following pages and yields before transport',
     () async {
       final cache = PagedReadCache<String>();
       cache.bind('goods');
@@ -96,8 +97,8 @@ void main() {
       );
       expect(reads, isEmpty);
       await pending;
-      expect(reads, [3, 1]);
-      expect(cache.length, 3);
+      expect(reads, [3, 4, 1]);
+      expect(cache.length, 4);
     },
   );
 
@@ -214,7 +215,7 @@ void main() {
       expect(reads, [2]);
       firstGate.complete(_page(2));
       await Future.wait([old, fresh]);
-      expect(reads, [2, 6, 4]);
+      expect(reads, [2, 6, 7, 4, 3]);
       expect(cache.peek(2), isNull);
     },
   );
@@ -294,7 +295,7 @@ void main() {
       );
       final acceptedNotifications = notifications;
       await Future<void>.delayed(Duration.zero);
-      expect(reads, [1, 2]);
+      expect(reads, [1, 2, 3]);
       expect(controller.currentPage, 1);
       expect(controller.page!.items.first, 'row 1 a');
       expect(controller.loading, isFalse);
@@ -394,4 +395,101 @@ void main() {
     expect(speculativeReads, 0);
     expect(controller.page!.page, 1);
   });
+
+  for (final center in [1, 9, 10]) {
+    test(
+      'preparation near page $center never requests outside the dataset',
+      () async {
+        final cache = PagedReadCache<String>();
+        cache.bind('goods');
+        cache.accept(_page(center));
+        final reads = <int>[];
+        await cache.prefetchAdjacent(
+          _page(center),
+          fetch: (page) async {
+            reads.add(page);
+            return _page(page);
+          },
+          isCurrent: () => true,
+        );
+        expect(reads, switch (center) {
+          1 => [2, 3],
+          9 => [10, 8, 7],
+          _ => [9, 8],
+        });
+      },
+    );
+  }
+
+  test(
+    'reverse scrolling prepares previous two pages before following pages',
+    () async {
+      final cache = PagedReadCache<String>();
+      cache.bind('goods');
+      cache.accept(_page(6));
+      final reads = <int>[];
+      await cache.prefetchPages(
+        _page(6),
+        PagedReadAheadPolicy.around(6, prepend: true),
+        fetch: (page) async {
+          reads.add(page);
+          return _page(page);
+        },
+        isCurrent: () => true,
+      );
+      expect(reads, [5, 4, 7, 8]);
+      for (final target in [5, 4, 6, 7, 8]) {
+        final page = await cache.read(
+          target,
+          () => throw StateError('cached return started transport'),
+        );
+        expect(page.page, target);
+      }
+      expect(reads, [5, 4, 7, 8]);
+      expect(cache.length, 5);
+    },
+  );
+
+  test('a failed second look-ahead page stops the speculative chain', () async {
+    final cache = PagedReadCache<String>();
+    cache.bind('goods');
+    cache.accept(_page(4));
+    final reads = <int>[];
+    final errors = <Object>[];
+    await cache.prefetchAdjacent(
+      _page(4),
+      fetch: (page) async {
+        reads.add(page);
+        if (page == 6) throw StateError('offline');
+        return _page(page);
+      },
+      isCurrent: () => true,
+      onError: errors.add,
+    );
+    expect(reads, [5, 6]);
+    expect(errors, hasLength(1));
+    expect(cache.peek(5)!.items, ['row 5 a', 'row 5 b']);
+    expect(cache.peek(6), isNull);
+    expect(cache.peek(3), isNull);
+  });
+
+  test(
+    'preparation remains bounded when a caller supplies the whole dataset',
+    () async {
+      final cache = PagedReadCache<String>();
+      cache.bind('goods');
+      final reads = <int>[];
+      await cache.prefetchPages(
+        _page(1),
+        Iterable.generate(10, (index) => index + 1),
+        fetch: (page) async {
+          reads.add(page);
+          return _page(page);
+        },
+        isCurrent: () => true,
+      );
+      expect(reads, [1, 2, 3, 4]);
+      expect(cache.length, 4);
+    },
+  );
 }

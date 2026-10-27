@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/core/security/auth_token_issuer.dart';
@@ -16,6 +17,8 @@ import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'support/fake_auth_logout_fence.dart';
+
+const _fixtureUrl = 'https://password-commit.example.test/api';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +32,7 @@ void main() {
       await storage.saveTokens(
         accessToken: 'current-access',
         refreshToken: 'current-refresh',
+        issuer: AuthBackendRealmPolicy().issuerFor(_fixtureUrl),
       );
       final repository = _AcceptedChangePasswordRepository();
       final container = _container(storage, repository);
@@ -62,6 +66,7 @@ ProviderContainer _container(SecureStorage storage, AuthRepository repository) {
   );
   return ProviderContainer(
     overrides: <Override>[
+      apiBaseUrlProvider.overrideWithValue(_fixtureUrl),
       secureStorageProvider.overrideWithValue(storage),
       authLogoutFenceProvider.overrideWithValue(FakeAuthLogoutFence()),
       authRepositoryProvider.overrideWithValue(repository),

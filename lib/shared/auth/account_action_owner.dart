@@ -13,10 +13,9 @@ class AccountActionOwner {
     this._ref, {
     bool Function()? isCurrent,
     Listenable? targetChanges,
-    VoidCallback? onInvalidated,
+    this._onInvalidated,
   }) : boundary = _ref.read(sensitiveReadBoundaryProvider),
-       _targetIsCurrent = isCurrent,
-       _onInvalidated = onInvalidated {
+       _targetIsCurrent = isCurrent {
     _boundaryChanges = _ref.listenManual(
       sensitiveReadBoundaryProvider,
       (_, _) => _changed(),

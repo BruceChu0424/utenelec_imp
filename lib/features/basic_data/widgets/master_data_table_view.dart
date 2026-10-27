@@ -1067,6 +1067,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   int? _visiblePage;
   final _rowPages = <Object, int>{};
   bool _visiblePageScheduled = false;
+  bool _readAheadPrepend = false;
+  (PagedReadWindowBinding<T>, int, bool)? _preparedReadingPosition;
   bool _settlingPageLayout = false;
   int _pageLayoutGeneration = 0;
   RenderBox? _externalPageViewport;
@@ -1433,18 +1435,60 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           page = rowPage;
         }
       }
-      if (page == null || (page == _currentPage && _visiblePage != null)) {
-        return;
+      if (page == null) return;
+      if (page != _currentPage || _visiblePage == null) {
+        setState(() => _visiblePage = page);
+        _bindPagination();
+        if (!_pageFocus.hasFocus) _pageCtrl.text = '$page';
+        if (_fullscreen) _fsTick.value++;
       }
-      setState(() => _visiblePage = page);
-      _bindPagination();
-      if (!_pageFocus.hasFocus) _pageCtrl.text = '$page';
-      if (_fullscreen) _fsTick.value++;
+      _prepareReadingPosition();
     });
     WidgetsBinding.instance.ensureVisualUpdate();
   }
 
+  void _prepareReadingPosition() {
+    final binding = _readWindowBinding;
+    if (binding == null ||
+        !binding.isCurrent ||
+        binding.pending ||
+        binding.failed ||
+        widget.error != null ||
+        _appendError != null ||
+        !_prefetchViewportActive) {
+      return;
+    }
+    final page = _currentPage;
+    final position = (binding, page, _readAheadPrepend);
+    if (_preparedReadingPosition == position) return;
+    _preparedReadingPosition = position;
+    unawaited(
+      binding.prepareAround(
+        page,
+        prepend: _readAheadPrepend,
+        canPrepare: () {
+          if (!mounted) return false;
+          if (!_prefetchViewportActive) {
+            // A covered route may stop the worker before either target starts.
+            // Its next real scroll must be able to resume this same position.
+            if (_preparedReadingPosition == position) {
+              _preparedReadingPosition = null;
+            }
+            return false;
+          }
+          return _automaticPagination &&
+              _readWindowBinding?.sameSession(binding) == true &&
+              _currentPage == page &&
+              widget.error == null &&
+              _appendError == null;
+        },
+      ),
+    );
+  }
+
   void _resetPages() {
+    _preparedReadingPosition = null;
+    _readAheadPrepend = false;
     _replacementWindowPages = null;
     _explicitReadingPage = null;
     _reportedRetainedPages = null;
@@ -6003,12 +6047,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (!_prefetchViewportActive ||
         _prefetchCorrectionDepth != 0 ||
         _restoringDeferredEdge ||
-        _hasPendingPageAnchor ||
-        !UtenScrollPrefetchPolicy.isNearEdge(
-          metrics,
-          prepend: prepend,
-          fontZoom: UtenDisplayScale.fontZoomOf(context),
-        )) {
+        _hasPendingPageAnchor) {
+      return;
+    }
+    if (_readAheadPrepend != prepend) {
+      _readAheadPrepend = prepend;
+      _scheduleVisiblePage();
+    }
+    if (!UtenScrollPrefetchPolicy.isNearEdge(
+      metrics,
+      prepend: prepend,
+      fontZoom: UtenDisplayScale.fontZoomOf(context),
+    )) {
       return;
     }
     if (!prepend) _maybeTriggerLoadMore(metrics);

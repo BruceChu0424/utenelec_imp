@@ -286,8 +286,8 @@ void main() {
     await tester.pumpAndSettle();
     await settled;
     expect(rows.pagination.value?.currentPage, 79);
-    expect(reads, containsAll([79, 78, 80]));
-    expect(reads, isNot(contains(77)));
+    expect(reads, containsAll([79, 78, 77, 80, 81]));
+    expect(reads, isNot(contains(76)));
     final pane =
         tester.state(find.byType(MasterEntityDetailPane<_Row, _Row>))
             as MasterEntityPaneController<_Row, _Row>;
@@ -318,16 +318,16 @@ void main() {
         );
       },
     );
-    expect(reads, [1, 2]);
+    expect(reads, [1, 2, 3]);
     await PagedReadIntent.bufferSeed(() => _table(tester).onPageChange!(2));
     await tester.pumpAndSettle();
-    expect(reads, [1, 2]);
+    expect(reads, [1, 2, 3]);
     await _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
     expect(reads, [1, 2, 3]);
   });
 
-  testWidgets('主档首屏预取下一页且往返分页复用数据，显式刷新重取', (tester) async {
+  testWidgets('主档首屏预取后两页且往返分页复用数据，显式刷新重取', (tester) async {
     final reads = <int>[];
     await _pump(
       tester,
@@ -344,13 +344,13 @@ void main() {
         );
       },
     );
-    expect(reads, [1, 2], reason: '仅提前一页，不遍历整个结果集');
+    expect(reads, [1, 2, 3], reason: '首屏只准备后两页');
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).expensiveRowMounts, isFalse);
     await _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
     expect(_table(tester).currentPage, 2);
-    expect(reads, [1, 2, 3], reason: '进入第二页后准备第三页');
+    expect(reads, [1, 2, 3], reason: '后续两页已准备，翻页复用缓存');
     await _table(tester).onPageChange!(1);
     await tester.pumpAndSettle();
     expect(_table(tester).currentPage, 1);

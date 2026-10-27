@@ -388,6 +388,21 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
                 self.assertNotIn("PUB_HOSTED_URL", source)
                 self.assertNotRegex(source, r"\b(?:rm|unlink|Remove-Item)\b[^\n]*pubspec\.lock")
 
+    def test_compiled_relay_trust_runs_in_a_separate_issuer_boundary_cohort(self):
+        quality = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        name = "      - name: Verify issuer isolation and compiled company relay trust\n"
+        self.assertEqual(1, quality.count(name))
+        cohort = quality.split(name, 1)[1].split("      - run:", 1)[0]
+        for path in ("test/session_backend_owner_race_test.dart",
+                     "test/pending_refresh_revocation_backend_owner_test.dart",
+                     "test/auth_interceptor_backend_issuer_race_test.dart"):
+            self.assertIn(path, cohort)
+        self.assertIn("--dart-define=API_BASE_URL=https://lan.uten.test/api", cohort)
+        self.assertIn("--dart-define=CLOUD_API_BASE_URL=https://cloud.uten.test/api", cohort)
+        self.assertIn("flutter test --no-pub", cohort)
+        self.assertNotIn("continue-on-error", cohort)
+        self.assertIn("      - run: flutter test --no-pub\n", quality)
+
     def test_current_release_verifies_migrations_before_signed_inventory(self):
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         build = workflow.split("      - name: Build server application and migrator\n", 1)[1].split("      - name:", 1)[0]

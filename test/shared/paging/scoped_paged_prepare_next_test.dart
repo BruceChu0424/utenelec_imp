@@ -15,7 +15,7 @@ PagedResult<String> _page(int page) => PagedResult(
 
 void main() {
   test(
-    'explicit preparation starts next transport before any edge scroll and foreground adopts it',
+    'explicit preparation starts two pages before any edge scroll and foreground adopts them',
     () async {
       final reader = ScopedPagedRead<String>();
       addTearDown(reader.dispose);
@@ -37,11 +37,11 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(reads, [1]);
       await reader.prepareNext(1, canPrepare: () => true);
-      expect(reads, [1, 2]);
-      expect((await read(2)).items, ['row-2']);
-      expect(reads, [1, 2]);
-      await reader.prepareNext(2, canPrepare: () => true);
       expect(reads, [1, 2, 3]);
+      expect((await read(2)).items, ['row-2']);
+      expect(reads, [1, 2, 3]);
+      await reader.prepareNext(2, canPrepare: () => true);
+      expect(reads, [1, 2, 3, 4]);
     },
   );
 
@@ -70,12 +70,13 @@ void main() {
         await reader.prepareNext(78, canPrepare: () => true);
       });
       await reader.prepareNext(79, canPrepare: () => true);
-      expect(reads, [79, 78, 80]);
+      expect(reads, [79, 78, 80, 81]);
       await read(79);
       expect(reads, [
         79,
         78,
         80,
+        81,
         79,
       ], reason: 'Preparation does not change the accepted foreground page');
     },
@@ -120,6 +121,32 @@ void main() {
       await Future.wait([first, skipped, latest]);
       expect(maximum, 1);
       expect(reads, [1, 2, 21]);
+    },
+  );
+
+  test(
+    'the final page limits preparation and can be adopted without another read',
+    () async {
+      final reader = ScopedPagedRead<String>();
+      addTearDown(reader.dispose);
+      final reads = <int>[];
+      Future<PagedResult<String>> read(int page) => reader.read(
+        page,
+        scope: 'query',
+        fetchPage: (target) async {
+          reads.add(target);
+          return _page(target);
+        },
+        isCurrent: () => true,
+        useCache: true,
+        canPrefetch: () => false,
+      );
+      await read(99);
+      await reader.prepareNext(99, canPrepare: () => true);
+      expect(reads, [99, 100]);
+      expect((await read(100)).page, 100);
+      await reader.prepareNext(100, canPrepare: () => true);
+      expect(reads, [99, 100]);
     },
   );
 }

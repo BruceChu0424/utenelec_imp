@@ -158,7 +158,7 @@ void main() {
   ];
   for (final scenario in cases) {
     testWidgets(
-      '${scenario.name} warms the adjacent page and reuses both directions',
+      '${scenario.name} warms two following pages and reuses both directions',
       (tester) async {
         SharedPreferences.setMockInitialValues({});
         final prefs = await SharedPreferences.getInstance();
@@ -202,7 +202,7 @@ void main() {
         );
         MasterDataTableView<dynamic> table() => tester.widget(finder.first);
         expect(table().error, isNull);
-        expect(api.reads, [1, 2]);
+        expect(api.reads, [1, 2, 3]);
         expect(table().currentPage, 1);
         expect(table().expensiveRowMounts, isFalse);
         await table().onPageChange!(2);
@@ -224,8 +224,8 @@ void main() {
         await tester.pump(const Duration(milliseconds: 20));
         await tester.pumpAndSettle();
         expect(rows.visiblePage, 79);
-        expect(api.reads, containsAll([79, 78, 80]));
-        expect(api.reads, isNot(contains(77)));
+        expect(api.reads, containsAll([79, 78, 77, 80]));
+        expect(api.reads, isNot(contains(76)));
         final beforeRefresh = api.reads.length;
         table().onRetry!();
         await tester.pumpAndSettle();

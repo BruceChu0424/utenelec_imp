@@ -38,6 +38,9 @@ class _Session extends SessionNotifier {
   int get requestIntentEpoch => _intentEpoch;
 
   @override
+  int get userIntentEpoch => _intentEpoch;
+
+  @override
   Future<void> logout() async {
     _intentEpoch++;
     state = const SessionState();

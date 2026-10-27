@@ -9,6 +9,7 @@ import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -17,6 +18,19 @@ import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+
+class _LayoutOperator extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'permission-layout-manager', code: 'M1', name: '经理'),
+  );
+}
+
+class _NoNetworkApi extends Fake implements ApiClient {}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -32,6 +46,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            sessionProvider.overrideWith(_LayoutOperator.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'permission-layout-manager'),
+            ),
+            apiClientProvider.overrideWithValue(_NoNetworkApi()),
             pagePermissionDelegationRepositoryProvider.overrideWithValue(
               _Repository(withClientScope: true),
             ),
@@ -249,6 +268,11 @@ void main() {
 
 Widget _app(_Repository repository) => ProviderScope(
   overrides: [
+    sessionProvider.overrideWith(_LayoutOperator.new),
+    authenticatedScopeProvider.overrideWithValue(
+      const AuthenticatedScope(userId: 'permission-layout-manager'),
+    ),
+    apiClientProvider.overrideWithValue(_NoNetworkApi()),
     pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),
     currentPermissionsProvider.overrideWithValue(const {}),
   ],

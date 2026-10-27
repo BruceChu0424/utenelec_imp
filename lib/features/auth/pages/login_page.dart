@@ -23,6 +23,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/login_server_preparation.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/network/server_selection.dart';
 import '../../../core/platform/desktop_window.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -31,6 +32,7 @@ import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
 import '../widgets/desktop_login_layout.dart';
@@ -119,11 +121,18 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final accountInputEpoch = _accountInputEpoch;
     final account = _accountController.text.trim();
     final session = ref.read(sessionProvider.notifier);
-    final intentBeforePreparation = session.requestIntentEpoch;
+    // A fresh probe may legitimately change the endpoint before credentials
+    // are sent. Competing user intents and explicit configuration commands
+    // still retire this preparation, including changes back to the same URL.
+    final intentBeforePreparation = session.userIntentEpoch;
+    final preferences = ref.read(sharedPreferencesProvider);
+    final configurationRevision = serverSelectionRevision(preferences);
     bool isCurrentLogin() =>
         mounted &&
         accountInputEpoch == _accountInputEpoch &&
         loginContextEpoch == _loginContextEpoch &&
+        identical(preferences, ref.read(sharedPreferencesProvider)) &&
+        serverSelectionRevision(preferences) == configurationRevision &&
         identical(ref.read(sessionProvider.notifier), session);
     setState(() {
       _isLoading = true;
@@ -141,7 +150,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
       if (!mounted ||
           accountInputEpoch != _accountInputEpoch ||
           !identical(ref.read(sessionProvider.notifier), session) ||
-          session.requestIntentEpoch != intentBeforePreparation) {
+          session.userIntentEpoch != intentBeforePreparation ||
+          !identical(preferences, ref.read(sharedPreferencesProvider)) ||
+          serverSelectionRevision(preferences) != configurationRevision) {
         return;
       }
       loginContextEpoch = _loginContextEpoch;

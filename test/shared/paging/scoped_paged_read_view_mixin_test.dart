@@ -144,7 +144,7 @@ void main() {
       final prepared = view.prepareScopedNext<int>(1, slot: 'ledger');
       await _drain(tester);
       await prepared;
-      expect(source.calls, [('A', 1), ('A', 2)]);
+      expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
       expect(view.accepted, same(accepted));
       expect(view.accepted?.page, 1);
       expect(view.builds, builds);
@@ -155,7 +155,7 @@ void main() {
         canPrefetch: () => false,
       );
       await _drain(tester);
-      expect(source.calls, [('A', 1), ('A', 2)]);
+      expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
     },
   );
 
@@ -194,7 +194,7 @@ void main() {
       prepared = view.prepareScopedNext<int>(1, canPrepare: () => true);
       await _drain(tester);
       await prepared;
-      expect(source.calls, [('A', 1), ('A', 2)]);
+      expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
     },
   );
 
@@ -326,14 +326,14 @@ void main() {
     },
   );
 
-  testWidgets('adjacent pages are reused; ordinary refresh stays fresh', (
+  testWidgets('two prepared pages are reused; ordinary refresh stays fresh', (
     tester,
   ) async {
     final source = _Source();
     final (view, _) = await _mount(tester, source);
     await view.read(1);
     await _drain(tester);
-    expect(source.calls, [('A', 1), ('A', 2)]);
+    expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
     await view.read(2, cached: true);
     await _drain(tester);
     expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
@@ -342,7 +342,14 @@ void main() {
     expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
     await view.read(1);
     await _drain(tester);
-    expect(source.calls, [('A', 1), ('A', 2), ('A', 3), ('A', 1), ('A', 2)]);
+    expect(source.calls, [
+      ('A', 1),
+      ('A', 2),
+      ('A', 3),
+      ('A', 1),
+      ('A', 2),
+      ('A', 3),
+    ]);
   });
 
   testWidgets('input changes stop the old query before its debounce reload', (
@@ -400,7 +407,7 @@ void main() {
     final prepared = view.prepareScopedNext<int>(1);
     await _drain(tester);
     await prepared;
-    expect(source.calls, [('A', 1), ('A', 2)]);
+    expect(source.calls, [('A', 1), ('A', 2), ('A', 3)]);
     source.deny = true;
     await expectLater(view.read(1), throwsA(isA<ApiException>()));
     expect(view.retirements, 1);

@@ -198,7 +198,7 @@ void main() {
 
   for (final controller in [false, true]) {
     test(
-      '${controller ? 'controller' : 'scoped read'} seed 79 to 78 never predicts 77 or replaces the original center',
+      '${controller ? 'controller' : 'scoped read'} seed 79 to 78 keeps the original two-page preparation center',
       () async {
         final reads = <int>[];
         Future<PagedResult<String>> fetch(int page) async {
@@ -234,16 +234,16 @@ void main() {
         await read(79, cached: false);
         await PagedReadIntent.bufferSeed(() => read(78));
         await Future<void>.delayed(Duration.zero);
-        expect(reads.toSet(), {79, 78, 80});
-        expect(reads, isNot(contains(77)));
+        expect(reads.toSet(), {79, 78, 80, 81, 77});
+        expect(reads, isNot(contains(76)));
         expect(reads.where((page) => page == 78), hasLength(1));
         expect(PagedReadIntent.isBufferSeed, isFalse);
         await read(78);
         await Future<void>.delayed(Duration.zero);
         expect(
           reads,
-          contains(77),
-          reason: 'Ordinary navigation still prepares its own adjacent page',
+          contains(76),
+          reason: 'Ordinary navigation prepares two pages from its own center',
         );
       },
     );

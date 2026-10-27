@@ -52,7 +52,11 @@ class StaffAuthenticationGenerationPostgresTest {
             var audit=mock(AuditService.class);
             var target=new LoginFailureRecorder(users,settings,audit,mock(TxSessionVars.class));
             var proxy=new ProxyFactory(target);
-            proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(ds),new AnnotationTransactionAttributeSource()));
+            var interceptor=new TransactionInterceptor();
+            interceptor.setTransactionManager(new DataSourceTransactionManager(ds));
+            interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+            interceptor.afterPropertiesSet();
+            proxy.addAdvice(interceptor);
             var recorder=(LoginFailureRecorder)proxy.getProxy();
             var passwords=mock(org.springframework.security.crypto.password.PasswordEncoder.class);
             when(passwords.encode(anyString())).thenReturn("dummy-fixture");

@@ -575,14 +575,14 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
             ),
       );
       await completeFormDraft();
-      if (!current()) return;
+      if (!mounted || !current()) return;
       // 一次性凭据弹窗前必须先撤遮罩：遮罩是 root Overlay 的裸图层, Navigator 每次重排
       // 都把它重新抬到最顶, 而这个弹窗 barrierDismissible=false 且 PopScope 挡掉返回键,
       // 唯一出口「我已安全保存」被遮罩吃掉点击; 遮罩又要等这行 await 返回才撤 —— 互相
       // 等待会把页面彻底卡死, 临时密码再也拿不出来(员工却已经建好了)。
       setState(() => _submitting = false);
       await WidgetsBinding.instance.endOfFrame;
-      if (!current()) return;
+      if (!mounted || !current()) return;
       if (openAccount) {
         await showEmployeeCredentialDialog(
           context,
@@ -590,14 +590,14 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
           isCurrent: current,
         );
       }
-      if (!current()) return;
+      if (!mounted || !current()) return;
       context.appSuccess(l10n.employeeOnboardSuccess);
       context.pop();
     } on ApiException catch (e) {
-      if (!current()) return;
+      if (!mounted || !current()) return;
       context.appApiError(e, fallback: l10n.employeeOnboardSubmitFailed);
     } catch (error) {
-      if (!current()) return;
+      if (!mounted || !current()) return;
       context.appError(
         error is AccountWriteReceiptException
             ? l10n.employeeAccountReceiptIncomplete

@@ -6,11 +6,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_exception.dart';
+import '../../core/async/serial_task_queue.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/session_event_bus.dart';
 import '../../core/network/server_config.dart';
+import '../../core/network/server_selection.dart';
 import '../../core/network/authenticated_request_scope.dart';
 import '../../core/security/auth_logout_fence.dart';
 import '../../core/security/secure_storage.dart';
@@ -20,6 +23,7 @@ import '../../features/admin/repositories/impersonation_repository.dart';
 import '../../features/auth/models/auth_session.dart';
 import '../../features/auth/repositories/auth_repository.dart';
 import '../models/user.dart';
+import 'shared_providers.dart';
 
 enum AuthStatus { unauthenticated, authenticated, mustChangePassword }
 
@@ -130,12 +134,16 @@ class _SessionOperationOwner {
     this.epoch,
     this.backend,
     this.repository,
-    this.issuer,
-  );
+    this.issuer, {
+    required this.configurationOwner,
+    required this.configurationRevision,
+  });
   final int epoch;
   final String backend;
   final AuthRepository repository;
   final AuthTokenIssuer issuer;
+  final SharedPreferences configurationOwner;
+  final int configurationRevision;
 }
 
 class SessionNotifier extends Notifier<SessionState> {
@@ -147,6 +155,11 @@ class SessionNotifier extends Notifier<SessionState> {
   // this short commit queue.
   var _sessionMutationEpoch = 0;
   var _impersonationIntentEpoch = 0;
+  var _userIntentEpoch = 0;
+
+  /// Explicit authentication commands, independent of pre-credential automatic
+  /// endpoint discovery. Existing requestIntentEpoch retains backend invalidation.
+  int get userIntentEpoch => _userIntentEpoch;
   String? _visibleImpersonationLineage;
   int? _pendingImpersonationOperation;
   bool _requestOwnerDisposed = false;
@@ -156,7 +169,7 @@ class SessionNotifier extends Notifier<SessionState> {
   /// and profile refresh preserve it; no credentials are exposed.
   int get requestIntentEpoch =>
       _sessionMutationEpoch + _impersonationIntentEpoch;
-  Future<void> _sessionCommitTail = Future<void>.value();
+  final _sessionCommits = SerialTaskQueue();
 
   // When an authoritative replacement/logout write fails, visible state stays
   // logged out and automatic restore is forbidden until a later user intent
@@ -172,23 +185,29 @@ class SessionNotifier extends Notifier<SessionState> {
   @override
   SessionState build() {
     _requestOwnerDisposed = false;
-    ref.listen<String>(apiBaseUrlProvider, (previous, next) {
-      if (previous == null || previous == next) return;
-      ++_sessionMutationEpoch;
-      ++_impersonationIntentEpoch;
-      final policy = ref.read(authBackendRealmPolicyProvider);
-      if (state.isLoggedIn &&
-          !policy.canUse(
-            _visibleIssuer ?? policy.legacyIssuerFor(previous),
-            next,
-          )) {
-        state = const SessionState();
-      }
-      if (state.status == AuthStatus.unauthenticated &&
-          !_localStorageFailClosed) {
-        unawaited(_restore());
-      }
-    });
+    // Credential ownership must observe endpoint history even while no widget
+    // listens to this notifier. Ref-owned dependencies pause with the UI;
+    // this service subscription instead lives until the notifier is disposed.
+    final backendSubscription = ref.container.listen<String>(
+      apiBaseUrlProvider,
+      (previous, next) {
+        if (previous == null || previous == next) return;
+        ++_sessionMutationEpoch;
+        ++_impersonationIntentEpoch;
+        final policy = ref.read(authBackendRealmPolicyProvider);
+        if (state.isLoggedIn &&
+            !policy.canUse(
+              _visibleIssuer ?? policy.legacyIssuerFor(previous),
+              next,
+            )) {
+          state = const SessionState();
+        }
+        if (state.status == AuthStatus.unauthenticated &&
+            !_localStorageFailClosed) {
+          unawaited(_restore());
+        }
+      },
+    );
     // 模拟身份绝不跨重启恢复（安全）：必须先 await 清掉残留模拟键，再恢复会话。
     // 否则 _restore→/auth/me 抢跑读到残留模拟 token，会以目标身份冷启动（actor=null，无横幅无出口）。
     unawaited(_clearImpersonationThenRestore());
@@ -220,6 +239,7 @@ class SessionNotifier extends Notifier<SessionState> {
         });
     ref.onDispose(() {
       _requestOwnerDisposed = true;
+      backendSubscription.close();
       unawaited(expirationSubscription.cancel());
       unawaited(profileSubscription.cancel());
       unawaited(impersonationExpiredSubscription.cancel());
@@ -230,11 +250,14 @@ class SessionNotifier extends Notifier<SessionState> {
   AuthRepository get _auth => ref.read(authRepositoryProvider);
   _SessionOperationOwner _operationOwner(int epoch) {
     final backend = ref.read(apiBaseUrlProvider);
+    final configuration = ref.read(sharedPreferencesProvider);
     return _SessionOperationOwner(
       epoch,
       backend,
       _auth,
       ref.read(authBackendRealmPolicyProvider).issuerFor(backend),
+      configurationOwner: configuration,
+      configurationRevision: serverSelectionRevision(configuration),
     );
   }
 
@@ -244,19 +267,26 @@ class SessionNotifier extends Notifier<SessionState> {
     final backend = ref.read(apiBaseUrlProvider);
     final repository = _auth;
     final issuer = ref.read(authBackendRealmPolicyProvider).issuerFor(backend);
+    final configuration = ref.read(sharedPreferencesProvider);
+    ++_userIntentEpoch;
     return _SessionOperationOwner(
       ++_sessionMutationEpoch,
       backend,
       repository,
       issuer,
+      configurationOwner: configuration,
+      configurationRevision: serverSelectionRevision(configuration),
     );
   }
 
   bool _operationCurrent(_SessionOperationOwner owner) {
     if (_requestOwnerDisposed) return false;
     final backend = ref.read(apiBaseUrlProvider);
+    final configuration = ref.read(sharedPreferencesProvider);
     return !_requestOwnerDisposed &&
         owner.epoch == _sessionMutationEpoch &&
+        identical(configuration, owner.configurationOwner) &&
+        serverSelectionRevision(configuration) == owner.configurationRevision &&
         backend == owner.backend;
   }
 
@@ -794,17 +824,8 @@ class SessionNotifier extends Notifier<SessionState> {
     _visibleIssuer = snapshot.issuer;
   }
 
-  Future<T> _serializeSessionCommit<T>(Future<T> Function() commit) async {
-    final predecessor = _sessionCommitTail;
-    final release = Completer<void>();
-    _sessionCommitTail = release.future;
-    await predecessor;
-    try {
-      return await commit();
-    } finally {
-      release.complete();
-    }
-  }
+  Future<T> _serializeSessionCommit<T>(Future<T> Function() commit) =>
+      _sessionCommits.run(commit);
 
   Future<void> _revokeRemote({
     required String? refresh,
@@ -842,6 +863,7 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// 进入模拟模式：admin 重新确认密码 → 后端签发限时 modeToken（窗口内免密切换）。
   Future<void> enterImpersonationMode() async {
+    ++_userIntentEpoch;
     final operation = ++_impersonationIntentEpoch;
     final staffOperation = _sessionMutationEpoch;
     final server = ref.read(apiBaseUrlProvider);
@@ -881,6 +903,7 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// 切换到目标员工身份（首次或中途切换）。modeToken 有效内免密。
   Future<void> startImpersonation({required String targetEmployeeId}) async {
+    ++_userIntentEpoch;
     final operation = ++_impersonationIntentEpoch;
     final staffOperation = _sessionMutationEpoch;
     final server = ref.read(apiBaseUrlProvider);
@@ -943,6 +966,7 @@ class SessionNotifier extends Notifier<SessionState> {
   /// 退出模拟：恢复 admin 身份。best-effort 通知后端审计（带模拟 token）。
   Future<void> endImpersonation() async {
     if (!state.isImpersonating) return;
+    ++_userIntentEpoch;
     final operation = ++_impersonationIntentEpoch;
     final staffOperation = _sessionMutationEpoch;
     final server = ref.read(apiBaseUrlProvider);

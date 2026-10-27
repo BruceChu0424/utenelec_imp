@@ -220,8 +220,9 @@ class DioEmployeeRepository
   }) {
     final employee = json['employee'];
     final temporaryPassword = json['temporaryPassword'];
-    if (employee is! Map<String, dynamic>)
+    if (employee is! Map<String, dynamic>) {
       throw const AccountWriteReceiptException();
+    }
     final profile = EmployeeProfile.fromJson(employee);
     if (expectedEmployeeId != null && profile.id != expectedEmployeeId) {
       throw const AccountWriteReceiptException();

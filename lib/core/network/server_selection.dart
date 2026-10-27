@@ -26,6 +26,23 @@ const _kCloudUrlKey = 'uten.server_url_override'; // 仅 Debug 显式覆盖，Re
 const _kServerModeKey = 'uten.server_mode'; // auto | local | cloud
 const _kLocalReachableKey = 'uten.local_server_reachable';
 
+class _SelectionRevision {
+  int value = 0;
+}
+
+final _selectionRevisions = Expando<_SelectionRevision>('server-selection');
+
+/// Explicit configuration commands retire pending credential preparations even
+/// when A -> B -> A finishes before a derived endpoint provider is evaluated.
+/// Reachability probes do not change this revision.
+int serverSelectionRevision(SharedPreferences? preferences) =>
+    preferences == null ? 0 : (_selectionRevisions[preferences]?.value ?? 0);
+
+void _advanceSelectionRevision(SharedPreferences preferences) {
+  final revision = _selectionRevisions[preferences] ??= _SelectionRevision();
+  revision.value++;
+}
+
 /// 服务器选择模式。
 enum ServerMode {
   /// 自动：本地可达→本地，否则→云端。默认值。
@@ -78,8 +95,10 @@ ServerMode readServerMode(SharedPreferences? prefs) {
   }
 }
 
-Future<void> writeServerMode(SharedPreferences prefs, ServerMode mode) =>
-    prefs.setString(_kServerModeKey, mode.name);
+Future<void> writeServerMode(SharedPreferences prefs, ServerMode mode) {
+  _advanceSelectionRevision(prefs);
+  return prefs.setString(_kServerModeKey, mode.name);
+}
 
 /// Restores the native client to the safe default without accepting a host
 /// from the user. The next endpoint decision is still limited to the local and
@@ -134,6 +153,7 @@ String resolveCloudUrl(String url) =>
     resolveApiBaseUrl(url.trim(), releaseMode: kReleaseMode, web: kIsWeb);
 
 Future<void> writeCloudUrl(SharedPreferences prefs, String? url) async {
+  _advanceSelectionRevision(prefs);
   if (!kDebugMode || kIsWeb) {
     // 清掉旧版本可能遗留的任意 host；生产版本绝不保存用户输入地址。
     await prefs.remove(_kCloudUrlKey);

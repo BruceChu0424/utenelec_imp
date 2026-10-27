@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth_refresh_lock.dart';
+import '../async/serial_task_queue.dart';
 import 'auth_token_issuer.dart';
 import 'tab_scoped_store.dart';
 
@@ -87,14 +88,16 @@ class AuthTokenSnapshot {
       final access = decoded['accessToken'];
       final refresh = decoded['refreshToken'];
       final version = decoded['version'];
-      if (version != null && version != 1 && version != 2 && version != 3)
+      if (version != null && version != 1 && version != 2 && version != 3) {
         return null;
+      }
       final issuer = AuthTokenIssuer.tryParse(decoded['issuer']);
       if ((decoded['issuer'] != null && issuer == null) ||
           (version == 3 &&
               (access != null || refresh != null) &&
-              issuer == null))
+              issuer == null)) {
         return null;
+      }
       if (generationValue is! num ||
           (intentValue != null && intentValue is! num) ||
           (lineageValue != null && lineageValue is! String) ||
@@ -253,7 +256,7 @@ class SecureStorage {
   static const _keyVisitorRefresh = 'visitor.refresh_token';
 
   static final Random _random = Random.secure();
-  static Future<void> _staffRecordAccessTail = Future<void>.value();
+  static final _staffRecordAccess = SerialTaskQueue();
 
   Future<String?> getAccessToken() async =>
       (await getAuthTokenSnapshot()).accessToken;
@@ -812,17 +815,8 @@ class SecureStorage {
   /// Web session records belong to one tab. Reads need the local write/rollback
   /// boundary, not a cross-tab lease (whose fallback acquisition waits 40ms).
   /// All record writes still acquire the established platform mutation lock.
-  Future<T> _accessStaffRecord<T>(Future<T> Function() action) async {
-    final predecessor = _staffRecordAccessTail;
-    final release = Completer<void>();
-    _staffRecordAccessTail = release.future;
-    await predecessor;
-    try {
-      return await action();
-    } finally {
-      release.complete();
-    }
-  }
+  Future<T> _accessStaffRecord<T>(Future<T> Function() action) =>
+      _staffRecordAccess.run(action);
 
   Future<T> _mutateStaffTokens<T>(Future<T> Function() mutation) =>
       _accessStaffRecord(() => _staffTokenRecordLock.synchronized(mutation));

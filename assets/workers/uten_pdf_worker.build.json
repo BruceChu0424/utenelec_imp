@@ -17,7 +17,7 @@
     "lib/shared/formatters/exact_decimal.dart": "66fb3d5788b1c8f961b394ea2068153c7e4f6f88fe6f0f5b5f55a1f82f2192c1",
     "lib/core/network/api_exception.dart": "edf19ab29f05b9ba35a48c8465e7632cb220eed04971143f62a5ac0aa00d4848",
     "lib/core/network/api_error.dart": "8e6b70c6da0cffacfb3f464ae4175e605b6220a95f5eb199f093b8de01368d30",
-    "pubspec.lock": "12ee474f3df74e6a2cbe035fd3d05691b82d7850e968a1b666194993b5886268"
+    "pubspec.lock": "fd18178f04b319800c54615a480c584476d5877e7e35cde1f2dd3efa3b5ebfcf"
   },
   "workerSha256": "afec648a00c5e0d266d573afdceb4fe77a7c3882c5b6b6a2da26aa9ff3677ce6",
   "workerBytes": 1307238,

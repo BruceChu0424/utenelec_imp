@@ -13,6 +13,7 @@ void main() {
         return {
           'employee': {'id': 'employee-1', 'code': 'E1001', 'fullName': '张三'},
           'temporaryPassword': 'A7!temporary-Only2',
+          'loginAccount': 'server-issued-login',
         };
       }),
     );
@@ -37,6 +38,7 @@ void main() {
 
     expect(result.employee.code, 'E1001');
     expect(result.temporaryPassword, 'A7!temporary-Only2');
+    expect(result.loginAccount, 'server-issued-login');
     expect(captured.method, 'POST');
     expect(captured.path, '/org/employees');
   });
@@ -48,6 +50,7 @@ void main() {
         _api(
           (_) => {
             'employee': {'id': 'employee-1', 'code': 'E1001', 'fullName': '张三'},
+            'loginAccount': 'server-issued-login',
           },
         ),
       );

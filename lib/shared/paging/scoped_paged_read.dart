@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../components/data_display/paged_read_cache.dart';
+import '../../components/data_display/paged_read_ahead_policy.dart';
 import '../../core/network/api_exception.dart';
 import '../models/paged_result.dart';
 import 'paged_read_intent.dart';
@@ -86,7 +87,7 @@ class ScopedPagedRead<T> {
     invalidate();
   }
 
-  /// Prepare a visible page's successor from the last accepted frozen source.
+  /// Prepare two successors from the last accepted frozen source.
   /// This publishes no UI data and never changes the foreground reading page.
   Future<void> prepareNext(int visiblePage, {bool Function()? canPrepare}) {
     if (PagedReadIntent.isBufferSeed) return Future.value();
@@ -99,11 +100,29 @@ class ScopedPagedRead<T> {
     }
     return _cache.prefetchPages(
       source.page,
-      [visiblePage + 1],
+      PagedReadAheadPolicy.next(visiblePage),
       fetch: source.fetch,
       isCurrent: () =>
           source.isCurrent() &&
           (canPrepare?.call() ?? source.canPrefetch?.call() ?? true),
+      onError: source.onError,
+    );
+  }
+
+  Future<void> _prepareAround(
+    int visiblePage, {
+    required bool prepend,
+    required bool Function() canPrepare,
+  }) {
+    final source = _foreground;
+    if (source == null || !source.isCurrent() || visiblePage < 1) {
+      return Future.value();
+    }
+    return _cache.prefetchPages(
+      source.page,
+      PagedReadAheadPolicy.around(visiblePage, prepend: prepend),
+      fetch: source.fetch,
+      isCurrent: () => source.isCurrent() && canPrepare(),
       onError: source.onError,
     );
   }
@@ -202,7 +221,11 @@ class ScopedPagedRead<T> {
         }
       }
       if (current()) {
-        session.bindResult(result, replacementPages: replacement);
+        session.bindResult(
+          result,
+          replacementPages: replacement,
+          prepareAround: _prepareAround,
+        );
         _latestResult = result;
       }
     } catch (error) {

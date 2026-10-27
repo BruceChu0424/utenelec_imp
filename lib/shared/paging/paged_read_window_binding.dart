@@ -1,6 +1,13 @@
 import '../models/paged_result.dart';
 import 'paged_query_identity.dart';
 
+typedef PrepareReadWindow =
+    Future<void> Function(
+      int visiblePage, {
+      required bool prepend,
+      required bool Function() canPrepare,
+    });
+
 /// A bounded refresh plan. Reading position remains live while requests run.
 class ReadWindowPlan {
   ReadWindowPlan._(this.pages, this._visiblePage, this._isCurrent);
@@ -38,7 +45,9 @@ class PagedReadWindowSession<T> {
     PagedResult<T> result, {
     Map<int, List<T>>? replacementPages,
     bool pending = false,
+    PrepareReadWindow? prepareAround,
   }) {
+    if (prepareAround != null) _core.prepareAround = prepareAround;
     _core.pending = pending;
     _core.failed = false;
     _core.empty =
@@ -73,6 +82,25 @@ class PagedReadWindowBinding<T> {
   bool get pending => _core.pending;
   bool get failed => _core.failed;
   bool get empty => _core.empty;
+
+  /// Uses the raw reader even when these rows are a business projection. This
+  /// prepares data only; it never moves the reading position or mounts rows.
+  Future<void> prepareAround(
+    int visiblePage, {
+    bool prepend = false,
+    required bool Function() canPrepare,
+  }) async {
+    bool current() =>
+        isCurrent && !_core.pending && !_core.failed && canPrepare();
+    if (current()) {
+      await _core.prepareAround?.call(
+        visiblePage,
+        prepend: prepend,
+        canPrepare: current,
+      );
+    }
+  }
+
   bool sameSession(PagedReadWindowBinding<Object?>? other) =>
       other != null &&
       identical(_core, other._core) &&
@@ -133,11 +161,13 @@ class _ReadWindowCore {
   bool pending = false;
   bool failed = false;
   bool empty = false;
+  PrepareReadWindow? prepareAround;
   bool get isCurrent => _valid && ownerCurrent();
   void invalidate() {
     _valid = false;
     pending = false;
     failed = false;
+    prepareAround = null;
     presentations.clear();
   }
 

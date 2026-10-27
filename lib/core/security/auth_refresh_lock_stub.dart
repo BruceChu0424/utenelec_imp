@@ -1,4 +1,4 @@
-import 'dart:async';
+import '../async/serial_task_queue.dart';
 
 /// Serializes staff token refreshes inside a non-Web process.
 ///
@@ -13,17 +13,8 @@ class AuthRefreshLock {
   static final Map<String, AuthRefreshLock> _locks =
       <String, AuthRefreshLock>{};
 
-  Future<void> _tail = Future<void>.value();
+  final _operations = SerialTaskQueue();
 
-  Future<T> synchronized<T>(Future<T> Function() action) async {
-    final predecessor = _tail;
-    final release = Completer<void>();
-    _tail = release.future;
-    await predecessor;
-    try {
-      return await action();
-    } finally {
-      release.complete();
-    }
-  }
+  Future<T> synchronized<T>(Future<T> Function() action) =>
+      _operations.run(action);
 }

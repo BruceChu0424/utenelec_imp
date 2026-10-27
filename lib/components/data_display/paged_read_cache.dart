@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 
 import '../../shared/models/paged_result.dart';
+import 'paged_read_ahead_policy.dart';
 
 /// Complete response adapters may retire cached pages when their schema or
 /// authorization/statistics proof changes without changing the row count.
@@ -122,14 +123,14 @@ class PagedReadCache<T> {
     void Function(Object)? onError,
   }) => prefetchPages(
     page,
-    [page.page + 1, page.page - 1],
+    PagedReadAheadPolicy.around(page.page),
     fetch: fetch,
     isCurrent: isCurrent,
     onError: onError,
   );
 
   /// A bounded target selection shares the same physical speculative worker.
-  /// Read hosts may prepare only their next page without a second queue.
+  /// Read hosts share this queue for their two-page reading buffer.
   Future<void> prefetchPages(
     PagedResult<T> page,
     Iterable<int> pages, {
@@ -143,7 +144,7 @@ class PagedReadCache<T> {
       fetch,
       isCurrent,
       onError,
-      pages.take(2).toList(growable: false),
+      pages.take(PagedReadAheadPolicy.maximumTargets).toList(growable: false),
     );
     _queuedPrefetch?.complete();
     _queuedPrefetch = job;
@@ -160,8 +161,7 @@ class PagedReadCache<T> {
         final job = _queuedPrefetch!;
         _queuedPrefetch = null;
         try {
-          // Let the accepted page paint before more transport/decoding work.
-          await Future<void>.delayed(Duration.zero);
+          var yielded = false;
           for (final target in job.pages) {
             if (_queuedPrefetch != null ||
                 job.generation != _generation ||
@@ -172,6 +172,18 @@ class PagedReadCache<T> {
                 target > job.page.totalPages ||
                 _pages.containsKey(target)) {
               continue;
+            }
+            if (!yielded) {
+              // Let accepted rows paint before transport/decoding. A fully
+              // cached window needs no timer or follow-up layout work.
+              await Future<void>.delayed(Duration.zero);
+              yielded = true;
+              if (_queuedPrefetch != null ||
+                  job.generation != _generation ||
+                  !job.isCurrent()) {
+                break;
+              }
+              if (_pages.containsKey(target)) continue;
             }
             try {
               await read(target, () => job.fetch(target));

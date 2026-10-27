@@ -34,6 +34,7 @@ final loginServerPreparationProvider = Provider<Future<void> Function()>((ref) {
   return () async {
     if (!ref.mounted) throw const LoginServerPreparationCancelled();
     final preferences = ref.read(sharedPreferencesProvider);
+    final configurationRevision = serverSelectionRevision(preferences);
     final mode = readServerMode(preferences);
     final local = localApiBaseUrl;
     final cloud = readCloudUrl(preferences);
@@ -48,6 +49,7 @@ final loginServerPreparationProvider = Provider<Future<void> Function()>((ref) {
       isCurrent: () =>
           ref.mounted &&
           identical(preferences, ref.read(sharedPreferencesProvider)) &&
+          serverSelectionRevision(preferences) == configurationRevision &&
           readServerMode(preferences) == mode &&
           localApiBaseUrl == local &&
           readCloudUrl(preferences) == cloud &&

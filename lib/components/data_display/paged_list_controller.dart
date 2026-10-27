@@ -22,6 +22,7 @@ import '../../shared/paging/paged_read_intent.dart';
 import '../../shared/paging/paged_read_window_binding.dart';
 import '../../shared/paging/paged_read_window_refresh.dart';
 import 'paged_read_cache.dart';
+import 'paged_read_ahead_policy.dart';
 
 class PagedListController<T> extends ChangeNotifier {
   final _cache = PagedReadCache<T>();
@@ -318,7 +319,34 @@ class PagedListController<T> extends ChangeNotifier {
       }
       if (!current()) return;
       if (session != null) {
-        session.bindResult(r, replacementPages: window.isEmpty ? null : window);
+        session.bindResult(
+          r,
+          replacementPages: window.isEmpty ? null : window,
+          prepareAround: cacheEnabled && !bufferSeed
+              ? (visiblePage, {required prepend, required canPrepare}) =>
+                    _cache.prefetchPages(
+                      r,
+                      PagedReadAheadPolicy.around(
+                        visiblePage,
+                        prepend: prepend,
+                      ),
+                      fetch: fetchPage,
+                      isCurrent: () =>
+                          windowCurrent() &&
+                          identical(_cacheOwnerCheck, isCurrent) &&
+                          canPrepare(),
+                      onError: (error) {
+                        if (pagedReadAccessDenied(error)) {
+                          invalidateReadOwner(notify: false);
+                          _fail(
+                            error is ApiException ? error.message : '$error',
+                            background: false,
+                          );
+                        }
+                      },
+                    )
+              : null,
+        );
       }
       this.page = r;
       if (!bufferSeed && !background) {

@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
@@ -64,9 +66,8 @@ class PlatformColumnDocumentLockOrderEndToEndTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) throws Exception {
         database = MigratedSchemaBaseline.openDatabase("document_lock");
-        properties.add("spring.datasource.url", database::getJdbcUrl);
-        properties.add("spring.datasource.username", database::getUsername);
-        properties.add("spring.datasource.password", database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(properties, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         properties.add("uten.jwt.secret", () -> SECRET);
         properties.add("uten.crypto.pgp-master-key", () -> SECRET);
         properties.add("uten.crypto.hmac-key", () -> SECRET);

@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.testsupport.BoundTestSql;
 
 import com.uten.imp.support.DailyReportApproveRequests;
@@ -168,14 +170,10 @@ class FullChainEndToEndTest {
             throw new IllegalStateException("无法创建附件测试临时目录", e);
         }
         registry.add("uten.storage.local-dir", () -> ATTACH_TEST_DIR.toString());
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
         // This empty isolated container must migrate with its own fixture identity,
         // independently of the host developer's optional migration credentials.
-        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.flyway.user", POSTGRES::getUsername);
-        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.bootstrap.admin-login", () -> SHARED_ADMIN_LOGIN);
         registry.add("uten.bootstrap.admin-password", () -> SHARED_ADMIN_PASSWORD);
         registry.add("uten.jwt.secret", () -> SHARED_JWT_SECRET);
@@ -2969,11 +2967,8 @@ class FullChainEndToEndTest {
         GeneratedPlan first = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
 
-
         GeneratedPlan replay = analysisCommandService
                 .issueWorkshopPlans(analysisId, request).plans().getFirst();
-
-
 
         assertEquals("DRAFT", first.status());
         assertEquals(first.planId(), replay.planId());
@@ -3184,7 +3179,6 @@ class FullChainEndToEndTest {
         assertEquals(0,bigDecimalFor("select root_fulfilled_qty from production_material_analysis_items where root_material_id=?",root).compareTo(BigDecimal.ZERO));
     }
 
-
     @Test
     void rootSupply_existingStockCannotConsumeAlreadyIssuedFutureDemand() {
         World w=seedWorld("rootFuture");
@@ -3217,7 +3211,6 @@ class FullChainEndToEndTest {
         assertEquals(0,bigDecimalFor("select reserved_qty from sales_order_items where id=?",orderItemId(order)).compareTo(new BigDecimal("10")));
         assertEquals(0,publicAvailable(w.warehouseId(),w.goodsC()).compareTo(new BigDecimal("3")));
     }
-
 
     @Test
     void rootSupply_existingRevokeRejectsOtherOwnerPickingPickedAndShipped() {
@@ -3291,7 +3284,6 @@ class FullChainEndToEndTest {
         assertEquals(0,count("select count(*) from production_material_analysis_materials where goods_id=?",unused));
         assertEquals(0,count("select count(*) from goods where id=? and fn_goods_quantity_unit_in_use(id)",unused),"失败分析不得留下任何数量引用");
     }
-
 
     @Test
     void rootSupply_oneBoxTransfersTwentyBaseUnitsWithoutDoubleCounting() {
@@ -6232,7 +6224,6 @@ class FullChainEndToEndTest {
                         quantity,
                         "stock-subcontract-" + inspectionItemId,
                         "SUB-A01"));
-
 
         if (rootSupplyMode) {
             assertEquals(0,bigDecimalFor("select root_fulfilled_qty from production_material_analysis_items where id=?",targetAnalysisItemId).compareTo(new BigDecimal("10")));
@@ -10102,7 +10093,6 @@ class FullChainEndToEndTest {
                         "amend-new-plan-" + salesOrder, w.warehouseId(), BusinessTime.today(), BusinessTime.today(),
                         false, List.of(new IssueWorkshopPlansRequest.IssuePlanLine(analysisItem, new BigDecimal("10"))))));
 
-
         assertEquals(ErrorCode.CONFLICT, denied.getCode());
         assertTrue(denied.getMessage().contains("等待财务确认"));
         assertEquals(1, count("select count(*) from preplan_supply_actions where analysis_id=? and route='BUY'",
@@ -12950,7 +12940,6 @@ class FullChainEndToEndTest {
         return report.getId();
     }
 
-
     // ---------------------------------------------------------------------------------------------
     // V547/V548 「登记成品」对照采购到货登记：行级成品仓 → 同报工按仓拆成多个登记批次，
     // 每个登记命令 + 仓形成一张品质检查单；品质未处理前可撤回登记，报工行重新可登记。
@@ -13879,7 +13868,6 @@ class FullChainEndToEndTest {
                         + "order by id limit 1",
                 UUID.class, planId);
     }
-
 
     /** 2026-09-05 顶层与子层同构：根供料路线显式确认为 MAKE 后根产品才可排产。 */
     private void confirmRootMakeRoute(UUID analysisId, AnalysisView view) {

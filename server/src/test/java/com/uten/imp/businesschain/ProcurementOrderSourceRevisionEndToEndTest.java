@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.application.port.ProcurementOrderSourceRevisionPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
@@ -60,8 +62,8 @@ class ProcurementOrderSourceRevisionEndToEndTest {
     private static final PostgreSQLContainer DB=new PostgreSQLContainer("postgres:16-alpine");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         DB.start();
-        registry.add("spring.datasource.url",DB::getJdbcUrl);registry.add("spring.datasource.username",DB::getUsername);
-        registry.add("spring.datasource.password",DB::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DB::getJdbcUrl,
+                DB::getUsername, DB::getPassword);
         Path uploads=Files.createTempDirectory("source-revision-uploads-");registry.add("uten.storage.local-dir",uploads::toString);
     }
     @Autowired AutowireCapableBeanFactory beans;

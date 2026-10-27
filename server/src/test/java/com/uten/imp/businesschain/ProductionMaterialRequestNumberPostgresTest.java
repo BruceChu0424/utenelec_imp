@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.production.fulfillment.ProductionMaterialDiscoveryContracts.*;
 import com.uten.imp.support.MigratedSchemaBaseline;
@@ -46,9 +48,8 @@ class ProductionMaterialRequestNumberPostgresTest {
     private static MigratedSchemaBaseline.ScopedDatabase database;
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
         database=MigratedSchemaBaseline.openDatabase("material_request_numbers");
-        registry.add("spring.datasource.url",database::getJdbcUrl);
-        registry.add("spring.datasource.username",database::getUsername);
-        registry.add("spring.datasource.password",database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         // Uploads stay enabled for the real services; keep any attachment I/O out of the shared server/data tree.
         java.nio.file.Path attachments=java.nio.file.Files.createTempDirectory("material-request-number-");
         registry.add("uten.storage.local-dir",attachments::toString);

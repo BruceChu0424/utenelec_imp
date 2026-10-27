@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBin;
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBinKind;
 import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
@@ -79,9 +81,8 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
         // these priced-pool scenarios need a private database, not altered prices
         // or an exception to the production publication fence.
         database=MigratedSchemaBaseline.openDatabase("workshop_stock_value");
-        registry.add("spring.datasource.url",database::getJdbcUrl);
-        registry.add("spring.datasource.username",database::getUsername);
-        registry.add("spring.datasource.password",database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         var attachments=java.nio.file.Files.createTempDirectory("workshop-stock-attachments-");
         registry.add("uten.storage.local-dir",attachments::toString);
     }

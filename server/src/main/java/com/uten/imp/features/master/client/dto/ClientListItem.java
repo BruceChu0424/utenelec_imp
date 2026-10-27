@@ -1,10 +1,12 @@
 package com.uten.imp.features.master.client.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -19,7 +21,6 @@ import java.util.UUID;
  * tday 为 Integer（TDay 结算天数）。
  */
 @Getter
-@AllArgsConstructor
 public class ClientListItem {
     private UUID id;
     private String code;                // 客户编码（Number）
@@ -70,7 +71,104 @@ public class ClientListItem {
     /** 外文名称(ADR-134, V742): 列表「外文名称」列; 关键字搜索同样命中。 */
     private String nameEn;
 
-    @lombok.Setter private java.util.List<UUID> ownerEmployeeIds = java.util.List.of();
-    @lombok.Setter private java.util.List<String> ownerEmployeeNames = java.util.List.of();
+    private List<UUID> ownerEmployeeIds = List.of();
+    private List<String> ownerEmployeeNames = List.of();
     @lombok.Setter private boolean financialWritable;
+
+    public ClientListItem(
+            UUID id,
+            String code,
+            String name,
+            String fullName,
+            String clientXz,
+            Integer tday,
+            String region,
+            String placeId,
+            String empId,
+            String legalPerson,
+            String linkman,
+            String mobile,
+            String phone,
+            String phone2,
+            String fax,
+            String postcode,
+            String address,
+            String bank,
+            String bankAccount,
+            String taxId,
+            BigDecimal credit,
+            BigDecimal creditFloor,
+            String website,
+            String status,
+            Integer legacyId,
+            UUID categoryId,
+            UUID ownerEmployeeId,
+            String ownerEmployeeName,
+            UUID defaultSettlementMethodId,
+            String defaultSettlementMethodName,
+            boolean writable,
+            boolean accessManageable,
+            Long version,
+            String nameEn,
+            List<UUID> ownerEmployeeIds,
+            List<String> ownerEmployeeNames,
+            boolean financialWritable) {
+        this.id = id;
+        this.code = code;
+        this.name = name;
+        this.fullName = fullName;
+        this.clientXz = clientXz;
+        this.tday = tday;
+        this.region = region;
+        this.placeId = placeId;
+        this.empId = empId;
+        this.legalPerson = legalPerson;
+        this.linkman = linkman;
+        this.mobile = mobile;
+        this.phone = phone;
+        this.phone2 = phone2;
+        this.fax = fax;
+        this.postcode = postcode;
+        this.address = address;
+        this.bank = bank;
+        this.bankAccount = bankAccount;
+        this.taxId = taxId;
+        this.credit = credit;
+        this.creditFloor = creditFloor;
+        this.website = website;
+        this.status = status;
+        this.legacyId = legacyId;
+        this.categoryId = categoryId;
+        this.ownerEmployeeId = ownerEmployeeId;
+        this.ownerEmployeeName = ownerEmployeeName;
+        this.defaultSettlementMethodId = defaultSettlementMethodId;
+        this.defaultSettlementMethodName = defaultSettlementMethodName;
+        this.writable = writable;
+        this.accessManageable = accessManageable;
+        this.version = version;
+        this.nameEn = nameEn;
+        this.ownerEmployeeIds = ownerEmployeeIds == null ? null
+                : Collections.unmodifiableList(new ArrayList<>(ownerEmployeeIds));
+        this.ownerEmployeeNames = ownerEmployeeNames == null ? null
+                : Collections.unmodifiableList(new ArrayList<>(ownerEmployeeNames));
+        this.financialWritable = financialWritable;
+    }
+
+    public List<UUID> getOwnerEmployeeIds() {
+        return ownerEmployeeIds == null ? null : Collections.unmodifiableList(ownerEmployeeIds);
+    }
+
+    public void setOwnerEmployeeIds(List<UUID> ownerEmployeeIds) {
+        this.ownerEmployeeIds = ownerEmployeeIds == null ? null
+                : Collections.unmodifiableList(new ArrayList<>(ownerEmployeeIds));
+    }
+
+    public List<String> getOwnerEmployeeNames() {
+        return ownerEmployeeNames == null ? null : Collections.unmodifiableList(ownerEmployeeNames);
+    }
+
+    public void setOwnerEmployeeNames(List<String> ownerEmployeeNames) {
+        this.ownerEmployeeNames = ownerEmployeeNames == null ? null
+                : Collections.unmodifiableList(new ArrayList<>(ownerEmployeeNames));
+    }
 }

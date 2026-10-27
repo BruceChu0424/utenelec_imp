@@ -1,5 +1,7 @@
 package com.uten.imp.responsibility;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
@@ -75,9 +77,8 @@ class DataHandoverPostgresTest {
         } catch (java.io.IOException error) {
             throw new IllegalStateException(error);
         }
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     @Autowired private JdbcTemplate jdbc;

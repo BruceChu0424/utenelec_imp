@@ -1,5 +1,7 @@
 package com.uten.imp.common.storage;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.config.props.StorageProperties;
 import com.uten.imp.features.attachment.AttachmentObjectOutboxProcessor;
@@ -64,8 +66,8 @@ class InternalAttachmentLifecyclePostgresTest {
     private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine");
     private static final Path ROOT=temporaryRoot();
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
-        POSTGRES.start();registry.add("spring.datasource.url",InternalAttachmentLifecyclePostgresTest::loopbackJdbcUrl);
-        registry.add("spring.datasource.username",POSTGRES::getUsername);registry.add("spring.datasource.password",POSTGRES::getPassword);
+        POSTGRES.start();FixtureDatabaseProperties.bindSameRole(registry, InternalAttachmentLifecyclePostgresTest::loopbackJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.storage.local-dir",()->ROOT.resolve("development-local").toString());
         registry.add("uten.storage.internal.root",()->ROOT.toString());registry.add("uten.storage.internal.min-free-bytes",()->0);
     }

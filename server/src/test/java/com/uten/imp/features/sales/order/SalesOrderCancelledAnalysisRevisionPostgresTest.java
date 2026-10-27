@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.security.AuthUser;
@@ -54,9 +56,8 @@ class SalesOrderCancelledAnalysisRevisionPostgresTest {
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     @Autowired

@@ -19,7 +19,33 @@ public class SubcontractPrintAuthorizationController {
         this.print = print; this.users = users; this.scopes = scopes;
     }
     public record DocumentProof(@NotNull UUID id, @NotNull @Pattern(regexp="[0-9a-f]{64}") String contentDigest) { }
-    public record Request(@NotEmpty @Size(max=100) List<@NotNull @Valid DocumentProof> documents) { }
+    @com.fasterxml.jackson.annotation.JsonPropertyOrder({"documents"})
+    public static final class Request {
+        @NotEmpty @Size(max=100)
+        private final List<@NotNull @Valid DocumentProof> documents;
+
+        @com.fasterxml.jackson.annotation.JsonCreator
+        public Request(@com.fasterxml.jackson.annotation.JsonProperty("documents")
+                @NotEmpty @Size(max=100) List<@NotNull @Valid DocumentProof> documents) {
+            this.documents = documents == null ? null : Collections.unmodifiableList(new ArrayList<>(documents));
+        }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("documents")
+        @NotEmpty @Size(max=100)
+        public List<@NotNull @Valid DocumentProof> documents() {
+            return documents == null ? null : Collections.unmodifiableList(documents);
+        }
+
+        @Override public boolean equals(Object other) {
+            return this == other || other instanceof Request that && Objects.equals(documents, that.documents);
+        }
+
+        @Override public int hashCode() { return Objects.hashCode(documents); }
+
+        @Override public String toString() {
+            return "Request[documents=" + documents + "]";
+        }
+    }
     @PostMapping("/api/subcontract/orders/print-authorization")
     @PreAuthorize("hasAnyAuthority('subcontract_order:view','finance_order_approval:view')")
     @com.uten.imp.security.StepUpExempt("只读核对原委外打印快照；沿原print-data权限与内容摘要")

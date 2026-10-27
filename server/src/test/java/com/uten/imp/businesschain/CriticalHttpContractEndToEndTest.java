@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -117,9 +119,8 @@ class CriticalHttpContractEndToEndTest {
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("Cannot create HTTP contract test directory", exception);
         }
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         registry.add("uten.storage.local-dir", () -> attachmentDir.toString());
     }
 

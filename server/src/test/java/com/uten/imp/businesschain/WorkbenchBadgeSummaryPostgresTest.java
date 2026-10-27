@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkbenchBadgeReadPort;
@@ -94,9 +96,8 @@ class WorkbenchBadgeSummaryPostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         DATABASE.start();
-        registry.add("spring.datasource.url", DATABASE::getJdbcUrl);
-        registry.add("spring.datasource.username", DATABASE::getUsername);
-        registry.add("spring.datasource.password", DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         try {
             var attachments = java.nio.file.Files.createTempDirectory("uten-badge-attachments-");
             registry.add("uten.storage.local-dir", attachments::toString);

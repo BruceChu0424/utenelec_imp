@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.common;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -126,9 +128,8 @@ class ProcurementMasterDefaultsSyncPostgresTest {
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     @Autowired

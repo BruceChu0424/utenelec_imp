@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.*;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
@@ -55,9 +57,8 @@ class ProductionFqcBatchViewEndToEndTest {
     private static final ThreadLocal<AtomicInteger> VIEW_QUERIES=new ThreadLocal<>();
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         DATABASE.start();
-        properties.add("spring.datasource.url",DATABASE::getJdbcUrl);
-        properties.add("spring.datasource.username",DATABASE::getUsername);
-        properties.add("spring.datasource.password",DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(properties, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         properties.add("uten.jwt.secret",()->SECRET);
         properties.add("uten.crypto.pgp-master-key",()->SECRET);
         properties.add("uten.crypto.hmac-key",()->SECRET);

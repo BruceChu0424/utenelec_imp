@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.features.master.goods.costing.GoodsCostContracts;
@@ -64,9 +66,8 @@ class GoodsCostHttpSmokeEndToEndTest {
     private static Path attachmentDirectory;
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) throws Exception {
         POSTGRES.start();attachmentDirectory=Files.createTempDirectory("uten-cost-http-smoke-");
-        properties.add("spring.datasource.url",POSTGRES::getJdbcUrl);
-        properties.add("spring.datasource.username",POSTGRES::getUsername);
-        properties.add("spring.datasource.password",POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(properties, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         properties.add("uten.storage.local-dir",()->attachmentDirectory.toString());
     }
     @Autowired MockMvc http;

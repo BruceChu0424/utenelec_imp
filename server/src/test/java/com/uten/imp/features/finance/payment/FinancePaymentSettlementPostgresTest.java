@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.payment;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.features.finance.payment.dto.FinancePaymentDetail;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentLineInput;
 import com.uten.imp.features.finance.payment.dto.FinancePaymentSaveRequest;
@@ -67,9 +69,8 @@ class FinancePaymentSettlementPostgresTest {
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
         String locations=System.getProperty("uten.test.financial.migration.locations");
         if(locations!=null&&!locations.isBlank())registry.add("spring.flyway.locations",()->locations);
     }

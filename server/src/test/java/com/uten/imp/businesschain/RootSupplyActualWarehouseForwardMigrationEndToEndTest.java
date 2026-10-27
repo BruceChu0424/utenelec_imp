@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
 import com.uten.imp.features.visitor.sms.SmsGatewaySecretRewrap;
 import com.uten.imp.security.SecretCipher;
@@ -41,8 +43,8 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     private static final PostgreSQLContainer DATABASE=new PostgreSQLContainer("postgres:16-alpine");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
-        DATABASE.start();registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
-        registry.add("spring.datasource.username",DATABASE::getUsername);registry.add("spring.datasource.password",DATABASE::getPassword);
+        DATABASE.start();FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         registry.add("uten.jwt.secret",()->SECRET);registry.add("uten.crypto.pgp-master-key",()->SECRET);registry.add("uten.crypto.hmac-key",()->SECRET);
         registry.add("uten.bootstrap.admin-login",()->"root-forward-bootstrap");registry.add("uten.bootstrap.admin-password",()->SECRET+"Aa1!");
     }

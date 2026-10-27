@@ -1,5 +1,7 @@
 package com.uten.imp.common.mastercode;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -57,12 +59,9 @@ class CategoryDrivenCodeServicePostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-        registry.add("spring.flyway.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.flyway.user", POSTGRES::getUsername);
-        registry.add("spring.flyway.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
+
     }
 
     public static class DatabaseCleanup extends AbstractTestExecutionListener {

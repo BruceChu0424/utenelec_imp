@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -50,9 +52,8 @@ class ScopedPublicSurplusReaderPostgresTest {
         var before=new JdbcTemplate(new DriverManagerDataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword()));
         legacyDefinition=before.queryForObject("SELECT pg_get_viewdef('v_preplan_public_surplus_source_state'::regclass,true)",String.class).strip().replaceFirst(";$","");
         legacyColumns=before.queryForList(COLUMN_QUERY);
-        registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
-        registry.add("spring.datasource.username",DATABASE::getUsername);
-        registry.add("spring.datasource.password",DATABASE::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         registry.add("uten.storage.local-dir",()->System.getProperty("java.io.tmpdir")+"/scoped-public-reader-"+DATABASE.getContainerId());
     }
     @Autowired AutowireCapableBeanFactory beans;

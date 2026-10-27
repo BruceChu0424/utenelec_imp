@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.application.port.BusinessOutboxDomainHandler;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
@@ -73,9 +75,8 @@ class BusinessOutboxContentionEndToEndTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) throws java.io.IOException {
         PG.start();
-        registry.add("spring.datasource.url", PG::getJdbcUrl);
-        registry.add("spring.datasource.username", PG::getUsername);
-        registry.add("spring.datasource.password", PG::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, PG::getJdbcUrl,
+                PG::getUsername, PG::getPassword);
         var directory = Files.createTempDirectory("uten-outbox-contention-");
         registry.add("uten.storage.local-dir", directory::toString);
     }

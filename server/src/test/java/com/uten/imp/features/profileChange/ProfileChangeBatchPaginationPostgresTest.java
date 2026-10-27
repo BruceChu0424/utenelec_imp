@@ -1,5 +1,7 @@
 package com.uten.imp.features.profilechange;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.auth.StepUpService;
@@ -68,9 +70,8 @@ class ProfileChangeBatchPaginationPostgresTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     public static class DatabaseCleanup extends AbstractTestExecutionListener {

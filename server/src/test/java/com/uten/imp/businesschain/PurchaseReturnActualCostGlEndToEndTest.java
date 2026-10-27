@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.features.documents.DocumentUnapprovalService;
@@ -51,9 +53,8 @@ class PurchaseReturnActualCostGlEndToEndTest {
         // Period-wide regeneration and posting-role configuration must not adopt
         // another full-chain scenario's confirmed expense or configured variance role.
         database=MigratedSchemaBaseline.openDatabase("purchase_return_gl");
-        registry.add("spring.datasource.url",database::getJdbcUrl);
-        registry.add("spring.datasource.username",database::getUsername);
-        registry.add("spring.datasource.password",database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
     }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}

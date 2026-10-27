@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.uten.imp.features.purchase.common.ProcurementMasterDefaultsSyncService;
 import com.uten.imp.features.purchase.order.PurchaseOrderService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
@@ -57,9 +59,8 @@ class ProcurementSupplierHistoryPostgresTest {
     @DynamicPropertySource
     static void registerDataSource(DynamicPropertyRegistry registry) {
         POSTGRES.start();
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
+                POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
     @Autowired

@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkshopMaterialChoicePort;
@@ -122,9 +124,8 @@ class WorkshopMaterialClosePostgresTest {
         // worlds intentionally retain unfinished cost scopes; the close/value assertions
         // need their own database while preserving that production publication rule.
         database = MigratedSchemaBaseline.openDatabase("workshop_material_close");
-        registry.add("spring.datasource.url", database::getJdbcUrl);
-        registry.add("spring.datasource.username", database::getUsername);
-        registry.add("spring.datasource.password", database::getPassword);
+        FixtureDatabaseProperties.bindSameRole(registry, database::getJdbcUrl,
+                database::getUsername, database::getPassword);
         var attachments = java.nio.file.Files.createTempDirectory("workshop-close-attachments-");
         registry.add("uten.storage.local-dir", attachments::toString);
     }

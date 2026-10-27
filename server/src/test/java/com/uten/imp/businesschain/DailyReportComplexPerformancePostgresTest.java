@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.testsupport.FixtureDatabaseProperties;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.notice.outbox.BusinessOutboxScheduler;
@@ -62,8 +64,8 @@ class DailyReportComplexPerformancePostgresTest {
             .withCommand("postgres","-c","fsync=on","-c","synchronous_commit=on","-c","full_page_writes=on");
     private static final String SECRET=UUID.randomUUID()+"-"+UUID.randomUUID();
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
-        DATABASE.start();properties.add("spring.datasource.url",DATABASE::getJdbcUrl);
-        properties.add("spring.datasource.username",DATABASE::getUsername);properties.add("spring.datasource.password",DATABASE::getPassword);
+        DATABASE.start();FixtureDatabaseProperties.bindSameRole(properties, DATABASE::getJdbcUrl,
+                DATABASE::getUsername, DATABASE::getPassword);
         properties.add("uten.jwt.secret",()->SECRET);properties.add("uten.crypto.pgp-master-key",()->SECRET);
         properties.add("uten.crypto.hmac-key",()->SECRET);properties.add("uten.bootstrap.admin-login",()->"report-complex-perf-bootstrap");
         properties.add("uten.bootstrap.admin-password",()->SECRET+"Aa1!");

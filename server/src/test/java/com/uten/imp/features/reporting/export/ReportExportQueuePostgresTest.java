@@ -127,7 +127,7 @@ class ReportExportQueuePostgresTest {
         org.mockito.Mockito.when(identity.revision()).thenReturn("fixture-build");
         var readScopes=org.mockito.Mockito.mock(com.uten.imp.security.ReadScopeVersionAuthority.class);
         org.mockito.Mockito.when(readScopes.scopeFor(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any())).thenReturn("a".repeat(64));
-        org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess=org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
+        org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess=org.mockito.Mockito.mock();
         var service=new ReportExportService(repository,users,restorer,mapper,identity,org.mockito.Mockito.mock(com.uten.imp.security.ExportRateLimiter.class),readScopes,projectionAccess,directory.toString());
         var source=org.mockito.Mockito.mock(ReportExportSource.class);
         var columns=List.of(new com.uten.imp.common.export.ExportColumn("qty","数量","qty"),new com.uten.imp.common.export.ExportColumn("note","原文","text"));

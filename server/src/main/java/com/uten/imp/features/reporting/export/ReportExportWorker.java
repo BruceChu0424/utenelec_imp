@@ -237,7 +237,7 @@ public class ReportExportWorker {
                 public void close()throws IOException{document.close();}
             };
         }
-        var table=xlsx.openStream(ReportExportSource.projection(request),ReportExportSource.scope(request),service.requireStorage());
+        var table=xlsx.openStream(source.projection(request),ReportExportSource.scope(request),service.requireStorage());
         return new TaskWriter() {
             public int rowCount(){return table.rowCount();}
             public void readSource(){

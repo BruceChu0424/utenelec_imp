@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Isolation;
 
 /** A download must identify the exact actual-cost result that the operator inspected. */
 @Service
-public class GoodsActualCostSnapshotService {
+public class GoodsActualCostSnapshotService implements com.uten.imp.application.port.GoodsActualCostSnapshotExportPort {
     private final GoodsActualCostQueryPort actual;
     private final GoodsCostSheetService sheets;
     private final GoodsCostJson canonical;

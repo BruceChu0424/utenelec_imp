@@ -4,7 +4,7 @@ import com.uten.imp.application.port.GoodsActualCostQueryPort;
 import com.uten.imp.common.export.*;
 import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.*;
-import com.uten.imp.features.master.goods.costing.GoodsActualCostSnapshotService;
+import com.uten.imp.application.port.GoodsActualCostSnapshotExportPort;
 import com.uten.imp.security.*;
 import org.springframework.stereotype.Component;
 import java.util.*;
@@ -12,9 +12,9 @@ import java.util.*;
 /** Exports the same inspected actual-cost digest and frozen-section projection as the original endpoint. */
 @Component
 public class ActualCostReportExportSource {
-    private final GoodsActualCostSnapshotService actual;
+    private final GoodsActualCostSnapshotExportPort actual;
     private final ExportDocumentProjectionService projections;
-    public ActualCostReportExportSource(GoodsActualCostSnapshotService actual,ExportDocumentProjectionService projections){this.actual=actual;this.projections=projections;}
+    public ActualCostReportExportSource(GoodsActualCostSnapshotExportPort actual,ExportDocumentProjectionService projections){this.actual=actual;this.projections=projections;}
     public record Input(GoodsActualCostQueryPort.Query query,String expectedDigest) { }
     public static void authorize(AuthUser user) {
         if(user.isVisitor()||user.isMustChangePassword()||!user.isAccountNonLocked()||user.getImpersonatedBy()!=null

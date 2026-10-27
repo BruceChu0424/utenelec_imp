@@ -80,7 +80,7 @@ class UtenApp extends ConsumerWidget {
     final darkTheme = buildDarkTheme(branding: branding);
 
     return MaterialApp.router(
-      onGenerateTitle: (context) => AppInfo.displayName,
+      onGenerateTitle: (context) => AppInfo.externalName,
       debugShowCheckedModeBanner: false,
 
       // 主题

@@ -55,6 +55,7 @@ import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@com.uten.imp.testsupport.WithReportReadScopeMvc
 @WebMvcTest(
         controllers = CorsAuditProbeController.class,
         excludeAutoConfiguration = org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration.class,

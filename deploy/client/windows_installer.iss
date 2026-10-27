@@ -43,7 +43,7 @@ AppName={cm:AppDisplayName}
 AppVersion={#AppVersion}
 AppPublisher=Uten
 DefaultGroupName={cm:AppDisplayName}
-DisableDirPage=yes
+DisableDirPage=no
 DisableProgramGroupPage=yes
 #ifdef LocalTest
 UsePreviousAppDir=no

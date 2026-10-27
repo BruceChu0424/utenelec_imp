@@ -47,7 +47,11 @@ class ReadScopeDatasetRealmPostgresTest {
         var owners=mock(OwnerVisibility.class);
         var target=new ReadScopeVersionAuthority(new NamedParameterJdbcTemplate(endpoint),restorer,owners);
         var proxy=new ProxyFactory(target);proxy.setProxyTargetClass(true);
-        proxy.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(endpoint),new AnnotationTransactionAttributeSource()));
+        var transactionAdvice = new TransactionInterceptor();
+        transactionAdvice.setTransactionManager(new DataSourceTransactionManager(endpoint));
+        transactionAdvice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        transactionAdvice.afterPropertiesSet();
+        proxy.addAdvice(transactionAdvice);
         var authority=(ReadScopeVersionAuthority)proxy.getProxy();
         UUID firstId=new JdbcTemplate(a).queryForObject("SELECT business_dataset_id FROM authorization_state",UUID.class);
         UUID secondId=new JdbcTemplate(b).queryForObject("SELECT business_dataset_id FROM authorization_state",UUID.class);

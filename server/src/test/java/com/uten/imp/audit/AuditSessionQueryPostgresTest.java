@@ -54,6 +54,11 @@ class AuditSessionQueryPostgresTest {
         registry.add("spring.datasource.url", database::getJdbcUrl);
         registry.add("spring.datasource.username", database::getUsername);
         registry.add("spring.datasource.password", database::getPassword);
+        // A developer's opt-in migrator credential must never cross into the
+        // private test clone. Validation still uses this clone's real catalog.
+        registry.add("spring.flyway.url", database::getJdbcUrl);
+        registry.add("spring.flyway.user", database::getUsername);
+        registry.add("spring.flyway.password", database::getPassword);
     }
 
     public static class Cleanup extends AbstractTestExecutionListener {

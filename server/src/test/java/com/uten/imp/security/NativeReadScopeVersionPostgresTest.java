@@ -73,7 +73,11 @@ class NativeReadScopeVersionPostgresTest {
         port(target,"productionAccess",new ProductionDocumentAccessPolicy(owners,current));port(target,"qualityAccess",quality);
         port(target,"workshopAccess",workshop);port(target,"warehouseAccess",warehouse);port(target,"taskAudience",new BusinessTaskAudienceService(engine));
         var proxy=new ProxyFactory(target);proxy.setProxyTargetClass(true);
-        proxy.addAdvice(new TransactionInterceptor(transactions,new AnnotationTransactionAttributeSource()));authority=(ReadScopeVersionAuthority)proxy.getProxy();
+        var transactionAdvice = new TransactionInterceptor();
+        transactionAdvice.setTransactionManager(transactions);
+        transactionAdvice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        transactionAdvice.afterPropertiesSet();
+        proxy.addAdvice(transactionAdvice);authority=(ReadScopeVersionAuthority)proxy.getProxy();
         login();
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}

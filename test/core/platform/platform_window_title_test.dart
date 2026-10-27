@@ -54,7 +54,7 @@ void main() {
     'default caption and duplicate metadata refreshes do not rename technical identity',
     () async {
       await controller.update(
-        title: AppInfo.displayName,
+        title: AppInfo.externalName,
         source: 'https://a.example/api',
       );
       expect(calls, isEmpty);
@@ -174,7 +174,7 @@ void main() {
         enabled: true,
         isCurrent: (title, source) =>
             container.read(apiBaseUrlProvider) == source &&
-            title == AppInfo.displayName,
+            title == AppInfo.externalName,
       );
       container = ProviderContainer(
         overrides: [

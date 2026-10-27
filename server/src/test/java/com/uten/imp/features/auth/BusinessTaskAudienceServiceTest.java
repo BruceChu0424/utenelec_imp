@@ -90,7 +90,7 @@ class BusinessTaskAudienceServiceTest {
 
     @Test void publicationTaskIdentityProbeDoesNotBorrowTheOuterReadWindow() {
         AuthUser actor=actor(true,Set.of("production_plan:view","production_plan:view:all"));
-        when(permissions.grantedPermsOf(actor.getId())).thenReturn(Set.of("production_plan:view","production_plan:view:all"),Set.of("production_plan:view"));
+        when(permissions.grantedPermsOf(actor.getId())).thenReturn(Set.of("production_plan:view","production_plan:view:all")).thenReturn(Set.of("production_plan:view"));
         tasks.read(()->{
             assertThat(current.get().orElseThrow().getPermissions()).contains("production_plan:view:all");
             AuthUser fresh=tasks.freshTaskSubject(actor);

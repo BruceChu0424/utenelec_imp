@@ -297,7 +297,7 @@ class WhereUsedExportWorkerPostgresTest {
     private record FacetCase(String service,String method,String path,Object[] arguments) { }
     @Test void everyNativeCandidateRouteUsesItsRealBusinessSqlExactlyOnceOnTheMigratedSchema() throws Exception {
         Object allWarehouses=com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL;
-        Object active=Enum.valueOf((Class)Class.forName("com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts$TaskView"),"ACTIVE");
+        Object active=Arrays.stream(Class.forName("com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts$TaskView").getEnumConstants()).filter(value -> ((Enum<?>) value).name().equals("ACTIVE")).findFirst().orElseThrow();
         List<FacetCase> cases=new ArrayList<>(List.of(
             new FacetCase("finance.report.FinanceReportService","accountStatementFacets","/api/finance/reports/account/statement/facets",new Object[]{UUID.randomUUID(),null,null,null}),
             new FacetCase("finance.payables.ProcurementPayablesService","facets","/api/finance/payables/facets",new Object[]{null,null,null,null,null,null,null,null,null,null}),

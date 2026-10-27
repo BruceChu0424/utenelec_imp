@@ -878,7 +878,7 @@ class AppLocalizationsZh extends AppLocalizations {
       '日报状态已变化，页面已刷新，请核对当前状态。';
 
   @override
-  String get appTitle => 'UTEN';
+  String get appTitle => '优腾·综合管理平台';
 
   @override
   String get commonConfirm => '确认';
@@ -954,7 +954,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String loginFooter(int year) {
-    return '© $year UTEN';
+    return '© $year 优腾 · 综合管理平台';
   }
 
   @override

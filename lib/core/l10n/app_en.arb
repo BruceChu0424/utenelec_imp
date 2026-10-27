@@ -354,7 +354,7 @@
   "productionDailyReportApprovedStateVerified": "The report is currently approved. The page has been refreshed.",
   "productionDailyReportReversedStateVerified": "The report is currently reversed. The page has been refreshed.",
   "productionDailyReportStateChangedReview": "The report status has changed. The page has been refreshed; please check its current status.",
-  "appTitle": "UTEN",
+  "appTitle": "Uten Integrated Management Platform",
   "commonConfirm": "Confirm",
   "commonCancel": "Cancel",
   "commonSave": "Save",
@@ -379,7 +379,7 @@
   "loginServerRecoveryHint": "Use this after changing networks or if sign-in fails. Only the trusted office and cloud addresses built into this app are used.",
   "loginServerRecoverySuccess": "Automatic server selection restored. Please sign in again.",
   "loginServerRecoveryFailed": "Could not restore server selection. Try again or contact an administrator.",
-  "loginFooter": "© {year} UTEN",
+  "loginFooter": "© {year} Uten Integrated Management Platform",
   "@loginFooter": {
     "placeholders": {
       "year": {

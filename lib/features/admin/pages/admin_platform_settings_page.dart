@@ -1041,7 +1041,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               ),
               const SizedBox(height: 18),
               Text(
-                branding.appName,
+                branding.platformName.isEmpty ? '平台名称' : branding.platformName,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),

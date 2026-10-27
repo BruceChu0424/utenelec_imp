@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.uten.imp.features.master.export.MasterReportExportSource;
+
 import com.uten.imp.common.export.*;
 import com.uten.imp.features.reporting.export.*;
 import com.uten.imp.features.master.account.AccountService;
@@ -126,8 +128,8 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
         assertThat(HexFormat.of().formatHex(actual.digest())).isEqualTo(HexFormat.of().formatHex(expected.digest()));
         BigDecimal original=jdbc.queryForObject("SELECT price FROM goods WHERE id=?",BigDecimal.class,seed.ids().getFirst());
         assertThat(sum.get()).isEqualByComparingTo(original.multiply(BigDecimal.valueOf(100_000)));
-        verify(goodsRepository,times(1)).count(any(Specification.class));
-        verify(goodsRepository,never()).findAll(any(Specification.class),any(Pageable.class));
+        verify(goodsRepository,times(1)).count(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>any());
+        verify(goodsRepository,never()).findAll(org.mockito.ArgumentMatchers.<Specification<com.uten.imp.features.master.goods.Goods>>any(),any(Pageable.class));
         assertThat(sample.logicalStatements).isLessThan(12_000);
         System.out.println("B1-MASTER-SOURCE rows="+rows+" batches="+batches+" peakManaged="+peakManaged
                 +" sourceMillis="+(System.nanoTime()-started)/1_000_000+" statements="+sample.logicalStatements

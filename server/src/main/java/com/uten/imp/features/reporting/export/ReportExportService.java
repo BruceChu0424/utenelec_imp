@@ -2,6 +2,8 @@ package com.uten.imp.features.reporting.export;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.*;
+import com.uten.imp.application.port.MasterReportExportPort;
+import com.uten.imp.application.port.WorkbenchReportExportPort;
 import com.uten.imp.security.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -21,23 +23,24 @@ public class ReportExportService {
     private final ReportExportBuildIdentity buildIdentity;
     private final ExportRateLimiter rateLimiter;
     private final ReadScopeVersionAuthority readScopes;
-    private final MasterReportExportSource master;
+    private final MasterReportExportPort master;
+    private final WorkbenchReportExportPort workbench;
     private final org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess;
     @org.springframework.beans.factory.annotation.Autowired
     public ReportExportService(ReportExportRepository repository, SecurityContextCurrentUser users,
             SubmitterPrincipalRestorer restorer,ObjectMapper json,ReportExportBuildIdentity buildIdentity,ExportRateLimiter rateLimiter,
             ReadScopeVersionAuthority readScopes,org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess,
-            MasterReportExportSource master,
+            MasterReportExportPort master, WorkbenchReportExportPort workbench,
             @Value("${uten.report-export.directory:}") String directory) {
         this.repository=repository;this.users=users;this.restorer=restorer;this.json=json;
         this.buildIdentity=buildIdentity;this.rateLimiter=rateLimiter;
-        this.readScopes=readScopes;this.projectionAccess=projectionAccess;this.master=master;
+        this.readScopes=readScopes;this.projectionAccess=projectionAccess;this.master=master;this.workbench=workbench;
         root=directory.isBlank()?null:Path.of(directory).toAbsolutePath().normalize();
     }
     public ReportExportService(ReportExportRepository repository,SecurityContextCurrentUser users,SubmitterPrincipalRestorer restorer,
             ObjectMapper json,ReportExportBuildIdentity buildIdentity,ExportRateLimiter rateLimiter,ReadScopeVersionAuthority readScopes,
             org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess,String directory) {
-        this(repository,users,restorer,json,buildIdentity,rateLimiter,readScopes,projectionAccess,null,directory);
+        this(repository,users,restorer,json,buildIdentity,rateLimiter,readScopes,projectionAccess,null,null,directory);
     }
     public record View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
             String error,OffsetDateTime createdAt,OffsetDateTime finishedAt) { }
@@ -76,7 +79,10 @@ public class ReportExportService {
             master.validate(request);
         } else if(request.parameters().values().stream().anyMatch(value->value.length()>2000))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"导出筛选条件过长");
-        if("workbench_purchase".equals(request.domain()))WorkbenchReportExportSource.validate(request);
+        if("workbench_purchase".equals(request.domain())) {
+            if(workbench==null)throw new IllegalStateException("Workbench export adapter is unavailable");
+            workbench.validateRequest(request);
+        }
         if("audit".equals(request.domain()))AuditReportExportSource.criteria(request);
         if("goods_actual_cost".equals(request.domain()))ActualCostReportExportSource.input(request);
         requireStorage();
@@ -121,7 +127,7 @@ public class ReportExportService {
         if(job.accessStamp()==null || !job.accessStamp().equals(readScopes.scopeFor(authorityDomain(request),principal())))
             throw new ApiException(ErrorCode.CONFLICT,"导出数据范围已变化，请按当前权限重新生成任务");
         if(request.columnProjection()!=null)
-            projectionAccess.getObject().verify(ReportExportSource.projection(request),ReportExportSource.scope(request));
+            projectionAccess.getObject().verify(("master".equals(request.domain())?master.projection(request):request.columnProjection()),ReportExportSource.scope(request));
     }
     private ReportExportRepository.Job authorize(ReportExportRepository.Job job) {
         AuthUser current=principal();
@@ -145,16 +151,16 @@ public class ReportExportService {
     public static void authorizeRequest(AuthUser user,ReportExportRequest request) {
         if("goods_actual_cost".equals(request.domain())) {ActualCostReportExportSource.authorize(user);return;}
         if("audit".equals(request.domain())) {AuditReportExportSource.authorize(user);return;}
-        if("workbench_purchase".equals(request.domain())) {WorkbenchReportExportSource.authorize(user);return;}
+        if("workbench_purchase".equals(request.domain())) {WorkbenchReportExportPort.authorize(user);return;}
         if(!"master".equals(request.domain())) {authorizeDomain(user,request.domain());return;}
-        String permission=MasterReportExportSource.permission(request.report());
+        String permission=MasterReportExportPort.permission(request.report());
         if(user.isVisitor()||user.isMustChangePassword()||!user.isAccountNonLocked()||user.getImpersonatedBy()!=null
                 ||!user.getPermissions().contains(permission))throw new ApiException(ErrorCode.FORBIDDEN);
     }
     private static String permissionPrefix(String domain) {return "where_used".equals(domain)?"production_where_used":domain+"_report";}
     private static String authorityDomain(ReportExportRequest request) {
         return "goods_actual_cost".equals(request.domain())?"master_goods"
-                :"master".equals(request.domain())?MasterReportExportSource.authorityDomain(request.report())
+                :"master".equals(request.domain())?MasterReportExportPort.authorityDomain(request.report())
                 :"where_used".equals(request.domain())?"production"
                 :"workbench_purchase".equals(request.domain())?"purchase":request.domain();
     }

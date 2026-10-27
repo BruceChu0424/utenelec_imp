@@ -1,5 +1,6 @@
 abstract final class AppInfo {
-  static const displayName = 'UTEN';
+  static const displayName = '优腾综合管理平台';
+  static const externalName = 'UTEN';
   static const version = String.fromEnvironment(
     'APP_VERSION',
     defaultValue: '2.5.32',

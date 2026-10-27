@@ -13,7 +13,7 @@ class NativeFacetCandidatesTest {
         when(em.createNativeQuery(sql)).thenReturn(original);
         when(em.createNativeQuery("SELECT source_no,COUNT(*) FROM facts GROUP BY 1")).thenReturn(other);
         when(em.createNativeQuery(argThat((String value)->value!=null&&value.startsWith("SELECT candidate.value")))).thenReturn(paged);
-        Parameter<Object> owner=mock(Parameter.class);when(owner.getName()).thenReturn("owners");when(original.getParameters()).thenReturn(Set.of(owner));
+        Parameter<Object> owner=mock();when(owner.getName()).thenReturn("owners");when(original.getParameters()).thenReturn(Set.of(owner));
         when(original.getParameterValue(owner)).thenReturn(List.of("actor-A"));
         when(paged.getResultList()).thenReturn(Arrays.asList(new Object[]{"0001 %_ 中文",7L},new Object[]{"0002",3L},new Object[]{"0003",1L}));
         try(var scope=NativeFacetCandidates.open("billNo","%_ 中文",6,2)) {
@@ -55,7 +55,7 @@ class NativeFacetCandidatesTest {
         assertThatThrownBy(()->NativeFacetCandidates.open("billNo","",(long)Integer.MAX_VALUE+1,100)).isInstanceOf(ApiException.class);
     }
     @Test void positionalApplicationBindingsAreNotAccepted() {
-        EntityManager em=mock(EntityManager.class);Query query=mock(Query.class),paged=mock(Query.class);Parameter<Object> positional=mock(Parameter.class);
+        EntityManager em=mock(EntityManager.class);Query query=mock(Query.class),paged=mock(Query.class);Parameter<Object> positional=mock();
         when(em.createNativeQuery(anyString())).thenReturn(query,paged);when(query.getParameters()).thenReturn(Set.of(positional));
         try(var scope=NativeFacetCandidates.open("billNo","",1,100)) {
             var tagged=NativeFacets.query(em,"billNo","SELECT value,COUNT(*) FROM facts WHERE owner_id=? GROUP BY 1");

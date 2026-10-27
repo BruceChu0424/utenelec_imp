@@ -78,7 +78,7 @@ class WarehouseHistoryNameBatchTest {
         when(rows.getResultList()).thenReturn(java.util.Collections.singletonList(row(ownerA, null, null, null)),
                 java.util.Collections.singletonList(row(ownerB, null, null, null)),
                 java.util.Collections.singletonList(row(ownerA, null, null, null)));
-        when(names.namesOf(anyCollection())).thenReturn(Map.of(ownerA, "A"), Map.of(ownerB, "B"), Map.of(ownerA, "A2"));
+        when(names.namesOf(anyCollection())).thenReturn(Map.of(ownerA, "A")).thenReturn(Map.of(ownerB, "B")).thenReturn(Map.of(ownerA, "A2"));
         for (String expected : List.of("A", "B", "A2")) {
             assertThat(service.list(WarehouseHistoryType.SUBCONTRACT_RETURN, "", null, null, null, 1, 20)
                     .getItems().getFirst().makerName()).isEqualTo(expected);

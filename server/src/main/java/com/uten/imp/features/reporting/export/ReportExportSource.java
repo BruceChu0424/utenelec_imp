@@ -1,6 +1,8 @@
 package com.uten.imp.features.reporting.export;
 
 import com.uten.imp.common.export.ExportPayload;
+import com.uten.imp.application.port.MasterReportExportPort;
+import com.uten.imp.application.port.WorkbenchReportExportPort;
 import org.springframework.stereotype.Component;
 import java.util.Set;
 
@@ -14,8 +16,8 @@ public class ReportExportSource {
     private final com.uten.imp.features.stock.report.StockReportService stock;
     private final com.uten.imp.features.finance.report.FinanceReportService finance;
     private final com.uten.imp.features.production.report.WhereUsedExportService whereUsed;
-    private final MasterReportExportSource master;
-    private final WorkbenchReportExportSource workbench;
+    private final MasterReportExportPort master;
+    private final WorkbenchReportExportPort workbench;
     private final AuditReportExportSource audit;
     private final ActualCostReportExportSource actualCost;
     public ReportExportSource(com.uten.imp.features.sales.report.SalesReportService sales,
@@ -24,8 +26,8 @@ public class ReportExportSource {
             com.uten.imp.features.production.report.ProductionReportService production,
             com.uten.imp.features.stock.report.StockReportService stock,
             com.uten.imp.features.finance.report.FinanceReportService finance,
-            com.uten.imp.features.production.report.WhereUsedExportService whereUsed,MasterReportExportSource master,
-            WorkbenchReportExportSource workbench,AuditReportExportSource audit,ActualCostReportExportSource actualCost) {
+            com.uten.imp.features.production.report.WhereUsedExportService whereUsed,MasterReportExportPort master,
+            WorkbenchReportExportPort workbench,AuditReportExportSource audit,ActualCostReportExportSource actualCost) {
         this.sales=sales;this.purchase=purchase;this.subcontract=subcontract;
         this.production=production;this.stock=stock;this.finance=finance;this.whereUsed=whereUsed;this.master=master;this.workbench=workbench;this.audit=audit;this.actualCost=actualCost;
     }
@@ -59,12 +61,12 @@ public class ReportExportSource {
     }
     public static String scope(String domain) { return "view_"+("stock".equals(domain)?"warehouse":domain); }
     public static String scope(ReportExportRequest request) {
-        return "master".equals(request.domain())?MasterReportExportSource.projectionScope(request.report())
+        return "master".equals(request.domain())?MasterReportExportPort.projectionScope(request.report())
                 :"workbench_purchase".equals(request.domain())?"view_purchase"
                 :"audit".equals(request.domain())?"view_admin"
                 :"goods_actual_cost".equals(request.domain())?"view_goods_cost":scope(request.domain());
     }
-    public static com.uten.imp.common.export.TableColumnProjection projection(ReportExportRequest request) {
-        return "master".equals(request.domain())?MasterReportExportSource.projection(request):request.columnProjection();
+    public com.uten.imp.common.export.TableColumnProjection projection(ReportExportRequest request) {
+        return "master".equals(request.domain())?master.projection(request):request.columnProjection();
     }
 }

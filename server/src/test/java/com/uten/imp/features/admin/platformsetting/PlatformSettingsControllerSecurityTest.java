@@ -31,6 +31,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@com.uten.imp.testsupport.WithReportReadScopeMvc
 @WebMvcTest(controllers = {PlatformSettingsController.class, PublicPlatformBrandingController.class},
         properties = {"uten.security.cors-allowed-origins=https://erp.test", "uten.security.require-https=true",
                 "uten.deployment.local-allowed-cidrs=127.0.0.0/8,::1/128"},

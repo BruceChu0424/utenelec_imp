@@ -62,8 +62,10 @@ class ProcurementFinancePermissionDocumentationContractTest {
 
     private static Path repositoryRoot() {
         Path cwd = Path.of("").toAbsolutePath().normalize();
-        return Files.isDirectory(cwd.resolve("docs"))
-                ? cwd
-                : cwd.resolve("..").normalize();
+        for (Path candidate = cwd; candidate != null; candidate = candidate.getParent()) {
+            if (Files.isRegularFile(candidate.resolve("pubspec.yaml"))
+                    && Files.isRegularFile(candidate.resolve("server/pom.xml"))) return candidate;
+        }
+        throw new IllegalStateException("Unable to locate the repository documentation root");
     }
 }

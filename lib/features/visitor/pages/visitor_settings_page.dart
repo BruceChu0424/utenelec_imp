@@ -118,7 +118,7 @@ class VisitorSettingsPage extends ConsumerWidget {
 
               Center(
                 child: Text(
-                  l10n.visitorSettingsPortalTag(branding.appName),
+                  l10n.visitorSettingsPortalTag(branding.platformName),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

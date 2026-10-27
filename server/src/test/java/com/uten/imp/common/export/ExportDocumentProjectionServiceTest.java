@@ -49,7 +49,7 @@ class ExportDocumentProjectionServiceTest {
         var platform=mock(PlatformColumnService.class);UUID id=UUID.randomUUID();
         var definition=new Definition(id,"view_goods_cost","冻结公式","CALCULATED",true,
                 new Formula(new Operand(null,"amount",null),List.of()),0,0);
-        when(platform.definitionsByIds("view_goods_cost",List.of(id))).thenReturn(List.of(definition),List.of());
+        when(platform.definitionsByIds("view_goods_cost",List.of(id))).thenReturn(List.of(definition)).thenReturn(List.of());
         when(platform.evaluateDisplayRows(anyString(),any(),any())).thenReturn(List.of());
         var service=new ExportDocumentProjectionService(new ExportTableProjectionService(platform));
         var destination=mock(DocumentPageSink.Consumer.class);

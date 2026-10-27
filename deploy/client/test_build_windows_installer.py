@@ -403,7 +403,7 @@ class WindowsSetupSourceTest(unittest.TestCase):
         for expected in (
             "#if Ver < 0x06050000",
             "AppId=com.uten.uten_imp", "PrivilegesRequired=lowest",
-            "DefaultDirName={localappdata}\\Programs\\Uten\\UIMP", "DisableDirPage=yes",
+            "DefaultDirName={localappdata}\\Programs\\Uten\\UIMP", "DisableDirPage=no",
             "UsePreviousAppDir=yes", "UseSetupLdr=yes", "DiskSpanning=no",
             "VersionInfoProductName=Uten IMP Windows Setup",
             "VersionInfoOriginalFileName=UtenIMPSetup.exe",

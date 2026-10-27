@@ -62,6 +62,13 @@ class DetailViewAuditCoverageArchitectureTest {
                         "AI job status polling must not write a detail-view event per poll");
                 continue;
             }
+            // An export job uses the same owner-only progress polling semantic
+            // as AI jobs. A view event for every poll would obscure real audit
+            // activity. Download publication keeps its explicit audit event.
+            if (normalizedPath.endsWith("/reporting/export/ReportExportController.java")) {
+                assertExportJobPollingContract(source);
+                continue;
+            }
             assertTrue(source.contains("AuditDetailViewRecorder"),
                     () -> "missing explicit detail-view audit dependency: " + controller);
             assertTrue(DETAIL_ACTION.matcher(source).find(),
@@ -79,6 +86,28 @@ class DetailViewAuditCoverageArchitectureTest {
                 StandardCharsets.UTF_8);
         assertTrue(noticeService.contains("auditExplicit(\"view_notice\""),
                 "NoticeController exemption requires the existing view_notice event");
+    }
+
+    private static void assertExportJobPollingContract(String source) throws Exception {
+        var get = com.uten.imp.features.reporting.export.ReportExportController.class
+                .getMethod("get", java.util.UUID.class);
+        assertTrue(java.util.Arrays.equals(
+                get.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value(),
+                new String[]{"/{id}"}));
+        assertTrue(get.getReturnType() == com.uten.imp.features.reporting.export.ReportExportService.View.class);
+        assertTrue(source.contains("return service.get(id)"));
+        assertFalse(source.contains("AuditDetailViewRecorder"));
+        assertTrue(source.contains("\"export_report_download\""));
+        String service = Files.readString(FEATURES.resolve("reporting/export/ReportExportService.java"));
+        assertTrue(service.contains("public View get(UUID id) { return view(authorized(id)); }"));
+        assertTrue(service.contains("!current.getId().equals(job.owner())"));
+        assertTrue(service.contains("ErrorCode.NOT_FOUND"));
+        var fields = java.util.Arrays.stream(
+                com.uten.imp.features.reporting.export.ReportExportService.View.class.getRecordComponents())
+                .map(java.lang.reflect.RecordComponent::getName).collect(java.util.stream.Collectors.toSet());
+        assertTrue(fields.equals(java.util.Set.of("id", "domain", "report", "format", "status",
+                "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt")),
+                "status polling must not expose filters, request bodies or private artifact paths");
     }
 
     @Test

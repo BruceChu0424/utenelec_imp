@@ -1,10 +1,12 @@
-package com.uten.imp.features.reporting.export;
+package com.uten.imp.features.operations.workbench;
+
+import com.uten.imp.application.port.WorkbenchReportExportPort;
+import com.uten.imp.application.port.ReportExportQuery;
 
 import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.*;
-import com.uten.imp.features.operations.workbench.*;
 import com.uten.imp.security.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -14,18 +16,14 @@ import java.util.Set;
 /** Original purchase task authority and row semantics, independent of the purchase report family. */
 @Component
 @RequiredArgsConstructor
-public class WorkbenchReportExportSource {
-    private static final Set<String> READ_PERMISSIONS=Set.of("purchase_request:view","purchase_order:view","purchase_receipt:view","purchase_return:view");
+public class WorkbenchReportExportSource implements WorkbenchReportExportPort {
     private final FulfillmentWorkbenchQueryService queries;
     private final ExportLimitPort limits;
     private final SecurityContextCurrentUser users;
-    public static void authorize(AuthUser user) {
-        if(user.isVisitor()||user.isMustChangePassword()||!user.isAccountNonLocked()||user.getImpersonatedBy()!=null
-                ||!user.getPermissions().contains("purchase_report:export")
-                ||READ_PERMISSIONS.stream().noneMatch(user.getPermissions()::contains))throw new ApiException(ErrorCode.FORBIDDEN);
-    }
-    public static void validate(ReportExportRequest request) { table(request); }
-    private static FulfillmentWorkbenchTableQuery table(ReportExportRequest request) {
+    public static void authorize(AuthUser user) { WorkbenchReportExportPort.authorize(user); }
+    @Override public void validateRequest(ReportExportQuery query) { validate(query); }
+    public static void validate(ReportExportQuery request) { table(request); }
+    private static FulfillmentWorkbenchTableQuery table(ReportExportQuery request) {
         if(!"tasks".equals(request.report()))throw invalid();
         var p=request.parameters();
         if(p.keySet().stream().anyMatch(key->!Set.of("status","keyword","exception","dateFrom","dateTo","issuedFrom","issuedTo","needFrom","needTo").contains(key)
@@ -38,7 +36,7 @@ public class WorkbenchReportExportSource {
                     ReportQueryKit.parseDate(p.get("needFrom")),ReportQueryKit.parseDate(p.get("needTo")));
         }catch(IllegalArgumentException | java.time.DateTimeException invalid){throw invalid();}
     }
-    public ExportPayload read(ReportExportRequest request) {
+    public ExportPayload read(ReportExportQuery request) {
         authorize(users.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED)));
         var p=request.parameters();var table=table(request);
         return queries.exportPurchase(p.getOrDefault("status",""),p.getOrDefault("keyword",""),p.getOrDefault("exception",""),

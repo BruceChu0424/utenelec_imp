@@ -1,4 +1,7 @@
-package com.uten.imp.features.reporting.export;
+package com.uten.imp.features.master.export;
+
+import com.uten.imp.application.port.MasterReportExportPort;
+import com.uten.imp.application.port.ReportExportQuery;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -40,8 +43,7 @@ import java.util.Set;
 /** Typed private-body adapter; business filters, names, precision and columns remain in their original services. */
 @Component
 @RequiredArgsConstructor
-public class MasterReportExportSource {
-    private static final Set<String> REPORTS = Set.of("goods", "client", "supplier", "account", "currency", "color", "unit", "mould", "warehouse", "settlement_method");
+public class MasterReportExportSource implements MasterReportExportPort {
     private final GoodsService goods;
     private final ClientService clients;
     private final SupplierService suppliers;
@@ -56,22 +58,19 @@ public class MasterReportExportSource {
     private final Validator validator;
     private final ExportLimitPort limits;
 
-    public static String permission(String report) { requireReport(report); return report + ":export"; }
-    public static String projectionScope(String report) { requireReport(report); return "master_" + report; }
-    public static String authorityDomain(String report) {
-        requireReport(report);
-        return "client".equals(report) || "supplier".equals(report) ? report : "master_" + report;
-    }
-    public static TableColumnProjection projection(ReportExportRequest request) {
+    public static String permission(String report) { return MasterReportExportPort.permission(report); }
+    public static String projectionScope(String report) { return MasterReportExportPort.projectionScope(report); }
+    public static String authorityDomain(String report) { return MasterReportExportPort.authorityDomain(report); }
+    public TableColumnProjection projection(ReportExportQuery request) {
         requireReport(request.report());
         return "goods".equals(request.report())
                 ? GoodsExportProjection.forImportTemplate(request.columnProjection()) : request.columnProjection();
     }
 
     /** Call before persisting a job so unknown/credential fields are never stored as a private filter. */
-    public void validate(ReportExportRequest request) { filter(request); }
+    public void validate(ReportExportQuery request) { filter(request); }
 
-    public ExportPayload read(ReportExportRequest request) {
+    public ExportPayload read(ReportExportQuery request) {
         Object filter = filter(request);
         com.uten.imp.security.CurrentAuthorityGuard.requireAll(permission(request.report()));
         int maxRows = limits.exportMaxRows();
@@ -90,7 +89,7 @@ public class MasterReportExportSource {
         };
     }
 
-    private Object filter(ReportExportRequest request) {
+    private Object filter(ReportExportQuery request) {
         requireReport(request.report());
         if (!"master".equals(request.domain()) || !request.parameters().keySet().equals(Set.of("filter"))) throw invalid();
         String raw = request.parameters().get("filter");
@@ -134,6 +133,6 @@ public class MasterReportExportSource {
             }
         } else if (node.isArray()) node.forEach(MasterReportExportSource::rejectCredentials);
     }
-    private static void requireReport(String report) { if (report == null || !REPORTS.contains(report)) throw invalid(); }
+    private static void requireReport(String report) { MasterReportExportPort.requireReport(report); }
     private static ApiException invalid() { return new ApiException(ErrorCode.VALIDATION_FAILED, "主档导出筛选参数无效"); }
 }

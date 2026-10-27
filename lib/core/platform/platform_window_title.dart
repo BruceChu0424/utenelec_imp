@@ -28,7 +28,7 @@ class PlatformWindowTitleController {
   int _generation = 0;
   String? _title;
   String? _source;
-  String? _lastSentTitle = AppInfo.displayName;
+  String? _lastSentTitle = AppInfo.externalName;
   Completer<void>? _completion;
 
   Future<void> update({required String title, required String source}) {
@@ -117,14 +117,14 @@ final platformWindowTitleControllerProvider =
       final controller = PlatformWindowTitleController(
         isCurrent: (title, source) =>
             ref.read(apiBaseUrlProvider) == source &&
-            title == AppInfo.displayName,
+            title == AppInfo.externalName,
       );
       ref.onDispose(controller.dispose);
       return controller;
     });
 
 final platformWindowTitleSyncProvider = Provider<void>((ref) {
-  const title = AppInfo.displayName;
+  const title = AppInfo.externalName;
   final source = ref.watch(apiBaseUrlProvider);
   unawaited(
     ref

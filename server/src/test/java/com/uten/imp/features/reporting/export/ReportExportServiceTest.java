@@ -1,5 +1,7 @@
 package com.uten.imp.features.reporting.export;
 
+import com.uten.imp.features.operations.workbench.WorkbenchReportExportSource;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.web.*;
 import com.uten.imp.security.*;
@@ -31,7 +33,7 @@ class ReportExportServiceTest {
         when(restorer.currentStamps(owner)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1,1)));
         buildIdentity=mock(ReportExportBuildIdentity.class);when(buildIdentity.revision()).thenReturn("fixture-build");rateLimiter=mock(ExportRateLimiter.class);
         readScopes=mock(ReadScopeVersionAuthority.class);when(readScopes.scopeFor(anyString(),any())).thenReturn("a".repeat(64));
-        projectionAccess=mock(org.springframework.beans.factory.ObjectProvider.class);
+        projectionAccess=mock();
         service=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,directory.toString());
     }
     ReportExportRequest request(UUID id) {return new ReportExportRequest(id,"sales","ORDER/detail",Map.of("dateFrom","2020-01-01"),null,null,null);}

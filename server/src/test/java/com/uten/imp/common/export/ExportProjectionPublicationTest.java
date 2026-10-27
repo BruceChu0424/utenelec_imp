@@ -57,7 +57,11 @@ class ExportProjectionPublicationTest {
         var transactions=mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         var proxy=new ProxyFactory(new ExportProjectionAccessGuard(platform));
-        proxy.addAdvice(new TransactionInterceptor(transactions,new AnnotationTransactionAttributeSource()));
+        var transactionAdvice = new TransactionInterceptor();
+        transactionAdvice.setTransactionManager(transactions);
+        transactionAdvice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        transactionAdvice.afterPropertiesSet();
+        proxy.addAdvice(transactionAdvice);
         var guard=(ExportProjectionAccessGuard)proxy.getProxy();var advice=new ReportReadScopeAdvice(authority,guard);
         // The bridge uses a document sink, where LegacyExportBudget.active() is false.
         try(var sink=DocumentPageSink.open(new DocumentPageSink.Consumer(){public void begin(DocumentPageSink.Header h){}public void accept(DocumentPageSink.Page p){}})) {
@@ -69,10 +73,10 @@ class ExportProjectionPublicationTest {
         available.set(false);
         byte[] secret="private exported bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         var servletRequest=new ServletServerHttpRequest(request);var servletResponse=new ServletServerHttpResponse(response);
-        var failure=catchThrowableOfType(()->{
+        var failure=org.junit.jupiter.api.Assertions.assertThrows(ApiException.class,()->{
             var body=(byte[])advice.beforeBodyWrite(secret,null,MediaType.APPLICATION_OCTET_STREAM,ByteArrayHttpMessageConverter.class,servletRequest,servletResponse);
             new ByteArrayHttpMessageConverter().write(body,MediaType.APPLICATION_OCTET_STREAM,servletResponse);
-        },ApiException.class);
+        });
         assertThat(failure.getCode()).isEqualTo(revoked?ErrorCode.FORBIDDEN:ErrorCode.CONFLICT);
         assertThat(response.getContentAsByteArray()).isEmpty();assertThat(response.getHeader("X-Uten-Read-Scope-Version")).isNull();
         var tx=ArgumentCaptor.forClass(TransactionDefinition.class);verify(transactions).getTransaction(tx.capture());

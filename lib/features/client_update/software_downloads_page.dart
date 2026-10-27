@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
-import '../../components/brand/uten_brand_mascot.dart';
 import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../components/layout/uten_app_bar.dart';
@@ -589,15 +588,26 @@ class _DesktopArtwork extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const UtenBrandMascot.size(64),
+                    Icon(
+                      Icons.window_rounded,
+                      size: 42,
+                      color: colors.onPrimaryContainer,
+                    ),
                     const SizedBox(height: UtenSpacing.s16),
                     Text(
-                      softwareProductName(Localizations.localeOf(context)),
+                      'UIMP',
                       style: Theme.of(context).textTheme.headlineMedium
                           ?.copyWith(
                             color: colors.onPrimaryContainer,
                             fontWeight: FontWeight.w700,
                           ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      softwareProductName(Localizations.localeOf(context)),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onPrimaryContainer,
+                      ),
                     ),
                   ],
                 ),

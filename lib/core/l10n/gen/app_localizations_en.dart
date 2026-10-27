@@ -961,7 +961,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The report status has changed. The page has been refreshed; please check its current status.';
 
   @override
-  String get appTitle => 'UTEN';
+  String get appTitle => 'Uten Integrated Management Platform';
 
   @override
   String get commonConfirm => 'Confirm';
@@ -1041,7 +1041,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String loginFooter(int year) {
-    return '© $year UTEN';
+    return '© $year Uten Integrated Management Platform';
   }
 
   @override

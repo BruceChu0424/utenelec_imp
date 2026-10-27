@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../../components/brand/uten_brand_mascot.dart';
 import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_motion.dart';
@@ -467,7 +466,19 @@ class _UpdateMarkState extends State<_UpdateMark>
               ),
             ),
           ),
-          const ClipOval(child: UtenBrandMascot.size(112)),
+          Container(
+            width: 104,
+            height: 104,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer,
+              borderRadius: UtenRadius.cardAll,
+            ),
+            child: Icon(
+              Icons.system_update_alt_rounded,
+              size: 54,
+              color: colors.onPrimaryContainer,
+            ),
+          ),
           if (!widget.spinning && widget.progress == null)
             Positioned(
               right: 7,

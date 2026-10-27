@@ -935,7 +935,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '일보 상태가 변경되어 페이지를 새로 고쳤습니다. 현재 상태를 확인해 주세요.';
 
   @override
-  String get appTitle => 'UTEN';
+  String get appTitle => '우텅 통합 관리 플랫폼';
 
   @override
   String get commonConfirm => '확인';
@@ -1013,7 +1013,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String loginFooter(int year) {
-    return '© $year UTEN';
+    return '© $year 우텅 통합 관리 플랫폼';
   }
 
   @override

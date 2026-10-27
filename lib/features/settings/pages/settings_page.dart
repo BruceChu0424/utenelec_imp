@@ -256,7 +256,7 @@ class SettingsPage extends ConsumerWidget {
               // 页脚信息
               Center(
                 child: Text(
-                  '${branding.appName}\n${branding.copyright(DateTime.now().year)}',
+                  '${branding.platformName}\n${branding.copyright(DateTime.now().year)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

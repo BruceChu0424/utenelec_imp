@@ -1,7 +1,7 @@
-// UtenWordmarkLogo - 软件品牌：现有动漫 IP + UTEN。
+// UtenWordmarkLogo - 横向品牌名锁版（图 UTEN + ELEC）
 // 文档：docs/02-组件库/UtenWordmarkLogo.md（待写）
 //
-// 默认按 240×44 渲染以适配中等卡片头部；公司文件 logo 仍由 PlatformBrandLogo 负责。
+// 原图比例 405×74（≈5.47:1），组件默认按 240×44 渲染以适配中等卡片头部。
 // 调用方可在 width/height 自定义尺寸（保持宽高比用 BoxFit.contain，组件内已设）。
 //
 // 用法：
@@ -11,9 +11,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_info.dart';
-import '../../core/theme/uten_tokens.dart';
-import 'uten_brand_mascot.dart';
+import '../../shared/platform_branding/platform_brand_logo.dart';
 
 class UtenWordmarkLogo extends StatelessWidget {
   const UtenWordmarkLogo({super.key, this.width = 240, this.height = 44});
@@ -36,27 +34,6 @@ class UtenWordmarkLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            UtenBrandMascot.size(height),
-            const SizedBox(width: UtenSpacing.s8),
-            Text(
-              AppInfo.displayName,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontSize: height * .5,
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return PlatformBrandLogo(width: width, height: height);
   }
 }

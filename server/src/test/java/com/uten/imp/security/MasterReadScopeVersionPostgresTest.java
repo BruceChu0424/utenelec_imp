@@ -59,7 +59,11 @@ class MasterReadScopeVersionPostgresTest {
         policy=new GoodsReadScopePolicy(visibility);
         var target=new ReadScopeVersionAuthority(new NamedParameterJdbcTemplate(source),restorer,visibility,policy);
         var proxy=new ProxyFactory(target);proxy.setProxyTargetClass(true);
-        proxy.addAdvice(new TransactionInterceptor(transactions,new AnnotationTransactionAttributeSource()));
+        var transactionAdvice = new TransactionInterceptor();
+        transactionAdvice.setTransactionManager(transactions);
+        transactionAdvice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        transactionAdvice.afterPropertiesSet();
+        proxy.addAdvice(transactionAdvice);
         authority=(ReadScopeVersionAuthority)proxy.getProxy();
         subject=new AuthUser(actor,employee,"master-export-only",permissions,false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(subject,null,subject.getAuthorities()));

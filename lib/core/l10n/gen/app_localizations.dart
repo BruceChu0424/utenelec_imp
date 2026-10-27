@@ -1735,7 +1735,7 @@ abstract class AppLocalizations {
   /// 应用标题
   ///
   /// In zh, this message translates to:
-  /// **'UTEN'**
+  /// **'优腾·综合管理平台'**
   String get appTitle;
 
   /// No description provided for @commonConfirm.
@@ -1885,7 +1885,7 @@ abstract class AppLocalizations {
   /// No description provided for @loginFooter.
   ///
   /// In zh, this message translates to:
-  /// **'© {year} UTEN'**
+  /// **'© {year} 优腾 · 综合管理平台'**
   String loginFooter(int year);
 
   /// No description provided for @navDashboard.

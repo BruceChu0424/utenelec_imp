@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/brand/uten_brand_mascot.dart';
-import 'package:uten_imp/core/constants/assets.dart';
+import 'package:uten_imp/core/constants/app_info.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -222,24 +222,8 @@ class _Harness {
     if (!const bool.fromEnvironment('CLIENT_UPDATE_REDESIGN_SCREENSHOTS')) {
       return;
     }
-    final mascot = find.byType(UtenBrandMascot);
-    final image = tester.widget<Image>(
-      find.descendant(of: mascot, matching: find.byType(Image)),
-    );
-    expect((image.image as AssetImage).assetName, UtenAssets.logoIp);
-    Object? decodeError;
-    await tester.runAsync(
-      () => precacheImage(
-        const AssetImage(UtenAssets.logoIp),
-        tester.element(mascot),
-        onError: (error, stack) => decodeError = error,
-      ),
-    );
-    expect(
-      decodeError,
-      isNull,
-      reason: 'the real bundled anime IP must decode before capture',
-    );
+    expect(find.byType(UtenBrandMascot), findsNothing);
+    expect(find.byIcon(Icons.system_update_alt_rounded), findsOneWidget);
     await tester.pump();
     await tester.pump(UtenAnim.fast);
     final render =
@@ -476,14 +460,10 @@ void main() {
         await harness.open(tester);
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('client-update-notes')), findsNothing);
-        expect(find.byType(UtenBrandMascot), findsOneWidget);
-        final image = tester.widget<Image>(
-          find.descendant(
-            of: find.byType(UtenBrandMascot),
-            matching: find.byType(Image),
-          ),
-        );
-        expect((image.image as AssetImage).assetName, UtenAssets.logoIp);
+        expect(find.byType(UtenBrandMascot), findsNothing);
+        expect(find.byIcon(Icons.system_update_alt_rounded), findsOneWidget);
+        expect(AppInfo.displayName, '优腾综合管理平台');
+        expect(find.text(AppInfo.displayName), findsOneWidget);
         final bounded = find.ancestor(
           of: find.byKey(const ValueKey('client-update-status')),
           matching: find.byWidgetPredicate(

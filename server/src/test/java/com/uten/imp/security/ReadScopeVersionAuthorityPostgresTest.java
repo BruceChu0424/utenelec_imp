@@ -71,7 +71,11 @@ class ReadScopeVersionAuthorityPostgresTest {
         visibility = new OwnerVisibility(new SecurityContextCurrentUser(), shared, new EmployeeHandoverVisibility(shared));
         var target = new ReadScopeVersionAuthority(new NamedParameterJdbcTemplate(dataSource), restorer, visibility);
         var proxy = new ProxyFactory(target); proxy.setProxyTargetClass(true);
-        proxy.addAdvice(new TransactionInterceptor(transactions, new AnnotationTransactionAttributeSource()));
+        var transactionAdvice = new TransactionInterceptor();
+        transactionAdvice.setTransactionManager(transactions);
+        transactionAdvice.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        transactionAdvice.afterPropertiesSet();
+        proxy.addAdvice(transactionAdvice);
         authority = (ReadScopeVersionAuthority) proxy.getProxy();
         subject = user();
         var context = SecurityContextHolder.createEmptyContext();

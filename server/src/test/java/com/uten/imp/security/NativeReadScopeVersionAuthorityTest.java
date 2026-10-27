@@ -23,7 +23,7 @@ class NativeReadScopeVersionAuthorityTest {
         when(restorer.currentStamps(actor)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1,7)));
         when(restorer.restore(actor,1,7L)).thenAnswer(call->subject);
         when(jdbc.queryForObject(anyString(),anyMap(),eq(Long.class))).thenReturn(0L);
-        when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),any(org.springframework.jdbc.core.RowMapper.class)))
+        when(jdbc.queryForObject(contains("business_dataset_id"),anyMap(),org.mockito.ArgumentMatchers.<org.springframework.jdbc.core.RowMapper<ReadScopeVersionAuthority.DatasetRealm>>any()))
                 .thenReturn(new ReadScopeVersionAuthority.DatasetRealm(UUID.fromString("00000000-0000-0000-0000-000000000935"),0));
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}

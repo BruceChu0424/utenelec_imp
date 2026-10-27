@@ -21,81 +21,74 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'all locales share UTEN while company metadata keeps its original identity',
+    'external UTEN identity leaves internal names and company identity intact',
     () async {
       const company = PlatformBranding(
         companyName: '示例公司法定名称',
         platformName: '旧公司的自定义平台名称',
       );
-      expect(AppInfo.displayName, 'UTEN');
-      expect(company.appName, AppInfo.displayName);
+      expect(AppInfo.externalName, 'UTEN');
+      expect(AppInfo.displayName, '优腾综合管理平台');
       expect(company.toUpdateJson()['platformName'], '旧公司的自定义平台名称');
       expect(company.copyright(2026), '© 2026 示例公司法定名称');
-      for (final language in ['zh', 'en', 'ko']) {
-        final locale = Locale(language);
+      const titles = {
+        'zh': '优腾·综合管理平台',
+        'en': 'Uten Integrated Management Platform',
+        'ko': '우텅 통합 관리 플랫폼',
+      };
+      for (final entry in titles.entries) {
+        final locale = Locale(entry.key);
         expect(
           (await AppLocalizations.delegate.load(locale)).appTitle,
-          AppInfo.displayName,
+          entry.value,
         );
-        expect(softwareProductName(locale), AppInfo.displayName);
+        expect(
+          softwareProductName(locale),
+          entry.key == 'zh'
+              ? '优腾综合管理平台(UIMP)'
+              : 'Uten Integrated Management Platform (UIMP)',
+        );
       }
     },
   );
 
-  testWidgets(
-    'software IP remains the existing asset while company logo stays independent',
-    (tester) async {
-      const company = PlatformBranding(
-        companyName: '示例公司',
-        platformName: '示例平台',
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
-            platformBrandingSnapshotProvider.overrideWithValue(company),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: Column(
-                children: [
-                  UtenBrandMascot.size(64),
-                  UtenWordmarkLogo(),
-                  PlatformBrandLogo(),
-                ],
-              ),
+  testWidgets('internal brand components retain the company presentation', (
+    tester,
+  ) async {
+    const company = PlatformBranding(companyName: '示例公司', platformName: '示例平台');
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
+          platformBrandingSnapshotProvider.overrideWithValue(company),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                UtenBrandMascot.size(64),
+                UtenWordmarkLogo(),
+                PlatformBrandLogo(),
+              ],
             ),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      final images = tester.widgetList<Image>(find.byType(Image));
-      expect(images, hasLength(2));
-      expect(
-        images.every(
-          (image) =>
-              image.image is AssetImage &&
-              (image.image as AssetImage).assetName == UtenAssets.logoIp,
-        ),
-        isTrue,
-      );
-      expect(find.text('UTEN'), findsOneWidget);
-      expect(find.text('示例平台'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    final images = tester.widgetList<Image>(find.byType(Image));
+    expect(images, isEmpty);
+    expect(find.text('UTEN'), findsNothing);
+    expect(find.text('示例平台'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
-    'login keeps UTEN and its IP with custom company notices and copyright',
+    'login restores the original wide wordmark and company copyright',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
-      const company = PlatformBranding(
-        companyName: '示例法定公司',
-        platformName: '旧自定义软件长名称',
-        tagline: '保留的公司标语',
-        hasLogo: true,
-      );
+      const company = PlatformBranding.defaults;
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -111,12 +104,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('UTEN'), findsOneWidget);
-      expect(find.text('旧自定义软件长名称'), findsNothing);
-      expect(find.text('保留的公司标语'), findsOneWidget);
-      expect(find.textContaining('示例法定公司'), findsOneWidget);
-      final image = tester.widget<Image>(find.byType(Image));
-      expect((image.image as AssetImage).assetName, UtenAssets.logoIp);
+      expect(find.text('UTEN'), findsNothing);
+      expect(find.text(company.tagline), findsOneWidget);
+      expect(find.text('© ${DateTime.now().year} 优腾 · 综合管理平台'), findsOneWidget);
+      final images = tester.widgetList<Image>(find.byType(Image));
+      expect(
+        images.map((image) => (image.image as AssetImage).assetName),
+        containsAll([UtenAssets.logoName, UtenAssets.logoIp]),
+      );
       expect(tester.takeException(), isNull);
     },
   );

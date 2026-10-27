@@ -13,7 +13,7 @@ public record ReportExportRequest(@NotNull UUID id,
         @Size(max=80) Map<@NotBlank @Size(max=120) String, @Size(max=60000) String> parameters,
         @Size(max=100) String sort, @Pattern(regexp="(?i)asc|desc") String order,
         @Valid TableColumnProjection columnProjection,
-        @Pattern(regexp="xlsx|pdf") String format) {
+        @Pattern(regexp="xlsx|pdf") String format) implements com.uten.imp.application.port.ReportExportQuery {
     public ReportExportRequest {
         parameters = parameters == null ? Map.of() : Map.copyOf(parameters);
         format = format == null ? "xlsx" : format;

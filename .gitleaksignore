@@ -417,3 +417,11 @@ docs/99-项目治理/platform_table_inventory.json:generic-api-key:13113
 
 # Exact Git fingerprint for the reviewed public layout key in the preceding source commit.
 07cd0569dc6c0a9a1036a2e7a95f424b3d25be08:docs/99-项目治理/platform_table_inventory.json:generic-api-key:13113
+
+# 2026-10-26 reviewed: these exact historical matches are public SHA-256
+# checksums for api_exception.dart/api_error.dart in the generated PDF worker
+# provenance manifest. They are source fingerprints, not authentication keys.
+a04c66224114988e72dc8d0ae9513f1f7393d680:assets/workers/uten_pdf_worker.build.json:generic-api-key:18
+a04c66224114988e72dc8d0ae9513f1f7393d680:assets/workers/uten_pdf_worker.build.json:generic-api-key:19
+7d6b8846d7fa71a72a7be223c76194478803c91a:assets/workers/uten_pdf_worker.build.json:generic-api-key:18
+7d6b8846d7fa71a72a7be223c76194478803c91a:assets/workers/uten_pdf_worker.build.json:generic-api-key:19

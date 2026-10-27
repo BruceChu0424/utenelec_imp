@@ -10,12 +10,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/login_server_preparation.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/auth/pages/login_page.dart';
 import 'package:uten_imp/features/auth/widgets/account_field.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -29,6 +32,16 @@ typedef _Attempt = ({String account, String password, String? otpCode});
 class _Session extends SessionNotifier {
   final attempts = <_Attempt>[];
   Future<void> Function(_Attempt)? response;
+  int _intentEpoch = 0;
+
+  @override
+  int get requestIntentEpoch => _intentEpoch;
+
+  @override
+  Future<void> logout() async {
+    _intentEpoch++;
+    state = const SessionState();
+  }
 
   @override
   SessionState build() => const SessionState();
@@ -38,11 +51,16 @@ class _Session extends SessionNotifier {
     required String account,
     required String password,
     String? otpCode,
+    bool Function()? isCurrent,
   }) async {
     final attempt = (account: account, password: password, otpCode: otpCode);
     attempts.add(attempt);
     final currentResponse = response;
-    if (currentResponse != null) return currentResponse(attempt);
+    if (currentResponse != null) {
+      await currentResponse(attempt);
+      state = const SessionState(status: AuthStatus.authenticated);
+      return;
+    }
     throw ApiException(
       otpCode == null ? 'MFA_REQUIRED' : 'MFA_INVALID',
       'Verification is required',
@@ -69,6 +87,7 @@ Future<ProviderContainer> _pump(
   _Session session, {
   Size size = const Size(900, 1100),
   bool dark = false,
+  Future<void> Function()? prepareLogin,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -94,6 +113,12 @@ Future<ProviderContainer> _pump(
         sharedPreferencesProvider.overrideWithValue(prefs),
         sessionProvider.overrideWith(() => session),
         apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
+        loginServerPreparationProvider.overrideWithValue(
+          prepareLogin ?? () async {},
+        ),
+        platformBrandingSnapshotProvider.overrideWithValue(
+          PlatformBranding.defaults,
+        ),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -121,6 +146,67 @@ Future<void> _submit(WidgetTester tester, {bool settle = true}) async {
 }
 
 void main() {
+  testWidgets(
+    'a server selected during preflight owns the resulting MFA challenge',
+    (tester) async {
+      final session = _Session();
+      late ProviderContainer container;
+      var preparations = 0;
+      container = await _pump(
+        tester,
+        session,
+        prepareLogin: () async {
+          preparations++;
+          container.read(_server.notifier).state = _serverB;
+        },
+      );
+      await _submit(tester);
+
+      expect(preparations, 1);
+      expect(container.read(apiBaseUrlProvider), _serverB);
+      expect(session.attempts, hasLength(1));
+      expect(_otp, findsOneWidget);
+      expect(find.text(_remoteHint), findsOneWidget);
+      expect(session.attempts.single.otpCode, isNull);
+    },
+  );
+
+  for (final boundary in ['account A-B-A', 'logout intent']) {
+    testWidgets('preflight $boundary cancels before sending login', (
+      tester,
+    ) async {
+      final pendingPreparation = Completer<void>();
+      final session = _Session();
+      await _pump(
+        tester,
+        session,
+        prepareLogin: () => pendingPreparation.future,
+      );
+      await _submit(tester, settle: false);
+      expect(session.attempts, isEmpty);
+
+      if (boundary == 'account A-B-A') {
+        await tester.enterText(_account, 'another-worker');
+        await tester.enterText(_account, 'worker');
+      } else {
+        await session.logout();
+      }
+      pendingPreparation.complete();
+      await tester.pumpAndSettle();
+
+      expect(session.attempts, isEmpty);
+      expect(_otp, findsNothing);
+      expect(_cancel, findsNothing);
+      expect(
+        tester.widget<UtenButton>(find.byType(UtenButton)).isLoading,
+        isFalse,
+      );
+      await _submit(tester);
+      expect(session.attempts, hasLength(1));
+      expect(_otp, findsOneWidget);
+    });
+  }
+
   for (final layout in [
     (name: 'compact', size: const Size(390, 844), dark: false),
     (name: 'medium', size: const Size(800, 1000), dark: false),

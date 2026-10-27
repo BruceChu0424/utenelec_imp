@@ -10,10 +10,21 @@ import '../../core/platform/desktop_window.dart';
 /// Keep native controls outside display zoom and keep the routed subtree in
 /// the same slot while changing modes, preserving focus and form controllers.
 class DesktopWindowHost extends ConsumerStatefulWidget {
-  const DesktopWindowHost({super.key, required this.mode, required this.child});
+  static const controlsHeight = 36.0;
+
+  const DesktopWindowHost({
+    super.key,
+    required this.mode,
+    required this.child,
+    this.overlayControls = false,
+  });
 
   final DesktopWindowMode mode;
   final Widget child;
+
+  /// Full-bleed login art handles its own safe scroll viewport. Other pages,
+  /// including forced password changes, reserve a native-sized control strip.
+  final bool overlayControls;
 
   @override
   ConsumerState<DesktopWindowHost> createState() => _DesktopWindowHostState();
@@ -41,14 +52,26 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
   Widget build(BuildContext context) {
     if (!_controller.enabled) return widget.child;
     final login = widget.mode == DesktopWindowMode.login;
-    return Column(
-      children: [
-        SizedBox(
-          height: login ? 36 : 0,
-          child: login ? _LoginWindowControls(controller: _controller) : null,
-        ),
-        Expanded(child: widget.child),
-      ],
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            top: login && !widget.overlayControls
+                ? DesktopWindowHost.controlsHeight
+                : 0,
+            child: widget.child,
+          ),
+          if (login)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: DesktopWindowHost.controlsHeight,
+              child: _LoginWindowControls(controller: _controller),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -92,7 +115,7 @@ class _LoginWindowControls extends StatelessWidget {
       ),
     );
     return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
+      color: Colors.transparent,
       child: Row(
         textDirection: TextDirection.ltr,
         children: isMac

@@ -9,7 +9,6 @@
 //   克制不铺渐变
 // - 保留淡入 + 上滑进场动画；认证逻辑 / 校验器 / Provider 不变
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,20 +21,19 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/login_server_preparation.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/platform/desktop_window.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
-import '../../../core/network/server_selection.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
+import '../widgets/desktop_login_layout.dart';
 import '../remote_access_text.dart';
 import '../../../core/l10n/disaster_recovery_text.dart';
 
@@ -61,8 +59,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
   bool _requiresOtp = false;
   String _lastAccount = '';
   int _loginContextEpoch = 0;
+  int _accountInputEpoch = 0;
   bool _isLoading = false;
-  bool _isRecoveringServer = false;
   String? _errorMessage;
 
   @override
@@ -97,6 +95,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final account = _accountController.text.trim();
     if (account == _lastAccount) return;
     _lastAccount = account;
+    _accountInputEpoch++;
     _resetOtpChallenge();
   }
 
@@ -112,80 +111,79 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   Future<void> _handleLogin() async {
-    if (_isLoading ||
-        _isRecoveringServer ||
-        !_formKey.currentState!.validate()) {
+    if (_isLoading || !_formKey.currentState!.validate()) {
       return;
     }
 
-    final loginContextEpoch = _loginContextEpoch;
+    var loginContextEpoch = _loginContextEpoch;
+    final accountInputEpoch = _accountInputEpoch;
+    final account = _accountController.text.trim();
+    final session = ref.read(sessionProvider.notifier);
+    final intentBeforePreparation = session.requestIntentEpoch;
+    bool isCurrentLogin() =>
+        mounted &&
+        accountInputEpoch == _accountInputEpoch &&
+        loginContextEpoch == _loginContextEpoch &&
+        identical(ref.read(sessionProvider.notifier), session);
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final account = _accountController.text.trim();
-      await ref
-          .read(sessionProvider.notifier)
-          .login(
-            account: account,
-            password: _passwordController.text,
-            otpCode: _requiresOtp ? _otpController.text : null,
-          );
+      // Choose a currently reachable trusted endpoint before capturing the
+      // challenge context or reading OTP. This may itself switch local/cloud.
+      await ref.read(loginServerPreparationProvider)();
+      if (!mounted) return;
+      // Flush the derived endpoint and its challenge-reset listener before
+      // capturing the context for the one credential request below.
+      ref.read(apiBaseUrlProvider);
+      if (!mounted ||
+          accountInputEpoch != _accountInputEpoch ||
+          !identical(ref.read(sessionProvider.notifier), session) ||
+          session.requestIntentEpoch != intentBeforePreparation) {
+        return;
+      }
+      loginContextEpoch = _loginContextEpoch;
+      await session.login(
+        account: account,
+        password: _passwordController.text,
+        otpCode: _requiresOtp ? _otpController.text : null,
+        isCurrent: isCurrentLogin,
+      );
+      if (!isCurrentLogin()) return;
+      final result = ref.read(sessionProvider);
+      if (!result.isLoggedIn && !result.mustChangePassword) return;
       // 登录成功：记住账号（只记账号不记密码）
       await ref.read(accountHistoryProvider).add(account);
 
-      if (mounted) {
+      if (mounted && isCurrentLogin()) {
         // 恢复经校验的员工目标；首登状态会先由路由守卫转入强制改密。
         context.go(widget.returnTo ?? RouteName.dashboard);
       }
+    } on LoginServerPreparationCancelled {
+      // A newer connection choice owns the UI; no credentials were sent.
+      return;
     } on ApiException catch (e) {
-      if (mounted && loginContextEpoch == _loginContextEpoch) {
+      if (isCurrentLogin()) {
         setState(() {
           _requiresOtp = e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID';
           _errorMessage = e.code == 'MFA_REQUIRED'
               ? remoteAccessText(context, 'loginOtpRequired')
-              : remoteAccessError(context, e);
+              : _loginFailureText(context, e);
           _otpController.clear();
         });
       }
     } catch (e) {
-      if (mounted && loginContextEpoch == _loginContextEpoch) {
+      if (isCurrentLogin()) {
         setState(() {
           _requiresOtp = false;
-          _errorMessage = '登录失败，请稍后重试';
+          _errorMessage = _loginFailureText(context, null);
           _otpController.clear();
         });
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _restoreAutomaticServer() async {
-    if (_isLoading || _isRecoveringServer || kIsWeb) return;
-    final l10n = AppLocalizations.of(context);
-    _resetOtpChallenge();
-    setState(() {
-      _isRecoveringServer = true;
-      _errorMessage = null;
-    });
-    try {
-      final prefs = ref.read(sharedPreferencesProvider);
-      await restoreAutomaticServerSelection(prefs);
-      ref.invalidate(apiBaseUrlProvider);
-      await ref.read(localServerReachableProvider.notifier).probe();
-      ref.invalidate(apiBaseUrlProvider);
-      if (mounted) {
-        context.appSuccess(l10n.loginServerRecoverySuccess);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _errorMessage = l10n.loginServerRecoveryFailed);
-      }
-    } finally {
-      if (mounted) setState(() => _isRecoveringServer = false);
     }
   }
 
@@ -196,6 +194,21 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final isCompact = supportsDesktopWindow || context.breakpoint.isCompact;
     final isDark = theme.brightness == Brightness.dark;
     final branding = ref.watch(platformBrandingSnapshotProvider);
+
+    if (supportsDesktopWindow) {
+      return Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        body: SelectionArea(
+          child: SafeArea(
+            child: DesktopLoginLayout(
+              branding: branding,
+              formBuilder: (showBrand) =>
+                  _buildLoginForm(l10n, theme, showBrand: showBrand),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       // medium+ 铺一层极淡 teal 调底，让白色登录卡自然浮起；compact 保持页面底色
@@ -256,7 +269,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
   }
 
   /// 品牌区 + 表单字段（两种布局共用同一份内容）
-  Widget _buildLoginForm(AppLocalizations l10n, ThemeData theme) {
+  Widget _buildLoginForm(
+    AppLocalizations l10n,
+    ThemeData theme, {
+    bool showBrand = true,
+  }) {
     final branding = ref.watch(platformBrandingSnapshotProvider);
     return Form(
       key: _formKey,
@@ -265,33 +282,36 @@ class _LoginPageState extends ConsumerState<LoginPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 品牌区：吉祥物 + 横向字标
-          if (branding.usesDefaultArtwork) ...[
-            const Center(child: UtenBrandMascot.size(88)),
-            const SizedBox(height: UtenSpacing.s16),
-          ],
-          Center(
-            child: UtenWordmarkLogo(
-              width: 220,
-              height: branding.usesDefaultArtwork ? 220 / (405 / 74) : 72,
-            ),
-          ),
-          if (branding.hasLogo) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              branding.platformName,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium,
-            ),
-          ],
-          if (branding.tagline.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              branding.tagline,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          if (showBrand) ...[
+            if (branding.usesDefaultArtwork) ...[
+              const Center(child: UtenBrandMascot.size(88)),
+              const SizedBox(height: UtenSpacing.s16),
+            ],
+            Center(
+              child: UtenWordmarkLogo(
+                width: 220,
+                height: branding.usesDefaultArtwork ? 220 / (405 / 74) : 72,
               ),
             ),
+            if (branding.hasLogo) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                branding.platformName,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium,
+              ),
+            ],
+            if (branding.tagline.isNotEmpty) ...[
+              const SizedBox(height: UtenSpacing.s8),
+              Text(
+                branding.tagline,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: UtenSpacing.s32),
           ],
           if (branding.loginNotice.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s16),
@@ -306,8 +326,8 @@ class _LoginPageState extends ConsumerState<LoginPage>
                 style: theme.textTheme.bodySmall,
               ),
             ),
+            const SizedBox(height: UtenSpacing.s16),
           ],
-          const SizedBox(height: UtenSpacing.s32),
           AccountField(
             controller: _accountController,
             hint: l10n.loginAccountHint,
@@ -339,7 +359,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
               hint: remoteAccessText(context, 'otpHint'),
               aiSensitive: true,
               keyboardType: TextInputType.number,
-              enabled: !_isLoading && !_isRecoveringServer,
+              enabled: !_isLoading,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(6),
@@ -352,9 +372,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
             ),
             TextButton(
               key: const Key('login-cancel-otp'),
-              onPressed: _isLoading || _isRecoveringServer
-                  ? null
-                  : _resetOtpChallenge,
+              onPressed: _isLoading ? null : _resetOtpChallenge,
               child: Text(remoteAccessText(context, 'loginCancelOtp')),
             ),
           ],
@@ -389,39 +407,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ],
           const SizedBox(height: UtenSpacing.s24),
           UtenButton(
-            onPressed: _isLoading || _isRecoveringServer ? null : _handleLogin,
+            onPressed: _isLoading ? null : _handleLogin,
             isLoading: _isLoading,
             isExpanded: true,
             size: UtenButtonSize.large,
             child: Text(_isLoading ? l10n.loginLoggingIn : l10n.loginButton),
           ),
-          if (!kIsWeb) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Semantics(
-              button: true,
-              label: l10n.loginServerRecoveryAction,
-              hint: l10n.loginServerRecoveryHint,
-              child: TextButton.icon(
-                onPressed: _isLoading || _isRecoveringServer
-                    ? null
-                    : _restoreAutomaticServer,
-                icon: _isRecoveringServer
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync_rounded),
-                label: Text(l10n.loginServerRecoveryAction),
-              ),
-            ),
-            Text(
-              l10n.loginServerRecoveryHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
           const SizedBox(height: UtenSpacing.s24),
           TextButton.icon(
             key: const Key('login-disaster-recovery'),
@@ -458,4 +449,37 @@ class _LoginPageState extends ConsumerState<LoginPage>
       ),
     );
   }
+}
+
+String _loginFailureText(BuildContext context, ApiException? error) {
+  final language = Localizations.localeOf(context).languageCode;
+  final messages = switch (error?.code) {
+    'NETWORK' => (
+      '无法连接服务器，请检查网络连接后重试',
+      'Unable to connect to the server. Check your connection and try again.',
+      '서버에 연결할 수 없습니다. 네트워크 연결을 확인한 후 다시 시도하세요.',
+    ),
+    'NETWORK_TIMEOUT' => (
+      '连接服务器超时，请稍后重试',
+      'The connection to the server timed out. Try again later.',
+      '서버 연결 시간이 초과되었습니다. 잠시 후 다시 시도하세요.',
+    ),
+    'BAD_CREDENTIALS' || 'INVALID_CREDENTIALS' => (
+      '账号或密码错误，请重新输入',
+      'Incorrect account or password. Try again.',
+      '계정 또는 비밀번호가 올바르지 않습니다. 다시 입력하세요.',
+    ),
+    null => (
+      '登录失败，请稍后重试',
+      'Sign-in failed. Try again later.',
+      '로그인하지 못했습니다. 잠시 후 다시 시도하세요.',
+    ),
+    _ => null,
+  };
+  if (messages == null) return remoteAccessError(context, error!);
+  return switch (language) {
+    'en' => messages.$2,
+    'ko' => messages.$3,
+    _ => messages.$1,
+  };
 }

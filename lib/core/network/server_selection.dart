@@ -171,23 +171,34 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
   final bool _web;
   Timer? _initialTimer;
   Timer? _periodicTimer;
-  bool _probing = false;
+  Future<void>? _probeInFlight;
 
   /// 主动探测本地 /actuator/health；仅在结果变化时写库 + 通知监听者。
-  Future<void> probe() async {
-    if (_web || _probing) return;
-    _probing = true;
+  Future<void> probe() {
+    if (_web || !mounted) return Future<void>.value();
+    final active = _probeInFlight;
+    if (active != null) return active;
+    _initialTimer?.cancel();
+    _initialTimer = null;
+    late final Future<void> run;
+    run = _runProbe().whenComplete(() {
+      if (identical(_probeInFlight, run)) _probeInFlight = null;
+    });
+    _probeInFlight = run;
+    return run;
+  }
+
+  Future<void> _runProbe() async {
     bool reachable;
     try {
       reachable = await _healthProbe();
     } catch (_) {
       reachable = false;
-    } finally {
-      _probing = false;
     }
     if (!mounted) return;
     if (state != reachable) {
       await _prefs?.setBool(_kLocalReachableKey, reachable);
+      if (!mounted) return;
       state = reachable;
     }
   }
@@ -201,7 +212,7 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
 }
 
 Future<bool> _probeConfiguredLocalServer() =>
-    probeHealth(healthProbeBaseUrl(localApiBaseUrl));
+    probeServerReachability(healthProbeBaseUrl(localApiBaseUrl));
 
 final localServerReachableProvider =
     StateNotifierProvider<LocalServerReachabilityNotifier, bool>(

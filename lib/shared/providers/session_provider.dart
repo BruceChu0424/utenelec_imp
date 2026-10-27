@@ -431,28 +431,42 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// Login first reserves a cross-tab replacement intent and tombstones the old
   /// session. Only that exact latest intent may commit the network response.
+  ///
+  /// [isCurrent] optionally binds this operation to its caller's input/owner
+  /// lifetime. It only narrows the existing session ownership checks; token
+  /// ordering, storage and stale-result revocation remain centralized here.
+  /// A throwing or disposed caller is no longer current. Direct callers may
+  /// omit the callback and retain the existing session-intent contract.
   Future<void> login({
     required String account,
     required String password,
     String? otpCode,
+    bool Function()? isCurrent,
   }) async {
+    if (!_isAuthCallerCurrent(isCurrent)) return;
     final operationEpoch = ++_sessionMutationEpoch;
+    bool current() =>
+        operationEpoch == _sessionMutationEpoch &&
+        _isAuthCallerCurrent(isCurrent);
     state = const SessionState();
     _localStorageFailClosed = true;
     // 新登录（可能换账号）：清模拟身份，避免上一个会话的模拟 token 串到新身份。
     unawaited(_storage.clearAllImpersonation());
 
-    final reservation = await _serializeSessionCommit(() async {
-      final reserved = await _storage.beginSessionIntent(clearTokens: true);
-      if (operationEpoch == _sessionMutationEpoch) {
-        // The new tombstone is authoritative before the durable logout fence
-        // is removed. A failed clear leaves this login fail-closed.
-        await _logoutFence.clear();
-      }
-      return reserved;
-    });
+    final reservation =
+        await _serializeSessionCommit<AuthSessionIntentReservation?>(() async {
+          if (!current()) return null;
+          final reserved = await _storage.beginSessionIntent(clearTokens: true);
+          if (current()) {
+            // The new tombstone is authoritative before the durable logout
+            // fence is removed. A failed clear leaves this login fail-closed.
+            await _logoutFence.clear();
+          }
+          return reserved;
+        });
+    if (reservation == null) return;
     await _revokeRemote(refresh: reservation.previous.refreshToken);
-    if (operationEpoch != _sessionMutationEpoch) return;
+    if (!current()) return;
 
     _rememberVisibleRecord(reservation.reserved);
     _localStorageFailClosed = false;
@@ -471,9 +485,13 @@ class SessionNotifier extends Notifier<SessionState> {
     } else {
       result = await auth.login(account, password);
     }
+    if (!current()) {
+      await _revokeRemote(refresh: result.refreshToken);
+      return;
+    }
     var committedLocally = false;
     await _serializeSessionCommit(() async {
-      if (operationEpoch != _sessionMutationEpoch) {
+      if (!current()) {
         await _revokeRemote(refresh: result.refreshToken);
         return;
       }
@@ -481,12 +499,13 @@ class SessionNotifier extends Notifier<SessionState> {
         operationEpoch,
         reservation.intent,
         result,
+        isCurrent: isCurrent,
       );
       if (committed == null) {
         await _revokeRemote(refresh: result.refreshToken);
         return;
       }
-      if (operationEpoch != _sessionMutationEpoch) {
+      if (!current()) {
         await _storage.clearTokensIfUnchanged(committed);
         await _revokeRemote(refresh: result.refreshToken);
         return;
@@ -631,20 +650,35 @@ class SessionNotifier extends Notifier<SessionState> {
   Future<AuthTokenSnapshot?> _commitAuthResult(
     int operationEpoch,
     AuthSessionIntent intent,
-    AuthResult result,
-  ) async {
-    if (operationEpoch != _sessionMutationEpoch) return null;
+    AuthResult result, {
+    bool Function()? isCurrent,
+  }) async {
+    if (operationEpoch != _sessionMutationEpoch ||
+        !_isAuthCallerCurrent(isCurrent)) {
+      return null;
+    }
     final committed = await _storage.commitSessionIntentTokens(
       intent: intent,
       accessToken: result.accessToken,
       refreshToken: result.refreshToken,
     );
     if (committed == null) return null;
-    if (operationEpoch != _sessionMutationEpoch) {
+    if (operationEpoch != _sessionMutationEpoch ||
+        !_isAuthCallerCurrent(isCurrent)) {
       await _storage.clearTokensIfUnchanged(committed);
       return null;
     }
     return committed;
+  }
+
+  bool _isAuthCallerCurrent(bool Function()? isCurrent) {
+    if (isCurrent == null) return true;
+    if (_requestOwnerDisposed) return false;
+    try {
+      return isCurrent();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _saveLoginAccountBestEffort(String account) async {

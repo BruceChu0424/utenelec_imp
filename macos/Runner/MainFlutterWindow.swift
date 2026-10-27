@@ -159,7 +159,7 @@ class MainFlutterWindow: NSWindow {
       titlebarAppearsTransparent = true
       isMovableByWindowBackground = false
       hasShadow = true
-      let size = NSSize(width: min(460, visibleFrame.width), height: min(720, visibleFrame.height))
+      let size = NSSize(width: min(1000, visibleFrame.width), height: min(680, visibleFrame.height))
       let origin = NSPoint(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2)
       setFrame(NSRect(origin: origin, size: size), display: true)
     } else {
@@ -181,14 +181,17 @@ class MainFlutterWindow: NSWindow {
     }
     appliedMode = mode
     if isVisible && NSApp.isActive { makeKey() }
-    if mode == .main && restoreMainFullScreen {
-      restoreMainFullScreen = false
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self, self.requestedMode == .main,
-              self.appliedMode == .main, !self.fullScreenTransition,
-              !self.styleMask.contains(.fullScreen) else { return }
-        self.toggleFullScreen(nil)
-      }
+    if mode == .main { restoreFullScreenIfNeeded() }
+  }
+
+  private func restoreFullScreenIfNeeded() {
+    guard restoreMainFullScreen else { return }
+    restoreMainFullScreen = false
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self, self.requestedMode == .main,
+            self.appliedMode == .main, !self.fullScreenTransition,
+            !self.styleMask.contains(.fullScreen) else { return }
+      self.toggleFullScreen(nil)
     }
   }
 
@@ -219,7 +222,13 @@ class MainFlutterWindow: NSWindow {
     windowObservers.append(center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: self, queue: .main) { [weak self] _ in
       guard let self = self else { return }
       self.fullScreenTransition = false
-      if self.requestedMode == .login { self.requestMode(.login) }
+      if self.requestedMode == .login {
+        self.requestMode(.login)
+      } else {
+        // The login request may have been cancelled during full-screen entry.
+        self.exitingFullScreenForLogin = false
+        self.restoreMainFullScreen = false
+      }
     })
     windowObservers.append(center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: self, queue: .main) { [weak self] _ in
       self?.fullScreenTransition = true
@@ -234,8 +243,8 @@ class MainFlutterWindow: NSWindow {
         self.applyMode(.login)
       } else {
         // A rapid logout/login can cancel the compact-window transition.
-        self.restoreMainFullScreen = false
-        self.toggleFullScreen(nil)
+        self.restoreMainFullScreen = true
+        self.restoreFullScreenIfNeeded()
       }
     })
   }

@@ -19,6 +19,70 @@ import 'support/fake_auth_logout_fence.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'a retired login guard prevents sending any authentication request',
+    () async {
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      final storage = SecureStorage(const FlutterSecureStorage());
+      final repository = _QueuedLoginRepository();
+      final container = _container(storage, repository);
+      addTearDown(container.dispose);
+      final notifier = container.read(sessionProvider.notifier);
+      await pumpEventQueue();
+
+      await notifier.login(
+        account: 'first',
+        password: 'secret',
+        isCurrent: () => false,
+      );
+
+      expect(repository.loginCalls, 0);
+      expect(await storage.getAccessToken(), isNull);
+      expect(await storage.getRefreshToken(), isNull);
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.unauthenticated,
+      );
+    },
+  );
+
+  test(
+    'a guard retired during login rejects and revokes the returned session',
+    () async {
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
+      final storage = SecureStorage(const FlutterSecureStorage());
+      final repository = _QueuedLoginRepository(blockFirstLogin: true);
+      final container = _container(storage, repository);
+      addTearDown(container.dispose);
+      final statuses = <AuthStatus>[];
+      container.listen(sessionProvider, (_, next) => statuses.add(next.status));
+      final notifier = container.read(sessionProvider.notifier);
+      await pumpEventQueue();
+      var current = true;
+
+      final login = notifier.login(
+        account: 'first',
+        password: 'secret',
+        isCurrent: () => current,
+      );
+      await repository.firstLoginStarted.future;
+      current = false;
+      repository.releaseFirstLogin();
+      await login;
+      await pumpEventQueue();
+
+      expect(repository.loginCalls, 1);
+      expect(await storage.getAccessToken(), isNull);
+      expect(await storage.getRefreshToken(), isNull);
+      expect(statuses, isNot(contains(AuthStatus.authenticated)));
+      expect(
+        container.read(sessionProvider).status,
+        AuthStatus.unauthenticated,
+      );
+      expect(repository.revokedRefreshTokens, contains('first-refresh'));
+    },
+  );
+
   test('two overlapping logins commit only the latest user intent', () async {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
     final storage = SecureStorage(const FlutterSecureStorage());

@@ -162,7 +162,11 @@ void main() {
       expect(find.byKey(const Key('business-column-delete-own')), findsNothing);
       expect(choice, isNull);
       expect(_own.value, '保留此单历史值');
-      await tester.tap(find.byKey(const Key('business-column-view-manage')));
+      final manage = find.byKey(const Key('business-column-view-manage'));
+      await tester.ensureVisible(manage);
+      await tester.pumpAndSettle();
+      expect(manage.hitTestable(), findsOneWidget);
+      await tester.tap(manage.hitTestable());
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('business-column-remove-own')),

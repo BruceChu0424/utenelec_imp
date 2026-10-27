@@ -147,7 +147,7 @@ public class GoodsImportController {
         var cells = payload.get("cellCorrections");
         if (cells != null && !cells.isNull()) {
             if (!cells.isObject()) throw invalidRowSelection();
-            var entries = cells.fields();
+            var entries = cells.properties().iterator();
             while (entries.hasNext()) {
                 var row = entries.next();
                 validateRowKey(row.getKey());

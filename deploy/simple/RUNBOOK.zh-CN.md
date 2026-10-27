@@ -8,6 +8,8 @@
 > **手把手版（含阿里云/GitHub 控制台逐步截图位与验收清单）见
 > [新库上线与首装操作指引](../../docs/99-项目治理/2026-09-01-新库上线与首装操作指引.md)。**
 > 日常发版 = 同一提交 CI 全绿后打 tag 推 GitHub，由有权用户在系统设置检查、立即更新或明确预约更新。
+> 已有 Windows 可分发版本后，每次完整发版还必须交付同源码、同版本/构建号的 Setup.exe 与更新 ZIP，
+> 完成公司服务器客户端发布及最新完整组核验；仅 Simple Release 成功不代表客户端已交付。见第四节。
 > 自动拉取与自动激活已退役，`uten-imp-updater.timer` 必须 disabled/inactive；以
 > [服务器运维操作](SERVER_OPERATIONS.zh-CN.md) 的独立 Operations 作业为准。
 > **占位符约定**：文中 `<服务器IP>` 等尖括号占位符代表真实环境值（不入库防泄露），
@@ -243,7 +245,35 @@ sudo -u postgres psql -XAtc "select last_archived_wal, last_archived_time, last_
 
 服务器上 2026-10-05 之前装的配套备份脚本 (v1，2026-09-09) 没有任何自动删除，装新版本前按配套备份手册「安装前核对」第 6、7 条处理。其它历史目录 (人工 dump、旧版本快照等) 不在任何自动规则内，按第九节「删除流程」核对后直接删除。
 
-## 四、日常发版（按需手动拉取，可配置自动检查间隔）
+## 四、日常发版（服务器手动更新与客户端双包交付）
+
+### Windows 客户端必须随完整发版交付
+
+当前已有 Windows 分发渠道，因此每次正式发版都要完成以下清单。Android、macOS、iOS 尚未具备
+正式可下载产物时仍保留其不可下载状态，不上传空文件或使用其他平台的包代替。
+
+1. 冻结同一审核提交、版本、真实构建号和架构。Windows 使用 `Release`，显式编入批准的公司及可信云端
+   两个 HTTPS API；本地 Debug/Profile、localhost 和 `--local-test` 产物不能进入正式渠道。
+2. 按[Windows 构建与发布清单](../client/README.zh-CN.md#每次正式发布windows-安装包和更新-zip-一起交付)，
+   使用现有 `build_windows_installer.py --compile --update-output` 从同一完整应用输出生成 Setup.exe 和更新 ZIP，
+   核对版本、构建号、架构及两个摘要。首次安装使用 EXE，运行中软件的更新使用 ZIP。
+3. 完成服务器应用版本与健康验收后，由有 `client_release:publish` 的人员通过现有发布界面或授权 API
+   分别上传、发布两份，完成发布再认证。实际写入配置的 `UTEN_CLIENT_RELEASES_DIR`：Simple 默认
+   `/var/lib/uten-imp-media/attachments/client-releases`；封闭 internal-test 默认
+   `/data/uten-imp/attachments/client-releases`。以实际配置为准，不能直接向 catalog 根复制 EXE/ZIP，
+   也不能放进 `/opt/uten-imp/current`、代码旧版本目录或静态 Web 根。
+4. 两份均已成功发布，且同平台、同精确架构、同版本/构建号的最新完整组通过检查后，客户端发布服务才
+   清理该平台、该精确架构的低构建号旧二进制，安装包和 ZIP 一起处理。任一份失败保留上一完整组；
+   旧 `WITHDRAWN` 审计元数据继续保留，不计作可分发包。不清理其他平台/架构、业务附件、数据库备份
+   或服务器回滚版本，也不改变原有备份保留政策。
+5. 记录同源构建回执、两份发布结果、员工认证下载 Setup.exe、客户端检查与 ZIP 下载、旧包清理结果。
+   分别记录服务器激活、Windows 发布和用户实测，不能用其中一项替代全部交付。
+
+现有 `.github/workflows/simple-release.yml` 自动链只构建和发布服务器/Web，尚未接入 Windows runner
+及双包授权上传；当前需额外完成上面的 Windows 步骤。客户端保留策略的源码与本地验证也不表示已在
+运行中的服务器生效，部署对应服务版本并核对实际发布/清理/下载后才能记录生效。
+
+### 服务器发布与手动激活
 
 公司运行 `prod` 且强制HTTPS时，更新器的 `UTEN_HEALTH_URL` 也必须指向Nginx提供的HTTPS
 readiness地址，使用证书中包含的内部域名或IP，并安装内部CA；不能仍用会302跳转的后端HTTP地址，

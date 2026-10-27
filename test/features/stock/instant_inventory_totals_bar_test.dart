@@ -29,6 +29,7 @@ import 'instant_inventory_test_fixture.dart';
 import 'package:uten_imp/features/stock/widgets/instant_inventory_summary_bar.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/field_hint_support.dart';
 
 void main() {
   testWidgets('表格底部只保留服务端重量合计和详情入口', (tester) async {
@@ -66,7 +67,7 @@ void main() {
     expect(find.byType(Dialog), findsNothing);
     expect(inOverview(find.text('库存总览与分析')), findsOneWidget);
     expect(inOverview(find.text('137 项')), findsOneWidget);
-    expect(inOverview(find.text('当前筛选的全部结果 · 与翻页无关')), findsOneWidget);
+    await readFieldHint(tester, '当前筛选的全部结果 · 与翻页无关');
     expect(inOverview(find.text('900')), findsOneWidget);
     expect(inOverview(find.text('20')), findsOneWidget);
     expect(inOverview(find.text('11')), findsOneWidget);
@@ -79,12 +80,9 @@ void main() {
     expect(inOverview(find.text('35 项')), findsOneWidget);
     expect(inOverview(find.text('88.2%')), findsOneWidget);
     expect(inOverview(find.textContaining('3 处仓库余额为负')), findsOneWidget);
-    expect(inOverview(find.textContaining('零库存不等于缺货')), findsOneWidget);
+    await readFieldHint(tester, '零库存不等于缺货');
 
-    await tester.ensureVisible(find.text('计算口径与分析边界'));
-    await tester.tap(find.text('计算口径与分析边界'));
-    await tester.pumpAndSettle();
-    expect(inOverview(find.textContaining('覆盖率不是称重准确率')), findsOneWidget);
+    await readFieldHint(tester, '覆盖率不是称重准确率');
     expect(tester.takeException(), isNull);
   });
 
@@ -476,7 +474,43 @@ void main() {
     expect(export().queryParams['keyword'], '螺丝 M3');
     expect(export().queryParams['categoryId'], isNull);
     expect(preview().exportQuery!['keyword'], '螺丝 M3');
-    await preview().loader();
+    // A print snapshot serves every advertised identity, rather than
+    // replaying the same two visible rows for all seven claimed pages.
+    final completeRows = <Map<String, dynamic>>[
+      ...((api.response()['items']! as List).cast<Map<String, dynamic>>()),
+      for (var index = 2; index < 137; index++)
+        {
+          'goodsId': 'print-fixture-$index',
+          'name': '螺丝 M3 $index',
+          'unitName': index == 3 ? '箱' : '个',
+          'qty': index == 2
+              ? 890
+              : index == 3
+              ? 18
+              : 0,
+        },
+    ];
+    final beforePrint = api.inventoryRequests.length;
+    api.onInventory = (query) async {
+      final page = query['page']! as int;
+      final size = query['size']! as int;
+      expectSync(query['keyword'], '螺丝 M3');
+      expectSync(query['categoryId'], isNull);
+      return {
+        ...api.response(),
+        'items': completeRows.skip((page - 1) * size).take(size).toList(),
+        'page': page,
+        'size': size,
+        'total': completeRows.length,
+        'totalPages': (completeRows.length + size - 1) ~/ size,
+      };
+    };
+    final printed = await tester.runAsync(preview().loader);
+    expect(printed, isNotNull);
+    expect(
+      api.inventoryRequests.skip(beforePrint).map((query) => query['page']),
+      [1, 2],
+    );
     expect(api.inventoryRequests.last['keyword'], '螺丝 M3');
     expect(api.inventoryRequests.last['categoryId'], isNull);
     expect(export().enabled, isTrue);

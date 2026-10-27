@@ -183,6 +183,20 @@ void main() {
           );
         }
 
+        // Inspecting the long failure header leaves the outer page at its
+        // header. Return to the retained report table before using its local
+        // floating actions; ensureVisible on a wrapped action alone cannot
+        // coordinate the header and the table's independent scroll stages.
+        await _revealSheetRegion(
+          tester,
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        expect(
+          tester.state(find.byKey(const Key('fqc-sheet-report-table'))),
+          same(tableState),
+        );
+        expect(_rows(tester, sheet: true).first.pass.text, '3.25');
+        expect(_rows(tester, sheet: true).first.fail.text, '0.75');
         api.failReads = false;
         api.afterPost = null;
         await _pressureTap(tester, submit);

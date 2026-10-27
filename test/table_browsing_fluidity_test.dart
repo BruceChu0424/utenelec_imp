@@ -102,7 +102,7 @@ void main() {
       await tester.pumpWidget(app(25));
       final widths = <double>{_headerWidth(tester)};
       for (var frame = 0; frame < 40; frame++) {
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
         final width = _headerWidth(tester);
         expect(width, greaterThanOrEqualTo(original));
         widths.add(width);

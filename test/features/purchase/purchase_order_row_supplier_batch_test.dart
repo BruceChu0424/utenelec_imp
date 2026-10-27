@@ -14,6 +14,7 @@ import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
@@ -182,22 +183,34 @@ class _EmptySessionNotifier extends SessionNotifier {
 class _OrderApi extends ApiClient {
   _OrderApi() : super(Dio());
 
+  static const _suppliers = <Map<String, dynamic>>[
+    {
+      'id': 's1',
+      'code': 'GY001',
+      'name': '洪武五金',
+      'status': '使用',
+      'defaultSettlementMethodId': 'terms-s1',
+    },
+    {'id': 's2', 'code': 'GY002', 'name': '宁海塑胶', 'status': '使用'},
+  ];
+
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('/master/suppliers/dict')) {
-      return const [
-        {
-          'id': 's1',
-          'code': 'GY001',
-          'name': '洪武五金',
-          'status': '使用',
-          'defaultSettlementMethodId': 'terms-s1',
-        },
-        {'id': 's2', 'code': 'GY002', 'name': '宁海塑胶', 'status': '使用'},
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement(isIn(['s1', 's2'])));
+      return [
+        for (final row in _suppliers)
+          if (ids.contains(row['id'])) row,
       ];
+    }
+    if (path.contains('/master/suppliers/dict')) {
+      return _suppliers;
     }
     if (path.contains('/master/supplier-categories/tree')) {
       return const [
@@ -218,7 +231,9 @@ class _OrderApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('/master/suppliers')) {
+    if (path == ApiEndpoints.suppliers) {
+      expectSync(query!['size'], lessThanOrEqualTo(100));
+      expectSync(query['selectableOnly'], isTrue);
       // 供应商分页（面板 selectableOnly 口径）：仅启用供应商。
       return const {
         'items': <Map<String, dynamic>>[

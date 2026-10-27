@@ -311,8 +311,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(repo.requests.length, before + 1);
-    expect(repo.requests.last, endsWith('|2'));
+    expect(
+      repo.requests.length,
+      before,
+      reason: 'The prepared adjacent page is reused without a duplicate read',
+    );
+    expect(
+      repo.requests.where((request) => request.endsWith('|2')),
+      hasLength(1),
+    );
     expect(
       find.byKey(const ValueKey('goods-picker-item-pp|白')),
       findsOneWidget,
@@ -358,8 +365,15 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(repo.requests.length, before + 1);
-    expect(repo.requests.last, endsWith('|1'));
+    expect(
+      repo.requests.length,
+      before,
+      reason: 'The retained previous page is reused without a duplicate read',
+    );
+    expect(
+      repo.requests.where((request) => request.endsWith('|1')),
+      hasLength(1),
+    );
     expect(
       tester
           .getTopLeft(find.byKey(const ValueKey('goods-picker-item-pp|黑')))

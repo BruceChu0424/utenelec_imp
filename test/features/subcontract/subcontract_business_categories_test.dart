@@ -78,7 +78,7 @@ void main() {
     expect(api.queries, isEmpty);
 
     await _tap(tester, '进行中');
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'financeApproval': 'IN_PROGRESS',
@@ -90,7 +90,7 @@ void main() {
     );
     _table(tester).onFilterChanged('status', 'PENDING');
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 0,
@@ -98,7 +98,7 @@ void main() {
     });
     _table(tester).onFilterChanged('status', 'REJECTED');
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 0,
@@ -106,7 +106,7 @@ void main() {
     });
     _table(tester).onFilterChanged('status', 'EXECUTING');
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 1,
@@ -116,7 +116,7 @@ void main() {
 
     _table(tester).onFilterChanged('status', 'REVIEW_REJECTED');
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 1,
@@ -124,7 +124,7 @@ void main() {
     });
     _table(tester).onFilterChanged('status', 'REVIEW_PENDING');
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 1,
@@ -133,11 +133,11 @@ void main() {
 
     _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
-    expect(api.lastQuery['page'], 2);
+    expect(_acceptedQuery(tester, api)['page'], 2);
     await _showHeader(tester);
     _table(tester).onFilterChanged('status', null);
     await tester.pumpAndSettle();
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'financeApproval': 'IN_PROGRESS',
@@ -161,19 +161,24 @@ void main() {
       expect(find.text('执行中'), findsNothing);
       // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询（无状态）。
       final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+      // The accepted first page prepares only its immediate successor. Both
+      // physical reads must carry the same history range; prefetch is not the
+      // reader's selected page.
+      expect(_table(tester).currentPage, 1);
       expect(api.queries, [
-        {
-          'page': 1,
-          'size': 20,
-          'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
-          'dateTo': ChinaDateTime.formatDate(defaultRange.end),
-        },
+        for (final page in [1, 2])
+          {
+            'page': page,
+            'size': 20,
+            'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
+            'dateTo': ChinaDateTime.formatDate(defaultRange.end),
+          },
       ]);
 
       _table(tester).onFilterChanged('status', 'CLOSED');
       await tester.pumpAndSettle();
       // 历史内换状态筛选保留默认时间段（ADR-180 历史保留原时间范围）。
-      expect(api.lastQuery, {
+      expect(_acceptedQuery(tester, api), {
         'page': 1,
         'size': 20,
         'status': 1,
@@ -189,7 +194,7 @@ void main() {
           .widget<UtenHistoryTimeFilter>(find.byType(UtenHistoryTimeFilter))
           .onChanged(UtenHistoryTimeValue.range(range));
       await tester.pumpAndSettle();
-      expect(api.lastQuery, {
+      expect(_acceptedQuery(tester, api), {
         'page': 1,
         'size': 20,
         'status': 1,
@@ -199,7 +204,7 @@ void main() {
       });
 
       await _tap(tester, '已反审');
-      expect(api.lastQuery, {
+      expect(_acceptedQuery(tester, api), {
         'page': 1,
         'size': 20,
         'status': -1,
@@ -211,7 +216,7 @@ void main() {
       await _showHeader(tester);
       _table(tester).onFilterChanged('status', null);
       await tester.pumpAndSettle();
-      expect(api.lastQuery, {
+      expect(_acceptedQuery(tester, api), {
         'page': 1,
         'size': 20,
         'dateFrom': '2026-08-01',
@@ -248,7 +253,11 @@ void main() {
         expect(api.queries, isEmpty);
 
         await _tap(tester, '草稿');
-        expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 0});
+        expect(_acceptedQuery(tester, api), {
+          'page': 1,
+          'size': 20,
+          'status': 0,
+        });
         await _tap(tester, '历史记录');
         expect(_table(tester).facets['status']!.map((bucket) => bucket.label), [
           '已审',
@@ -259,7 +268,7 @@ void main() {
         // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询
         //（无状态）。
         final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
-        expect(api.lastQuery, {
+        expect(_acceptedQuery(tester, api), {
           'page': 1,
           'size': 20,
           'dateFrom': ChinaDateTime.formatDate(defaultRange.start),
@@ -267,7 +276,7 @@ void main() {
         });
         _table(tester).onFilterChanged('status', 'APPROVED');
         await tester.pumpAndSettle();
-        expect(api.lastQuery, {
+        expect(_acceptedQuery(tester, api), {
           'page': 1,
           'size': 20,
           'status': 1,
@@ -276,12 +285,20 @@ void main() {
         });
         // 「全部」不再默认选中：点它切为不限时间重查（不带日期）。
         await _tap(tester, '全部');
-        expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
+        expect(_acceptedQuery(tester, api), {
+          'page': 1,
+          'size': 20,
+          'status': 1,
+        });
         await _tap(tester, '已反审');
-        expect(api.lastQuery, {'page': 1, 'size': 20, 'status': -1});
+        expect(_acceptedQuery(tester, api), {
+          'page': 1,
+          'size': 20,
+          'status': -1,
+        });
         _table(tester).onFilterChanged('status', null);
         await tester.pumpAndSettle();
-        expect(api.lastQuery, {'page': 1, 'size': 20});
+        expect(_acceptedQuery(tester, api), {'page': 1, 'size': 20});
         await _showHeader(tester);
         expect(
           tester
@@ -306,7 +323,7 @@ void main() {
         Perm.subcontractOrderCreate,
       },
     );
-    expect(api.lastQuery, {
+    expect(_acceptedQuery(tester, api), {
       'page': 1,
       'size': 20,
       'status': 0,
@@ -379,6 +396,15 @@ MasterDataTableView<SubcontractDocListItem> _table(WidgetTester tester) =>
       ),
     );
 
+Map<String, dynamic> _acceptedQuery(WidgetTester tester, _RecordingApi api) {
+  // Drafts wrap records in FormDraftCategoryRow, while active/history rows use
+  // the DTO directly. Both expose the actual accepted reader page.
+  final table = tester.widget<MasterDataTableView<dynamic>>(
+    find.byWidgetPredicate((widget) => widget is MasterDataTableView),
+  );
+  return api.queries.lastWhere((query) => query['page'] == table.currentPage);
+}
+
 Future<void> _tap(WidgetTester tester, String label) async {
   await _showHeader(tester);
   await tester.tap(find.text(label));
@@ -399,7 +425,6 @@ class _RecordingApi extends ApiClient {
 
   final String listPath;
   final queries = <Map<String, dynamic>>[];
-  Map<String, dynamic> get lastQuery => queries.last;
 
   @override
   Future<Map<String, dynamic>> get(

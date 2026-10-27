@@ -4,38 +4,72 @@ Windows 首次下载提供可双击安装的 `Setup.exe`，安装后继续由软
 安装程序与后续更新包共用现有发布目录、权限校验和认证下载接口。
 `packageKind=installer`、`installMode=windows_setup` 表示 Windows 安装程序，原始文件名必须以 `.exe` 结尾；
 `windows_archive` 表示后续自动替换的 ZIP 更新包。历史 `windows_bundle` 完整 ZIP 仍可备份恢复，
-新软件下载入口只提供 Setup.exe。各类元数据和实际包必须一起保留。
+新软件下载入口只提供 Setup.exe。当前可分发版本的元数据、安装包和更新 ZIP 必须完整对应；
+旧包清理后保留审计元数据，不能把已清理的旧记录当作仍可下载的软件包。
 
 ## 首次安装与后续更新
 
-`windows_installer.iss` 使用 Inno Setup 6.5+：当前用户权限安装到
-`{localappdata}\Programs\Uten\UIMP`，沿用已有安装目录，创建桌面/开始菜单快捷方式，
-包含固定更新器。中文安装语言显示“优腾综合管理平台(UIMP)”，其他提供的安装语言显示
-“Uten Integrated Management Platform (UIMP)”。以后软件内的“立即更新”下载 ZIP，
+`windows_installer.iss` 使用 Inno Setup 6.5+：首次安装显示目录选择页，默认当前用户目录
+`{localappdata}\Programs\Uten\UIMP`，已有正式安装沿用原目录，创建桌面/开始菜单快捷方式，
+包含固定更新器。安装器、快捷方式及软件外部展示名称为“UTEN”，外部图标使用既有动漫 IP；
+登录页和软件内部品牌继续使用原来的平台品牌与 Logo。以后软件内的“立即更新”下载 ZIP，
 在当前安装目录备份、替换并重启，不重新调用 Setup.exe 或让员工重选路径。
 
-正式生成须等待用户明确下令。本次仅提交源码、dry-run 和合成 fixture 测试；本机尚未发现 ISCC，
-没有安装工具或生成实际 ERP 包。后续选择并验证当前环境的完整 Flutter Release 输出后，可使用：
+## 每次正式发布：Windows 安装包和更新 ZIP 一起交付
+
+已有 Windows 可分发版本后，每次正式发版都要从同一份已审核源码生成 Windows `Release`，
+同时交付 Setup.exe 和更新 ZIP。两份使用相同显示版本、真实构建号和精确架构；构建号必须高于
+该平台、架构已发布过的构建号。不能只更新服务器/Web 或只上传其中一份就宣布完整多端交付。
+
+正式 Windows 构建必须显式配置批准的公司与可信云端两个 HTTPS API；本地测试的 Debug/Profile、
+localhost、`--local-test` 包不得混入正式输出或服务器分发目录。实际正式发行签名、安装和升级仍须
+按[多端发布与签名](../../docs/99-项目治理/多端发布与签名.md)验证，不能用本地测试包的验收代替。
+
+以下占位符须替换为本次批准的版本、构建号、端点和已验证编译器路径。`<版本号>` 不含 tag 的 `v`，
+且与本次 tag、`pubspec.yaml` 一致；输出目录独立于 Flutter bundle：
 
 ```powershell
-python deploy/client/build_windows_installer.py --bundle <当前环境的Release目录> --output <独立输出目录/UIMP-Setup.exe> --version <显示版本> --build-number <真实构建号> --architecture x64 --dry-run
+flutter build windows --release `
+  --build-name='<版本号>' --build-number='<真实构建号>' `
+  --dart-define='APP_VERSION=<版本号>' `
+  --dart-define='API_BASE_URL=https://<公司域名>/api' `
+  --dart-define='CLOUD_API_BASE_URL=https://<可信云端域名>/api'
+
+python deploy/client/build_windows_installer.py `
+  --bundle build/windows/x64/runner/Release `
+  --output '<独立输出目录/UTEN-Windows-x64-Setup.exe>' `
+  --update-output '<独立输出目录/UTEN-Windows-x64-update.zip>' `
+  --version '<版本号>' --build-number '<真实构建号>' --architecture x64 `
+  --iscc '<已验证的ISCC.exe路径>' --compile
 ```
 
-通常发布一版需要 Setup.exe 与更新 ZIP 两种用途，但无需分别构建应用。增加
-`--update-output <独立输出目录/UIMP-update.zip>`，构建器从同一个完整 payload 快照准备两份产物，
-显示版本和真实构建号都与 `uten_imp.exe` 核对。仍默认为 dry-run，明确 `--compile` 后才保存正式产物。
+无需分别构建两次应用。`--update-output` 从同一个完整 payload 快照准备两份产物，显示版本和真实
+构建号都与 `uten_imp.exe` 核对。构建器仍默认为 dry-run，显式 `--compile` 才生成实际产物；
+只检查计划时将 `--compile` 换为 `--dry-run`。
 两份都验证完成后才替换输出，第二份落盘失败会尝试恢复旧输出；这不是跨文件或断电事务保证。
 
-发布界面为安装程序和更新 ZIP 分别提供上传发布区，版本、架构、说明只填写一次。
-两份都保存在上文私有 catalog：Setup.exe 用于软件下载首次安装，ZIP 由运行中的客户端检查并按需下载，
-不直接从管理员电脑向员工设备推送。每份有自己的发布状态与重试编号，不能把部分成功当成全部发布成功。
+发布操作清单：
 
-只有明确要求生成时才增加 `--compile`，并通过 `--iscc` 指定批准的已有编译器（或由已安装路径发现）。
+1. 冻结同一审核提交、版本、构建号、架构和正式 HTTPS 配置，构建并验证上述两份产物，保留摘要和构建回执。
+2. 持有 `client_release:publish` 的人员使用现有发布界面分别上传安装程序和更新 ZIP，版本、架构、说明共用，
+   发布时完成再认证。自动化调用也必须走现有授权创建、上传、发布 API，不直接向 catalog 根目录复制文件或自造元数据。
+3. 核对两份均已发布，版本/构建号/架构一致；软件下载入口能认证下载 Setup.exe，软件更新检查能取得对应 ZIP。
+   每份有独立状态和重试编号，任一上传、校验或发布失败都保留上一完整组，不把部分成功当全部成功。
+4. 最新完整组成功后，由客户端发布服务在 catalog 锁内按下节规则清理旧二进制；保留当前组和旧版审计元数据。
+   核对最新两份下载及清理结果后才结束该平台交付。
+
+两份实际保存在 `UTEN_CLIENT_RELEASES_DIR` 指定的私有 catalog：Setup.exe 用于首次安装，ZIP 由运行中的
+客户端检查并按需下载。既有 API 会生成 `<UUID>/release.json` 和 `package.bin`，不直接从管理员电脑推送到员工设备。
+
+现有 `.github/workflows/simple-release.yml` 主流程只自动构建和发布服务器/Web，尚未接入 Windows runner 和
+Windows 双包授权上传。当前完整发布必须另外完成上述 Windows 构建与发布清单；该 workflow 成功本身只代表
+服务器/Web 发布，不能记为 Windows 已发布或全部平台完成。
+
 构建器共用完整包清单验证，只向 ISCC 提供一份经过校验的 payload；不会把完整 ZIP 再附加到 EXE。
 它校验输出 PE 和版本资源、整包摘要，不能据此声称已校验 Authenticode 发行签名或实际向导安装。
 
 本地测试包连接本地测试后端；服务器分发包固定公司及可信远程入口，两者分开命名和存放。
-不能将本地 localhost 包上传为正式版本，用户实测确认前不上传。应用内更新包仍由
+不能将本地 localhost 包上传为正式版本，正式包完成对应验收后再分发。应用内更新包仍由
 `package_windows.py` 默认 update 模式产生；其 ZIP 不能作为首次安装程序提供下载。
 
 技术依据：[Inno Setup 目录](https://jrsoftware.org/ishelp/topic_setup_defaultdirname.htm)、
@@ -71,12 +105,29 @@ internal-test 使用 `--profile internal-test`。脚本要求 Linux root、既�
 
 部署模板显式设置 `UTEN_CLIENT_UPDATE_MIN_FREE_BYTES=10737418240`，即上传后至少保留 10 GiB，
 与私有原件卷默认保留空间一致。应用已有单包 512 MiB、目录 200 条记录以及流式上传过程的磁盘余量检查。
+旧包清理仍保留审计记录，因此这些记录继续计入 200 条上限；达到记录上限时须受控归档，不能靠删除发布历史解除构建号约束。
 这些是容量保护，不是独立文件系统配额；软件包与业务原件仍可能共用一个卷。
-不要把低余量错误通过减少业务原件、历史单据或自动删除已发布包来掩盖。容量不足时先扩容或受控归档。
+容量不足时先扩容或受控归档，不能减少业务原件、历史单据，或在新组完整发布前抢先删除上一组客户端包来腾空间。
 现有 `server.env` 的值优先于单位默认值，升级时需要核对并合并这两个配置项；不能覆盖现有密钥和其他并行配置。
 
 普通存储清理把整个当前上传根当作受保护数据，不允许选择删除 `client-releases`。
-发版清理只作用于自己的代码版本和暂存区，不扫描该目录。发布撤回改变可分发状态，不删除历史二进制。
+服务端代码版本清理仍只处理自己的代码版本和暂存区，不扫描该目录。
+
+## 分发包保留：Windows 每个精确架构只保留最新完整组
+
+Windows 同一精确架构的 Setup.exe 与更新 ZIP 均已成功发布，且版本、构建号一致并完成包检查后，
+客户端发布服务才在 `.catalog.lock` 内清理该平台、该精确架构的低构建号旧二进制，包含旧安装包和更新 ZIP。
+新组只成功一份、存在校验错误或发布失败时不清理旧组；`x64`、`arm64`、`universal` 分开处理，
+不以架构兼容关系跨组删除。其他平台和架构、正在上传的草稿、业务附件、数据库备份及服务端回滚版本均不受影响。
+
+“只保留最新”指在线分发二进制：旧记录以 `WITHDRAWN` 保留，已清理记录的 `sha256=null`、`sizeBytes=0`，
+原发布编号、构建号、发布时间等审计信息继续保留，旧记录不再提供下载。不能递归删除整个 catalog、
+删除锁文件、把保留策略变成全盘搜索，或通过删掉历史构建号记录允许旧版本重新发布。
+备份仍按原备份政策保留，客户端包清理不会删除已有备份中的历史字节。
+撤回当前版本不会自动恢复已清理的旧二进制；需要重新分发时，按递增构建号发布完整修复版本。
+
+该规则替代 2026-10-26 初版文档中“发布撤回不删除历史二进制”的保留规则；
+代码和本地回归不代表已有服务器已升级，现场仍须部署相应服务版本并核对发布、清理与下载结果。
 
 ## 配套备份、恢复与旧部署
 
@@ -85,7 +136,8 @@ internal-test 使用 `--profile internal-test`。脚本要求 Linux root、既�
 可以继续使用，不能仅因为模板显式写出同一默认路径就忽略备份默认范围。
 
 Windows Setup.exe、历史完整 ZIP 和更新包的混合目录通过现有 POSIX record lock，与 Java `FileChannel.lock()` 互斥地导出。
-备份同时保存 `release.json`、包字节及清单，核对 UUID、类型/模式、大小、SHA-256 和父备份集绑定；
+备份保存 `release.json`、仍保留的包字节及清单，核对 UUID、类型/模式、大小、SHA-256 和父备份集绑定；
+已清理的 `WITHDRAWN` 审计记录按 `sha256=null`、`sizeBytes=0` 导出和恢复，不要求重新生成已删除的二进制。
 完整恢复只写入新的空目录，重建空锁，保留已上传草稿、已发布及已撤回记录。旧更新元数据继续兼容。
 详细步骤见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md#客户端发布目录配套备份v2528)。
 隔离恢复使用尚未创建 catalog 的新媒体目录；不要先用准备器放入锁文件再要求恢复工具覆盖它。
@@ -97,7 +149,8 @@ Windows Setup.exe、历史完整 ZIP 和更新包的混合目录通过现有 POS
 
 ## 上线组件顺序与验证记录
 
-这组步骤属于后续受控部署，本次没有在服务器执行，也没有生成或上传正式客户端包。
+以下组件顺序来自 2026-10-26 的存储准备和隔离验证记录。该记录未在服务器执行，也未生成或上传正式客户端包；
+后续本地测试安装包的生成不改变这项正式部署验收结论。每次正式上线仍须执行并记录对应的部署与验收。
 
 1. 冻结同一份已审核源码，保留当前成功备份及已安装组件摘要。暂停新发布写入，等正在执行的配套备份和更新作业完成。
 2. 在上线 `windows_setup` 发布能力前，同步安装 `paired_internal_backup.py`、`market_state_backup.py`、

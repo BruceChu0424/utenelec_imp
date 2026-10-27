@@ -628,10 +628,10 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsBomEdit': 1,
       'Perm.goodsExport': 1,
       'Perm.goodsView': 1,
-      // Both visibility and the retained column cache key track stock:view;
-      // otherwise a revoked grant could retain an old column projection.
+      // One shared stock grant projection feeds both visibility and the
+      // retained cache key; revocation still invalidates the same columns.
       // GoodsBomStockVisibilityTest checks the independent server masking.
-      'Perm.stockView': 2,
+      'Perm.stockView': 1,
     },
   ),
   'lib/features/production/pages/where_used_report_page.dart': (
@@ -715,6 +715,44 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.subcontractOrderView': 3,
       'Perm.subcontractShortDeliveryDecide': 1,
     },
+  ),
+  // 2026-10-26: reviewed new entry points retain the server's exact grants.
+  // Template/transfer services additionally enforce super-admin, actor,
+  // version and step-up rules. Export's entry and pre-download checks are
+  // separate phases; neither can replace the other with cached permission.
+  'lib/features/admin/widgets/admin_permission_export_button.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 2},
+  ),
+  'lib/features/admin/widgets/admin_permission_templates_workspace.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
+  'lib/features/admin/widgets/permission_template_metadata_dialog.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
+  // The eighth reference is the final payload filter, matching
+  // EmployeeSensitiveWritePolicy; it protects fields after an async edit.
+  'lib/features/employee/pages/employee_edit_page.dart': (
+    legacyCount: 7,
+    tokens: {
+      'Perm.employeePiiEdit': 4,
+      'Perm.employeeCompensationEdit': 3,
+      'Perm.employeeEdit': 1,
+    },
+  ),
+  // Account support is checked on entry and before every owner-bound queue
+  // step. The server still checks step-up and the target's eligibility.
+  'lib/features/employee/widgets/employee_account_batch_provision_flow.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.accountSupport': 2},
+  ),
+  // The panel projects POST /sales/shipments/batch's create grant; request
+  // identity, permission epochs and unknown-result protection remain intact.
+  'lib/features/sales/widgets/sales_batch_ship_panel.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.salesShipmentCreate': 1},
   ),
 };
 
@@ -814,7 +852,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      242, // Reviewed exact action/read boundaries; the global cap stays677.
+      249, // Eight exact new guards; the global cap stays677.
     );
   });
 

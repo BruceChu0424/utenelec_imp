@@ -120,6 +120,8 @@ class _GoodsImportProblemsPageState extends State<GoodsImportProblemsPage> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
           appBar: UtenAppBar(
             title: l.goodsImportProblemsTitle,
             leading: UtenBackButton(

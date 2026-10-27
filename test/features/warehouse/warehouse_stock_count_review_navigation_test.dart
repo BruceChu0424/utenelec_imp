@@ -280,7 +280,15 @@ void main() {
     );
     await queue.onPageChange!(2);
     await tester.pumpAndSettle();
-    expect(repo.queries.last.page, 2);
+    expect(
+      tester
+          .widget<MasterDataTableView<StockCountRequest>>(
+            find.byType(MasterDataTableView<StockCountRequest>),
+          )
+          .currentPage,
+      2,
+    );
+    expect(repo.queries.where((query) => query.page == 2), isNotEmpty);
     await tester.tap(find.text('查看明细'));
     await tester.pumpAndSettle();
     expect(find.text('返回审核列表'), findsNothing);
@@ -292,7 +300,14 @@ void main() {
       find.byType(MasterDataTableView<StockCountRequestLine>),
       findsNothing,
     );
-    expect(repo.queries.last.page, 2);
+    expect(
+      tester
+          .widget<MasterDataTableView<StockCountRequest>>(
+            find.byType(MasterDataTableView<StockCountRequest>),
+          )
+          .currentPage,
+      2,
+    );
     expect(repo.queries.last.keyword, 'PK');
     expect(repo.queries.last.warehouse, 'main-warehouse');
     expect(repo.queries.last.status, 'PENDING');
@@ -302,7 +317,14 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
-    expect(repo.queries.last.page, 2);
+    expect(
+      tester
+          .widget<MasterDataTableView<StockCountRequest>>(
+            find.byType(MasterDataTableView<StockCountRequest>),
+          )
+          .currentPage,
+      2,
+    );
     await tester.tap(find.byType(UtenBackButton));
     await tester.pumpAndSettle();
     expect(find.text('仓库模块入口'), findsOneWidget);

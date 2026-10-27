@@ -217,6 +217,9 @@ class UtenApp extends ConsumerWidget {
           listenable: router.routeInformationProvider,
           child: appContent,
           builder: (context, child) => DesktopWindowHost(
+            overlayControls:
+                router.routeInformationProvider.value.uri.path ==
+                RouteName.login,
             // Rescue has its own access checks and needs the regular workspace
             // even when the business session is unavailable.
             mode:

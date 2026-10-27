@@ -73,7 +73,12 @@ void main() {
     api.requests.single.completeError(StateError('internal-table-diagnostic'));
     await tester.pumpAndSettle();
     expect(find.textContaining('internal-table-diagnostic'), findsNothing);
-    expect(find.text('出错了，请稍后重试'), findsOneWidget);
+    expect(
+      find.text('出错了，请稍后重试'),
+      findsWidgets,
+      reason:
+          'Page feedback and table placeholder must both use the same sanitized message',
+    );
     expect(tester.takeException(), isNull);
   });
 }
@@ -108,6 +113,20 @@ class _DelayedApi extends ApiClient {
   final types = <String?>[];
   var countReads = 0;
   var facetReads = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == ApiEndpoints.warehouseInboundExpectationFacets) {
+      facetReads++;
+      return const <String, dynamic>{};
+    }
+    throw UnsupportedError('Unexpected POST in expectation lifecycle fixture');
+  }
 
   @override
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {

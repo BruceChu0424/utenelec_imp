@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -65,11 +66,13 @@ void main() {
 
     final table = find.byType(MasterDataTableView<SalesDocItem>);
     expect(table, findsOneWidget);
-    // 合计条右边缘 = 可视框右缘 - 表内 4px 内边距(不是表格最右端)。
+    // The viewport reserves its independent vertical rail before the existing
+    // inner inset. The totals remain anchored to content, never the far column.
     double gapToViewportRight() =>
         tester.getRect(table).right -
         tester.getRect(find.byType(UtenTotalsSummaryBar)).right;
-    expect(gapToViewportRight(), closeTo(4, 1));
+    const contentInset = UtenScrollGutter.trackWidth + 4;
+    expect(gapToViewportRight(), closeTo(contentInset, 1));
 
     // 横滚后仍贴可视框右缘：先确认表格真的滚动了(表头首列左移)。
     final headerBefore = tester.getRect(find.text('货品名称')).left;
@@ -79,7 +82,7 @@ void main() {
       tester.getRect(find.text('货品名称')).left,
       lessThan(headerBefore - 100),
     );
-    expect(gapToViewportRight(), closeTo(4, 1));
+    expect(gapToViewportRight(), closeTo(contentInset, 1));
   });
 }
 

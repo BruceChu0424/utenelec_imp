@@ -46,6 +46,7 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'arrival_weight_test_support.dart';
 import 'inbound_arrival_test_support.dart';
+import '../../support/field_hint_support.dart';
 
 final _testArrivalPermissionsProvider =
     NotifierProvider<_TestArrivalPermissions, Set<String>>(
@@ -966,7 +967,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(lineWarehouseCell);
     await tester.pumpAndSettle();
-    expect(find.text('先选主仓，再选子仓'), findsOneWidget);
+    await readFieldHint(tester, '先选主仓，再选子仓');
     await tester.tap(
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );

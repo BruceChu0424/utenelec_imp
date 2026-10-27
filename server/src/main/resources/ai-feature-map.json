@@ -3205,6 +3205,22 @@
       "doc": "docs/03-页面/远程身份验证页.md"
     },
     {
+      "route": "/software-downloads",
+      "title": "软件下载",
+      "aliases": [
+        "软件下载页"
+      ],
+      "module": "其它",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": null,
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/软件下载页.md"
+    },
+    {
       "route": "/stock/count-requests",
       "title": "盘点历史",
       "aliases": [],

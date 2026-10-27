@@ -227,7 +227,7 @@ void main() {
     await tester.tap(find.byKey(const Key('wm-count-help')));
     await tester.pumpAndSettle();
     expect(find.textContaining('仅用于确实无料'), findsOneWidget);
-    await tester.tap(find.text('知道了'));
+    Tooltip.dismissAllToolTips();
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('wm-fill-m1-hopper-HALF')));
     await tester.pumpAndSettle();

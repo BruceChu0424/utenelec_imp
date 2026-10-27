@@ -112,6 +112,65 @@ class ClientReleaseStateTest(unittest.TestCase):
                 self.assertEqual(original, (target / "client-releases" / identifier / name).read_bytes())
         self.assertEqual(summary, paired.verify_set(work))
 
+    def test_latest_windows_pair_restores_retired_receipts_without_resurrecting_old_packages(self):
+        old_setup = ID
+        old_update = OTHER
+        latest_setup = "42345678-1234-1234-1234-123456789abc"
+        latest_update = "52345678-1234-1234-1234-123456789abc"
+        self.release(old_setup, mode="windows_setup", kind="installer", filename="UTEN-Old-Setup.exe",
+                     data=b"old setup payload")
+        self.release(old_update, kind="update", filename="UTEN-old-update.zip", data=b"old update payload")
+        originals = {}
+        for identifier in (old_setup, old_update):
+            metadata = self.source / identifier / "release.json"
+            value = json.loads(metadata.read_text())
+            value.update(state="WITHDRAWN", sha256=None, sizeBytes=0,
+                         publishedAt="2026-10-22T18:00:00Z")
+            metadata.write_text(json.dumps(value), encoding="utf-8")
+            originals[identifier] = metadata.read_bytes()
+        # Simulate the retention order: metadata commits before unlinking bytes.
+        # One interrupted unlink must not turn an old package into a restored pair.
+        (self.source / old_setup / "package.bin").unlink()
+        self.release(latest_setup, mode="windows_setup", kind="installer", filename="UTEN-Setup.exe",
+                     data=b"latest setup payload")
+        self.release(latest_update, kind="update", filename="UTEN-update.zip", data=b"latest update payload")
+        for identifier in (latest_setup, latest_update):
+            metadata = self.source / identifier / "release.json"
+            value = json.loads(metadata.read_text())
+            value.update(version="2.5.32", buildNumber=2532, publishedAt="2026-10-26T18:00:00Z")
+            metadata.write_text(json.dumps(value), encoding="utf-8")
+            originals[identifier] = metadata.read_bytes()
+
+        work, summary = self.make_pair(seed=False)
+        self.assertEqual((4, 6), (summary["client_release_state"]["internal"]["releases"],
+                                 summary["client_release_state"]["internal"]["files"]))
+        target = self.root / "latest-pair-media"
+        target.mkdir()
+        report = paired.restore_client_release_states(work, target)
+        self.assertEqual(summary["client_release_state"]["internal"], report["internal"])
+        restored = target / "client-releases"
+        for identifier, raw in originals.items():
+            self.assertEqual(raw, (restored / identifier / "release.json").read_bytes())
+        for identifier in (old_setup, old_update):
+            self.assertFalse((restored / identifier / "package.bin").exists())
+            receipt = json.loads((restored / identifier / "release.json").read_text())
+            self.assertEqual("WITHDRAWN", receipt["state"])
+            self.assertIsNone(receipt["sha256"])
+            self.assertEqual("2026-10-22T18:00:00Z", receipt["publishedAt"])
+            self.assertEqual(64, len(receipt["expectedSha256"]))
+        self.assertEqual(b"latest setup payload", (restored / latest_setup / "package.bin").read_bytes())
+        self.assertEqual(b"latest update payload", (restored / latest_update / "package.bin").read_bytes())
+        self.assertEqual(2, len(list(restored.glob("*/package.bin"))))
+        self.assertEqual(summary, paired.verify_set(work))
+
+    def test_retired_receipt_does_not_hide_corrupt_latest_pair_from_backup_verification(self):
+        self.release(state="WITHDRAWN", uploaded=False)
+        self.release(OTHER, kind="update", data=b"latest committed update")
+        (self.source / OTHER / "package.bin").write_bytes(b"corrupt latest update")
+        with self.assertRaisesRegex(ValueError, "integrity"):
+            client.export_client_releases(self.source, self.destination)
+        self.assertFalse(self.destination.exists())
+
     def test_windows_setup_requires_installer_kind_windows_platform_and_safe_exe_name(self):
         for kind, platform, filename in (("update", "windows", "Uten-Setup.exe"),
                                           ("installer", "android", "Uten-Setup.exe"),
@@ -274,8 +333,8 @@ while(!Files.exists(Path.of(a[2]))) Thread.sleep(20);
         finally:
             if writer.poll() is None:writer.kill(); writer.communicate(timeout=5)
 
-    def make_pair(self, *, configured=False):
-        self.release()
+    def make_pair(self, *, configured=False, seed=True):
+        if seed:self.release()
         media = self.root / "media"
         media.mkdir()
         if not configured:

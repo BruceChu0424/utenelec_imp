@@ -92,8 +92,7 @@ BEGIN
         RETURN NEW;
     END IF;
     IF NEW.employee_id IS NOT NULL AND NOT NEW.is_deleted THEN
-        -- Alias verification locks this same employee; unrelated accounts need no shared lock.
-        PERFORM id FROM public.employees WHERE id=NEW.employee_id FOR UPDATE;
+        PERFORM pg_advisory_xact_lock(1431586126,937);
         IF EXISTS(SELECT 1 FROM employee_identity_aliases WHERE alias_employee_id=NEW.employee_id) THEN
             RAISE EXCEPTION 'A login account must bind to the canonical employee identity'
                 USING ERRCODE='23514';

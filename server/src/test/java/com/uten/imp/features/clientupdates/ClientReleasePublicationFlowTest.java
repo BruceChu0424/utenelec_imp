@@ -194,10 +194,19 @@ class ClientReleasePublicationFlowTest {
 
             login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
             UUID update = UUID.randomUUID(), latest = UUID.randomUUID(), arm = UUID.randomUUID();
-            createAndUpload(mvc, mapper, update, 2533, "x64", "update", windowsPackage(mapper, 2533));
+            byte[] updateZip = windowsPackage(mapper, 2533);
+            createAndUpload(mvc, mapper, update, 2533, "x64", "update", updateZip);
             mvc.perform(post("/api/admin/client-releases/{id}/publish", update)).andExpect(status().isOk());
+            assertThat(directory.resolve(first.toString()).resolve("package.bin")).isRegularFile();
             createAndUpload(mvc, mapper, latest, 2533, "x64", "installer", WindowsSetupFixture.bytes(2533, "x64", "2.5.32"));
             mvc.perform(post("/api/admin/client-releases/{id}/publish", latest)).andExpect(status().isOk());
+            assertThat(directory.resolve(first.toString()).resolve("package.bin")).doesNotExist();
+            var retired = mapper.readTree(Files.readString(directory.resolve(first.toString()).resolve("release.json")));
+            assertThat(retired.path("state").asText()).isEqualTo("WITHDRAWN");
+            assertThat(retired.path("sha256").isNull()).isTrue();
+            assertThat(retired.path("sizeBytes").asLong(-1)).isZero();
+            assertThat(retired.path("expectedSha256").asText()).isEqualTo(sha256(firstZip));
+            assertThat(retired.path("publishedAt").isNull()).isFalse();
             createAndUpload(mvc, mapper, arm, 2530, "arm64", "installer", WindowsSetupFixture.bytes(2530, "arm64", "2.5.32"));
             mvc.perform(post("/api/admin/client-releases/{id}/publish", arm)).andExpect(status().isOk());
 
@@ -207,13 +216,18 @@ class ClientReleasePublicationFlowTest {
                     .andExpect(jsonPath("$.length()").value(2))
                     .andExpect(jsonPath("$[0].id").value(arm.toString()))
                     .andExpect(jsonPath("$[1].id").value(latest.toString()));
+            mvc.perform(get("/api/client-updates/{id}/download", first)).andExpect(status().isNotFound());
+            mvc.perform(get("/api/client-updates/{id}/download", update)).andExpect(status().isOk())
+                    .andExpect(header().string("X-Checksum-Sha256", sha256(updateZip))).andExpect(content().bytes(updateZip));
 
             login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
             mvc.perform(post("/api/admin/client-releases/{id}/withdraw", latest)).andExpect(status().isOk());
             login(employee, Set.of());
             mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk())
-                    .andExpect(jsonPath("$[1].id").value(first.toString()));
+                    .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(arm.toString()));
+            mvc.perform(get("/api/client-updates/{id}/download", first)).andExpect(status().isNotFound());
             mvc.perform(get("/api/client-updates/{id}/download", latest)).andExpect(status().isNotFound());
+            mvc.perform(get("/api/client-updates/{id}/download", update)).andExpect(status().isOk()).andExpect(content().bytes(updateZip));
             login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
             mvc.perform(post("/api/admin/client-releases/{id}/withdraw", first)).andExpect(status().isOk());
             mvc.perform(post("/api/admin/client-releases/{id}/withdraw", arm)).andExpect(status().isOk());

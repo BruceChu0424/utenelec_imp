@@ -208,4 +208,22 @@ class _StageApi extends ApiClient {
     }
     return const <String, dynamic>{'items': <Map<String, dynamic>>[]};
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/master/clients/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement('client-1'));
+      return [
+        if (ids.contains('client-1'))
+          {'id': 'client-1', 'name': '客户甲', 'selectable': true},
+      ];
+    }
+    return const [];
+  }
 }

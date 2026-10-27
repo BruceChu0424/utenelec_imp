@@ -99,6 +99,21 @@ class _Session extends SessionNotifier {
 class _Api extends ApiClient {
   _Api() : super(Dio());
 
+  static const _suppliers = <Map<String, dynamic>>[
+    {
+      'id': 'supplier-a',
+      'name': 'Supplier A',
+      'status': '使用',
+      'defaultSettlementMethodId': 'default-a',
+    },
+    {
+      'id': 'supplier-b',
+      'name': 'Supplier B',
+      'status': '使用',
+      'defaultSettlementMethodId': 'default-b',
+    },
+  ];
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -116,19 +131,18 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.suppliersDict) {
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement(isIn(['supplier-a', 'supplier-b'])));
       return [
-        {
-          'id': 'supplier-a',
-          'name': 'Supplier A',
-          'defaultSettlementMethodId': 'default-a',
-        },
-        {
-          'id': 'supplier-b',
-          'name': 'Supplier B',
-          'defaultSettlementMethodId': 'default-b',
-        },
+        for (final row in _suppliers)
+          if (ids.contains(row['id'])) row,
       ];
+    }
+    if (path == ApiEndpoints.suppliersDict) {
+      return _suppliers;
     }
     return [];
   }

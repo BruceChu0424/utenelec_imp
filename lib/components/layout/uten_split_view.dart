@@ -43,6 +43,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'uten_adaptive_hierarchy_pane.dart';
 import 'uten_hierarchy_content_width.dart';
+import 'uten_scroll_gutter.dart';
 import '../../core/theme/uten_anim.dart';
 import '../feedback/uten_motion.dart';
 
@@ -137,7 +138,7 @@ class _UtenSplitViewState extends State<UtenSplitView> {
         ? 0.0
         : _contentWidths.chromeWidth +
               MediaQuery.textScalerOf(context).scale(64) +
-              12;
+              UtenScrollGutter.trackWidth;
     return math.max(widget.minLeadingWidth, compactContentWidth);
   }
 

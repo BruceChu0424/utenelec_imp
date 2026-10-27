@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/shared/paging/paged_read_intent.dart';
 
 class _Harness extends StatefulWidget {
   const _Harness({super.key, this.primary = false, this.virtualized = false});
@@ -12,6 +13,7 @@ class _Harness extends StatefulWidget {
 }
 
 class _HarnessState extends State<_Harness> {
+  final rows = MasterDataTableRowsController<int>();
   int count = 0;
   int page = 1;
   int request = 0;
@@ -25,6 +27,7 @@ class _HarnessState extends State<_Harness> {
   @override
   Widget build(BuildContext context) {
     final table = MasterDataTableView<int>(
+      rowsController: rows,
       columns: [
         MasterColumnDef<int>(
           key: 'name',
@@ -50,7 +53,12 @@ class _HarnessState extends State<_Harness> {
       onFilterChanged: (_, _) {},
       currentPage: page,
       totalPages: 4,
-      onPageChange: (next) => update(page: next),
+      onPageChange: (next) {
+        update(page: next);
+        // This fixture's in-memory page is already delivered. A real pager
+        // read, including an identical cached DTO, acknowledges its intent.
+        PagedReadIntent.accepted(next);
+      },
       scrollToEndRequest: request,
     );
     return widget.primary
@@ -264,7 +272,7 @@ void main() {
       key.currentState!.update(request: 2);
       await tester.pumpAndSettle();
       expect(find.text('ROW-79').hitTestable(), findsOneWidget);
-      key.currentState!.update(page: 1);
+      key.currentState!.rows.goToPage(1);
       await tester.pumpAndSettle();
       expect(
         find.text('ROW-0').hitTestable(),

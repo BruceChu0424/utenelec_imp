@@ -39,6 +39,7 @@ import 'inbound_arrival_test_support.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/field_hint_support.dart';
 
 const _ids = ['expectation-batch-1', 'expectation-batch-2'];
 final _liveArrivalPermissions = StateProvider<Set<String>>(
@@ -764,7 +765,7 @@ void main() {
       find.byKey(const Key('warehouse-arrival-wh-batch-item-1')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('先选主仓，再选子仓'), findsOneWidget);
+    await readFieldHint(tester, '先选主仓，再选子仓');
     await tester.tap(
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );

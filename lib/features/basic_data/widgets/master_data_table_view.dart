@@ -1082,7 +1082,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   List<T> _removeMeasureItems = const [];
   List<T>? _prependMeasureItems;
   List<T>? _prependPageItems;
-  bool _prependMeasureScheduled = false;
+  int? _prependMeasureGeneration;
   double _prependBottomSpace = 0;
   final _mountedPaginationRows = <Object, ({RenderBox box, bool paged})>{};
   Map<String, String?> _filterSnapshot = const {};
@@ -2007,12 +2007,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _schedulePrependMeasurement() {
-    if (_prependMeasureItems == null || _prependMeasureScheduled) return;
-    _prependMeasureScheduled = true;
+    if (_prependMeasureItems == null ||
+        _prependMeasureGeneration == _appendGeneration) {
+      return;
+    }
     final generation = _appendGeneration;
+    // A new replacement may begin before the old queued callback runs. Only
+    // coalesce work owned by this generation; an old callback cannot retire
+    // the newer generation's scheduled measurement.
+    _prependMeasureGeneration = generation;
     final measuredWidths = List<double>.of(_widths);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _prependMeasureScheduled = false;
+      if (_prependMeasureGeneration == generation) {
+        _prependMeasureGeneration = null;
+      }
       if (!mounted ||
           generation != _appendGeneration ||
           _prependMeasureItems == null ||

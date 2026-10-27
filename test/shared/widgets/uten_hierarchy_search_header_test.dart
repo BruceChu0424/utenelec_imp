@@ -36,7 +36,8 @@ void main() {
     expect(_label('原材料'), findsOneWidget);
     final rootX = tester.getTopLeft(_label('货品资料')).dx;
     final childX = tester.getTopLeft(_label('原材料')).dx;
-    expect(childX - rootX, closeTo(16, 0.01));
+    // This narrow pane uses the shared compact 12px hierarchy guide track.
+    expect(childX - rootX, closeTo(12, 0.01));
     final originalState = tester.state(
       find.byType(UtenHierarchyTreeView<_Node>),
     );

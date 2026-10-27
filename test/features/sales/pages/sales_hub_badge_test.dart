@@ -8,6 +8,7 @@ import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/sales/pages/sales_hub_page.dart';
 import 'package:uten_imp/features/sales/pages/sales_task_center_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -36,6 +37,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final container = ProviderContainer(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),

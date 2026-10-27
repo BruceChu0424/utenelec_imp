@@ -145,7 +145,10 @@ public class ClientReleaseService {
         AuthUser actor = publisher();
         ClientReleaseDto.Release result = catalog.locked(root -> {
             ClientReleaseDto.Release release = catalog.require(root, id);
-            if ("PUBLISHED".equals(release.state())) return release;
+            if ("PUBLISHED".equals(release.state())) {
+                retireSupersededWindowsPackages(root, release);
+                return release;
+            }
             requireDraft(release);
             long previousBuild = catalog.list(root).stream().filter(other -> other.publishedAt() != null
                             && other.platform().equals(release.platform()) && overlaps(other.architecture(), release.architecture())
@@ -153,24 +156,65 @@ public class ClientReleaseService {
                     .mapToLong(ClientReleaseDto.Release::buildNumber).max().orElse(0);
             if (release.buildNumber() <= previousBuild)
                 throw new ApiException(ErrorCode.CONFLICT, "构建号必须大于同平台、架构及包类型已经发布过的版本");
-            if (!"store".equals(release.installMode())) {
-                Path binary = packagePath(root, id);
-                if (release.sha256() == null || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
-                        || Files.size(binary) != release.sizeBytes()) throw invalid("请先完整上传并校验更新包");
-                var digest = ClientPackageInspector.digest();
-                try (InputStream input = Files.newInputStream(binary, LinkOption.NOFOLLOW_LINKS)) {
-                    byte[] bytes = new byte[65536];
-                    for (int read; (read = input.read(bytes)) != -1;) digest.update(bytes, 0, read);
-                }
-                if (!release.sha256().equals(HexFormat.of().formatHex(digest.digest()))) throw invalid("已上传的更新包发生变化，请重新上传");
-                inspector.inspect(binary, release);
-            }
+            if (!"store".equals(release.installMode())) validatePublishedPackage(root, release);
             ClientReleaseDto.Release published = copy(release, release.sha256(), release.sizeBytes(), "PUBLISHED", Instant.now());
             catalog.write(root, published);
+            retireSupersededWindowsPackages(root, published);
             return published;
         });
         record(actor, "client_release_publish", id);
         return result;
+    }
+
+    /** The installer and update ZIP become the retained generation only after both are usable. */
+    private void retireSupersededWindowsPackages(Path root, ClientReleaseDto.Release published) throws IOException {
+        if (!"windows".equals(published.platform())) return;
+        List<ClientReleaseDto.Release> releases = catalog.list(root);
+        var targets = releases.stream().filter(release -> "PUBLISHED".equals(release.state())
+                && "windows".equals(release.platform()) && published.architecture().equals(release.architecture())).toList();
+        var order = Comparator.comparingLong(ClientReleaseDto.Release::buildNumber);
+        var installer = targets.stream().filter(release -> "installer".equals(release.packageKind())).max(order).orElse(null);
+        var update = targets.stream().filter(release -> "update".equals(release.packageKind())).max(order).orElse(null);
+        if (installer == null || update == null || !"windows_setup".equals(installer.installMode())
+                || !"windows_archive".equals(update.installMode()) || installer.buildNumber() != update.buildNumber()
+                || !installer.version().equals(update.version()) || published.buildNumber() != installer.buildNumber()
+                || !published.version().equals(installer.version())) return;
+
+        // Recheck both committed files before touching any old metadata or bytes.
+        validatePublishedPackage(root, installer);
+        validatePublishedPackage(root, update);
+        var obsolete = releases.stream().filter(release -> "windows".equals(release.platform())
+                && published.architecture().equals(release.architecture()) && release.publishedAt() != null
+                && Set.of("PUBLISHED", "WITHDRAWN").contains(release.state())
+                && release.buildNumber() < installer.buildNumber() && !"store".equals(release.installMode())).toList();
+        for (var release : obsolete) {
+            if (!release.equals(catalog.require(root, release.id())))
+                throw new IOException("Obsolete client release identity mismatch");
+            Path binary = packagePath(root, release.id());
+            if (Files.exists(binary, LinkOption.NOFOLLOW_LINKS) && !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS))
+                throw new IOException("Invalid obsolete client package");
+        }
+        for (var release : obsolete) {
+            // Keep the request identity, expected digest and publication history for retries and build ordering.
+            // Metadata goes first: interruption can leave only an unbound old binary, never a broken published pair.
+            if (!"WITHDRAWN".equals(release.state()) || release.sha256() != null || release.sizeBytes() != 0)
+                catalog.write(root, copy(release, null, 0, "WITHDRAWN", release.publishedAt()));
+            Files.deleteIfExists(packagePath(root, release.id()));
+        }
+    }
+
+    private void validatePublishedPackage(Path root, ClientReleaseDto.Release release) throws IOException {
+        Path binary = packagePath(root, release.id());
+        if (release.sha256() == null || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
+                || Files.size(binary) != release.sizeBytes()) throw invalid("请先完整上传并校验更新包");
+        var digest = ClientPackageInspector.digest();
+        try (InputStream input = Files.newInputStream(binary, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] bytes = new byte[65536];
+            for (int read; (read = input.read(bytes)) != -1;) digest.update(bytes, 0, read);
+        }
+        if (!release.sha256().equals(HexFormat.of().formatHex(digest.digest())))
+            throw invalid("已上传的更新包发生变化，请重新上传");
+        inspector.inspect(binary, release);
     }
 
     @PreAuthorize(PUBLISH_EXPRESSION)

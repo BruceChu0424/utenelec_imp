@@ -351,6 +351,16 @@ class _PreviewApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement('supplier'));
+      return [
+        if (ids.contains('supplier'))
+          {'id': 'supplier', 'name': 'Supplier', 'status': '使用'},
+      ];
+    }
     if (path == ApiEndpoints.goodsLookup) {
       return [
         for (final id in (query!['ids'] as String).split(','))

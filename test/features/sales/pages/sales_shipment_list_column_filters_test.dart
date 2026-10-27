@@ -1,5 +1,5 @@
 // 销售出货单列表「表头筛选生效」冒烟断言（出货段；订货段的仓库/币种无服务端
-// 参数不做）：客户桶（clients/dict）回传 clientId；财务审核/仓库作业固定枚举
+// 参数不做）：客户候选分页回传 clientId；财务审核/仓库作业固定枚举
 // 桶回传 financeAudit / warehouseWorkStatus；筛选后重拉回第 1 页。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -84,7 +84,17 @@ void main() {
       table.facets['status']?.map((bucket) => bucket.value),
       containsAll(SalesShipmentStage.segments),
     );
-    expect(table.facets['client']?.single.value, 'client-1');
+    expect(table.facets['client'], isEmpty);
+    final clients = await table.facetPageLoaders['client']!('', 1);
+    expect(clients.items.single.value, 'client-1');
+    expect(clients.hasMore, isFalse);
+    expect(api.clientCandidateQueries.single['page'], 1);
+    expect(api.clientCandidateQueries.single['size'], 100);
+    expect(api.clientCandidateQueries.single['selectableOnly'], isFalse);
+    expect(
+      api.clientCandidateQueries.single['excludeLegacyFinanceStub'],
+      isTrue,
+    );
     expect(
       table.facets['financeAudit']?.map((bucket) => bucket.value),
       containsAll(<String>['0', '1']),
@@ -119,14 +129,27 @@ class _ShipmentFilterApi extends ApiClient {
   _ShipmentFilterApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final clientCandidateQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    lastQuery = query == null ? null : Map<String, dynamic>.from(query);
+    if (path == '/master/clients') {
+      clientCandidateQueries.add(Map<String, dynamic>.from(query!));
+      return const {
+        'items': [
+          {'id': 'client-1', 'name': '客户甲', 'selectable': true},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
     if (path == '/sales/shipments') {
+      lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return const {
         'items': [
           {
@@ -153,6 +176,16 @@ class _ShipmentFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/clients/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement('client-1'));
+      return [
+        if (ids.contains('client-1'))
+          {'id': 'client-1', 'name': '客户甲', 'selectable': true},
+      ];
+    }
     if (path.contains('clients')) {
       return const [
         {'id': 'client-1', 'name': '客户甲'},

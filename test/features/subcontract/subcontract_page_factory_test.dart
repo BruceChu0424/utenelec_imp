@@ -273,7 +273,16 @@ void main() {
       ),
     );
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
-    expect(table.facets['supplier']?.single.value, 'supplier-1');
+    expect(table.facets['supplier'], isEmpty);
+    final suppliers = await table.facetPageLoaders['supplier']!('', 1);
+    expect(suppliers.items.single.value, 'supplier-1');
+    expect(suppliers.hasMore, isFalse);
+    expect(api.supplierCandidateQueries.single['page'], 1);
+    expect(api.supplierCandidateQueries.single['size'], 100);
+    expect(
+      api.supplierCandidateQueries.single.containsKey('selectableOnly'),
+      isFalse,
+    );
     expect(table.facets['warehouse']?.single.value, 'warehouse-1');
 
     api.lastQuery = null;
@@ -380,12 +389,26 @@ class _RecordingApi extends ApiClient {
   _RecordingApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  final supplierCandidateQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/suppliers') {
+      supplierCandidateQueries.add(Map<String, dynamic>.from(query!));
+      return const {
+        'items': [
+          {'id': 'supplier-1', 'name': '委外商甲', 'status': '使用'},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
+    if (path != '/subcontract/wastes') return const {};
     lastQuery = query == null ? null : Map<String, dynamic>.from(query);
     return const <String, dynamic>{
       'items': <Map<String, dynamic>>[
@@ -410,6 +433,16 @@ class _RecordingApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/master/suppliers/lookup') {
+      final ids = (query!['ids'] as String).split(',').toSet();
+      expectSync(ids, isNotEmpty);
+      expectSync(ids.length, lessThanOrEqualTo(100));
+      expectSync(ids, everyElement('supplier-1'));
+      return [
+        if (ids.contains('supplier-1'))
+          {'id': 'supplier-1', 'name': '委外商甲', 'status': '使用'},
+      ];
+    }
     if (path.contains('suppliers')) {
       return const [
         {'id': 'supplier-1', 'name': '委外商甲'},

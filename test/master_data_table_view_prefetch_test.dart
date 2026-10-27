@@ -9,6 +9,7 @@ import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
 import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
 import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
+import 'package:uten_imp/core/theme/uten_scrollbar_style.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
@@ -158,23 +159,27 @@ Future<void> _pump(
 }
 
 ({double center, double length}) _thumb(WidgetTester tester) {
-  final pos = _position(tester);
+  final rail = tester.widget<UtenContentScrollbar>(_rail());
+  final pos = rail.railDelegate?.metrics ?? _position(tester);
   final rect = tester.getRect(_rail());
-  final track = rect.height - 32;
+  final inset = rail.bottomInset.clamp(0.0, rect.height);
+  final fullTrack = rect.height - inset;
+  final arrow = math.min(UtenScrollbarStyle.arrowExtent, fullTrack / 3);
+  final track = fullTrack - 2 * arrow;
+  final viewport = pos.viewportDimension;
+  final visibleViewport = viewport - rail.bottomInset.clamp(0.0, viewport);
   final ratio =
-      (pos.viewportDimension /
-              (pos.maxScrollExtent -
-                  pos.minScrollExtent +
-                  pos.viewportDimension))
+      (visibleViewport /
+              (pos.maxScrollExtent - pos.minScrollExtent + visibleViewport))
           .clamp(.05, 1.0);
   final length = (track * ratio)
-      .clamp(math.min(32, track * .8), track)
+      .clamp(math.min(UtenScrollbarStyle.minimumThumbLength, track * .8), track)
       .toDouble();
   final fraction =
       (pos.pixels - pos.minScrollExtent) /
       (pos.maxScrollExtent - pos.minScrollExtent);
   return (
-    center: rect.top + 16 + (track - length) * fraction + length / 2,
+    center: rect.top + arrow + (track - length) * fraction + length / 2,
     length: length,
   );
 }
@@ -219,23 +224,9 @@ Future<void> _approach(WidgetTester tester, String method, bool prepend) async {
       Offset(rect.center.dx, thumb.center),
       kind: PointerDeviceKind.mouse,
     );
-    await gesture.moveBy(Offset(0, prepend ? -12 : 12));
+    await gesture.moveBy(Offset(0, prepend ? -24 : 24));
     await tester.pump();
-    final target = prepend
-        ? pos.minScrollExtent + distance / 2
-        : pos.maxScrollExtent - distance / 2;
-    final fraction =
-        (target - pos.minScrollExtent) /
-        (pos.maxScrollExtent - pos.minScrollExtent);
-    await gesture.moveTo(
-      Offset(
-        rect.center.dx,
-        rect.top +
-            16 +
-            (rect.height - 32 - thumb.length) * fraction +
-            thumb.length / 2,
-      ),
-    );
+    await gesture.moveBy(Offset(0, prepend ? -24 : 24));
     await gesture.up();
   }
   // Start the track's animation ticker before advancing its elapsed time.

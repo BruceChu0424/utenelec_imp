@@ -1139,6 +1139,7 @@ class _FinanceProcurementApprovalReviewPageState
 
   Widget _closureCard(ThemeData theme, FinanceProcurementApprovalReview r) {
     if (r.isDirectClosure) return _orderClosureStatus(r, r.closureRequest!);
+    final replacementAccess = _replacementAccess(r);
     final l10n = AppLocalizations.of(context);
     final closure = r.closureRequest!;
     final lines = [
@@ -1174,21 +1175,18 @@ class _FinanceProcurementApprovalReviewPageState
                 style: TextStyle(color: theme.colorScheme.error),
               ),
             if (closure['replacementOrderId'] is String &&
-                (ref.read(isSuperAdminProvider) ||
-                    ref
-                        .read(currentPermissionsProvider)
-                        .contains(
-                          r.orderType == FinanceProcurementOrderType.purchase
-                              ? Perm.purchaseOrderView
-                              : Perm.subcontractOrderView,
-                        )))
+                replacementAccess.view)
               TextButton.icon(
                 icon: const Icon(Icons.open_in_new_rounded),
-                onPressed: () => context.push(
-                  '/${r.orderType == FinanceProcurementOrderType.purchase ? 'purchase' : 'subcontract'}/orders/'
-                  '${Uri.encodeComponent(closure['replacementOrderId'] as String)}'
-                  '${ref.read(isSuperAdminProvider) || ref.read(currentPermissionsProvider).contains(r.orderType == FinanceProcurementOrderType.purchase ? Perm.purchaseOrderEdit : Perm.subcontractOrderEdit) ? '/edit' : ''}',
-                ),
+                onPressed: () {
+                  final currentAccess = _replacementAccess(r);
+                  if (!currentAccess.view) return;
+                  context.push(
+                    '/${r.orderType == FinanceProcurementOrderType.purchase ? 'purchase' : 'subcontract'}/orders/'
+                    '${Uri.encodeComponent(closure['replacementOrderId'] as String)}'
+                    '${currentAccess.edit ? '/edit' : ''}',
+                  );
+                },
                 label: Text(
                   '${l10n.orderClosureReorder}: ${closure['replacementBillNo'] ?? ''}',
                 ),
@@ -1211,20 +1209,31 @@ class _FinanceProcurementApprovalReviewPageState
     Map<String, dynamic> closure,
   ) {
     final purchase = review.orderType == FinanceProcurementOrderType.purchase;
-    final permissions = ref.read(currentPermissionsProvider);
-    final superAdmin = ref.read(isSuperAdminProvider);
+    final access = _replacementAccess(review);
     return ProcurementOrderClosureStatus(
       request: ProcurementOrderClosureRequest.fromJson({
         'status': review.status,
         ...closure,
       }),
       orderType: purchase ? 'PURCHASE' : 'SUBCONTRACT',
-      canOpenReplacement:
+      canOpenReplacement: access.view,
+      canEditReplacement: access.edit,
+    );
+  }
+
+  ({bool view, bool edit}) _replacementAccess(
+    FinanceProcurementApprovalReview review,
+  ) {
+    final purchase = review.orderType == FinanceProcurementOrderType.purchase;
+    final permissions = ref.read(currentPermissionsProvider);
+    final superAdmin = ref.read(isSuperAdminProvider);
+    return (
+      view:
           superAdmin ||
           permissions.contains(
             purchase ? Perm.purchaseOrderView : Perm.subcontractOrderView,
           ),
-      canEditReplacement:
+      edit:
           superAdmin ||
           permissions.contains(
             purchase ? Perm.purchaseOrderEdit : Perm.subcontractOrderEdit,

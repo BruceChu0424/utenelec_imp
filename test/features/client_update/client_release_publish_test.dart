@@ -64,10 +64,12 @@ class _Api extends ApiClient {
   final uploadedBytes = <Uint8List>[];
   int listCalls = 0;
   int publishCalls = 0;
+  final publishIds = <String>[];
   int withdrawCalls = 0;
   bool loseFirstPublishResponse = false;
   final losePublishResponseKinds = <String>{};
   final failPublishKinds = <String>{};
+  final failRetentionOnceKinds = <String>{};
   final failCreateKinds = <String>{};
   Completer<Map<String, dynamic>>? delayedCreate;
   Completer<void>? delayedUpload;
@@ -135,12 +137,19 @@ class _Api extends ApiClient {
     expect(path, matches(r'^/admin/client-releases/[0-9a-f-]{36}/publish$'));
     publishCalls++;
     final identifier = path.split('/')[3];
+    publishIds.add(identifier);
     final draft = creates.lastWhere((body) => body['requestId'] == identifier);
     final kind = draft['packageKind'] as String? ?? 'update';
     if (failPublishKinds.contains(kind)) {
       throw ApiException('CONFLICT', 'fixture package publication rejected');
     }
     published.add(identifier);
+    if (failRetentionOnceKinds.remove(kind)) {
+      throw ApiException(
+        'PRIMARY_UNAVAILABLE',
+        'fixture retention failed after publication committed',
+      );
+    }
     if (loseFirstPublishResponse && publishCalls == 1 ||
         losePublishResponseKinds.remove(kind)) {
       // The command committed, but the client did not receive its receipt.
@@ -491,8 +500,48 @@ void main() {
       expect(api.creates[1]['requestId'], api.creates[3]['requestId']);
       expect(api.creates[0]['requestId'], isNot(api.creates[1]['requestId']));
       expect(api.packages, hasLength(2));
-      expect(api.publishCalls, 2);
+      expect(api.publishCalls, 4);
       expect(api.published, hasLength(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Windows retries the same published release after pair retention fails without reuploading',
+    (tester) async {
+      final api = _Api()..failRetentionOnceKinds.add('update');
+      await _pump(tester, api, _Session(_identity()));
+      await _fillWindows(tester, installer: true);
+      await _chooseWindows(tester);
+      await _publish(tester, kind: 'installer');
+      await _publish(tester, kind: 'update');
+      final updateId = api.creates.last['requestId'];
+      expect(api.published, hasLength(2));
+      expect(api.publishCalls, 2);
+      expect(
+        find.descendant(
+          of: _result('update'),
+          matching: find.textContaining('尚未确认发布'),
+        ),
+        findsOneWidget,
+      );
+
+      await _publish(tester, kind: 'update');
+
+      expect(api.creates, hasLength(3));
+      expect(api.creates[1], api.creates[2]);
+      expect(
+        api.creates.map((body) => body['requestId']).toSet(),
+        hasLength(2),
+      );
+      expect(api.publishIds, [
+        api.creates.first['requestId'],
+        updateId,
+        updateId,
+      ]);
+      expect(api.packages, hasLength(2));
+      expect(api.uploadedBytes, hasLength(2));
+      expect(find.text('客户端新版本已发布'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     },
   );
@@ -521,7 +570,7 @@ void main() {
       expect(api.creates, hasLength(2));
       expect(api.creates[0]['requestId'], api.creates[1]['requestId']);
       expect(api.packages, hasLength(1));
-      expect(api.publishCalls, 1);
+      expect(api.publishCalls, 2);
       expect(tester.takeException(), isNull);
     },
   );
@@ -702,7 +751,7 @@ void main() {
   });
 
   testWidgets(
-    'Windows lost publication receipt does not reupload or republish',
+    'Windows lost publication receipt retries idempotent publish without reuploading',
     (tester) async {
       final api = _Api()..loseFirstPublishResponse = true;
       await _pump(tester, api, _Session(_identity()));
@@ -712,7 +761,7 @@ void main() {
       expect(api.creates, hasLength(2));
       expect(api.creates[0]['requestId'], api.creates[1]['requestId']);
       expect(api.packages, hasLength(1));
-      expect(api.publishCalls, 1);
+      expect(api.publishCalls, 2);
       expect(find.text('客户端新版本已发布'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

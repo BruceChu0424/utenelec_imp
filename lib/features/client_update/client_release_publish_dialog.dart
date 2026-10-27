@@ -256,7 +256,9 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
           ),
         );
       }
-      if (!alreadyPublished) {
+      // A Windows publication may commit before retaining its latest pair
+      // finishes. Retry that work with the same release, without uploading again.
+      if (_platform == 'windows' || !alreadyPublished) {
         await scope.run(() => _api.post('/admin/client-releases/$id/publish'));
       }
       if (!_current) return;

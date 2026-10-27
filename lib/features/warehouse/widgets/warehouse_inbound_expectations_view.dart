@@ -169,7 +169,7 @@ class _WarehouseInboundExpectationsViewState
       _keyword = widget.keyword;
       if (oldWidget.fixedOrderType != widget.fixedOrderType) {
         _orderType = widget.fixedOrderType;
-        _selectedIds.clear();
+        _selectedIds = <String>{};
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) trackRefresh(_load(1));
@@ -547,9 +547,9 @@ class _WarehouseInboundExpectationsViewState
             .map((task) => task.id)
             .toSet();
         if (_selectedIds.any((id) => !visibleIds.contains(id))) {
-          setState(
-            () => _selectedIds.removeWhere((id) => !visibleIds.contains(id)),
-          );
+          setState(() {
+            _selectedIds = _selectedIds.where(visibleIds.contains).toSet();
+          });
         }
       });
     } on ApiException catch (error) {

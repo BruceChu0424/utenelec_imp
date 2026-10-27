@@ -279,5 +279,8 @@ void main() {
       find.byKey(const Key('sales-doc-history-time-other-shipments')),
       findsOneWidget,
     );
+    // Finish the mounted reader's lifetime, including its queued prefetch turn.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(Duration.zero);
   });
 }

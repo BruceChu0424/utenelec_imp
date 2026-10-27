@@ -29,6 +29,7 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/field_hint_support.dart';
 
 class _Drafts extends FormDraftsNotifier {
   _Drafts(this.drafts);
@@ -276,7 +277,7 @@ void main() {
       );
       await tester.tap(find.text('仓库草稿'));
       await tester.pumpAndSettle();
-      expect(find.text('显示本人全部可见的仓库草稿，不受任务页的选仓筛选影响。'), findsOneWidget);
+      await readFieldHint(tester, '显示本人全部可见的仓库草稿，不受任务页的选仓筛选影响。');
       final table = tester.widget<MasterDataTableView<DraftWorkspaceRow>>(
         find.byType(MasterDataTableView<DraftWorkspaceRow>),
       );

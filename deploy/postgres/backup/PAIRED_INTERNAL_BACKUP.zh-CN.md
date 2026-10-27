@@ -271,7 +271,11 @@ v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建
 备份通过 `.catalog.lock` 获取共享 POSIX record lock (`lockf`)，与 Linux Java
 `FileChannel.lock()` 的独占写锁互斥；不能改用 `flock` 代替。锁覆盖已提交元数据及包的复制，
 不创建或改写源目录的锁文件。`release.json` 原始字节、包大小、实际 SHA-256、预期摘要及 UUID
-关系一起校验。已上传的草稿、已发布及已撤回软件包均保留；商店链接版本只需元数据。
+关系一起校验。已上传的草稿、仍绑定二进制的已发布及已撤回软件包均保留；商店链接版本只需元数据。
+Windows 新版安装包与更新 ZIP 成组发布成功后，在线目录按[客户端保留策略](../../client/README.zh-CN.md#分发包保留每个平台精确架构只保留最新完整组)
+清理低版本二进制；旧审计记录以 `WITHDRAWN`、`sha256=null`、`sizeBytes=0` 保留，备份和恢复只保留其原始元数据，
+不会恢复已经清理的旧包。清理中断留下但已解除元数据绑定的旧 `package.bin` 也不会进入备份。
+已有备份内的历史字节仍遵循原备份保留政策，客户端发布不会删除备份集。
 已发布安装包缺失、大小或摘要不符会使整次备份失败，旧成功指针与恢复点保留。
 Windows 安装程序使用 `packageKind=installer`、`installMode=windows_setup`，原始文件名为 `.exe`；
 与原有 `windows_archive` ZIP 更新包共用同一目录和锁。历史 `windows_bundle` 完整 ZIP 仍保留兼容，

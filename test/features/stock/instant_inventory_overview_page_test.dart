@@ -17,6 +17,7 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import 'instant_inventory_test_fixture.dart';
+import '../../support/field_hint_support.dart';
 
 const _scope = InstantInventoryScope(
   categoryId: 'category-1',
@@ -288,15 +289,17 @@ void main() {
     for (final target in [
       find.byKey(const Key('inventory-risk-details')),
       find.text('按单位统计'),
-      find.text('计算口径与分析边界'),
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message?.contains('覆盖率不是称重准确率') ?? false),
+      ),
     ]) {
       await tester.ensureVisible(target);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     }
-    await tester.tap(find.text('计算口径与分析边界'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('覆盖率不是称重准确率'), findsOneWidget);
+    await readFieldHint(tester, '覆盖率不是称重准确率');
     expect(tester.takeException(), isNull);
   });
 

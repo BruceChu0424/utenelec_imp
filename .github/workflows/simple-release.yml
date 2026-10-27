@@ -4,6 +4,9 @@ name: Simple Release
 # 前置：只读核验同一提交最新 Quality / CodeQL / OSV / Material forecast；默认全部成功。
 # 手动发布显式 allow_running_checks 时可等待发布后复核，失败/取消/缺失仍阻断。
 # 产物：releases/<version>/{SHA256SUMS,SHA256SUMS.sig,server/**,web/**} + LATEST.txt
+# 完整发版还须按 deploy/client/README.zh-CN.md 从同一提交构建 Windows Setup.exe + 更新 ZIP，
+# 并经授权发布至公司客户端目录；此 Ubuntu 作业不构建或导入 Windows 包，不能独立代表多端交付完成。
+# Windows 同版本双包均发布成功后由 ClientReleaseService 清理低版本二进制，保留最新完整组。
 # 发布后自动清理 releases/ 下所有旧版本（含历史 object 版本），OSS 只保留最新一版。
 # 服务器端由 deploy/simple/uten-imp-updater.sh 拉取验签安装。
 

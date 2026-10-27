@@ -5,6 +5,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import 'uten_scroll_gutter.dart';
+
 /// Collects the natural widths of the hierarchy rows actually hosted by a pane.
 /// The measurements include the rendered controls, badges, padding and text
 /// scaler, so hosts do not have to duplicate their row geometry.
@@ -30,7 +32,9 @@ class UtenHierarchyContentWidthController extends ChangeNotifier {
 
   double get minimumWidth => math.max(
     _widths.isEmpty ? 0 : _widths.lastKey()!,
-    _labelWidths.isEmpty ? 0 : _labelWidths.lastKey()! + chromeWidth + 12,
+    _labelWidths.isEmpty
+        ? 0
+        : _labelWidths.lastKey()! + chromeWidth + UtenScrollGutter.trackWidth,
   );
 
   void _replaceWidth(
@@ -206,7 +210,7 @@ class _HierarchyRowWidth extends RenderProxyBox {
       final chrome = math.max(0.0, size.width - label.size.width);
       _controller?._report(
         this,
-        chrome + label.naturalWidth + 12,
+        chrome + label.naturalWidth + UtenScrollGutter.trackWidth,
         chrome: chrome,
       );
     });

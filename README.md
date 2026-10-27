@@ -209,9 +209,11 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 现役流程([运行手册](deploy/simple/RUNBOOK.zh-CN.md)):
 
 1. 候选提交在本地与 CI 全部门禁通过, 迁移已在开发机的服务器库副本上演练。
-2. `gh workflow run simple-release.yml --ref main -f version=vX.Y.Z`: 构建、签名、上传 OSS。
-3. 服务器: `sudo uten-imp-updater check`(下载验签暂存) → 更新 `server.env` 中的版本号 → `sudo uten-imp-updater activate vX.Y.Z`(自动备份 → 迁移 → 原子切换 → 健康检查, 失败自动回滚)。
-4. 冒烟验证核心接口, 查看服务器状态页(审计留存、后台任务、5xx、慢请求)。
+2. 已支持的客户端平台随本版一并打包；当前 Windows 从同一正式 Release 输出生成 `Setup.exe` 和更新 ZIP，版本及构建号一致，使用正式公司/远程连接配置。命令和校验见[客户端发布手册](deploy/client/README.zh-CN.md)，本地测试包不能上传为正式版本。
+3. `gh workflow run simple-release.yml --ref main -f version=vX.Y.Z`: 构建、签名、上传服务端及 Web 到 OSS；该工作流不能代替 Windows 双包构建和客户端授权发布。
+4. 服务器: `sudo uten-imp-updater check`(下载验签暂存) → 更新 `server.env` 中的版本号 → `sudo uten-imp-updater activate vX.Y.Z`(自动备份 → 迁移 → 原子切换 → 健康检查, 失败自动回滚)。
+5. 持有 `client_release:publish` 权限的人员通过客户端发布入口将两份正式包上传、发布至 `UTEN_CLIENT_RELEASES_DIR`。同版本、同架构的安装包和 ZIP 均验证并发布成功后，发布服务删除更低版本的已发布二进制，只保留最新完整一组；保留审计元数据，失败时保留上一组。
+6. 冒烟验证核心接口和服务器状态页，并核对最新安装包下载、客户端更新 ZIP 与旧包清理结果，全部完成后再标记本版交付完成。
 
 多端签名与安装见[多端发布与签名](docs/99-项目治理/多端发布与签名.md)。
 

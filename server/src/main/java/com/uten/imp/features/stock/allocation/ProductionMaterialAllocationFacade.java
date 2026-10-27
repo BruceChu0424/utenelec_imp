@@ -505,7 +505,7 @@ public class ProductionMaterialAllocationFacade {
                 SELECT balance.id,balance.warehouse_id,balance.goods_id,balance.color_id,
                        balance.qty,COALESCE(reserved.qty,0),GREATEST(COALESCE(goods.min_qty,0),0)::numeric,
                        fn_warehouse_main_id(balance.warehouse_id)
-                FROM v_stock_operable_balances balance JOIN goods ON goods.id=balance.goods_id AND NOT goods.is_deleted
+                FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id AND NOT goods.is_deleted
                 LEFT JOIN LATERAL (
                     SELECT SUM(reservation.qty-reservation.consumed_qty-reservation.released_qty) AS qty
                     FROM stock_reservations reservation
@@ -515,6 +515,7 @@ public class ProductionMaterialAllocationFacade {
                       AND NOT reservation.is_deleted AND reservation.status=0
                 ) reserved ON TRUE
                 WHERE balance.warehouse_id IN (:warehouses) AND balance.goods_id IN (:goods)
+                  AND EXISTS (SELECT 1 FROM v_stock_operable_balances operable WHERE operable.id=balance.id)
                   AND (balance.goods_id::text||'|'||COALESCE(balance.color_id::text,''))
                       =ANY(string_to_array(:identities,','))
                 ORDER BY balance.goods_id,balance.color_id NULLS FIRST,balance.warehouse_id,balance.id

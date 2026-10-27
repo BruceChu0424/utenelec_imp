@@ -960,13 +960,14 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
             UUID goodsId,
             UUID colorId) {
         List<?> rows = em.createNativeQuery("""
-                        SELECT id
-                        FROM v_stock_operable_balances
-                        WHERE warehouse_id = :warehouseId
-                          AND goods_id = :goodsId
-                          AND color_id IS NOT DISTINCT
+                        SELECT balance.id
+                        FROM stock_balances balance
+                        WHERE balance.warehouse_id = :warehouseId
+                          AND balance.goods_id = :goodsId
+                          AND balance.color_id IS NOT DISTINCT
                               FROM CAST(:colorId AS uuid)
-                        FOR UPDATE
+                          AND EXISTS (SELECT 1 FROM v_stock_operable_balances operable WHERE operable.id=balance.id)
+                        FOR UPDATE OF balance
                         """, UUID.class)
                 .setParameter("warehouseId", warehouseId)
                 .setParameter("goodsId", goodsId)

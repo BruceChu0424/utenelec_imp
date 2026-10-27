@@ -1,19 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../l10n/gen/app_localizations.dart';
 import '../network/connection_recovery.dart';
-import '../router/route_names.dart';
-import '../l10n/disaster_recovery_text.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 全局连接状态横幅：占顶「下推」的通栏，与模拟身份横幅同一形态。
 ///
-/// 单行布局：消息靠左、「运行与灾备」内联在消息后、重试独占右端；重连/断开时
-/// 底部保留自动重连进度条；恢复后整条自动收起。不再以悬浮卡片叠在页面上——
-/// 悬浮卡片会盖住页面自己的搜索框/标签页，且消息+链接+按钮竖排两行、图标悬在
-/// 两行中间。
+/// 消息靠左，重试按钮紧跟文字；窄屏或大字号下文字与按钮自然换行。
+/// 重连/断开时底部保留自动重连进度条，恢复后整条自动收起。
 ///
 /// 文案刻意避开技术状态码，也不把可达性失败说成权限问题。liveRegion 让读屏
 /// 在状态变化时播报而不挪动键盘焦点。
@@ -62,44 +57,35 @@ class ConnectionRecoveryBanner extends ConsumerWidget {
         Icon(icon, size: 20, color: foreground),
         const SizedBox(width: 10),
         Flexible(
-          child: Text(
-            message,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: foreground,
-              fontWeight: FontWeight.w600,
-            ),
+          // 空间充足时紧跟文字；窄窗/长译文下换行，不把提示挤成细长列。
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                message,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (disconnected)
+                OutlinedButton(
+                  key: const ValueKey('connection-recovery-retry'),
+                  onPressed: () =>
+                      ref.read(connectionRecoveryProvider.notifier).retryNow(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: foreground,
+                    side: BorderSide(color: foreground),
+                    // 视觉 40 高，默认 padded 保留至少 48 的命中高度。
+                    minimumSize: const Size(0, 40),
+                  ),
+                  child: Text(l10n.connectionRetryNow),
+                ),
+            ],
           ),
         ),
-        // 灾备入口紧跟消息（同一句话的延伸）；重试是唯一主操作，独占右端。
-        if (disconnected) ...[
-          const SizedBox(width: 4),
-          TextButton(
-            key: const ValueKey('connection-disaster-recovery'),
-            onPressed: () => context.push(RouteName.disasterRecovery),
-            style: TextButton.styleFrom(
-              foregroundColor: foreground,
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            child: Text(recoveryText(context, '运行与灾备')),
-          ),
-        ],
-        const Spacer(),
-        if (disconnected)
-          OutlinedButton(
-            key: const ValueKey('connection-recovery-retry'),
-            onPressed: () =>
-                ref.read(connectionRecoveryProvider.notifier).retryNow(),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: foreground,
-              side: BorderSide(color: foreground),
-              // 视觉 40 高的紧凑按钮；MaterialTapTargetSize 默认 padded，
-              // 命中区仍是 48。
-              minimumSize: const Size(0, 40),
-            ),
-            child: Text(l10n.connectionRetryNow),
-          ),
       ],
     );
 

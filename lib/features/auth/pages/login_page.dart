@@ -427,12 +427,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
             child: Text(_isLoading ? l10n.loginLoggingIn : l10n.loginButton),
           ),
           const SizedBox(height: UtenSpacing.s24),
-          TextButton.icon(
-            key: const Key('login-disaster-recovery'),
-            onPressed: () => context.push(RouteName.disasterRecovery),
-            icon: const Icon(Icons.health_and_safety_outlined),
-            label: Text(recoveryText(context, '运行与灾备')),
-          ),
+          if (!supportsDesktopWindow)
+            TextButton.icon(
+              key: const Key('login-disaster-recovery'),
+              onPressed: () => context.push(RouteName.disasterRecovery),
+              icon: const Icon(Icons.health_and_safety_outlined),
+              label: Text(recoveryText(context, '运行与灾备')),
+            ),
           Text(
             branding.usesDefaultArtwork
                 ? l10n.loginFooter(DateTime.now().year)

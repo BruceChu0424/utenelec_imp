@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/desktop_window.dart';
+import '../../core/theme/uten_colors.dart';
 
 /// Keep native controls outside display zoom and keep the routed subtree in
 /// the same slot while changing modes, preserving focus and form controllers.
@@ -98,12 +99,14 @@ class _LoginWindowControls extends StatelessWidget {
       key: const Key('desktop-window-close'),
       tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
       icon: Icons.close_rounded,
+      backgroundColor: UtenColors.error,
       onPressed: controller.close,
     );
     final minimize = _WindowButton(
       key: const Key('desktop-window-minimize'),
       tooltip: minimizeLabel,
       icon: Icons.remove_rounded,
+      backgroundColor: UtenColors.warning,
       onPressed: controller.minimize,
     );
     final dragArea = Expanded(
@@ -120,11 +123,14 @@ class _LoginWindowControls extends StatelessWidget {
     );
     return Material(
       color: Colors.transparent,
-      child: Row(
-        textDirection: TextDirection.ltr,
-        children: isMac
-            ? [close, minimize, dragArea]
-            : [dragArea, minimize, close],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          textDirection: TextDirection.ltr,
+          children: isMac
+              ? [close, minimize, dragArea]
+              : [dragArea, minimize, close],
+        ),
       ),
     );
   }
@@ -135,25 +141,39 @@ class _WindowButton extends StatelessWidget {
     super.key,
     required this.tooltip,
     required this.icon,
+    required this.backgroundColor,
     required this.onPressed,
   });
 
   final String tooltip;
   final IconData icon;
+  final Color backgroundColor;
   final Future<void> Function() onPressed;
 
   @override
   Widget build(BuildContext context) => SizedBox(
-    width: 44,
+    width: 30,
     height: 36,
     child: IconButton(
       tooltip: tooltip,
-      icon: Icon(icon, size: 18),
+      // Keep separate hit areas with an 8dp visual gap between the circles.
+      icon: Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 14, color: Colors.white),
+      ),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.expand(),
       style: IconButton.styleFrom(
-        shape: const RoundedRectangleBorder(),
-        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        shape: const CircleBorder(),
+        foregroundColor: Colors.white,
+        overlayColor: Theme.of(
+          context,
+        ).colorScheme.onSurface.withValues(alpha: 0.12),
       ),
       onPressed: () => unawaited(onPressed()),
     ),

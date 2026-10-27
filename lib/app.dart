@@ -43,6 +43,7 @@ import 'features/client_update/client_update_host.dart';
 import 'features/client_update/client_update_tile.dart';
 import 'shared/widgets/settings_about_extensions.dart';
 import 'core/network/server_config.dart';
+import 'core/network/connection_recovery.dart';
 
 String _notificationSessionKey(SessionState session) =>
     '${session.status.name}|${session.user?.id ?? ''}|'
@@ -223,8 +224,15 @@ class UtenApp extends ConsumerWidget {
             final location = ref.watch(
               pageResumeProvider.select((state) => state.location),
             );
+            final connectionPhase = ref.watch(
+              connectionRecoveryProvider.select((state) => state.phase),
+            );
             return DesktopWindowHost(
-              overlayControls: location == RouteName.login,
+              // The connection banner needs its own pointer area. Otherwise
+              // the native drag strip covers retry and macOS covers the text.
+              overlayControls:
+                  location == RouteName.login &&
+                  connectionPhase == ConnectionRecoveryPhase.connected,
               // Recovery needs the regular workspace without a business session.
               mode: session.isLoggedIn || location == RouteName.disasterRecovery
                   ? DesktopWindowMode.main

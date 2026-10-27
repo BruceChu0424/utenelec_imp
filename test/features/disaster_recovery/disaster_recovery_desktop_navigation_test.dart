@@ -12,6 +12,7 @@ import 'package:uten_imp/app.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/core/maintenance/server_maintenance.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/platform/desktop_window.dart';
 import 'package:uten_imp/core/platform/platform_window_title.dart';
@@ -52,7 +53,7 @@ void main() {
   });
 
   for (final platform in [TargetPlatform.windows, TargetPlatform.macOS]) {
-    for (final size in [const Size(1000, 680), const Size(460, 720)]) {
+    for (final size in [const Size(800, 540), const Size(460, 720)]) {
       testWidgets(
         '${platform.name} ${size.width}: login recovery uses its own window and returns without losing input',
         (tester) async {
@@ -60,10 +61,19 @@ void main() {
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
           addTearDown(tester.view.resetDevicePixelRatio);
-          SharedPreferences.setMockInitialValues({});
+          SharedPreferences.setMockInitialValues({'themeMode': 'dark'});
           FlutterSecureStorage.setMockInitialValues({});
           final preferences = await SharedPreferences.getInstance();
           final controller = DesktopWindowController(enabled: true);
+          var reachable = false;
+          var probes = 0;
+          final connection = ConnectionRecoveryController(
+            probe: () async {
+              probes++;
+              return reachable;
+            },
+            probeDelays: const [Duration(hours: 1)],
+          );
           final maintenance = ServerMaintenanceController(
             read: () async => ServerMaintenanceSnapshot(
               phase: ServerMaintenancePhase.available,
@@ -92,6 +102,7 @@ void main() {
                 (ref) => throw StateError('Business API unavailable'),
               ),
               desktopWindowControllerProvider.overrideWithValue(controller),
+              connectionRecoveryProvider.overrideWith((ref) => connection),
               serverMaintenanceControllerProvider.overrideWithValue(
                 maintenance,
               ),
@@ -118,12 +129,48 @@ void main() {
           );
           await tester.ensureVisible(account);
           await tester.enterText(account, 'keep-my-account');
-          final recovery = find.byKey(const Key('login-disaster-recovery'));
-          await tester.ensureVisible(recovery);
-          await tester.tap(recovery);
+          expect(
+            find.byKey(const Key('login-disaster-recovery')),
+            findsNothing,
+          );
+
+          connection.markDisconnected();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 250));
+          final retry = find.byKey(const ValueKey('connection-recovery-retry'));
+          expect(retry, findsOneWidget);
+          await _capture(
+            tester,
+            captureKey,
+            '${platform.name}-${size.width.toInt()}-login-offline',
+          );
+
+          // Exercise the same window coordinates as a real pointer. The native
+          // drag strip previously intercepted this action above the banner.
+          reachable = true;
+          await tester.tapAt(tester.getCenter(retry));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 250));
+          expect(probes, 1);
+          expect(connection.state.phase, ConnectionRecoveryPhase.restored);
+          expect(
+            calls.where(
+              (call) => call.method == 'close' || call.method == 'beginDrag',
+            ),
+            isEmpty,
+          );
+          expect(tester.state(find.byType(LoginPage)), same(loginState));
+          expect(
+            tester.widget<TextField>(account).controller!.text,
+            'keep-my-account',
+          );
+          await tester.pump(const Duration(seconds: 3));
           await tester.pumpAndSettle();
+          expect(connection.state.phase, ConnectionRecoveryPhase.connected);
 
           final router = container.read(appRouterProvider);
+          router.push(RouteName.disasterRecovery);
+          await tester.pumpAndSettle();
           expect(topMatchedLocationOf(router), RouteName.disasterRecovery);
           // go_router's default push deliberately keeps the source address.
           expect(
@@ -183,6 +230,15 @@ void main() {
 
 Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
   if (_screenshotDirectory.isEmpty) return;
+  // Complete the first asset decode before painting a screenshot. Later tests
+  // can otherwise look complete only because their images are already cached.
+  await tester.runAsync(() async {
+    for (final element in find.byType(Image).evaluate()) {
+      final image = element.widget as Image;
+      await precacheImage(image.image, element);
+    }
+  });
+  await tester.pump();
   await tester.runAsync(() async {
     final boundary =
         key.currentContext!.findRenderObject()! as RenderRepaintBoundary;

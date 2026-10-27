@@ -127,6 +127,7 @@ void main() {
             expect(find.byType(AccountField), findsOneWidget);
             expect(find.byType(Form), findsOneWidget);
             expect(find.byType(UtenButton), findsOneWidget);
+            expect(find.text('运行与灾备'), findsNothing);
             final splitExpected =
                 size.width / zoom >= 680 && size.height / zoom >= 440;
             if (splitExpected) {

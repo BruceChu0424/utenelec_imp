@@ -9,6 +9,7 @@ import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -17,9 +18,16 @@ import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+
+late SharedPreferences _testPreferences;
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _testPreferences = await SharedPreferences.getInstance();
+  });
 
   for (final superAdmin in [true, false]) {
     testWidgets('页面客户范围入口保持独立授权 superAdmin=$superAdmin', (tester) async {
@@ -37,6 +45,8 @@ void main() {
             ),
             adminRepositoryProvider.overrideWithValue(admin),
             sharedPreferencesProvider.overrideWithValue(preferences),
+            apiClientProvider.overrideWithValue(_Api()),
+            sessionProvider.overrideWith(_Session.new),
             isSuperAdminProvider.overrideWith((ref) => ref.watch(adminState)),
             currentPermissionsProvider.overrideWithValue({
               Perm.authorizationManage,
@@ -249,6 +259,9 @@ void main() {
 
 Widget _app(_Repository repository) => ProviderScope(
   overrides: [
+    sharedPreferencesProvider.overrideWithValue(_testPreferences),
+    apiClientProvider.overrideWithValue(_Api()),
+    sessionProvider.overrideWith(_Session.new),
     pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),
     currentPermissionsProvider.overrideWithValue(const {}),
   ],
@@ -262,6 +275,16 @@ Widget _app(_Repository repository) => ProviderScope(
     ),
   ),
 );
+
+class _Api extends Fake implements ApiClient {}
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'permission-operator', code: 'HR001', name: '人事'),
+  );
+}
 
 class _Repository implements PagePermissionDelegationRepository {
   _Repository({this.withClientScope = false});

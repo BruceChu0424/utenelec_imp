@@ -1468,6 +1468,34 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeFieldMaritalStatus => '혼인 여부';
 
   @override
+  String get employeeChangePhoneTitle => '휴대전화 번호 변경';
+
+  @override
+  String employeeChangePhoneCurrent(String phone) {
+    return '현재 휴대전화 번호: $phone';
+  }
+
+  @override
+  String get employeeChangePhoneNoAccountNotice =>
+      '이 직원은 로그인 계정이 없습니다. 이번 작업은 직원 기록의 휴대전화 번호만 수정하며 계정을 개설하지 않습니다.';
+
+  @override
+  String get employeeChangePhoneAccountNotice =>
+      '로그인 계정이 있는 경우, 주 휴대전화 번호가 실제로 변경되고 로그인 이름도 수정해야 할 때만 새 번호로 동기화하고 기존 세션을 종료합니다. 같은 번호를 다시 제출하면 기존 로그인 이름을 유지합니다.';
+
+  @override
+  String get employeeChangePhoneNewLabel => '새 휴대전화 번호';
+
+  @override
+  String get employeeChangePhoneConfirm => '번호 변경';
+
+  @override
+  String get employeeChangePhoneBusy => '휴대전화 번호 변경 중';
+
+  @override
+  String get employeeChangePhoneSuccess => '휴대전화 번호가 수정되었습니다';
+
+  @override
   String get employeeFieldPhone => '휴대전화';
 
   @override

@@ -172,23 +172,29 @@ class SessionNotifier extends Notifier<SessionState> {
   @override
   SessionState build() {
     _requestOwnerDisposed = false;
-    ref.listen<String>(apiBaseUrlProvider, (previous, next) {
-      if (previous == null || previous == next) return;
-      ++_sessionMutationEpoch;
-      ++_impersonationIntentEpoch;
-      final policy = ref.read(authBackendRealmPolicyProvider);
-      if (state.isLoggedIn &&
-          !policy.canUse(
-            _visibleIssuer ?? policy.legacyIssuerFor(previous),
-            next,
-          )) {
-        state = const SessionState();
-      }
-      if (state.status == AuthStatus.unauthenticated &&
-          !_localStorageFailClosed) {
-        unawaited(_restore());
-      }
-    });
+    // Credential ownership must observe endpoint history even while no widget
+    // listens to this notifier. Ref-owned dependencies pause with the UI;
+    // this service subscription instead lives until the notifier is disposed.
+    final backendSubscription = ref.container.listen<String>(
+      apiBaseUrlProvider,
+      (previous, next) {
+        if (previous == null || previous == next) return;
+        ++_sessionMutationEpoch;
+        ++_impersonationIntentEpoch;
+        final policy = ref.read(authBackendRealmPolicyProvider);
+        if (state.isLoggedIn &&
+            !policy.canUse(
+              _visibleIssuer ?? policy.legacyIssuerFor(previous),
+              next,
+            )) {
+          state = const SessionState();
+        }
+        if (state.status == AuthStatus.unauthenticated &&
+            !_localStorageFailClosed) {
+          unawaited(_restore());
+        }
+      },
+    );
     // 模拟身份绝不跨重启恢复（安全）：必须先 await 清掉残留模拟键，再恢复会话。
     // 否则 _restore→/auth/me 抢跑读到残留模拟 token，会以目标身份冷启动（actor=null，无横幅无出口）。
     unawaited(_clearImpersonationThenRestore());
@@ -220,6 +226,7 @@ class SessionNotifier extends Notifier<SessionState> {
         });
     ref.onDispose(() {
       _requestOwnerDisposed = true;
+      backendSubscription.close();
       unawaited(expirationSubscription.cancel());
       unawaited(profileSubscription.cancel());
       unawaited(impersonationExpiredSubscription.cancel());

@@ -87,14 +87,16 @@ class AuthTokenSnapshot {
       final access = decoded['accessToken'];
       final refresh = decoded['refreshToken'];
       final version = decoded['version'];
-      if (version != null && version != 1 && version != 2 && version != 3)
+      if (version != null && version != 1 && version != 2 && version != 3) {
         return null;
+      }
       final issuer = AuthTokenIssuer.tryParse(decoded['issuer']);
       if ((decoded['issuer'] != null && issuer == null) ||
           (version == 3 &&
               (access != null || refresh != null) &&
-              issuer == null))
+              issuer == null)) {
         return null;
+      }
       if (generationValue is! num ||
           (intentValue != null && intentValue is! num) ||
           (lineageValue != null && lineageValue is! String) ||

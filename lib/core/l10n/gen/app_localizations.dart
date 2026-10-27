@@ -2764,6 +2764,54 @@ abstract class AppLocalizations {
   /// **'婚姻状况'**
   String get employeeFieldMaritalStatus;
 
+  /// No description provided for @employeeChangePhoneTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'更换手机号'**
+  String get employeeChangePhoneTitle;
+
+  /// No description provided for @employeeChangePhoneCurrent.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前手机号：{phone}'**
+  String employeeChangePhoneCurrent(String phone);
+
+  /// No description provided for @employeeChangePhoneNoAccountNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工尚未开通登录账号。本次仅更新档案中的手机号，不会开通账号。'**
+  String get employeeChangePhoneNoAccountNotice;
+
+  /// No description provided for @employeeChangePhoneAccountNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'已有登录账号时，只有主手机号实际变化且登录名需更新，才会同步为新手机号并使旧会话失效。再次提交相同手机号不会更改现有登录名。'**
+  String get employeeChangePhoneAccountNotice;
+
+  /// No description provided for @employeeChangePhoneNewLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'新手机号'**
+  String get employeeChangePhoneNewLabel;
+
+  /// No description provided for @employeeChangePhoneConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定更换'**
+  String get employeeChangePhoneConfirm;
+
+  /// No description provided for @employeeChangePhoneBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更换手机号'**
+  String get employeeChangePhoneBusy;
+
+  /// No description provided for @employeeChangePhoneSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机号已更新'**
+  String get employeeChangePhoneSuccess;
+
   /// No description provided for @employeeFieldPhone.
   ///
   /// In zh, this message translates to:

@@ -60,6 +60,10 @@ class AuthInterceptor extends Interceptor {
     // Capture the operation binding before the first await. Retries retain the
     // original object even when their interceptor callbacks run in another Zone.
     final scope = AuthenticatedRequestScope.attach(options);
+    // Redirects run inside the HTTP adapter, outside this issuer/endpoint fence.
+    // Native clients may forward Authorization to a sibling API path or a
+    // subdomain; credential exchanges must not follow a redirect either.
+    options.followRedirects = false;
     try {
       _requireConfiguredEndpoint(options);
     } on ApiException catch (error) {
@@ -540,6 +544,7 @@ class AuthInterceptor extends Interceptor {
           InterceptorsWrapper(
             onRequest: (options, handler) {
               try {
+                options.followRedirects = false;
                 _requireConfiguredEndpoint(options);
                 _requireIssuer(submitted, options.baseUrl);
                 handler.next(options);

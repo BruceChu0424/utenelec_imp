@@ -36,10 +36,13 @@ void main() {
       final notifier = container.read(sessionProvider.notifier);
       await pumpEventQueue();
 
-      await notifier.login(
-        account: 'first',
-        password: 'secret',
-        isCurrent: () => false,
+      await expectLater(
+        notifier.login(
+          account: 'first',
+          password: 'secret',
+          isCurrent: () => false,
+        ),
+        throwsA(isA<SessionMutationSuperseded>()),
       );
 
       expect(repository.loginCalls, 0);
@@ -66,10 +69,13 @@ void main() {
       await pumpEventQueue();
       var current = true;
 
-      final login = notifier.login(
-        account: 'first',
-        password: 'secret',
-        isCurrent: () => current,
+      final login = expectLater(
+        notifier.login(
+          account: 'first',
+          password: 'secret',
+          isCurrent: () => current,
+        ),
+        throwsA(isA<SessionMutationSuperseded>()),
       );
       await repository.firstLoginStarted.future;
       current = false;

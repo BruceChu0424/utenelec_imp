@@ -624,6 +624,7 @@ AuthTokenSnapshot _session(
   generation: generation ?? intent,
   intentGeneration: intent,
   sessionLineage: lineage,
+  issuer: AuthBackendRealmPolicy().issuerFor('https://erp.example.test/api'),
 );
 
 class _Storage extends SecureStorage {

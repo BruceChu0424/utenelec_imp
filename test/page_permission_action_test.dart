@@ -334,7 +334,15 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final repository = _FakePagePermissionRepository(hubTree: true);
 
-    await tester.pumpWidget(_drawerApp(repository));
+    await tester.pumpWidget(
+      _drawerApp(
+        repository,
+        scope: const PagePermissionScope(
+          surfaceKey: 'sales.hub',
+          title: '销售管理',
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
@@ -681,7 +689,12 @@ Widget _actionApp({
         ),
       ),
     ],
-    child: MaterialApp.router(routerConfig: router),
+    child: MaterialApp.router(
+      routerConfig: router,
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+    ),
   );
 }
 
@@ -689,6 +702,10 @@ Widget _drawerApp(
   PagePermissionDelegationRepository repository, {
   Set<String> permissions = const {},
   EmployeeRepository? employeeRepository,
+  PagePermissionScope scope = const PagePermissionScope(
+    surfaceKey: 'sales.order',
+    title: '销售订货',
+  ),
 }) {
   return ProviderScope(
     overrides: [
@@ -704,13 +721,11 @@ Widget _drawerApp(
       if (employeeRepository != null)
         employeeRepositoryProvider.overrideWithValue(employeeRepository),
     ],
-    child: const MaterialApp(
-      locale: Locale('zh'),
+    child: MaterialApp(
+      locale: const Locale('zh'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: PagePermissionDrawer(
-        scope: PagePermissionScope(surfaceKey: 'sales.order', title: '销售订货'),
-      ),
+      home: PagePermissionDrawer(scope: scope),
     ),
   );
 }

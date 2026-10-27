@@ -1501,6 +1501,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeFieldMaritalStatus => 'Marital status';
 
   @override
+  String get employeeChangePhoneTitle => 'Change phone number';
+
+  @override
+  String employeeChangePhoneCurrent(String phone) {
+    return 'Current phone number: $phone';
+  }
+
+  @override
+  String get employeeChangePhoneNoAccountNotice =>
+      'This employee has no login account. This updates the phone number on file without creating an account.';
+
+  @override
+  String get employeeChangePhoneAccountNotice =>
+      'For an existing account, the login name changes to the new phone number and existing sessions end only when the primary phone number actually changes and the login name needs updating. Submitting the same phone number keeps the current login name.';
+
+  @override
+  String get employeeChangePhoneNewLabel => 'New phone number';
+
+  @override
+  String get employeeChangePhoneConfirm => 'Change number';
+
+  @override
+  String get employeeChangePhoneBusy => 'Changing phone number';
+
+  @override
+  String get employeeChangePhoneSuccess => 'Phone number updated';
+
+  @override
   String get employeeFieldPhone => 'Mobile';
 
   @override

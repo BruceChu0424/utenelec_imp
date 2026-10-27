@@ -32,7 +32,7 @@ class _ManagerSession extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: 'manager', code: 'M1', name: '经理', permissions: []),
+    user: AppUser(id: 'manager', code: 'M1', name: '经理'),
   );
 }
 

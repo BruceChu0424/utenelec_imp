@@ -458,8 +458,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   ) async {
     if (!_current ||
         _provisioning ||
-        _selected?.employeeId != employee.employeeId)
+        _selected?.employeeId != employee.employeeId) {
       return;
+    }
     final request = ++_provisionRequest;
     final owner = AccountActionOwner(
       ref,
@@ -486,8 +487,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       await _refreshAccountState(employee, receipt: result);
     } finally {
       owner.dispose();
-      if (_current && request == _provisionRequest)
+      if (_current && request == _provisionRequest) {
         setState(() => _provisioning = false);
+      }
     }
   }
 
@@ -612,7 +614,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<void> _save() async {
-    if (!_current) return;
+    if (!mounted || !_current) return;
     final detail = _detail;
     if (detail == null || _pending.isEmpty || _saving) return;
     final byCode = {for (final item in detail.permissions) item.code: item};
@@ -635,7 +637,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         employeeId: detail.employeeId,
         changes: changes,
       );
-      if (!_current) return;
+      if (!mounted || !_current) return;
       if (value.employeeId != detail.employeeId ||
           value.surfaceKey != widget.scope.surfaceKey) {
         throw const FormatException(
@@ -648,7 +650,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       });
       try {
         await ref.read(sessionSnapshotProvider.notifier).refresh();
-        if (!_current) return;
+        if (!mounted || !_current) return;
         if (ref.read(sessionSnapshotProvider).hasError) {
           context.appWarning(
             AppLocalizations.of(context).permissionSavedRefreshPending,
@@ -656,16 +658,17 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           return;
         }
       } catch (_) {
-        if (_current) {
+        if (mounted && _current) {
           context.appWarning(
             AppLocalizations.of(context).permissionSavedRefreshPending,
           );
         }
         return;
       }
+      if (!mounted || !_current) return;
       context.appSuccess(AppLocalizations.of(context).permissionSaved);
     } on PagePermissionSaveCommittedError {
-      if (!_current) return;
+      if (!mounted || !_current) return;
       final message = AppLocalizations.of(context).permissionSavedDetailPending;
       setState(() {
         _detail = null;
@@ -677,9 +680,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       } catch (_) {
         // The assignment is already committed; session recovery retries separately.
       }
-      if (_current) context.appWarning(message);
+      if (mounted && _current) context.appWarning(message);
     } on ApiException catch (error) {
-      if (!_current) return;
+      if (!mounted || !_current) return;
       if (error.code == 'CONFLICT') {
         context.appError('权限已被其他人更新，正在刷新当前员工');
         await _loadDetail();

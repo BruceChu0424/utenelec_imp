@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/employee/widgets/employee_contact_edit_dialog.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 
 class _Row extends EditableGridRow {
   _Row(this.name);
@@ -31,6 +32,9 @@ UtenEditableGrid<_Row> _grid(
 );
 
 Widget _app(Widget home, ValueNotifier<double> keyboard) => MaterialApp(
+  locale: const Locale('zh'),
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
   builder: (context, child) => ValueListenableBuilder<double>(
     valueListenable: keyboard,
     builder: (_, bottom, _) => MediaQuery(

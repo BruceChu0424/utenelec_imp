@@ -120,7 +120,7 @@ class _DesktopBrandPanel extends StatelessWidget {
             builder: (context, constraints) {
               if (!branding.usesDefaultArtwork) {
                 return const Center(
-                  child: UtenWordmarkLogo(width: 240, height: 72),
+                  child: UtenWordmarkLogo(height: 72),
                 );
               }
               const logoHeight = 210 / (405 / 74);

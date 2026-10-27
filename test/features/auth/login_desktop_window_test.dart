@@ -9,6 +9,7 @@ import 'package:uten_imp/components/brand/uten_wordmark_logo.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/login_server_preparation.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/platform/desktop_window.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
@@ -36,6 +37,7 @@ class _ChallengeSession extends SessionNotifier {
     required String account,
     required String password,
     String? otpCode,
+    bool Function()? isCurrent,
   }) async {
     attempts.add((account: account, password: password, otpCode: otpCode));
     throw ApiException(
@@ -94,6 +96,7 @@ void main() {
                 overrides: [
                   sharedPreferencesProvider.overrideWithValue(preferences),
                   sessionProvider.overrideWith(() => session),
+                  loginServerPreparationProvider.overrideWithValue(() async {}),
                   desktopWindowControllerProvider.overrideWithValue(controller),
                   apiBaseUrlProvider.overrideWithValue(
                     'https://desktop-test.example/api',

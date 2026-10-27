@@ -21,6 +21,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/login_server_preparation.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/platform/desktop_window.dart';
 import '../../../shared/platform_branding/platform_branding_provider.dart';
@@ -58,6 +59,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
   bool _requiresOtp = false;
   String _lastAccount = '';
   int _loginContextEpoch = 0;
+  int _accountInputEpoch = 0;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -93,6 +95,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final account = _accountController.text.trim();
     if (account == _lastAccount) return;
     _lastAccount = account;
+    _accountInputEpoch++;
     _resetOtpChallenge();
   }
 
@@ -112,30 +115,57 @@ class _LoginPageState extends ConsumerState<LoginPage>
       return;
     }
 
-    final loginContextEpoch = _loginContextEpoch;
+    var loginContextEpoch = _loginContextEpoch;
+    final accountInputEpoch = _accountInputEpoch;
+    final account = _accountController.text.trim();
+    final session = ref.read(sessionProvider.notifier);
+    final intentBeforePreparation = session.requestIntentEpoch;
+    bool isCurrentLogin() =>
+        mounted &&
+        accountInputEpoch == _accountInputEpoch &&
+        loginContextEpoch == _loginContextEpoch &&
+        identical(ref.read(sessionProvider.notifier), session);
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
 
     try {
-      final account = _accountController.text.trim();
-      await ref
-          .read(sessionProvider.notifier)
-          .login(
-            account: account,
-            password: _passwordController.text,
-            otpCode: _requiresOtp ? _otpController.text : null,
-          );
+      // Choose a currently reachable trusted endpoint before capturing the
+      // challenge context or reading OTP. This may itself switch local/cloud.
+      await ref.read(loginServerPreparationProvider)();
+      if (!mounted) return;
+      // Flush the derived endpoint and its challenge-reset listener before
+      // capturing the context for the one credential request below.
+      ref.read(apiBaseUrlProvider);
+      if (!mounted ||
+          accountInputEpoch != _accountInputEpoch ||
+          !identical(ref.read(sessionProvider.notifier), session) ||
+          session.requestIntentEpoch != intentBeforePreparation) {
+        return;
+      }
+      loginContextEpoch = _loginContextEpoch;
+      await session.login(
+        account: account,
+        password: _passwordController.text,
+        otpCode: _requiresOtp ? _otpController.text : null,
+        isCurrent: isCurrentLogin,
+      );
+      if (!isCurrentLogin()) return;
+      final result = ref.read(sessionProvider);
+      if (!result.isLoggedIn && !result.mustChangePassword) return;
       // 登录成功：记住账号（只记账号不记密码）
       await ref.read(accountHistoryProvider).add(account);
 
-      if (mounted) {
+      if (mounted && isCurrentLogin()) {
         // 恢复经校验的员工目标；首登状态会先由路由守卫转入强制改密。
         context.go(widget.returnTo ?? RouteName.dashboard);
       }
+    } on LoginServerPreparationCancelled {
+      // A newer connection choice owns the UI; no credentials were sent.
+      return;
     } on ApiException catch (e) {
-      if (mounted && loginContextEpoch == _loginContextEpoch) {
+      if (isCurrentLogin()) {
         setState(() {
           _requiresOtp = e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID';
           _errorMessage = e.code == 'MFA_REQUIRED'
@@ -145,7 +175,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
         });
       }
     } catch (e) {
-      if (mounted && loginContextEpoch == _loginContextEpoch) {
+      if (isCurrentLogin()) {
         setState(() {
           _requiresOtp = false;
           _errorMessage = _loginFailureText(context, null);

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/login_server_preparation.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/auth/pages/login_page.dart';
@@ -34,6 +35,7 @@ class _RejectedSession extends SessionNotifier {
     required String account,
     required String password,
     String? otpCode,
+    bool Function()? isCurrent,
   }) async {
     attempts.add((account: account, password: password, otpCode: otpCode));
     throw failure;
@@ -160,6 +162,7 @@ Future<void> _open(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         sessionProvider.overrideWith(() => session),
+        loginServerPreparationProvider.overrideWithValue(() async {}),
         apiBaseUrlProvider.overrideWithValue('https://login-test.example/api'),
         platformBrandingSnapshotProvider.overrideWithValue(
           PlatformBranding.defaults,

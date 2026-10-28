@@ -504,11 +504,7 @@ public class MasterRecordHistoryService {
     String prefix =
         categoryId == null
             ? ""
-            : "WITH RECURSIVE selected_categories(id) AS (SELECT id FROM "
-                + domain(entity).category()
-                + " WHERE id=:category UNION SELECT c.id FROM "
-                + domain(entity).category()
-                + " c JOIN selected_categories p ON c.parent_id=p.id) ";
+            : categoryHistoryPrefix(domain(entity));
     StringBuilder where =
         new StringBuilder(
             " WHERE h.entity_type IN (:entities) AND h.id<:cursor AND NOT EXISTS(SELECT 1 FROM"
@@ -576,9 +572,13 @@ public class MasterRecordHistoryService {
         prefix
             + "SELECT "
             + columns(false)
-            + ",r.code,r.name,r.category_id,r.category_name FROM master_record_versions h JOIN"
+            + ",r.code,r.name,r.category_id,r.category_name FROM "
+            + (categoryId == null
+                ? "master_record_versions h"
+                : "category_history_candidates candidate JOIN master_record_versions h ON h.id=candidate.id")
+            + " JOIN"
             + " LATERAL ("
-            + rootLookupSql()
+            + rootLookupSql(allowed)
             + ") r ON true"
             + where
             + " ORDER BY h.id DESC LIMIT :limit";
@@ -682,10 +682,29 @@ public class MasterRecordHistoryService {
             .toList());
   }
 
-  private static String rootLookupSql() {
+  /** Collect every matching historical identity before ACL filtering and LIMIT.
+   * UNION preserves moved-out objects without repeating rows matching both eras.
+   */
+  private static String categoryHistoryPrefix(Domain domain) {
+    return "WITH RECURSIVE selected_categories(id) AS (SELECT id FROM "
+        + domain.category()
+        + " WHERE id=:category UNION SELECT c.id FROM "
+        + domain.category()
+        + " c JOIN selected_categories p ON c.parent_id=p.id), "
+        + "category_history_candidates(id) AS MATERIALIZED ("
+        + "SELECT v.id FROM master_record_versions v WHERE v.entity_type IN(:entities) AND v.id<:cursor "
+        + "AND v.record_id=ANY(ARRAY(SELECT id FROM selected_categories)) UNION "
+        + "SELECT v.id FROM master_record_versions v WHERE v.entity_type IN(:entities) AND v.id<:cursor "
+        + "AND v.category_id=ANY(ARRAY(SELECT id FROM selected_categories)) UNION "
+        + "SELECT v.id FROM master_record_versions v WHERE v.entity_type IN(:entities) AND v.id<:cursor "
+        + "AND NULLIF(v.before_row->>'category_id','')::uuid=ANY(ARRAY(SELECT id FROM selected_categories))) ";
+  }
+
+  private static String rootLookupSql(Collection<String> allowed) {
     List<String> roots = new ArrayList<>();
     for (var entry : DOMAINS.entrySet()) {
       String type = entry.getKey();
+      if (!allowed.contains(type)) continue;
       Domain d = entry.getValue();
       boolean owner = type.equals("goods") || type.equals("clients");
       roots.add(

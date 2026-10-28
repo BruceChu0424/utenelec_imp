@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -960,11 +961,19 @@ class _WarehouseQualityResultsPageState
           trailing: Semantics(
             liveRegion: true,
             label: '共 ${result.total} 项品质检查结果任务',
-            child: Text(
-              '共 ${result.total} 项 · 单击勾选，双击详情',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '共 ${result.total} 项',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const UtenFieldHintIcon(info: '单击勾选，双击详情。', dense: true),
+              ],
             ),
           ),
         ),

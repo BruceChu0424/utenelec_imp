@@ -17,6 +17,9 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/features/visitor/providers/visitor_session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/page_permission_scope.dart';
+import 'package:uten_imp/shared/auth/document_permission_set.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_record_history_labels.dart';
 
 /// 桩会话：默认未登录态，不触 secure_storage（测试环境无插件实现）。
 class _StubSessionNotifier extends SessionNotifier {
@@ -250,7 +253,144 @@ String _samplePath(String pattern) => pattern
     .map((segment) => segment.startsWith(':') ? 'sample' : segment)
     .join('/');
 
+// 这些页面管理本人数据或使用独立系统管理边界，不提供负责人页面转授。
+const _pagePermissionExemptPatterns = <String, String>{
+  '/notice': '全员通知列表，发布入口单独配置权限',
+  '/notice/:id': '本人可见通知详情',
+  '/payroll/slip': '本人工资条',
+  '/payroll/slip/:id': '本人工资条详情',
+  '/expense': '本人报销申请',
+  '/expense/new': '本人报销申请',
+  '/expense/:id': '本人报销申请',
+  '/expense/:id/edit': '本人报销申请',
+  '/my-visitors': '本人访客接待',
+  '/settings/device-receipts': '本机审计回执',
+  '/production/chain-health': '全局初筛尚无对象范围，不开放负责人转授',
+};
+
+Iterable<String> _pagePermissionSamples(String pattern) {
+  List<String>? variants;
+  String? parameter;
+  if (pattern.contains('/warehouse/history/:type')) {
+    parameter = ':type';
+    variants = const [
+      'purchase-receipts',
+      'subcontract-receipts',
+      'subcontract-material-issues',
+      'subcontract-returns',
+      'subcontract-material-returns',
+      'subcontract-wastes',
+    ];
+  } else if (pattern.contains('/warehouse/:code')) {
+    parameter = ':code';
+    variants = DocumentPermissionCatalog.stockBySegment.keys
+        .where(
+          (code) =>
+              code != 'WASTE' ||
+              (!pattern.endsWith('/new') && !pattern.endsWith('/edit')),
+        )
+        .toList();
+  } else if (pattern.contains('/purchase/:doc')) {
+    parameter = ':doc';
+    variants = DocumentPermissionCatalog.purchaseBySegment.keys.toList();
+  } else if (pattern.contains('/sales/:seg')) {
+    parameter = ':seg';
+    variants = DocumentPermissionCatalog.salesBySegment.keys.toList();
+  } else if (pattern.contains('/subcontract/:seg')) {
+    parameter = ':seg';
+    variants = DocumentPermissionCatalog.subcontractBySegment.keys.toList();
+  } else if (pattern.contains('/finance/:seg')) {
+    parameter = ':seg';
+    variants = DocumentPermissionCatalog.financeBySegment.keys.toList();
+  } else if (pattern.contains('/basicinfo/history/:entityType')) {
+    parameter = ':entityType';
+    variants = masterHistoryViewPermissions.keys.toList();
+  } else if (pattern.endsWith('/report/:kind')) {
+    parameter = ':kind';
+    variants = const ['detail', 'summary'];
+  }
+  return variants == null
+      ? [_samplePath(pattern)]
+      : variants.map(
+          (value) => _samplePath(pattern.replaceFirst(parameter!, value)),
+        );
+}
+
+void _collectPagePatterns(RouteBase route, String parent, List<String> paths) {
+  switch (route) {
+    case GoRoute(:final path, :final routes):
+      final full = path.startsWith('/')
+          ? path
+          : (path.isEmpty ? parent : '$parent/$path');
+      paths.add(full);
+      for (final child in routes) {
+        _collectPagePatterns(child, full, paths);
+      }
+    case ShellRoute(:final routes):
+      for (final child in routes) {
+        _collectPagePatterns(child, parent, paths);
+      }
+    case StatefulShellRoute(:final branches):
+      for (final branch in branches) {
+        for (final child in branch.routes) {
+          _collectPagePatterns(child, parent, paths);
+        }
+      }
+  }
+}
+
 void main() {
+  test('every actual business page has a registered permission surface', () {
+    final container = ProviderContainer(
+      overrides: [
+        sessionProvider.overrideWith(() => _StubSessionNotifier()),
+        visitorSessionProvider.overrideWith(
+          () => _StubVisitorSessionNotifier(),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final router = container.read(appRouterProvider);
+    final patterns = <String>[];
+    for (final route in router.configuration.routes) {
+      _collectPagePatterns(route, '', patterns);
+    }
+    expect(patterns, isNotEmpty);
+    final missing = <String>[];
+    final exclusions = <String>{};
+    var covered = 0;
+    for (final pattern in patterns) {
+      if (_isDocumentedExempt(pattern) ||
+          pattern.startsWith('/admin/') ||
+          _pagePermissionExemptPatterns.containsKey(pattern)) {
+        exclusions.add(pattern);
+        for (final sample in _pagePermissionSamples(pattern)) {
+          expect(pagePermissionScopeFor(sample), isNull, reason: pattern);
+        }
+        continue;
+      }
+      for (final sample in _pagePermissionSamples(pattern)) {
+        final scope = pagePermissionScopeFor(sample);
+        if (scope == null) {
+          missing.add('$pattern -> $sample');
+          continue;
+        }
+        final canonical = pagePermissionScopeBySurfaceKey(scope.surfaceKey);
+        if (canonical == null) {
+          missing.add('$pattern -> ${scope.surfaceKey} 未登记反向入口');
+          continue;
+        }
+        covered++;
+      }
+    }
+    expect(exclusions, containsAll(_pagePermissionExemptPatterns.keys));
+    expect(covered, greaterThan(250));
+    debugPrint(
+      '页面权限目录覆盖：${patterns.length} 条实际路由，'
+      '$covered 个业务路径样例，${exclusions.length} 条明确豁免。',
+    );
+    expect(missing, isEmpty, reason: '新增业务页须沿用所属页面权限面，避免右上角入口静默消失');
+  });
   testWidgets(
     'remote access routes distinguish employee, visitor and super-admin sessions',
     (tester) async {

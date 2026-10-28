@@ -15,10 +15,23 @@ class HrTaskRepository {
   Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
     required String type,
     int page = 1,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final json = await _api.get(
       '/org/hr-tasks/celebrations/history',
-      query: {'type': type, 'page': page, 'size': 20},
+      query: {
+        'type': type,
+        'page': page,
+        'size': 20,
+        for (final entry in columnSearch.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
+        'sort': ?sort,
+        if (sort != null) 'order': ascending ? 'asc' : 'desc',
+      },
     );
     return PagedResult.fromJsonResponsive(
       json,

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../components/layout/uten_pagination.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -15,6 +16,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_store.dart' show describeSubmitError;
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_task_center_record.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -69,6 +71,24 @@ class _WarehouseTaskPhysicalDetailDialogState
   String? _pendingReason;
   String? _pendingKey;
   bool _uncertain = false;
+  TableColumnQuery _columns = const TableColumnQuery();
+  final Set<String> _knownFields = {};
+  static const _numericFields = {
+    'quantity',
+    'orderedQty',
+    'acceptedQty',
+    'approvedRemainingQty',
+    'requestedQuantity',
+    'issuedQuantity',
+    'countedQty',
+    'giftQty',
+    'unacceptedQty',
+    'passedBaseQty',
+    'failedBaseQty',
+    'stockedBaseQty',
+    'weightKg',
+    'weight',
+  };
 
   WarehouseTaskCenterRecord? _registrationRow(Map<String, dynamic>? detail) {
     final original = widget.row;
@@ -218,6 +238,7 @@ class _WarehouseTaskPhysicalDetailDialogState
       if (!mounted) return;
       setState(() {
         _detail = null;
+        _knownFields.clear();
         _invalidated = true;
         _loading = false;
         _error = '账号、权限或仓库范围已变化，请关闭后重新打开';
@@ -276,6 +297,11 @@ class _WarehouseTaskPhysicalDetailDialogState
               ...widget.warehouseScope.queryParameters,
               'linePage': page,
               'lineSize': 100,
+              ...tableColumnParameters(
+                _columns.searches,
+                _columns.sort,
+                _columns.ascending,
+              ),
             },
           );
       if (!mounted || _invalidated || revision != _revision) return;
@@ -284,7 +310,7 @@ class _WarehouseTaskPhysicalDetailDialogState
         final lines = detail['lines'] ?? detail['items'];
         if (row == null ||
             lines is! List ||
-            lines.isEmpty ||
+            (lines.isEmpty && _columns.searches.isEmpty) ||
             lines.any(
               (line) => line is! Map || line['registrationId'] != row.id,
             )) {
@@ -293,6 +319,16 @@ class _WarehouseTaskPhysicalDetailDialogState
       }
       setState(() {
         _detail = detail;
+        final lines = detail['lines'] ?? detail['items'];
+        if (lines is List) {
+          for (final line in lines.whereType<Map<String, dynamic>>()) {
+            _knownFields.addAll(
+              line.entries
+                  .where((entry) => entry.value != null)
+                  .map((entry) => entry.key),
+            );
+          }
+        }
         _loading = false;
       });
     } catch (error) {
@@ -321,39 +357,36 @@ class _WarehouseTaskPhysicalDetailDialogState
     final row = document is Map<String, dynamic>
         ? WarehouseTaskCenterRecord.fromJson(document)
         : widget.row;
-    final fields =
-        <(String, String)>[
-              ('goodsName', '货品名称'),
-              ('goodsCode', '货品编号'),
-              ('colorName', '颜色'),
-              ('unitName', '单位'),
-              ('quantity', '数量'),
-              ('orderedQty', '订货数量'),
-              (
-                'acceptedQty',
-                row.recordType == 'ARRIVAL_EXCEPTION' ? '批准接收数量' : '已接收数量',
-              ),
-              ('approvedRemainingQty', '批准量内可收'),
-              ('requestedQuantity', '申请数量'),
-              ('issuedQuantity', '已发数量'),
-              ('countedQty', '点收数量'),
-              ('giftQty', '赠品数量'),
-              ('unacceptedQty', '待退回数量'),
-              ('passedBaseQty', '合格基础数量'),
-              ('failedBaseQty', '不合格基础数量'),
-              ('stockedBaseQty', '已入库基础数量'),
-              ('baseUnitName', '基础单位'),
-              ('weightKg', '重量'),
-              ('weight', '重量'),
-              ('stockPlace', '库位'),
-              ('place', '库位'),
-              ('lotId', '产出批次'),
-              ('sourceReportItemId', '来源报工明细'),
-              ('stockDocumentNos', '进仓单号'),
-              ('decisionReason', '财务处理说明'),
-            ]
-            .where((field) => lines.any((line) => line[field.$1] != null))
-            .toList(growable: false);
+    final fields = <(String, String)>[
+      ('goodsName', '货品名称'),
+      ('goodsCode', '货品编号'),
+      ('colorName', '颜色'),
+      ('unitName', '单位'),
+      ('quantity', '数量'),
+      ('orderedQty', '订货数量'),
+      (
+        'acceptedQty',
+        row.recordType == 'ARRIVAL_EXCEPTION' ? '批准接收数量' : '已接收数量',
+      ),
+      ('approvedRemainingQty', '批准量内可收'),
+      ('requestedQuantity', '申请数量'),
+      ('issuedQuantity', '已发数量'),
+      ('countedQty', '点收数量'),
+      ('giftQty', '赠品数量'),
+      ('unacceptedQty', '待退回数量'),
+      ('passedBaseQty', '合格基础数量'),
+      ('failedBaseQty', '不合格基础数量'),
+      ('stockedBaseQty', '已入库基础数量'),
+      ('baseUnitName', '基础单位'),
+      ('weightKg', '重量'),
+      ('weight', '重量'),
+      ('stockPlace', '库位'),
+      ('place', '库位'),
+      ('lotId', '产出批次'),
+      ('sourceReportItemId', '来源报工明细'),
+      ('stockDocumentNos', '进仓单号'),
+      ('decisionReason', '财务处理说明'),
+    ].where((field) => _knownFields.contains(field.$1)).toList(growable: false);
     return PopScope<bool>(
       canPop: !_reversing,
       child: UtenAlertDialog(
@@ -412,8 +445,29 @@ class _WarehouseTaskPhysicalDetailDialogState
                                       'stockDocumentNos' => 220,
                                       _ => 140,
                                     },
+                                    type: _numericFields.contains(field.$1)
+                                        ? 'number'
+                                        : 'text',
+                                    sortable: true,
+                                    columnSearchEnabled: true,
+                                    info:
+                                        field.$1 == 'weight' ||
+                                            field.$1 == 'weightKg'
+                                        ? '按原始千克（kg）检索重量。'
+                                        : null,
+                                    exactValueOf:
+                                        _numericFields.contains(field.$1)
+                                        ? (line) =>
+                                              (line['${field.$1}Exact'] ??
+                                                      line[field.$1])
+                                                  ?.toString()
+                                        : null,
                                     value: (line) {
-                                      final value = line[field.$1];
+                                      final value =
+                                          _numericFields.contains(field.$1)
+                                          ? line['${field.$1}Exact'] ??
+                                                line[field.$1]
+                                          : line[field.$1];
                                       return value is List
                                           ? value
                                                 .map((item) => item.toString())
@@ -423,31 +477,48 @@ class _WarehouseTaskPhysicalDetailDialogState
                                   ),
                               ],
                               items: lines,
+                              serverColumnSearchKeys: fields
+                                  .map((field) => field.$1)
+                                  .toSet(),
+                              currentPage: page,
+                              totalPages: pages,
+                              showPaginationControls: false,
                               facets: const {},
                               nullCounts: const {},
-                              filters: const {},
-                              onFilterChanged: (_, _) {},
+                              filters: _columns.searches,
+                              onFilterChanged: (key, value) {
+                                if (_reversing || _invalidated) return;
+                                setState(
+                                  () => _columns = _columns.search(key, value),
+                                );
+                                _load(1);
+                              },
+                              sortColumn: _columns.sort,
+                              sortAscending: _columns.ascending,
+                              onSortChange: (key, ascending) {
+                                if (_reversing || _invalidated) return;
+                                setState(
+                                  () => _columns = _columns.sorted(
+                                    key,
+                                    ascending,
+                                  ),
+                                );
+                                _load(1);
+                              },
+                              headerFilterScopeDescription:
+                                  '检索覆盖本条记录当前授权的全部实物明细；不会改变整批撤回或其它业务动作的范围。',
                               emptyMessage: '当前记录没有物料明细',
                             ),
                     ),
                     if (pages > 1)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: page > 1 && !_reversing
-                                ? () => _load(page - 1)
-                                : null,
-                            child: const Text('上一页'),
-                          ),
-                          Text('$page / $pages'),
-                          TextButton(
-                            onPressed: page < pages && !_reversing
-                                ? () => _load(page + 1)
-                                : null,
-                            child: const Text('下一页'),
-                          ),
-                        ],
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: UtenPagination(
+                          currentPage: page,
+                          totalPages: pages,
+                          busy: _loading || _reversing || _invalidated,
+                          onPageChanged: _load,
+                        ),
                       ),
                   ],
                 ),

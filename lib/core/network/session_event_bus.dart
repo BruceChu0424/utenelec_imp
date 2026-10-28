@@ -18,12 +18,28 @@ class ImpersonationExpiryNotice {
   final String baseUrl;
 }
 
+/// 会话结束的原因说明。目前只有一类：单设备顶号（账号在新设备登录，本设备被下线）。
+class SessionExpiryNotice {
+  const SessionExpiryNotice.replaced(this.message)
+    : replacedByOtherDevice = true;
+
+  const SessionExpiryNotice.other()
+    : replacedByOtherDevice = false,
+      message = null;
+
+  /// 是否因「账号在其他设备登录」被顶下线。
+  final bool replacedByOtherDevice;
+
+  /// 服务端给出的完整说明（含顶号来源设备名），UI 可直接展示。
+  final String? message;
+}
+
 class SessionEventBus {
   SessionEventBus._();
   static final SessionEventBus instance = SessionEventBus._();
 
-  final _controller = StreamController<void>.broadcast();
-  Stream<void> get onSessionExpired => _controller.stream;
+  final _controller = StreamController<SessionExpiryNotice?>.broadcast();
+  Stream<SessionExpiryNotice?> get onSessionExpired => _controller.stream;
 
   // 模拟身份（admin 切换人）到期 / 失效事件：模拟 token 401 时由 AuthInterceptor 触发，
   // sessionProvider 监听后退出模拟、恢复 admin（不登出 admin 主会话）。
@@ -39,8 +55,8 @@ class SessionEventBus {
   Stream<Map<String, dynamic>> get onProfileRefreshed =>
       _profileController.stream;
 
-  void expire() {
-    if (!_controller.isClosed) _controller.add(null);
+  void expire([SessionExpiryNotice? notice]) {
+    if (!_controller.isClosed) _controller.add(notice);
   }
 
   /// 模拟身份到期（模拟 token 401）：退出模拟，恢复 admin。不影响 admin 主会话。

@@ -21,6 +21,7 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_list_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -164,12 +165,56 @@ void main() {
       listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
       expect(listQuery['financeApproval'], 'IN_PROGRESS');
       expect(listQuery.containsKey('status'), isFalse);
+      MasterDataTableView<PurchaseDocListItem> table() =>
+          tester.widget(find.byType(MasterDataTableView<PurchaseDocListItem>));
+      expect(
+        table().facets['status']!.map((bucket) => bucket.value),
+        containsAll([
+          'PENDING',
+          'REJECTED',
+          'REVIEW_PENDING',
+          'REVIEW_REJECTED',
+          'EXECUTING',
+        ]),
+      );
+      table().onFilterChanged('status', 'REVIEW_PENDING');
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['status'], 1);
+      expect(listQuery['financeApproval'], 'PENDING');
+      expect(listQuery['page'], 1);
+      expect(table().filters['status'], 'REVIEW_PENDING');
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['financeApproval'], 'IN_PROGRESS');
+      expect(listQuery.containsKey('status'), isFalse);
       api.listQueries.clear();
       await tester.tap(segment('历史记录'));
       await tester.pumpAndSettle();
       listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
       expect(listQuery.containsKey('financeApproval'), isFalse);
       expect(listQuery.containsKey('status'), isFalse);
+      final dateFrom = listQuery['dateFrom'], dateTo = listQuery['dateTo'];
+      table().onFilterChanged('status', 'REVERSED');
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['status'], -1);
+      expect(listQuery['originScope'], 'CURRENT');
+      expect(listQuery['dateFrom'], dateFrom);
+      expect(listQuery['dateTo'], dateTo);
+      table().onFilterChanged('status', 'LEGACY');
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['originScope'], 'LEGACY');
+      expect(listQuery.containsKey('status'), isFalse);
+      expect(listQuery.containsKey('financeApproval'), isFalse);
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['originScope'], 'ALL');
+      expect(listQuery['dateFrom'], dateFrom);
+      expect(listQuery['dateTo'], dateTo);
       expect(tester.takeException(), isNull);
     },
   );

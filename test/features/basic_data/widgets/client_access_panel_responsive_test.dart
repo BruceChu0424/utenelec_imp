@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/client_access_models.dart';
 import 'package:uten_imp/features/basic_data/widgets/client_access_panel.dart';
 
@@ -42,7 +43,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('负责人和可见人'), findsOneWidget);
+    expect(find.textContaining('原负责人仍在职'), findsNothing);
+    final scopeHint = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('原负责人仍在职') ?? false),
+    );
+    await tester.tap(scopeHint);
+    await tester.pumpAndSettle();
     expect(find.textContaining('原负责人仍在职'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('client-access-save')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

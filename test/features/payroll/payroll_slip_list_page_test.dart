@@ -15,6 +15,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakePayrollRepository extends Fake implements PayrollRepository {
   final List<Map<String, dynamic>> slipCalls = [];
+  final headerCalls = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<PayrollSlip>> listSlips({
@@ -24,8 +25,18 @@ class _FakePayrollRepository extends Fake implements PayrollRepository {
     int? year,
     int? month,
     String? departmentId,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   }) async {
     slipCalls.add({'status': status, 'page': page});
+    headerCalls.add({
+      'status': status,
+      'page': page,
+      'search': Map<String, String?>.of(columnSearch),
+      'sort': sort,
+      'order': order,
+    });
     final statuses = switch (status) {
       'UNVIEWED' => [PayrollSlipStatus.published],
       'VIEWED' => [PayrollSlipStatus.viewed, PayrollSlipStatus.downloaded],
@@ -103,6 +114,51 @@ Future<_FakePayrollRepository> _pumpPage(
 }
 
 void main() {
+  testWidgets(
+    'personal salary headers query all pages with exact amounts and preserve the status category',
+    (tester) async {
+      final repository = await _pumpPage(tester);
+      _table(tester).onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(_table(tester).currentPage, 2);
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-netIncome')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=8000',
+      );
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(_table(tester).currentPage, 1);
+      expect(
+        repository.headerCalls.last['search'],
+        containsPair('search.netIncome', '>=8000'),
+      );
+      _table(tester).onFilterChanged('search.period', '2026-08');
+      await tester.pumpAndSettle();
+      _table(tester).onSortChange!('period', false);
+      await tester.pumpAndSettle();
+      expect(
+        repository.headerCalls.last['search'],
+        containsPair('search.period', '2026-08'),
+      );
+      expect(repository.headerCalls.last['sort'], 'period');
+      expect(repository.headerCalls.last['order'], 'desc');
+      _categories(tester).onSelectionChanged!(PayrollFilter.viewed);
+      await tester.pumpAndSettle();
+      expect(repository.headerCalls.last['status'], 'VIEWED');
+      expect(
+        repository.headerCalls.last['search'],
+        containsPair('search.netIncome', '>=8000'),
+      );
+      expect(_table(tester).currentPage, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('read category includes downloaded and resets paging on change', (
     tester,
   ) async {

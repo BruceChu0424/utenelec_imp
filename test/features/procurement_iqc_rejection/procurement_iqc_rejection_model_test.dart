@@ -3,6 +3,23 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
 
 void main() {
+  test(
+    'the authoritative reason label is shared with the server query and legacy responses still work',
+    () {
+      final current = ProcurementIqcRejectionCase.fromJson({
+        ..._caseJson,
+        'displayReason': '服务器统一的下一步',
+        'financeExceptionMessage': '旧字段',
+      });
+      final legacy = ProcurementIqcRejectionCase.fromJson({
+        ..._caseJson,
+        'financeExceptionMessage': '  历史异常  ',
+      });
+      expect(current.reasonLabel, '服务器统一的下一步');
+      expect(legacy.reasonLabel, '历史异常');
+    },
+  );
+
   test('read-only IQC totals do not imply an actionable workload', () {
     final counts = ProcurementIqcRejectionCounts.fromJson({
       'total': 6,

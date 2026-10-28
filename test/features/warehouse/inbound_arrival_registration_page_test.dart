@@ -52,6 +52,31 @@ final _liveArrivalPermissions = StateProvider<Set<String>>(
 final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  testWidgets('无栈到货登记取消返回预计到货任务中心', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _BatchApi();
+    final router = _router();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('预计到货任务中心'), findsOneWidget);
+    expect(api.arrivalPostBodies, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final itemIds in [
     <String>[],
     ['stale-physical-row'],

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../feedback/uten_motion.dart';
+import '../inputs/uten_field_hint_icon.dart';
+import '../layout/uten_collapsible_content.dart';
 
 /// A read-only document summary. Each page chooses its own essential facts;
 /// warnings and controls in [notices] never disappear when details are folded.
@@ -45,133 +48,145 @@ class _UtenDetailSummaryCardState extends State<UtenDetailSummaryCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final expandable = widget.details.isNotEmpty;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (widget.heading != null || widget.status != null || expandable)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final controls = Wrap(
-                    spacing: UtenSpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    alignment: WrapAlignment.end,
-                    children: [
-                      if (widget.status != null) widget.status!,
-                      if (expandable)
-                        Semantics(
-                          expanded: _isExpanded,
-                          child: TextButton(
-                            key: const ValueKey('detail-summary-toggle'),
-                            onPressed: _toggle,
-                            style: TextButton.styleFrom(
-                              textStyle: theme.textTheme.labelLarge,
-                              minimumSize: Size.square(
-                                UtenControlMetrics.minimumHitExtent(
-                                  context,
-                                  desktop: UtenControlMetrics.compactHeight,
-                                ),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: UtenSpacing.s8,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    _isExpanded ? '收起信息' : '查看更多',
-                                    softWrap: true,
+    return UtenMotion(
+      duration: UtenAnim.normal,
+      builder: (context, duration) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (widget.heading != null || widget.status != null || expandable)
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final controls = Wrap(
+                      spacing: UtenSpacing.s8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        if (widget.status != null) widget.status!,
+                        if (expandable)
+                          Semantics(
+                            expanded: _isExpanded,
+                            child: TextButton(
+                              key: const ValueKey('detail-summary-toggle'),
+                              onPressed: _toggle,
+                              style: TextButton.styleFrom(
+                                textStyle: theme.textTheme.labelLarge,
+                                minimumSize: Size.square(
+                                  UtenControlMetrics.minimumHitExtent(
+                                    context,
+                                    desktop: UtenControlMetrics.compactHeight,
                                   ),
                                 ),
-                                const SizedBox(width: UtenSpacing.s4),
-                                AnimatedRotation(
-                                  turns: _isExpanded ? .5 : 0,
-                                  duration:
-                                      MediaQuery.disableAnimationsOf(context)
-                                      ? Duration.zero
-                                      : UtenAnim.normal,
-                                  child: const Icon(
-                                    Icons.keyboard_arrow_down_rounded,
-                                    size: 20,
-                                  ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: UtenSpacing.s8,
                                 ),
-                              ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      _isExpanded ? '收起信息' : '查看更多',
+                                      softWrap: true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: UtenSpacing.s4),
+                                  AnimatedRotation(
+                                    turns: _isExpanded ? .5 : 0,
+                                    duration: duration,
+                                    curve: UtenAnim.standard,
+                                    child: const Icon(
+                                      Icons.keyboard_arrow_down_rounded,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  );
-                  final heading = DefaultTextStyle.merge(
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                    child: _SummaryPresentation(
-                      inline: true,
-                      child: widget.heading ?? const SizedBox.shrink(),
-                    ),
-                  );
-                  if (constraints.maxWidth < 600 ||
-                      MediaQuery.textScalerOf(context).scale(14) > 21) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      ],
+                    );
+                    final heading = DefaultTextStyle.merge(
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      child: _SummaryPresentation(
+                        inline: true,
+                        child: widget.heading ?? const SizedBox.shrink(),
+                      ),
+                    );
+                    if (constraints.maxWidth < 600 ||
+                        MediaQuery.textScalerOf(context).scale(14) > 21) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (widget.heading != null) heading,
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: controls,
+                          ),
+                        ],
+                      );
+                    }
+                    return Row(
                       children: [
-                        if (widget.heading != null) heading,
-                        Align(
-                          alignment: Alignment.centerRight,
+                        Expanded(child: heading),
+                        const SizedBox(width: UtenSpacing.s12),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: constraints.maxWidth * .45,
+                          ),
                           child: controls,
                         ),
                       ],
                     );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: heading),
-                      const SizedBox(width: UtenSpacing.s12),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: constraints.maxWidth * .45,
-                        ),
-                        child: controls,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            if (widget.primary.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenSummaryFacts(
-                minFieldWidth: 180,
-                separated: true,
-                inline: false,
-                children: widget.primary,
-              ),
-            ],
-            if (widget.facts.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                child: Divider(height: 1),
-              ),
-              UtenSummaryFacts(inline: true, children: widget.facts),
-            ],
-            for (final notice in widget.notices) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              notice,
-            ],
-            if (expandable && _isExpanded) ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                child: Divider(height: 1),
-              ),
-              for (var i = 0; i < widget.details.length; i++) ...[
-                if (i > 0) const SizedBox(height: UtenSpacing.s8),
-                _SummaryPresentation(inline: true, child: widget.details[i]),
+                  },
+                ),
+              if (widget.primary.isNotEmpty) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                UtenSummaryFacts(
+                  minFieldWidth: 180,
+                  separated: true,
+                  inline: false,
+                  children: widget.primary,
+                ),
               ],
+              if (widget.facts.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                  child: Divider(height: 1),
+                ),
+                UtenSummaryFacts(inline: true, children: widget.facts),
+              ],
+              for (final notice in widget.notices) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                notice,
+              ],
+              if (expandable)
+                UtenCollapsibleContent(
+                  expanded: _isExpanded,
+                  maintainState: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                        child: Divider(height: 1),
+                      ),
+                      for (var i = 0; i < widget.details.length; i++) ...[
+                        if (i > 0) const SizedBox(height: UtenSpacing.s8),
+                        _SummaryPresentation(
+                          inline: true,
+                          child: widget.details[i],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -259,6 +274,7 @@ class UtenSummaryField extends StatelessWidget {
     this.danger = false,
     this.selectable = false,
     this.inline,
+    this.info,
   });
 
   final String label;
@@ -267,19 +283,29 @@ class UtenSummaryField extends StatelessWidget {
   final bool danger;
   final bool selectable;
   final bool? inline;
+  final String? info;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final text = value?.trim();
     final inline = this.inline ?? _SummaryPresentation.of(context);
-    final labelWidget = Text(
+    final labelText = Text(
       label,
       style: theme.textTheme.bodySmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
         fontWeight: FontWeight.w400,
       ),
     );
+    final labelWidget = info?.trim().isNotEmpty == true
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: labelText),
+              UtenFieldHintIcon(info: info, dense: true),
+            ],
+          )
+        : labelText;
     final valueWidget = Text(
       text == null || text.isEmpty ? '—' : text,
       style:

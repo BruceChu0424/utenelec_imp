@@ -79,6 +79,9 @@ class _Repo implements StockCountRequestRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     expect(reviewRoute, 'WAREHOUSE');
     expect(
@@ -293,7 +296,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('返回审核列表'), findsNothing);
     expect(find.byType(UtenBackButton), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
     expect(
@@ -325,7 +333,12 @@ void main() {
           .currentPage,
       2,
     );
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('仓库模块入口'), findsOneWidget);
     expect(find.byType(WarehouseTaskCenterPage), findsNothing);
@@ -347,7 +360,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(repo.approvals, 1);
     for (var attempt = 0; attempt < 2; attempt++) {
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pump();
       expect(
         find.byType(MasterDataTableView<StockCountRequestLine>),
@@ -365,7 +383,12 @@ void main() {
     repo.pendingApproval!.complete(repo.request('APPROVED'));
     await tester.pumpAndSettle();
     expect(find.text('暂无盘点申请'), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('仓库模块入口'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -385,7 +408,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
     expect(repo.queries.last.warehouse, 'other-main');
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('仓库模块入口'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -613,6 +641,12 @@ void main() {
       warehouseId: 'bin',
       scopeWarehouseId: 'main',
       keyword: '颗粒',
+      columns: const {
+        'search.submittedBy': '甲',
+        'search.submittedAt': '2026-10-28',
+      },
+      sort: 'submittedAt',
+      ascending: false,
       size: 1,
     );
     expect(api.lastQuery, {
@@ -621,6 +655,10 @@ void main() {
       'warehouseId': 'bin',
       'scopeWarehouseId': 'main',
       'keyword': '颗粒',
+      'search.submittedBy': '甲',
+      'search.submittedAt': '2026-10-28',
+      'sort': 'submittedAt',
+      'order': 'desc',
       'page': 1,
       'size': 1,
     });

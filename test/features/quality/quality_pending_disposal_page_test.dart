@@ -19,8 +19,15 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/features/quality/repositories/quality_pending_queue_repository.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/shared/search/keyword_search.dart';
+import 'package:uten_imp/shared/search/numeric_column_query.dart';
+
 import '../../support/detail_summary_tap.dart';
 import '../../support/page_resume_test_bridge.dart';
+
+part 'quality_pending_queue_fake.dart';
 
 // 合并版待检处置页（IQC 收货单 + FQC 自制产成品统一队列）的widget 测试：
 // - 混合队列首屏显示所有授权来源，来源/状态筛选由表头承担；
@@ -95,6 +102,13 @@ Future<void> _pumpPage(
           formDraftsProvider.overrideWith(() => _Drafts(drafts)),
         apiClientProvider.overrideWithValue(api),
         procurementInspectionRepositoryProvider.overrideWithValue(iqc),
+        qualityPendingQueueRepositoryProvider.overrideWith(
+          (ref) => _FakeQueueRepository(
+            api,
+            iqc,
+            () => ref.read(currentPermissionsProvider),
+          ),
+        ),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
@@ -204,6 +218,11 @@ void main() {
     expect(bills(), isNot(contains('CJ-0')));
     expect(bills(), isNot(contains('铜片')));
     expect(_queueTable(tester).facets['status']?.single.count, 13);
+    final sourceCounts = {
+      for (final facet in _queueTable(tester).facets['docType']!)
+        facet.value: facet.count,
+    };
+    expect(sourceCounts, {'PURCHASE': 13, 'SUBCONTRACT': 0, 'FQC': 0});
     await _selectQueueFilter(tester, 'docType', 'FQC');
     expect(_queueTable(tester).items, isEmpty);
     await _selectQueueFilter(tester, 'docType', null);
@@ -211,7 +230,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(bills(), ['CJ-LITERAL']);
-    expect(iqc.pendingReceiptsCalls, 1);
+    expect(iqc.pendingReceiptsCalls, greaterThan(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -422,6 +441,13 @@ void main() {
     expect(find.text(_reportNo), findsOneWidget);
     expect(_queueTable(tester).currentPage, 1);
     expect(_queueTable(tester).totalPages, 1);
+    expect(
+      {
+        for (final facet in _queueTable(tester).facets['docType']!)
+          facet.value: facet.count,
+      },
+      {'PURCHASE': 0, 'SUBCONTRACT': 0, 'FQC': 1},
+    );
     await _selectQueueFilter(tester, 'status', null);
     await _selectQueueFilter(tester, 'docType', 'FQC');
     expect(find.text(_reportNo), findsOneWidget);
@@ -431,7 +457,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(_reportNo), findsOneWidget);
     expect(_queueTable(tester).currentPage, 2);
-    expect(iqc.pendingReceiptsCalls, 1);
+    expect(iqc.pendingReceiptsCalls, greaterThan(1));
     expect(tester.takeException(), isNull);
   });
 
@@ -509,7 +535,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('FQC 请求 500 被服务端归一为 100 后继续读取两域次页', (tester) async {
+  testWidgets('完整授权队列中的次页单据可由服务端检索并回到首个结果页', (tester) async {
     final api = _PagedFqcApi(sheetCount: 105, looseCount: 102);
     await _pumpPage(
       tester,
@@ -519,8 +545,8 @@ void main() {
     );
     expect(api.sheetPages, [1, 2]);
     expect(api.loosePages, [1, 2]);
-    expect(api.sheetRequestedSizes, [500, 100]);
-    expect(api.looseRequestedSizes, [500, 100]);
+    expect(api.sheetRequestedSizes, [100, 100]);
+    expect(api.looseRequestedSizes, [100, 100]);
     expect(find.textContaining('表头筛选仅覆盖已加载任务'), findsNothing);
 
     // 两个来源的第 101 行均不在各自服务端首批 100 条里。
@@ -548,7 +574,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('FQC 各域仍只加载 500，截断提示区分总数和已加载范围', (tester) async {
+  testWidgets('第501条以后的单据参与完整检索和真实分页，不再截断队列', (tester) async {
     final api = _PagedFqcApi(sheetCount: 601, looseCount: 602);
     await _pumpPage(
       tester,
@@ -556,11 +582,12 @@ void main() {
       iqc: _FakeIqcRepository(),
       permissions: _bothViewPerms,
     );
-    expect(api.sheetPages, [1, 2, 3, 4, 5]);
-    expect(api.loosePages, [1, 2, 3, 4, 5]);
-    expect(find.textContaining('待检任务共 1203 条，当前已加载 1000 条'), findsOneWidget);
-    expect(find.textContaining('各最多加载 500 条'), findsOneWidget);
-    expect(find.textContaining('表头筛选仅覆盖已加载任务'), findsOneWidget);
+    expect(api.sheetPages, [1, 2, 3, 4, 5, 6, 7]);
+    expect(api.loosePages, [1, 2, 3, 4, 5, 6, 7]);
+    expect(_queueTable(tester).totalPages, 121);
+    expect(_queueTable(tester).items, hasLength(10));
+    expect(find.textContaining('各最多加载 500 条'), findsNothing);
+    expect(find.textContaining('表头筛选仅覆盖已加载任务'), findsNothing);
     await tester.enterText(_queueSearchField(), 'FQC-PAGE-500');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -579,7 +606,7 @@ void main() {
         of: find.byKey(const Key('iqc-receipt-table')),
         matching: find.text('FQC-PAGE-501'),
       ),
-      findsNothing,
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
   });
@@ -678,7 +705,12 @@ void main() {
     ]);
     // 单内已无待检行 → 完成态；返回队列后检查单行消失。
     expect(find.text('本检查单当前待检已全部处理完成'), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text(_sheetNo), findsNothing);
     expect(find.text('CJ20260822000001'), findsOneWidget);

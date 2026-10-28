@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
@@ -49,6 +50,7 @@ Map<String, dynamic> _report(String label) => {
 class _Api extends ApiClient {
   _Api() : super(Dio());
   final pending = <Completer<Map<String, dynamic>>>[];
+  final queries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -66,6 +68,7 @@ class _Api extends ApiClient {
       };
     }
     if (path.contains('/reports/')) {
+      queries.add({...?query});
       final gate = Completer<Map<String, dynamic>>();
       pending.add(gate);
       return gate.future;
@@ -146,6 +149,109 @@ Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
 }
 
 void main() {
+  testWidgets('委外出入状况表按聚合值发送排序与筛选并保留导出条件', (tester) async {
+    final api = _Api();
+    await _mount(
+      tester,
+      const SubcontractReportTablePage(kind: SubcontractReportKind.inOutStatus),
+      api,
+    );
+    Map<String, dynamic> response() => {
+      ..._report('期末结存'),
+      'columns': [
+        {'key': 'closingQty', 'label': '期末结存', 'type': 'number'},
+      ],
+      'columnSearchKeys': ['closingQty'],
+    };
+    api.pending.single.complete(response());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('期末结存'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从大到小'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(api.queries.last['sort'], 'closingQty');
+    expect(api.queries.last['order'], 'desc');
+    api.pending.last.complete(response());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('期末结存'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '>0',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(api.queries.last['f.search.closingQty'], '>0');
+    expect(
+      tester
+          .widget<UtenExportButton>(find.byType(UtenExportButton))
+          .queryParams['f.search.closingQty'],
+      '>0',
+    );
+    api.pending.last.complete(response());
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final entry in <(String, Widget)>[
+    ('采购', const PurchaseReportTablePage(kind: PurchaseReportKind.detail)),
+    (
+      '委外',
+      const SubcontractReportTablePage(kind: SubcontractReportKind.detail),
+    ),
+  ]) {
+    testWidgets('${entry.$1}差异数表头条件发送服务端且打印导出沿用同一条件', (tester) async {
+      final api = _Api();
+      await _mount(tester, entry.$2, api);
+      api.pending.single.complete({
+        ..._report('差异数'),
+        'columns': [
+          {'key': 'differenceQty', 'label': '差异数', 'type': 'number'},
+        ],
+        'columnSearchKeys': ['differenceQty'],
+        'rows': [
+          {'differenceQty': -2, 'differenceQtyExact': '-2.0000000001'},
+        ],
+        'total': 51,
+        'totalPages': 2,
+      });
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('差异数'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '-10..0',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(api.queries.last['f.search.differenceQty'], '-10..0');
+      expect(api.queries.last['page'], 1);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.serverColumnSearchKeys, {'differenceQty'});
+      expect(table.filters['search.differenceQty'], '-10..0');
+      expect(
+        tester
+            .widget<UtenExportButton>(find.byType(UtenExportButton))
+            .queryParams['f.search.differenceQty'],
+        '-10..0',
+      );
+      api.pending.last.complete({
+        ..._report('差异数'),
+        'columns': [
+          {'key': 'differenceQty', 'label': '差异数', 'type': 'number'},
+        ],
+        'columnSearchKeys': ['differenceQty'],
+      });
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final entry in <(String, Widget)>[
     ('采购', const PurchaseReportTablePage(kind: PurchaseReportKind.detail)),
     ('销售', const SalesReportPage(kind: SalesReportKind.detail)),

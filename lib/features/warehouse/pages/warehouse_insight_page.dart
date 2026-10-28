@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
@@ -913,8 +914,13 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage>
         ]);
       case WarehouseInsightSegment.cycleCount:
         children.addAll([
-          _countText('每仓每天最多 20 条, 按优先级排'),
-          _countText('共 ${_cycle?.total ?? 0} 项'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _countText('共 ${_cycle?.total ?? 0} 项'),
+              const UtenFieldHintIcon(info: '每仓每天最多 20 条, 按优先级排', dense: true),
+            ],
+          ),
         ]);
       case WarehouseInsightSegment.weightAlerts:
         children.addAll([

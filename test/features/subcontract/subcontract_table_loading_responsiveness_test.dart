@@ -278,6 +278,7 @@ class _DelayedCounts extends SubcontractShortDeliveryRepository {
     String? sort,
     String? order,
     String? orderBillNo,
+    Map<String, String?> columnFilters = const {},
   }) async =>
       const PagedResult(items: [], page: 1, size: 50, total: 0, totalPages: 0);
 }

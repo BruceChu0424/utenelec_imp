@@ -361,7 +361,6 @@ Widget _tree({
   emptyNoun: '分类',
   header: header,
   showSearch: showSearch,
-  initiallyExpandDepth: 0,
   externalSearchLoading: loading,
   externalSearchError: error,
   onToggleSelect: onSelect,

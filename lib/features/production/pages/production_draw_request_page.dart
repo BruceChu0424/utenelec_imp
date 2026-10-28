@@ -600,6 +600,8 @@ class _ProductionDrawRequestPageState
         key: 'warehouse',
         label: '领料仓库',
         width: 170,
+        filterFromRows: true,
+        facetSearchEnabled: true,
         value: (row) => _label(row.warehouseName),
       ),
       // 2026-09-14 全站列序统一：名称 → 编号 → 颜色。
@@ -628,6 +630,8 @@ class _ProductionDrawRequestPageState
         label: '待申请量',
         width: 144,
         type: 'number',
+        sortable: true,
+        exactValueOf: (row) => row.qty.toString(),
         value: (row) => formatQtyWithUnit(row.qty, row.unitName),
       ),
       MasterColumnDef(
@@ -677,6 +681,7 @@ class _ProductionDrawRequestPageState
         key: 'sources',
         label: '任务来源',
         width: 180,
+        columnSearchEnabled: false,
         value: (row) => _sourcesLabel(preview, row),
         cellBuilder: (context, row) => UtenTableCellAction(
           label: _sourcesLabel(preview, row),
@@ -751,6 +756,7 @@ class _ProductionDrawRequestPageState
               label: '待申请量',
               width: 144,
               type: 'number',
+              sortable: true,
               value: (line) => formatQtyWithUnit(line.qty, line.unitName),
               exactValueOf: (line) => line.qty.toString(),
             ),
@@ -759,6 +765,7 @@ class _ProductionDrawRequestPageState
               label: '本次领料',
               width: 154,
               type: 'number',
+              sortable: true,
               exactValueOf: (line) =>
                   (_requestLines(preview)
                               .where(

@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -555,11 +556,17 @@ class _WarehouseDrawTaskSegmentState
                 });
                 _load(1);
               },
-              trailing: Text(
-                '共 ${_result?.total ?? 0} 项 · 勾选跨页保留 · 双击进入领料单',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '共 ${_result?.total ?? 0} 项',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const UtenFieldHintIcon(info: '勾选跨页保留；双击进入领料单。', dense: true),
+                ],
               ),
             ),
           ),

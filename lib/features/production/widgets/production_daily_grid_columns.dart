@@ -5,6 +5,7 @@
 // DailyGridRow：货品(选择)/完工申报量/实际重量；颜色选货品后自动回填（只读）、
 // 单位回填后作数量输入框后缀（2026-10-10 数量内联口径）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter/services.dart';
@@ -1353,7 +1354,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 // 下拉收起态单行省略：恒定悬停给当前选中项全文（工单还差多少一目了然），
                 // 有问题时在全文后补原因，完整名称始终可查；选不中任何项时兜底「送入仓库」。
                 final selected = _allocationOptionText(row);
-                return Tooltip(
+                return UtenEditorTooltip(
                   message: [
                     selected.isEmpty ? '送入仓库' : selected,
                     if (issue != null && issue.isNotEmpty) issue,

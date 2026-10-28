@@ -144,6 +144,9 @@ Future<void> _capture(WidgetTester tester, String name) async {
   });
 }
 
+typedef _EntrySwitch =
+    Future<void> Function(WidgetTester tester, _Repository repo);
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
@@ -156,7 +159,7 @@ void main() {
   });
 
   testWidgets(
-    'new folder returns atomic inherited draft without system actions',
+    'new folder defaults to everyone-visible draft without system actions',
     (tester) async {
       final state = await _mount(tester);
       final result = _show<CompanyFileCreateFolderDraft>(
@@ -171,6 +174,7 @@ void main() {
       await tester.enterText(_input('company-folder-name'), '模板');
       expect(find.byType(FilterChip), findsNothing);
       expect(find.text('谁可以查看'), findsOneWidget);
+      expect(find.text('所有人可以看'), findsOneWidget);
       await _capture(tester, 'folder-create-access-desktop');
       await _tap(
         tester,
@@ -181,7 +185,14 @@ void main() {
       expect(draft.description, isEmpty);
       expect(draft.access.toJson(), {
         'inheritPermissions': true,
-        'rules': <Map<String, dynamic>>[],
+        'rules': <Map<String, dynamic>>[
+          {
+            'subjectType': 'ALL',
+            'subjectId': '00000000-0000-0000-0000-000000000000',
+            'effect': 'ALLOW',
+            'actions': ['view', 'download'],
+          },
+        ],
         'password': null,
       });
     },
@@ -220,6 +231,115 @@ void main() {
       }
     },
   );
+
+  testWidgets('everyone mode keeps the marker rule with deny exceptions', (
+    tester,
+  ) async {
+    final state = await _mount(tester);
+    final result = _show<CompanyFileInitialAccessDraft>(
+      tester,
+      CompanyFileUploadAccessDialog(
+        repository: _Repository(),
+        scope: state.scope,
+        boundary: state.container.read(_identity),
+        selectedNames: const ['公开通知.docx'],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('所有人可以看'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('initial-access-add-deny')));
+    await _tap(tester, find.text('张明'));
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    final draft = (await result)!;
+    expect(draft.inheritPermissions, true);
+    expect(draft.rules, hasLength(2));
+    expect(draft.rules.first.isEveryoneRule, isTrue);
+    expect(draft.rules.first.actions, {'view', 'download'});
+    expect(draft.rules.last.subjectType, 'USER');
+    expect(draft.rules.last.effect, 'DENY');
+    expect(draft.rules.last.actions, {'view', 'download'});
+  });
+
+  testWidgets('entry access radio drives the everyone marker rule', (
+    tester,
+  ) async {
+    final state = await _mount(tester);
+    const everyoneAccess = CompanyFileAccess(
+      inheritPermissions: true,
+      version: 4,
+      rules: [
+        CompanyFileAccessRule(
+          subjectType: 'ALL',
+          subjectId: '00000000-0000-0000-0000-000000000000',
+          subjectName: '所有人',
+        ),
+        CompanyFileAccessRule(
+          subjectType: 'USER',
+          subjectId: 'alice',
+          subjectName: '张明',
+          effect: 'DENY',
+        ),
+      ],
+    );
+    Future<void> openAndSave(_EntrySwitch step) async {
+      final repo = _Repository()..existing = everyoneAccess;
+      _show<bool>(
+        tester,
+        CompanyFileAccessDialog(
+          entry: const CompanyFile(
+            id: 'folder',
+            name: '公共制度',
+            kind: 'FOLDER',
+            version: 4,
+            allowedActions: {'view', 'manage_permissions'},
+          ),
+          repository: repo,
+          scope: state.scope,
+          boundary: state.container.read(_identity),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('所有人'), findsNothing); // ALL 规则不进规则列表
+      await step(tester, repo);
+    }
+
+    await openAndSave((tester, repo) async {
+      final save = find.text('保存');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(repo.savedInheritance, true);
+      expect(repo.savedRules!.map((r) => r.subjectType), ['ALL', 'USER']);
+      expect(repo.savedRules!.first.isEveryoneRule, isTrue);
+    });
+    await openAndSave((tester, repo) async {
+      await _tap(tester, find.byKey(const Key('entry-access-inherit')));
+      final save = find.text('保存');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(repo.savedInheritance, true);
+      expect(
+        repo.savedRules!.map((r) => r.subjectType),
+        isNot(contains('ALL')),
+      );
+    });
+    await openAndSave((tester, repo) async {
+      await _tap(tester, find.byKey(const Key('entry-access-specific')));
+      final save = find.text('保存');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(repo.savedInheritance, false);
+      expect(
+        repo.savedRules!.map((r) => r.subjectType),
+        isNot(contains('ALL')),
+      );
+    });
+  });
 
   testWidgets('password requires confirmation and counts UTF-8 bytes', (
     tester,

@@ -398,12 +398,9 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                                   labelText: '新访问密钥',
                                   border: OutlineInputBorder(),
                                 ),
-                                info: '留空保留已保存的访问密钥。',
+                                info:
+                                    '留空保留已保存的访问密钥。更换访问凭据需同时填写两项；更换接口域名时必须重新填写凭据。密钥只写不读，不会保存在本机草稿。',
                               ),
-                            ),
-                            const SizedBox(height: UtenSpacing.s8),
-                            const Text(
-                              '更换访问凭据需同时填写两项；更换接口域名时必须重新填写凭据。密钥只写不读，不会保存在本机草稿。',
                             ),
                             CheckboxListTile(
                               contentPadding: EdgeInsets.zero,

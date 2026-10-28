@@ -165,19 +165,22 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
               .read(salesMasterNameServiceProvider)
               .loadGoodsDetails(goodsIds);
         },
-        listDocs: (ref, page, keyword, clientId, sort, order) => ref
-            .read(salesRepositoryProvider(upstream))
-            .list(
-              page: page,
-              // 业务约束：只引入已审单（草稿/红冲不可引入）。
-              filter: SalesDocFilter(
-                keyword: keyword,
-                clientId: clientId,
-                status: kSalesStatusApproved,
-              ),
-              sort: sort,
-              order: order,
-            ),
+        serverColumnSearchKeys: const {'billNo', 'client'},
+        listDocsWithFilters:
+            (ref, page, keyword, clientId, sort, order, filters) => ref
+                .read(salesRepositoryProvider(upstream))
+                .list(
+                  page: page,
+                  // 业务约束：只引入已审单（草稿/红冲不可引入）。
+                  filter: SalesDocFilter(
+                    keyword: keyword,
+                    clientId: clientId,
+                    status: kSalesStatusApproved,
+                    columnSearch: filters,
+                  ),
+                  sort: sort,
+                  order: order,
+                ),
         loadDetail: (ref, docId) async {
           final request = sourceRequests.begin();
           final detail = await ref
@@ -263,8 +266,7 @@ Future<SalesLinkPickResult?> showSalesDocLinkPicker(
   );
 }
 
-/// Step1 单据表列。面板服务端分页且无 facets 端点：文本列关闭列头搜索，
-/// 漏斗不再出空下拉（顶部关键字搜索走服务端）。
+/// Step1 单据表列。单号、客户关键词通过共享面板传给完整服务端查询。
 List<MasterColumnDef<SalesDocListItem>> _docColumns(
   SalesMasterNameService names,
   SalesDocType upstream,
@@ -279,7 +281,7 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(
@@ -294,7 +296,7 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     key: 'client',
     label: '客户',
     width: 200,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => names.client(d.clientId),
   ),
   if (upstream == SalesDocType.order)

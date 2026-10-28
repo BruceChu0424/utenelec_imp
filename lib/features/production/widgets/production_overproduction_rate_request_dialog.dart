@@ -10,6 +10,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/page_navigation_session.dart';
+import '../../../shared/auth/page_permission_action.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 
 Future<ProductionOverproductionRateRequest?> showProductionRateRequestDialog(
@@ -267,7 +268,12 @@ class _RateRequestEditorState
   Widget build(BuildContext context) => withFormDraft(
     UtenAlertDialog(
       scrollable: false,
-      title: const Text('申请调整允许超产比例'),
+      title: Row(
+        children: [
+          const Expanded(child: Text('申请调整允许超产比例')),
+          if (!widget.inDialog) const PagePermissionAction(),
+        ],
+      ),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(

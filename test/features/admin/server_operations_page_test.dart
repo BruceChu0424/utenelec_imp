@@ -836,7 +836,15 @@ void main() {
         source: true,
         writableState: writable,
       );
-      await _tap(tester, 'server-source-editor');
+      // The heading's help icon now has its own action. Open the editor by
+      // its action label rather than the geometric center of the whole tile.
+      await tester.ensureVisible(find.text('发布源与凭据'));
+      await tester.tap(find.text('发布源与凭据'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('server-source-dialog')),
+        findsOneWidget,
+      );
       final staleSave = tester
           .widget<UtenButton>(find.byKey(const ValueKey('server-source-save')))
           .onPressed!;

@@ -1,16 +1,18 @@
 // AdminDepartmentPermView - 按部门配置动态权限目录。
 //
 // 部门配置保留完整权限点，使用搜索、状态筛选、默认折叠和整组批量操作降低
-// 高密度目录的设置成本；未保存修改通过固定底部操作栏统一提交。
+// 高密度目录的设置成本；未保存修改通过固定底部操作栏统一提交（本地草稿，
+// 停止操作一段时间后自动保存，切换部门/离开页面前三选一）。
 // 能否配给部门、能否随批量带上只看服务端下发的授权策略(ADR-109)，
 // 「全部授权 / 本模块 / 本组」直接交给服务端按策略补齐，本页不维护任何排除名单。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../core/network/read_scope_revision.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -20,6 +22,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../../department/models/department_node.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -28,9 +31,14 @@ import '../models/admin_models.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_catalog_browser.dart';
+import 'admin_permission_editor_surface.dart';
 import 'permission_action_badge.dart';
+import 'permission_draft_session.dart';
 import 'admin_permission_workspace.dart';
 import 'admin_permission_export_button.dart';
+import 'admin_permission_transfer_actions.dart';
+import 'permission_batch_dialog.dart';
+import 'permission_template_binding_strip.dart';
 
 class AdminDepartmentPermView extends ConsumerStatefulWidget {
   const AdminDepartmentPermView({
@@ -38,11 +46,13 @@ class AdminDepartmentPermView extends ConsumerStatefulWidget {
     this.initialDepartmentId,
     this.leadingHeader = const SizedBox.shrink(),
     this.onPermissionDirtyChanged,
+    this.onLeaveGuardChanged,
   });
 
   final String? initialDepartmentId;
   final Widget leadingHeader;
   final ValueChanged<bool>? onPermissionDirtyChanged;
+  final ValueChanged<Future<bool> Function()?>? onLeaveGuardChanged;
 
   @override
   ConsumerState<AdminDepartmentPermView> createState() =>
@@ -51,19 +61,55 @@ class AdminDepartmentPermView extends ConsumerStatefulWidget {
 
 class _AdminDepartmentPermViewState
     extends ConsumerState<AdminDepartmentPermView> {
+  final _catalogMount = PermissionCatalogMount();
   DeptSelection? _dept;
+  bool _multiSelection = false;
+  bool _batchBusy = false;
+  final _batchDepartments = <String, DeptSelection>{};
   Set<String>? _localChecked;
   bool _saving = false;
   bool _showDetail = false;
   bool _changingDepartment = false;
   bool? _lastReportedPending;
+  late final PermissionDraftSession _idleSave;
 
   @override
   void initState() {
     super.initState();
+    _idleSave = PermissionDraftSession(onIdleSave: () => _save());
+    widget.onLeaveGuardChanged?.call(_confirmLeaveDrafts);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _resolveInitialDepartment();
     });
+  }
+
+  @override
+  void dispose() {
+    _idleSave.dispose();
+    widget.onLeaveGuardChanged?.call(null);
+    super.dispose();
+  }
+
+  /// 离开守卫：有草稿时三选一；保存并离开会先走一次保存（一次密码）。
+  Future<bool> _confirmLeaveDrafts() async {
+    if (!_isDirty) return true;
+    _idleSave.pause();
+    try {
+      final allowed = await guardPermissionDraftLeave(
+        context,
+        subject: '「${_dept?.name ?? ''}」的部门权限',
+        changeCount: _dirtyCount,
+        save: () => _save(),
+      );
+      if (allowed && mounted && _isDirty) {
+        // 不保存离开：丢弃本地草稿。
+        setState(() => _localChecked = null);
+        _idleSave.clear();
+      }
+      return allowed;
+    } finally {
+      if (mounted) _idleSave.resume();
+    }
   }
 
   Future<void> _resolveInitialDepartment() async {
@@ -131,36 +177,34 @@ class _AdminDepartmentPermViewState
     }
     if (_isDirty) {
       _changingDepartment = true;
-      final confirmed = await UtenDialog.show(
-        context,
-        title: '丢弃未保存修改',
-        content: const Text('当前部门有未保存的权限修改，切换部门将丢弃这些修改。确定切换吗？'),
-        confirmLabel: '丢弃并切换',
-        danger: true,
-      ).whenComplete(() => _changingDepartment = false);
+      // 三选一：保存并离开 / 不保存切换 / 继续编辑（保存需一次密码）。
+      final allowed = await _confirmLeaveDrafts();
+      _changingDepartment = false;
       if (!mounted) return;
-      if (confirmed != true) return;
+      if (!allowed) return;
     }
     setState(() {
       _dept = next;
       _localChecked = null;
+      _idleSave.clear();
       _showDetail = next != null;
     });
   }
 
-  Future<void> _save() async {
+  /// 保存当前部门的权限草稿；true=已落库（或本就没有改动）。
+  Future<bool> _save() async {
     final department = _dept;
     if (department == null ||
         _saving ||
         (!_isDirty && _missingDependencies.isEmpty)) {
-      return;
+      return true;
     }
     final submitted = <String>{..._checked};
     if (!_isDirty) {
       final repair = _repairableReads();
       if (repair.isEmpty) {
         context.appInfo('没有可自动补齐的普通查看权限；敏感权限请在允许的授权入口逐项处理。');
-        return;
+        return false;
       }
       submitted.addAll(repair);
     }
@@ -169,9 +213,10 @@ class _AdminDepartmentPermViewState
       final change = await ref
           .read(adminRepositoryProvider)
           .updateDepartmentPermissions(department.id, submitted.toList());
-      ref.invalidate(adminDepartmentPermissionsProvider(department.id));
-      if (!mounted) return;
+      refreshPermissionConfiguration(ref);
+      if (!mounted) return true;
       setState(() => _localChecked = null);
+      _idleSave.clear();
       UtenToast.success(
         context,
         change.isEmpty
@@ -179,12 +224,15 @@ class _AdminDepartmentPermViewState
             : '已保存「${department.name}」的权限：新增 ${change.added.length} 项，'
                   '收回 ${change.removed.length} 项，即时生效',
       );
+      return true;
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       context.appApiError(error, fallback: '保存失败，本地修改已保留，请稍后重试');
+      return false;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return false;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -196,6 +244,7 @@ class _AdminDepartmentPermViewState
       value ? next.addAll(codes) : next.removeAll(codes);
       _localChecked = next;
     });
+    _idleSave.noteEdit();
   }
 
   Set<String> _repairableReads() {
@@ -206,7 +255,11 @@ class _AdminDepartmentPermViewState
         for (final permission in group.permissions) permission.code: permission,
     };
     final removed = {...?_serverChecked}..removeAll(_checked);
-    final held = {..._checked, ...?_dependencyState?.inheritedPermissions};
+    final held = {
+      ..._checked,
+      ...?_dependencyState?.inheritedPermissions,
+      ...?_dependencyState?.templatePermissions,
+    };
     return {
       for (final code in _missingDependencies.values.expand((reads) => reads))
         if (!held.contains(code) &&
@@ -243,7 +296,7 @@ class _AdminDepartmentPermViewState
       final change = await ref
           .read(adminRepositoryProvider)
           .grantAllToDepartment(department.id, scope);
-      ref.invalidate(adminDepartmentPermissionsProvider(department.id));
+      refreshPermissionConfiguration(ref);
       if (!mounted) return;
       context.appSuccess(
         change.added.isEmpty
@@ -296,8 +349,12 @@ class _AdminDepartmentPermViewState
     return AdminPermissionWorkspace(
       navigation: widget.leadingHeader,
       leading: _departmentDirectory(),
-      trailing: _details(preserveStart: true),
-      compact: _showDetail && _dept != null
+      trailing: _multiSelection
+          ? _batchSummary()
+          : _details(preserveStart: true),
+      compact: _multiSelection && _showDetail
+          ? _batchSummary(showBack: true)
+          : _showDetail && _dept != null
           ? Column(
               children: [
                 Align(
@@ -318,11 +375,143 @@ class _AdminDepartmentPermViewState
     );
   }
 
+  Future<void> _toggleMulti() async {
+    if (_saving || _batchBusy || !await _confirmLeaveDrafts() || !mounted) {
+      return;
+    }
+    setState(() {
+      _multiSelection = !_multiSelection;
+      _batchDepartments.clear();
+      _showDetail = false;
+    });
+  }
+
+  Future<void> _applyBatch(bool templateMode, {bool single = false}) async {
+    if (_batchBusy || _saving || _isDirty) return;
+    final ids = single ? [?_dept?.id] : _batchDepartments.keys.toList();
+    if (ids.isEmpty) return;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    setState(() => _batchBusy = true);
+    try {
+      final applied = await showPermissionBatchDialog(
+        context,
+        templateMode: templateMode,
+        departmentIds: ids,
+        targetLabel: single ? _dept?.name : '已选 ${ids.length} 个部门',
+      );
+      if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
+      if (applied == true) {
+        for (final id in ids) {
+          ref.invalidate(adminDepartmentPermissionsProvider(id));
+        }
+        context.appSuccess('已更新 ${ids.length} 个部门的权限');
+      }
+    } finally {
+      if (mounted && boundary == ref.read(sensitiveReadBoundaryProvider)) {
+        setState(() => _batchBusy = false);
+      }
+    }
+  }
+
+  Widget _batchSummary({bool showBack = false}) => Padding(
+    padding: const EdgeInsets.all(12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showBack)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _batchBusy
+                  ? null
+                  : () => setState(() => _showDetail = false),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('返回部门目录'),
+            ),
+          ),
+        UtenSectionHeader(
+          title: '已选 ${_batchDepartments.length} 个部门',
+          info: '部门权限会按组织关系继承到员工；个人取消仍优先。',
+        ),
+        Wrap(
+          spacing: 8,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: _batchDepartments.isEmpty || _batchBusy
+                  ? null
+                  : () => _applyBatch(true),
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('应用模板'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _batchDepartments.isEmpty || _batchBusy
+                  ? null
+                  : () => _applyBatch(false),
+              icon: const Icon(Icons.checklist_rounded, size: 18),
+              label: const Text('批量设置权限'),
+            ),
+          ],
+        ),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final dept in _batchDepartments.values)
+                ListTile(
+                  dense: true,
+                  title: Text(dept.name),
+                  trailing: IconButton(
+                    tooltip: '移出选择',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _batchBusy
+                        ? null
+                        : () =>
+                              setState(() => _batchDepartments.remove(dept.id)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _departmentDirectory() {
     final departments = ref.watch(adminDepartmentTreeProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          children: [
+            TextButton.icon(
+              key: const ValueKey('permission-department-multi-select'),
+              onPressed: _saving || _batchBusy ? null : _toggleMulti,
+              icon: Icon(
+                _multiSelection ? Icons.close_rounded : Icons.checklist_rounded,
+                size: 18,
+              ),
+              label: Text(_multiSelection ? '结束多选' : '多选'),
+            ),
+            if (_multiSelection) ...[
+              Text('已选 ${_batchDepartments.length} 部门'),
+              TextButton(
+                onPressed: _batchBusy
+                    ? null
+                    : () => setState(_batchDepartments.clear),
+                child: const Text('清空'),
+              ),
+              TextButton(
+                onPressed: _batchDepartments.isEmpty
+                    ? null
+                    : () => setState(() => _showDetail = true),
+                child: const Text('批量设置'),
+              ),
+            ],
+          ],
+        ),
         Expanded(
           child: departments.when(
             loading: () => const Center(child: CircularProgressIndicator()),
@@ -344,19 +533,38 @@ class _AdminDepartmentPermViewState
               return UtenDepartmentTreeView(
                 key: const ValueKey('admin-permission-department-tree'),
                 nodes: nodes,
-                mode: UtenDepartmentTreeMode.single,
+                mode: _multiSelection
+                    ? UtenDepartmentTreeMode.multi
+                    : UtenDepartmentTreeMode.single,
                 flatLevelColors: true,
-                initiallyExpandDepth: 2,
-                selectedIds: {?_dept?.id},
+                selectedIds: _multiSelection
+                    ? _batchDepartments.keys.toSet()
+                    : {?_dept?.id},
                 searchHint: '搜索部门名称 / 编号',
                 searchFieldKey: const ValueKey(
                   'admin-permission-department-search',
                 ),
                 nodeEnabledPredicate: (node) =>
-                    !_saving && isOperationalDepartmentNode(node),
+                    !_saving &&
+                    !_batchBusy &&
+                    isOperationalDepartmentNode(node),
                 onToggleSelect: (node) {
                   final next = selections[node.id];
-                  if (next != null) _onDeptChanged([next]);
+                  if (next == null) return;
+                  if (!_multiSelection) {
+                    _onDeptChanged([next]);
+                    return;
+                  }
+                  if (!_batchDepartments.containsKey(next.id) &&
+                      _batchDepartments.length >= 500) {
+                    context.appWarning('一次最多选择 500 个部门');
+                    return;
+                  }
+                  setState(() {
+                    _batchDepartments.containsKey(next.id)
+                        ? _batchDepartments.remove(next.id)
+                        : _batchDepartments[next.id] = next;
+                  });
                 },
               );
             },
@@ -421,7 +629,10 @@ class _AdminDepartmentPermViewState
                 TextButton(
                   onPressed: _saving
                       ? null
-                      : () => setState(() => _localChecked = null),
+                      : () => setState(() {
+                          _localChecked = null;
+                          _idleSave.clear();
+                        }),
                   child: const Text('撤销'),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
@@ -470,7 +681,7 @@ class _AdminDepartmentPermViewState
     final catalogAsync = ref.watch(permissionCatalogProvider);
     final checked = _checked;
 
-    return UtenCard(
+    return AdminPermissionEditorSurface(
       key: const ValueKey('admin-department-permission-card'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -492,6 +703,26 @@ class _AdminDepartmentPermViewState
                 sourceId: department.id,
                 sourceName: department.name,
                 enabled: !_isDirty && !_saving && permissionsAsync.hasValue,
+              ),
+            ],
+          ),
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              UtenButton(
+                type: UtenButtonType.secondary,
+                size: UtenButtonSize.small,
+                icon: Icons.link_rounded,
+                onPressed: !_isDirty && !_saving && !_batchBusy
+                    ? () => _applyBatch(true, single: true)
+                    : null,
+                child: const Text('应用模板'),
+              ),
+              PermissionTemplateBindingStrip(
+                kind: 'department',
+                targetId: department.id,
+                enabled: !_isDirty && !_saving && !_batchBusy,
               ),
             ],
           ),
@@ -565,6 +796,11 @@ class _AdminDepartmentPermViewState
     }
 
     return PermissionCatalogBrowser(
+      key: _catalogMount.forOwner((
+        ref.watch(sensitiveReadBoundaryProvider),
+        ref.watch(readScopeRevisionProvider),
+        _dept?.id,
+      )),
       groups: groups,
       enabledFilterLabel: '已配置',
       disabledFilterLabel: '未配置',
@@ -572,7 +808,10 @@ class _AdminDepartmentPermViewState
       disableGroupLabel: '本组全部取消配置',
       enableModuleLabel: '本模块全部配置',
       disableModuleLabel: '本模块全部取消配置',
-      isEnabled: (permission) => checked.contains(permission.code),
+      isEnabled: (permission) =>
+          checked.contains(permission.code) ||
+          (_dependencyState?.templatePermissions.contains(permission.code) ??
+              false),
       onGrantScope: _grantScope,
       onDisableGroup: (permissions) => _setPermissions(
         permissions.map((permission) => permission.code),
@@ -602,13 +841,33 @@ class _AdminDepartmentPermViewState
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
               ),
+              if (_dependencyState?.templatePermissions.contains(
+                    permission.code,
+                  ) ??
+                  false)
+                const Tooltip(
+                  message: '来自关联模板，请在模板中调整；员工个人取消继续优先',
+                  child: Icon(Icons.link_rounded, size: 16),
+                ),
               const SizedBox(width: UtenSpacing.s8),
               Semantics(
                 label:
                     '${permission.name}${checked.contains(permission.code) ? '已配置' : '未配置'}',
                 child: Switch(
-                  value: checked.contains(permission.code),
-                  onChanged: (value) => _toggle(permission, value),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  value:
+                      checked.contains(permission.code) ||
+                      (_dependencyState?.templatePermissions.contains(
+                            permission.code,
+                          ) ??
+                          false),
+                  onChanged:
+                      (_dependencyState?.templatePermissions.contains(
+                            permission.code,
+                          ) ??
+                          false)
+                      ? null
+                      : (value) => _toggle(permission, value),
                 ),
               ),
             ],

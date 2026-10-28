@@ -1583,6 +1583,8 @@ class _InboundArrivalRegistrationPageState
         label: '赠品数量',
         width: 150,
         numeric: true,
+        textOf: (line) => line.giftQty.text,
+        listenableOf: (line) => line.giftQty,
         cellBuilder: (_, line) => TextField(
           controller: line.giftQty,
           readOnly:
@@ -1603,6 +1605,8 @@ class _InboundArrivalRegistrationPageState
         label: '实物数量',
         width: 150,
         numeric: true,
+        textOf: (line) => line.physicalQtyText ?? '数量未留存',
+        listenableOf: (line) => Listenable.merge([line.qty, line.giftQty]),
         cellBuilder: (_, line) => ListenableBuilder(
           listenable: Listenable.merge([line.qty, line.giftQty]),
           builder: (_, _) => Text(
@@ -1731,7 +1735,10 @@ class _InboundArrivalRegistrationPageState
           size: UtenButtonSize.large,
           onPressed: _saving || _preparingSubmission
               ? null
-              : () => context.pop(),
+              : () => backTo(
+                  context,
+                  defaultPath: RouteName.warehouseInboundExpectations,
+                ),
           child: const Text('取消'),
         ),
         for (final route in routes)

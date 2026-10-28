@@ -332,6 +332,7 @@ class EffectivePermissions {
     required this.revokes,
     required this.effective,
     this.managerGrants = const [],
+    this.templatePermissions = const [],
     this.confirmedGrants = const [],
     this.legacyUnknownGrants = const [],
     this.legacyUnknownRevokes = const [],
@@ -362,6 +363,7 @@ class EffectivePermissions {
 
   /// 当前有效的组织负责人委派来源；中央个人 revoke 对其保持最高优先级。
   final List<String> managerGrants;
+  final List<String> templatePermissions;
 
   /// 超级管理员已在全局权限页明确确认的个人 grant。
   final List<String> confirmedGrants;
@@ -390,6 +392,7 @@ class EffectivePermissions {
     grants: _codes(json, 'grants'),
     revokes: _codes(json, 'revokes'),
     managerGrants: _codes(json, 'managerGrants'),
+    templatePermissions: _codes(json, 'templatePermissions'),
     confirmedGrants: _codes(json, 'confirmedGrants'),
     legacyUnknownGrants: _codes(json, 'legacyUnknownGrants'),
     legacyUnknownRevokes: _codes(json, 'legacyUnknownRevokes'),
@@ -415,11 +418,13 @@ class DepartmentPermissionCodes extends ListBase<String> {
   DepartmentPermissionCodes(
     List<String> values, {
     this.inheritedPermissions = const [],
+    this.templatePermissions = const [],
     this.requiredPermissions = const {},
     this.missingDependencies = const {},
   }) : _values = List.unmodifiable(values);
   final List<String> _values;
   final List<String> inheritedPermissions;
+  final List<String> templatePermissions;
   final Map<String, List<String>> requiredPermissions;
   final Map<String, List<String>> missingDependencies;
   @override

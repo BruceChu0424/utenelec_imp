@@ -83,15 +83,20 @@ void main() {
 
     await tester.tap(clear);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('确认保存'));
+    // 草稿模式：清空先落本地草稿，不再逐次弹确认框/立即保存。
+    expect(repository.updates, isEmpty);
+    await tester.tap(find.text('保存更改'));
     await tester.pumpAndSettle();
-    expect(repository.updates, [const <String>[]]);
+    expect(repository.batchUpdates, [
+      {'client': const <String>[]},
+    ]);
     expect(tester.takeException(), isNull);
   });
 }
 
 class _ScopeLifecycleRepository implements AdminRepository {
   final List<List<String>> updates = [];
+  final List<Map<String, List<String>>> batchUpdates = [];
 
   @override
   Future<List<DataScopeCatalogItem>> dataScopeCatalog() async => const [
@@ -122,6 +127,17 @@ class _ScopeLifecycleRepository implements AdminRepository {
     required List<String> expectedOwnerEmployeeIds,
   }) async {
     updates.add([...ownerEmployeeIds]);
+  }
+
+  @override
+  Future<(int, int, int)> updateUserDataScopesBatch(
+    String userId,
+    Map<String, (List<String> ids, List<String> expected)> entries,
+  ) async {
+    batchUpdates.add({
+      for (final entry in entries.entries) entry.key: entry.value.$1,
+    });
+    return (entries.length, 1, 1);
   }
 
   @override

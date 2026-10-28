@@ -11,6 +11,7 @@ import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -443,7 +444,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
         builder: (ctx) {
           return owner.ownDialog(
             ctx,
-            const Center(child: CircularProgressIndicator()),
+            const UtenTaskProgressDialog(title: '正在读取颜色资料'),
           );
         },
       );
@@ -1028,7 +1029,8 @@ class _ColorPageState extends ConsumerState<ColorPage>
                 ),
               ),
             ),
-            if (_rowOpBusy) const UtenBusyOverlay(title: '正在处理颜色'),
+            if (_rowOpBusy)
+              const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理颜色'),
           ],
         ),
       ),

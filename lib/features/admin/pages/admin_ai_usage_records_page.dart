@@ -41,6 +41,7 @@ import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/ai_provider_models.dart';
 import '../models/ai_usage_audit_models.dart';
 import '../repositories/ai_provider_repository.dart';
@@ -126,6 +127,9 @@ class _AdminAiUsageRecordsPageState
   String? _userId;
   String? _providerId;
   int _page = 0;
+  Map<String, String?> _columnFilters = const {};
+  String? _sortColumn;
+  bool _sortAscending = true;
   final _recordRows = MasterDataTableRowsController<AiUsageAuditRecord>();
   Object? _acceptedQuery;
 
@@ -141,6 +145,7 @@ class _AdminAiUsageRecordsPageState
 
   AiUsageAuditRepository get _repository =>
       ref.read(aiUsageAuditRepositoryProvider);
+  bool get _headerQueries => _repository is AiUsageAuditHeaderRepository;
   AiProviderRepository get _providerRepository =>
       ref.read(aiProviderRepositoryProvider);
 
@@ -189,6 +194,9 @@ class _AdminAiUsageRecordsPageState
     'userId': _userId,
     'providerId': _providerId,
     'size': _pageSize,
+    'columns': _columnFilters,
+    'sort': _sortColumn,
+    'ascending': _sortAscending,
   };
 
   Future<void> _navigatePage(int page) =>
@@ -203,6 +211,9 @@ class _AdminAiUsageRecordsPageState
     final query = freezePagedReadQuery(_readQuery)!;
     final repository = _repository;
     final days = _days, userId = _userId, providerId = _providerId;
+    final filters = _columnFilters,
+        sort = _sortColumn,
+        ascending = _sortAscending;
     final visiblePage = _recordRows.visiblePage;
     final target = resetPage
         ? 0
@@ -226,12 +237,23 @@ class _AdminAiUsageRecordsPageState
           }
         },
         fetchPage: (page) async {
-          final raw = await repository.read(
-            days: days,
-            page: page - 1,
-            userId: userId,
-            providerId: providerId,
-          );
+          final raw = repository is AiUsageAuditHeaderRepository
+              ? await (repository as AiUsageAuditHeaderRepository)
+                    .readWithHeaders(
+                      days: days,
+                      page: page - 1,
+                      userId: userId,
+                      providerId: providerId,
+                      filters: filters,
+                      sort: sort,
+                      ascending: ascending,
+                    )
+              : await repository.read(
+                  days: days,
+                  page: page - 1,
+                  userId: userId,
+                  providerId: providerId,
+                );
           final typed = AiUsageAuditResult.fromJson(raw);
           return PagedReadSnapshot<AiUsageAuditRecord, AiUsageAuditResult>(
             page: PagedResult(
@@ -495,6 +517,23 @@ class _AdminAiUsageRecordsPageState
             ),
           ),
         ],
+        if (_columnFilters.isNotEmpty)
+          TextButton.icon(
+            key: const Key('ai-records-clear-columns'),
+            onPressed: _loading
+                ? null
+                : () {
+                    if (!_current) return;
+                    setState(() => _columnFilters = const {});
+                    _load(resetPage: true);
+                  },
+            icon: const Icon(Icons.filter_alt_off_outlined),
+            label: Text(switch (Localizations.localeOf(context).languageCode) {
+              'en' => 'Clear record filters',
+              'ko' => '기록 필터 지우기',
+              _ => '清除记录列条件',
+            }),
+          ),
       ],
     );
   }
@@ -523,16 +562,134 @@ class _AdminAiUsageRecordsPageState
             loadingMore: _loading && data != null,
             items: data?.records ?? const <AiUsageAuditRecord>[],
             columns: _recordColumns(l10n),
-            facets: const {},
+            facets: _headerQueries
+                ? {
+                    'status': [
+                      for (final status in [
+                        'SUCCEEDED',
+                        'FAILED',
+                        'CANCELLED',
+                        'QUEUED',
+                        'RUNNING',
+                      ])
+                        MasterFacetBucket(
+                          value: status,
+                          label: _statusLabel(l10n, status),
+                          count: 0,
+                        ),
+                    ],
+                    'cost': [
+                      MasterFacetBucket(
+                        value: 'pending',
+                        label: l10n.aiAuditCostPending,
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'local',
+                        label: l10n.aiAuditLocalOnly,
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'actual',
+                        label: l10n.aiRecordsStatCostActual,
+                        count: 0,
+                      ),
+                      MasterFacetBucket(
+                        value: 'estimated',
+                        label: l10n.aiRecordsStatCostEstimated,
+                        count: 0,
+                      ),
+                    ],
+                    'purpose': [
+                      for (final option in <(String, String)>[
+                        ('kind:ERP_CHAT', l10n.aiAuditKindChat),
+                        ('kind:ERP_DOCUMENT_ROUTE', l10n.aiAuditKindDocument),
+                        ('kind:SALES_DOCUMENT_INTAKE', l10n.aiAuditKindSales),
+                        ('kind:OTHER', l10n.aiAuditKindOther),
+                        ('query_goods_cost', l10n.aiAuditPurposeCost),
+                        ('inventory_lookup', l10n.aiAuditPurposeStock),
+                        ('query_client_credit', l10n.aiAuditPurposeCredit),
+                        ('SALES_ORDER', l10n.aiAuditPurposeOrder),
+                        ('SALES_QUOTE', l10n.aiAuditPurposeQuote),
+                        ('EXPENSE_CLAIM', l10n.aiAuditPurposeExpense),
+                        (
+                          'production_in_progress',
+                          l10n.aiAuditPurposeProduction,
+                        ),
+                        ('workbench_tasks', l10n.aiAuditPurposeWorkbench),
+                        ('feature_directory', l10n.aiAuditPurposeDirectory),
+                        ('my_access', l10n.aiAuditPurposeAccess),
+                        ('sales_order_progress', l10n.aiAuditPurposeSalesOrder),
+                        (
+                          'purchase_order_status',
+                          l10n.aiAuditPurposePurchaseOrder,
+                        ),
+                        (
+                          'subcontract_order_status',
+                          l10n.aiAuditPurposeSubcontract,
+                        ),
+                        ('PAGE_HELP', l10n.aiAuditPurposePageHelp),
+                        ('PAGE_STATE', l10n.aiAuditPurposePageState),
+                        ('ACTION', l10n.aiAuditPurposeAction),
+                        ('prepare_permission_grant', l10n.aiAuditPurposeGrant),
+                      ])
+                        MasterFacetBucket(
+                          value: option.$1,
+                          label: option.$2,
+                          count: 0,
+                        ),
+                    ],
+                  }
+                : const {},
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (key, value) {},
+            filters: _columnFilters,
+            serverColumnSearchKeys: _headerQueries
+                ? const {
+                    'time',
+                    'person',
+                    'question',
+                    'provider',
+                    'model',
+                    'calls',
+                    'inputTokens',
+                    'outputTokens',
+                  }
+                : const {},
+            onFilterChanged: (key, value) {
+              if (!_current || !_headerQueries) return;
+              setState(
+                () => _columnFilters = Map.unmodifiable(
+                  {..._columnFilters, key: value}
+                    ..removeWhere((_, value) => value == null),
+                ),
+              );
+              _load(resetPage: true);
+            },
+            sortColumn: _sortColumn,
+            sortAscending: _sortAscending,
+            onSortChange: _headerQueries
+                ? (key, ascending) {
+                    if (!_current) return;
+                    setState(() {
+                      _sortColumn = key;
+                      _sortAscending = ascending;
+                    });
+                    _load(resetPage: true);
+                  }
+                : null,
             onRowTap: _loading ? null : (record) => _showDetail(record),
             rowKeyOf: (record) => record.id,
             currentPage: page + 1,
             totalPages: totalPages,
             onPageChange: _navigatePage,
-            paginationScope: (_days, _userId, _providerId),
+            paginationScope: (
+              _days,
+              _userId,
+              _providerId,
+              _columnFilters,
+              _sortColumn,
+              _sortAscending,
+            ),
             paginationRevision: data,
             emptyMessage: l10n.aiAuditEmpty,
           ),
@@ -600,12 +757,16 @@ class _AdminAiUsageRecordsPageState
         key: 'time',
         label: l10n.aiRecordsColTime,
         width: 150,
+        type: 'date',
+        sortable: _headerQueries,
+        columnSearchEnabled: _headerQueries,
         value: (row) => _beijing(row.createdAt),
       ),
       MasterColumnDef(
         key: 'person',
         label: l10n.aiAuditUser,
         width: 170,
+        sortable: _headerQueries,
         value: (row) => _personLabel(l10n, name: row.name, code: row.code),
         cellBuilder: (context, row) {
           final theme = Theme.of(context);
@@ -638,12 +799,14 @@ class _AdminAiUsageRecordsPageState
         key: 'purpose',
         label: l10n.aiRecordsColPurpose,
         width: 120,
+        columnSearchEnabled: false,
         value: (row) => _purposeLabel(l10n, row),
       ),
       MasterColumnDef(
         key: 'question',
         label: l10n.aiRecordsColQuestion,
         width: 280,
+        sortable: _headerQueries,
         value: (row) => row.question,
         cellBuilder: (context, row) {
           final theme = Theme.of(context);
@@ -661,12 +824,14 @@ class _AdminAiUsageRecordsPageState
         key: 'provider',
         label: l10n.aiAuditProvider,
         width: 150,
+        sortable: _headerQueries,
         value: (row) => row.providerNames.join(' / '),
       ),
       MasterColumnDef(
         key: 'model',
         label: l10n.aiRecordsColModel,
         width: 160,
+        sortable: _headerQueries,
         value: (row) => row.models.join(' / '),
       ),
       MasterColumnDef(
@@ -674,6 +839,9 @@ class _AdminAiUsageRecordsPageState
         label: l10n.aiRecordsColCalls,
         width: 90,
         type: 'number',
+        sortable: _headerQueries,
+        columnSearchEnabled: _headerQueries,
+        exactValueOf: (row) => row.metrics.calls.toString(),
         value: (row) => '${row.metrics.calls}',
       ),
       MasterColumnDef(
@@ -681,6 +849,9 @@ class _AdminAiUsageRecordsPageState
         label: l10n.aiRecordsColInputTokens,
         width: 110,
         type: 'number',
+        sortable: _headerQueries,
+        columnSearchEnabled: _headerQueries,
+        exactValueOf: (row) => row.inputTokens?.toString(),
         value: (row) => _tokenText(row.inputTokens),
       ),
       MasterColumnDef(
@@ -688,12 +859,16 @@ class _AdminAiUsageRecordsPageState
         label: l10n.aiRecordsColOutputTokens,
         width: 110,
         type: 'number',
+        sortable: _headerQueries,
+        columnSearchEnabled: _headerQueries,
+        exactValueOf: (row) => row.outputTokens?.toString(),
         value: (row) => _tokenText(row.outputTokens),
       ),
       MasterColumnDef(
         key: 'cost',
         label: l10n.aiRecordsColCost,
         width: 190,
+        columnSearchEnabled: false,
         value: (row) => _costCellValue(l10n, row.metrics),
         cellBuilder: (context, row) => _CostCell(metrics: row.metrics),
       ),
@@ -708,6 +883,8 @@ class _AdminAiUsageRecordsPageState
         key: 'person',
         label: l10n.aiAuditUser,
         width: 220,
+        sortable: true,
+        filterFromRows: true,
         value: (row) => _personLabel(l10n, name: row.name, code: row.code),
         cellBuilder: (context, row) {
           final theme = Theme.of(context);
@@ -741,6 +918,8 @@ class _AdminAiUsageRecordsPageState
         label: l10n.aiRecordsStatUses,
         width: 150,
         type: 'number',
+        sortable: true,
+        exactValueOf: (row) => row.metrics.uses.toString(),
         value: (row) => '${row.metrics.uses}',
         cellBuilder: (context, row) {
           final theme = Theme.of(context);
@@ -770,6 +949,7 @@ class _AdminAiUsageRecordsPageState
         key: 'cost',
         label: l10n.aiRecordsColCost,
         width: 240,
+        filterFromRows: true,
         value: (row) => _costCellValue(l10n, row.metrics),
         cellBuilder: (context, row) => _CostCell(metrics: row.metrics),
       ),
@@ -777,6 +957,7 @@ class _AdminAiUsageRecordsPageState
         key: 'actions',
         label: l10n.aiRecordsPersonViewRecords,
         width: 110,
+        columnSearchEnabled: false,
         value: (row) => l10n.aiRecordsPersonViewRecords,
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) => Semantics(

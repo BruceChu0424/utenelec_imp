@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 // 产成品登记实际入库页(ADR-151 §5)：任务行带实物批身份，报工只负责读取来源。
 //
 // 2026-09-27 用户口径「产成品入库与采购/委外入库 UI、逻辑、表格、记忆都一样，能公用的
@@ -1095,18 +1096,9 @@ class _ProductionFinishedArrivalRegistrationPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              l10n.handoffLotBatchesTitle(batches.length),
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              l10n.handoffLotBatchesHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            UtenSectionHeader(
+              title: l10n.handoffLotBatchesTitle(batches.length),
+              info: l10n.handoffLotBatchesHint,
             ),
             const SizedBox(height: UtenSpacing.s8),
             for (final (report, batch) in batches)

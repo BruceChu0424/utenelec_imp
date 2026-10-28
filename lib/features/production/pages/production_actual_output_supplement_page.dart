@@ -135,7 +135,7 @@ class _SupplementState
         detail.supplementSegmentStatus != 'IN_PROGRESS') {
       return;
     }
-    if (widget.returnToReport) {
+    if (widget.returnToReport && context.canPop()) {
       context.pop(detail);
     } else {
       context.push('/production/daily-reports/new', extra: detail);

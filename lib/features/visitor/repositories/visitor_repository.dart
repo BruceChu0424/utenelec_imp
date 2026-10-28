@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/visitor_column_query.dart';
 import '../models/visitor.dart';
 import '../models/visitor_application.dart';
 import '../network/visitor_api_client.dart';
@@ -69,6 +70,9 @@ abstract class VisitorRepository {
     String? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   });
   Future<List<VisitorApplication>> activeApplications();
   Future<VisitorApplicationDetail> getApplication(String id);
@@ -132,8 +136,15 @@ class DioVisitorRepository implements VisitorRepository {
     String? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...visitorColumnParameters(columns, sort, ascending),
+    };
     if (status != null) query['status'] = status;
     final response = await _api.get(
       ApiEndpoints.visitorApplicationsMine,

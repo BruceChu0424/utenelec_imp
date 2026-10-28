@@ -4,6 +4,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../../core/performance/ui_work_budget.dart';
 
+/// Single-line text geometry shared by a table and its rich display columns.
+/// Callers add only their actual control chrome; values and precision stay intact.
+double utenTableCellTextWidth(
+  String text, {
+  required TextStyle style,
+  required TextScaler textScaler,
+  TextDirection textDirection = TextDirection.ltr,
+}) {
+  if (text.isEmpty) return 0;
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: textDirection,
+    textScaler: textScaler,
+    maxLines: 1,
+  )..layout();
+  final width = painter.width;
+  painter.dispose();
+  return width;
+}
+
 /// Reports the width actually needed by the inputs inside one table cell.
 ///
 /// The table owns growth limits, user-resized widths and its outer cell padding.

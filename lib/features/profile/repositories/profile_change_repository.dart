@@ -7,6 +7,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/profile_change_request.dart';
+import '../../../shared/search/table_column_query.dart';
 
 abstract interface class ProfileChangeRepository {
   /// 自己提交修改申请。
@@ -17,6 +18,9 @@ abstract interface class ProfileChangeRepository {
     int page = 1,
     int size = 20,
     String? status,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   });
 
   /// 员工自查单批详情。
@@ -32,6 +36,9 @@ abstract interface class ProfileChangeRepository {
     String? status,
     String? employeeId,
     String? departmentId,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   });
 
   /// HR 队列表头筛选桶：键与列 key 对齐（departmentName：value=部门 id、label=部门名）。
@@ -123,10 +130,14 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
     int page = 1,
     int size = 20,
     String? status,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
+      ...tableColumnParameters(columns, sort, ascending),
       if (status != null && status.isNotEmpty) 'status': status,
     };
     final json = await api.get(ApiEndpoints.profileMyChanges, query: query);
@@ -151,10 +162,14 @@ class DioProfileChangeRepository implements ProfileChangeRepository {
     String? status,
     String? employeeId,
     String? departmentId,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
+      ...tableColumnParameters(columns, sort, ascending),
       if (status != null && status.isNotEmpty) 'status': status,
       if (employeeId != null && employeeId.isNotEmpty) 'employeeId': employeeId,
       if (departmentId != null && departmentId.isNotEmpty)

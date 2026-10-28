@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -107,9 +108,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(UtenHistoryTimeFilter), findsOneWidget);
         expect(find.text('需求日期'), findsOneWidget);
-        expect(find.text('任务读取暂时失败'), findsOneWidget);
+        await expectTableReadFailureDetails(tester, '任务读取暂时失败');
         expect(find.text('当前筛选下没有任务'), findsNothing);
-        await tester.tap(find.text('重试'));
+        await tester.tap(
+          find.byKey(const ValueKey('master-table-initial-read-retry')),
+        );
         await tester.pump();
         expect(gateway.reads, hasLength(2));
         expect(_table(tester).isLoading, isTrue);

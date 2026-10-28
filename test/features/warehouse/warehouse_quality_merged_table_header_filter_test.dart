@@ -81,9 +81,15 @@ void main() {
     await tester.pumpAndSettle();
     final verdict = tester.widget<GridHeaderFilterCell>(_headerFilter('判定结果'));
     expect(verdict.onSearch, isNull);
-    expect(find.byKey(const Key('uten-column-keyword-input')), findsNothing);
+    expect(find.byKey(const Key('uten-column-keyword-input')), findsOneWidget);
     expect(find.byKey(const Key('uten-column-keyword-search')), findsNothing);
     expect(find.text('合格（2）'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '不合',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('合格（2）'), findsNothing);
     await tester.tap(find.text('不合格（1）'));
     await tester.pumpAndSettle();
     expect(find.text('乙物料'), findsOneWidget);

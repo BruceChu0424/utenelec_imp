@@ -48,6 +48,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
@@ -363,32 +364,22 @@ class _PurchaseReportTablePageState
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final query = <String, dynamic>{
-      ..._exportQuery,
-      'page': 1,
-      'size': 2000,
-      ...reportRowsOnlyQuery,
-    };
-    final path = _kind.isStandalone
-        ? '/purchase/reports/${_kind.endpoint}'
-        : '/purchase/reports/${_docType.code}/${_kind.endpoint}';
-    final json = await api.get(path, query: query);
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => _kind.isStandalone
+          ? '/purchase/reports/${_kind.endpoint}'
+          : '/purchase/reports/${_docType.code}/${_kind.endpoint}',
+      queryOf: () => _exportQuery,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -553,6 +544,12 @@ class _PurchaseReportTablePageState
           width: isStatusColumn ? 72 : (c.width ?? 120).toDouble(),
           type: c.type,
           sortable: isSortableReportType(c.type),
+          columnSearchEnabled: data.columnSearchKeys.contains(c.key),
+          exactValueOf: const {'number', 'money', 'count'}.contains(c.type)
+              ? (row) => row[c.key] == null
+                    ? null
+                    : (row['${c.key}Exact'] ?? row[c.key]).toString()
+              : null,
           value: (row) => formatReportCell(c, row),
         ),
         isStatus: isStatusColumn,
@@ -570,6 +567,7 @@ class _PurchaseReportTablePageState
           'features.purchase.pages.purchase_report_table_page.PurchaseReportTablePageState._buildTable.1',
       columns: columns,
       items: data.rows,
+      serverColumnSearchKeys: data.columnSearchKeys,
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '采购$_title',

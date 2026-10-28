@@ -10,6 +10,7 @@ import 'package:uten_imp/core/l10n/platform_table_recovery_text.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_controller.dart';
@@ -20,6 +21,9 @@ import 'package:uten_imp/shared/platform_tables/platform_table_widgets.dart';
 import '../../support/audit_screenshot_support.dart';
 
 const _capture = bool.fromEnvironment('UTEN_CAPTURE_PLATFORM_RECOVERY');
+const _captureDesktop = bool.fromEnvironment(
+  'UTEN_CAPTURE_PLATFORM_RECOVERY_DESKTOP',
+);
 final _captureKey = GlobalKey();
 
 const _note = PlatformColumnDefinition(
@@ -34,9 +38,10 @@ class _Row extends EditableGridRow {
 }
 
 class _Layout extends PlatformTableLayoutNotifier {
-  _Layout(super.tableKey);
+  _Layout(super.tableKey, this.initial);
+  final PlatformTableLayout initial;
   @override
-  PlatformTableLayout build() => const PlatformTableLayout(added: [_note]);
+  PlatformTableLayout build() => initial;
   @override
   void persist() {}
 }
@@ -49,6 +54,8 @@ class _Repository extends PlatformTableRepository {
   String? omittedId;
   int? responseVersion;
   bool nullValues = false;
+  List<PlatformColumnDefinition> definitions = [_note];
+  final List<List<String>> requestedColumns = [];
   final Map<String, String> responseIds = {};
   Completer<void>? gate;
   Completer<PlatformRowValues>? saveGate;
@@ -79,7 +86,7 @@ class _Repository extends PlatformTableRepository {
     String scope,
     String query, {
     List<String>? ids,
-  }) async => [_note];
+  }) async => definitions;
   @override
   Future<List<PlatformRowValues>> rows(
     String scope,
@@ -87,6 +94,7 @@ class _Repository extends PlatformTableRepository {
     List<String> columnIds = const [],
   }) async {
     reads++;
+    requestedColumns.add(List.of(columnIds));
     if (gate case final pending?) await pending.future;
     if (fail || failingId != null && ids.contains(failingId)) {
       throw NetworkTimeoutException();
@@ -127,8 +135,9 @@ Future<void> _mount(
   Widget child, {
   String language = 'zh',
   double width = 390,
+  PlatformTableLayout initial = const PlatformTableLayout(added: [_note]),
 }) async {
-  tester.view.physicalSize = Size(width, 1100);
+  tester.view.physicalSize = Size(_captureDesktop ? 1100 : width, 1100);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -146,7 +155,7 @@ Future<void> _mount(
         platformTableRepositoryProvider.overrideWithValue(repo),
         platformTableLayoutProvider(
           'recovery.table',
-        ).overrideWith(() => _Layout('recovery.table')),
+        ).overrideWith(() => _Layout('recovery.table', initial)),
       ],
       child: MaterialApp(
         locale: Locale(language),
@@ -154,14 +163,14 @@ Future<void> _mount(
         supportedLocales: AppLocalizations.supportedLocales,
         theme: _capture
             ? auditScreenshotTheme(
-                buildDarkTheme(),
+                _captureDesktop ? buildLightTheme() : buildDarkTheme(),
                 fontFamilyFallback: [?koreanFont],
               )
             : buildDarkTheme(),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: const TextScaler.linear(1.6)),
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(_captureDesktop ? 1 : 1.6),
+          ),
           child: child!,
         ),
         home: RepaintBoundary(
@@ -175,6 +184,121 @@ Future<void> _mount(
 }
 
 void main() {
+  testWidgets(
+    'unread formula cells show read availability before calculation diagnostics',
+    (tester) async {
+      const formula = PlatformColumnDefinition(
+        id: 'formula',
+        scope: 'recovery',
+        name: '计算补充列',
+        type: 'CALCULATED',
+        formula: PlatformFormula(
+          base: PlatformFormulaOperand(fact: 'quantity'),
+        ),
+      );
+      final repo = _Repository()..definitions = [formula];
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'master',
+                rows: [row],
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+              ),
+            );
+            return ListenableBuilder(
+              listenable: controller,
+              builder: (_, _) => PlatformColumnValue(
+                controller: controller,
+                row: row,
+                column: formula,
+              ),
+            );
+          },
+        ),
+        initial: const PlatformTableLayout(added: [formula]),
+      );
+      expect(find.text('暂不可用'), findsOneWidget);
+      expect(find.text('计算不可用'), findsNothing);
+      repo.fail = false;
+      await controller.retryRead();
+      await tester.pumpAndSettle();
+      expect(controller.error, isNull);
+      expect(find.text('暂不可用'), findsNothing);
+      expect(find.text('计算不可用'), findsOneWidget);
+      expect(repo.writes, 0);
+    },
+  );
+  testWidgets(
+    'obsolete layout columns repair themselves while valid fields and unsaved input survive',
+    (tester) async {
+      const obsolete = PlatformColumnDefinition(
+        id: 'obsolete',
+        scope: 'recovery',
+        name: '旧环境列',
+      );
+      final repo = _Repository()..fail = false;
+      final row = _Row('record');
+      addTearDown(row.dispose);
+      final controller = PlatformTableController<_Row>();
+      addTearDown(controller.dispose);
+      row.platformFields.setValue(_note, '未提交原文');
+      await _mount(
+        tester,
+        repo,
+        Builder(
+          builder: (context) {
+            controller.configure(
+              context,
+              descriptor: PlatformTableDescriptor<_Row>(
+                kind: 'editable',
+                rows: [row],
+                columnKeys: const ['base'],
+                tableKey: 'recovery.table',
+              ),
+              explicitBinding: PlatformTableBinding<_Row>(
+                tableKey: 'recovery.table',
+                scope: 'recovery',
+                recordIdOf: (row) => row.id,
+                draftOf: (row) => row.platformFields,
+              ),
+            );
+            return const SizedBox();
+          },
+        ),
+        initial: const PlatformTableLayout(
+          added: [_note, obsolete],
+          order: ['base', 'platform:obsolete'],
+          pinned: {'platform:obsolete'},
+          widths: {'base': 180, 'platform:obsolete': 120},
+          sortColumn: 'platform:obsolete',
+        ),
+      );
+      expect(controller.error, isNull);
+      expect(controller.layout.added.map((d) => d.id), ['note']);
+      expect(controller.layout.order, ['base']);
+      expect(controller.layout.pinned, isEmpty);
+      expect(controller.layout.widths, {'base': 180});
+      expect(controller.layout.sortColumn, isNull);
+      expect(repo.requestedColumns, everyElement(['note']));
+      expect(row.platformFields.snapshot.cells.single.value, '未提交原文');
+      expect(repo.writes, 0);
+    },
+  );
   testWidgets(
     'complete rows containing null values remain a valid atomic read',
     (tester) async {
@@ -590,6 +714,9 @@ void main() {
                   controller: grid,
                   showAddRow: false,
                   showRowDelete: false,
+                  showColumnSettings: false,
+                  showSelectAllToggle: false,
+                  showRemoveRowsAction: false,
                   columns: [
                     EditableGridColumn<_Row>(
                       key: 'base',
@@ -625,16 +752,33 @@ void main() {
                   ],
                 );
           await _mount(tester, repo, table, language: language);
+          await tester.tap(
+            find.byKey(const ValueKey('platform-table-read-details')),
+          );
+          await tester.pumpAndSettle();
           expect(
-            find.textContaining(
-              platformTableRecoveryTexts['incompleteReason']![[
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is SelectableText &&
+                  widget.data ==
+                      platformTableRecoveryTexts['incompleteReason']![[
+                        'zh',
+                        'en',
+                        'ko',
+                      ].indexOf(language)],
+            ),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.text(
+              platformTableRecoveryTexts['close']![[
                 'zh',
                 'en',
                 'ko',
               ].indexOf(language)],
             ),
-            findsOneWidget,
           );
+          await tester.pumpAndSettle();
           await tester.enterText(
             find.byKey(const Key('base-input')),
             '输入原文继续保留',
@@ -671,7 +815,7 @@ void main() {
       testWidgets(
         '$language ${editable ? 'grid' : 'master'} shows the cause and recovers without replacing base input',
         (tester) async {
-          final repo = _Repository();
+          final repo = _Repository()..nullValues = true;
           final row = _Row('record');
           final input = TextEditingController(text: '基础资料草稿');
           addTearDown(input.dispose);
@@ -690,6 +834,9 @@ void main() {
                   controller: grid,
                   showAddRow: false,
                   showRowDelete: false,
+                  showColumnSettings: false,
+                  showSelectAllToggle: false,
+                  showRemoveRowsAction: false,
                   columns: [
                     EditableGridColumn<_Row>(
                       key: 'base',
@@ -730,8 +877,8 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.textContaining(
-              platformTableRecoveryTexts['timeoutReason']![[
+            find.text(
+              platformTableRecoveryTexts['cellUnavailable']![[
                 'zh',
                 'en',
                 'ko',
@@ -739,11 +886,52 @@ void main() {
             ),
             findsOneWidget,
           );
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is Tooltip &&
+                  widget.message!.contains(
+                    platformTableRecoveryTexts['details']![[
+                      'zh',
+                      'en',
+                      'ko',
+                    ].indexOf(language)],
+                  ),
+            ),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.byKey(const ValueKey('platform-table-read-details')),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is SelectableText &&
+                  widget.data ==
+                      platformTableRecoveryTexts['timeoutReason']![[
+                        'zh',
+                        'en',
+                        'ko',
+                      ].indexOf(language)],
+            ),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.text(
+              platformTableRecoveryTexts['close']![[
+                'zh',
+                'en',
+                'ko',
+              ].indexOf(language)],
+            ),
+          );
+          await tester.pumpAndSettle();
           if (_capture) {
             await saveAuditScreenshot(
               tester,
               _captureKey,
-              'platform-recovery-$language-${editable ? 'grid' : 'master'}',
+              'platform-recovery-$language-${editable ? 'grid' : 'master'}${_captureDesktop ? '-desktop-light' : ''}',
             );
           }
           final retry = find.byKey(const ValueKey('platform-table-read-retry'));
@@ -783,6 +971,7 @@ void main() {
             findsNothing,
           );
           expect(input.text, '正在编辑，保持原文');
+          expect(find.text('—'), findsOneWidget);
           expect(
             tester.state<EditableTextState>(
               find.descendant(

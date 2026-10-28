@@ -89,7 +89,7 @@ class UtenPanelHeader extends StatelessWidget {
                       UtenFieldHintIcon(info: info, dense: true),
                   ],
                 ),
-                if (subtitle != null)
+                if (subtitle?.trim().isNotEmpty ?? false)
                   Text(
                     subtitle!,
                     style: theme.textTheme.bodySmall?.copyWith(

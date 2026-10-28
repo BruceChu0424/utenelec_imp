@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 // 开工确认表 (ADR-131 §5.4, 合并 ADR-093/096 的生产路线确认)。
 //
 // 车间在「我的车间任务」勾选任务点「开工」, 其中有要先确认的行 (待认料或生产
@@ -821,16 +822,20 @@ class _StartConfirmationSheetState
           '同时用两种料 (双色 / 双料) 就都勾上；不用内料仓的料就选最下面一项，'
           '按工单领料。',
       frozenTextOf: (row) => _selectionText(row),
+      listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => _materialCell(context, row, l10n),
     ),
     EditableGridColumn(
       key: 'alsoOrder',
       label: l10n.wmAlsoOrderMaterials,
+      columnSearchEnabled: false,
       width: 190,
       headerInfo:
           '只对没有 BOM 的产品出现。像嵌件注塑件这样，除了塑料还要领嵌件的，'
           '勾上它：塑料从车间内料仓用，嵌件照常按工单领料，领完再开工。',
-      frozenTextOf: (row) => row.alsoOrder.value ? '要' : '',
+      frozenTextOf: (row) => _alsoOrderText(row) ?? '—',
+      filterValueOf: _alsoOrderText,
+      listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => _alsoOrderCell(row),
     ),
     EditableGridColumn(
@@ -843,6 +848,8 @@ class _StartConfirmationSheetState
           '产量即可开工，后续到料在同一工单继续领。分批生产请在任务列表的「下一步」'
           '里选。已经选过路线的工单这里只显示。',
       frozenTextOf: (row) => _routeText(row),
+      filterValueOf: (row) => _routeText(row),
+      listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => _routeCell(row),
     ),
     EditableGridColumn(
@@ -851,6 +858,10 @@ class _StartConfirmationSheetState
       width: 150,
       headerInfo: '来自 BOM 的单个重量，只读。没填的不影响开工，盘点结算前补上就行。',
       frozenTextOf: (row) => _weightText(row, l10n),
+      // One product may list several BOM material weights. Filter the displayed
+      // combination; it is not one scalar that may be compared or summed.
+      filterValueOf: (row) => _weightText(row, l10n),
+      listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => ValueListenableBuilder<_MaterialSelection>(
         valueListenable: row.selection,
         builder: (context, _, _) => Text(
@@ -865,6 +876,9 @@ class _StartConfirmationSheetState
       label: '确认后',
       width: 200,
       frozenTextOf: (row) => _planText(_planOf(row)),
+      filterValueOf: (row) => _planText(_planOf(row)),
+      columnSearchEnabled: false,
+      listenableOf: (row) => row.changes,
       cellBuilder: (context, row) => ListenableBuilder(
         listenable: row.changes,
         builder: (context, _) => _planCell(context, _planOf(row)),
@@ -970,6 +984,16 @@ class _StartConfirmationSheetState
         );
       },
     );
+  }
+
+  String? _alsoOrderText(_StartRow row) {
+    if (!row.pending.choiceRequired ||
+        !row.pending.alsoOrderMaterialsAllowed ||
+        row.selection.value.none ||
+        row.selection.value.isEmpty) {
+      return null;
+    }
+    return row.alsoOrder.value ? '要' : '不要';
   }
 
   Widget _alsoOrderCell(_StartRow row) {
@@ -1131,7 +1155,10 @@ class _MaterialPickerDialogState extends State<_MaterialPickerDialog> {
     final names = widget.options.map((option) => option.label).join('、');
     return UtenAlertDialog(
       scrollable: false,
-      title: Text('「${widget.productName}」用哪种料'),
+      title: UtenSectionHeader(
+        title: '「${widget.productName}」用哪种料',
+        info: widget.options.length > 1 ? '同时用两种料 (双色 / 双料) 就都勾上。' : null,
+      ),
       content: SizedBox(
         width: 440,
         height: math.min(
@@ -1164,16 +1191,6 @@ class _MaterialPickerDialogState extends State<_MaterialPickerDialog> {
                   subtitle: option.goodsCode == null
                       ? null
                       : Text(option.goodsCode!),
-                ),
-              if (widget.options.length > 1)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                  child: Text(
-                    '同时用两种料 (双色 / 双料) 就都勾上。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
                 ),
               const Divider(),
               CheckboxListTile(

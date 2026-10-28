@@ -571,7 +571,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         chromeWidth:
             UtenEditableGridCellSpec.dropdownChevronWidth +
             UtenEditableGridCellSpec.hintIconWidth,
-        textOf: (r) => supplierEntries[r.supplierId] ?? '',
+        textOf: (r) => supplierEntries[r.supplierId ?? headerSupplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
           valueListenable: row.termsAutofilledNotifier,
@@ -596,6 +596,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       required: true,
       headerInfo: l10n.workflowQuantityHint,
       frozenTextOf: (r) => r.qty.text,
+      exactValueOf: (r) => r.qty.text,
+      exactListenableOf: (r) => r.qty,
+      listenableOf: (r) => r.qty,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
@@ -613,9 +616,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ),
-    // ADR-098 允许损耗%（订货单）：2026-10-10 列序口径——紧跟数量（与采购「允许
-    // 超收% 紧跟数量」对齐）。货品主档记忆预填（黄标提醒核对，改值即清）；回厂
-    // 累计低于 数量×(1−允许损耗) 时仓库登记要确认并通知委外判定。空 = 未设。
+    // 新批准的领料计划冻结正常损耗加成；旧计划保留原始单耗。
+    // ADR-098 的短交容差仍保留，不用它减少订货目标数量。
     if (cfg.itemHasAllowedLossPct)
       EditableGridColumn<SubcontractGridRow>(
         key: 'allowedLossPct',
@@ -623,10 +625,15 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 120,
         numeric: true,
         headerInfo:
-            '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
-            '少于下限仓库登记时会确认并通知委外判定。留空 = 不设下限。'
+            '新批准时按此比例增加直属物料领料量，成品目标数量不变。'
+            '例如订 100 件、损耗 10%，基准用料 100 的物料领 110，仍应回厂 100 件。'
+            '正常损耗已包含在回厂材料估算核销中，不要重复登记损耗单。'
+            '已加损耗用料的新单若成品短交，须补齐或由负责人明确接受，不能自动减交。'
+            '历史已批准计划不补增用料。留空 = 不增加。'
             '按货品主档记忆预填，保存后记住本次填写值。',
         textOf: (r) => r.allowedLossPct.text,
+        exactValueOf: (r) => r.allowedLossPct.text,
+        exactListenableOf: (r) => r.allowedLossPct,
         listenableOf: (r) => r.allowedLossPct,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
           valueListenable: row.termsAutofilledNotifier,
@@ -654,6 +661,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         headerInfo: l10n.workflowPriceHint,
         frozenTextOf: (r) => r.price.text,
         textOf: (r) => r.price.text,
+        exactValueOf: (r) => r.price.text,
+        exactListenableOf: (r) => r.price,
         listenableOf: (r) => r.price,
         chromeWidthOf: PriceCheckCell.evidenceExtentOf,
         cellBuilder: (context, row) => PriceCheckCell(
@@ -688,7 +697,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         textOf: (r) => r.hasSourceAmount
             ? (r.amountExactNotifier.value ?? '')
             : r.pricing.totalAmount.text,
-        listenableOf: (r) => r.pricing,
+        listenableOf: (r) =>
+            Listenable.merge([r.pricing, r.amountExactNotifier]),
+        exactValueOf: (r) => r.amountExactNotifier.value,
+        exactListenableOf: (r) => r.amountExactNotifier,
         frozenTextOf: (r) => r.amountExactNotifier.value == null
             ? ''
             : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
@@ -713,6 +725,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 96,
         numeric: true,
         frozenTextOf: (r) => r.girth.text,
+        exactValueOf: (r) => r.girth.text,
+        exactListenableOf: (r) => r.girth,
+        listenableOf: (r) => r.girth,
         cellBuilder: (context, row) => TextField(
           controller: row.girth,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -728,6 +743,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 96,
         numeric: true,
         frozenTextOf: (r) => r.boxQty.text,
+        exactValueOf: (r) => r.boxQty.text,
+        exactListenableOf: (r) => r.boxQty,
+        listenableOf: (r) => r.boxQty,
         cellBuilder: (context, row) => TextField(
           controller: row.boxQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -743,6 +761,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 110,
         numeric: true,
         frozenTextOf: (r) => r.standardQty.text,
+        exactValueOf: (r) => r.standardQty.text,
+        exactListenableOf: (r) => r.standardQty,
+        listenableOf: (r) => r.standardQty,
         cellBuilder: (context, row) => TextField(
           controller: row.standardQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -762,6 +783,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 100,
         numeric: true,
         frozenTextOf: (r) => r.endingQty.text,
+        exactValueOf: (r) => r.endingQty.text,
+        exactListenableOf: (r) => r.endingQty,
+        listenableOf: (r) => r.endingQty,
         cellBuilder: (context, row) => TextField(
           controller: row.endingQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -780,6 +804,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         width: 100,
         numeric: true,
         frozenTextOf: (r) => r.wasteRate.text,
+        exactValueOf: (r) => r.wasteRate.text,
+        exactListenableOf: (r) => r.wasteRate,
+        listenableOf: (r) => r.wasteRate,
         cellBuilder: (context, row) => TextField(
           controller: row.wasteRate,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -793,6 +820,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         label: '损耗原因',
         width: 200,
         frozenTextOf: (r) => r.cause.text,
+        listenableOf: (r) => r.cause,
         cellBuilder: (context, row) => TextField(
           controller: row.cause,
           // 单行（2026-09-09 统一口径）：双行把整行撑高，与数量/单价格不同高。

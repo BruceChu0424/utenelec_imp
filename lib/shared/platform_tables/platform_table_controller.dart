@@ -686,6 +686,39 @@ class PlatformTableController<T> extends ChangeNotifier {
           ? const <PlatformColumnDefinition>[]
           : await repo.search(owner.scope, '', ids: selected);
       if (disposed || generation != _generation) return;
+      // The server resolves only this actor's definitions in this module. A
+      // stale display preference must not prevent valid fields from loading.
+      // Never alter record snapshots or staged values while repairing layout.
+      final available = known.map((column) => column.id).toSet();
+      final obsolete = selected.where((id) => !available.contains(id)).toSet();
+      if (obsolete.isNotEmpty) {
+        final obsoleteKeys = obsolete.map((id) => 'platform:$id').toSet();
+        updateLayout(
+          layout.copyWith(
+            added: layout.added
+                .where((column) => !obsolete.contains(column.id))
+                .toList(),
+            order: layout.order
+                .where((key) => !obsoleteKeys.contains(key))
+                .toList(),
+            hidden: layout.hidden.difference(obsoleteKeys),
+            pinned: layout.pinned.difference(obsoleteKeys),
+            widths: {
+              for (final entry in layout.widths.entries)
+                if (!obsoleteKeys.contains(entry.key)) entry.key: entry.value,
+            },
+            filters: {
+              for (final entry in layout.filters.entries)
+                if (!obsoleteKeys.contains(entry.key) &&
+                    !obsoleteKeys.contains(
+                      entry.key.replaceFirst('search.', ''),
+                    ))
+                  entry.key: entry.value,
+            },
+            clearSort: obsoleteKeys.contains(layout.sortColumn),
+          ),
+        );
+      }
       rememberCatalogResults(known);
       for (final column in known) {
         if (_definitions.containsKey(column.id)) {
@@ -700,17 +733,11 @@ class PlatformTableController<T> extends ChangeNotifier {
             .toSet()
             .toList();
         final revisions = {for (final id in ids) id: _edits[id] ?? 0};
-        final columns = layout.added
-            .where(
-              (d) =>
-                  d.scope == owner.scope &&
-                  (!d.related ||
-                      capabilities!.relations.any(
-                        (relation) => relation.key == d.relationKey,
-                      )),
-            )
-            .map((d) => d.id)
-            .toList();
+        // Project only the display roots validated above. A price/relationship
+        // permission-hidden preference is retained for later access, but must
+        // not bypass metadata resolution and poison the entire batch read.
+        // The server independently includes and masks every persisted cell.
+        final columns = selected.where(available.contains).toList();
         final pending = <PlatformRowValues>[];
         for (var start = 0; start < ids.length; start += 200) {
           final end = (start + 200).clamp(0, ids.length);

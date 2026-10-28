@@ -17,6 +17,7 @@ class CompanyFileRepository {
     bool trash = false,
     int page = 0,
     int size = 100,
+    Map<String, String?> columnFilters = const {},
   }) async => CompanyFileListing.fromJson(
     await api.get(
       base,
@@ -28,6 +29,8 @@ class CompanyFileRepository {
         'trash': trash,
         'page': page,
         'size': size,
+        for (final entry in columnFilters.entries)
+          if (entry.value?.trim().isNotEmpty ?? false) entry.key: entry.value,
       },
     ),
   );

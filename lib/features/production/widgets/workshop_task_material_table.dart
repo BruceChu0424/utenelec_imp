@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
@@ -168,6 +169,8 @@ class _WorkshopTaskMaterialTableState
               key: 'state',
               label: '状态',
               width: 72,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: (row) => row.stateLabel,
               cellBuilder: (_, row) => Tooltip(
                 message: row.waitingForPlanning
@@ -207,6 +210,9 @@ class _WorkshopTaskMaterialTableState
               key: 'source',
               label: '来源',
               width: 110,
+              columnSearchEnabled: false,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: (row) => row.sourceLabel,
             ),
             MasterColumnDef(
@@ -214,6 +220,10 @@ class _WorkshopTaskMaterialTableState
               label: '需求',
               width: 130,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
+              facetSearchEnabled: true,
+              exactValueOf: (row) => row.requiredQty.toString(),
               value: (row) => _qty(row.requiredQty, row.unitName),
             ),
             MasterColumnDef(
@@ -221,6 +231,10 @@ class _WorkshopTaskMaterialTableState
               label: '仓库已到',
               width: 140,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
+              facetSearchEnabled: true,
+              exactValueOf: (row) => row.warehouseAvailableQty.toString(),
               value: (row) => _qty(row.warehouseAvailableQty, row.unitName),
               cellBuilder: (_, row) => Tooltip(
                 message:
@@ -233,6 +247,12 @@ class _WorkshopTaskMaterialTableState
               label: '直送已交接',
               width: 140,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
+              facetSearchEnabled: true,
+              exactValueOf: (row) => row.supplyRoute == 'MAKE'
+                  ? row.directReceivedQty.toString()
+                  : null,
               value: (row) => row.supplyRoute == 'MAKE'
                   ? _qty(row.directReceivedQty, row.unitName)
                   : null,
@@ -252,6 +272,10 @@ class _WorkshopTaskMaterialTableState
               label: '已领到车间',
               width: 140,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
+              facetSearchEnabled: true,
+              exactValueOf: (row) => row.issuedQty.toString(),
               value: (row) => _qty(row.issuedQty, row.unitName),
               cellBuilder: (_, row) => Tooltip(
                 message:
@@ -264,6 +288,11 @@ class _WorkshopTaskMaterialTableState
               label: '缺口',
               width: 130,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
+              facetSearchEnabled: true,
+              exactValueOf: (row) =>
+                  row.shortageQty > 0 ? row.shortageQty.toString() : null,
               value: (row) => row.shortageQty > 0
                   ? _qty(row.shortageQty, row.unitName)
                   : null,
@@ -420,10 +449,17 @@ class _WorkshopTaskMaterialTableState
               );
             },
           ),
-          if (expanded) ...[
-            const Divider(height: UtenSpacing.s12),
-            _arrivalDetails(context, row),
-          ],
+          UtenCollapsibleContent(
+            expanded: expanded,
+            maintainState: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Divider(height: UtenSpacing.s12),
+                _arrivalDetails(context, row),
+              ],
+            ),
+          ),
         ],
       ),
     );

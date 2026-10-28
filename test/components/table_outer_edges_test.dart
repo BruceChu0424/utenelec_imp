@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -10,6 +11,7 @@ Border _cellBorder(WidgetTester tester, String text) {
   final ancestors = find.ancestor(
     of: find.text(text),
     matching: find.byWidgetPredicate((widget) {
+      if (widget is UtenTableCellFrame) return true;
       final decoration = switch (widget) {
         Container() => widget.decoration,
         DecoratedBox() => widget.decoration,
@@ -26,6 +28,7 @@ Border _cellBorder(WidgetTester tester, String text) {
           .compareTo(tester.getSize(find.byWidget(right.widget)).width),
     );
   final decoration = switch (cells.first.widget) {
+    UtenTableCellFrame(:final border) => BoxDecoration(border: border),
     Container(:final decoration) => decoration,
     DecoratedBox(:final decoration) => decoration,
     _ => null,
@@ -34,6 +37,95 @@ Border _cellBorder(WidgetTester tester, String text) {
 }
 
 void main() {
+  testWidgets(
+    'the logical cell edge paints above full-bleed contents at actual pixels',
+    (tester) async {
+      final key = GlobalKey();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: RepaintBoundary(
+                key: key,
+                child: const SizedBox(
+                  width: 80,
+                  height: 40,
+                  child: UtenTableCellFrame(
+                    border: Border(
+                      right: BorderSide(color: Color(0xFFFF0000), width: 0.5),
+                    ),
+                    backgroundColor: Colors.blue,
+                    child: ColoredBox(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final pixels = await tester.runAsync(() async {
+        final image =
+            await (key.currentContext!.findRenderObject()!
+                    as RenderRepaintBoundary)
+                .toImage(pixelRatio: 2);
+        final bytes = (await image.toByteData())!.buffer.asUint8List();
+        final width = image.width;
+        final y = image.height ~/ 2;
+        final right = bytes.sublist(
+          (y * width + width - 1) * 4,
+          (y * width + width - 1) * 4 + 4,
+        );
+        final middle = bytes.sublist(
+          (y * width + width ~/ 2) * 4,
+          (y * width + width ~/ 2) * 4 + 4,
+        );
+        image.dispose();
+        return (right, middle);
+      });
+      expect(pixels!.$1, [255, 0, 0, 255]);
+      expect(pixels.$2, [255, 255, 255, 255]);
+    },
+  );
+  testWidgets(
+    'the row closing stroke paints above opaque children and includes fitted empty space',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              height: 80,
+              child: UtenTableRowRightEdge(
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 120,
+                      child: ColoredBox(color: Colors.yellow),
+                    ),
+                    Expanded(child: ColoredBox(color: Colors.black)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final decoration = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(UtenTableRowRightEdge),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect(decoration.position, DecorationPosition.foreground);
+      final border = (decoration.decoration as BoxDecoration).border! as Border;
+      expect(border.right.style, BorderStyle.solid);
+      expect(border.right.width, 0.5);
+      expect(tester.getSize(find.byType(UtenTableRowRightEdge)).width, 420);
+    },
+  );
   for (final editor in [false, true]) {
     for (final actions in [false, true]) {
       for (final pinned in [false, true]) {

@@ -2,6 +2,7 @@
 //
 // 外观与系统设置页自己的分组卡片一致(细边框 + 控件圆角), 不依赖性能档等全局偏好。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -43,23 +44,9 @@ class AiSettingsEntryCard extends StatelessWidget {
                 const AiSparkleBadge(size: 40, animate: false),
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        l10n.aiSettingsTitle,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s2),
-                      Text(
-                        l10n.aiSettingsEntrySubtitle,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  child: UtenSectionHeader(
+                    title: l10n.aiSettingsTitle,
+                    info: l10n.aiSettingsEntrySubtitle,
                   ),
                 ),
                 Icon(

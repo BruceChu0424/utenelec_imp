@@ -513,7 +513,6 @@ class _MasterPickerSheetState<TItem>
           : {_selectedCategoryId!},
       expandOnRowTap: true,
       // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
-      initiallyExpandDepth: 0,
       showSearch: false,
       visibleFilterIds: _visibleFilterIds,
       externalSearchQuery: _globalQuery,

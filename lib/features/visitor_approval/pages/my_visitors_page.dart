@@ -33,6 +33,7 @@ import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
+import '../../visitor/providers/visitor_column_queries.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../providers/visitor_pending_count_provider.dart';
@@ -100,6 +101,16 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
 
   /// 表头筛选：状态 → 下推后端 status 并回第 1 页；换口径清空选中。
   void _onFilterChanged(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() {
+        _page = 1;
+        _selectedIds = {};
+      });
+      ref.read(visitorHostColumnsProvider.notifier).state = ref
+          .read(visitorHostColumnsProvider)
+          .search(key, value);
+      return;
+    }
     if (key != 'status') return;
     setState(() {
       if (value == 'history') {
@@ -251,9 +262,19 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final paginationScope = (_history, _status, retainedReaderEpoch(ref));
+    final columns = ref.watch(visitorHostColumnsProvider);
+    final paginationScope = (
+      _history,
+      _status,
+      columns,
+      retainedReaderEpoch(ref),
+    );
     final readLease = ref.watch(visitorHostReadProvider(_query.status))
-      ..bindView(context, currentQuery: () => (_query.status,));
+      ..bindView(
+        context,
+        currentQuery: () =>
+            (_query.status, ref.read(visitorHostColumnsProvider)),
+      );
     final list = _retainedPage.resolveFor(
       ref,
       paginationScope,
@@ -294,11 +315,23 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                 ref.invalidate(myAsHostProvider(_query));
               },
               columns: _columns(l10n),
+              serverColumnSearch: true,
+              sortColumn: columns.sort,
+              sortAscending: columns.ascending,
+              onSortChange: (key, ascending) {
+                setState(() {
+                  _page = 1;
+                  _selectedIds = {};
+                });
+                ref.read(visitorHostColumnsProvider.notifier).state = columns
+                    .sorted(key, ascending);
+              },
               items: page.items,
               rowsController: _tableRows,
               facets: {'status': _statusFacets(l10n)},
               nullCounts: const {},
               filters: {
+                ...columns.searches,
                 'status': _status ?? (_history ? null : 'hostReviewing'),
               },
               onFilterChanged: _onFilterChanged,
@@ -447,6 +480,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       label: l10n.visitorColPlannedVisit,
       width: 180,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
       value: (app) => fmtDateTime(app.plannedVisitAt),
     ),
   ];

@@ -10,13 +10,13 @@
 // 路由守卫与工作台显隐共用 permission_by_path.dart。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../widgets/admin_permission_templates.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
-import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -31,6 +31,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
@@ -40,6 +41,7 @@ import '../widgets/admin_permission_transfer_actions.dart';
 import '../widgets/admin_permission_workspace.dart';
 import '../widgets/admin_user_detail_panel.dart';
 import '../widgets/provision_account_dialog.dart';
+import '../widgets/permission_batch_dialog.dart';
 
 class AdminPermissionsPage extends ConsumerStatefulWidget {
   const AdminPermissionsPage({
@@ -62,6 +64,10 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   bool _templatesVisited = false;
   String _employeeSearch = '';
   final _pendingPermissionChanges = <int, bool>{};
+
+  /// 各分区的离开守卫（三选一：保存并离开/不保存/继续编辑），返回 true 才放行。
+  final _leaveGuards = <int, Future<bool> Function()>{};
+  bool _allowRoutePop = false;
   final _workspaceKey = GlobalKey();
   final _leadingWidth = ValueNotifier<double?>(null);
 
@@ -74,6 +80,30 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
   void _permissionPendingChanged(int segment, bool pending) {
     if (_pendingPermissionChanges[segment] == pending || !mounted) return;
     setState(() => _pendingPermissionChanges[segment] = pending);
+  }
+
+  void _leaveGuardChanged(int segment, Future<bool> Function()? guard) {
+    if (guard == null) {
+      _leaveGuards.remove(segment);
+    } else {
+      _leaveGuards[segment] = guard;
+    }
+  }
+
+  bool get _anyPending => _pendingPermissionChanges.values.any((p) => p);
+
+  /// 离开页面前：逐个有草稿的分区走三选一，全部放行才允许返回。
+  Future<void> _guardRoutePop() async {
+    for (final segment in _pendingPermissionChanges.keys.toList()) {
+      if (_pendingPermissionChanges[segment] != true) continue;
+      final guard = _leaveGuards[segment];
+      if (guard == null) continue;
+      final allowed = await guard();
+      if (!mounted || !allowed) return;
+    }
+    if (!mounted) return;
+    setState(() => _allowRoutePop = true);
+    Navigator.of(context).maybePop();
   }
 
   @override
@@ -164,6 +194,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               navigation: categoryNavigation,
               onPermissionDirtyChanged: (pending) =>
                   _permissionPendingChanged(0, pending),
+              onLeaveGuardChanged: (guard) => _leaveGuardChanged(0, guard),
             ),
             if (canManageAuthorization)
               AdminDepartmentPermView(
@@ -171,12 +202,14 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                 leadingHeader: categoryNavigation,
                 onPermissionDirtyChanged: (pending) =>
                     _permissionPendingChanged(1, pending),
+                onLeaveGuardChanged: (guard) => _leaveGuardChanged(1, guard),
               ),
             if (canManageAuthorization)
               AdminBaselinePermView(
                 leadingHeader: categoryNavigation,
                 onPermissionDirtyChanged: (pending) =>
                     _permissionPendingChanged(2, pending),
+                onLeaveGuardChanged: (guard) => _leaveGuardChanged(2, guard),
               ),
             if (canManageAuthorization)
               _templatesVisited
@@ -184,6 +217,8 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
                       navigation: categoryNavigation,
                       onPermissionDirtyChanged: (pending) =>
                           _permissionPendingChanged(3, pending),
+                      onLeaveGuardChanged: (guard) =>
+                          _leaveGuardChanged(3, guard),
                     )
                   : const SizedBox.shrink(),
           ],
@@ -198,20 +233,26 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
     }
 
     // 统一顶栏：左上角全局返回键（UtenBackButton），AppBar 自带顶部安全区
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: canManageAuthorization ? '账号与权限管理' : '账号支持',
-        showBackButton: true,
-        actions: [
-          if (canManageAuthorization)
-            AdminPermissionArchiveActions(
-              importEnabled: !_pendingPermissionChanges.values.any(
-                (pending) => pending,
+    return PopScope<void>(
+      canPop: _allowRoutePop || !_anyPending,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_allowRoutePop) _guardRoutePop();
+      },
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: canManageAuthorization ? '账号与权限管理' : '账号支持',
+          showBackButton: true,
+          actions: [
+            if (canManageAuthorization)
+              AdminPermissionArchiveActions(
+                importEnabled: !_pendingPermissionChanges.values.any(
+                  (pending) => pending,
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
+        body: body,
       ),
-      body: body,
     );
   }
 }
@@ -224,6 +265,7 @@ class _EmployeePermTab extends ConsumerStatefulWidget {
     required this.leadingHeader,
     required this.navigation,
     required this.onPermissionDirtyChanged,
+    this.onLeaveGuardChanged,
     this.initialEmployeeId,
   });
 
@@ -232,6 +274,7 @@ class _EmployeePermTab extends ConsumerStatefulWidget {
   final Widget leadingHeader;
   final Widget navigation;
   final ValueChanged<bool> onPermissionDirtyChanged;
+  final ValueChanged<Future<bool> Function()?>? onLeaveGuardChanged;
 
   @override
   ConsumerState<_EmployeePermTab> createState() => _EmployeePermTabState();
@@ -253,15 +296,27 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
   int _requestEpoch = 0;
 
   AdminUserSummary? _selected;
+  bool _multiSelection = false;
+  bool _batchBusy = false;
+  final _batchUsers = <String, AdminUserSummary>{};
   bool _showDetail = false; // compact 下是否进入详情视图
-  bool _detailDirty = false;
-  final _detailPanelKey = GlobalKey();
+  final _detailPanelKey = GlobalKey<AdminUserDetailPanelState>();
 
   @override
   void initState() {
     super.initState();
     _search = widget.search;
+    widget.onLeaveGuardChanged?.call(() async {
+      final panel = _detailPanelKey.currentState;
+      return panel == null ? true : panel.confirmLeaveDrafts();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _initialize());
+  }
+
+  @override
+  void dispose() {
+    widget.onLeaveGuardChanged?.call(null);
+    super.dispose();
   }
 
   @override
@@ -361,7 +416,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         }
         setState(() {
           _selected = found;
-          if (found == null) _detailDirty = false;
         });
       }
     } on ApiException catch (e) {
@@ -441,16 +495,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     _reload();
   }
 
+  /// 切员工/返回列表前三选一（保存并离开/不保存/继续编辑），交给详情面板统一处理。
   Future<bool> _confirmDiscardPermissionChanges() async {
-    if (!_detailDirty) return true;
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '丢弃未保存修改',
-      content: const Text('当前员工有未保存的权限修改，离开后将丢弃这些修改。确定继续吗？'),
-      confirmLabel: '丢弃并离开',
-      danger: true,
-    );
-    return mounted && confirmed == true;
+    final panel = _detailPanelKey.currentState;
+    return panel == null ? true : await panel.confirmLeaveDrafts();
   }
 
   Future<void> _onUserTap(AdminUserSummary u) async {
@@ -462,7 +510,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     setState(() {
       _selected = u;
       _showDetail = true;
-      _detailDirty = false;
     });
     widget.onPermissionDirtyChanged(false);
   }
@@ -472,7 +519,6 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     if (!mounted) return;
     setState(() {
       _showDetail = false;
-      _detailDirty = false;
     });
     widget.onPermissionDirtyChanged(false);
   }
@@ -488,8 +534,10 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         setState(() {
           _items.clear();
           _selected = null;
+          _batchUsers.clear();
+          _multiSelection = false;
+          _batchBusy = false;
           _showDetail = false;
-          _detailDirty = false;
           _loading = true;
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -505,13 +553,133 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       navigation: widget.navigation,
       leading: _listColumn(),
       trailing: _detailArea(showBack: false),
-      compact: _showDetail && _selected != null
+      compact: _multiSelection && _showDetail
+          ? _batchSummary(showBack: true)
+          : _showDetail && _selected != null
           ? _detailArea(showBack: true)
           : _listColumn(),
     );
   }
 
+  bool _canSelectUser(AdminUserSummary user) =>
+      user.authorizationGrantAllowed &&
+      user.id != ref.read(sessionProvider).user?.id;
+
+  Future<void> _toggleMulti() async {
+    if (_batchBusy || !await _confirmDiscardPermissionChanges() || !mounted) {
+      return;
+    }
+    setState(() {
+      _multiSelection = !_multiSelection;
+      _batchUsers.clear();
+      _showDetail = false;
+    });
+  }
+
+  void _toggleBatchUser(AdminUserSummary user) {
+    if (!_canSelectUser(user) || _batchBusy) return;
+    if (!_batchUsers.containsKey(user.id) && _batchUsers.length >= 500) {
+      context.appWarning('一次最多选择 500 人');
+      return;
+    }
+    setState(() {
+      _batchUsers.containsKey(user.id)
+          ? _batchUsers.remove(user.id)
+          : _batchUsers[user.id] = user;
+    });
+  }
+
+  Future<void> _applyBatch(bool templateMode) async {
+    if (_batchUsers.isEmpty || _batchBusy) return;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final ids = _batchUsers.keys.toList(growable: false);
+    setState(() => _batchBusy = true);
+    try {
+      final result = await showPermissionBatchDialog(
+        context,
+        templateMode: templateMode,
+        userIds: ids,
+        targetLabel: '已选 ${ids.length} 名员工（包含筛选外的已选员工）',
+      );
+      if (!mounted || boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
+      if (result == true) {
+        context.appSuccess('已更新 ${ids.length} 名员工的权限');
+        _onAccountChanged();
+      }
+    } finally {
+      if (mounted && boundary == ref.read(sensitiveReadBoundaryProvider)) {
+        setState(() => _batchBusy = false);
+      }
+    }
+  }
+
+  Widget _batchSummary({bool showBack = false}) => Padding(
+    padding: const EdgeInsets.all(UtenSpacing.s12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showBack)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _batchBusy
+                  ? null
+                  : () => setState(() => _showDetail = false),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('返回员工列表'),
+            ),
+          ),
+        UtenSectionHeader(
+          title: '已选 ${_batchUsers.length} 名员工',
+          info: '选择会跨搜索和加载更多保留；“选择已加载”只选择当前已加载的可授权员工。',
+        ),
+        Wrap(
+          spacing: 8,
+          children: [
+            FilledButton.tonalIcon(
+              onPressed: _batchUsers.isNotEmpty && !_batchBusy
+                  ? () => _applyBatch(true)
+                  : null,
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('应用模板'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _batchUsers.isNotEmpty && !_batchBusy
+                  ? () => _applyBatch(false)
+                  : null,
+              icon: const Icon(Icons.checklist_rounded, size: 18),
+              label: const Text('批量设置权限'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView(
+            children: [
+              for (final user in _batchUsers.values)
+                ListTile(
+                  dense: true,
+                  title: Text(user.employeeName ?? user.loginAccount),
+                  subtitle: Text(user.loginAccount),
+                  trailing: IconButton(
+                    tooltip: '移出选择',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _batchBusy
+                        ? null
+                        : () => setState(() => _batchUsers.remove(user.id)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _detailArea({required bool showBack}) {
+    if (_multiSelection) return _batchSummary();
     final theme = Theme.of(context);
     final u = _selected;
     if (u == null) {
@@ -544,10 +712,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       onAccountChanged: _onAccountChanged,
       onProvisionAccount: () =>
           showProvisionAccountDialog(context, onProvisioned: _reload),
-      onPermissionDirtyChanged: (dirty) {
-        _detailDirty = dirty;
-        widget.onPermissionDirtyChanged(dirty);
-      },
+      onPermissionDirtyChanged: widget.onPermissionDirtyChanged,
     );
   }
 
@@ -560,6 +725,52 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         widget.leadingHeader,
+        if (widget.canManageAuthorization)
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 4,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('permission-employee-multi-select'),
+                onPressed: _batchBusy ? null : _toggleMulti,
+                icon: Icon(
+                  _multiSelection
+                      ? Icons.close_rounded
+                      : Icons.checklist_rounded,
+                  size: 18,
+                ),
+                label: Text(_multiSelection ? '结束多选' : '多选'),
+              ),
+              if (_multiSelection) ...[
+                Text('已选 ${_batchUsers.length} 人'),
+                TextButton(
+                  onPressed: _batchBusy
+                      ? null
+                      : () {
+                          setState(() {
+                            for (final user in _items.where(_canSelectUser)) {
+                              if (_batchUsers.length >= 500) break;
+                              _batchUsers[user.id] = user;
+                            }
+                          });
+                        },
+                  child: const Text('选择已加载'),
+                ),
+                TextButton(
+                  onPressed: _batchBusy
+                      ? null
+                      : () => setState(_batchUsers.clear),
+                  child: const Text('清空'),
+                ),
+                TextButton(
+                  onPressed: _batchUsers.isEmpty
+                      ? null
+                      : () => setState(() => _showDetail = true),
+                  child: const Text('批量设置'),
+                ),
+              ],
+            ],
+          ),
         // 状态筛选（单选：全部/正常/锁定/停用）
         Align(
           alignment: Alignment.centerLeft,
@@ -595,7 +806,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
         ),
         child: Row(
           children: [
@@ -605,25 +816,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
               color: theme.colorScheme.primary,
             ),
             const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '开通账号',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '员工还没有登录账号？点此补开(初始密码首登强制修改)',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+            const Expanded(
+              child: UtenSectionHeader(title: '开通账号', info: '支持多选批量开通'),
             ),
             Icon(
               Icons.chevron_right_rounded,
@@ -695,23 +889,37 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           }
           final u = visible[i];
           return UtenCard(
-            margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s12,
-            ),
-            onTap: () => _onUserTap(u),
+            margin: const EdgeInsets.only(bottom: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            onTap: _batchBusy
+                ? null
+                : () => _multiSelection ? _toggleBatchUser(u) : _onUserTap(u),
+            // 选中卡片换全站选中底色 + 主色描边：否则右侧详情换了人，左列看
+            // 不出当前是谁（2026-10-27 用户口径「选中要有颜色变化」）。
+            selected: _multiSelection
+                ? _batchUsers.containsKey(u.id)
+                : u.id == _selected?.id,
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 18,
-                  child: Text(
-                    (u.employeeName ?? u.loginAccount)
-                        .substring(0, 1)
-                        .toUpperCase(),
-                    style: const TextStyle(fontSize: 14),
+                if (_multiSelection)
+                  Checkbox(
+                    key: ValueKey('permission-select-user-${u.id}'),
+                    value: _batchUsers.containsKey(u.id),
+                    visualDensity: VisualDensity.compact,
+                    onChanged: _canSelectUser(u) && !_batchBusy
+                        ? (_) => _toggleBatchUser(u)
+                        : null,
+                  )
+                else
+                  CircleAvatar(
+                    radius: 14,
+                    child: Text(
+                      (u.employeeName ?? u.loginAccount)
+                          .substring(0, 1)
+                          .toUpperCase(),
+                      style: const TextStyle(fontSize: 14),
+                    ),
                   ),
-                ),
                 const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: Column(
@@ -722,7 +930,9 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                           u.employeeName ?? u.loginAccount,
                           u.employeeCode,
                         ),
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

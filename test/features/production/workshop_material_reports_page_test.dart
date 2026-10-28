@@ -5,6 +5,7 @@
 //  4. 撤销结算：先填原因，服务端要求再认证时弹统一密码框，输完后撤销生效；
 //     版本取结算状态里的最新期间版本 (每次结算尝试都会让它 +1)，不用期间列表里的旧值；
 //  5. 服务端报表行形状：收发明细「来源单据」= 库存单据号 / 领料单号，盘点过账显示「盘点」。
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -22,6 +23,7 @@ import 'package:uten_imp/features/production/models/workshop_material_report_mod
 import 'package:uten_imp/features/production/pages/workshop_material_reports_page.dart';
 import 'package:uten_imp/features/production/repositories/workshop_material_report_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/search/table_column_query.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
 import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
@@ -43,13 +45,27 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
     this.usage = const [],
     this.product = const [],
     this.trend = const [],
+    this.ledgerRecords = const [],
     Map<String, WmReportCloseStatus>? statuses,
   }) : statuses = statuses ?? {};
 
   final List<WmBinUsageRow> usage;
   final List<WmProductUsageRow> product;
   final List<WmWasteTrendPoint> trend;
+  final List<WmLedgerRow> ledgerRecords;
+  final ledgerQueries =
+      <
+        ({
+          String bin,
+          String? from,
+          String? to,
+          int page,
+          TableColumnQuery query,
+        })
+      >[];
   final trendReads = <String>[];
+  Completer<void>? ledgerGate, usageGate;
+  bool failLedgerHeaders = false, failUsageRange = false;
   final Map<String, WmReportCloseStatus> statuses;
   final reopenCalls = <({String periodId, int? version, String reason})>[];
   final stepUpTokens = <String?>[];
@@ -133,7 +149,15 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
     String binId, {
     String? from,
     String? to,
-  }) async => usage;
+  }) async {
+    if (from != null) {
+      await usageGate?.future;
+      if (failUsageRange) {
+        throw StateError('usage range failed');
+      }
+    }
+    return usage;
+  }
 
   @override
   Future<List<WmProductUsageRow>> productUsage(
@@ -162,8 +186,29 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
     String? to,
     int page = 1,
     int size = 50,
-  }) async =>
-      const PagedResult(items: [], page: 1, size: 50, total: 0, totalPages: 1);
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  }) async {
+    ledgerQueries.add((
+      bin: binId,
+      from: from,
+      to: to,
+      page: page,
+      query: columnQuery,
+    ));
+    if (columnQuery.searches['search.material'] != null) {
+      await ledgerGate?.future;
+      if (failLedgerHeaders) {
+        throw StateError('ledger query failed');
+      }
+    }
+    return PagedResult(
+      items: ledgerRecords,
+      page: page,
+      size: size,
+      total: ledgerRecords.isEmpty ? 0 : 120,
+      totalPages: ledgerRecords.isEmpty ? 1 : 3,
+    );
+  }
 }
 
 class _OpenedOnlyRepo extends _FakeRepo {
@@ -274,6 +319,172 @@ Future<void> _pump(
 
 void main() {
   _serverShapeTests();
+  testWidgets(
+    'workshop failed ledger criteria and period changes retain controls without publishing old facts',
+    (tester) async {
+      final repo = _FakeRepo(
+        usage: const [
+          WmBinUsageRow(goodsName: 'accepted-period-fact', actualQty: 10),
+        ],
+        ledgerRecords: const [
+          WmLedgerRow(
+            id: 'row-1',
+            goodsName: 'accepted-ledger-fact',
+            signedQty: 1,
+          ),
+        ],
+      );
+      await _pump(tester, repo);
+      expect(find.text('accepted-period-fact'), findsOneWidget);
+      final usageGate = Completer<void>();
+      repo.usageGate = usageGate;
+      tester
+          .widget<UtenDropdownField>(find.byKey(const Key('wm-report-period')))
+          .onChanged('p1');
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('accepted-period-fact'), findsNothing);
+      repo.failUsageRange = true;
+      usageGate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('accepted-period-fact'), findsNothing);
+      tester
+          .widget<UtenDropdownField>(find.byKey(const Key('wm-report-period')))
+          .onChanged('');
+      await tester.pumpAndSettle();
+      expect(find.text('accepted-period-fact'), findsOneWidget);
+      await selectFilterSegment(tester, '收发明细');
+      await tester.pumpAndSettle();
+      MasterDataTableView<WmLedgerRow> table() =>
+          tester.widget(find.byType(MasterDataTableView<WmLedgerRow>));
+      expect(table().items, hasLength(1));
+      final ledgerGate = Completer<void>();
+      repo.ledgerGate = ledgerGate;
+      table().onFilterChanged('search.material', 'new-unaccepted');
+      await tester.pump();
+      await tester.pump();
+      expect(table().items, isEmpty);
+      repo.failLedgerHeaders = true;
+      ledgerGate.complete();
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(table().serverColumnSearchKeys, contains('material'));
+      table().onFilterChanged('search.material', null);
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ledger headers query full server scope and page with the same type, exact decimal and date conditions',
+    (tester) async {
+      final repo = _FakeRepo(
+        ledgerRecords: const [
+          WmLedgerRow(
+            id: 'row-1',
+            sourceKind: 'ADJUSTMENT',
+            businessDate: '2026-10-31',
+            goodsName: '颗粒_%',
+            colorName: '黑色',
+            unitName: '千克',
+            signedQty: -0.0001,
+            signedQtyText: '-0.0001',
+            docNo: 'REQ_%',
+            requestNo: 'REQ_%',
+            operatorName: '操作人',
+            periodNo: 11,
+          ),
+        ],
+      );
+      await _pump(tester, repo);
+      await selectFilterSegment(tester, '收发明细');
+      await tester.pumpAndSettle();
+      for (final field in [
+        ('业务日期', 'search.date', '2026-10-01..2026-10-31'),
+        ('数量', 'search.qty', '-0.6..-0.0001'),
+      ]) {
+        await tester.ensureVisible(find.text(field.$1));
+        await tester.tap(find.text(field.$1));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          field.$3,
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(repo.ledgerQueries.last.query.searches[field.$2], field.$3);
+      }
+      MasterDataTableView<WmLedgerRow> table() =>
+          tester.widget(find.byType(MasterDataTableView<WmLedgerRow>));
+      expect(
+        table().columns.every(
+          (column) => column.sortable && column.columnSearchEnabled == true,
+        ),
+        isTrue,
+      );
+      expect(table().columns.any((column) => column.filterFromRows), isFalse);
+      table().onFilterChanged('kind', '已审核账面修正');
+      await tester.pumpAndSettle();
+      table().onSortChange!('qty', false);
+      await tester.pumpAndSettle();
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      final query = repo.ledgerQueries.lastWhere((read) => read.page == 2);
+      expect(query.page, 2);
+      expect(table().currentPage, 2);
+      expect(query.bin, 'bin-1');
+      expect(query.query.searches, containsPair('kind', '已审核账面修正'));
+      expect(
+        query.query.searches,
+        containsPair('search.date', '2026-10-01..2026-10-31'),
+      );
+      expect(query.query.searches, containsPair('search.qty', '-0.6..-0.0001'));
+      expect(query.query.sort, 'qty');
+      expect(query.query.ascending, isFalse);
+      expect(table().items, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'complete usage local headers compare shown percentage and keep all source facts untouched',
+    (tester) async {
+      final repo = _FakeRepo(
+        usage: const [
+          WmBinUsageRow(
+            goodsName: '低差异',
+            actualQty: 10,
+            theoryQty: 10,
+            wasteRate: .05,
+          ),
+          WmBinUsageRow(
+            goodsName: '高差异',
+            actualQty: 12,
+            theoryQty: 10,
+            wasteRate: .2,
+          ),
+        ],
+      );
+      await _pump(tester, repo);
+      final label = AppLocalizations.of(
+        tester.element(find.byType(WorkshopMaterialReportsPage)),
+      ).wmWasteRate;
+      await tester.ensureVisible(find.text(label));
+      await tester.tap(find.text(label));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=12.5',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('高差异'), findsOneWidget);
+      expect(find.text('低差异'), findsNothing);
+      expect(repo.usage, hasLength(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('已开通但未整批领料的内料仓可浏览空报表且不显示蓝色说明', (tester) async {
     final repo = _OpenedOnlyRepo();

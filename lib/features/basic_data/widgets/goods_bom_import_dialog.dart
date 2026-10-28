@@ -8,6 +8,7 @@
 // - 默认合并核对，保留文件外组件；冲突在整页表格中选择，空值可补齐。
 // - 完整替换(另需 goods:bom:delete)和追加保留为显式选择的既有操作。
 // - 检测报告列出逐行错误（第几行/哪列/为什么）与提醒（名称不一致等，不拦提交）。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
@@ -350,7 +351,21 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
         onFiles: _replaceQueueAndDetect,
         child: UtenAlertDialog(
           scrollable: false,
-          title: const Text('导入组件'), // TODO(l10n): 补 arb
+          title: Row(
+            children: [
+              const Flexible(child: Text('导入组件')),
+              UtenFieldHintIcon(
+                info:
+                    '${basicDataL10n(context).importFilesTransactionNote}\n\n'
+                    '选择未加密的 .xlsx 文件（「导出组件」的格式），系统会先检测再导入。\n\n'
+                    '使用「导出组件」的列；序号列的级联段表达层级(1 = 顶层组件，'
+                    '2.1 = 序号 2 组件的下级)，导出改完可直接导回。'
+                    '必填列：序号、物料编号、设计使用数量(旧表头「数量」也认)；'
+                    '真实使用数量列只读，导入时忽略。',
+                dense: true,
+              ),
+            ],
+          ),
           content: SizedBox(
             width: 520,
             child: SingleChildScrollView(child: _body(theme)),
@@ -466,20 +481,6 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '选择未加密的 .xlsx 文件（「导出组件」的格式），系统会先检测再导入。',
-          style: theme.textTheme.bodyMedium, // TODO(l10n): 补 arb
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '使用「导出组件」的列；序号列的级联段表达层级(1 = 顶层组件，'
-          '2.1 = 序号 2 组件的下级)，导出改完可直接导回。'
-          '必填列：序号、物料编号、设计使用数量(旧表头「数量」也认)；'
-          '真实使用数量列只读，导入时忽略。', // TODO(l10n): 补 arb
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: UtenSpacing.s12),
         if (_queue.hasPending)
           TextButton(

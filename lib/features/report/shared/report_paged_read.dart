@@ -133,6 +133,7 @@ class _ReportPageRevision {
   _ReportPageRevision(ReportData report, {bool includeStatistics = true})
     : _values = [
         report.readScopeVersion,
+        report.columnSearchKeys.toList()..sort(),
         if (includeStatistics) report.statisticsGeneratedAt,
         for (final column in report.columns)
           [
@@ -231,6 +232,7 @@ class ReportPageRead {
           totals: report.totals,
           readScopeVersion: report.readScopeVersion,
           statisticsGeneratedAt: report.statisticsGeneratedAt,
+          columnSearchKeys: report.columnSearchKeys,
         );
       }
       // This seed remains private to the query reader. Advancing it lets a

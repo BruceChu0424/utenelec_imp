@@ -10,6 +10,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/attachments/attachment_file_rules.dart';
 import '../models/company_file.dart';
+import 'company_file_detail_row.dart';
 
 enum CompanyFileView { icons, tiles, details }
 
@@ -203,6 +204,64 @@ class CompanyFileItem extends StatelessWidget {
             view == CompanyFileView.details &&
             box.maxWidth > 760 &&
             MediaQuery.textScalerOf(context).scale(1) < 1.5;
+        if (wideDetails) {
+          final l = AppLocalizations.of(context);
+          Widget text(String value) => Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall,
+          );
+          return CompanyFileDetailRow(
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Center(child: CompanyFileIcon(entry: entry, size: 32)),
+            ),
+            name: Tooltip(
+              message: entry.name,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (entry.description.isNotEmpty) text(entry.description),
+                ],
+              ),
+            ),
+            type: text(
+              entry.isFolder
+                  ? l.companyFilesFolder
+                  : attachmentExtension(entry.name).toUpperCase().isEmpty
+                  ? l.companyFilesFile
+                  : attachmentExtension(entry.name).toUpperCase(),
+            ),
+            size: Tooltip(
+              message:
+                  entry.isFolder || entry.pending || entry.attachmentId == null
+                  ? ''
+                  : '${entry.sizeBytes} B',
+              child: text(
+                entry.isFolder
+                    ? '—'
+                    : entry.pending
+                    ? l.companyFilesPending
+                    : entry.attachmentId == null
+                    ? '—'
+                    : formatAttachmentSize(entry.sizeBytes),
+              ),
+            ),
+            updatedBy: text(entry.updatedByName ?? ''),
+            updated: text(DisplayDateTime.format(entry.updatedAt)),
+            trailing: Center(child: _menu(context)),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s12,
@@ -231,18 +290,16 @@ class CompanyFileItem extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (!wideDetails || entry.description.isNotEmpty) ...[
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        wideDetails ? entry.description : _subtitle(context),
-                        maxLines: wideDetails ? 1 : 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      _subtitle(context),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
-                    ],
-                    if (view == CompanyFileView.details && !wideDetails)
+                    ),
+                    if (view == CompanyFileView.details)
                       Text(
                         DisplayDateTime.format(entry.updatedAt),
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -250,7 +307,6 @@ class CompanyFileItem extends StatelessWidget {
                         ),
                       ),
                     if (view == CompanyFileView.details &&
-                        !wideDetails &&
                         entry.updatedByName != null)
                       Text(
                         entry.updatedByName!,
@@ -259,34 +315,6 @@ class CompanyFileItem extends StatelessWidget {
                   ],
                 ),
               ),
-              if (wideDetails) ...[
-                const SizedBox(width: UtenSpacing.s12),
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    entry.isFolder
-                        ? AppLocalizations.of(context).companyFilesFolder
-                        : '${attachmentExtension(entry.name).toUpperCase()}\n${formatAttachmentSize(entry.sizeBytes)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                SizedBox(
-                  width: 110,
-                  child: Text(
-                    entry.updatedByName ?? '',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s12),
-                SizedBox(
-                  width: 150,
-                  child: Text(
-                    DisplayDateTime.format(entry.updatedAt),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-              ],
               _menu(context),
             ],
           ),
@@ -300,6 +328,7 @@ class CompanyFileItem extends StatelessWidget {
     if (entry.pending) return l.companyFilesPending;
     if (entry.passwordProtected) return l.companyFilesProtected;
     if (entry.isFolder) return l.companyFilesFolder;
+    if (entry.attachmentId == null) return '—';
     return formatAttachmentSize(entry.sizeBytes);
   }
 }

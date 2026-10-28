@@ -19,6 +19,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
+import '../../visitor/providers/visitor_column_queries.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read_provider.dart';
@@ -28,11 +29,13 @@ final _blacklistReadProvider =
     Provider.autoDispose<ScopedPagedReadProviderLease<VisitorBlacklistItem>>(
       (ref) {
         ref.watch(visitorStaffRepositoryProvider);
-        return ScopedPagedReadProviderLease(ref, query: const ('blacklist',));
+        final columns = ref.watch(visitorBlacklistColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: ('blacklist', columns));
       },
       dependencies: [
         exportContextEpochProvider,
         visitorStaffRepositoryProvider,
+        visitorBlacklistColumnsProvider,
       ],
     );
 
@@ -40,15 +43,25 @@ final visitorBlacklistProvider = FutureProvider.autoDispose
     .family<PagedResult<VisitorBlacklistItem>, int>(
       (ref, page) {
         final repository = ref.watch(visitorStaffRepositoryProvider);
+        final columns = ref.watch(visitorBlacklistColumnsProvider);
         return ref
             .watch(_blacklistReadProvider)
             .read(
               page,
-              fetchPage: (page) => repository.blacklistPage(page: page),
+              fetchPage: (page) => repository.blacklistPage(
+                page: page,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
             );
       },
       retry: pagedReadProviderRetry,
-      dependencies: [_blacklistReadProvider, visitorStaffRepositoryProvider],
+      dependencies: [
+        _blacklistReadProvider,
+        visitorStaffRepositoryProvider,
+        visitorBlacklistColumnsProvider,
+      ],
     );
 
 class SecurityBlacklistPage extends ConsumerStatefulWidget {
@@ -107,9 +120,14 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final paginationScope = retainedReaderEpoch(ref);
+    final columns = ref.watch(visitorBlacklistColumnsProvider);
+    final paginationScope = (retainedReaderEpoch(ref), columns);
     final readLease = ref.watch(_blacklistReadProvider)
-      ..bindView(context, currentQuery: () => const ('blacklist',));
+      ..bindView(
+        context,
+        currentQuery: () =>
+            ('blacklist', ref.read(visitorBlacklistColumnsProvider)),
+      );
     final list = _retainedPage.resolveFor(
       ref,
       paginationScope,
@@ -156,8 +174,21 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
               items: page.items,
               facets: const {},
               nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
+              serverColumnSearch: true,
+              filters: columns.searches,
+              onFilterChanged: (key, value) {
+                if (!key.startsWith('search.')) return;
+                setState(() => _page = 1);
+                ref.read(visitorBlacklistColumnsProvider.notifier).state =
+                    columns.search(key, value);
+              },
+              sortColumn: columns.sort,
+              sortAscending: columns.ascending,
+              onSortChange: (key, ascending) {
+                setState(() => _page = 1);
+                ref.read(visitorBlacklistColumnsProvider.notifier).state =
+                    columns.sorted(key, ascending);
+              },
               // 解除拉黑是恢复性操作，不做 destructive 强调。
               rowMenuBuilder: (item) => [
                 UtenMenuItem(
@@ -197,6 +228,7 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
           key: 'visitorNo',
           label: l10n.securityBlacklistColNo,
           width: 120,
+          sortable: true,
           value: (item) => item.visitorNo,
         ),
         MasterColumnDef(
@@ -209,6 +241,8 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
           key: 'phone',
           label: l10n.securityBlacklistColPhone,
           width: 140,
+          columnSearchEnabled: true,
+          info: '手机号按完整中国大陆号码精确检索；例如 13800138000。',
           value: (item) => item.phone ?? '—',
         ),
         MasterColumnDef(
@@ -222,6 +256,9 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
           label: l10n.securityBlacklistColAt,
           width: 170,
           type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
+          info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
           value: (item) =>
               item.blockedAt == null ? '—' : fmtDateTime(item.blockedAt!),
         ),

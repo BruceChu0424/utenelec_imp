@@ -35,9 +35,36 @@ PagedResult<String> _response(String scope, int page) => PagedResult(
   totalPages: _totalPages,
 );
 
+/// Four pages where the final page holds five rows: at the loaded end the
+/// viewport's topmost row still belongs to page three.
+PagedResult<String> _shortFinalPageResponse(String scope, int page) =>
+    PagedResult(
+      items: [
+        for (var row = 0; row < (page < 4 ? _pageSize : 5); row++)
+          '$scope-page-$page-row-$row',
+      ],
+      page: page,
+      size: _pageSize,
+      total: _pageSize * 3 + 5,
+      totalPages: 4,
+    );
+
 class _Harness extends StatefulWidget {
-  const _Harness({super.key, this.bindReadWindow = true});
+  const _Harness({
+    super.key,
+    this.bindReadWindow = true,
+    this.latency,
+    this.response,
+  });
   final bool bindReadWindow;
+
+  /// Simulated transport round-trip per page read. Real hosts fetch over HTTP;
+  /// instant responses hide ordering races between the sequential speculative
+  /// worker and foreground near-edge appends.
+  final Duration? latency;
+
+  /// Overrides the synthetic page payload, e.g. a short final page.
+  final PagedResult<String> Function(String scope, int page)? response;
 
   @override
   State<_Harness> createState() => _HarnessState();
@@ -70,13 +97,21 @@ class _HarnessState extends State<_Harness> implements _ReadView {
     final currentScope = scope;
     final generation = ++request;
     setState(() => loading = true);
+    final latency = widget.latency;
+    final respond = widget.response ?? _response;
     final next = await reader.read(
       page,
       scope: currentScope,
       fetchPage: (target) {
         requests.add((scope: currentScope, page: target));
-        return held[(currentScope, target)]?.future ??
-            Future.value(_response(currentScope, target));
+        final gated = held[(currentScope, target)]?.future;
+        if (gated != null) return gated;
+        if (latency == null) {
+          return Future.value(respond(currentScope, target));
+        }
+        return Future<void>.delayed(
+          latency,
+        ).then((_) => respond(currentScope, target));
       },
       isCurrent: () => mounted && scope == currentScope,
       useCache: true,
@@ -511,6 +546,80 @@ void main() {
       host.requests.where((read) => read.scope == 'A' && read.page > 4),
       isEmpty,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'realistic transport latency keeps two pages ready and reuses backward reads',
+    (tester) async {
+      final key = GlobalKey<_HarnessState>(debugLabel: 'latency-harness');
+      await tester.pumpWidget(
+        _Harness(key: key, latency: const Duration(milliseconds: 80)),
+      );
+      await _settle(tester);
+      final host = key.currentState!;
+      expect(host.requests.map((read) => read.page), [1, 2, 3]);
+      final rowExtent =
+          tester.getTopLeft(_anchor('A', 1, 1)).dy -
+          tester.getTopLeft(_anchor('A', 1, 0)).dy;
+      for (var page = 2; page <= 7; page++) {
+        await _appendThrough(tester, host, page + 1);
+        await _lookAtPage(tester, host, page, rowExtent: rowExtent);
+        final position = _vertical(tester).position;
+        expect(
+          position.extentAfter,
+          greaterThan(UtenScrollPrefetchPolicy.distanceOf(position)),
+          reason: 'Page $page must prepare before reaching the loaded edge',
+        );
+        expect(
+          host.requests.where((read) => read.page == page + 2),
+          hasLength(1),
+          reason: 'Reading page $page must already prepare page ${page + 2}',
+        );
+      }
+      final before = List.of(host.requests);
+      expect(host.requests.map((read) => read.page).toSet(), hasLength(9));
+      for (var page = 6; page >= 1; page--) {
+        while (!host.rows.items.any((row) => _pageOf(row) == page)) {
+          await host.rows.loadPreviousPage();
+          await _settle(tester);
+        }
+        await _lookAtPage(tester, host, page, rowExtent: rowExtent);
+      }
+      expect(
+        host.requests,
+        before,
+        reason: 'Cached backward navigation must not re-issue transport',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a short final page reports itself at the loaded end', (
+    tester,
+  ) async {
+    final key = GlobalKey<_HarnessState>();
+    await tester.pumpWidget(
+      _Harness(key: key, response: _shortFinalPageResponse),
+    );
+    await _settle(tester);
+    final host = key.currentState!;
+    final rowExtent =
+        tester.getTopLeft(_anchor('A', 1, 1)).dy -
+        tester.getTopLeft(_anchor('A', 1, 0)).dy;
+    await _appendThrough(tester, host, 4);
+    final position = _vertical(tester).position;
+    position.jumpTo(position.maxScrollExtent);
+    await _settle(tester);
+    expect(
+      host.rows.visiblePage,
+      4,
+      reason: 'Sliding to the bottom must report the final page number',
+    );
+    // Away from the end the entering page still owns the indicator: page
+    // three's rows lead the viewport while page four continues below it.
+    await _lookAtPage(tester, host, 3, rowExtent: rowExtent);
+    expect(host.rows.visiblePage, 3);
     expect(tester.takeException(), isNull);
   });
 }

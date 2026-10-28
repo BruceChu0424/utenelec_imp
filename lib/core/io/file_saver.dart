@@ -11,13 +11,18 @@ Future<String> saveBytes(
   Uint8List bytes,
   String filename, {
   bool Function()? stillCurrent,
+  String? directory,
 }) => impl.saveBytes(
   bytes,
   sanitizeDownloadFilename(filename),
   stillCurrent: stillCurrent,
+  directory: directory,
 );
 
 Future<bool> canSaveStream() => impl.canSaveStream();
+
+/// 桌面端导出默认目录（2026-10-28 起默认=桌面，OneDrive 重定向优先）；Web 返回 null。
+Future<String?> defaultExportDirectory() => impl.defaultExportDirectory();
 
 /// Writes one chunk at a time. Failed, cancelled or stale reads never publish a
 /// partially downloaded file. [verifyScope] also runs before final publication.
@@ -27,12 +32,14 @@ Future<String> saveStream(
   bool Function()? stillCurrent,
   Future<void> Function()? verifyScope,
   int maxBytes = 384 * 1024 * 1024,
+  String? directory,
 }) => impl.saveStream(
   chunks,
   sanitizeDownloadFilename(filename),
   stillCurrent: stillCurrent,
   verifyScope: verifyScope,
   maxBytes: maxBytes,
+  directory: directory,
 );
 
 /// Converts a display label or server-provided filename into one safe leaf name.

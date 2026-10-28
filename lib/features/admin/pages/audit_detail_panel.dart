@@ -538,20 +538,22 @@ class _AuditRiskCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _AuditRiskBadge(level: riskLevel),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _AuditRiskBadge(level: riskLevel),
+                    const UtenFieldHintIcon(
+                      info: '风险等级由固定规则计算，用于排查优先级，不代表已经发生安全事故。',
+                      dense: true,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
                   riskReason ?? '未提供风险说明',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '风险等级由固定规则计算，用于排查优先级，不代表已经发生安全事故。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -589,6 +591,10 @@ class _AuditEnvironmentCard extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              const UtenFieldHintIcon(
+                info: '操作关联编号、网络地址、请求路径和原始编码统一收在“排查信息”中。',
+                dense: true,
+              ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s16),
@@ -616,13 +622,6 @@ class _AuditEnvironmentCard extends StatelessWidget {
               if (detail.pageLabel?.trim().isNotEmpty == true)
                 _AuditFact(label: '操作位置', value: detail.pageLabel!),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Text(
-            '操作关联编号、网络地址、请求路径和原始编码统一收在“排查信息”中。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
           ),
         ],
       ),

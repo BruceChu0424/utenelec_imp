@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -26,6 +27,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/search/keyword_search.dart';
+import '../../../shared/search/numeric_column_query.dart';
+import '../../../shared/search/calendar_column_query.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -93,6 +96,7 @@ class _WarehouseTaskRecordsViewState
   WarehouseTaskCenterPageResult? _result;
   String? _status;
   String? _billNo;
+  final _headerColumns = <String, String?>{};
   String? _sort;
   bool _ascending = true;
   DateTimeRange? _dates;
@@ -153,6 +157,7 @@ class _WarehouseTaskRecordsViewState
         oldWidget.view != widget.view) {
       _status = null;
       _billNo = null;
+      _headerColumns.clear();
       _dates = null;
       _invalidate(reset: true);
     } else if (oldWidget.initialStatus != widget.initialStatus) {
@@ -176,7 +181,12 @@ class _WarehouseTaskRecordsViewState
     final revision = ++_requestVersion;
     if (!mounted) return;
     setState(() {
-      if (reset) _result = null;
+      if (reset) {
+        _result = null;
+        _headerColumns.clear();
+        _sort = null;
+        _ascending = true;
+      }
       _error = null;
       _clearSelection();
       _decisionFingerprint = null;
@@ -211,6 +221,7 @@ class _WarehouseTaskRecordsViewState
       final pageStatus = _effectiveStatus;
       final pageKeyword = widget.keyword;
       final pageBillNo = _billNo;
+      final pageColumns = Map<String, String?>.of(_headerColumns);
       final pageDateFrom = _dates == null
           ? null
           : ChinaDateTime.formatDate(_dates!.start);
@@ -232,6 +243,7 @@ class _WarehouseTaskRecordsViewState
           pageStatus,
           pageKeyword,
           pageBillNo,
+          pageColumns,
           pageDateFrom,
           pageDateTo,
           pageWarehouseScope,
@@ -246,6 +258,7 @@ class _WarehouseTaskRecordsViewState
           _effectiveStatus,
           widget.keyword,
           _billNo,
+          Map<String, String?>.of(_headerColumns),
           _dates == null ? null : ChinaDateTime.formatDate(_dates!.start),
           _dates == null ? null : ChinaDateTime.formatDate(_dates!.end),
           WarehouseListScope.of(context),
@@ -261,6 +274,7 @@ class _WarehouseTaskRecordsViewState
             status: pageStatus,
             keyword: pageKeyword,
             billNo: pageBillNo,
+            columns: pageColumns,
             dateFrom: pageDateFrom,
             dateTo: pageDateTo,
             warehouseScope: pageWarehouseScope,
@@ -314,6 +328,13 @@ class _WarehouseTaskRecordsViewState
     } else if (key == 'billNo') {
       if (_billNo == value) return;
       _billNo = value;
+    } else if (key.startsWith('search.')) {
+      if (_headerColumns[key] == value) return;
+      if (value == null || value.trim().isEmpty) {
+        _headerColumns.remove(key);
+      } else {
+        _headerColumns[key] = value;
+      }
     } else {
       return;
     }
@@ -431,11 +452,35 @@ class _WarehouseTaskRecordsViewState
           Uri.parse(draft.route).path.split('/').elementAtOrNull(2) &&
       formDraftConfirmedIds(draft).contains(row.id);
 
+  bool _localHeaderMatches(FormDraft draft) =>
+      _headerColumns.entries.every((entry) {
+        final column = entry.key.substring(7), query = entry.value;
+        if (query == null) return true;
+        final value = switch (column) {
+          'billNo' => formDraftColumnValue(draft, 'billNo') ?? draft.title,
+          'businessDate' => _localDate(draft),
+          'quantity' => null,
+          'warehouseName' => '未确定',
+          _ => '—',
+        };
+        if (column == 'businessDate') {
+          return CalendarColumnQuery.tryParse(query)?.matches(value) ?? false;
+        }
+        if (column == 'quantity') {
+          return NumericColumnQuery.tryParse(query)?.matches(value) ?? false;
+        }
+        return matchesKeywordSearch([value], query);
+      });
+
+  String _localDate(FormDraft draft) =>
+      ChinaDateTime.formatDate(ChinaDateTime.fromInstant(draft.updatedAt));
+
   List<WarehouseTaskCenterRecord> get _localRows {
     final formalRows = _result?.items ?? const <WarehouseTaskCenterRecord>[];
     return [
       for (final draft in _newDocumentDrafts)
         if (!formalRows.any((row) => _matchesNewDocumentDraft(row, draft)) &&
+            _localHeaderMatches(draft) &&
             matchesKeywordSearch([
               draft.title,
               formDraftColumnValue(draft, 'billNo'),
@@ -443,10 +488,9 @@ class _WarehouseTaskRecordsViewState
             (_billNo == null ||
                 formDraftColumnValue(draft, 'billNo') == _billNo) &&
             (_dates == null ||
-                !draft.updatedAt.isBefore(_dates!.start) &&
-                    draft.updatedAt.isBefore(
-                      _dates!.end.add(const Duration(days: 1)),
-                    )) &&
+                CalendarColumnQuery.tryParse(
+                  '${ChinaDateTime.formatDate(_dates!.start)}..${ChinaDateTime.formatDate(_dates!.end)}',
+                )!.matches(_localDate(draft))) &&
             (_effectiveStatus == null ||
                 _effectiveStatus ==
                     '${Uri.parse(draft.route).path.contains('FINISHED')
@@ -466,7 +510,7 @@ class _WarehouseTaskRecordsViewState
             status: 'LOCAL_DRAFT',
             statusLabel: taskDraftStatus([draft]),
             billNo: formDraftColumnValue(draft, 'billNo') ?? draft.title,
-            businessDate: ChinaDateTime.formatDate(draft.updatedAt),
+            businessDate: _localDate(draft),
             action: 'FORM_DRAFT',
             targetId: draft.id,
           ),
@@ -871,6 +915,9 @@ class _WarehouseTaskRecordsViewState
       MasterColumnDef(
         key: 'status',
         label: '状态',
+        facetSearchEnabled: true,
+        columnSearchEnabled: false,
+        info: '按服务端工作阶段筛选。本地草稿标签保留原任务阶段和恢复入口。',
         width: 210,
         value: (row) {
           final matches = _draftsFor(row);
@@ -893,24 +940,28 @@ class _WarehouseTaskRecordsViewState
       ),
       MasterColumnDef(
         key: 'goodsName',
+        sortable: true,
         label: '货品名称',
         width: 200,
         value: (row) => row.line?.goodsName ?? '—',
       ),
       MasterColumnDef(
         key: 'goodsCode',
+        sortable: true,
         label: '货品编码',
         width: 150,
         value: (row) => row.line?.goodsCode ?? '—',
       ),
       MasterColumnDef(
         key: 'colorName',
+        sortable: true,
         label: '颜色',
         width: 100,
         value: (row) => row.line?.colorName ?? '—',
       ),
       MasterColumnDef(
         key: 'specification',
+        sortable: true,
         label: '规格',
         width: 140,
         value: (row) => row.line?.specification ?? '—',
@@ -920,22 +971,29 @@ class _WarehouseTaskRecordsViewState
         label: '数量',
         width: 130,
         type: 'number',
+        sortable: true,
+        columnSearchEnabled: true,
+        exactValueOf: (row) =>
+            row.line?.quantityText ?? row.line?.quantity?.toString(),
         value: (row) => row.line?.quantityLabel ?? '—',
       ),
       MasterColumnDef(
         key: 'sourceDocNo',
+        sortable: true,
         label: '来源单据',
         width: 180,
         value: (row) => row.sourceDocNo ?? '—',
       ),
       MasterColumnDef(
         key: 'partyName',
+        sortable: true,
         label: '客户 / 供应商 / 委外商',
         width: 200,
         value: (row) => row.partyName ?? '—',
       ),
       MasterColumnDef(
         key: 'warehouseName',
+        sortable: true,
         label: '仓库',
         width: 180,
         value: (row) => row.warehouseName ?? '未确定',
@@ -945,11 +1003,13 @@ class _WarehouseTaskRecordsViewState
         label: '业务日期',
         width: 120,
         type: 'date',
+        columnSearchEnabled: true,
         sortable: true,
         value: (row) => row.businessDate ?? '—',
       ),
       MasterColumnDef(
         key: 'responsibleName',
+        sortable: true,
         label: '负责人 / 制单人',
         width: 150,
         value: (row) => row.responsibleName ?? '—',
@@ -970,6 +1030,7 @@ class _WarehouseTaskRecordsViewState
             'warehouse.task-center.${widget.direction.name}.${widget.source}${_history ? '.history' : ''}',
         requiredLeadingColumnKeys: const ['status', 'billNo'],
         primary: true,
+        serverColumnSearch: true,
         rowsController: _rows,
         paginationRevision: result,
         paginationScope: (
@@ -978,6 +1039,7 @@ class _WarehouseTaskRecordsViewState
           widget.view,
           _status,
           _billNo,
+          PagedReadQueryKey(_headerColumns),
           _sort,
           _ascending,
           widget.keyword,
@@ -1001,13 +1063,16 @@ class _WarehouseTaskRecordsViewState
           ],
         },
         nullCounts: const {},
-        filters: {'status': _status, 'billNo': _billNo},
+        filters: {'status': _status, 'billNo': _billNo, ..._headerColumns},
         onFilterChanged: _filter,
         sortColumn: _sort,
         sortAscending: _ascending,
         onSortChange: (key, ascending) {
           if (_busy ||
-              (key != null && !{'billNo', 'businessDate'}.contains(key))) {
+              (key != null &&
+                  !columns.any(
+                    (column) => column.key == key && column.sortable,
+                  ))) {
             return;
           }
           _sort = key;

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 销售报价财务核价详情(/finance/quote-review/:id，ADR-134)。
@@ -1780,7 +1781,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         before: line.discount,
         after: draft.discount.text,
         child: batchCount > 0
-            ? Tooltip(
+            ? UtenEditorTooltip(
                 message: l10n.quoteFinanceCheckedEditHint(batchCount),
                 child: field,
               )

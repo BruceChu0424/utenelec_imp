@@ -165,6 +165,9 @@ class _PayrollRepo implements PayrollRepository {
     int? year,
     int? month,
     String? departmentId,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   }) {
     pages.add(page);
     final pending = Completer<PagedResult<PayrollSlip>>();

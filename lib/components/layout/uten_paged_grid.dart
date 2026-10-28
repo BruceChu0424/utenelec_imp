@@ -5,8 +5,8 @@
 //
 // 做法：不改 UtenResponsiveGrid 的对外契约，而是在它外面包一层
 // 分页——只把「当页」pageSize 条数据交给 UtenResponsiveGrid，子项永远 ≤ pageSize，
-// 从根上消除一次性渲染。底部翻页条样式与 MasterDataTableView 对齐（上一页 / 第x/y页 /
-// 下一页，翻页后回顶）。总量 ≤ pageSize 时不显示翻页条，小数据零视觉污染。
+// 从根上消除一次性渲染。底部翻页条与表格共用紧凑箭头、页码输入和总页数，
+// 翻页后回顶。总量 ≤ pageSize 时不显示翻页条，小数据零视觉污染。
 //
 // 注：UtenResponsiveGrid 已于 2026-07-29 重写为分栏瀑布流 v3
 // （Wrap 按行对齐导致矮卡片下方留白、两行视觉间隔过远），本组件行为不变。
@@ -27,6 +27,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
+import 'uten_pagination.dart';
 import 'uten_responsive_grid.dart';
 
 /// 分页卡片网格：把全量数据按 [pageSize] 切片，只渲染当页，外裹 [UtenResponsiveGrid]。
@@ -165,14 +166,15 @@ class _UtenPagedGridState<T> extends State<UtenPagedGrid<T>> {
     currentPage: _page,
     totalPages: totalPages,
     totalItems: widget.items.length,
+    onPageChanged: _goTo,
     onPrev: _page > 1 ? () => _goTo(_page - 1) : null,
     onNext: _page < totalPages ? () => _goTo(_page + 1) : null,
   );
 }
 
-/// 通用翻页条（上一页 / 第x/y页·共N条 / 下一页）。
+/// 卡片网格的分页与条数汇总。
 ///
-/// 样式与 `MasterDataTableView._buildPager` 对齐，保持全站分页视觉一致。
+/// 翻页交互由 [UtenPagination] 统一维护，与资料表格保持一致。
 /// 两种分页模式复用它：
 /// - 客户端切片：`UtenPagedGrid` 内部用它（页码自管）。
 /// - 服务端真分页：页面自己持页码 state，watch 后端 `Page`，把当页 items 铺进
@@ -188,6 +190,8 @@ class UtenGridPager extends StatelessWidget {
     required this.totalItems,
     required this.onPrev,
     required this.onNext,
+    this.onPageChanged,
+    this.busy = false,
   });
 
   /// 当前页（1-based）。
@@ -205,32 +209,34 @@ class UtenGridPager extends StatelessWidget {
   /// 跳到下一页（末页时由调用方传 null 置灰）。
   final VoidCallback? onNext;
 
+  /// 直接跳到目标页；沿用调用方已有的读取和权限保护。
+  final ValueChanged<int>? onPageChanged;
+  final bool busy;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
         children: [
-          TextButton.icon(
-            onPressed: onPrev,
-            icon: const Icon(Icons.chevron_left_rounded, size: 20),
-            label: const Text('上一页'), // TODO(l10n): 补 arb
+          UtenPagination(
+            currentPage: currentPage,
+            totalPages: totalPages,
+            onPageChanged: onPageChanged,
+            onPrevious: onPrev,
+            onNext: onNext,
+            busy: busy,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-            child: Text(
-              '$currentPage / $totalPages · 共 $totalItems 条', // TODO(l10n): 补 arb
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          Text(
+            '共 $totalItems 条', // TODO(l10n): 补 arb
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-          ),
-          TextButton.icon(
-            onPressed: onNext,
-            icon: const Text('下一页'), // TODO(l10n): 补 arb
-            label: const Icon(Icons.chevron_right_rounded, size: 20),
           ),
         ],
       ),

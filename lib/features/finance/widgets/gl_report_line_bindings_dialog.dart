@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/search/keyword_search.dart';
 // 总账附表/经营损益表「报表行 → 科目/部门」取数设置(ADR-112 / overhaul-gap-03)。
 //
@@ -251,13 +252,20 @@ class _GlReportLineBindingsDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('附表取数设置', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '附表取数设置',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                      const UtenFieldHintIcon(
+                        info:
+                            '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
+                        dense: true,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   Expanded(

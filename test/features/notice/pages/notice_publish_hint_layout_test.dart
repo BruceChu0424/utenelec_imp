@@ -58,7 +58,23 @@ void main() {
           }
           // Keep the audience selected on screen; hint disclosure does not
           // change its value or silently replace the publishing confirmation.
+          expect(find.text('将通知到全公司所有员工'), findsNothing);
+          final audienceHeader = find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenSectionHeader && widget.info == '将通知到全公司所有员工',
+          );
+          expect(audienceHeader, findsOneWidget);
+          await tester.ensureVisible(audienceHeader);
+          await tester.tap(
+            find.descendant(
+              of: audienceHeader,
+              matching: find.byType(UtenFieldHintIcon),
+            ),
+          );
+          await tester.pump();
           expect(find.text('将通知到全公司所有员工'), findsOneWidget);
+          Tooltip.dismissAllToolTips();
+          await tester.pumpAndSettle();
           final title = tester.widget<TextFormField>(
             find.ancestor(
               of: find.byWidgetPredicate(

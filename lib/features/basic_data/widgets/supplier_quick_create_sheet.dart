@@ -179,7 +179,6 @@ class _SupplierCategoryPickerFieldState
                 onToggleSelect: (node) => setSheetState(() => pending = node),
                 nodeEnabledPredicate: (_) => true,
                 showSearch: false,
-                initiallyExpandDepth: 999,
                 sortByCode: false,
                 flatLevelColors: true,
               ),

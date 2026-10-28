@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
@@ -5,6 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/search/retain_hierarchy_filter_context.dart';
+import '../../../shared/search/table_column_query.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../models/master_facet.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/buttons/uten_tree_expansion_button.dart';
@@ -35,6 +42,7 @@ import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../../../shared/widgets/uten_tree_row_projection.dart';
@@ -83,7 +91,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     with AutomaticKeepAliveClientMixin, FormDraftMixin {
   static const _tableKey = 'master.goods.cost.items.simple';
   final _controllers = <String, TextEditingController>{};
-  final _collapsed = <String>{};
+  final _materialExpansion = UtenDefaultCollapsedTreeState();
+  Set<String> get _collapsed => _materialExpansion.collapsedIds;
   final _selectedPaths = <String>{};
   final _adjustingPaths = <String>{};
   Map<String, dynamic> _input = {};
@@ -147,6 +156,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
       }
       ancestors.add(index);
     }
+    _materialExpansion.reconcile(_collapsibleMaterialPaths);
     _visibleMaterialRows = null;
     assert(() {
       debugGoodsCostTreeProjectionBuilds++;
@@ -231,6 +241,24 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
 
   GoodsCostSnapshot? _historical;
   List<Map<String, dynamic>> _versions = [], _snapshots = [], _templates = [];
+  PagedResult<Map<String, dynamic>>? _versionPage;
+  final _versionRows = MasterDataTableRowsController<Map<String, dynamic>>();
+  TableColumnQuery _versionQuery = const TableColumnQuery();
+  Object? _acceptedVersionScope;
+  int _versionRequest = 0;
+  int _versionRetirement = 0;
+  bool _versionLoading = false;
+  String? _versionError;
+  Object get _versionScope => (
+    _repository,
+    widget.detail.id,
+    _versionQuery,
+    ref.read(sensitiveReadBoundaryProvider),
+    ref.read(exportContextEpochProvider),
+  );
+  bool get _versionCurrency =>
+      _versionQuery.searches['currencyName']?.isNotEmpty == true &&
+      _versionQuery.searches['currencyName'] != kMasterFilterNullValue;
   List<CurrencyListItem> _currencies = [];
   List<FormDraft> _localDrafts = [];
   String? _clientName, _error;
@@ -537,7 +565,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     _previewRequest++;
     if (_sheet?.id != sheet.id) {
       _selectedPaths.clear();
-      _collapsed.clear();
+      _materialExpansion.reset();
       _adjustingPaths.clear();
     }
     _sheet = sheet;
@@ -1214,6 +1242,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
         _l.costSavedHistory,
         () async {
           setState(() => _tab = 2);
+          await _loadVersions();
         },
       ),
       (
@@ -1304,6 +1333,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                 key: 'message',
                 label: _l.costPendingItems,
                 width: 460,
+                minimumWidthOf: (_) => 48,
                 value: (r) => costText(r['message']),
                 cellBuilder: (_, r) => Tooltip(
                   message: costText(r['message']) ?? '',
@@ -1314,6 +1344,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                 key: 'adjust',
                 label: _l.costAdjustment,
                 width: 130,
+                minimumWidthOf: (_) => 48,
                 value: (_) => _l.costAdjustment,
                 cellBuilder: (_, r) => UtenTableCellAction(
                   label: _l.costAdjustment,
@@ -1346,113 +1377,245 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     }
   }
 
-  Widget _versionPane() => UtenCollapsingHeaderScrollView(
-    collapsingHeader: _localDrafts.isEmpty
-        ? null
-        : Column(
-            children: [
-              for (final draft in _localDrafts)
-                ListTile(
-                  title: _oneLine(draft.title),
-                  subtitle: _oneLine(
-                    ChinaDateTime.formatInstant(draft.updatedAt, seconds: true),
-                  ),
-                  trailing: UtenButton(
-                    onPressed: _busy ? null : () => _recover(draft),
-                    child: Text(_l.costRecoverLocal),
-                  ),
-                ),
-            ],
-          ),
-    // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
-    body: MasterDataTableView<Map<String, dynamic>>(
-      tableKey: 'master.goods.cost.versions',
-      expensiveRowMounts: false,
-      primary: true,
-      onFullscreenChanged: (value) {
-        _materialFullscreen = value;
-        if (!value) {
-          _fullscreenClosed?.complete();
-          _fullscreenClosed = null;
+  Future<void> _loadVersions([int page = 1]) async {
+    final scope = _versionScope,
+        repository = _repository,
+        goods = widget.detail.id,
+        query = _versionQuery;
+    final request = ++_versionRequest;
+    if (!formDraftIdentityIsCurrent || !_capability.canRead) return;
+    setState(() {
+      _versionLoading = true;
+      _versionError = null;
+    });
+    try {
+      final result = await repository.versions(
+        goods,
+        page: page,
+        columnQuery: query,
+      );
+      if (!mounted ||
+          request != _versionRequest ||
+          scope != _versionScope ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
+      setState(() {
+        _versionPage = result;
+        _acceptedVersionScope = scope;
+        _versionLoading = false;
+      });
+    } catch (error) {
+      if (!mounted ||
+          request != _versionRequest ||
+          scope != _versionScope ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
+      setState(() {
+        _versionLoading = false;
+        _versionError = _message(error);
+        if (error is ApiException &&
+            {401, 403, 404}.contains(error.httpStatus)) {
+          _versionPage = null;
+          _acceptedVersionScope = null;
+          _versionRetirement++;
         }
-      },
-      columns: [
-        _readColumn(
-          'status',
-          _l.costStatus,
-          72,
-          text: (r) => _status(r['status']),
-        ),
-        _readColumn('name', _l.costName, 220),
-        for (final (key, label, width) in [
-          ('version', _l.costVersion, 90.0),
-          ('batchQty', _l.costBatch, 120.0),
-          ('knownTotal', _l.costKnownTotal, 150.0),
-        ])
-          MasterColumnDef(
-            key: key,
-            label: label,
-            width: width,
-            type: key == 'knownTotal' ? 'money' : 'number',
-            aiSensitive: key == 'knownTotal',
-            value: (r) => costText(r[key]),
-            exactValueOf: (r) => costText(r[key]),
-            cellBuilder: (_, r) => _oneLine(r[key]),
-          ),
-        _readColumn('updatedAt', _l.costUpdated, 190),
+      });
+    }
+  }
+
+  void _versionFilter(String key, String? value) {
+    var next = _versionQuery.search(key, value);
+    if (key == 'currencyName') {
+      next = next.search('search.knownTotal', null);
+      if (next.sort == 'knownTotal') next = next.sorted(null, true);
+    }
+    setState(() => _versionQuery = next);
+    unawaited(_loadVersions());
+  }
+
+  Widget _versionPane() {
+    ref.watch(sensitiveReadBoundaryProvider);
+    ref.watch(exportContextEpochProvider);
+    final page = _acceptedVersionScope == _versionScope ? _versionPage : null;
+    final columns = <MasterColumnDef<Map<String, dynamic>>>[
+      _readColumn(
+        'status',
+        _l.costStatus,
+        72,
+        text: (row) => _status(row['status']),
+      ),
+      MasterColumnDef(
+        key: 'name',
+        label: _l.costName,
+        width: 220,
+        sortable: true,
+        columnSearchEnabled: true,
+        value: (row) => costText(row['name']),
+      ),
+      for (final (key, label, width) in [
+        ('version', _l.costVersion, 90.0),
+        ('batchQty', _l.costBatch, 120.0),
+        ('knownTotal', _l.costKnownTotal, 150.0),
+      ])
         MasterColumnDef(
-          key: 'action',
-          label: _l.costAction,
-          width: 120,
-          value: (_) => _l.costOpen,
-          cellBuilder: (_, row) => UtenTableCellAction(
-            label: _l.costOpen,
-            onPressed: _busy ? null : () => _open(row['id'].toString()),
+          key: key,
+          label: label,
+          width: width,
+          type: key == 'knownTotal' ? 'money' : 'number',
+          sortable: key != 'knownTotal' || _versionCurrency,
+          columnSearchEnabled: key != 'knownTotal' || _versionCurrency,
+          aiSensitive: key == 'knownTotal',
+          exactValueOf: (row) => costText(
+            key == 'version' ? row['versionExact'] ?? row[key] : row[key],
           ),
+          value: (row) => key == 'knownTotal'
+              ? financeMoneyWithUnitSuffix(
+                  costText(row[key]),
+                  currencyName: costText(row['currencyName']),
+                )
+              : key == 'batchQty'
+              ? '${costText(row[key]) ?? ''}${row['unitName'] == null ? '' : ' ${row['unitName']}'}'
+              : costText(
+                  key == 'version' ? row['versionExact'] ?? row[key] : row[key],
+                ),
         ),
-      ],
-      items: _versions,
-      rowKeyOf: (r) => r['id'].toString(),
-      rowMenuBuilder: (row) => [
-        UtenMenuItem(
+      MasterColumnDef(
+        key: 'currencyName',
+        label: _l.costCurrency,
+        width: 110,
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
+        value: (row) => costText(row['currencyName']),
+      ),
+      _readColumn('updatedAt', _l.costUpdated, 190),
+      MasterColumnDef(
+        key: 'action',
+        label: _l.costAction,
+        width: 120,
+        columnSearchEnabled: false,
+        value: (_) => _l.costOpen,
+        cellBuilder: (_, row) => UtenTableCellAction(
           label: _l.costOpen,
-          onTap: () => _open(row['id'].toString()),
-          enabled: !_busy,
+          onPressed: _busy ? null : () => _open(row['id'].toString()),
         ),
-      ],
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
-      emptyMessage: _l.costEmpty,
-      toolbarLeadingActions: [
-        if (_sheet != null)
+      ),
+    ];
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: _localDrafts.isEmpty
+          ? null
+          : Column(
+              children: [
+                for (final draft in _localDrafts)
+                  ListTile(
+                    title: _oneLine(draft.title),
+                    subtitle: _oneLine(
+                      ChinaDateTime.formatInstant(
+                        draft.updatedAt,
+                        seconds: true,
+                      ),
+                    ),
+                    trailing: UtenButton(
+                      onPressed: _busy ? null : () => _recover(draft),
+                      child: Text(_l.costRecoverLocal),
+                    ),
+                  ),
+              ],
+            ),
+      // 水平贴 0：与货品详情页签栏共用左缘（2026-10-24 口径）。
+      body: MasterDataTableView<Map<String, dynamic>>(
+        rowsController: _versionRows,
+        tableKey: 'master.goods.cost.versions',
+        expensiveRowMounts: false,
+        primary: true,
+        onFullscreenChanged: (value) {
+          _materialFullscreen = value;
+          if (!value) {
+            _fullscreenClosed?.complete();
+            _fullscreenClosed = null;
+          }
+        },
+        columns: columns,
+        serverColumnSearchKeys: {
+          'name',
+          'version',
+          'batchQty',
+          'updatedAt',
+          if (_versionCurrency) 'knownTotal',
+        },
+        items: page?.items ?? const [],
+        rowKeyOf: (r) => r['id'].toString(),
+        rowMenuBuilder: (row) => [
+          UtenMenuItem(
+            label: _l.costOpen,
+            onTap: () => _open(row['id'].toString()),
+            enabled: !_busy,
+          ),
+        ],
+        facets: {
+          'status': [
+            MasterFacetBucket(value: 'DRAFT', count: 0, label: _l.costDraft),
+            MasterFacetBucket(
+              value: 'CONFIRMED',
+              count: 0,
+              label: _l.costConfirmed,
+            ),
+          ],
+          'currencyName': page?.facets['currencyName'] ?? const [],
+        },
+        nullCounts: const {},
+        filters: _versionQuery.searches,
+        onFilterChanged: _versionFilter,
+        sortColumn: _versionQuery.sort,
+        sortAscending: _versionQuery.ascending,
+        onSortChange: (key, ascending) {
+          setState(() => _versionQuery = _versionQuery.sorted(key, ascending));
+          unawaited(_loadVersions());
+        },
+        currentPage: page?.page ?? 1,
+        totalPages: page?.totalPages ?? 1,
+        paginationScope: (
+          _versionScope,
+          page?.readScopeVersion,
+          _versionRetirement,
+        ),
+        paginationRevision: page,
+        onPageChange: _loadVersions,
+        isLoading: _versionLoading && page == null,
+        loadingMore: _versionLoading && page != null,
+        error: _versionError,
+        onRetry: _loadVersions,
+        emptyMessage: _l.costEmpty,
+        toolbarLeadingActions: [
+          if (_sheet != null)
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: _busy ? null : _compareVersions,
+              child: Text(_l.costCompare),
+            ),
+          if (_sheet != null)
+            UtenButton(
+              height: UtenTableToolbar.controlHeight,
+              onPressed: _busy ? null : _showSnapshots,
+              child: Text(_l.costHistory),
+            ),
+        ],
+        toolbarActions: [
           UtenButton(
             height: UtenTableToolbar.controlHeight,
-            onPressed: _busy ? null : _compareVersions,
-            child: Text(_l.costCompare),
+            onPressed: _busy
+                ? null
+                : () async {
+                    await _loadVersions();
+                    await _refreshLocalDrafts();
+                  },
+            child: Text(_l.commonRefresh),
           ),
-        if (_sheet != null)
-          UtenButton(
-            height: UtenTableToolbar.controlHeight,
-            onPressed: _busy ? null : _showSnapshots,
-            child: Text(_l.costHistory),
-          ),
-      ],
-      toolbarActions: [
-        UtenButton(
-          height: UtenTableToolbar.controlHeight,
-          onPressed: _busy
-              ? null
-              : () => _action(() async {
-                  _versions = await _repository.list(widget.detail.id);
-                  await _refreshLocalDrafts();
-                }),
-          child: Text(_l.commonRefresh),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 
   MasterColumnDef<Map<String, dynamic>> _readColumn(
     String key,
@@ -1464,9 +1627,30 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     key: key,
     label: label,
     width: width,
+    minimumWidthOf: (_) => 48,
+    type: const {'updatedAt', 'createdAt'}.contains(key)
+        ? 'date'
+        : key == 'sheetVersion'
+        ? 'number'
+        : 'text',
+    sortable: const {'updatedAt', 'createdAt', 'sheetVersion'}.contains(key),
+    filterFromRows: const {'status', 'kind'}.contains(key),
+    facetSearchEnabled: const {'status', 'kind'}.contains(key),
     defaultVisible: defaultVisible,
-    value: text ?? (r) => costText(r[key]),
-    cellBuilder: (_, row) => _oneLine(text?.call(row) ?? row[key]),
+    value: (r) =>
+        text?.call(r) ??
+        (const {'updatedAt', 'createdAt'}.contains(key)
+            ? ChinaDateTime.formatIsoInstant(costText(r[key]), seconds: true)
+            : costText(r[key])),
+    cellBuilder: (_, row) => _oneLine(
+      text?.call(row) ??
+          (const {'updatedAt', 'createdAt'}.contains(key)
+              ? ChinaDateTime.formatIsoInstant(
+                  costText(row[key]),
+                  seconds: true,
+                )
+              : row[key]),
+    ),
   );
   @override
   void dispose() {

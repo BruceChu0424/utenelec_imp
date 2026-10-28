@@ -12,7 +12,7 @@ abstract final class ApiEndpoints {
   /// 工作台徽章汇总: 全站红黄徽章、通知未读数与页内分段细数一次带回(ADR-108)。
   static const workbenchBadges = '/workbench/badges';
 
-  /// 敏感操作再认证：输入登录密码换一次性凭证 (ADR-110)。
+  /// 敏感操作再认证：输入登录密码换取连续操作凭证，空闲五分钟失效 (ADR-110)。
   static const authStepUp = '/auth/step-up';
 
   // 工作台权限化聚合读模型
@@ -736,6 +736,10 @@ abstract final class ApiEndpoints {
   /// 数据范围授权（用户 × 范围 × 可见归属人）
   static String userDataScopes(String id, String scope) =>
       '/admin/users/$id/data-scopes?scope=$scope';
+
+  /// 数据范围授权批量保存（一次再认证覆盖一次批量编辑）
+  static String userDataScopesBatch(String id) =>
+      '/admin/users/$id/data-scopes/batch';
 
   /// 授权归属人候选（范围内实际有归属数据的员工）
   static String dataScopeOwners(String scope) =>

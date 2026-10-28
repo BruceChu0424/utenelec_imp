@@ -7,6 +7,7 @@ import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../models/visitor_application.dart';
 import '../repositories/visitor_repository.dart';
 import 'visitor_session_provider.dart';
+import 'visitor_column_queries.dart';
 
 /// 我的访客申请（按状态过滤；status=null 全部）。
 typedef VisitorApplicationsQuery = ({String? status, int page});
@@ -16,12 +17,14 @@ final visitorApplicationsReadProvider = Provider.autoDispose
       (ref, status) {
         ref.watch(visitorSessionProvider);
         ref.watch(visitorRepositoryProvider);
-        return ScopedPagedReadProviderLease(ref, query: (status,));
+        final columns = ref.watch(visitorMineColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: (status, columns));
       },
       dependencies: [
         exportContextEpochProvider,
         visitorSessionProvider,
         visitorRepositoryProvider,
+        visitorMineColumnsProvider,
       ],
     );
 
@@ -30,12 +33,18 @@ final visitorApplicationsProvider = FutureProvider.autoDispose
       (ref, q) {
         ref.watch(visitorSessionProvider);
         final repository = ref.watch(visitorRepositoryProvider);
+        final columns = ref.watch(visitorMineColumnsProvider);
         return ref
             .watch(visitorApplicationsReadProvider(q.status))
             .read(
               q.page,
-              fetchPage: (page) =>
-                  repository.myApplications(status: q.status, page: page),
+              fetchPage: (page) => repository.myApplications(
+                status: q.status,
+                page: page,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
             );
       },
       retry: pagedReadProviderRetry,
@@ -43,6 +52,7 @@ final visitorApplicationsProvider = FutureProvider.autoDispose
         visitorSessionProvider,
         visitorRepositoryProvider,
         visitorApplicationsReadProvider,
+        visitorMineColumnsProvider,
       ],
     );
 

@@ -8,12 +8,12 @@
 // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组；2026-09-18 收口：截止日期改
 // UtenDateField（与其它编辑页 outlined 日期同款）。
 // 文档：docs/03-页面/通知发布页.md
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -486,11 +486,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
             size: UtenActionButtonSize.large,
             label: Text(l10n.commonCancel),
             onAction: () async {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/notice');
-              }
+              backTo(context, defaultPath: '/notice');
             },
           ),
           UtenActionButton(
@@ -766,8 +762,15 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
               SwitchListTile.adaptive(
                 value: _topPriority,
                 contentPadding: EdgeInsets.zero,
-                title: Text(l10n.noticePublishTopPriority),
-                subtitle: Text(l10n.noticePublishTopPriorityHint),
+                title: Row(
+                  children: [
+                    Flexible(child: Text(l10n.noticePublishTopPriority)),
+                    UtenFieldHintIcon(
+                      info: l10n.noticePublishTopPriorityHint,
+                      dense: true,
+                    ),
+                  ],
+                ),
                 secondary: const Icon(Icons.push_pin_outlined),
                 onChanged: (value) => setState(() => _topPriority = value),
               ),
@@ -779,12 +782,14 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   }
 
   Widget _buildAudienceColumn(BuildContext context, AppLocalizations l10n) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         UtenSectionHeader(
           title: l10n.noticePublishScopeTitle,
+          info: _audienceScope == NoticeAudienceScope.all
+              ? l10n.noticePublishScopeAllHint
+              : l10n.noticePublishScopeSelectedHint,
           icon: Icons.groups_2_outlined,
         ),
         const SizedBox(height: UtenSpacing.s8),
@@ -814,23 +819,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: _audienceScope == NoticeAudienceScope.all
-                    ? _AudienceHint(
-                        key: const ValueKey('all-audience'),
-                        icon: Icons.domain_rounded,
-                        title: l10n.noticePublishScopeAll,
-                        message: l10n.noticePublishScopeAllHint,
-                      )
+                    ? const SizedBox.shrink(key: ValueKey('all-audience'))
                     : Column(
                         key: const ValueKey('selected-audience'),
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            l10n.noticePublishScopeSelectedHint,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s16),
                           UtenDepartmentPicker(
                             mode: UtenDepartmentPickerMode.multi,
                             initialSelection: _departments,
@@ -879,7 +872,6 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
 
 class _AudienceHint extends StatelessWidget {
   const _AudienceHint({
-    super.key,
     required this.icon,
     required this.title,
     required this.message,
@@ -891,42 +883,7 @@ class _AudienceHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  message,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return UtenSectionHeader(title: title, icon: icon, info: message);
   }
 }
 

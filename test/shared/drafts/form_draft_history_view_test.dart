@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -163,14 +164,27 @@ void main() {
     final storage = _HistoryStorage();
     await _mount(tester, storage, textScale: 2);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('下一页'));
+    expect(find.text('下一页'), findsNothing);
+    expect(find.text('/ ?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(storage.cursors.last, '2');
-    expect(find.text('第 2 页'), findsOneWidget);
-    await tester.tap(find.text('上一页'));
+    expect(
+      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+      2,
+    );
+    await tester.tap(find.byKey(const ValueKey('master-table-page-previous')));
     await tester.pumpAndSettle();
-    expect(find.text('第 1 页'), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    expect(
+      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+      1,
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(FormDraftHistoryButton), findsOneWidget);
     expect(tester.takeException(), isNull);

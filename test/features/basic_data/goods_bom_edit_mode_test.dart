@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -1671,7 +1672,7 @@ void main() {
 
       expect(await finishing, isTrue);
       expect(state.hasEditingSession, isFalse);
-      expect(find.text('正式组装清单读取失败'), findsOneWidget);
+      await expectTableReadFailureDetails(tester, '正式组装清单读取失败');
       expect(find.text('螺丝'), findsNothing);
       expect(find.text('铁架'), findsNothing);
       expect(fixture.api.commands.single.$1, endsWith('/preview'));

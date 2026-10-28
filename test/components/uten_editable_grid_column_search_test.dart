@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -343,7 +344,7 @@ void main() {
   );
 
   testWidgets(
-    'dates, quantities, amounts and status retain exact controls without meaningless keyword fields',
+    'all candidates can be searched and only numeric measures submit conditions',
     (tester) async {
       final rows = UtenEditableGridController<_Row>(initial: _rows());
       addTearDown(rows.dispose);
@@ -374,8 +375,11 @@ void main() {
       expect(find.byType(GridHeaderFilterCell), findsNWidgets(4));
       for (final label in ['交期', '需求数量', '金额', '状态']) {
         await _open(tester, label);
-        expect(_input, findsNothing);
-        expect(_search, findsNothing);
+        expect(_input, findsOneWidget);
+        expect(
+          _search,
+          label == '需求数量' || label == '金额' ? findsOneWidget : findsNothing,
+        );
         expect(find.text('b（1）'), findsOneWidget);
         await tester.tap(find.text('所有'));
         await tester.pumpAndSettle();
@@ -416,7 +420,9 @@ void main() {
       await _apply(tester, '货品名称', '开关');
       await _open(tester, '货品名称');
       final oldSubmit = tester.widget<TextField>(_input).onSubmitted!;
-      final oldButton = tester.widget<TextButton>(_search).onPressed!;
+      final oldButton = tester
+          .widget<UtenColumnSearchButton>(_search)
+          .onPressed;
       final oldField = tester.widget<TextField>(_input).controller!;
       oldField.text = '不可继承';
       await tester.pumpWidget(_page(b));
@@ -563,7 +569,9 @@ void main() {
       await _apply(tester, '货品名称', '开关');
       await _open(tester, '货品名称');
       final oldSubmit = tester.widget<TextField>(_input).onSubmitted!;
-      final oldButton = tester.widget<TextButton>(_search).onPressed!;
+      final oldButton = tester
+          .widget<UtenColumnSearchButton>(_search)
+          .onPressed;
       tester.widget<TextField>(_input).controller!.text = '旧服务器词';
       container.read(server.notifier).state = 'https://b.invalid/api';
       expect(container.read(apiBaseUrlProvider), 'https://b.invalid/api');

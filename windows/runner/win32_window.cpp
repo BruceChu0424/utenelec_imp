@@ -1,7 +1,9 @@
 #include "win32_window.h"
 
 #include <dwmapi.h>
+#include <commctrl.h>
 #include <flutter_windows.h>
+#include <windowsx.h>
 
 #include <algorithm>
 
@@ -21,8 +23,12 @@ namespace {
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr DWORD kLoginWindowStyle =
     WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
-constexpr DWORD kMainWindowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+// Keep native resize, system-menu and snap/shortcut capabilities while Flutter
+// supplies the same transparent control strip in login and main presentations.
+constexpr DWORD kMainWindowStyle =
+    (WS_OVERLAPPEDWINDOW & ~WS_CAPTION) | WS_CLIPCHILDREN;
 constexpr UINT kBeginWindowDrag = WM_APP + 0x351;
+constexpr UINT_PTR kResizeChildSubclass = 0x352;
 constexpr int kLoginCornerRadius = 16;
 
 /// Registry key for app theme preference.
@@ -178,8 +184,11 @@ void Win32Window::CenterClientSize(int width, int height) {
   const auto style = static_cast<DWORD>(GetWindowLongPtr(window_handle_, GWL_STYLE));
   const auto extended_style =
       static_cast<DWORD>(GetWindowLongPtr(window_handle_, GWL_EXSTYLE));
-  AdjustWindowRectExForDpi(&bounds, style, FALSE, extended_style,
-                          FlutterDesktopGetDpiForMonitor(monitor));
+  // The main custom frame makes its entire outer rectangle the client area.
+  if (!main_mode_) {
+    AdjustWindowRectExForDpi(&bounds, style, FALSE, extended_style,
+                            FlutterDesktopGetDpiForMonitor(monitor));
+  }
   const RECT& work = monitor_info.rcWork;
   const LONG outer_width = std::min(bounds.right - bounds.left,
                                     work.right - work.left);
@@ -267,8 +276,8 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
     }
   }
   if (main_mode) {
-    // Remove the sign-in shape before normal-frame sizing/maximization. Main
-    // windows retain the operating system's ordinary frame/corner behavior.
+    // Remove the fixed sign-in shape before resizable sizing/maximization.
+    // DWM retains ownership of the ordinary main-window corner behavior.
     main_mode_ = true;
     UpdateWindowRegion();
   }
@@ -300,7 +309,7 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
 }
 
 bool Win32Window::BeginWindowDrag() {
-  if (main_mode_ || !IsWindow(window_handle_)) return false;
+  if (!IsWindow(window_handle_)) return false;
   // Post the modal Win32 move loop so the MethodChannel reply is not held until
   // the user releases the pointer. The Flutter drag strip owns hit testing.
   return PostMessage(window_handle_, kBeginWindowDrag, 0, 0) != 0;
@@ -309,6 +318,16 @@ bool Win32Window::BeginWindowDrag() {
 bool Win32Window::MinimizeWindow() {
   return IsWindow(window_handle_) &&
          PostMessage(window_handle_, WM_SYSCOMMAND, SC_MINIMIZE, 0) != 0;
+}
+
+bool Win32Window::ToggleMaximizeWindow() {
+  if (!main_mode_ || !IsWindow(window_handle_)) return false;
+  return PostMessage(window_handle_, WM_SYSCOMMAND,
+                     IsZoomed(window_handle_) ? SC_RESTORE : SC_MAXIMIZE, 0) != 0;
+}
+
+bool Win32Window::IsMainWindowMaximized() const {
+  return main_mode_ && IsWindow(window_handle_) && IsZoomed(window_handle_);
 }
 
 bool Win32Window::CloseWindow() {
@@ -337,6 +356,7 @@ LRESULT CALLBACK Win32Window::WndProc(HWND const window,
     if (message == WM_SIZE || message == WM_DPICHANGED ||
         message == WM_DISPLAYCHANGE) {
       that->UpdateWindowRegion(message == WM_DPICHANGED ? LOWORD(wparam) : 0);
+      that->OnWindowStateChanged();
     }
     return result;
   }
@@ -351,11 +371,27 @@ Win32Window::MessageHandler(HWND hwnd,
                             LPARAM const lparam) noexcept {
   switch (message) {
     case kBeginWindowDrag:
-      if (!main_mode_ && (GetAsyncKeyState(VK_LBUTTON) & 0x8000)) {
+      if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
         ReleaseCapture();
-        SendMessage(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
+        POINT pointer = {};
+        if (GetCursorPos(&pointer)) {
+          // Let DefWindowProc own caption dragging, including restoring a
+          // maximized main window under the pointer while it is dragged.
+          SendMessage(hwnd, WM_NCLBUTTONDOWN, HTCAPTION,
+                      MAKELPARAM(pointer.x, pointer.y));
+        }
       }
       return 0;
+
+    case WM_NCCALCSIZE:
+      // Return zero without shrinking the proposed rectangle. The client now
+      // includes the old caption and border; Flutter paints all of it.
+      if (main_mode_) return 0;
+      break;
+
+    case WM_NCHITTEST:
+      if (main_mode_) return HitTestResizeBorder(lparam);
+      break;
 
     case WM_SYSCOMMAND:
       if (!main_mode_ && ((wparam & 0xfff0) == SC_MAXIMIZE ||
@@ -393,6 +429,16 @@ Win32Window::MessageHandler(HWND hwnd,
         if (GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
                             &monitor_info)) {
           const double scale = GetDpiForWindow(hwnd) / 96.0;
+          // With no native nonclient frame, maximize exactly to the work area
+          // instead of letting the hidden thick frame overhang the taskbar.
+          limits->ptMaxPosition.x =
+              monitor_info.rcWork.left - monitor_info.rcMonitor.left;
+          limits->ptMaxPosition.y =
+              monitor_info.rcWork.top - monitor_info.rcMonitor.top;
+          limits->ptMaxSize.x =
+              monitor_info.rcWork.right - monitor_info.rcWork.left;
+          limits->ptMaxSize.y =
+              monitor_info.rcWork.bottom - monitor_info.rcWork.top;
           limits->ptMinTrackSize.x = std::min<LONG>(
               Scale(800, scale), monitor_info.rcWork.right - monitor_info.rcWork.left);
           limits->ptMinTrackSize.y = std::min<LONG>(
@@ -426,6 +472,11 @@ Win32Window::MessageHandler(HWND hwnd,
 }
 
 void Win32Window::Destroy() {
+  if (child_content_ != nullptr) {
+    RemoveWindowSubclass(child_content_, ChildContentSubclassProc,
+                         kResizeChildSubclass);
+    child_content_ = nullptr;
+  }
   OnDestroy();
 
   if (window_handle_) {
@@ -446,14 +497,72 @@ Win32Window* Win32Window::GetThisFromHandle(HWND const window) noexcept {
 }
 
 void Win32Window::SetChildContent(HWND content) {
+  if (child_content_ != nullptr) {
+    RemoveWindowSubclass(child_content_, ChildContentSubclassProc,
+                         kResizeChildSubclass);
+  }
   child_content_ = content;
   SetParent(content, window_handle_);
+  // Both HWNDs are created on this runner's UI thread. Keep the subclass in
+  // the common-controls chain so Flutter/plugins retain their own handlers.
+  SetWindowSubclass(content, ChildContentSubclassProc, kResizeChildSubclass,
+                    reinterpret_cast<DWORD_PTR>(this));
   RECT frame = GetClientArea();
 
   MoveWindow(content, frame.left, frame.top, frame.right - frame.left,
              frame.bottom - frame.top, true);
 
   SetFocus(child_content_);
+}
+
+LRESULT Win32Window::HitTestResizeBorder(LPARAM screen_position) const {
+  if (!main_mode_ || !IsWindow(window_handle_) || IsZoomed(window_handle_) ||
+      IsIconic(window_handle_)) return HTCLIENT;
+  RECT bounds = {};
+  if (!GetWindowRect(window_handle_, &bounds)) return HTCLIENT;
+  UINT dpi = GetDpiForWindow(window_handle_);
+  if (dpi == 0) dpi = 96;
+  const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+  const int horizontal =
+      std::max(1, GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + padding);
+  const int vertical =
+      std::max(1, GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + padding);
+  const LONG x = GET_X_LPARAM(screen_position);
+  const LONG y = GET_Y_LPARAM(screen_position);
+  if (x < bounds.left || x >= bounds.right ||
+      y < bounds.top || y >= bounds.bottom) {
+    return HTCLIENT;
+  }
+  const bool left = x < bounds.left + horizontal;
+  const bool right = x >= bounds.right - horizontal;
+  const bool top = y < bounds.top + vertical;
+  const bool bottom = y >= bounds.bottom - vertical;
+  if (top && left) return HTTOPLEFT;
+  if (top && right) return HTTOPRIGHT;
+  if (bottom && left) return HTBOTTOMLEFT;
+  if (bottom && right) return HTBOTTOMRIGHT;
+  if (left) return HTLEFT;
+  if (right) return HTRIGHT;
+  if (top) return HTTOP;
+  if (bottom) return HTBOTTOM;
+  return HTCLIENT;
+}
+
+LRESULT CALLBACK Win32Window::ChildContentSubclassProc(
+    HWND window, UINT message, WPARAM wparam, LPARAM lparam,
+    UINT_PTR subclass_id, DWORD_PTR reference_data) noexcept {
+  auto* owner = reinterpret_cast<Win32Window*>(reference_data);
+  if (message == WM_NCHITTEST && owner->HitTestResizeBorder(lparam) != HTCLIENT) {
+    // HTTRANSPARENT asks Windows to hit test underlying HWNDs on this thread.
+    // The top-level parent then returns HTLEFT/HTTOP/etc. and owns resizing.
+    // Every other point remains with Flutter, including caption buttons.
+    return HTTRANSPARENT;
+  }
+  if (message == WM_NCDESTROY) {
+    RemoveWindowSubclass(window, ChildContentSubclassProc, subclass_id);
+    if (owner->child_content_ == window) owner->child_content_ = nullptr;
+  }
+  return DefSubclassProc(window, message, wparam, lparam);
 }
 
 RECT Win32Window::GetClientArea() {
@@ -473,6 +582,10 @@ void Win32Window::SetQuitOnClose(bool quit_on_close) {
 bool Win32Window::OnCreate() {
   // No-op; provided for subclasses.
   return true;
+}
+
+void Win32Window::OnWindowStateChanged() {
+  // No-op; provided for subclasses.
 }
 
 void Win32Window::OnDestroy() {

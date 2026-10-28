@@ -14,6 +14,9 @@ class SupplierSettlementRepository {
     String? periodStart,
     String? status,
     String? keyword,
+    Map<String, String> columnSearch = const {},
+    String? sort,
+    bool sortAscending = true,
     int page = 1,
     int size = 30,
   }) async {
@@ -24,6 +27,11 @@ class SupplierSettlementRepository {
         if (periodStart?.isNotEmpty == true) 'periodStart': periodStart,
         if (status?.isNotEmpty == true) 'status': status,
         if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+        for (final entry in columnSearch.entries)
+          if (entry.value.trim().isNotEmpty)
+            'search.${entry.key}': entry.value.trim(),
+        'sort': ?sort,
+        if (sort != null) 'order': sortAscending ? 'asc' : 'desc',
         'page': page,
         'size': size,
       },

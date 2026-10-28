@@ -7,7 +7,9 @@ import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_anim.dart';
-import '../../../core/theme/uten_colors.dart';
+import '../../../components/feedback/uten_motion.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
+import '../../../components/data_display/uten_tree_branch_guide.dart';
 
 /// 目录层级：[module] 一级功能模块，[category] 二级子类。
 enum PermCatalogLevel { module, category }
@@ -19,7 +21,7 @@ class PermCatalogGroupSection extends StatefulWidget {
     required this.children,
     this.level = PermCatalogLevel.category,
     this.countLabel,
-    this.initiallyExpanded = true,
+    this.initiallyExpanded = false,
     this.expanded,
     this.onExpandedChanged,
     this.trailing,
@@ -72,136 +74,136 @@ class _PermCatalogGroupSectionState extends State<PermCatalogGroupSection> {
     final expanded = _effectiveExpanded;
     final isModule = widget.level == PermCatalogLevel.module;
 
-    // 一级（模块）用品牌深绿实心底 + 白字，与二级子类拉开明显层级；
-    // 二级（子类）保持中性浅底、更小字号与更紧凑高度，从属于一级。
-    final headerBg = isModule ? UtenColors.deepGreen : cs.surfaceContainerHigh;
-    final headerFg = isModule ? Colors.white : cs.onSurfaceVariant;
-    final titleStyle =
-        (isModule ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium)
-            ?.copyWith(
-              fontWeight: isModule ? FontWeight.w700 : FontWeight.w600,
-              color: headerFg,
-            );
-    final headerPad = isModule
-        ? const EdgeInsets.symmetric(horizontal: 14, vertical: 14)
-        : const EdgeInsets.symmetric(horizontal: 10, vertical: 8);
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: isModule ? 14 : 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return UtenMotion(
+      duration: UtenAnim.normal,
+      builder: (context, duration) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Semantics(
             button: true,
             value: expanded ? '已展开' : '已折叠',
             child: Material(
-              type: MaterialType.transparency,
-              borderRadius: BorderRadius.circular(UtenRadius.control),
-              clipBehavior: Clip.antiAlias,
+              color: isModule ? cs.surfaceContainerLow : Colors.transparent,
+              borderRadius: UtenRadius.xsAll,
               child: InkWell(
+                borderRadius: UtenRadius.xsAll,
                 onTap: _toggle,
-                child: Ink(
-                  decoration: BoxDecoration(
-                    color: headerBg,
-                    borderRadius: BorderRadius.circular(UtenRadius.control),
-                  ),
-                  padding: headerPad,
-                  child: Row(
-                    children: [
-                      AnimatedRotation(
-                        turns: expanded ? 0 : -0.5,
-                        duration: UtenAnim.normal,
-                        curve: UtenAnim.standard,
-                        child: Icon(
-                          isModule
-                              ? Icons.folder_open_outlined
-                              : Icons.keyboard_arrow_down_rounded,
-                          size: isModule ? 22 : 18,
-                          color: headerFg,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          widget.title,
-                          style: titleStyle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (widget.countLabel != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isModule
-                                ? Colors.white.withValues(alpha: 0.22)
-                                : cs.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(
-                              UtenRadius.pill,
-                            ),
-                          ),
-                          child: Text(
-                            widget.countLabel!,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: isModule ? Colors.white : cs.primary,
-                              fontWeight: FontWeight.w600,
-                            ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 38),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4, right: 4),
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: expanded ? 0.25 : 0,
+                          duration: duration,
+                          curve: UtenAnim.standard,
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
-                      if (widget.trailing != null) ...[
                         const SizedBox(width: 4),
-                        // 一级深绿底上把批量菜单图标也染白，保持可读。
-                        IconTheme(
-                          data: IconThemeData(color: headerFg),
-                          child: widget.trailing!,
+                        Expanded(
+                          child: Text(
+                            widget.title,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: isModule
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        if (widget.countLabel != null)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              widget.countLabel!,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        if (widget.trailing != null)
+                          IconButtonTheme(
+                            data: IconButtonThemeData(
+                              style: IconButton.styleFrom(
+                                minimumSize: const Size(32, 32),
+                                padding: const EdgeInsets.all(4),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                            child: widget.trailing!,
+                          ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          ClipRect(
-            child: AnimatedSize(
-              duration: UtenAnim.normal,
-              curve: UtenAnim.standard,
-              alignment: Alignment.topCenter,
-              child: expanded
-                  ? (isModule
-                        ? Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(top: 4),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: widget.children,
-                            ),
-                          )
-                        : Container(
-                            width: double.infinity,
-                            margin: const EdgeInsets.only(left: 10, top: 2),
-                            padding: const EdgeInsets.only(left: 14, top: 6),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  width: 2,
-                                  color: cs.outlineVariant,
-                                ),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: widget.children,
-                            ),
-                          ))
-                  : const SizedBox(width: double.infinity),
+          UtenCollapsibleContent(
+            expanded: expanded,
+            maintainState: false,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var i = 0; i < widget.children.length; i++)
+                    _PermissionBranch(
+                      isLast: i == widget.children.length - 1,
+                      // A category owns its own child rails. Its parent rail
+                      // joins the header, rather than the middle of the subtree.
+                      headerOnly: isModule,
+                      child: widget.children[i],
+                    ),
+                ],
+              ),
             ),
           ),
+          if (isModule) const SizedBox(height: 2),
         ],
       ),
     );
   }
+}
+
+class _PermissionBranch extends StatelessWidget {
+  const _PermissionBranch({
+    required this.isLast,
+    required this.headerOnly,
+    required this.child,
+  });
+  final bool isLast;
+  final bool headerOnly;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Positioned(
+        left: 0,
+        top: 0,
+        bottom: headerOnly ? null : 0,
+        width: 16,
+        height: headerOnly ? 38 : null,
+        child: UtenTreeBranchGuide(
+          depth: 1,
+          ancestorContinuations: const [],
+          isLastChild: isLast,
+          hasExpandedChildren: false,
+          indent: 16,
+          toggleExtent: 16,
+          maxVisualDepth: 10,
+          dotted: true,
+          color: Theme.of(context).colorScheme.outlineVariant,
+        ),
+      ),
+      Padding(padding: const EdgeInsets.only(left: 16), child: child),
+    ],
+  );
 }

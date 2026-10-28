@@ -372,7 +372,9 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                           label: '仓库名称',
                           width: 230,
                           value: (entry) => entry.name,
-                          columnSearchEnabled: false,
+                          info: query
+                              ? '在当前仓库范围内检索；顶部搜索可按完整仓库名称跨层级定位。'
+                              : '在当前层级检索；跨层级查找可使用顶部仓库搜索。',
                           cellBuilder: (_, entry) => Tooltip(
                             message:
                                 warehouseFullLabel(
@@ -395,7 +397,6 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                           label: '编号',
                           width: 120,
                           value: (entry) => entry.code,
-                          columnSearchEnabled: false,
                         ),
                         MasterColumnDef(
                           key: 'use',
@@ -406,7 +407,8 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                               : _hasChildren(entry.id)
                               ? '主仓'
                               : '良品仓',
-                          columnSearchEnabled: false,
+                          filterFromRows: true,
+                          facetSearchEnabled: true,
                           cellBuilder: (_, entry) => entry.isDefective
                               ? WarehouseDefectiveTag(
                                   key: Key(
@@ -428,7 +430,8 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                               : entry.status == '禁用'
                               ? '已停用'
                               : '可选择',
-                          columnSearchEnabled: false,
+                          filterFromRows: true,
+                          facetSearchEnabled: true,
                         ),
                         if (widget.subtitleOf != null)
                           MasterColumnDef(
@@ -436,7 +439,6 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                             label: '可用参考',
                             width: 160,
                             value: (entry) => widget.subtitleOf!(entry),
-                            columnSearchEnabled: false,
                             cellBuilder: (_, entry) => Text(
                               widget.subtitleOf!(entry) ?? '—',
                               key: Key('warehouse-picker-subtitle-${entry.id}'),

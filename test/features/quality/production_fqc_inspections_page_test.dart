@@ -121,6 +121,39 @@ Future<void> _doubleTapRow(WidgetTester tester, String reportNo) async {
 }
 
 void main() {
+  testWidgets(
+    'status header queries one exact state inside the current queue',
+    (tester) async {
+      final api = _FqcApi();
+      await _pumpPage(
+        tester,
+        api: api,
+        permissions: {Perm.productionQualityInspectionView},
+      );
+      await tester.tap(find.text('状态'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('部分已决定'));
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['status'], 'PARTIAL');
+      expect(api.listQueries.last['page'], 1);
+      expect(_taskTable(tester).items.single.status, 'PARTIAL');
+      expect(_taskTable(tester).filters['status'], 'PARTIAL');
+      _taskTable(tester).onFilterChanged('search.remainingQty', '>=1');
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['search.remainingQty'], '>=1');
+      expect(api.listQueries.last['status'], 'PARTIAL');
+      _taskTable(tester).onSortChange!('remainingQty', false);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['sort'], 'remainingQty');
+      expect(api.listQueries.last['order'], 'desc');
+      expect(api.listQueries.last['page'], 1);
+      await _doubleTapRow(tester, _reportNo);
+      expect(find.byType(ProductionFqcInspectionPage), findsOneWidget);
+      expect(api.decisionBody, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('FQC列表实时加授审批即可操作，收回后立即只读且不重读业务行', (tester) async {
     final api = _FqcApi();
     await _pumpPage(
@@ -760,6 +793,15 @@ class _FqcApi extends ApiClient {
 
   List<Map<String, dynamic>> _itemsFor(String status) {
     return switch (status) {
+      'PARTIAL' => [
+        if (!decided)
+          {
+            ..._inspection,
+            'status': 'PARTIAL',
+            'passedQty': 2,
+            'remainingQty': 8,
+          },
+      ],
       'HISTORY' => [
         if (decided) _decidedInspection,
         _resolvedInspection,

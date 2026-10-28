@@ -1,3 +1,6 @@
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
 // CategoryPageShell - 基础资料分类页壳层（审计 §4.1 第 3 批）。
 //
 // client/mould/product/supplier 四个 *_category_page 的顶层 State 曾逐字重复
@@ -164,14 +167,20 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 删除分类节点（含确认框）。默认 = client/supplier 简版确认；
   /// mould/product 覆盖为级联预览红框版本。
   Future<void> shellDeleteNode(ProductCategoryNode node) async {
+    final current = shellCaptureActionOwner();
     if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
     }
-    final ok = await showDialog<bool>(
+    final ok = await showReadOwnedDialog<bool>(
+      ref: ref,
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除分类'), // TODO(l10n): 补 arb
+        title: const UtenDialogHeading(
+          title: Text('删除分类'),
+          icon: Icons.delete_outline,
+          danger: true,
+        ),
         content: Text(
           '确定删除「${node.name}」吗？若存在子分类或$shellContentNoun引用，删除可能失败。', // TODO(l10n): 补 arb
         ),
@@ -189,19 +198,43 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         ],
       ),
     );
-    if (ok != true) return;
-    if (!mounted) return;
+    if (ok != true || !mounted || !current()) return;
     final deleted = await guardShellAction(
-      () async => shellDeleteCategory(node.id),
+      () => shellRunCategoryTask('正在删除分类…', () => shellDeleteCategory(node.id)),
       success: '分类已删除', // TODO(l10n): 补 arb
       errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
-    if (!deleted || !mounted) return;
+    if (!deleted || !mounted || !current()) return;
     shellAfterCategoryDeleted(node.id);
     await shellReload();
   }
 
   // ---- 共享状态 -----------------------------------------------------------
+
+  final _categoryTaskInvalidation = ValueNotifier<int>(0);
+  bool _shellDisposed = false;
+  bool _deletingCategory = false;
+
+  Future<T> shellRunCategoryTask<T>(String title, Future<T> Function() task) {
+    final current = shellCaptureActionOwner();
+    return runUtenBlockingTask<T>(
+      context: context,
+      title: title,
+      task: task,
+      isCurrent: current,
+      invalidation: _categoryTaskInvalidation,
+    );
+  }
+
+  bool Function() shellCaptureActionOwner() {
+    final current = captureReadOwner(ref);
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    return () =>
+        !_shellDisposed &&
+        current() &&
+        ref.read(sensitiveReadBoundaryProvider) == boundary;
+  }
 
   final _searchRequests = LatestRequestGuard();
   final _treeRequests = LatestRequestGuard();
@@ -235,6 +268,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () => _categoryTaskInvalidation.value++);
     ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
       if (previous != next &&
           !canRetainMasterReadShell(
@@ -248,6 +282,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   void _categoryAccessChanged(SensitiveReadBoundary next) {
+    _categoryTaskInvalidation.value++;
     _treeRequests.begin();
     _searchRequests.begin();
     _shellSearchDebounce?.cancel();
@@ -373,6 +408,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   @override
   void dispose() {
+    _shellDisposed = true;
+    _categoryTaskInvalidation.value++;
+    _categoryTaskInvalidation.dispose();
     _shellSearchDebounce?.cancel();
     super.dispose();
   }
@@ -487,10 +525,15 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Future<void> _deleteCategoryAfterDraft(ProductCategoryNode node) async {
-    if (!shellCanDelete) return;
-    if (!await confirmMasterInlineLeave(context) || !mounted) return;
-    if (!shellCanDelete) return;
-    await shellDeleteNode(node);
+    if (!shellCanDelete || _deletingCategory) return;
+    _deletingCategory = true;
+    try {
+      if (!await confirmMasterInlineLeave(context) || !mounted) return;
+      if (!shellCanDelete) return;
+      await shellDeleteNode(node);
+    } finally {
+      _deletingCategory = false;
+    }
   }
 
   /// A deliberate scope or search-mode change invalidates the whole query,
@@ -641,7 +684,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     if (!shellCanCreate) return;
     if (!await confirmMasterInlineLeave(context) || !mounted) return;
     final descriptor = shellCategoryDraftDescriptor;
-    await showDialog<void>(
+    await showReadOwnedDialog<void>(
+      ref: ref,
       context: context,
       barrierDismissible: false,
       builder: (ctx) => CategoryEditDialog(
@@ -661,8 +705,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       context.appInfo('当前没有新增分类权限');
       return false;
     }
+    final current = shellCaptureActionOwner();
     final created = await shellCreateCategory(r);
-    if (mounted) {
+    if (mounted && current()) {
       _shellSearchDebounce?.cancel();
       _searchRequests.begin();
       setState(() {
@@ -679,7 +724,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       _syncPaneSelectionNextFrame();
       context.appSuccess('分类已创建');
       await shellReload();
-      if (mounted) shellAfterCategorySaved();
+      if (mounted && current()) shellAfterCategorySaved();
     }
     return true;
   }
@@ -689,7 +734,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
     }
-    showDialog<void>(
+    showReadOwnedDialog<void>(
+      ref: ref,
       context: context,
       builder: (ctx) => CategoryEditDialog(
         tree: _tree ?? const <ProductCategoryNode>[],
@@ -707,14 +753,16 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Future<bool> _doUpdate(String id, CategoryEditResult r) async {
+    final current = shellCaptureActionOwner();
     final ok = await guardShellAction(
       () async => shellUpdateCategory(id, r),
       success: '分类已更新', // TODO(l10n): 补 arb
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
-    if (!ok) return false;
+    if (!ok || !current()) return ok;
     await shellReload();
-    shellAfterCategorySaved();
+    if (mounted && current()) shellAfterCategorySaved();
     return true;
   }
 
@@ -723,16 +771,21 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Future<void> _editCategoryNode(ProductCategoryNode node) async {
     if (!shellCanEdit) return;
     if (!await confirmMasterInlineLeave(context) || !mounted) return;
+    final current = shellCaptureActionOwner();
     ProductCategoryDetail? loaded;
     final ok = await context.guardRun(
       () async {
-        loaded = await shellLoadCategoryDetail(node.id);
+        loaded = await shellRunCategoryTask(
+          '正在读取分类…',
+          () => shellLoadCategoryDetail(node.id),
+        );
       },
       errorFallback: '加载分类详情失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
     // 闭包里赋值的局部变量不做流提升，先落非空再传。
     final detail = loaded;
-    if (!ok || detail == null || !mounted || !shellCanEdit) return;
+    if (!ok || detail == null || !current() || !shellCanEdit) return;
     shellShowEditDialog(detail);
   }
 
@@ -769,11 +822,13 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     Future<void> Function() action, {
     required String success,
     required String errorFallback,
+    bool Function()? isCurrent,
   }) {
     return context.guardRun(
       action,
       success: success,
       errorFallback: errorFallback,
+      isCurrent: isCurrent ?? shellCaptureActionOwner(),
     );
   }
 
@@ -816,9 +871,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
   }
 
-  /// 左树初始展开深度（depth < 该值的节点展开）。默认 1；挂了虚拟总根的页
-  /// （如模具页「全部模具」）真实分类整体下沉一层，覆写为 2 保持原有初始视野。
-  int get shellInitiallyExpandDepth => 1;
+  /// 层级目录默认全部收起；用户展开和搜索命中路径不改变这个初始规则。
+  int get shellInitiallyExpandDepth => 0;
 
   // ---- 分类动作 ---------------------------------------------------------
   // 管理动作在详情卡右上角菜单与树右键/长按菜单复用；左树只留系统保护提示。

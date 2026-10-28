@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/goods_bom_item.dart';
 import 'master_data_table_view.dart';
@@ -49,12 +48,6 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text(
-        '原料身份或选料保存后会显示在这里。单耗待核的身份记录不参与配方计算。'
-        '按单材料要完成实际领退料和报工核清后才学习用量。'
-        '整批领料的多产品分摊耗用不能当作逐件实测单耗。',
-      ),
-      const SizedBox(height: UtenSpacing.s8),
       Expanded(
         child: MasterDataTableView<GoodsBomMaterialEvidence>(
           tableKey: 'goods.bom.material-evidence',
@@ -74,6 +67,10 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
             MasterColumnDef(
               key: 'material',
               label: '物料',
+              info:
+                  '原料身份或选料保存后会显示在这里。单耗待核的身份记录不参与配方计算。'
+                  '按单材料要完成实际领退料和报工核清后才学习用量。'
+                  '整批领料的多产品分摊耗用不能当作逐件实测单耗。',
               width: 180,
               value: (row) => row.componentName,
             ),
@@ -81,24 +78,32 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
               key: 'color',
               label: '颜色',
               width: 90,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: (row) => row.colorName ?? '—',
             ),
             MasterColumnDef(
               key: 'unit',
               label: '基本单位',
               width: 85,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: (row) => row.unitName ?? '—',
             ),
             const MasterColumnDef(
               key: 'source',
               label: '来源',
               width: 120,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: bomMaterialEvidenceSource,
             ),
             const MasterColumnDef(
               key: 'structure',
               label: 'BOM 结构',
               width: 130,
+              filterFromRows: true,
+              facetSearchEnabled: true,
               value: bomMaterialEvidenceStructure,
             ),
             MasterColumnDef(
@@ -106,7 +111,10 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
               label: '来源记录数',
               width: 100,
               type: 'number',
+              sortable: true,
+              filterFromRows: true,
               value: (row) => row.sourceCount.toString(),
+              exactValueOf: (row) => row.sourceCount.toString(),
             ),
             const MasterColumnDef(
               key: 'next',
@@ -118,6 +126,9 @@ class GoodsBomMaterialEvidenceTable extends StatelessWidget {
               key: 'updated',
               label: '最近记录',
               width: 160,
+              type: 'date',
+              sortable: true,
+              filterFromRows: true,
               value: (row) => row.updatedAt == null
                   ? '—'
                   : ChinaDateTime.formatInstant(row.updatedAt!),

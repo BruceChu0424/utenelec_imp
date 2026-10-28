@@ -477,6 +477,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '货架目视化清单', // TODO(l10n): 补 arb
+        info: AppLocalizations.of(context).shelfLocationQuantityHint,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.warehouse),
         ),
@@ -500,14 +501,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _toolbar(theme, names, filtered.length, unparsed),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s4,
-                    ),
-                    child: Text(
-                      AppLocalizations.of(context).shelfLocationQuantityHint,
-                    ),
-                  ),
                   _gridPane(filtered),
                 ],
               ),

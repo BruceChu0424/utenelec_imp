@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -200,8 +201,6 @@ class _AdminAuditSessionDetailPageState
         key: const ValueKey('audit-session-detail-scroll'),
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(child: _PageIntroduction()),
-          const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s16)),
           SliverToBoxAdapter(child: AuditSessionSummaryPanel(session: summary)),
           if (_summaryError != null) ...[
             const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s12)),
@@ -240,38 +239,6 @@ class _AdminAuditSessionDetailPageState
   }
 }
 
-class _PageIntroduction extends StatelessWidget {
-  const _PageIntroduction();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      header: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '一次登录，一条完整时间线',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '登录、查看、修改、下载和退出归入同一会话。所有时间统一为北京时间，'
-            '系统自动任务不会混入人员操作。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.55,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _TimelineHeading extends StatelessWidget {
   const _TimelineHeading();
 
@@ -295,26 +262,14 @@ class _TimelineHeading extends StatelessWidget {
           ),
         ),
         const SizedBox(width: UtenSpacing.s12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '人员操作时间线',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
+        const Expanded(
+          child: UtenSectionHeader(
+            title: '人员操作时间线',
+            info:
+                '登录、查看、修改、下载和退出归入同一会话。所有时间统一为北京时间，'
+                '系统自动任务不会混入人员操作。\n\n'
                 '最新操作在前。点击具体记录，可查看操作人、业务对象、'
                 '对象名称、业务编号、旧系统编号及访问证据。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.45,
-                ),
-              ),
-            ],
           ),
         ),
       ],

@@ -365,6 +365,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       textOf: (row) =>
           '${financeArApSourceTypeLabel(row.sourceDocType)}'
           '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
+      filterValueOf: (row) => financeArApSourceTypeLabel(row.sourceDocType),
+      columnSearchEnabled: true,
       cellBuilder: (context, row) => Text(
         '${financeArApSourceTypeLabel(row.sourceDocType)}'
         '${row.sourceDocNo?.trim().isNotEmpty == true ? ' · ${row.sourceDocNo}' : ''}',
@@ -389,6 +391,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '应收总额',
       width: 110,
       numeric: true,
+      frozenTextOf: (row) =>
+          row.receivableOriginalText ?? _money(row.receivableOriginal),
       cellBuilder: (context, row) =>
           Text(_moneyExact(row.receivableOriginalText, row.receivableOriginal)),
     ),
@@ -397,6 +401,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '累计已收',
       width: 110,
       numeric: true,
+      frozenTextOf: (row) =>
+          row.receivedOriginalText ?? _money(row.receivedOriginal),
       cellBuilder: (context, row) =>
           Text(_moneyExact(row.receivedOriginalText, row.receivedOriginal)),
     ),
@@ -405,6 +411,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '累计冲销',
       width: 110,
       numeric: true,
+      frozenTextOf: (row) =>
+          row.writtenOffOriginalText ?? _money(row.writtenOffOriginal),
       cellBuilder: (context, row) =>
           Text(_moneyExact(row.writtenOffOriginalText, row.writtenOffOriginal)),
     ),
@@ -413,6 +421,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '预收已抵',
       width: 110,
       numeric: true,
+      frozenTextOf: (row) => row.prepaymentAppliedOriginal ?? '0.00',
       cellBuilder: (context, row) =>
           Text(row.prepaymentAppliedOriginal ?? '0.00'),
     ),
@@ -421,6 +430,12 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '应收币种',
       width: 110,
       required: true,
+      filterValueOf: (row) =>
+          financeCurrencyDisplayLabel(
+            name: names.currency(row.currencyId),
+            code: row.currencyCode,
+          ) ??
+          '原币',
       // 销售收款只能按被引用应收的原币核销。币别由 AR 带入并保持只读，
       // 财务只填写到账汇率，避免选择其它币别后必然被服务端拒绝。
       cellBuilder: (context, row) => Text(
@@ -456,6 +471,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: financeEntryText(context, 'availableOriginalColumn'),
       width: 110,
       numeric: true,
+      frozenTextOf: (row) =>
+          row.balanceOriginalText ?? _money(row.balanceOriginal),
       cellBuilder: (context, row) => Text(
         _moneyExact(row.balanceOriginalText, row.balanceOriginal),
         style: const TextStyle(fontWeight: FontWeight.w600),
@@ -466,6 +483,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: '本次分配收款(原币)',
       width: 180,
       numeric: true,
+      frozenTextOf: (row) => row.amount.text,
+      listenableOf: (row) => row.amount,
       required: true,
       // 列说明挂表头 ⓘ（2026-09-09 口径）：不再逐格渲染重复 ⓘ。
       headerInfo: workflowFieldText(context).workflowReceiptAllocationHint,
@@ -489,6 +508,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: financeEntryText(context, 'convertedCnyColumn'),
       width: 170,
       numeric: true,
+      exactValueOf: (row) => row.localAmountExactNotifier.value,
+      exactListenableOf: (row) => row.localAmountExactNotifier,
       headerInfo: financeEntryText(context, 'convertedCnyHint'),
       textOf: (row) =>
           financeExactMoneyDisplay(row.localAmountExactNotifier.value),
@@ -503,6 +524,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       label: financeEntryText(context, 'remainingOriginalColumn'),
       width: 120,
       numeric: true,
+      frozenTextOf: (row) => row.balanceAfterExactNotifier.value ?? '—',
+      listenableOf: (row) => row.balanceAfterExactNotifier,
       cellBuilder: (context, row) => ValueListenableBuilder<String?>(
         valueListenable: row.balanceAfterExactNotifier,
         builder: (_, value, _) {
@@ -597,6 +620,8 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
       label: '本次付款(原币)',
       width: 140,
       numeric: true,
+      frozenTextOf: (row) => row.amount.text,
+      listenableOf: (row) => row.amount,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,
@@ -732,6 +757,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       label: '数量',
       width: 96,
       numeric: true,
+      frozenTextOf: (row) => row.qty.text,
+      listenableOf: (row) => row.qty,
       cellBuilder: (context, row) => TextField(
         controller: row.qty,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -745,6 +772,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       label: '单价',
       width: 96,
       numeric: true,
+      frozenTextOf: (row) => row.price.text,
+      listenableOf: (row) => row.price,
       cellBuilder: (context, row) => TextField(
         controller: row.price,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -758,6 +787,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       label: '金额',
       width: 120,
       numeric: true,
+      frozenTextOf: (row) => row.amount.text,
+      listenableOf: (row) => row.amount,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,
@@ -810,6 +841,15 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       label: '日期',
       width: 150,
       required: true,
+      filterValueOf: (row) {
+        final value = row.occurDate;
+        return value == null
+            ? null
+            : value.length >= 10
+            ? value.substring(0, 10)
+            : value;
+      },
+      listenableOf: (row) => row.occurDateNotifier,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.occurDateNotifier,
         isEmpty: () => row.occurDate == null,
@@ -856,6 +896,8 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       label: '金额',
       width: 140,
       numeric: true,
+      frozenTextOf: (row) => row.amount.text,
+      listenableOf: (row) => row.amount,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.amount,

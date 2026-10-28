@@ -61,7 +61,6 @@ class UtenSectionHeader extends StatelessWidget {
               trailing != null && constraints.maxWidth < 420 * textScale;
           final heading = Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (accentColor != null) ...[
                 Container(

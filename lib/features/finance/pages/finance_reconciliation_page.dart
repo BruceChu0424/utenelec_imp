@@ -5,6 +5,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 名称解析：账户用 FinanceNameService；账户下拉选项来自 FinanceNameService.accountEntries。
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
+import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,8 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/report/account_statement_column_query.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -53,7 +56,7 @@ String _sourceDocTypeLabel(String? value) => switch (value) {
   'INCOME' => '其它收入',
   'BANK_TRANSFER' => '银行存取',
   'BALANCE_ADJUSTMENT' => '余额调整',
-  _ => value ?? '—',
+  _ => accountStatementChoiceLabel(accountStatementSources, value) ?? '—',
 };
 
 class FinanceReconciliationPage extends ConsumerStatefulWidget {
@@ -81,6 +84,8 @@ class _FinanceReconciliationPageState
   // （共享状态，见 MasterServerColumnFilters；_sortColumn=null=不排序，走后端
   // 默认 billDate DESC）。
   final _columnFilters = MasterServerColumnFilters();
+  Map<String, dynamic>? _activeQuery;
+  int _criteriaRevision = 0;
 
   @override
   void initState() {
@@ -88,6 +93,9 @@ class _FinanceReconciliationPageState
     listenReadOwner(ref, () {
       _loadRequests.begin();
       _columnFilters.reset();
+      _activeQuery = null;
+      _criteriaRevision++;
+      _tableRows.update(const []);
       setState(() {
         _page = null;
         _loading = false;
@@ -110,11 +118,20 @@ class _FinanceReconciliationPageState
         sourceDocType: _sourceDocType,
         entryKind: _entryKind,
         billNo: withBillNo ? _columnFilters['billNo'] : null,
+        columnSearch: Map.unmodifiable({
+          for (final entry in _columnFilters.values.entries)
+            if (withBillNo || entry.key != 'search.billNo')
+              entry.key: entry.value,
+        }),
       );
 
   @override
   void scopedPagedReadOwnerChanged() {
     _loadRequests.begin();
+    _columnFilters.reset();
+    _activeQuery = null;
+    _criteriaRevision++;
+    _tableRows.update(const []);
     if (!mounted) return;
     setState(() {
       _page = null;
@@ -147,6 +164,12 @@ class _FinanceReconciliationPageState
 
     final generation = _loadRequests.begin();
     setState(() {
+      if (!const DeepCollectionEquality().equals(_activeQuery, cacheQuery)) {
+        _activeQuery = cacheQuery;
+        _criteriaRevision++;
+        _page = null;
+        _tableRows.update(const []);
+      }
       _loading = true;
       _error = null;
       _pageNum = page;
@@ -192,6 +215,7 @@ class _FinanceReconciliationPageState
     onLoaded: () {
       if (mounted) setState(() {});
     },
+    isCurrent: captureReadOwner(ref),
   );
 
   List<MasterColumnDef<ReconciliationItem>> _columns(FinanceNameService names) {
@@ -202,6 +226,8 @@ class _FinanceReconciliationPageState
         width: 160,
         type: 'date',
         sortable: true,
+        columnSearchEnabled: true,
+        info: '按北京时间输入年份、年月、日期或日期范围',
         value: (it) => _reconciliationDateText(it.billDate),
       ),
       MasterColumnDef(
@@ -214,12 +240,16 @@ class _FinanceReconciliationPageState
       ),
       MasterColumnDef(
         key: 'accountId',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '账户',
         width: 180,
         value: (it) => names.account(it.accountId),
       ),
       MasterColumnDef(
         key: 'counterpartName',
+        columnSearchEnabled: true,
+        sortable: true,
         label: '对手方',
         width: 160,
         value: (it) => it.counterpartName,
@@ -230,8 +260,13 @@ class _FinanceReconciliationPageState
         width: 120,
         type: 'money',
         sortable: true,
-        value: (it) =>
-            it.inAmount == 0 ? null : it.inAmount?.toStringAsFixed(2),
+        columnSearchEnabled: true,
+        exactValueOf: (it) =>
+            it.inAmountText ?? financeDecimalText(it.inAmount),
+        info: '先选择账户，再按原币收入的原始精度检索或排序；未知金额不作零',
+        value: (it) => _reconciliationMoneyText(
+          it.inAmountText ?? financeDecimalText(it.inAmount),
+        ),
       ),
       MasterColumnDef(
         key: 'outAmount',
@@ -239,23 +274,34 @@ class _FinanceReconciliationPageState
         width: 120,
         type: 'money',
         sortable: true,
-        value: (it) =>
-            it.outAmount == 0 ? null : it.outAmount?.toStringAsFixed(2),
+        columnSearchEnabled: true,
+        exactValueOf: (it) =>
+            it.outAmountText ?? financeDecimalText(it.outAmount),
+        info: '先选择账户，再按原币支出的原始精度检索或排序；未知金额不作零',
+        value: (it) => _reconciliationMoneyText(
+          it.outAmountText ?? financeDecimalText(it.outAmount),
+        ),
       ),
       MasterColumnDef(
         key: 'sourceDocType',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '来源',
         width: 120,
         value: (it) => _sourceDocTypeLabel(it.sourceDocType),
       ),
       MasterColumnDef(
         key: 'entryKind',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '流水类型',
         width: 120,
         value: (it) => _entryKindLabel(it.entryKind),
       ),
       MasterColumnDef(
         key: 'reversalOfId',
+        columnSearchEnabled: true,
+        info: '粘贴完整的原流水UUID，按同一身份精确检索',
         label: '原流水 UUID',
         width: 280,
         value: (it) => it.reversalOfId,
@@ -269,13 +315,24 @@ class _FinanceReconciliationPageState
   }
 
   void _onColumnFilterChanged(String key, String? value) {
-    if (key == 'billNo') {
+    if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
       return;
     }
     setState(() {
       if (key == 'accountId') {
         _accountId = value;
+        if (value == null) {
+          _columnFilters.setValue('search.inAmount', null);
+          _columnFilters.setValue('search.outAmount', null);
+          if (const {
+            'inAmount',
+            'outAmount',
+          }.contains(_columnFilters.sortColumn)) {
+            _columnFilters.sortColumn = null;
+            _columnFilters.sortAscending = true;
+          }
+        }
       } else if (key == 'sourceDocType') {
         _sourceDocType = value;
       } else if (key == 'entryKind') {
@@ -370,17 +427,33 @@ class _FinanceReconciliationPageState
                 tableKey:
                     'features.finance.pages.finance_reconciliation_page.FinanceReconciliationPageState.build.1',
                 columns: _columns(names),
+                serverColumnSearchKeys: const {
+                  'billDate',
+                  'billNo',
+                  'counterpartName',
+                  'inAmount',
+                  'outAmount',
+                  'reversalOfId',
+                },
+                headerFilterScopeDescription: '检索全部符合条件的流水；收入与支出需先选择账户，不跨币种汇总',
                 items: _page?.items ?? const [],
                 facets: {
                   // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
                   'billNo': _columnFilters.bucketOf('billNo'),
                   'accountId': financeDictionaryFacets(names.accountEntries),
-                  'sourceDocType': financeReconciliationSourceFacets,
+                  'sourceDocType': [
+                    for (final source in financeReconciliationSourceFacets)
+                      MasterFacetBucket(
+                        value: source.value,
+                        label: _sourceDocTypeLabel(source.value),
+                        count: source.count,
+                      ),
+                  ],
                   'entryKind': _entryKindFacets,
                 },
                 nullCounts: const {},
                 filters: {
-                  'billNo': _columnFilters['billNo'],
+                  ..._columnFilters.values,
                   'accountId': _accountId,
                   'sourceDocType': _sourceDocType,
                   'entryKind': _entryKind,
@@ -396,7 +469,7 @@ class _FinanceReconciliationPageState
                 emptyMessage: '暂无流水',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
-                paginationScope: _keyword,
+                paginationScope: _criteriaRevision,
                 onPageChange: _navigatePage,
               ),
             ),
@@ -413,4 +486,13 @@ String? _reconciliationDateText(String? value) {
   if (raw == null || raw.isEmpty) return raw;
   if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw)) return raw;
   return ChinaDateTime.formatIsoInstant(raw, fallback: raw);
+}
+
+String? _reconciliationMoneyText(String? value) {
+  if (value == null || value.trim().isEmpty) return '—';
+  if (financeExactDecimalUnits(value, scale: financeAmountScale) ==
+      BigInt.zero) {
+    return null;
+  }
+  return financeExactMoneyDisplay(value);
 }

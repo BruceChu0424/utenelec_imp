@@ -16,6 +16,9 @@ abstract interface class PayrollRepository {
     int? year,
     int? month,
     String? departmentId,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   });
   Future<PayrollSlip> getSlip(String id);
   Future<PayrollSlip?> markViewed(String id);
@@ -55,17 +58,28 @@ class DioPayrollRepository implements PayrollRepository {
     int? year,
     int? month,
     String? departmentId,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   }) async {
     final json = await _api.get(
       _slips,
-      query: _pageQuery(
-        page: page,
-        size: size,
-        status: status,
-        year: year,
-        month: month,
-        departmentId: departmentId,
-      ),
+      query: {
+        ..._pageQuery(
+          page: page,
+          size: size,
+          status: status,
+          year: year,
+          month: month,
+          departmentId: departmentId,
+        ),
+        for (final entry in columnSearch.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
+        'sort': ?sort,
+        if (sort != null) 'order': order ?? 'asc',
+      },
     );
     return PagedResult.fromJsonResponsive(json, PayrollSlip.fromJson);
   }

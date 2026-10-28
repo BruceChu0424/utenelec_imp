@@ -31,6 +31,8 @@ class _Api extends ApiClient {
   final reads = <String>[];
   final cancels = <String>[];
   final downloads = <({String path, Object? body})>[];
+  final downloadQueries = <Map<String, dynamic>>[];
+  Object? downloadError;
   List<Map<String, dynamic>> history = [];
 
   Map<String, dynamic> job(String id) {
@@ -103,6 +105,8 @@ class _Api extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     downloads.add((path: path, body: body));
+    downloadQueries.add({...?query});
+    if (downloadError != null) throw downloadError!;
     return Uint8List.fromList([1, 2, 3]);
   }
 }
@@ -129,6 +133,95 @@ Future<ReportExportJobsClient> _client(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final asynchronous in [true, false]) {
+    testWidgets(
+      'finance contact export uses the same private body for ${asynchronous ? 'durable jobs' : 'legacy fallback'} without URL phone',
+      (tester) async {
+        final api = _Api()..available = asynchronous;
+        if (!asynchronous) {
+          api.downloadError = ApiException(
+            'FIXTURE',
+            'stop after request capture',
+          );
+        }
+        final preferences = await SharedPreferences.getInstance();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'reader'),
+              ),
+              currentPermissionsProvider.overrideWithValue({}),
+            ],
+            child: const MaterialApp(
+              locale: Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: Scaffold(
+                body: UtenExportButton(
+                  endpoint: '/finance/reports/export',
+                  report: 'ar-ap/overview',
+                  queryParams: {
+                    'f.search.amount': '>90071992547409.0001',
+                    'sort': 'amount',
+                    'order': 'desc',
+                  },
+                  bodyParams: {
+                    'sensitiveFilter': {
+                      'columnSearch': {'phone': '013_%'},
+                      'keyword': 'private-name',
+                    },
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('下载表格'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('直接下载'));
+        await tester.pumpAndSettle();
+        if (asynchronous) {
+          expect(find.byType(ReportExportJobDialog), findsOneWidget);
+          expect(api.downloads, isEmpty);
+          final request = api.creates.single;
+          expect(request['domain'], 'finance');
+          expect(request['report'], 'ar-ap/overview');
+          expect(request['parameters'], {
+            'f.search.amount': '>90071992547409.0001',
+            'f.search.phone': '013_%',
+            'keyword': 'private-name',
+          });
+          expect(request['sort'], 'amount');
+          expect(request['order'], 'desc');
+          await tester.tap(find.text('关闭'));
+          await tester.pumpAndSettle();
+        } else {
+          expect(api.creates, isEmpty);
+          expect(
+            api.downloadQueries.single.containsKey('f.search.phone'),
+            isFalse,
+          );
+          expect(api.downloadQueries.single.containsKey('keyword'), isFalse);
+          expect(
+            api.downloads.single.body,
+            isA<Map<String, dynamic>>().having(
+              (body) => body['sensitiveFilter'],
+              'private filter',
+              {
+                'columnSearch': {'phone': '013_%'},
+                'keyword': 'private-name',
+              },
+            ),
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   test('capability is explicit and only absent old routes fall back', () async {
     final api = _Api();

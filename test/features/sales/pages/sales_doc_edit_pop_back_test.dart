@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
@@ -75,7 +76,12 @@ void main() {
     expect(api.detailGets, greaterThanOrEqualTo(3));
 
     // 详情左上角返回一次即回列表（此前会先落在保存前的旧详情快照上）。
-    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded).first);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton).first,
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(
       router.routerDelegate.currentConfiguration.last.matchedLocation,
@@ -104,7 +110,12 @@ void main() {
     expect(find.text('审核'), findsOneWidget);
     expect(api.detailGets, greaterThanOrEqualTo(2));
 
-    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded).first);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton).first,
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(
       router.routerDelegate.currentConfiguration.last.matchedLocation,

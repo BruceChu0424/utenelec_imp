@@ -73,6 +73,11 @@ void main() {
                 >)
             .columns
             .singleWhere((c) => c.key == 'total');
+    expect(amount.columnSearchEnabled, isTrue);
+    expect(
+      table.columns.singleWhere((c) => c.key == 'billDate').columnSearchEnabled,
+      isTrue,
+    );
     for (final raw in ['0.0001', '99999999999999.9999']) {
       final row = PurchaseDocListItem.fromJson({
         'id': 'exact',
@@ -82,6 +87,12 @@ void main() {
       expect(
         amount.value(FormDraftCategoryRow<PurchaseDocListItem>(record: row)),
         '$raw 元',
+      );
+      expect(
+        amount.exactValueOf!(
+          FormDraftCategoryRow<PurchaseDocListItem>(record: row),
+        ),
+        raw,
       );
     }
     final masked = PurchaseDocListItem.fromJson({
@@ -137,6 +148,16 @@ void main() {
     expect(api.lastQuery?['search.billNo'], 'CD2026');
     expect(api.lastQuery?['supplierId'], 'supplier-1');
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+    tableWidget().onFilterChanged('search.total', '>=90071992547409.0001');
+    await tester.pumpAndSettle();
+    tableWidget().onFilterChanged('search.billDate', '2026-08-01..2026-08-31');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['search.total'], '>=90071992547409.0001');
+    expect(api.lastQuery?['search.billDate'], '2026-08-01..2026-08-31');
+    expect(api.lastQuery?['search.billNo'], 'CD2026');
+    expect(api.lastQuery?['supplierId'], 'supplier-1');
+    expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+    expect(api.lastQuery?['page'], 1);
     expect(tester.takeException(), isNull);
   });
 }

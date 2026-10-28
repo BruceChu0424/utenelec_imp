@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/quality_inspection_record.dart';
 
@@ -29,10 +30,12 @@ class QualityInspectionRecordRepository {
     String? sourceNo,
     String? referenceNo,
     String? sheetNo,
+    Map<String, String?> columns = const {},
   }) async {
     final json = await api.get(
       _listPath(domain),
       query: {
+        ...tableColumnParameters(columns, null, true),
         if (decision?.trim().isNotEmpty == true) 'decision': decision!.trim(),
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         if (dateRange != null)
@@ -68,7 +71,9 @@ class QualityInspectionRecordRepository {
     String? sourceType,
     String? effective,
     String? disposition,
+    Map<String, String?> columns = const {},
   }) => {
+    ...tableColumnParameters(columns, null, true),
     if (decision?.trim().isNotEmpty == true) 'decision': decision!.trim(),
     if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
     if (dateRange != null) 'from': _fromInstant(dateRange).toIso8601String(),
@@ -87,6 +92,7 @@ class QualityInspectionRecordRepository {
     String? sourceType,
     String? effective,
     String? disposition,
+    Map<String, String?> columns = const {},
   }) async {
     final json = await api.get(
       '${_listPath(domain)}/facets',
@@ -97,6 +103,7 @@ class QualityInspectionRecordRepository {
         sourceType: sourceType,
         effective: effective,
         disposition: disposition,
+        columns: columns,
       ),
     );
     final result = <String, List<MasterFacetBucket>>{};

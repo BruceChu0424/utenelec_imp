@@ -1,3 +1,5 @@
+import '../../support/table_cell_geometry.dart';
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -17,16 +19,20 @@ import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 import '../../support/goods_bom_edit_test_api.dart';
 
-GoodsBomItem _item(String id, String goods, {bool branch = true}) =>
-    GoodsBomItem(
-      id: id,
-      componentGoodsId: goods,
-      componentName: id,
-      componentCode: goods,
-      componentUnitName: '个',
-      hasChildren: branch,
-      qty: 1,
-    );
+GoodsBomItem _item(
+  String id,
+  String goods, {
+  bool branch = true,
+  double qty = 1,
+}) => GoodsBomItem(
+  id: id,
+  componentGoodsId: goods,
+  componentName: id,
+  componentCode: goods,
+  componentUnitName: '个',
+  hasChildren: branch,
+  qty: qty,
+);
 
 class _TreeRepo implements GoodsBomRepository {
   _TreeRepo()
@@ -237,6 +243,43 @@ void _completePendingBranches(_TreeRepo repo) {
 }
 
 void main() {
+  testWidgets(
+    'numeric BOM header keeps visible ancestor paths without expanding or writing',
+    (tester) async {
+      final repo = _TreeRepo();
+      repo.tree['part-y'] = [_item('y-leaf', 'leaf-y', branch: false, qty: 99)];
+      await _pump(tester, repo);
+      await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
+      await tester.pumpAndSettle();
+      final reads = repo.calls.length;
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<dynamic>,
+        ),
+      );
+      final qty = table.columns.singleWhere((column) => column.key == 'qty');
+      expect(table.columns.where((column) => column.sortable), isEmpty);
+      await tester.ensureVisible(find.text(qty.label));
+      await tester.tap(find.text(qty.label));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=99',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('root-a'), findsOneWidget);
+      expect(find.text('root-c'), findsOneWidget);
+      expect(find.text('a-y'), findsNWidgets(2));
+      expect(find.text('y-leaf'), findsNWidgets(2));
+      expect(find.text('root-b'), findsNothing);
+      expect(find.text('a-x'), findsNothing);
+      expect(repo.calls.length, reads);
+      expect(repo.writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('预读完整保留超过十层的合法组件树', (tester) async {
     final repo = _TreeRepo();
     repo.tree['root'] = [_item('node-0', 'g-0')];
@@ -268,10 +311,12 @@ void main() {
     repo.tree['assembly-a'] = [_item('a-root', 'root')];
     await _pump(tester, repo);
     expect(repo.calls, ['root', 'assembly-a']);
-    expect(find.text('组装信息存在循环引用，请检查组件关系后重试。'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '组装信息存在循环引用，请检查组件关系后重试。');
     expect(_row('root/root-a'), findsNothing);
     repo.tree['assembly-a'] = [_item('valid-leaf', 'leaf', branch: false)];
-    await tester.tap(find.text('重试'));
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-initial-read-retry')),
+    );
     await tester.pumpAndSettle();
     expect(_row('root/root-a'), findsOneWidget);
     expect(_row('root/root-a/valid-leaf'), findsNothing);
@@ -321,14 +366,19 @@ void main() {
     expect(_row('root/row-0'), findsNothing);
     repo.pending['goods-0']!.completeError(StateError('first read failed'));
     await tester.pumpAndSettle();
-    expect(find.text('加载组装信息失败'), findsOneWidget);
-    expect(find.text('重试'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '加载组装信息失败');
+    expect(
+      find.byKey(const ValueKey('master-table-initial-read-retry')),
+      findsOneWidget,
+    );
     expect(repo.active, 3, reason: '失败不用等待其他慢响应才显示重试');
     _completePendingBranches(repo);
     await tester.pumpAndSettle();
     expect(repo.calls, hasLength(5), reason: '失败后不继续准备和发布残缺快照');
     repo.pending.clear();
-    await tester.tap(find.text('重试'));
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-initial-read-retry')),
+    );
     await tester.pumpAndSettle();
     expect(repo.peak, lessThanOrEqualTo(4));
     expect(repo.count('goods-0'), 2);
@@ -648,10 +698,12 @@ void main() {
     repo.failOnce.add('assembly-a');
     await _pump(tester, repo, settle: false);
     expect(pending.isCompleted, isFalse);
-    expect(find.text('加载组装信息失败'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '加载组装信息失败');
     expect(_row('root/root-a'), findsNothing);
     repo.pending.remove('assembly-b');
-    await tester.tap(find.text('重试'));
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-initial-read-retry')),
+    );
     await tester.pumpAndSettle();
     expect(repo.count('assembly-a'), 2);
     expect(repo.count('assembly-b'), 2, reason: '重试用独立读取代次');
@@ -687,22 +739,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('goods-bom-tree-expansion')));
       await tester.pumpAndSettle();
-      Finder header() {
-        final containers = find.ancestor(
-          of: find.text('组件名称'),
-          matching: find.byType(Container),
-        );
-        for (final element in containers.evaluate()) {
-          final container = element.widget as Container;
-          final constraints = container.constraints;
-          if (constraints != null &&
-              constraints.maxWidth.isFinite &&
-              constraints.minWidth == constraints.maxWidth) {
-            return find.byWidget(container);
-          }
-        }
-        throw TestFailure('组件名称表头缺失');
-      }
+      Finder header() => tableCellFrame(find.text('组件名称'));
 
       Future<void> narrow() async {
         final grip = find.descendant(

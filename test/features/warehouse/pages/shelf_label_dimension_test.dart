@@ -1,3 +1,5 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +36,17 @@ void main() {
       expect(find.text('实际仓库'), findsOneWidget);
       expect(find.text('A仓'), findsWidgets);
       expect(find.text('B仓'), findsWidgets);
+      final hint = find.descendant(
+        of: find.byType(UtenAppBar),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon &&
+              (widget.info?.contains('库存按实际仓库和颜色统计') ?? false),
+        ),
+      );
+      expect(hint, findsOneWidget);
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
       expect(find.textContaining('库存按实际仓库和颜色统计'), findsOneWidget);
       expect(find.textContaining('当前包含多个仓库'), findsOneWidget);
       expect(find.byType(UtenRackGrid), findsNothing);

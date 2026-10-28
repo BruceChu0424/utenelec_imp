@@ -60,8 +60,13 @@ class ImportFileQueue {
 
 /// File outcomes are a readable activity list, rather than another data grid.
 class ImportFileQueueSummary extends StatelessWidget {
-  const ImportFileQueueSummary({super.key, required this.queue});
+  const ImportFileQueueSummary({
+    super.key,
+    required this.queue,
+    this.compact = false,
+  });
   final ImportFileQueue queue;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -70,15 +75,16 @@ class ImportFileQueueSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(l.importFilesTransactionNote, style: theme.textTheme.bodySmall),
-        if (queue.total > 0) ...[
+        if (queue.total > 0 && (!compact || queue.total > 1)) ...[
           const SizedBox(height: UtenSpacing.s8),
           Text(l.importFilesCompleted(queue.completed.length, queue.total)),
         ],
         if (queue.current case final file?) ...[
           const SizedBox(height: UtenSpacing.s8),
           Text(
-            l.importFilesCurrent(queue.position, queue.total, file.name),
+            compact && queue.total == 1
+                ? file.name
+                : l.importFilesCurrent(queue.position, queue.total, file.name),
             key: const ValueKey('import-queue-current-file'),
             style: theme.textTheme.titleSmall,
           ),
@@ -89,7 +95,8 @@ class ImportFileQueueSummary extends StatelessWidget {
               l.importFilesFailed,
               style: TextStyle(color: theme.colorScheme.error),
             ),
-          Text(l.importFilesCloseNote, style: theme.textTheme.bodySmall),
+          if (!compact)
+            Text(l.importFilesCloseNote, style: theme.textTheme.bodySmall),
         ],
         if (queue.completed.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),

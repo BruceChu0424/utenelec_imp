@@ -317,14 +317,16 @@ class ShipmentFinanceChangeTable extends StatelessWidget {
       primary: primary,
       bottomContentPadding: bottomContentPadding,
       rows: rows,
-      summaryBar: rows.any((row) => row.value['goodsNameSnapshot'] == null)
-          ? const Text('货品名称与编号按当前档案显示；数量、金额保留当时提交内容。')
-          : null,
       columns: [
         for (final key in keys)
           MasterColumnDef<Map<String, dynamic>>(
             key: key,
             label: _labels[key]!,
+            info:
+                key == 'goodsId' &&
+                    rows.any((row) => row.value['goodsNameSnapshot'] == null)
+                ? '货品名称与编号按当前档案显示；数量、金额保留当时提交内容。'
+                : null,
             width: switch (key) {
               'goodsId' => 200,
               'remark' || 'clientModel' || 'orderItemId' => 180,

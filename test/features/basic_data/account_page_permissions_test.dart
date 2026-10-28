@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/models/currency_node.dart';
@@ -18,12 +20,71 @@ import 'package:uten_imp/features/basic_data/repositories/currency_repository.da
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/inputs/uten_field_suffix_icons.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'exact balance headers and private bank terms reach the full read and export scope',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1700, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _AccountRepositoryFake();
+      await _pumpPage(tester, repository, {
+        Perm.accountView,
+        Perm.accountBalanceView,
+        Perm.accountExport,
+      });
+      final header = find.byKey(
+        const ValueKey('master-column-filter-balanceCurrent'),
+      );
+      await tester.ensureVisible(header);
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=99999999999999.1234',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(
+        repository.listFilters.last['search.balanceCurrent'],
+        '>=99999999999999.1234',
+      );
+      final table = tester.widget<MasterDataTableView<AccountListItem>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<AccountListItem>,
+        ),
+      );
+      table.onFilterChanged('search.bankAccountNo', '6222%_');
+      await tester.pumpAndSettle();
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton).first,
+      );
+      expect(
+        export.queryParams['search.balanceCurrent'],
+        '>=99999999999999.1234',
+      );
+      expect(export.queryParams.containsKey('search.bankAccountNo'), isFalse);
+      expect((export.bodyParams['sensitiveFilter'] as Map)['columnSearch'], {
+        'bankAccountNo': '6222%_',
+      });
+      final print = tester.widget<UtenPrintPreviewButton>(
+        find.byType(UtenPrintPreviewButton).first,
+      );
+      expect(print.exportBody, export.bodyParams);
+      expect(
+        table.columns
+            .singleWhere((c) => c.key == 'balanceCurrent')
+            .exactValueOf!(repository.item),
+        '99999999999999.1234',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final navigation in ['go', 'platform']) {
     testWidgets('$navigation return releases account detail navigation', (
       tester,
@@ -100,7 +161,7 @@ void main() {
       expect(find.text('打开选中账户'), findsOneWidget);
       expect(find.text('添加账户'), findsNothing);
       expect(find.textContaining(RegExp(r'^账户（\d+）$')), findsNothing);
-      expect(find.textContaining('当前仅展示非敏感账户数量'), findsOneWidget);
+      expect(find.byTooltip('余额、预警与流水需单独授权。'), findsOneWidget);
       expect(find.text('99999999999999.1234'), findsNothing);
       final menu = table.rowMenuBuilder!(repository.item);
       final menuItems = menu.whereType<UtenMenuItem>().toList();
@@ -220,13 +281,19 @@ void main() {
 
     await tester.tap(find.text('禁用账户(1)'));
     await tester.pumpAndSettle();
-    expect(find.text('加载失败，重试'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('master-table-group-disabled-read-details')),
+      findsOneWidget,
+    );
     expect(repository.disabledListCalls, 1);
 
-    await tester.tap(find.text('加载失败，重试'));
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-group-disabled-read-retry')),
+    );
     await tester.pumpAndSettle();
     expect(repository.disabledListCalls, 2);
     expect(find.text('备用账户'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('create loads currency and account styles only when requested', (
@@ -296,7 +363,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.updateCalls, 1);
 
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(repository.activeListCalls, 2);
@@ -335,10 +407,10 @@ void main() {
           .singleWhere((item) => item.label == '余额校准');
       expect(balanceMenu.enabled, isTrue);
       expect(find.text('99999999999999.1234'), findsWidgets);
-      expect(find.textContaining('不跨币种相加'), findsOneWidget);
-      expect(find.textContaining('仅统计 1 个使用中账户'), findsOneWidget);
+      expect(find.byTooltip('金额按币种分别展示，不跨币种相加；警戒线只影响预警，不改余额。'), findsOneWidget);
+      expect(find.text('使用中 1'), findsOneWidget);
       expect(find.textContaining('美元'), findsNothing);
-      expect(find.text('含负余额 1 个'), findsOneWidget);
+      expect(find.text('负余额 1 个'), findsOneWidget);
       final warningIcon = tester.widget<Icon>(
         find.byIcon(Icons.warning_amber_rounded),
       );
@@ -367,6 +439,40 @@ void main() {
       final reconcile = find.byKey(
         const ValueKey('account-balance-reconcile-compact'),
       );
+      final open = find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '打开选中账户',
+      );
+      expect(tester.widget<IconButton>(open).onPressed, isNull);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(find.byType(AccountPage), findsOneWidget);
+      expect(find.text('账户余额核对'), findsNothing);
+      final group = find.ancestor(
+        of: reconcile,
+        matching: find.byType(UtenFieldSuffixIcons),
+      );
+      expect(group, findsOneWidget);
+      expect(
+        find.descendant(of: group, matching: find.byType(IconButton)),
+        findsNWidgets(2),
+      );
+      final searchRect = tester.getRect(find.byType(UtenSearchBar));
+      final groupRect = tester.getRect(group);
+      expect(groupRect.left - searchRect.right, closeTo(4, .01));
+      expect(groupRect.width, closeTo(64, .01));
+      expect(tester.getSize(open).width, closeTo(32, .01));
+      expect(tester.getSize(reconcile).width, closeTo(32, .01));
+      expect(
+        (tester.getCenter(open).dy - tester.getCenter(reconcile).dy).abs(),
+        lessThan(.01),
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Expanded && widget.child is UtenSearchBar,
+        ),
+        findsOneWidget,
+      );
+      expect(tester.widget<IconButton>(reconcile).onPressed, isNotNull);
       await tester.ensureVisible(reconcile);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -375,6 +481,42 @@ void main() {
       expect(find.text('账户余额核对'), findsOneWidget);
       expect(find.text('全部活动账户'), findsOneWidget);
       expect(find.text('取消'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'compact grouped open icon enables after one selection and keeps account route',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _AccountRepositoryFake();
+      final router = await _pumpRoutedPage(tester, repository);
+      final open = find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == '打开选中账户',
+      );
+      expect(tester.widget<IconButton>(open).onPressed, isNull);
+      expect(
+        find.byKey(const ValueKey('account-balance-reconcile-compact')),
+        findsNothing,
+      );
+      final group = find.ancestor(
+        of: open,
+        matching: find.byType(UtenFieldSuffixIcons),
+      );
+      expect(group, findsOneWidget);
+      expect(tester.getSize(group).width, closeTo(32, .01));
+      final table = tester.widget<MasterDataTableView<AccountListItem>>(
+        find.byType(MasterDataTableView<AccountListItem>),
+      );
+      table.onSelectedIdsChanged!({repository.item.id});
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(open).onPressed, isNotNull);
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expect(router.state.uri.path, '/basicinfo/account/account-1');
+      expect(find.byType(AccountDetailPage), findsOneWidget);
+      expect(repository.updateCalls, 0);
       expect(tester.takeException(), isNull);
     },
   );

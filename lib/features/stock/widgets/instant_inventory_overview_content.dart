@@ -835,12 +835,16 @@ class _UnitQuantities extends StatelessWidget {
                   facets: const {},
                   nullCounts: const {},
                   filters: const {},
+                  // 完整集合的候选/数值检索由 MasterDataTableView 持有本地视图状态。
                   onFilterChanged: (_, _) {},
+                  headerFilterScopeDescription:
+                      '在当前范围完整的单位汇总中定位；不同单位不相加，计量待核和未提供不作零。',
                   columns: [
                     MasterColumnDef(
                       key: 'unit',
                       label: '单位',
                       width: 120,
+                      filterFromRows: true,
                       value: (row) => row.unit,
                       cellBuilder: (ctx, row) =>
                           cell(ctx, row.unit, danger: row.missingUnit),
@@ -849,6 +853,9 @@ class _UnitQuantities extends StatelessWidget {
                       key: 'qty',
                       label: '库存数量',
                       width: 180,
+                      type: 'number',
+                      sortable: true,
+                      filterFromRows: true,
                       emphasized: true,
                       value: (row) =>
                           number(row.quantity, unverified: row.missingUnit),
@@ -862,6 +869,9 @@ class _UnitQuantities extends StatelessWidget {
                       key: 'pending',
                       label: '待检量',
                       width: 180,
+                      type: 'number',
+                      sortable: true,
+                      filterFromRows: true,
                       emphasized: true,
                       value: (row) =>
                           number(row.pending, unverified: row.missingUnit),
@@ -875,6 +885,9 @@ class _UnitQuantities extends StatelessWidget {
                       key: 'pendingIn',
                       label: '合格待入库',
                       width: 180,
+                      type: 'number',
+                      sortable: true,
+                      filterFromRows: true,
                       emphasized: true,
                       value: (row) => number(
                         row.pendingStockIn,

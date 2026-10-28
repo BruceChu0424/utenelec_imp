@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 // 出货财务审核详情页（财务专用视图）测试——2026-09-12 从销售出货详情页拆分迁移：
 // 认领机制、放行/退回决策、客户未分类阻断、认领失败重试等行为契约保持不变，
 // 只是把宿主从共享详情页的弹窗搬到了 /finance/sales-shipment-audits/:id 专页。
@@ -304,6 +305,14 @@ void main() {
     );
     // 其它币种各列各的，不换算。
     expect(find.text('另有 100.00 元'), findsOneWidget);
+    final explanation = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('只算已审核到账的预收') ?? false),
+    );
+    await tester.ensureVisible(explanation);
+    await tester.tap(explanation);
+    await tester.pumpAndSettle();
     expect(find.textContaining('只算已审核到账的预收'), findsOneWidget);
     expect(find.textContaining('结账方式来自本单'), findsOneWidget);
     expect(

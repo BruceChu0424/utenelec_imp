@@ -348,6 +348,30 @@ class _DelayedApi extends ApiClient {
   final held = <String>[];
 
   @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) {
+    if (path != '/quality/pending-disposals/query') {
+      return super.post(path, body: body, query: query, headers: headers);
+    }
+    held.add(path);
+    return countsOnly
+        ? Future.value({
+            'items': <Object?>[],
+            'page': 1,
+            'size': 10,
+            'total': 0,
+            'totalPages': 0,
+            'facets': {'status': <Object?>[], 'docType': <Object?>[]},
+            'sourceCounts': <String, int>{},
+          })
+        : Completer<Map<String, dynamic>>().future;
+  }
+
+  @override
   Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
     if (!countsOnly ||
         path.endsWith('/counts') ||

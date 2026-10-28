@@ -78,7 +78,7 @@ class _SlowSave {
   }();
 }
 
-const _savingLabel = '正在保存资料。请勿重复提交或关闭页面。';
+const _savingLabel = '正在保存资料。';
 
 ({int actions, int hosts, int cards, int semanticNodes}) _counts(
   WidgetTester tester,

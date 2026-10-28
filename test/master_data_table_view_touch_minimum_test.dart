@@ -4,6 +4,7 @@ import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'support/table_cell_geometry.dart';
 
 void main() {
   for (final (factor, textScale) in [(0.85, 1.0), (2.0, 2.0)]) {
@@ -165,8 +166,8 @@ void main() {
               widget.behavior == HitTestBehavior.opaque,
         ),
       );
-      // The grip straddles the column border. Its visible inner half belongs to
-      // this cell; starting outside that half hits the neighbouring cell.
+      // Drag the real shared grip inside this header and verify its hit path
+      // before asserting the resulting desktop and touch width budgets.
       final start = tester.getCenter(grip) - const Offset(2, 0);
       final gripRender = tester.renderObject(grip);
       expect(
@@ -226,20 +227,6 @@ Widget _app({
   home: child,
 );
 
-Finder _header(WidgetTester tester) {
-  final containers = find.ancestor(
-    of: find.text('办理'),
-    matching: find.byType(Container),
-  );
-  for (final element in containers.evaluate()) {
-    final container = element.widget as Container;
-    final box = container.constraints;
-    if (box != null && box.maxWidth.isFinite && box.minWidth == box.maxWidth) {
-      return find.byWidget(container);
-    }
-  }
-  throw TestFailure('没有找到办理列表头');
-}
+Finder _header(WidgetTester tester) => tableCellFrame(find.text('办理'));
 
-double _width(WidgetTester tester) =>
-    tester.widget<Container>(_header(tester)).constraints!.maxWidth;
+double _width(WidgetTester tester) => tester.getSize(_header(tester)).width;

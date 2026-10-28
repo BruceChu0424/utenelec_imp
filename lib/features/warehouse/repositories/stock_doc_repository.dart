@@ -31,6 +31,7 @@ class StockDocFilter {
     this.billNo,
     this.standaloneDrafts = false,
     this.view = WarehouseTaskView.active,
+    this.columnSearch = const {},
   });
   final BusinessDocumentOrigin? origin;
   final String? keyword;
@@ -60,6 +61,7 @@ class StockDocFilter {
   /// Independent document drafts only; production tasks keep their own entries.
   final bool standaloneDrafts;
   final WarehouseTaskView view;
+  final Map<String, String?> columnSearch;
 }
 
 class StockDocRepository {
@@ -99,6 +101,10 @@ class StockDocRepository {
         if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
           'billNo': filter.billNo!.trim(),
         ...filter.warehouseScope.queryParameters,
+        for (final entry in filter.columnSearch.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
       },
     );
     return PagedResult.fromJsonResponsive(json, StockDocListItem.fromJson);
@@ -127,6 +133,10 @@ class StockDocRepository {
         if (filter.productionReturnRequests != null)
           'productionReturnRequests': filter.productionReturnRequests,
         ...filter.warehouseScope.queryParameters,
+        for (final entry in filter.columnSearch.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
       },
     );
     return parseFacetBuckets(json, 'billNo');

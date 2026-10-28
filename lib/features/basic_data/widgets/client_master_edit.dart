@@ -1,3 +1,4 @@
+import 'master_reference_options_loader.dart';
 // 客户主档「新建/编辑」表单的公共实现（2026-09-14 抽取）。
 // 客户分类页（列表内编辑）与客户详情整页（/basicinfo/clients/:id）共用同一套
 // 字段与保存流程，避免两处漂移。供应商侧见 supplier_master_edit.dart。
@@ -5,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/sales_shipment_policy.dart';
@@ -20,86 +20,35 @@ import '../widgets/master_edit_dialog.dart';
 import 'basic_data_l10n.dart';
 import 'master_edit_owner.dart';
 
-/// 加载启用中的结账方式（客户编辑表单「默认结账方式」下拉用）。
-/// 模块级互斥防重复弹加载框；调用方负责 mounted 检查。
-Object? _settlementOptionsLoading;
-MasterEditOwner? _settlementOptionsOwner;
+/// Shared reference reads keep both category-page and full-page editors responsive.
 Future<List<ReferenceMethodOption>?> loadClientSettlementMethods(
   BuildContext context,
   WidgetRef ref, {
   MasterEditOwner? owner,
-}) async {
-  if (owner?.isCurrent == false) return null;
-  if (_settlementOptionsLoading != null &&
-      (_settlementOptionsOwner?.isCurrent ?? true)) {
-    return null;
-  }
-  final ticket = Object();
-  _settlementOptionsLoading = ticket;
-  _settlementOptionsOwner = owner;
-  final nav = Navigator.of(context, rootNavigator: true);
-  final route = DialogRoute<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-  owner?.trackRoute(route);
-  nav.push(route);
-  try {
-    Future<List<ReferenceMethodOption>> read() =>
-        ref.read(referenceMethodRepositoryProvider).settlementMethods();
-    final methods = owner == null ? await read() : await owner.run(read);
-    if (!context.mounted || owner?.isCurrent == false) return null;
-    if (methods.isEmpty) {
-      if (context.mounted) context.appError('暂无可用结账方式，请先维护结账方式字典');
-      return null;
-    }
-    return methods;
-  } on ApiException catch (e) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError(e.message);
-    }
-  } catch (_) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError('加载结账方式失败，请重试');
-    }
-  } finally {
-    if (owner != null) {
-      owner.closeRoute(route);
-    } else if (route.isActive) {
-      route.navigator?.removeRoute(route);
-    }
-    if (identical(_settlementOptionsLoading, ticket)) {
-      _settlementOptionsLoading = null;
-      _settlementOptionsOwner = null;
-    }
-  }
-  return null;
-}
+}) => loadMasterReferenceOptions<ReferenceMethodOption>(
+  context: context,
+  ref: ref,
+  resourceKey: 'client.settlementMethods',
+  title: '正在读取结账方式…',
+  load: () => ref.read(referenceMethodRepositoryProvider).settlementMethods(),
+  emptyMessage: '暂无可用结账方式，请先维护结账方式字典',
+  errorFallback: '加载结账方式失败，请重试',
+  owner: owner,
+);
 
-/// 加载币种字典（客户编辑表单「默认币种」下拉用；V592 默认销售条款）。
 Future<List<CurrencyListItem>?> loadClientCurrencies(
   BuildContext context,
   WidgetRef ref, {
   MasterEditOwner? owner,
-}) async {
-  try {
-    if (owner?.isCurrent == false) return null;
-    Future<List<CurrencyListItem>> read() =>
-        ref.read(currencyRepositoryProvider).dict();
-    final result = owner == null ? await read() : await owner.run(read);
-    return !context.mounted || owner?.isCurrent == false ? null : result;
-  } on ApiException catch (e) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError(e.message);
-    }
-  } catch (_) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError('加载币种失败，请重试');
-    }
-  }
-  return null;
-}
+}) => loadMasterReferenceOptions<CurrencyListItem>(
+  context: context,
+  ref: ref,
+  resourceKey: 'master.currencies',
+  title: '正在读取币种…',
+  load: () => ref.read(currencyRepositoryProvider).dict(),
+  errorFallback: '加载币种失败，请重试',
+  owner: owner,
+);
 
 /// Financial master-data fields have one shared write policy across every client editor.
 const clientFinancialFieldKeys = <String>{

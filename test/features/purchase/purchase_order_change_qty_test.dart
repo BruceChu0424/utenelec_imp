@@ -54,6 +54,7 @@ class _RecordingApi extends ApiClient {
 
   final List<({String path, Object? body})> posts = [];
   String approvalStatus = 'APPROVED';
+  int orderStatus = 1;
   String? qtyExact;
 
   @override
@@ -62,7 +63,7 @@ class _RecordingApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     if (path.contains('/purchase/orders/order-1')) {
-      final detail = _orderDetail();
+      final detail = _orderDetail(status: orderStatus);
       if (qtyExact != null) {
         final line =
             (detail['items'] as List<Object?>).first as Map<String, dynamic>;
@@ -151,6 +152,48 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets(
+    'submitted purchase order changes quantity while the original finance review remains pending',
+    (tester) async {
+      final api = _RecordingApi()
+        ..approvalStatus = 'PENDING'
+        ..orderStatus = 0;
+      await _pump(tester, api);
+      await tester.tap(find.byKey(const Key('purchase-order-change-qty')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('继续等待财务审核'), findsOneWidget);
+      expect(find.textContaining('批准后改量立即生效'), findsNothing);
+      await tester.enterText(
+        find.byKey(const Key('purchase-order-change-qty-i1')),
+        '8.1256',
+      );
+      await tester.tap(
+        find.byKey(const Key('purchase-order-change-qty-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(api.posts.single.path, '/purchase/orders/order-1/change-qty');
+      expect(api.posts.single.body, {
+        'items': [
+          {'orderItemId': 'i1', 'newQty': '8.1256'},
+        ],
+      });
+      expect(find.textContaining('待财务审核内容已更新'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'an unsubmitted draft has no controlled pending-quantity action',
+    (tester) async {
+      final api = _RecordingApi()
+        ..approvalStatus = 'REJECTED'
+        ..orderStatus = 0;
+      await _pump(tester, api);
+      expect(find.byKey(const Key('purchase-order-change-qty')), findsNothing);
+      expect(api.posts, isEmpty);
+    },
+  );
+
   for (final confirm in [false, true]) {
     testWidgets(
       'change-qty ${confirm ? 'confirmation' : 'cancel'} retains input controllers until the dialog exits',

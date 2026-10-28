@@ -76,8 +76,24 @@ class ProductionOverLimitRepository {
     String status = 'PENDING',
     int page = 1,
     int size = 20,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   }) async => PagedResult.fromJsonResponsive(
-    await api.get(_base, query: {'status': status, 'page': page, 'size': size}),
+    await api.get(
+      _base,
+      query: {
+        'status': status,
+        'page': page,
+        'size': size,
+        for (final entry in columnSearch.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
+        'sort': ?sort,
+        if (sort != null) 'order': order ?? 'asc',
+      },
+    ),
     ProductionOverLimitDisposition.new,
   );
 

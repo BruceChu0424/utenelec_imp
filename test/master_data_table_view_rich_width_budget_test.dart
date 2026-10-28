@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'support/table_cell_geometry.dart';
 
 void main() {
   Widget backgroundTable({
@@ -163,17 +164,7 @@ void main() {
     final frames = await tester.pumpAndSettle();
     expect(visited, containsAll(rows));
     expect(seen, {rows.first, rows.last});
-    final header = tester
-        .widgetList<Container>(
-          find.ancestor(of: find.text('名称'), matching: find.byType(Container)),
-        )
-        .firstWhere(
-          (container) =>
-              container.constraints?.hasBoundedWidth == true &&
-              container.constraints!.minWidth ==
-                  container.constraints!.maxWidth,
-        );
-    expect(header.constraints!.maxWidth, greaterThanOrEqualTo(410));
+    expect(tableCellWidth(tester, find.text('名称')), greaterThanOrEqualTo(410));
     expect(
       frames,
       lessThan(12),
@@ -286,21 +277,7 @@ void main() {
           ),
         ),
       );
-      double width() => tester
-          .widgetList<Container>(
-            find.ancestor(
-              of: find.text('名称'),
-              matching: find.byType(Container),
-            ),
-          )
-          .firstWhere(
-            (container) =>
-                container.constraints?.hasBoundedWidth == true &&
-                container.constraints!.minWidth ==
-                    container.constraints!.maxWidth,
-          )
-          .constraints!
-          .maxWidth;
+      double width() => tableCellWidth(tester, find.text('名称'));
       await tester.pumpWidget(app(measure: first));
       await tester.pumpAndSettle();
       final before = calls;
@@ -370,21 +347,7 @@ void main() {
           ),
         ),
       );
-      double width() => tester
-          .widgetList<Container>(
-            find.ancestor(
-              of: find.text('名称'),
-              matching: find.byType(Container),
-            ),
-          )
-          .firstWhere(
-            (container) =>
-                container.constraints?.hasBoundedWidth == true &&
-                container.constraints!.minWidth ==
-                    container.constraints!.maxWidth,
-          )
-          .constraints!
-          .maxWidth;
+      double width() => tableCellWidth(tester, find.text('名称'));
 
       final rows = [for (var i = 0; i <= 1200; i++) i];
       await tester.pumpWidget(app(rows));

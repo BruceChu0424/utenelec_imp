@@ -169,6 +169,7 @@ class ReportMetadataRead {
       total: metadata.source.total,
       meta: response.meta,
       totals: metadata.source.totals,
+      columnSearchKeys: response.columnSearchKeys,
       readScopeVersion: response.readScopeVersion,
       statisticsGeneratedAt: metadata.source.statisticsGeneratedAt,
     );
@@ -188,6 +189,7 @@ class _ReportMetadata {
         totals: response.totals,
         readScopeVersion: response.readScopeVersion,
         statisticsGeneratedAt: response.statisticsGeneratedAt,
+        columnSearchKeys: response.columnSearchKeys,
       );
 
   // Rows and page-specific metadata are deliberately absent from this cache.

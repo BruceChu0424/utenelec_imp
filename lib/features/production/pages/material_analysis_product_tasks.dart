@@ -1405,17 +1405,9 @@ abstract class _MaterialAnalysisProductTasksState
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '生产优先级',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        Text(
-          '优先产品先模拟分配共享可用库存；这里只调整分析顺序，不创建正式库存预留。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+        const UtenSectionHeader(
+          title: '生产优先级',
+          info: '优先产品先模拟分配共享可用库存；这里只调整分析顺序，不创建正式库存预留。',
         ),
         const SizedBox(height: UtenSpacing.s8),
         LayoutBuilder(

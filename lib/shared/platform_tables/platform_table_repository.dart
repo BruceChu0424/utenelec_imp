@@ -31,10 +31,28 @@ class PlatformTableRepository {
     String scope,
     String query, {
     List<String>? ids,
-  }) async => (await api.getList(
-    '/platform-columns/$scope/definitions',
-    query: {if (ids == null) 'q': query, if (ids != null) 'ids': ids.join(',')},
-  )).map(PlatformColumnDefinition.fromJson).toList(growable: false);
+  }) async {
+    // These ids come from display preferences, not saved business values.
+    // Invalid cached ids must be omitted before Spring's UUID query binding;
+    // the controller repairs the layout from the returned authorized roots.
+    final selected = ids?.where(_definitionId.hasMatch).toSet().toList();
+    if (selected != null && selected.isEmpty) return const [];
+    return (await api.getList(
+      '/platform-columns/$scope/definitions',
+      query: {
+        if (selected == null) 'q': query,
+        if (selected != null) ...{
+          'ids': selected.join(','),
+          'availableOnly': true,
+        },
+      },
+    )).map(PlatformColumnDefinition.fromJson).toList(growable: false);
+  }
+
+  static final _definitionId = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
   Future<PlatformColumnDefinition> create(
     String scope, {
     required String name,

@@ -147,6 +147,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      if (kind == 'mould') {
+        expect(find.text('分类A'), findsNothing);
+        await tester.tap(find.byTooltip('展开全部模具'));
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.text('分类A'));
       await tester.pumpAndSettle();
       expect(_rowIds(tester), ['category-a']);

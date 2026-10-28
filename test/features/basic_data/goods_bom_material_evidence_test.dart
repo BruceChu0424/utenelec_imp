@@ -81,6 +81,59 @@ Future<void> _pump(
 
 void main() {
   testWidgets(
+    'evidence headers filter source and sort record counts numerically',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(2200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: GoodsBomMaterialEvidenceTable(
+              rows: [
+                GoodsBomMaterialEvidence(
+                  source: 'MATERIAL_IDENTITY',
+                  status: 'PENDING_QUANTITY',
+                  componentGoodsId: 'identity-material',
+                  componentName: '待核材料',
+                  sourceCount: 12,
+                ),
+                GoodsBomMaterialEvidence(
+                  source: 'PERIODIC_CHOICE',
+                  status: 'CONFIRMED',
+                  componentGoodsId: 'chosen-material',
+                  componentName: '车间已认材料',
+                  sourceCount: 2,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('来源'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('车间认料 (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('车间已认材料'), findsOneWidget);
+      expect(find.text('待核材料'), findsNothing);
+
+      await tester.tap(find.text('车间认料').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('所有'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('来源记录数'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('从小到大'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('车间已认材料')).dy,
+        lessThan(tester.getTopLeft(find.text('待核材料')).dy),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'empty BOM automatically exposes recognized raw material and refreshes',
     (tester) async {
       final repo = _Repo();

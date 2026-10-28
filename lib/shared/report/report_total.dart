@@ -13,6 +13,7 @@
 // 不再单独占位。其余 'count' 项按整数显示、为 0 时整项隐藏。
 
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/utils/display_datetime.dart';
 
 import '../../components/data_display/uten_totals_summary_bar.dart';
@@ -272,11 +273,26 @@ Widget? reportTotalsBar(
         Builder(
           builder: (context) => Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              '统计生成于 $generated；翻页保留，刷新更新',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    '统计生成于 $generated',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 28,
+                  height: 24,
+                  child: UtenFieldHintIcon(
+                    info: '翻页保留当前统计快照，刷新时重新统计。',
+                    dense: true,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

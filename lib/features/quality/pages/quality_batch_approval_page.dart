@@ -14,6 +14,7 @@
 //     纯 IQC 批不渲染生产计划列；合格/不合格互补自动回写（见 _EditableIqcRow）。
 //   - 右下角 UtenFloatingActionGroup：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
 //     + 说明文案 + 提交报告；总结确认弹窗（仿计划部下达采购）后执行。
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:flutter/material.dart';
 import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1010,7 +1011,7 @@ class _QualityBatchApprovalPageState
     final conversion = inspectionQuantityUnitCell(context, row.item);
     return conversion == unit
         ? field
-        : Tooltip(message: conversion, child: field);
+        : UtenEditorTooltip(message: conversion, child: field);
   }
 
   /// 合一后的批量审批表：IQC 收货明细与 FQC 检查任务同表逐行核对。

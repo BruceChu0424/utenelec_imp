@@ -932,26 +932,10 @@ class _ProductionPlanDetailPageState
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '执行单据与物料台账',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '查看审核下达形成的执行子计划、领料单和工卡；'
-                        '材料退库与结清以仓库实际发料为准。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.45,
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '执行单据与物料台账',
+                    info: '查看审核下达形成的执行子计划、领料单和工卡；材料退库与结清以仓库实际发料为准。',
                   ),
                 ),
               ],
@@ -1480,10 +1464,10 @@ class _ProductionPlanDetailPageState
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '本批次关联单据',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
+                const Flexible(
+                  child: UtenSectionHeader(
+                    title: '本批次关联单据',
+                    info: '本计划来源物料分析生成的采购/委外单据；点击单号进入对应单据查看审批、收货、IQC 与入库进度。',
                   ),
                 ),
                 if (_relatedDocumentsLoading)
@@ -1493,14 +1477,6 @@ class _ProductionPlanDetailPageState
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
               ],
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '本计划来源物料分析生成的采购/委外单据；点击单号进入对应单据查看审批、'
-              '收货、IQC 与入库进度。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
             if (purchaseDocs.isNotEmpty)
               _relatedDocGroup(theme, label: '采购单据', docs: purchaseDocs),

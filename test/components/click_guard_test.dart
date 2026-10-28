@@ -5,6 +5,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/click_guard.dart';
 
 void main() {
+  testWidgets(
+    'disabled async actions cannot dispatch and can be enabled after validation',
+    (tester) async {
+      final enabled = ValueNotifier(false);
+      addTearDown(enabled.dispose);
+      var calls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: enabled,
+              builder: (_, value, _) => UtenActionButton(
+                enabled: value,
+                label: const Text('创建'),
+                onAction: () async {
+                  calls++;
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('创建'));
+      await tester.pump();
+      expect(calls, 0);
+      enabled.value = true;
+      await tester.pump();
+      await tester.tap(find.text('创建'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+    },
+  );
   test(
     'ClickGuard blocks re-entry and unlocks after synchronous failures',
     () async {

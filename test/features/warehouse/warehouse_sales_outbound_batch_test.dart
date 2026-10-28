@@ -826,6 +826,7 @@ class _TaskCenterGateway implements WarehouseTaskCenterGateway {
     int size = 20,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   }) async {
     pages.add(page);
     statuses.add(status);

@@ -9,6 +9,78 @@ import 'package:uten_imp/features/production/repositories/production_material_in
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets('无原报工路由栈仍可携带原批次继续报工', (tester) async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) => handler.resolve(
+          Response(
+            requestOptions: request,
+            statusCode: 200,
+            data: {
+              'id': 'supplement',
+              'status': 'APPROVED',
+              'proofId': 'original-proof',
+              'sourceSegmentId': 'original-task',
+              'supplementSegmentId': 'supplement-task',
+              'supplementSegmentStatus': 'IN_PROGRESS',
+              'actualQty': 130,
+              'originalReportQty': 100,
+              'supplementQty': 30,
+              'sourceLine': {
+                'planItemId': 'original-item',
+                'planNo': 'SJ-ORIGINAL',
+                'goodsId': 'goods',
+                'goodsName': '同一批自制件',
+                'maxReportQty': 100,
+              },
+            },
+          ),
+        ),
+      ),
+    );
+    Object? reportSource;
+    final router = GoRouter(
+      initialLocation: '/supplement',
+      routes: [
+        GoRoute(
+          path: '/supplement',
+          builder: (_, _) => const ProductionActualOutputSupplementPage(
+            id: 'supplement',
+            returnToReport: true,
+          ),
+        ),
+        GoRoute(
+          path: '/production/daily-reports/new',
+          builder: (_, state) {
+            reportSource = state.extra;
+            return const Scaffold(body: Text('继续原批次报工'));
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(ApiClient(dio)),
+          isSuperAdminProvider.overrideWithValue(false),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionDailyReportCreate,
+          }),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('继续报工'));
+    await tester.tap(find.text('继续报工'));
+    await tester.pumpAndSettle();
+    expect(find.text('继续原批次报工'), findsOneWidget);
+    expect(reportSource, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'planner can cancel an unposted supplement with an explicit reason',
     (tester) async {

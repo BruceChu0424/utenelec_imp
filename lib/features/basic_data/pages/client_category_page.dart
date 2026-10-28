@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 // 客户资料分类树管理页（基础资料）
 //
 // 与 mould_category_page.dart（模具资料）/ product_category_page.dart（货品资料）同构：
@@ -531,43 +532,13 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
 
   // ---- 客户 新建 -----------------------------------------------------------
 
-  bool _settlementOptionsLoading = false;
-
-  Future<List<ReferenceMethodOption>?> _loadSettlementMethods() async {
-    if (_settlementOptionsLoading) return null;
-    _settlementOptionsLoading = true;
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
-    );
-    try {
-      final methods = await ref
-          .read(referenceMethodRepositoryProvider)
-          .settlementMethods();
-      if (methods.isEmpty) {
-        if (mounted) context.appError('暂无可用结账方式，请先维护结账方式字典');
-        return null;
-      }
-      return methods;
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('加载结账方式失败，请重试');
-    } finally {
-      if (nav.canPop()) nav.pop();
-      _settlementOptionsLoading = false;
-    }
-    return null;
-  }
-
   Future<void> _showClientCreate({String? draftCategoryId}) async {
+    final current = shellCaptureActionOwner();
     final settlementMethods =
         ref.read(currentPermissionsProvider).contains(Perm.clientFinance)
-        ? await _loadSettlementMethods()
+        ? await loadClientSettlementMethods(context, ref)
         : const <ReferenceMethodOption>[];
-    if (!mounted || settlementMethods == null) return;
+    if (!mounted || !current() || settlementMethods == null) return;
     const iv = <String, String>{};
     final categoryId = draftCategoryId ?? _pane?.categoryId;
     await showMasterEditDialog(
@@ -597,8 +568,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
 
   Future<bool> _doCreateClient(Map<String, dynamic> body) async {
     // Preserve the actual API failure for the shared draft submission fence.
+    final current = shellCaptureActionOwner();
     await ref.read(clientRepositoryProvider).create(body);
-    if (mounted) {
+    if (mounted && current()) {
       context.appSuccess('客户已创建');
       await _pane?.reload();
     }
@@ -612,8 +584,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     MasterEntityPaneController<ClientListItem, ClientDetail> pane,
     String id,
   ) async {
+    final current = shellCaptureActionOwner();
     await context.push(RoutePath.basicinfoClientDetail(id));
-    if (mounted) await pane.reload();
+    if (mounted && current()) await pane.reload();
   }
 
   Future<void> _showClientAccess(
@@ -647,11 +620,14 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   Widget _clientOwnerCell(BuildContext cellContext, ClientListItem row) {
+    final labelStyle = Theme.of(cellContext).textTheme.bodyMedium;
     if (!row.accessManageable ||
         !ref.read(currentPermissionsProvider).contains(Perm.clientAssign)) {
       return Text(
         row.ownersLabel,
+        style: labelStyle,
         maxLines: 1,
+        softWrap: false,
         overflow: TextOverflow.ellipsis,
       );
     }
@@ -685,7 +661,11 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
             Expanded(
               child: Text(
                 row.ownersLabel,
+                style: labelStyle?.copyWith(
+                  color: Theme.of(cellContext).colorScheme.primary,
+                ),
                 maxLines: 1,
+                softWrap: false,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -770,6 +750,22 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           label: c.label,
           width: c.width,
           value: c.value,
+          minimumWidthOf: (_) => 48,
+          measureWidthScope: (
+            'client.ownerAccess.v1',
+            ref.read(currentPermissionsProvider).contains(Perm.clientAssign),
+          ),
+          measureWidthOf: (context, row, scaler) =>
+              utenTableCellTextWidth(
+                row.ownersLabel,
+                style:
+                    Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+                textScaler: scaler,
+                textDirection: Directionality.of(context),
+              ) +
+              (ref.read(currentPermissionsProvider).contains(Perm.clientAssign)
+                  ? 20
+                  : 0),
           cellBuilder: _clientOwnerCell,
           cellBuilderHandlesSemantics: true,
         )
@@ -787,7 +783,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     ],
   ];
 
-  /// 客户表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
+  /// 客户表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=初始参考宽度，实际沿用公共内容量宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   /// 主结账方式由 UUID 关联解析；总监仍无对应列、单元格恒空。
   /// credit 显示两位小数；tday 直接 toString。
@@ -828,6 +824,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       label: '信用天数',
       width: 80,
       type: 'number',
+      columnSearchEnabled: true,
       sortable: true,
       value: (m) => m.tday?.toString(),
     ),
@@ -916,15 +913,24 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       label: '信用额度 / 旧库 Credit 快照',
       width: 110,
       type: 'money',
+      columnSearchEnabled: true,
+      info: '旧库信用额度快照，按本列两位显示值检索；不是实时应收或可用额度。',
       sortable: true,
-      value: (m) => m.credit?.toStringAsFixed(2),
+      exactValueOf: (m) => m.creditDisplayText ?? m.credit?.toStringAsFixed(2),
+      value: (m) => m.creditDisplayText ?? m.credit?.toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'creditFloor',
       label: '铺底额',
       width: 110,
       type: 'money',
-      value: (m) => (m.creditFloor ?? 0).toStringAsFixed(2),
+      columnSearchEnabled: true,
+      info: '按本列两位铺底额检索；跨币种不相加。',
+      sortable: true,
+      exactValueOf: (m) =>
+          m.creditFloorDisplayText ?? (m.creditFloor ?? 0).toStringAsFixed(2),
+      value: (m) =>
+          m.creditFloorDisplayText ?? (m.creditFloor ?? 0).toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'website',

@@ -1,107 +1,175 @@
-// 通知分组详情弹窗：点开叠放组后展示该业务对象的全部相关通知。
-//
-// 形态与通知详情弹窗一致：手机高位底部弹层、平板/桌面居中对话框。
-// 组内排序 = 未读在前（各按发布时间倒序）；点单条 → 打开通知详情弹窗
-// （叠在其上，关闭后回到本弹窗）；「全部已读」把组内未读一次清零。
-// 弹窗持有本地已读集合：单条置读后立即生效，不必等列表刷新。
+// Same-object stacks unfold into full notification cards on a dimmed stage.
+import 'dart:math' as math;
 
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/responsive/breakpoint.dart';
-import '../../../core/responsive/dialog_size.dart';
-import '../../../core/theme/uten_colors.dart';
+import '../../../components/feedback/uten_motion.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/utils/china_datetime.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
 import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
+import 'notice_card.dart';
 import 'notice_detail_dialog.dart';
 
-/// 打开通知分组弹窗。[originContext] 须来自路由栈内（通知列表页），
-/// 供内层通知详情弹窗捕获 GoRouter（弹窗自身的 context 取不到）。
+/// The source rectangle is captured before pushing, in the root overlay's coordinates.
 Future<void> showNoticeGroupDialog(
   BuildContext originContext, {
   required NoticeGroup group,
+  Rect? originRect,
 }) {
-  if (originContext.breakpoint.isCompact) {
-    return showModalBottomSheet<void>(
-      context: originContext,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (_) => FractionallySizedBox(
-        heightFactor: 0.82,
-        child: _NoticeGroupPanel(group: group, originContext: originContext),
-      ),
-    );
-  }
-  return showDialog<void>(
+  final duration = utenMotionDurationOf(originContext, UtenAnim.slow);
+  return showGeneralDialog<void>(
     context: originContext,
-    builder: (_) => UtenDialogFrame(
-      clipBehavior: Clip.antiAlias,
-      insetPadding: utenDialogInsetPadding(originContext),
-      child: SizedBox(
-        width: utenDialogWidth(originContext, 520),
-        height: (MediaQuery.sizeOf(originContext).height * 0.6).clamp(
-          420.0,
-          640.0,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(
+      originContext,
+    ).modalBarrierDismissLabel,
+    barrierColor: Colors.black.withValues(alpha: 0.48),
+    transitionDuration: duration,
+    pageBuilder: (context, animation, secondaryAnimation) => SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Center(
+          child: Padding(
+            padding: const EdgeInsets.all(UtenSpacing.s16),
+            child: SizedBox(
+              width: math.min(
+                920,
+                math.max(0, constraints.maxWidth - UtenSpacing.s32),
+              ),
+              height: math.min(
+                math.max(0, constraints.maxHeight - UtenSpacing.s32),
+                144 +
+                    math.min(group.notices.length, 3) *
+                        232 *
+                        MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.8),
+              ),
+              child: _NoticeGroupPanel(
+                group: group,
+                originContext: originContext,
+                animation: animation,
+              ),
+            ),
+          ),
         ),
-        child: _NoticeGroupPanel(group: group, originContext: originContext),
       ),
     ),
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final size = MediaQuery.sizeOf(context);
+      final delta = originRect == null
+          ? Offset.zero
+          : originRect.center - size.center(Offset.zero);
+      return AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, child) {
+          final progress = UtenAnim.standard.transform(animation.value);
+          final initialScale = originRect == null
+              ? 0.86
+              : (originRect.width /
+                        math.min(
+                          920,
+                          math.max(1, size.width - UtenSpacing.s32),
+                        ))
+                    .clamp(0.3, 0.9);
+          return Transform.translate(
+            offset: delta * (1 - progress),
+            child: Transform.scale(
+              scale: initialScale + (1 - initialScale) * progress,
+              child: Opacity(
+                opacity: Curves.easeOut.transform(
+                  (animation.value / 0.32).clamp(0, 1),
+                ),
+                child: child,
+              ),
+            ),
+          );
+        },
+      );
+    },
   );
 }
 
 class _NoticeGroupPanel extends StatefulWidget {
-  const _NoticeGroupPanel({required this.group, required this.originContext});
-
+  const _NoticeGroupPanel({
+    required this.group,
+    required this.originContext,
+    required this.animation,
+  });
   final NoticeGroup group;
   final BuildContext originContext;
+  final Animation<double> animation;
 
   @override
   State<_NoticeGroupPanel> createState() => _NoticeGroupPanelState();
 }
 
 class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
-  /// 本端已置读的通知 id（不等列表刷新，行级即时去红点）。
   final Set<String> _readIds = {};
-
   bool _markingAll = false;
+  String? _openingId;
 
-  bool _isUnread(Notice n) => !n.isRead && !_readIds.contains(n.id);
-
+  bool _isUnread(Notice notice) =>
+      !notice.isRead && !_readIds.contains(notice.id);
   int get _unreadCount => widget.group.notices.where(_isUnread).length;
 
   Future<void> _openNotice(Notice notice) async {
-    if (_isUnread(notice)) {
-      setState(() => _readIds.add(notice.id));
-      final container = ProviderScope.containerOf(
+    if (_openingId != null || _markingAll) return;
+    setState(() => _openingId = notice.id);
+    final container = ProviderScope.containerOf(
+      widget.originContext,
+      listen: false,
+    );
+    try {
+      if (_isUnread(notice)) {
+        await markNoticeReadContainer(container, notice.id);
+        if (!mounted) return;
+        setState(() => _readIds.add(notice.id));
+      }
+      if (!mounted || !widget.originContext.mounted) return;
+      await showNoticeDetailDialog(
         widget.originContext,
-        listen: false,
+        noticeId: notice.id,
+        // A business action must dismiss both the detail and this group stage.
+        onBeforeActionNavigate: () {
+          if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+            Navigator.of(context).pop();
+          }
+        },
       );
-      // 详情弹窗叠在本弹窗之上：originContext 在路由栈内且因本弹窗仍挂载。
-      await markNoticeReadContainer(container, notice.id);
+    } catch (error) {
+      if (mounted) context.appError(humanErrorMessage(error) ?? '通知打开失败，请重试');
+    } finally {
+      if (mounted) setState(() => _openingId = null);
     }
-    // 列表页被系统回收等极端情况下不再叠详情弹窗。
-    if (!mounted || !widget.originContext.mounted) return;
-    await showNoticeDetailDialog(widget.originContext, noticeId: notice.id);
   }
 
   Future<void> _markAllRead() async {
     final targets = widget.group.notices.where(_isUnread).toList();
-    if (targets.isEmpty || _markingAll) return;
+    if (targets.isEmpty || _markingAll || _openingId != null) return;
     setState(() => _markingAll = true);
     final container = ProviderScope.containerOf(
       widget.originContext,
       listen: false,
     );
-    for (final notice in targets) {
-      _readIds.add(notice.id);
-      await markNoticeReadContainer(container, notice.id);
+    var failed = 0;
+    try {
+      for (final notice in targets) {
+        if (!mounted || !widget.originContext.mounted) break;
+        try {
+          await markNoticeReadContainer(container, notice.id);
+          if (mounted) setState(() => _readIds.add(notice.id));
+        } catch (_) {
+          failed++;
+        }
+      }
+      if (mounted && failed > 0) context.appError('$failed 条通知未能标为已读，请重试');
+    } finally {
+      if (mounted) setState(() => _markingAll = false);
     }
-    if (mounted) setState(() => _markingAll = false);
   }
 
   @override
@@ -109,162 +177,111 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
     final theme = Theme.of(context);
     final unread = _unreadCount;
     final notices = [...widget.group.notices]
-      ..sort(
-        (a, b) => _isUnread(a) == _isUnread(b)
-            ? b.publishedAt.compareTo(a.publishedAt)
-            : (_isUnread(a) ? -1 : 1),
-      );
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s20,
-            UtenSpacing.s12,
-            UtenSpacing.s8,
-            UtenSpacing.s4,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '相关通知',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+      ..sort((a, b) {
+        if (_isUnread(a) != _isUnread(b)) return _isUnread(a) ? -1 : 1;
+        final byTime = b.publishedAt.compareTo(a.publishedAt);
+        return byTime == 0 ? a.id.compareTo(b.id) : byTime;
+      });
+    return Material(
+      key: const ValueKey('notice-group-stage'),
+      color: theme.colorScheme.surfaceContainerLow,
+      borderRadius: UtenRadius.dialogAll,
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s20,
+              UtenSpacing.s12,
+              UtenSpacing.s8,
+              UtenSpacing.s12,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '相关通知',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s2),
-                    Text(
-                      '共 ${notices.length} 条'
-                      '${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}'
-                      '，未读排在前面',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                      const SizedBox(height: UtenSpacing.s4),
+                      Text(
+                        '共 ${notices.length} 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}，未读排在前面',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              if (unread > 0)
-                TextButton.icon(
-                  onPressed: _markingAll ? null : _markAllRead,
-                  icon: _markingAll
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.done_all_rounded, size: 18),
-                  label: const Text('全部已读'),
-                ),
-              IconButton(
-                onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.close_rounded),
-                tooltip: '关闭',
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            itemCount: notices.length,
-            itemBuilder: (_, i) {
-              final notice = notices[i];
-              return _GroupNoticeRow(
-                notice: notice,
-                unread: _isUnread(notice),
-                onTap: () => _openNotice(notice),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _GroupNoticeRow extends StatelessWidget {
-  const _GroupNoticeRow({
-    required this.notice,
-    required this.unread,
-    required this.onTap,
-  });
-
-  final Notice notice;
-  final bool unread;
-  final VoidCallback onTap;
-
-  String _fmt(DateTime d) {
-    final now = ChinaDateTime.now();
-    final diff = now.difference(d);
-    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
-    if (diff.inHours < 24) return '${diff.inHours} 小时前';
-    if (diff.inDays < 7) return '${diff.inDays} 天前';
-    return '${ChinaDateTime.formatDate(d)}(北京)';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 已办结整体灰显，与列表卡片口径一致（保留审计价值，弱化视觉权重）。
-    return Opacity(
-      opacity: notice.isResolved ? 0.55 : 1.0,
-      child: ListTile(
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s20,
-          vertical: UtenSpacing.s2,
-        ),
-        leading: Container(
-          width: 34,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: notice.type.color.withValues(alpha: 0.12),
-            borderRadius: UtenRadius.mdAll,
-          ),
-          child: Icon(notice.type.icon, size: 18, color: notice.type.color),
-        ),
-        title: Text(
-          notice.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          '${notice.publisher} · ${_fmt(notice.publishedAt)}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        trailing: notice.isResolved
-            ? Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                height: 20,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(UtenRadius.pill),
-                ),
-                child: Text(
-                  '已办结',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                      if (unread > 0) ...[
+                        const SizedBox(height: UtenSpacing.s4),
+                        TextButton.icon(
+                          onPressed: _markingAll || _openingId != null
+                              ? null
+                              : _markAllRead,
+                          icon: _markingAll
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.done_all_rounded, size: 18),
+                          label: const Text('全部已读'),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              )
-            : (unread
-                  ? const Icon(Icons.circle, size: 8, color: UtenColors.error)
-                  : null),
+                IconButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  icon: const Icon(Icons.close_rounded),
+                  tooltip: '收起相关通知',
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.separated(
+              key: const PageStorageKey('notice-group-cards'),
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              itemCount: notices.length,
+              separatorBuilder: (_, index) =>
+                  const SizedBox(height: UtenSpacing.s12),
+              itemBuilder: (context, index) {
+                final notice = notices[index];
+                return AnimatedBuilder(
+                  key: ValueKey(notice.id),
+                  animation: widget.animation,
+                  child: NoticeCard(
+                    notice: notice,
+                    unread: _isUnread(notice),
+                    showInteractions: false,
+                    onTap: () => _openNotice(notice),
+                  ),
+                  builder: (context, child) {
+                    final progress = UtenAnim.standard.transform(
+                      ((widget.animation.value - 0.12) / 0.88).clamp(0.0, 1.0),
+                    );
+                    return Transform.translate(
+                      key: ValueKey('notice-unfold-${notice.id}'),
+                      offset: Offset(
+                        0,
+                        -(1 - progress) * math.min(index, 4) * 92,
+                      ),
+                      child: Opacity(opacity: progress, child: child),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -766,13 +766,11 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
       decoration: applyRequiredEmpty(
         UtenInputDecoration(
           InputDecoration(
-            isDense: true,
             hintText:
                 field.hint ??
                 (value == null && field.required
                     ? widget.creation._strings?.masterInlineNewRowHint
                     : null),
-            border: const OutlineInputBorder(),
             error: utenFieldError(draft.errors[field.key]),
           ),
         ),

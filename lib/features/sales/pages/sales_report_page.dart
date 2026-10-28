@@ -53,6 +53,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
@@ -88,6 +89,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
+  String? _acceptedEndpoint;
+  Map<String, dynamic>? _acceptedQuery;
   bool _loading = false;
   int _loadGeneration = 0;
 
@@ -290,6 +293,8 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
         _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
+        _acceptedEndpoint = endpoint;
+        _acceptedQuery = Map.unmodifiable(query);
         _page = _reportPages.pageNum;
       }
     });
@@ -423,31 +428,20 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      '/sales/reports/${_docType.code}/${_kind.endpoint}',
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/sales/reports/${_docType.code}/${_kind.endpoint}',
+      queryOf: () => _exportQuery,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -585,7 +579,11 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
   }
 
   Widget _buildTable() {
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final source = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final matches =
+        _acceptedEndpoint == _readEndpoint &&
+        const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);
+    final data = matches ? source : source?.pendingQuery();
     if (data == null) {
       final error = _reportPages.error;
       return Center(
@@ -610,6 +608,13 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
                 ? 72
                 : (c.width ?? 120).toDouble(),
             type: c.type,
+            columnSearchEnabled: data.columnSearchKeys.contains(c.key),
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
@@ -624,6 +629,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       tableKey:
           'features.sales.pages.sales_report_page.SalesReportPageState._buildTable.1',
       columns: columns,
+      serverColumnSearchKeys: data.columnSearchKeys,
       items: data.rows,
       toolbarActions: [
         UtenPrintPreviewButton(
@@ -757,6 +763,9 @@ class _SalesClientDetailDialogState
   final int _size = 50;
   String? _sortKey;
   bool _sortAsc = true;
+  final Map<String, String> _headers = {};
+  ({Map<String, String> headers, String? sort, bool ascending, int page})?
+  _acceptedHeaderView;
 
   @override
   void initState() {
@@ -795,6 +804,7 @@ class _SalesClientDetailDialogState
     if (widget.docType == SalesReportDocType.order && widget.currencyId != null)
       'currencyId': widget.currencyId,
     'size': _size,
+    for (final entry in _headers.entries) 'f.${entry.key}': entry.value,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
@@ -817,6 +827,7 @@ class _SalesClientDetailDialogState
     _page = 1;
     _sortKey = null;
     _sortAsc = true;
+    _headers.clear();
     _load(page: 1);
   }
 
@@ -875,6 +886,12 @@ class _SalesClientDetailDialogState
       setState(() {
         _data = (result as ReportPageSnapshot).snapshot;
         _page = result.page;
+        _acceptedHeaderView = (
+          headers: Map.unmodifiable(_headers),
+          sort: _sortKey,
+          ascending: _sortAsc,
+          page: _page,
+        );
         _loading = false;
       });
     } catch (error) {
@@ -886,7 +903,18 @@ class _SalesClientDetailDialogState
       context.appError(
         error is ApiException ? error.message : '客户明细加载失败，请稍后重试',
       );
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        final accepted = _acceptedHeaderView;
+        if (_data != null && accepted != null) {
+          _headers
+            ..clear()
+            ..addAll(accepted.headers);
+          _sortKey = accepted.sort;
+          _sortAsc = accepted.ascending;
+          _page = accepted.page;
+        }
+      });
     }
   }
 
@@ -899,67 +927,39 @@ class _SalesClientDetailDialogState
     _load(page: 1);
   }
 
+  void _onHeaderChanged(String key, String? value) {
+    setState(() {
+      if (value == null || value.isEmpty) {
+        _headers.remove(key);
+      } else {
+        _headers[key] = value;
+      }
+      _page = 1;
+    });
+    _load(page: 1);
+  }
+
   void _onRowTap(Map<String, dynamic> row) {
     final srcId = row['__srcId']?.toString();
     if (srcId == null || srcId.isEmpty) return;
     context.push(RoutePath.salesDocDetail(widget.docSeg, srcId));
   }
 
-  /// 预览打印数据：按当前客户+日期范围+排序拉全量（上限 2000 行），列/格式化与对话框表格一致。
+  /// 按当前客户、日期、币种和排序分页读取前2000行，不推测服务端页长。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final headers = <String>[];
-    final columnKeys = <String>[];
-    final rowIds = <String?>[];
-    final factValues = <Map<String, String?>>[];
-    final rows = <List<String>>[];
-    var page = 1;
-    int? total;
-    while (true) {
-      final json = await api.get(
-        '/sales/reports/${widget.docType.code}/detail',
-        query: <String, dynamic>{
-          'dateFrom': widget.dateFrom,
-          'dateTo': widget.dateTo,
-          if (widget.clientId != null)
-            'clientId': widget.clientId
-          else
-            'f.clientName': kMasterFilterNullValue,
-          if (widget.docType == SalesReportDocType.order &&
-              widget.currencyId != null)
-            'currencyId': widget.currencyId,
-          'page': page,
-          'size': 500,
-          ...reportRowsOnlyQuery,
-          'includeCount': page == 1,
-          ...sortQueryParams(_sortKey, _sortAsc),
-        },
-      );
-      final data = await parseReportResponseResponsive(json, page);
-      if (data.total >= 0) total = data.total;
-      if (headers.isEmpty) {
-        headers.addAll([for (final c in data.columns) c.label]);
-        columnKeys.addAll([for (final c in data.columns) c.key]);
-      }
-      for (final r in data.rows) {
-        rowIds.add(r['id']?.toString());
-        factValues.add({
-          for (final entry in r.entries) entry.key: entry.value?.toString(),
-        });
-        rows.add([for (final c in data.columns) formatReportCell(c, r) ?? '']);
-      }
-      if ((total != null && rows.length >= total) || data.rows.length < 500) {
-        break;
-      }
-      if (rows.length >= 2000) break;
-      page++;
-    }
-    return UtenPrintTable(
-      headers: headers,
-      rows: rows,
-      columnKeys: columnKeys,
-      rowIds: rowIds,
-      factValues: factValues,
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/sales/reports/${widget.docType.code}/detail',
+      queryOf: () => _readQuery,
+      isCurrent: () =>
+          mounted &&
+          !_readerChanged &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -984,7 +984,13 @@ class _SalesClientDetailDialogState
         ),
       );
     }
-    final data = _data;
+    final accepted = _acceptedHeaderView;
+    final matches =
+        accepted != null &&
+        accepted.sort == _sortKey &&
+        accepted.ascending == _sortAsc &&
+        const DeepCollectionEquality().equals(accepted.headers, _headers);
+    final data = matches ? _data : _data?.pendingQuery();
     // 状态类列排到最前（与主表同口径，见 _buildTable）。
     final mapped = (data?.columns ?? const [])
         .map(
@@ -995,6 +1001,14 @@ class _SalesClientDetailDialogState
                 ? 72
                 : (c.width ?? 120).toDouble(),
             type: c.type,
+            columnSearchEnabled:
+                data?.columnSearchKeys.contains(c.key) ?? false,
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
@@ -1026,7 +1040,7 @@ class _SalesClientDetailDialogState
                     child: Text(
                       '${widget.clientName} · ${widget.docType.label}明细'
                       '(${widget.dateFrom} ~ ${widget.dateTo}'
-                      '${data != null ? '，共 ${data.total} 条' : ''})',
+                      '${data != null && data.total >= 0 ? '，共 ${data.total} 条' : ''})',
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -1062,11 +1076,12 @@ class _SalesClientDetailDialogState
                         rowsController: _tableRows,
                         expensiveRowMounts: false,
                         columns: columns,
+                        serverColumnSearchKeys: data.columnSearchKeys,
                         items: data.rows,
-                        facets: const {},
+                        facets: data.facets,
                         nullCounts: const {},
-                        filters: const {},
-                        onFilterChanged: (_, _) {},
+                        filters: _headers,
+                        onFilterChanged: _onHeaderChanged,
                         sortColumn: _sortKey,
                         sortAscending: _sortAsc,
                         onSortChange: _onSortChange,

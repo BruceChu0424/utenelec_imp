@@ -18,6 +18,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../auth/permissions.dart';
 import '../models/paged_result.dart';
+import '../search/table_column_query.dart';
 import 'weight_predictor.dart';
 
 /// 单重依据 (服务端解析优先级: 精确 > 人工设定 > 称重学习 > 货品资料设计单重 > 无)。
@@ -1081,6 +1082,9 @@ class WeightRepository {
     String? kind,
     String? supplierId,
     String? stage,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final json = await api.get(
       ApiEndpoints.stockWeightGoodsObservations(goodsId),
@@ -1090,6 +1094,7 @@ class WeightRepository {
         'kind': ?kind,
         'supplierId': ?supplierId,
         'stage': ?stage,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     );
     return PagedResult.fromJson(json, WeightObservation.fromJson);

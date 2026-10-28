@@ -39,6 +39,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
+import '../../visitor/providers/visitor_column_queries.dart';
 import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -104,6 +105,16 @@ class _VisitorApprovalListPageState
   /// 表头筛选：状态 → 分段内收敛（选到别的分段的状态则切分段）；部门 → 下推 id。
   /// 两者都回第 1 页并清空选中；状态与部门正交，互不清除。
   void _onFilterChanged(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() {
+        _page = 1;
+        _selectedIds = {};
+      });
+      ref.read(visitorApprovalColumnsProvider.notifier).state = ref
+          .read(visitorApprovalColumnsProvider)
+          .search(key, value);
+      return;
+    }
     setState(() {
       switch (key) {
         case 'status':
@@ -340,10 +351,12 @@ class _VisitorApprovalListPageState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final columns = ref.watch(visitorApprovalColumnsProvider);
     final paginationScope = (
       _tab,
       _statusFilter,
       _hostDepartmentId,
+      columns,
       retainedReaderEpoch(ref),
     );
     final readLease =
@@ -355,8 +368,8 @@ class _VisitorApprovalListPageState
         )..bindView(
           context,
           currentQuery: () => (
-            status: _query.status,
-            hostDepartmentId: _query.hostDepartmentId,
+            (status: _query.status, hostDepartmentId: _query.hostDepartmentId),
+            ref.read(visitorApprovalColumnsProvider),
           ),
         );
     final list = _retainedPage.resolveFor(
@@ -444,6 +457,17 @@ class _VisitorApprovalListPageState
                     ref.invalidate(visitorApprovalListProvider(_query));
                   },
                   columns: _columns(l10n),
+                  serverColumnSearch: true,
+                  sortColumn: columns.sort,
+                  sortAscending: columns.ascending,
+                  onSortChange: (key, ascending) {
+                    setState(() {
+                      _page = 1;
+                      _selectedIds = {};
+                    });
+                    ref.read(visitorApprovalColumnsProvider.notifier).state =
+                        columns.sorted(key, ascending);
+                  },
                   items: page.items,
                   rowsController: _tableRows,
                   facets: {
@@ -456,6 +480,7 @@ class _VisitorApprovalListPageState
                   },
                   nullCounts: const {},
                   filters: {
+                    ...columns.searches,
                     'status':
                         _statusFilter ??
                         (_tab == ApprovalTab.history ? null : _tabStatus),
@@ -559,6 +584,9 @@ class _VisitorApprovalListPageState
       label: l10n.visitorColPlannedVisit,
       width: 180,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
       value: (app) => fmtDateTime(app.plannedVisitAt),
     ),
   ];

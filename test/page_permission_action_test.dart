@@ -255,6 +255,35 @@ void main() {
     );
   });
 
+  testWidgets('repaired business routes expose the common permission entry', (
+    tester,
+  ) async {
+    for (final location in const [
+      '/basicinfo/client/client-1',
+      '/basicinfo/supplier/supplier-1',
+      '/basicinfo/history?entityType=goods',
+      '/finance/assets/new',
+      '/sales/customer-shipments',
+      '/warehouse/material-discovery/request-1',
+      '/warehouse/material-returns/batch-receive',
+      '/warehouse/production-finished-in/arrival-registrations',
+      '/production/material-return/new',
+      '/production/material-discovery-request',
+      '/production/material-increment-requests/new',
+      '/production/actual-output-supplements/request-1',
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(_actionApp(canManage: true, location: location));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('page-permission-action')),
+        findsOneWidget,
+        reason: location,
+      );
+      expect(tester.takeException(), isNull, reason: location);
+    }
+  });
+
   testWidgets(
     'drawer groups by family, merges create into edit, and submits one atomic diff',
     (tester) async {
@@ -457,27 +486,27 @@ void main() {
     expect(tester.widget<Switch>(editSwitch).value, isTrue);
     expect(find.text('已修改 1 项'), findsOneWidget);
 
-    // 换人需确认；取消则保持待提交状态。
+    // 换人走三选一；继续编辑则保持待提交状态。
     await tester.tap(find.text('更换'));
     await tester.pumpAndSettle();
-    expect(find.text('丢弃未保存修改'), findsOneWidget);
-    await tester.tap(find.text('取消'));
+    expect(find.text('保存未提交的修改？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(editSwitch).value, isTrue);
 
     // 系统返回键也必须守住未保存修改，不能绕过抽屉上的关闭按钮。
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('丢弃未保存修改'), findsOneWidget);
-    await tester.tap(find.text('取消'));
+    expect(find.text('保存未提交的修改？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(editSwitch).value, isTrue);
 
     // 关闭同样拦截。
     await tester.tap(find.byTooltip('关闭'));
     await tester.pumpAndSettle();
-    expect(find.text('丢弃未保存修改'), findsOneWidget);
-    await tester.tap(find.text('取消'));
+    expect(find.text('保存未提交的修改？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
     await tester.pumpAndSettle();
     expect(find.byType(PagePermissionDrawer), findsOneWidget);
 
@@ -649,12 +678,13 @@ Widget _actionApp({
   bool superAdmin = false,
   PagePermissionScope? scope,
   String label = '权限设置',
+  String location = '/sales/orders',
 }) {
   final router = GoRouter(
-    initialLocation: '/sales/orders',
+    initialLocation: location,
     routes: [
       GoRoute(
-        path: '/sales/orders',
+        path: Uri.parse(location).path,
         builder: (_, _) => Scaffold(
           appBar: UtenAppBar(
             title: '销售订货',
@@ -683,7 +713,7 @@ Widget _actionApp({
           SessionSnapshot(
             delegableSurfaceKeys: {
               if (canManage)
-                (scope ?? pagePermissionScopeFor('/sales/orders')!).surfaceKey,
+                (scope ?? pagePermissionScopeFor(location)!).surfaceKey,
             },
           ),
         ),
@@ -793,6 +823,9 @@ class _FakePagePermissionRepository
     String? search,
     int page = 1,
     int size = 40,
+    Map<String, String?> columnQuery = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     lastSearch = search;
     requestedPages.add(page);

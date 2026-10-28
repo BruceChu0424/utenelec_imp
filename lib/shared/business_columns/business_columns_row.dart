@@ -143,6 +143,16 @@ List<EditableGridColumn<T>> businessEditableColumns<T extends EditableGridRow>(
       label: column.label,
       width: column.numeric ? 130 : 170,
       numeric: column.numeric,
+      aiSensitive: column.financial,
+      columnSearchEnabled: priceMasked && column.financial ? false : null,
+      exactValueOf: column.numeric && !(priceMasked && column.financial)
+          ? (row) => businessExactDecimal(
+              rowOf(row).extraColumnController(column).text,
+            )
+          : null,
+      exactListenableOf: column.numeric && !(priceMasked && column.financial)
+          ? (row) => rowOf(row).extraColumnController(column)
+          : null,
       headerInfo: column.affectsAmount ? amountHint : null,
       textOf: (row) => priceMasked && column.financial
           ? '***'

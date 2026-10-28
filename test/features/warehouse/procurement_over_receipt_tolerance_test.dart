@@ -7,6 +7,7 @@
 //  - 财务超量到货任务卡与详情按新口径展示。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -115,6 +116,23 @@ class _FinanceRepository implements ProcurementInboundRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _EmptyFinanceRepository implements ProcurementInboundRepository {
+  @override
+  Future<PagedResult<ProcurementArrivalException>> financeTasks({
+    int page = 1,
+    int size = 20,
+    String? status,
+  }) async => PagedResult(
+    items: const [],
+    page: page,
+    size: size,
+    total: 0,
+    totalPages: 0,
+  );
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 class _FinanceStageRepository implements ProcurementInboundRepository {
   final statuses = <String?>[];
   @override
@@ -171,6 +189,57 @@ class _ExceptionListApi extends ApiClient {
 }
 
 void main() {
+  for (final embedded in [false, true]) {
+    testWidgets(
+      'finance over-receipt empty guidance stays inline in embedded=$embedded',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(390, 844)
+          ..devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              procurementInboundRepositoryProvider.overrideWithValue(
+                _EmptyFinanceRepository(),
+              ),
+            ],
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: embedded
+                  ? const Scaffold(
+                      body: FinanceArrivalExceptionTasksPage(embedded: true),
+                    )
+                  : const FinanceArrivalExceptionTasksPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        const guidance = '具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。';
+        final title = find.text('目前没有待审批的超量到货');
+        expect(title, findsOneWidget);
+        expect(find.text(guidance), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == guidance,
+        );
+        expect(hint, findsOneWidget);
+        expect(
+          (tester.getCenter(hint).dy - tester.getCenter(title).dy).abs(),
+          lessThan(16),
+        );
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
+        expect(find.text(guidance), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        Tooltip.dismissAllToolTips();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
   group('预计到货 → 登记预填', () {
     test('采购明细带允许超收与最多可收，扣已登记待审核量', () {
       final expectation = InboundExpectation.fromJson(

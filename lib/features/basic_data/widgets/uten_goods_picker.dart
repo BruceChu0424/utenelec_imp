@@ -1191,7 +1191,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
       },
       expandOnRowTap: true,
       // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，点了再展开。
-      initiallyExpandDepth: 0,
       initiallyCollapsedNames: const {'未分类'},
       showSearch: false,
       emptySearchText: '未找到匹配「$_query」的分类',
@@ -1605,9 +1604,17 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
             key: 'name',
             label: '货品名称',
             width: 190,
+            minimumWidthOf: (_) => 48,
             columnSearchEnabled: _supportsColumnSearch,
             value: (goods) => goods.name,
-            cellBuilder: (_, goods) => Text(goods.name ?? '—'),
+            cellBuilder: (_, goods) => Tooltip(
+              message: goods.name ?? '—',
+              child: Text(
+                goods.name ?? '—',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
           column('code', '编号', 130, (g) => g.code),
           column('series', '系列', 100, (g) => g.series),

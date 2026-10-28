@@ -28,6 +28,9 @@ class _FakeVisitorStaffRepository extends Fake
     String? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     listCalls.add({'status': status, 'page': page});
     if (page == 2 && nextPage != null) return nextPage!.future;

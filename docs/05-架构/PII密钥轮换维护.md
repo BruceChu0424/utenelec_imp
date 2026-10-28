@@ -44,7 +44,7 @@
 
 所有端点要求 `pii_key_rotation:manage`。权限目录将它固定为 `SUPERADMIN_ONLY`，不能委派给普通账号。服务还从数据库核对当前超管账号有效，拒绝模拟身份。
 
-写入口为 `POST /api/admin/pii-key-rotation/batches`。每次请求都需要本人当前会话的 `X-Uten-Step-Up` 一次性凭证，通过既有 `POST /api/auth/step-up` 以当前密码换取；不要把密码或令牌写入持久脚本及日志。
+写入口为 `POST /api/admin/pii-key-rotation/batches`。每次请求都需要本人当前会话的有效 `X-Uten-Step-Up` 凭证，通过既有 `POST /api/auth/step-up` 以当前密码换取；连续人工操作可复用，真实活动时滑动续期、空闲 5 分钟失效，后台循环本身不能续期。凭证失效后重新确认密码，不能恢复过期凭证；不要把密码或令牌写入持久脚本及日志。
 
 请求示例仅含维护元数据：
 

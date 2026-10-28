@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/rd_task.dart';
+import '../../../shared/search/table_column_query.dart';
 
 class RdTaskRepository {
   const RdTaskRepository(this._api);
@@ -44,6 +45,9 @@ class RdTaskRepository {
     String? assignee,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final json = await _api.get(
       ApiEndpoints.rdTasks,
@@ -54,6 +58,7 @@ class RdTaskRepository {
         if (assignee != null && assignee.isNotEmpty) 'assignee': assignee,
         'page': page,
         'size': size,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     );
     return RdTaskData.fromJson(json);

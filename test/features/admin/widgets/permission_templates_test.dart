@@ -21,6 +21,8 @@ import 'package:uten_imp/features/admin/providers/admin_providers.dart';
 import 'package:uten_imp/features/admin/repositories/permission_template_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_permission_templates.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/permission_action_type.dart';
+import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../support/audit_screenshot_support.dart';
@@ -28,9 +30,292 @@ import '../../../support/audit_screenshot_support.dart';
 final _identity = StateProvider<String>((ref) => 'admin');
 final _captureKey = GlobalKey();
 const _capture = bool.fromEnvironment('UTEN_CAPTURE_PERMISSION_TEMPLATES');
+const _ordinaryDependencyCatalog = [
+  AdminPermission(
+    id: 'goods-view',
+    code: 'goods:view',
+    name: '查看货品',
+    category: '货品资料',
+    actionType: PermissionActionType.view,
+  ),
+  AdminPermission(
+    id: 'goods-edit',
+    code: 'goods:edit',
+    name: '编辑货品',
+    category: '货品资料',
+    actionType: PermissionActionType.edit,
+    requiredPermissions: ['goods:view'],
+  ),
+];
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('template selection includes safe ordinary read dependencies', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..template = const PermissionTemplate(
+        id: 'template',
+        name: '采购模板',
+        description: '',
+        permissions: [],
+        version: 3,
+      );
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+      catalogPermissions: _ordinaryDependencyCatalog,
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    await tester.tap(find.byKey(const ValueKey('template-code-goods:edit')));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('template-code-goods:view')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<Switch>(
+            find.byKey(const ValueKey('template-code-goods:edit')),
+          )
+          .value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+    await tester.pumpAndSettle();
+    expect(repository.savedCodes, {'goods:view', 'goods:edit'});
+    expect(repository.writes, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('template selection never silently includes a sensitive read', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..template = const PermissionTemplate(
+        id: 'template',
+        name: '采购模板',
+        description: '',
+        permissions: [],
+        version: 3,
+      );
+    await _mount(
+      tester,
+      repository,
+      const AdminPermissionTemplatesView(navigation: SizedBox()),
+      catalogPermissions: const [
+        AdminPermission(
+          id: 'sensitive-view',
+          code: 'goods:price:view',
+          name: '查看价格',
+          category: '货品资料',
+          actionType: PermissionActionType.view,
+          sensitivity: 'SENSITIVE_COMMERCIAL',
+          grantPolicy: PermissionGrantPolicy({
+            PermissionGrantPolicy.bulkExcluded,
+          }),
+        ),
+        AdminPermission(
+          id: 'price-edit',
+          code: 'goods:price:edit',
+          name: '修改价格',
+          category: '货品资料',
+          actionType: PermissionActionType.edit,
+          requiredPermissions: ['goods:price:view'],
+        ),
+      ],
+    );
+    await tester.tap(find.text('采购模板'));
+    await tester.pumpAndSettle();
+    await _expandCatalog(tester);
+    final action = find.byKey(const ValueKey('template-code-goods:price:edit'));
+    final sensitive = find.byKey(
+      const ValueKey('template-code-goods:price:view'),
+    );
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(action).value, isFalse);
+    expect(tester.widget<Switch>(sensitive).value, isFalse);
+    expect(repository.writes, 0);
+    await tester.tap(sensitive);
+    await tester.pumpAndSettle();
+    expect(find.text('确认模板敏感权限'), findsOneWidget);
+    await tester.tap(find.text('确认加入模板'));
+    await tester.pumpAndSettle();
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(sensitive).value, isTrue);
+    expect(tester.widget<Switch>(action).value, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'template association on another tab cannot skip sensitive confirmation',
+    (tester) async {
+      final repository = _Repository()
+        ..template = const PermissionTemplate(
+          id: 'template',
+          name: '采购模板',
+          description: '',
+          permissions: [],
+          version: 3,
+        );
+      final tab = ValueNotifier(0);
+      addTearDown(tab.dispose);
+      await _mount(
+        tester,
+        repository,
+        ValueListenableBuilder<int>(
+          valueListenable: tab,
+          builder: (context, selected, child) => Column(
+            children: [
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => tab.value = 0,
+                    child: const Text('返回模板设置'),
+                  ),
+                  TextButton(
+                    onPressed: () => tab.value = 1,
+                    child: const Text('切换员工授权'),
+                  ),
+                ],
+              ),
+              Expanded(
+                child: IndexedStack(
+                  index: selected,
+                  children: [
+                    const AdminPermissionTemplatesView(navigation: SizedBox()),
+                    Center(
+                      child: TextButton(
+                        onPressed: () {
+                          repository.template = const PermissionTemplate(
+                            id: 'template',
+                            name: '采购模板',
+                            description: '',
+                            permissions: [],
+                            version: 3,
+                            appliedCount: 1,
+                            appliedUserCount: 1,
+                          );
+                          ProviderScope.containerOf(
+                            context,
+                          ).invalidate(permissionTemplatesProvider);
+                        },
+                        child: const Text('关联一名员工'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        catalogPermissions: const [
+          AdminPermission(
+            id: 'sensitive-view',
+            code: 'goods:price:view',
+            name: '查看价格',
+            category: '货品资料',
+            actionType: PermissionActionType.view,
+            sensitivity: 'SENSITIVE_COMMERCIAL',
+            grantPolicy: PermissionGrantPolicy({
+              PermissionGrantPolicy.bulkExcluded,
+            }),
+          ),
+        ],
+      );
+      await tester.tap(find.text('采购模板'));
+      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
+      await tester.tap(find.text('切换员工授权'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关联一名员工'));
+      await tester.pumpAndSettle();
+      expect(repository.template.appliedUserCount, 1);
+      await tester.tap(find.text('返回模板设置'));
+      await tester.pumpAndSettle();
+      final sensitive = find.byKey(
+        const ValueKey('template-code-goods:price:view'),
+      );
+      await tester.ensureVisible(sensitive);
+      await tester.tap(sensitive);
+      await tester.pumpAndSettle();
+      expect(find.text('确认模板敏感权限'), findsOneWidget);
+      expect(tester.widget<Switch>(sensitive).value, isFalse);
+      expect(repository.writes, 0);
+      expect(repository.savedConfirmations, isEmpty);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Switch>(sensitive).value, isFalse);
+      expect(repository.writes, 0);
+      expect(repository.savedConfirmations, isEmpty);
+      await tester.tap(sensitive);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认加入模板'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Switch>(sensitive).value, isTrue);
+      await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+      await tester.pumpAndSettle();
+      expect(repository.writes, 1);
+      expect(repository.savedConfirmations.single, {'goods:price:view'});
+      expect(repository.savedCodes, {'goods:price:view'});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'template selection removes dependent actions when its read is cleared',
+    (tester) async {
+      final repository = _Repository()
+        ..template = const PermissionTemplate(
+          id: 'template',
+          name: '采购模板',
+          description: '',
+          permissions: ['goods:view', 'goods:edit'],
+          version: 3,
+        );
+      await _mount(
+        tester,
+        repository,
+        const AdminPermissionTemplatesView(navigation: SizedBox()),
+        catalogPermissions: _ordinaryDependencyCatalog,
+      );
+      await tester.tap(find.text('采购模板'));
+      await tester.pumpAndSettle();
+      await _expandCatalog(tester);
+      await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('template-code-goods:view')),
+            )
+            .value,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<Switch>(
+              find.byKey(const ValueKey('template-code-goods:edit')),
+            )
+            .value,
+        isFalse,
+      );
+      await tester.tap(find.byKey(const ValueKey('save-permission-template')));
+      await tester.pumpAndSettle();
+      expect(repository.savedCodes, isEmpty);
+      expect(repository.writes, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('delete confirms on the dialog navigator inside a nested page', (
     tester,
   ) async {
@@ -125,7 +410,7 @@ void main() {
       expect(find.text('仓库模板'), findsWidgets);
       await _expandCatalog(tester);
       await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(repository.savedCodes, {'goods:view'});
       expect(repository.savedVersion, 1);
@@ -255,7 +540,7 @@ void main() {
         );
       }
       await tester.tap(last);
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(repository.savedCodes, contains('fixture:permission:19'));
     },
@@ -299,14 +584,19 @@ void main() {
       await _expandCatalog(tester);
       final toggle = find.byKey(const ValueKey('template-code-goods:view'));
       await tester.tap(toggle);
+      // 草稿不再 650ms 即存（每次保存都要输一次密码）。
       await tester.pump(const Duration(milliseconds: 300));
       expect(repository.writes, 0);
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
+      expect(repository.writes, 0);
+      // 停止操作满一分钟：闲置自动保存落库，版本随之推进。
+      await tester.pump(const Duration(minutes: 1));
+      await tester.pumpAndSettle();
       expect(repository.savedCodes, isEmpty);
       expect(repository.savedVersion, 3);
       await tester.tap(toggle);
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(repository.savedCodes, {'goods:view'});
       expect(repository.savedVersion, 4);
@@ -355,15 +645,15 @@ void main() {
         const ValueKey('template-code-fixture:permission:0'),
       );
       await tester.tap(first);
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       expect(repository.writes, 1);
       await tester.ensureVisible(second);
       await tester.tap(second);
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       expect(repository.writes, 1);
       gate.complete();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(repository.writes, 2);
       expect(repository.savedVersion, 4);
@@ -387,7 +677,7 @@ void main() {
       await _expandCatalog(tester);
       final toggle = find.byKey(const ValueKey('template-code-goods:view'));
       await tester.tap(toggle);
-      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(repository.writes, 1);
       expect(tester.widget<Switch>(toggle).value, isFalse);
@@ -445,7 +735,7 @@ void main() {
     await _expandCatalog(tester);
     final toggle = find.byKey(const ValueKey('template-code-goods:view'));
     await tester.tap(toggle);
-    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(minutes: 1));
     await tester.pumpAndSettle();
     expect(repository.writes, 1);
     expect(tester.widget<Switch>(toggle).value, isFalse);
@@ -475,7 +765,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('template-code-goods:view')));
     await tester.pump(const Duration(milliseconds: 200));
     tester.view.physicalSize = const Size(375, 1100);
-    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(minutes: 1));
     await tester.pumpAndSettle();
     expect(repository.writes, 1);
     expect(repository.savedCodes, isEmpty);
@@ -516,8 +806,8 @@ void main() {
       );
       await tester.pump();
       expect(tester.widget<UtenButton>(apply).onPressed, isNotNull);
-      await tester.ensureVisible(find.text('覆盖为模板'));
-      await tester.tap(find.text('覆盖为模板'));
+      await tester.ensureVisible(find.text('替换直接设置'));
+      await tester.tap(find.text('替换直接设置'));
       await tester.pumpAndSettle();
       expect(tester.widget<UtenButton>(apply).onPressed, isNull);
       expect(
@@ -647,6 +937,7 @@ Future<ProviderContainer> _mount(
   double width = 1440,
   double scale = 1,
   bool manyPermissions = false,
+  List<AdminPermission>? catalogPermissions,
 }) async {
   tester.view.physicalSize = Size(width, 1100);
   tester.view.devicePixelRatio = 1;
@@ -665,22 +956,24 @@ Future<ProviderContainer> _mount(
           PermissionCatalogGroup(
             module: '基础资料',
             category: '货品资料',
-            permissions: [
-              const AdminPermission(
-                id: 'goods',
-                code: 'goods:view',
-                name: '查看货品',
-                category: '货品资料',
-              ),
-              if (manyPermissions)
-                for (var i = 0; i < 20; i++)
-                  AdminPermission(
-                    id: 'fixture-$i',
-                    code: 'fixture:permission:$i',
-                    name: '测试权限 $i',
+            permissions:
+                catalogPermissions ??
+                [
+                  const AdminPermission(
+                    id: 'goods',
+                    code: 'goods:view',
+                    name: '查看货品',
                     category: '货品资料',
                   ),
-            ],
+                  if (manyPermissions)
+                    for (var i = 0; i < 20; i++)
+                      AdminPermission(
+                        id: 'fixture-$i',
+                        code: 'fixture:permission:$i',
+                        name: '测试权限 $i',
+                        category: '货品资料',
+                      ),
+                ],
           ),
         ],
       ),
@@ -756,6 +1049,7 @@ class _Repository extends PermissionTemplateRepository {
   final extraTemplates = <PermissionTemplate>[];
   bool deleted = false;
   final previewModes = <bool>[];
+  final savedConfirmations = <Set<String>>[];
   @override
   Future<List<PermissionTemplate>> list() async => [
     if (!deleted) template,
@@ -798,6 +1092,23 @@ class _Repository extends PermissionTemplateRepository {
       extraTemplates.add(saved);
     }
     return saved;
+  }
+
+  @override
+  Future<PermissionTemplate> saveReviewed({
+    PermissionTemplate? template,
+    required String name,
+    required String description,
+    required Set<String> permissions,
+    Set<String> sensitiveConfirmations = const {},
+  }) {
+    savedConfirmations.add({...sensitiveConfirmations});
+    return save(
+      template: template,
+      name: name,
+      description: description,
+      permissions: permissions,
+    );
   }
 
   @override

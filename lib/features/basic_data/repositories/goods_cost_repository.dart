@@ -2,6 +2,8 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../models/goods_cost_sheet.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
 
 abstract interface class GoodsCostRepository {
   Future<Map<String, dynamic>> productionOutput(
@@ -21,6 +23,12 @@ abstract interface class GoodsCostRepository {
   );
   Future<Map<String, dynamic>> importApply(Map<String, dynamic> request);
   Future<List<Map<String, dynamic>>> list(String goodsId);
+  Future<PagedResult<Map<String, dynamic>>> versions(
+    String goodsId, {
+    int page = 1,
+    int size = 50,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  });
   Future<GoodsCostSheet> detail(String id);
   Future<GoodsCostCalculation> preview(Map<String, dynamic> input);
   Future<GoodsCostSheet> save(
@@ -109,6 +117,31 @@ class DioGoodsCostRepository implements GoodsCostRepository {
   @override
   Future<List<Map<String, dynamic>>> list(String goodsId) =>
       api.getList(base, query: {'goodsId': goodsId});
+  @override
+  Future<PagedResult<Map<String, dynamic>>> versions(
+    String goodsId, {
+    int page = 1,
+    int size = 50,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  }) async {
+    final json = await api.get(
+      '$base/versions',
+      query: {
+        'goodsId': goodsId,
+        'page': page,
+        'size': size,
+        ...tableColumnParameters(
+          columnQuery.searches,
+          columnQuery.sort,
+          columnQuery.ascending,
+        ),
+        'status': ?columnQuery.searches['status'],
+        'currencyId': ?columnQuery.searches['currencyName'],
+      },
+    );
+    return PagedResult.fromJsonResponsive(json, (row) => row);
+  }
+
   @override
   Future<GoodsCostSheet> detail(String id) async =>
       GoodsCostSheet(await api.get('$base/$id'));

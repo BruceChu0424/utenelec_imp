@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/features/admin/models/server_operations.dart';
@@ -245,7 +246,15 @@ void main() {
         expect(find.text('失败详情'), findsNothing);
         expect(find.textContaining('请安装'), findsNothing);
         expect(find.text('存储管理'), findsOneWidget);
-        expect(find.text('查看数据库、附件登记与后端内存'), findsOneWidget);
+        const storageHint = '查看数据库、附件登记与后端内存';
+        expect(find.text(storageHint), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == storageHint,
+        );
+        await tester.ensureVisible(hint);
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
+        expect(find.text(storageHint), findsOneWidget);
         expect(tester.takeException(), isNull);
         await _capture(
           tester,

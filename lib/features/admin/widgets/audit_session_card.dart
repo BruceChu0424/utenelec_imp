@@ -158,10 +158,15 @@ class AuditSessionSummaryContent extends StatelessWidget {
                   icon: Icons.key_outlined,
                   text: '会话凭证 ${session.refreshCredentialStatusLabel!.trim()}',
                 ),
+              if (session.spansArchive)
+                const _Evidence(
+                  icon: Icons.inventory_2_outlined,
+                  text: '含冷归档层事件，时间线已跨在线与归档层合并',
+                ),
             ],
           ),
         ],
-        if (session.postLogoutCount > 0 || session.timelinePartial) ...[
+        if (session.postLogoutCount > 0) ...[
           const SizedBox(height: UtenSpacing.s12),
           Container(
             width: double.infinity,
@@ -171,9 +176,7 @@ class AuditSessionSummaryContent extends StatelessWidget {
               borderRadius: UtenRadius.mdAll,
             ),
             child: Text(
-              session.postLogoutCount > 0
-                  ? '退出后仍记录 ${session.postLogoutCount} 项操作，需重点核查。'
-                  : '部分旧事件缺少会话标识，当前时间线可能不完整。',
+              '退出后仍记录 ${session.postLogoutCount} 项操作，需重点核查。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onErrorContainer,
                 fontWeight: FontWeight.w700,

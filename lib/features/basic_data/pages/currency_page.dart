@@ -9,6 +9,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -478,7 +479,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
         builder: (ctx) {
           return owner.ownDialog(
             ctx,
-            const Center(child: CircularProgressIndicator()),
+            const UtenTaskProgressDialog(title: '正在读取币种资料'),
           );
         },
       );
@@ -855,19 +856,29 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
       width: 72,
       value: (c) => c.status,
     ),
-    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 120,
+      sortable: true,
+      value: (c) => c.code,
+    ),
     MasterColumnDef(
       key: 'name',
       label: '币种名称',
       width: 200,
+      sortable: true,
       value: (c) => c.name,
     ),
     MasterColumnDef(
       key: 'exchangeRate',
       label: '参考汇率',
       width: 140,
-      type: 'money',
+      type: 'number',
       sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (c) => c.exchangeRateText,
+      info: '按参考汇率原始精度检索；汇率不合计',
       value: (c) => c.exchangeRate?.toStringAsFixed(4),
     ),
   ];
@@ -995,6 +1006,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                           tableKey:
                               'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
                           columns: inlineColumns(_columns),
+                          serverColumnSearchKeys: const {
+                            'code',
+                            'name',
+                            'exchangeRate',
+                          },
+                          headerFilterScopeDescription: '检索全部币种；汇率按原始精度比较',
                           requiredLeadingColumnKeys: const [
                             'code',
                             'name',
@@ -1074,7 +1091,8 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                 ),
               ),
             ),
-            if (_rowOpBusy) const UtenBusyOverlay(title: '正在处理币种'),
+            if (_rowOpBusy)
+              const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理币种'),
           ],
         ),
       ),

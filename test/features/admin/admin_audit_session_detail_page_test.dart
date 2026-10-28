@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -39,8 +41,18 @@ void main() {
 
         expect(repository.summaryCalls, 1);
         expect(repository.eventSnapshots, [9001]);
-        expect(find.text('一次登录，一条完整时间线'), findsOneWidget);
+        expect(find.text('人员操作时间线'), findsOneWidget);
+        expect(find.text('一次登录，一条完整时间线'), findsNothing);
+        expect(find.textContaining('最新操作在前'), findsNothing);
+        final hint = find.descendant(
+          of: find.widgetWithText(UtenSectionHeader, '人员操作时间线'),
+          matching: find.byType(UtenFieldHintIcon),
+        );
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
         expect(find.textContaining('最新操作在前'), findsOneWidget);
+        Tooltip.dismissAllToolTips();
+        await tester.pumpAndSettle();
         expect(find.text('查看销售订单历史单据'), findsOneWidget);
         expect(find.text('查看了销售订单历史单据：SO-2026-001(旧系统编号 86)'), findsOneWidget);
         expect(find.textContaining('业务对象 销售订单'), findsOneWidget);
@@ -166,7 +178,8 @@ void main() {
             .height,
         greaterThanOrEqualTo(48),
       );
-      expect(find.text('一次登录，一条完整时间线'), findsOneWidget);
+      expect(find.text('人员操作时间线'), findsOneWidget);
+      expect(find.text('一次登录，一条完整时间线'), findsNothing);
       await tester.tap(
         find.byKey(const ValueKey('audit-session-detail-refresh')),
       );

@@ -1157,6 +1157,7 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'goods',
                       label: '货品名称',
+                      sortable: true,
                       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
                       // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
                       // 一格又不能各自排序筛选。2026-10-10 起单位内联在数量后（原独立
@@ -1171,6 +1172,7 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'goodsCode',
                       label: '编号',
+                      sortable: true,
                       width: 130,
                       value: (it) => UtenGoodsAttributeCell.text(
                         names.goodsInfo(it.goodsId)?.code,
@@ -1182,6 +1184,8 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'colorName',
                       label: '颜色',
+                      sortable: true,
+                      filterFromRows: true,
                       width: 96,
                       value: (it) => UtenGoodsAttributeCell.text(
                         _dictText(names.color(it.colorId)),
@@ -1195,6 +1199,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'stockPlace',
                         label: '库位号',
+                        sortable: true,
+                        filterFromRows: true,
                         width: 90,
                         value: (it) =>
                             names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
@@ -1204,6 +1210,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'orderBillNo',
                         label: '来源订货单',
+                        sortable: true,
+                        filterFromRows: true,
                         width: 150,
                         value: (it) => it.orderBillNo ?? '',
                       ),
@@ -1212,6 +1220,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'sourceApplications',
                         label: '申请来源',
+                        sortable: true,
+                        filterFromRows: true,
                         width: 170,
                         value: (it) => it.sourceApplications
                             .map((source) => source.billNo)
@@ -1223,6 +1233,8 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'qty',
                       label: '数量',
+                      sortable: true,
+                      exactValueOf: (it) => it.qtyText ?? it.qty?.toString(),
                       width: 100,
                       type: 'number',
                       value: (it) => _historicalReceipt
@@ -1235,6 +1247,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'price',
                         label: '单价',
+                        sortable: true,
+                        exactValueOf: (it) => it.priceText,
                         width:
                             widget.docType == SubcontractDocType.order &&
                                 _detail!.items.any(
@@ -1262,6 +1276,10 @@ class _SubcontractDocDetailPageState
                       ),
                       MasterColumnDef(
                         key: 'amount',
+                        sortable: true,
+                        exactValueOf: (it) => _historicalReceipt
+                            ? it.amountOriginalText
+                            : it.amountOriginalText ?? it.amountLocalText,
                         label: _historicalReceipt
                             ? '原币对应值（已核验）'
                             : widget.docType == SubcontractDocType.order
@@ -1291,6 +1309,8 @@ class _SubcontractDocDetailPageState
                         MasterColumnDef(
                           key: 'recordedLocalAmount',
                           label: '本币成本（STotal）',
+                          sortable: true,
+                          exactValueOf: (it) => it.amountLocalText,
                           width: 180,
                           type: 'money',
                           // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
@@ -1303,6 +1323,9 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'recordedUnitRate',
                         label: '单位换算率',
+                        type: 'number',
+                        sortable: true,
+                        exactValueOf: (it) => it.unitRateText,
                         width: 180,
                         value: (it) => historicalReceiptRate(it.unitRateText),
                       ),
@@ -1310,6 +1333,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'girth',
                         label: '围数',
+                        sortable: true,
+                        exactValueOf: (it) => it.girthQty?.toString(),
                         width: 96,
                         type: 'number',
                         value: (it) => it.girthQty == null
@@ -1320,6 +1345,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'boxQty',
                         label: '胶箱数',
+                        sortable: true,
+                        exactValueOf: (it) => it.boxQty?.toString(),
                         width: 96,
                         type: 'number',
                         value: (it) => it.boxQty == null
@@ -1331,6 +1358,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'received',
                         label: '已收',
+                        sortable: true,
+                        exactValueOf: (it) => it.receivedQty?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.receivedQty),
@@ -1339,6 +1368,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'settledLossQty',
                         label: '结案损耗',
+                        sortable: true,
+                        exactValueOf: (it) => it.settledLossQty?.toString(),
                         width: 110,
                         type: 'number',
                         value: (it) =>
@@ -1349,6 +1380,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'allowedLossPct',
                         label: '允许损耗%',
+                        sortable: true,
+                        exactValueOf: (it) => it.allowedLossPct?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => it.allowedLossPct == null
@@ -1359,6 +1392,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'returned',
                         label: '已退',
+                        sortable: true,
+                        exactValueOf: (it) => it.returnedQty?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.returnedQty),
@@ -1390,6 +1425,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'wasted',
                         label: '已损耗',
+                        sortable: true,
+                        exactValueOf: (it) => it.wastedQty?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.wastedQty),
@@ -1398,6 +1435,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'atSupplier',
                         label: '在供应商处',
+                        sortable: true,
+                        exactValueOf: (it) => it.atSupplierQty?.toString(),
                         width: 110,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.atSupplierQty),
@@ -1405,6 +1444,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'consumed',
                         label: '已消费',
+                        sortable: true,
+                        exactValueOf: (it) => it.consumedQty?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.consumedQty),
@@ -1412,6 +1453,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'supplierEnding',
                         label: '供应商结存',
+                        sortable: true,
+                        exactValueOf: (it) => it.supplierEnding?.toString(),
                         width: 110,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.supplierEnding),
@@ -1419,6 +1462,8 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'frozenUnitQty',
                         label: '冻结单耗',
+                        sortable: true,
+                        exactValueOf: (it) => it.frozenUnitQty?.toString(),
                         width: 100,
                         type: 'number',
                         value: (it) => qtyWithUnit(it, it.frozenUnitQty),
@@ -1428,6 +1473,7 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'wasteCause',
                         label: '损耗率/原因',
+                        sortable: true,
                         width: 140,
                         value: (it) => [
                           if (it.wasteRate != null) '${it.wasteRate}%',
@@ -1438,6 +1484,7 @@ class _SubcontractDocDetailPageState
                       MasterColumnDef(
                         key: 'supplier',
                         label: '委外商',
+                        filterFromRows: true,
                         width: 170,
                         value: (_) => names.supplier(d.supplierId),
                       ),
@@ -1445,18 +1492,23 @@ class _SubcontractDocDetailPageState
                         MasterColumnDef(
                           key: 'currency',
                           label: '币种',
+                          filterFromRows: true,
                           width: 110,
                           value: (_) => names.currency(d.currencyId),
                         ),
                         MasterColumnDef(
                           key: 'taxRate',
                           label: '税率(%)',
+                          type: 'number',
+                          sortable: true,
+                          exactValueOf: (_) => d.taxRate?.toString(),
                           width: 100,
                           value: (_) => d.taxRate?.toString(),
                         ),
                         MasterColumnDef(
                           key: 'settlement',
                           label: '结算方式',
+                          filterFromRows: true,
                           width: 150,
                           value: (_) {
                             for (final method
@@ -1478,6 +1530,7 @@ class _SubcontractDocDetailPageState
                     MasterColumnDef(
                       key: 'remark',
                       label: '备注',
+                      sortable: true,
                       width: 220,
                       value: (it) => it.remark,
                     ),

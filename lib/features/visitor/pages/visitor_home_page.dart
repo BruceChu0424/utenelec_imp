@@ -25,9 +25,11 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/visitor_application.dart';
 import '../providers/visitor_providers.dart';
 import '../providers/visitor_session_provider.dart';
+import '../providers/visitor_column_queries.dart';
 import '../widgets/visitor_status_ui.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 
@@ -44,17 +46,50 @@ class VisitorHomePage extends ConsumerStatefulWidget {
 class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   bool _loggingOut = false;
   VisitorFilter _filter = VisitorFilter.pending;
+  VisitorApplicationStatus? _statusFilter;
   int _page = 1;
   final _tableRows = MasterDataTableRowsController<VisitorApplication>();
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
 
-  String? get _status => switch (_filter) {
-    VisitorFilter.pending => 'pending,hostReviewing',
-    VisitorFilter.approved => 'approved',
-    VisitorFilter.history => 'checkedIn,rejected,cancelled',
+  List<VisitorApplicationStatus> get _statusOptions => switch (_filter) {
+    VisitorFilter.pending => const [
+      VisitorApplicationStatus.pending,
+      VisitorApplicationStatus.hostReviewing,
+    ],
+    VisitorFilter.approved => const [VisitorApplicationStatus.approved],
+    VisitorFilter.history => const [
+      VisitorApplicationStatus.checkedIn,
+      VisitorApplicationStatus.rejected,
+      VisitorApplicationStatus.cancelled,
+    ],
   };
 
+  String? get _status =>
+      _statusFilter?.name ??
+      switch (_filter) {
+        VisitorFilter.pending => 'pending,hostReviewing',
+        VisitorFilter.approved => 'approved',
+        VisitorFilter.history => 'checkedIn,rejected,cancelled',
+      };
+
   VisitorApplicationsQuery get _query => (status: _status, page: _page);
+
+  void _filterByStatus(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() => _page = 1);
+      ref.read(visitorMineColumnsProvider.notifier).state = ref
+          .read(visitorMineColumnsProvider)
+          .search(key, value);
+      return;
+    }
+    if (key != 'status') return;
+    final selected = _statusOptions.where((status) => status.name == value);
+    if (value != null && selected.isEmpty) return;
+    setState(() {
+      _statusFilter = value == null ? null : selected.single;
+      _page = 1;
+    });
+  }
 
   Future<void> _logout() async {
     if (_loggingOut) return;
@@ -74,9 +109,19 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
     final l10n = AppLocalizations.of(context);
     final visitorSession = ref.watch(visitorSessionProvider);
     final visitor = visitorSession.visitor;
-    final paginationScope = (_filter, visitorSession, retainedReaderEpoch(ref));
+    final columns = ref.watch(visitorMineColumnsProvider);
+    final paginationScope = (
+      _filter,
+      _statusFilter,
+      visitorSession,
+      columns,
+      retainedReaderEpoch(ref),
+    );
     final readLease = ref.watch(visitorApplicationsReadProvider(_status))
-      ..bindView(context, currentQuery: () => (_status,));
+      ..bindView(
+        context,
+        currentQuery: () => (_status, ref.read(visitorMineColumnsProvider)),
+      );
     final apps = _retainedPage.resolveFor(
       ref,
       paginationScope,
@@ -127,6 +172,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                 selected: {_filter},
                 onSelectionChanged: (v) => setState(() {
                   _filter = v;
+                  _statusFilter = null;
                   _page = 1;
                 }),
                 segments: [
@@ -181,10 +227,30 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                       },
                       columns: _columns(l10n),
                       items: page.items,
-                      facets: const {},
+                      facets: {
+                        'status': [
+                          for (final status in _statusOptions)
+                            MasterFacetBucket(
+                              value: status.name,
+                              label: visitorStatusLabel(status, l10n),
+                              count: 0,
+                            ),
+                        ],
+                      },
                       nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
+                      serverColumnSearch: true,
+                      filters: {
+                        'status': _statusFilter?.name,
+                        ...columns.searches,
+                      },
+                      onFilterChanged: _filterByStatus,
+                      sortColumn: columns.sort,
+                      sortAscending: columns.ascending,
+                      onSortChange: (key, ascending) {
+                        setState(() => _page = 1);
+                        ref.read(visitorMineColumnsProvider.notifier).state =
+                            columns.sorted(key, ascending);
+                      },
                       // 双击行进入预约详情（保留现有路由与 go 语义）。
                       onRowTap: (app) => context.go('/visitor/apply/${app.id}'),
                       emptyMessage: l10n.commonNoData,
@@ -251,6 +317,9 @@ List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     label: l10n.visitorColPlannedVisit,
     width: 150,
     type: 'date',
+    columnSearchEnabled: true,
+    sortable: true,
+    info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
     value: (app) => fmtDateTime(app.plannedVisitAt),
   ),
 ];

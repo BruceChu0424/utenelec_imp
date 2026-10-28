@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -254,6 +255,47 @@ String _location(GoRouter router) =>
     router.routerDelegate.currentConfiguration.matches.last.matchedLocation;
 
 void main() {
+  testWidgets(
+    'subject trace headers retain typed identity and dates in every server query',
+    (tester) async {
+      final api = _Api();
+      await _pump(
+        tester,
+        api,
+        const GoodsProductionTraceView.query(
+          subject: _subject,
+          dateFrom: '2026-10-01',
+          dateTo: '2026-10-28',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生产产品'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '产品%_',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<GoodsProductionTraceRow>>(
+        find.byType(MasterDataTableView<GoodsProductionTraceRow>),
+      );
+      table.onSortChange!('consumed', false);
+      await tester.pumpAndSettle();
+      final sent = api.calls.last;
+      expect(sent.path, '/production/reports/where-used/trace');
+      expect(sent.query['subjectType'], 'PURCHASE_ORDER');
+      expect(sent.query['subjectId'], 'order-1');
+      expect(sent.query['dateFrom'], '2026-10-01');
+      expect(sent.query['dateTo'], '2026-10-28');
+      expect(sent.query['search.goods'], '产品%_');
+      expect(sent.query['sort'], 'consumed');
+      expect(sent.query['order'], 'desc');
+      expect(sent.query['page'], 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('stock ledger entry is absent with only where-used permission', (
     tester,
   ) async {
@@ -782,7 +824,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      expect(find.text('账号、服务器或权限已变化，请重新搜索'), findsWidgets);
+      await expectTableReadFailureDetails(tester, '账号、服务器或权限已变化，请重新搜索');
       expect(tester.takeException(), isNull);
     },
   );
@@ -871,7 +913,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('WRONG'), findsNothing);
-      expect(find.text('追溯结果与当前对象不一致，请重新查询'), findsWidgets);
+      await expectTableReadFailureDetails(tester, '追溯结果与当前对象不一致，请重新查询');
       expect(tester.takeException(), isNull);
     },
   );
@@ -897,7 +939,7 @@ void main() {
       );
       table.onPageChange!(2);
       await tester.pumpAndSettle();
-      expect(find.text('负责范围已变化'), findsWidgets);
+      await expectTableReadFailureDetails(tester, '负责范围已变化');
       expect(find.text('插座成品'), findsNothing);
       expect(find.text('来源凭证 · 1'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -934,7 +976,7 @@ void main() {
       expect(find.text('全单参与人：报工参与人甲'), findsNothing);
       gate.completeError(ApiException('FORBIDDEN', '权限已变化', httpStatus: 403));
       await tester.pumpAndSettle();
-      expect(find.text('权限已变化'), findsWidgets);
+      await expectTableReadFailureDetails(tester, '权限已变化');
       expect(tester.takeException(), isNull);
     },
   );

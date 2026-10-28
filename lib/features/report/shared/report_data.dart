@@ -22,6 +22,7 @@ class ReportData {
     this.totals = const [],
     this.readScopeVersion,
     this.statisticsGeneratedAt,
+    this.columnSearchKeys = const {},
   });
 
   final List<ReportColumn> columns;
@@ -37,6 +38,21 @@ class ReportData {
   final List<ReportTotal> totals;
   final String? readScopeVersion;
   final String? statisticsGeneratedAt;
+
+  /// Explicit server-supported column queries; a partial page never infers these.
+  final Set<String> columnSearchKeys;
+
+  /// A new query can retain trusted controls; old facts/counts never describe it.
+  ReportData pendingQuery() => ReportData(
+    columns: columns,
+    rows: const [],
+    facets: const {},
+    page: 1,
+    totalPages: -1,
+    total: -1,
+    meta: const {},
+    columnSearchKeys: columnSearchKeys,
+  );
 }
 
 /// Decodes display metadata in bounded slices before a page publishes it.
@@ -85,6 +101,9 @@ Future<ReportData> parseReportResponseResponsive(
     totals: totals,
     readScopeVersion: json['readScopeVersion'] as String?,
     statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
+    columnSearchKeys: (json['columnSearchKeys'] as List? ?? const [])
+        .whereType<String>()
+        .toSet(),
   );
 }
 
@@ -121,5 +140,8 @@ ReportData parseReportResponse(Map<String, dynamic> json, int fallbackPage) {
         .toList(),
     readScopeVersion: json['readScopeVersion'] as String?,
     statisticsGeneratedAt: json['statisticsGeneratedAt'] as String?,
+    columnSearchKeys: (json['columnSearchKeys'] as List? ?? const [])
+        .whereType<String>()
+        .toSet(),
   );
 }

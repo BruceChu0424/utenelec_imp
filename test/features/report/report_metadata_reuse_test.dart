@@ -9,6 +9,7 @@ ReportData _response({
   String? scopeVersion = 'fixture-v1',
 }) => parseReportResponse({
   'readScopeVersion': scopeVersion,
+  'columnSearchKeys': ['amount'],
   'statisticsGeneratedAt': omitted ? null : '2026-10-25T00:00:00Z',
   'columns': [
     {'key': 'amount', 'label': '金额', 'type': 'money'},
@@ -64,6 +65,7 @@ void main() {
       expect(next.queryForPage(2)['includeTotals'], isFalse);
       final retained = next.merge(_response(page: 2, omitted: true));
       expect(retained.statisticsGeneratedAt, '2026-10-25T00:00:00Z');
+      expect(retained.columnSearchKeys, {'amount'});
       cache.accept(next);
       now = 30000000;
       final expired = cache.begin(

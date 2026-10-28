@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
@@ -45,6 +46,50 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final header in [false, true]) {
+    testWidgets('无栈委外批量出库${header ? '标题' : '底部'}返回可用', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = SubcontractOutboundFakeApi();
+      final router = GoRouter(
+        initialLocation: '/batch',
+        routes: [
+          GoRoute(
+            path: '/batch',
+            builder: (_, _) => const WarehouseSubcontractOutboundBatchPage(
+              issueIds: _issueIds,
+            ),
+          ),
+          GoRoute(
+            path: RouteName.warehouseSubcontractOutbound,
+            builder: (_, _) => const Scaffold(body: Text('委外出库任务中心')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            fakeWeightRepositoryOverride(),
+            apiClientProvider.overrideWithValue(api),
+            masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
+            currentPermissionsProvider.overrideWithValue(
+              subcontractOutboundPermissions,
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(header ? find.byType(UtenBackButton) : find.text('返回'));
+      await tester.pumpAndSettle();
+      expect(find.text('委外出库任务中心'), findsOneWidget);
+      expect(api.updates, isEmpty);
+      expect(api.approvals, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final savedPrefix in [
     <String>[],
     ['status'],

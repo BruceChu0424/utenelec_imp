@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
@@ -21,6 +22,7 @@ import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/components/layout/uten_page_scrollbar_host.dart';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
@@ -28,6 +30,8 @@ import 'package:uten_imp/features/company_files/models/company_file_access_draft
 import 'package:uten_imp/features/company_files/pages/company_files_page.dart';
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_item.dart';
+import 'package:uten_imp/features/company_files/widgets/company_file_detail_row.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_dialogs.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
@@ -149,6 +153,8 @@ class _Repository extends CompanyFileRepository {
   Completer<CompanyFileListing>? gate;
   final parents = <String?>[];
   final queries = <({String? parentId, String search})>[];
+  final headerQueries = <Map<String, String?>>[];
+  final orderingQueries = <({String sort, String direction, int page})>[];
   final orders = <List<String>>[];
   final renamed = <String>[];
   final moves = <({String id, String? parentId})>[];
@@ -312,10 +318,13 @@ class _Repository extends CompanyFileRepository {
     bool trash = false,
     int page = 0,
     int size = 100,
+    Map<String, String?> columnFilters = const {},
   }) async {
     calls++;
     parents.add(parentId);
     queries.add((parentId: parentId, search: search));
+    headerQueries.add(Map.of(columnFilters));
+    orderingQueries.add((sort: sort, direction: direction, page: page));
     if (gate != null) return gate!.future;
     if (failure != null) throw failure!;
     final visible = items.where((e) => e.name.contains(search)).toList();
@@ -328,6 +337,29 @@ class _Repository extends CompanyFileRepository {
       breadcrumbs: parentId == null
           ? []
           : [const CompanyFileBreadcrumb(id: 'forms', name: '表格模板')],
+    );
+  }
+}
+
+class _PagedRepository extends _Repository {
+  @override
+  Future<CompanyFileListing> list({
+    String? parentId,
+    String search = '',
+    String sort = 'name',
+    String direction = 'asc',
+    bool trash = false,
+    int page = 0,
+    int size = 100,
+    Map<String, String?> columnFilters = const {},
+  }) async {
+    orderingQueries.add((sort: sort, direction: direction, page: page));
+    if (gate != null) return gate!.future;
+    return CompanyFileListing(
+      entries: [_items[page]],
+      total: 3,
+      size: 1,
+      allowedActions: actions,
     );
   }
 }
@@ -446,6 +478,8 @@ Future<ProviderContainer> _mount(
   AttachmentService? attachments,
   bool pageChrome = false,
   bool inheritedPageInsets = false,
+  bool disableAnimations = true,
+  TargetPlatform? platform,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -470,7 +504,9 @@ Future<ProviderContainer> _mount(
         key: _captureKey,
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: dark ? buildDarkTheme() : buildLightTheme(),
+          theme: (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+            platform: platform,
+          ),
           locale: const Locale('zh'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -479,7 +515,7 @@ Future<ProviderContainer> _mount(
             child: MediaQuery(
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.linear(scale),
-                disableAnimations: true,
+                disableAnimations: disableAnimations,
               ),
               child: pageChrome ? UtenPageScrollbarHost(child: child!) : child!,
             ),
@@ -501,6 +537,9 @@ Future<ProviderContainer> _mount(
 
 Future<void> _capture(WidgetTester tester, String name) async {
   if (Platform.environment['UI_CAPTURE'] != '1') return;
+  final previousShadows = debugDisableShadows;
+  debugDisableShadows = false;
+  await tester.pump();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(_captureKey),
   );
@@ -514,6 +553,8 @@ Future<void> _capture(WidgetTester tester, String name) async {
     ).writeAsBytes(data!.buffer.asUint8List());
     image.dispose();
   });
+  debugDisableShadows = previousShadows;
+  await tester.pump();
 }
 
 Finder _input(String key) => find.descendant(
@@ -591,6 +632,51 @@ void main() {
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
+  testWidgets(
+    'page input translates display pages to zero-based file queries',
+    (tester) async {
+      final repository = _PagedRepository();
+      await _mount(tester, repository);
+      final input = find.descendant(
+        of: find.byType(UtenPagination),
+        matching: find.byType(TextFormField),
+      );
+      repository.gate = Completer<CompanyFileListing>();
+      await tester.enterText(input, '3');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      final arrows = find.descendant(
+        of: find.byType(UtenPagination),
+        matching: find.byType(IconButton),
+      );
+      expect(arrows, findsNWidgets(2));
+      expect(tester.widget<TextFormField>(input).enabled, isFalse);
+      expect(
+        tester
+            .widgetList<IconButton>(arrows)
+            .every((arrow) => arrow.onPressed == null),
+        isTrue,
+      );
+      expect(repository.orderingQueries.map((query) => query.page), [0, 2]);
+      repository.gate!.complete(
+        CompanyFileListing(
+          entries: [_items[2]],
+          total: 3,
+          size: 1,
+          allowedActions: _actions,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.orderingQueries.map((query) => query.page), [0, 2]);
+      expect(
+        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+        3,
+      );
+      expect(find.text('公司制度'), findsWidgets);
+      expect(tester.widget<TextFormField>(input).enabled, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('compact main canvas owns one page end with or without shell', (
     tester,
   ) async {
@@ -803,6 +889,55 @@ void main() {
       expect(controller.text, '公司');
     },
   );
+
+  for (final reducedMotion in [false, true]) {
+    testWidgets(
+      'directory rail has a real transition (reduced=$reducedMotion)',
+      (tester) async {
+        final repository = _Repository();
+        await _mount(tester, repository, disableAnimations: reducedMotion);
+        await tester.pumpAndSettle();
+        final rail = find.byKey(const ValueKey('company-files-navigation'));
+        final toggle = find.byKey(
+          const ValueKey('company-files-toggle-directory'),
+        );
+        final before = tester.getSize(rail).width;
+        expect(before, 180);
+        if (!reducedMotion) await _capture(tester, 'motion-directory-expanded');
+        final calls = repository.calls;
+        await tester.tap(toggle);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        final duringClose = tester.getSize(rail).width;
+        if (!reducedMotion) await _capture(tester, 'motion-directory-closing');
+        if (reducedMotion) {
+          expect(duringClose, 56);
+        } else {
+          expect(duringClose, greaterThan(56));
+          expect(duringClose, lessThan(before));
+        }
+        await tester.pumpAndSettle();
+        expect(tester.getSize(rail).width, 56);
+        expect(find.byTooltip('全部资料'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(toggle);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        final duringOpen = tester.getSize(rail).width;
+        if (!reducedMotion) await _capture(tester, 'motion-directory-opening');
+        if (reducedMotion) {
+          expect(duringOpen, 180);
+        } else {
+          expect(duringOpen, greaterThan(56));
+          expect(duringOpen, lessThan(180));
+        }
+        await tester.pumpAndSettle();
+        expect(tester.getSize(rail).width, before);
+        expect(repository.calls, calls);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('blank canvas right click offers its own permission-aware menu', (
     tester,
@@ -1069,7 +1204,18 @@ void main() {
     await _tap(tester, find.text('访问权限'));
     expect(repository.accessIds, ['text']);
     expect(find.byType(CompanyFileAccessDialog), findsOneWidget);
-    expect(find.text('仅影响这份文件或文件夹，不会修改系统总权限。'), findsOneWidget);
+    const scopeHint = '仅影响这份文件或文件夹，不会修改系统总权限。';
+    expect(find.textContaining(scopeHint), findsNothing);
+    await tester.tap(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message?.contains(scopeHint) ?? false),
+      ),
+    );
+    // The page's command lock stays busy while this dialog is open.
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pump();
+    expect(find.textContaining(scopeHint), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1391,6 +1537,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('context-menu details on a folder opens the side panel', (
+    tester,
+  ) async {
+    await _mount(tester, _Repository());
+    await _entryMenu(tester, 'forms');
+    expect(find.text('详情'), findsOneWidget);
+    await tester.tap(find.text('详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('报销、采购及仓库常用表单'), findsOneWidget);
+    expect(find.text('文件夹'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('context-menu details on a folder opens the sheet below 1220', (
+    tester,
+  ) async {
+    await _mount(tester, _Repository(), size: const Size(1100, 800));
+    await _entryMenu(tester, 'forms');
+    await tester.tap(find.text('详情'));
+    await tester.pumpAndSettle();
+    expect(find.text('报销、采购及仓库常用表单'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('details view reflows at narrow widths', (tester) async {
     await _mount(tester, _Repository(), size: const Size(390, 844));
     await tester.tap(find.byIcon(Icons.grid_view_rounded));
@@ -1405,7 +1575,10 @@ void main() {
   testWidgets('desktop tile and details views expose the same documents', (
     tester,
   ) async {
-    await _mount(tester, _Repository());
+    final previousShadows = debugDisableShadows;
+    if (Platform.environment['UI_CAPTURE'] == '1') debugDisableShadows = false;
+    addTearDown(() => debugDisableShadows = previousShadows);
+    await _mount(tester, _Repository(), platform: TargetPlatform.windows);
     await tester.tap(find.byIcon(Icons.grid_view_rounded));
     await tester.pumpAndSettle();
     await tester.tap(find.text('平铺'));
@@ -1419,6 +1592,205 @@ void main() {
     expect(find.text('公司公文模板.docx'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await _capture(tester, 'desktop-details');
+    final rows = find.byType(CompanyFileDetailRow);
+    expect(rows, findsNWidgets(_items.length + 1));
+    final header = tester.getRect(rows.first);
+    final body = tester.getRect(rows.at(1));
+    expect(header.left, closeTo(body.left, .01));
+    expect(header.right, closeTo(body.right, .01));
+    for (final row in rows.evaluate()) {
+      final cells = find.descendant(
+        of: find.byWidget(row.widget),
+        matching: find.byType(UtenTableCellFrame),
+      );
+      expect(cells, findsNWidgets(7));
+      expect(
+        tester.widget<UtenTableCellFrame>(cells.last).border.right.width,
+        .5,
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey('company-file-header-size')));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'desktop-detail-size-menu');
+    expect(
+      tester
+          .getRect(find.byKey(const Key('uten-grid-column-filter-menu')))
+          .right,
+      lessThanOrEqualTo(tester.view.physicalSize.width),
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('uten-column-keyword-input')))
+          .decoration!
+          .helperText,
+      isNull,
+    );
+    final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(
+      tester.getCenter(find.byKey(const Key('uten-column-search-help'))),
+    );
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    await _capture(tester, 'desktop-detail-size-help-hover');
+    await mouse.removePointer();
+    debugDisableShadows = previousShadows;
+  });
+
+  testWidgets(
+    'detail headers submit independent typed server conditions and sorting',
+    (tester) async {
+      final repository = _Repository();
+      await _mount(tester, repository);
+      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('详情'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('company-file-header-size')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=1024',
+      );
+      await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {'search.size': '>=1024'});
+      expect(repository.orderingQueries.last.page, 0);
+      await tester.tap(
+        find.byKey(const ValueKey('company-file-header-updated')),
+      );
+      await tester.pumpAndSettle();
+      final calls = repository.calls;
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '2026-02-30',
+      );
+      await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+      await tester.pumpAndSettle();
+      expect(repository.calls, calls);
+      final dateError = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.errorMessage?.contains('请输入有效日期') ?? false),
+      );
+      expect(dateError, findsOneWidget);
+      await tester.tap(dateError);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('请输入有效日期'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '2026-10',
+      );
+      await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {
+        'search.size': '>=1024',
+        'search.updated': '2026-10',
+      });
+      await tester.tap(find.byKey(const ValueKey('company-file-header-size')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('从大到小'));
+      await tester.pumpAndSettle();
+      expect(repository.orderingQueries.last.sort, 'size');
+      expect(repository.orderingQueries.last.direction, 'desc');
+      expect(repository.headerQueries.last['search.updated'], '2026-10');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'detail type choices replace type keywords and name literals retain their own meaning',
+    (tester) async {
+      final repository = _Repository();
+      await _mount(tester, repository);
+      await tester.tap(find.byIcon(Icons.grid_view_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('详情'));
+      await tester.pumpAndSettle();
+      final type = find.byKey(const ValueKey('company-file-header-type'));
+      await tester.tap(type);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('文件夹').last);
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {'search.kind': 'folder'});
+      await tester.tap(type);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'pdf',
+      );
+      await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {'search.type': 'pdf'});
+      await tester.tap(type);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('文件').last);
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {'search.kind': 'file'});
+      await tester.tap(find.byKey(const ValueKey('company-file-header-name')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'file',
+      );
+      await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(InputChip),
+          matching: find.text('名称：file'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(InputChip),
+          matching: find.text('类型：文件'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('empty detail filter stays clearable after resize', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _mount(tester, repository);
+    await tester.tap(find.byIcon(Icons.grid_view_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('详情'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('company-file-header-name')));
+    await tester.pumpAndSettle();
+    repository.items = [];
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      'another page',
+    );
+    await tester.tap(find.byKey(const Key('uten-column-keyword-search')));
+    await tester.pumpAndSettle();
+    expect(find.byType(InputChip), findsOneWidget);
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(find.byType(InputChip), findsOneWidget);
+    repository.items = _items;
+    await tester.tap(
+      find.descendant(
+        of: find.byType(InputChip),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.headerQueries.last, isEmpty);
+    expect(find.byType(InputChip), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('deleted password folder retains an unlock action', (

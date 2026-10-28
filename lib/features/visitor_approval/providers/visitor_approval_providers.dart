@@ -5,6 +5,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../visitor/models/visitor_application.dart';
 import '../../visitor/repositories/visitor_repository.dart';
 import '../../visitor/repositories/visitor_staff_repository.dart';
+import '../../visitor/providers/visitor_column_queries.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -23,17 +24,20 @@ final visitorApprovalReadProvider = Provider.autoDispose
     >(
       (ref, query) {
         ref.watch(visitorStaffRepositoryProvider);
-        return ScopedPagedReadProviderLease(ref, query: query);
+        final columns = ref.watch(visitorApprovalColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: (query, columns));
       },
       dependencies: [
         exportContextEpochProvider,
         visitorStaffRepositoryProvider,
+        visitorApprovalColumnsProvider,
       ],
     );
 final visitorApprovalListProvider = FutureProvider.autoDispose
     .family<PagedResult<VisitorApplication>, VisitorApprovalQuery>(
       (ref, q) {
         final repository = ref.watch(visitorStaffRepositoryProvider);
+        final columns = ref.watch(visitorApprovalColumnsProvider);
         return ref
             .watch(
               visitorApprovalReadProvider((
@@ -47,6 +51,9 @@ final visitorApprovalListProvider = FutureProvider.autoDispose
                 status: q.status,
                 hostDepartmentId: q.hostDepartmentId,
                 page: page,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
               ),
             );
       },
@@ -54,6 +61,7 @@ final visitorApprovalListProvider = FutureProvider.autoDispose
       dependencies: [
         visitorStaffRepositoryProvider,
         visitorApprovalReadProvider,
+        visitorApprovalColumnsProvider,
       ],
     );
 
@@ -75,25 +83,37 @@ final visitorHostReadProvider = Provider.autoDispose
     .family<ScopedPagedReadProviderLease<VisitorApplication>, String?>(
       (ref, status) {
         ref.watch(visitorStaffRepositoryProvider);
-        return ScopedPagedReadProviderLease(ref, query: (status,));
+        final columns = ref.watch(visitorHostColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: (status, columns));
       },
       dependencies: [
         exportContextEpochProvider,
         visitorStaffRepositoryProvider,
+        visitorHostColumnsProvider,
       ],
     );
 final myAsHostProvider = FutureProvider.autoDispose
     .family<PagedResult<VisitorApplication>, VisitorHostQuery>(
       (ref, q) {
         final repository = ref.watch(visitorStaffRepositoryProvider);
+        final columns = ref.watch(visitorHostColumnsProvider);
         return ref
             .watch(visitorHostReadProvider(q.status))
             .read(
               q.page,
-              fetchPage: (page) =>
-                  repository.myAsHost(status: q.status, page: page),
+              fetchPage: (page) => repository.myAsHost(
+                status: q.status,
+                page: page,
+                columns: columns.searches,
+                sort: columns.sort,
+                ascending: columns.ascending,
+              ),
             );
       },
       retry: pagedReadProviderRetry,
-      dependencies: [visitorStaffRepositoryProvider, visitorHostReadProvider],
+      dependencies: [
+        visitorStaffRepositoryProvider,
+        visitorHostReadProvider,
+        visitorHostColumnsProvider,
+      ],
     );

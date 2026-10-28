@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -157,17 +158,16 @@ class _WorkshopTaskMaterialBinPanelState
         if (!widget.compact) const Divider(),
         Row(
           children: [
-            Expanded(
+            Flexible(
               child: Text(
                 '车间内料仓',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            if (widget.compact)
-              const Tooltip(
-                message: '库存为按报工估算的车间共用余量，实存以现场盘点为准；可提前整批补料。',
-                child: Icon(Icons.info_outline_rounded, size: 18),
-              ),
+            const UtenFieldHintIcon(
+              info: '库存为按报工估算的车间共用余量，实存以现场盘点为准。可以提前整批补料；本提示不要求每张工单先去仓库领料。',
+              dense: true,
+            ),
           ],
         ),
         const SizedBox(height: UtenSpacing.s8),
@@ -180,11 +180,6 @@ class _WorkshopTaskMaterialBinPanelState
           if (data.rows.isEmpty) const Text('当前用料尚未确定，暂不能判断库存是否足够'),
           for (final row in data.rows) _row(row),
           if (data.reason?.isNotEmpty == true) Text(data.reason!),
-          if (!widget.compact)
-            const Text(
-              '库存为按报工估算的车间共用余量，实存以现场盘点为准。'
-              '可以提前整批补料；本提示不要求每张工单先去仓库领料。',
-            ),
         ],
         if (data?.canRequest == true) ...[
           const SizedBox(height: UtenSpacing.s8),

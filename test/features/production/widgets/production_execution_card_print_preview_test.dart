@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -299,7 +300,18 @@ void main() {
       await tester.tap(find.text('重新读取'));
       await tester.pumpAndSettle();
       expect(loadCount, 2);
+      expect(find.textContaining('1 张生产计划、1 张执行工卡。'), findsNothing);
+      final help = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info?.contains('工卡内容只是查看用') == true,
+      );
+      expect(help, findsOneWidget);
+      await tester.tap(help);
+      await tester.pumpAndSettle();
       expect(find.textContaining('1 张生产计划、1 张执行工卡。'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       expect(find.text('等待车间领料'), findsOneWidget);
       expect(find.textContaining('仓库实际发料完成后可直接报工'), findsOneWidget);
       final tableBorder = tester

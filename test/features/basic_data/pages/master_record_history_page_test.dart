@@ -13,6 +13,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -52,13 +53,17 @@ final _grants = StateProvider<Set<String>>(
   },
 );
 final _generation = StateProvider<int>((_) => 1);
+final _delegablePages = StateProvider<Set<String>>((_) => {});
 
 class _Snapshots extends SessionSnapshotNotifier {
   @override
   Future<SessionSnapshot?> build() async =>
       ref.watch(authenticatedScopeProvider) == null
       ? null
-      : SessionSnapshot(generation: ref.watch(_generation));
+      : SessionSnapshot(
+          generation: ref.watch(_generation),
+          delegableSurfaceKeys: ref.watch(_delegablePages),
+        );
 }
 
 class _OldLayout extends PlatformTableLayoutNotifier {
@@ -338,6 +343,50 @@ Future<void> _openCategory(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('permission entry follows the locally selected history entity', (
+    tester,
+  ) async {
+    final transport = _Transport();
+    final fixture = await _pump(
+      tester,
+      transport,
+      initialLocation: '/basicinfo/history?entityType=goods',
+    );
+    fixture.container.read(_delegablePages.notifier).state = {
+      'basic.goods',
+      'basic.client',
+      'basic.hub',
+    };
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('设置「货品资料」页面权限'), findsOneWidget);
+    final table = tester
+        .widget<MasterDataTableView<history.MasterRecordRevision>>(
+          find.byType(MasterDataTableView<history.MasterRecordRevision>),
+        );
+    table.onFilterChanged('entityType', 'clients');
+    await tester.pumpAndSettle();
+    expect(transport.queries.last['entityType'], 'clients');
+    expect(
+      fixture
+          .router
+          .routeInformationProvider
+          .value
+          .uri
+          .queryParameters['entityType'],
+      'goods',
+    );
+    expect(find.byTooltip('设置「客户资料」页面权限'), findsOneWidget);
+    expect(find.byTooltip('设置「货品资料」页面权限'), findsNothing);
+    tester
+        .widget<MasterDataTableView<history.MasterRecordRevision>>(
+          find.byType(MasterDataTableView<history.MasterRecordRevision>),
+        )
+        .onFilterChanged('entityType', null);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('设置「基础资料」页面权限'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'record and category filters align with the table toolbar and remain clearable',
     (tester) async {
@@ -412,7 +461,12 @@ void main() {
       if (browserBack) {
         app.router.pop();
       } else {
-        await tester.tap(find.byType(UtenBackButton));
+        await tester.tap(
+          find.descendant(
+            of: find.byType(UtenBackButton),
+            matching: find.byType(IconButton),
+          ),
+        );
       }
       await tester.pumpAndSettle();
       expect(
@@ -477,7 +531,12 @@ void main() {
     );
     await tester.pumpAndSettle();
     final readsBeforeReturn = wire.queries.length;
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(wire.queries.length, greaterThan(readsBeforeReturn));
     expect(wire.queries.skip(readsBeforeReturn), everyElement(expected));
@@ -508,7 +567,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
     await tester.tap(find.text('单位历史'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     table = tester.widget<MasterDataTableView<history.MasterRecordRevision>>(
       find.byKey(const Key('master-record-history-table')),
@@ -537,6 +601,10 @@ void main() {
       await _selectHeader(tester, 'action', '删除');
       await _searchHeader(tester, 'recordLabel', '  名称变更  ');
       await _searchHeader(tester, 'actorName', '  张师傅  ');
+      await _searchHeader(tester, 'summary', '修改');
+      await _selectHeader(tester, 'sourceType', '组装信息');
+      expect(wire.queries.last, containsPair('summaryKeyword', '修改'));
+      expect(wire.queries.last, containsPair('sourceType', 'BOM'));
       await _openHeader(tester, 'recordedAt');
       await tester.pump(const Duration(milliseconds: 350));
       Navigator.of(tester.element(find.byType(UtenDateRangePickerDialog))).pop(
@@ -595,16 +663,37 @@ void main() {
         {..._defaultDatedQuery(), 'cursor': 'opaque-next-token'},
       ]);
       expect(find.text('第一页货品'), findsOneWidget);
-      expect(find.text('第 1 页'), findsOneWidget);
-      expect(tester.widget<UtenButton>(_button('上一页')).onPressed, isNull);
-      await tester.tap(_button('下一页'));
+      expect(find.byType(UtenPagination), findsOneWidget);
+      expect(find.text('/ ?'), findsOneWidget);
+      expect(find.text('上一页'), findsNothing);
+      expect(find.text('下一页'), findsNothing);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey('master-table-page-previous')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pumpAndSettle();
       expect(wire.queries.length, initial);
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       expect(find.text('第一页货品'), findsNothing);
       expect(find.text('第二页货品'), findsOneWidget);
-      expect(find.text('第 2 页'), findsOneWidget);
-      expect(tester.widget<UtenButton>(_button('下一页')).onPressed, isNull);
+      expect(
+        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+        2,
+      );
+      expect(find.text('/ 2'), findsOneWidget);
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey('master-table-page-next')),
+            )
+            .onPressed,
+        isNull,
+      );
       final table = tester
           .widget<MasterDataTableView<history.MasterRecordRevision>>(
             find.byKey(const Key('master-record-history-table')),
@@ -623,11 +712,28 @@ void main() {
         reason:
             'A chronological server cursor cannot offer full-history sorting through only the loaded page',
       );
-      await tester.tap(_button('上一页'));
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-page-previous')),
+      );
       await tester.pumpAndSettle();
       expect(wire.queries.length, initial);
       expect(wire.queries.first.containsKey('cursor'), isFalse);
       expect(find.text('第一页货品'), findsOneWidget);
+      expect(find.text('/ 2'), findsOneWidget);
+      final pageInput = find.descendant(
+        of: find.byType(UtenPagination),
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(pageInput, '99');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.text('第二页货品'), findsOneWidget);
+      expect(
+        wire.queries.length,
+        initial,
+        reason:
+            'Page input clamps to known terminal page and uses the scoped cache',
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -667,7 +773,7 @@ void main() {
     (tester) async {
       final wire = _Transport();
       await _pump(tester, wire);
-      await tester.tap(_button('下一页'));
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pumpAndSettle();
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordLabel', '通过摘要匹配');
@@ -678,7 +784,11 @@ void main() {
         )['keyword'],
         '通过摘要匹配',
       );
-      expect(find.text('第 1 页'), findsOneWidget);
+      expect(
+        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+        1,
+      );
+      expect(find.text('/ ?'), findsOneWidget);
       // The server may match an immutable before-value/summary that is absent
       // from visible identity cells. A local current-page search would hide it.
       expect(find.text('第一页货品'), findsOneWidget);
@@ -801,7 +911,7 @@ void main() {
     (tester) async {
       final wire = _Transport();
       await _pump(tester, wire);
-      await tester.tap(_button('下一页'));
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
       await tester.pumpAndSettle();
       expect(wire.queries.last['cursor'], 'opaque-next-token');
       await _searchHeader(tester, 'recordCode', ' V8 ');

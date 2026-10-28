@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_motion.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/workforce_overview.dart';
 
@@ -115,13 +118,17 @@ class _OrganizationWorkforceOverviewCardState
                           ),
                         ),
                         const SizedBox(width: UtenSpacing.s4),
-                        AnimatedRotation(
-                          turns: _expanded ? 0.5 : 0,
-                          duration: const Duration(milliseconds: 180),
-                          child: Icon(
-                            Icons.expand_more_rounded,
-                            size: 20,
-                            color: theme.colorScheme.onPrimaryContainer,
+                        UtenMotion(
+                          duration: UtenAnim.normal,
+                          builder: (context, duration) => AnimatedRotation(
+                            turns: _expanded ? 0.5 : 0,
+                            duration: duration,
+                            curve: UtenAnim.standard,
+                            child: Icon(
+                              Icons.expand_more_rounded,
+                              size: 20,
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
                           ),
                         ),
                       ],
@@ -167,51 +174,59 @@ class _OverviewBody extends StatelessWidget {
         _Metric('下级部门', '${overview.descendantDepartmentCount}'),
       ],
     );
-    if (!expanded) return currentSection;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         currentSection,
-        const SizedBox(height: UtenSpacing.s16),
-        _MetricSection(
-          title: '近 ${overview.periodMonths} 个月人员流动',
-          subtitle: '${overview.periodStart} — ${overview.asOf}',
-          metrics: [
-            _Metric('入职', '${overview.hiredEmployees}'),
-            _Metric('复职', '${overview.rehiredEmployees}'),
-            _Metric('离职', '${overview.departedEmployees}'),
-            _Metric(
-              '净变化',
-              overview.netChange > 0
-                  ? '+${overview.netChange}'
-                  : '${overview.netChange}',
-            ),
-            _Metric(
-              '离职率(估算)',
-              rate == null ? '—' : '${rate.toStringAsFixed(1)}%',
-              tooltip: overview.historyCoverageComplete
-                  ? '离职事件数 ÷ 期初与期末平均在册人数'
-                  : '任职历史覆盖不完整，暂不显示离职率',
-            ),
-            _Metric(
-              '跨部门调动',
-              '${overview.transferInEmployees} 入 / '
-                  '${overview.transferOutEmployees} 出',
-            ),
-          ],
+        UtenCollapsibleContent(
+          expanded: expanded,
+          maintainState: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: UtenSpacing.s16),
+              _MetricSection(
+                title: '近 ${overview.periodMonths} 个月人员流动',
+                subtitle: '${overview.periodStart} — ${overview.asOf}',
+                metrics: [
+                  _Metric('入职', '${overview.hiredEmployees}'),
+                  _Metric('复职', '${overview.rehiredEmployees}'),
+                  _Metric('离职', '${overview.departedEmployees}'),
+                  _Metric(
+                    '净变化',
+                    overview.netChange > 0
+                        ? '+${overview.netChange}'
+                        : '${overview.netChange}',
+                  ),
+                  _Metric(
+                    '离职率(估算)',
+                    rate == null ? '—' : '${rate.toStringAsFixed(1)}%',
+                    tooltip: overview.historyCoverageComplete
+                        ? '离职事件数 ÷ 期初与期末平均在册人数'
+                        : '任职历史覆盖不完整，暂不显示离职率',
+                  ),
+                  _Metric(
+                    '跨部门调动',
+                    '${overview.transferInEmployees} 入 / '
+                        '${overview.transferOutEmployees} 出',
+                  ),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              _MetricSection(
+                title: '到期与未来 30 天提醒',
+                metrics: [
+                  _Metric('合同已逾期', '${overview.contractOverdue}'),
+                  _Metric('合同到期', '${overview.contractExpiringIn30Days}'),
+                  _Metric('试用期已逾期', '${overview.probationOverdue}'),
+                  _Metric('试用期结束', '${overview.probationEndingIn30Days}'),
+                ],
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              _DataQualityNote(overview: overview),
+            ],
+          ),
         ),
-        const SizedBox(height: UtenSpacing.s16),
-        _MetricSection(
-          title: '到期与未来 30 天提醒',
-          metrics: [
-            _Metric('合同已逾期', '${overview.contractOverdue}'),
-            _Metric('合同到期', '${overview.contractExpiringIn30Days}'),
-            _Metric('试用期已逾期', '${overview.probationOverdue}'),
-            _Metric('试用期结束', '${overview.probationEndingIn30Days}'),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        _DataQualityNote(overview: overview),
       ],
     );
   }

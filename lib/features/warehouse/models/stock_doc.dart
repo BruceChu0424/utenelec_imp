@@ -68,10 +68,11 @@ class StockDocListItem {
     this.status,
     this.closed = false,
     this.legacyId,
+    bool legacyImported = false,
     this.assTeam,
     this.departmentId,
     this.issueStatus,
-  });
+  }) : legacyImported = legacyImported || legacyId != null;
   final String id;
   final String? docType;
   final String? billNo;
@@ -82,6 +83,7 @@ class StockDocListItem {
   final int? status;
   final bool closed;
   final int? legacyId;
+  final bool legacyImported;
   final String? assTeam;
 
   /// 领料车间/部门（DRAW 用）
@@ -102,6 +104,7 @@ class StockDocListItem {
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         legacyId: (json['legacyId'] as num?)?.toInt(),
+        legacyImported: importedBusinessDocument(json),
         assTeam: json['assTeam'] as String?,
         departmentId: json['departmentId'] as String?,
         issueStatus: (json['issueStatus'] as num?)?.toInt(),

@@ -189,27 +189,164 @@ void main() {
       expect(api.lastQuery?['page'], 1);
     },
   );
+
+  testWidgets('ordinary ledger headers query full scope and keep exact facts', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArApApi(exactFacts: true);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: const MaterialApp(home: FinanceArApPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    MasterDataTableView<ArApLedgerItem> table() =>
+        tester.widget(find.byType(MasterDataTableView<ArApLedgerItem>));
+    final columns = {for (final column in table().columns) column.key: column};
+    final item = table().items.single;
+    expect(
+      columns['amountOriginal']!.exactValueOf!(item),
+      '90071992547409.1234',
+    );
+    expect(columns['exchangeRate']!.value(item), '1.234567');
+    expect(columns['openItemKind']!.value(item), '客户预收');
+    expect(
+      columns['prepaymentAppliedOriginal']!.exactValueOf!(item),
+      '-12.3456',
+    );
+    expect(
+      table().serverColumnSearchKeys,
+      containsAll([
+        'party',
+        'remark',
+        'salesOrderNos',
+        'dueDate',
+        'amountOriginal',
+        'legacySourceResolution',
+      ]),
+    );
+    expect(table().summaryBar, isNull);
+    table().onFilterChanged('currency', 'retired-usd');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('search.amountOriginal', '>=90071992547409.1234');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('search.dueDate', '2026-09..2026-10');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('search.salesOrderNos', 'SO%_ A B');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('legacySourceResolution', 'EXACT_SOURCE');
+    await tester.pumpAndSettle();
+    expect(
+      api.lastQuery,
+      containsPair('search.amountOriginal', '>=90071992547409.1234'),
+    );
+    expect(api.lastQuery, containsPair('search.dueDate', '2026-09..2026-10'));
+    expect(api.lastQuery, containsPair('search.salesOrderNos', 'SO%_ A B'));
+    expect(
+      api.lastQuery,
+      containsPair('legacySourceResolution', 'EXACT_SOURCE'),
+    );
+    expect(api.lastQuery, containsPair('currencyId', 'retired-usd'));
+    expect(api.lastQuery, containsPair('page', 1));
+    expect(
+      api.facetQuery,
+      containsPair('search.amountOriginal', '>=90071992547409.1234'),
+    );
+    expect(
+      table().facets['currency']!.map((item) => item.value),
+      contains('retired-usd'),
+    );
+    table().onFilterChanged('currency', null);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery!['search.amountOriginal'], isNull);
+    expect(api.lastQuery!['search.dueDate'], '2026-09..2026-10');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'AP direction clears AR-only criteria and never labels supplier offsets as prepayments',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ArApApi(exactFacts: true, direction: 'AP');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(home: FinanceArApPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<ArApLedgerItem> table() =>
+          tester.widget(find.byType(MasterDataTableView<ArApLedgerItem>));
+      final prepay = table().columns.singleWhere(
+        (column) => column.key == 'prepaymentAppliedOriginal',
+      );
+      expect(prepay.value(table().items.single), '—');
+      expect(prepay.exactValueOf!(table().items.single), isNull);
+      expect(table().items.single.prepaymentAppliedOriginal, isNull);
+      table().onFilterChanged('currency', 'retired-usd');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('search.salesOrderNos', 'SO-OTHER-PAGE');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('search.prepaymentAppliedOriginal', '>0');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('direction', 'AP');
+      await tester.pumpAndSettle();
+      expect(api.lastQuery!['search.salesOrderNos'], isNull);
+      expect(api.lastQuery!['search.prepaymentAppliedOriginal'], isNull);
+      expect(
+        table().columns.map((column) => column.key),
+        isNot(contains('prepaymentAppliedOriginal')),
+      );
+      expect(
+        table().columns.map((column) => column.key),
+        isNot(contains('salesOrderNos')),
+      );
+    },
+  );
 }
 
 class _ArApApi extends ApiClient {
-  _ArApApi({this.sourceDocType}) : super(Dio());
+  _ArApApi({this.sourceDocType, this.exactFacts = false, this.direction = 'AR'})
+    : super(Dio());
 
   final String? sourceDocType;
+  final bool exactFacts;
+  final String direction;
 
   Map<String, dynamic>? lastQuery;
+  Map<String, dynamic>? facetQuery;
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/ar-ap/facets') {
+      facetQuery = Map.of(query ?? const {});
+      return {
+        'billNo': const <Map<String, dynamic>>[],
+        'sourceDocNo': const <Map<String, dynamic>>[],
+        'currency': [
+          if (exactFacts)
+            {'value': 'retired-usd', 'label': '美元（历史引用）', 'count': 0},
+        ],
+      };
+    }
     if (path == '/finance/ar-ap') {
       lastQuery = query == null ? null : Map<String, dynamic>.from(query);
       return <String, dynamic>{
         'items': <Map<String, dynamic>>[
           <String, dynamic>{
             'id': 'ledger-1',
-            'direction': 'AR',
+            'direction': direction,
+            if (exactFacts) 'openItemKind': 'CUSTOMER_PREPAYMENT',
+            if (exactFacts) 'amountOriginalExact': '90071992547409.1234',
+            if (exactFacts) 'exchangeRateExact': '1.234567',
+            if (exactFacts) 'amountOffsetOriginalExact': '-12.3456',
             'sourceDocType': sourceDocType,
             'legacySourceResolution': sourceDocType == 'LEGACY_OPENING'
                 ? {'status': 'AMBIGUOUS_SOURCE'}

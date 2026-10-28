@@ -394,6 +394,8 @@ class SubcontractDocConfig {
     itemHasWasteFields: true,
     linkToMaterialIssueItem: true,
     approveEffect:
+        '订货允许损耗的正常用料已包含在回厂估算核销中，请勿重复登记；'
+        '本单只登记委外商处尚未核销、确已发生的额外材料损失。'
         '审核只登记来源发料物料已损耗量(发料时已转出公司仓，不会再次扣公司库存)；'
         '建议索赔金额仅供后续财务责任决定参考，不自动扣款、抵销或生成负应付。',
     skipListOnCreate: true,

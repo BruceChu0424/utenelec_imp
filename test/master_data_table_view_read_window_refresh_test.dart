@@ -328,7 +328,20 @@ void main() {
     await host.refresh();
     await tester.pumpAndSettle();
     expect(host.rows.items, isEmpty);
+    expect(find.text('denied'), findsNothing);
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-initial-read-details')),
+    );
+    await tester.pumpAndSettle();
     expect(find.text('denied'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == 'denied',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 

@@ -79,6 +79,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
             key: 'result',
             label: l10n.warehouseOutboundBatchResult,
             width: 250,
+            filterFromRows: true,
+            facetSearchEnabled: true,
             value: (r) => resultOf!(r.document),
           ),
         MasterColumnDef(
@@ -88,6 +90,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
               ? '按原入库单完整审核，未选齐同单明细时请返回任务中心核对'
               : l10n.warehouseStockOutboundHint,
           width: 170,
+          sortable: true,
+          filterFromRows: true,
           value: (r) => r.document.billNo ?? '—',
         ),
         // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
@@ -140,6 +144,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           label: inbound ? '入库数量' : l10n.warehouseStockOutboundQuantity,
           width: 145,
           type: 'number',
+          sortable: true,
+          exactValueOf: (r) => r.item.qtyText,
           value: (r) =>
               _quantityWithUnit(r.item.qty, names.unit(r.item.unitId)),
         ),
@@ -148,7 +154,10 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           key: 'weight',
           label: l10n.warehouseOutboundWeight,
           width: 110,
-          type: 'number',
+          type: 'weight',
+          sortable: true,
+          filterFromRows: true,
+          exactValueOf: (r) => r.item.weight?.toString(),
           value: (r) => formatWeightValue(r.item.weight),
           cellBuilder: (context, r) => WeightText(kg: r.item.weight),
         ),

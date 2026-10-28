@@ -52,6 +52,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
@@ -89,6 +90,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
+  String? _acceptedEndpoint;
+  Map<String, dynamic>? _acceptedQuery;
   bool _loading = false;
   int _loadGeneration = 0;
 
@@ -285,6 +288,8 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
         _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
+        _acceptedEndpoint = endpoint;
+        _acceptedQuery = Map.unmodifiable(query);
         _page = _reportPages.pageNum;
       }
     });
@@ -353,31 +358,20 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      '/production/reports/plan/${_kind.endpoint}',
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/production/reports/plan/${_kind.endpoint}',
+      queryOf: () => _exportQuery,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -556,7 +550,11 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
   }
 
   Widget _buildTable() {
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final source = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final matches =
+        _acceptedEndpoint == _readEndpoint &&
+        const DeepCollectionEquality().equals(_acceptedQuery, _readQuery);
+    final data = matches ? source : source?.pendingQuery();
     if (data == null) {
       final error = _reportPages.error;
       return Center(
@@ -576,6 +574,13 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
+            columnSearchEnabled: data.columnSearchKeys.contains(c.key),
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
@@ -587,6 +592,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         tableKey:
             'features.production.pages.production_report_page.ProductionReportPageState._buildTable.1',
         columns: columns,
+        serverColumnSearchKeys: data.columnSearchKeys,
         items: data.rows,
         toolbarActions: [
           UtenPrintPreviewButton(

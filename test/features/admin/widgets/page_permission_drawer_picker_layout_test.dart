@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,60 @@ class _NoNetworkApi extends Fake implements ApiClient {}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'staff headers query the full managed scope and preserve choices through sorting',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1450, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _Repository();
+      await tester.pumpWidget(_app(repository));
+      await tester.pumpAndSettle();
+      final position = find.byKey(
+        const ValueKey('master-column-filter-position'),
+      );
+      await tester.ensureVisible(position);
+      await tester.tap(position);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '业务%_员',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last['search.position'], '业务%_员');
+      MasterDataTableView<PagePermissionStaffSummary> table() => tester.widget(
+        find.byKey(const ValueKey('page-permission-staff-table')),
+      );
+      table().onFilterChanged('accountStatus', 'notProvisioned');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('employmentStatus', 'probation');
+      await tester.pumpAndSettle();
+      table().onSortChange!('employeeCode', false);
+      await tester.pumpAndSettle();
+      expect(repository.headerQueries.last, {
+        'search.position': '业务%_员',
+        'accountStatus': 'notProvisioned',
+        'employmentStatus': 'probation',
+      });
+      expect(repository.sorts.last, 'employeeCode');
+      expect(repository.pages.last, 1);
+      expect(
+        table().facets['employmentStatus']!.map((item) => item.value),
+        isNot(contains('resigned')),
+      );
+      expect(repository.detailCalls, 0);
+      expect(tester.takeException(), isNull);
+      repository.emptyHeaders = true;
+      table().onFilterChanged('search.name', '不存在');
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(
+        table().filters['search.name'],
+        '不存在',
+        reason: '空结果仍保留表头，能够清除条件恢复查找',
+      );
+    },
+  );
 
   for (final superAdmin in [true, false]) {
     testWidgets('页面客户范围入口保持独立授权 superAdmin=$superAdmin', (tester) async {
@@ -82,7 +137,18 @@ void main() {
       await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(find.text('可查看数据范围'), findsOneWidget);
+      expect(find.textContaining('本人负责及被指定共享的客户'), findsNothing);
+      final scopeHelp = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('本人负责及被指定共享的客户') ?? false),
+      );
+      await tester.ensureVisible(scopeHelp);
+      await tester.tap(scopeHelp);
+      await tester.pumpAndSettle();
       expect(find.textContaining('本人负责及被指定共享的客户'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       final entry = find.byKey(const ValueKey('page-data-scope-entry'));
       if (superAdmin) {
         await tester.tap(entry);
@@ -292,6 +358,10 @@ class _Repository implements PagePermissionDelegationRepository {
   final bool withClientScope;
   final requestedDepartments = <String?>[];
   final searches = <String?>[];
+  final headerQueries = <Map<String, String?>>[];
+  final sorts = <String?>[];
+  final pages = <int>[];
+  bool emptyHeaders = false;
   var detailCalls = 0;
 
   @override
@@ -319,15 +389,22 @@ class _Repository implements PagePermissionDelegationRepository {
     String? search,
     int page = 1,
     int size = 40,
+    Map<String, String?> columnQuery = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     requestedDepartments.add(departmentId);
     searches.add(search);
+    headerQueries.add(Map.of(columnQuery));
+    sorts.add(sort);
+    pages.add(page);
     return PagePermissionStaffPage(
       surfaceKey: surfaceKey,
       departmentId: departmentId,
       departmentName: '销售部',
       items: [
-        for (final id in ['active', 'unprovisioned'])
+        for (final id
+            in emptyHeaders ? <String>[] : ['active', 'unprovisioned'])
           PagePermissionStaffSummary(
             employeeId: id,
             departmentId: 'sales',

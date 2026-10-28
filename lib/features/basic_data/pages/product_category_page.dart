@@ -1,3 +1,4 @@
+import '../../../shared/widgets/read_owned_dialog.dart';
 // 货品资料分类树管理页（基础资料）
 //
 // 顶层壳层(树加载/统一搜索/分类 CRUD)复用 CategoryPageShell；右侧明细区复用
@@ -17,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_navigation_session.dart';
@@ -43,7 +45,7 @@ import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
 import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
-import '../widgets/goods_import_dialog.dart';
+import '../widgets/goods_import_mode_picker.dart';
 import '../widgets/goods_batch_paste_dialog.dart';
 import '../widgets/goods_related_search_control.dart';
 import '../widgets/goods_operation_history_panel.dart';
@@ -161,16 +163,37 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required bool compact,
     required bool treeNotEmpty,
   }) {
+    // AppBar 级「导入货品」（2026-10-28 用户口径）：不依赖左侧先选中分类——
+    // 未选分类时表格工具条入口不挂载，这里补一个随时可用的入口（先弹三选一
+    // 模式再进导入流程）；表格工具条左簇入口保留（2026-10-19 口径）。
+    final importEntry = [
+      if (ref.watch(currentPermissionsProvider).contains(Perm.goodsImport))
+        TextButton(
+          key: const ValueKey('goods-import-app-bar'),
+          onPressed: () async {
+            if (!await confirmMasterInlineLeave(context) || !context.mounted) {
+              return;
+            }
+            await showGoodsImportWithModePicker(
+              context,
+              ref,
+              onImported: _reloadAll,
+            );
+          },
+          child: const Text('导入货品'), // TODO(l10n): 补 arb
+        ),
+    ];
     final history = MasterRecordHistoryAction(
       entityType: 'goods',
       categoryId: shellSelectedId,
       onChanged: _reloadAll,
     );
     if (!canOpenGoodsOperationHistory(ref.watch(currentPermissionsProvider))) {
-      return [history];
+      return [...importEntry, history];
     }
     final l10n = basicDataL10n(context);
     return [
+      ...importEntry,
       history,
       TextButton(
         onPressed: () async {
@@ -288,32 +311,34 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 失败弹 AlertDialog 显示后端原因（不再静默/仅顶部 toast），成功给计数文案。
   @override
   Future<void> shellDeleteNode(ProductCategoryNode node) async {
+    final current = shellCaptureActionOwner();
     if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
     }
     ProductCategoryDeletePreview? preview;
     try {
-      preview = await ref
-          .read(productCategoryRepositoryProvider)
-          .deletePreview(node.id);
+      preview = await shellRunCategoryTask(
+        '正在检查删除范围…',
+        () =>
+            ref.read(productCategoryRepositoryProvider).deletePreview(node.id),
+      );
     } catch (_) {
       preview = null; // 预览失败不阻塞：退回无计数的通用确认。
     }
-    if (!mounted) return;
+    if (!mounted || !current()) return;
 
     final hasCascade =
         preview != null &&
         (preview.descendantCount > 0 || preview.goodsCount > 0);
-    final confirm = await showDialog<bool>(
+    final confirm = await showReadOwnedDialog<bool>(
+      ref: ref,
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
-            SizedBox(width: UtenSpacing.s8),
-            Text('删除分类'), // TODO(l10n): 补 arb
-          ],
+        title: const UtenDialogHeading(
+          title: Text('删除分类'),
+          icon: Icons.delete_outline,
+          danger: true,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -367,31 +392,31 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       ),
     );
     if (confirm != true) return;
-    if (!mounted) return;
+    if (!mounted || !current()) return;
 
     try {
-      await shellDeleteCategory(node.id);
+      await shellRunCategoryTask('正在删除分类…', () => shellDeleteCategory(node.id));
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && current()) {
         await _showDeleteError(
           e.message.isNotEmpty ? e.message : '删除失败，请稍后重试', // TODO(l10n): 补 arb
         );
       }
       return;
     } catch (_) {
-      if (mounted) {
+      if (mounted && current()) {
         await _showDeleteError('删除失败，请稍后重试'); // TODO(l10n): 补 arb
       }
       return;
     }
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     shellAfterCategoryDeleted(node.id);
     final msg =
         (preview != null &&
             (preview.descendantCount > 0 || preview.goodsCount > 0))
         ? '已删除分类(含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品)'
         : '分类已删除';
-    if (mounted) context.appSuccess(msg); // TODO(l10n): 补 arb
+    if (mounted && current()) context.appSuccess(msg); // TODO(l10n): 补 arb
     await shellReload();
   }
 
@@ -468,7 +493,11 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         ),
         // 复制/粘贴货品的全程加载遮罩(root Overlay 传送门，不占布局)。
         if (_goodsBusyTitle != null)
-          UtenBusyOverlay(title: _goodsBusyTitle!, description: _goodsBusyDesc),
+          UtenBusyOverlay(
+            showDoNotLeaveHint: false,
+            title: _goodsBusyTitle!,
+            description: _goodsBusyDesc,
+          ),
       ],
     );
   }
@@ -779,9 +808,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           if (includeRelated && query.hasKeyword) 'includeRelated': true,
         },
       ),
-      // 导入货品进表格工具条左簇（2026-10-19 用户口径：与预览打印/导出同排在
-      // 「表头设置 / 全屏」右侧，纯文字无 icon；原分类信息卡带 icon 款退役）。
-      toolbarLeadingActions: (pane) => [
+      // 表格工具条：预览打印、导入货品、导出货品；普通/全屏共用编排入口。
+      // 2026-10-28 起入口先弹三选一模式（新建/修改/混合），AppBar 右上角另有
+      // 不依赖分类选中的同款入口（shellExtraAppBarActions）。
+      toolbarBeforeExportActions: (pane) => [
         if (_perms.contains(Perm.goodsImport))
           UtenButton(
             key: const ValueKey('goods-import'),
@@ -790,7 +820,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
             // 在内部把 large 档钉到 controlHeight，裸 UtenButton 必须显式带上，
             // 2026-09-25 平台统一口径）。
             height: UtenTableToolbar.controlHeight,
-            onPressed: () => showGoodsImportDialog(
+            onPressed: () => showGoodsImportWithModePicker(
               context,
               ref,
               onImported: () {
@@ -1241,7 +1271,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         mounted &&
         !invalidated &&
         boundary == ref.read(sensitiveReadBoundaryProvider);
-    if (!current()) return;
+    if (!mounted || !current()) return;
     final subscription = ref.listenManual(sensitiveReadBoundaryProvider, (
       previous,
       next,
@@ -1543,15 +1573,43 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
 
   // ---- 货品列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 
-  /// 货品表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
+  /// 货品表格列：普通值按内容量宽，富格声明真实控件下限；用户列宽保留。
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   /// 颜色/单位优先显示 UUID 关系解析出的名称；只有历史 UUID 缺失时才回显 legacy #id；价格作为末列。
   static final _goodsColumns = <MasterColumnDef<GoodsListItem>>[
+    // 2026-10-28 用户口径：默认列序「编号」最前、「货品名称」第二，其余不变；
+    // 仅完整旧默认序由 goods_column_layout 迁移；个人调整和固定列保留。
+    MasterColumnDef(
+      key: 'code',
+      label: '编号',
+      width: 120,
+      sortable: true, // 全局唯一显示号但不是关系 id；高基数值用搜索，表头提供排序
+      value: (g) => g.code,
+    ),
     MasterColumnDef(
       key: 'name',
       label: '货品名称',
       width: 200,
       value: (g) => g.name,
+      minimumWidthOf: (_) => 48,
+      measureValueOf: (g) => '${g.name ?? "—"}:${g.isRelatedSearchMatch}',
+      measureWidthScope: 'goods.name.related-match',
+      measureWidthOf: (context, g, scaler) {
+        final textTheme = Theme.of(context).textTheme;
+        return utenTableCellTextWidth(
+              g.name ?? '—',
+              style: textTheme.bodyMedium ?? const TextStyle(),
+              textScaler: scaler,
+            ) +
+            (g.isRelatedSearchMatch
+                ? UtenSpacing.s8 +
+                      utenTableCellTextWidth(
+                        '相关',
+                        style: textTheme.labelSmall ?? const TextStyle(),
+                        textScaler: scaler,
+                      )
+                : 0);
+      },
       cellBuilder: (context, g) => Row(
         children: [
           Expanded(
@@ -1563,7 +1621,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           ),
           if (g.isRelatedSearchMatch) ...[
             const SizedBox(width: UtenSpacing.s8),
-            Text('相关', style: Theme.of(context).textTheme.labelSmall),
+            Text(
+              '相关',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
           ],
         ],
       ),
@@ -1572,15 +1635,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       key: 'clientGoodsName',
       label: '客户货品名称',
       width: 200,
-      columnSearchEnabled: false,
+      columnSearchEnabled: true,
       value: (g) => g.clientGoodsName,
-    ),
-    MasterColumnDef(
-      key: 'code',
-      label: '编号',
-      width: 120,
-      sortable: true, // 全局唯一显示号但不是关系 id；高基数值用搜索，表头提供排序
-      value: (g) => g.code,
     ),
     MasterColumnDef(
       key: 'colorLegacyId',
@@ -1691,20 +1747,34 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       width: 100,
       type: 'money',
       sortable: true,
-      value: (g) => g.price?.toStringAsFixed(2),
+      columnSearchEnabled: true,
+      info: '按本列显示的两位价格检索，可输入精确值、比较或范围。',
+      exactValueOf: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
+      value: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'discount',
       label: '折扣',
       width: 80,
-      value: (g) => g.discount?.toStringAsFixed(2),
+      type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按两位折扣倍率检索，例如 0.90 表示九折；折扣倍率不求和。',
+      exactValueOf: (g) =>
+          g.discountDisplayText ?? g.discount?.toStringAsFixed(2),
+      value: (g) => g.discountDisplayText ?? g.discount?.toStringAsFixed(2),
     ),
     MasterColumnDef(
       key: 'stockQty',
       label: '库存量',
       width: 100,
       type: 'number',
-      value: (g) => g.stockQty?.toStringAsFixed(2),
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按本列两位显示值检索与排序，来源为参与核算的普通良品仓库存；不同货品单位不相加。',
+      exactValueOf: (g) =>
+          g.stockQtyDisplayText ?? g.stockQty?.toStringAsFixed(2),
+      value: (g) => g.stockQtyDisplayText ?? g.stockQty?.toStringAsFixed(2),
     ),
     // 采购批量口径（V575）：空=供应商无该项要求，按净需求原样下达。
     MasterColumnDef(
@@ -1712,6 +1782,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       label: '最小起订量',
       width: 100,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (g) => goodsQtyText(g.minOrderQty),
     ),
     MasterColumnDef(
@@ -1719,6 +1791,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       label: '订货倍数',
       width: 90,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (g) => goodsQtyText(g.orderMultipleQty),
     ),
   ];

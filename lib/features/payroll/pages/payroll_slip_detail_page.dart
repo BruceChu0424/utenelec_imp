@@ -79,7 +79,11 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
     final detail = ref.watch(payrollDetailProvider(widget.slipId));
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '工资条详情', showBackButton: true),
+      appBar: const UtenAppBar(
+        title: '工资条详情',
+        info: '工资信息属于个人隐私，请妥善保管，请勿截图外传。',
+        showBackButton: true,
+      ),
       body: detail.when(
         loading: () => const _LoadingView(),
         error: (e, _) => UtenEmpty.error(
@@ -265,34 +269,6 @@ class _DetailContent extends ConsumerWidget {
                     ),
                     const SizedBox(height: UtenSpacing.s16),
                   ],
-
-                  // 声明
-                  Container(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerLow,
-                      borderRadius: UtenRadius.lgAll,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.lock_outline_rounded,
-                          size: 14,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '工资信息属于个人隐私，请妥善保管，请勿截图外传。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s16),
                 ],
               ),
             ),

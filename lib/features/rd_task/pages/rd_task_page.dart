@@ -65,6 +65,7 @@ import '../models/rd_task.dart';
 import '../providers/rd_task_count_provider.dart';
 import '../repositories/rd_task_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/search/table_column_query.dart';
 
 /// 任务中心的三个分段 —— 值同时是列表接口的 `status` 过滤参数。
 ///
@@ -283,6 +284,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
   String _category = ''; // '' = 全部类别
   bool _hasLoaded = false;
   bool _resolving = false;
+  TableColumnQuery _columnsQuery = const TableColumnQuery();
+  String? _statusFilter;
+  String? _priorityFilter;
 
   /// 当前选中任务；办理动作悬浮在表体上，选中时不改变行与表头位置。
   String? _selectedTaskId;
@@ -464,6 +468,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     // 换分段 = 换服务端口径: 回到第一页并清掉旧选中任务。
     // 关键词与类别刻意保留 —— 用户常常拿同一个条件在三段之间来回看。
     if (widget.seg != oldWidget.seg || widget.keyword != oldWidget.keyword) {
+      if (widget.seg != oldWidget.seg) _statusFilter = null;
       _page = 1;
       _selectedTaskId = null;
       _load();
@@ -487,6 +492,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
 
   @override
   void scopedPagedReadOwnerChanged() {
+    _columnsQuery = const TableColumnQuery();
+    _statusFilter = null;
+    _priorityFilter = null;
     _invalidateUnitOperation();
     final rejection = scopedPagedReadRejection;
     final version = ++_requestId;
@@ -515,6 +523,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
       widget.seg,
       _keyword,
       _category,
+      _columnsQuery,
+      _statusFilter,
+      _priorityFilter,
     );
     final requestedPage = !useCache && _acceptedQuery == query
         ? _tableRows.visiblePage ?? _page
@@ -523,6 +534,8 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     final segment = widget.seg;
     final keyword = _keyword;
     final category = _category;
+    final columns = _columnsQuery;
+    final statusFilter = _statusFilter, priorityFilter = _priorityFilter;
     setState(() {
       if (_acceptedQuery != query) _data = null;
       _loading = true;
@@ -531,12 +544,23 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
     try {
       final cached = await readScopedPage<RdTaskRow>(
         requestedPage,
-        query: (repository, segment, keyword, category),
+        query: (
+          repository,
+          segment,
+          keyword,
+          category,
+          columns,
+          statusFilter,
+          priorityFilter,
+        ),
         currentQuery: () => (
           ref.read(rdTaskRepositoryProvider),
           widget.seg,
           _keyword,
           _category,
+          _columnsQuery,
+          _statusFilter,
+          _priorityFilter,
         ),
         useCache: useCache,
         fetchPage: (page) async {
@@ -545,6 +569,13 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
             category: category.isEmpty ? null : category,
             keyword: keyword.isEmpty ? null : keyword,
             page: page,
+            columns: {
+              ...columns.searches,
+              'search.status': ?statusFilter,
+              'search.priority': ?priorityFilter,
+            },
+            sort: columns.sort,
+            ascending: columns.ascending,
           );
           return PagedReadSnapshot(
             page: PagedResult(
@@ -698,14 +729,85 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
           rowsController: _tableRows,
           data: data,
           items: data.items,
-          paginationScope: (widget.seg, _keyword, _category),
+          paginationScope: (
+            widget.seg,
+            _keyword,
+            _category,
+            _columnsQuery,
+            _statusFilter,
+            _priorityFilter,
+          ),
           loading: _loading,
           error: _error,
           onRetry: _load,
-          filters: {'category': _category.isEmpty ? null : _category},
+          filters: {
+            'category': _category.isEmpty ? null : _category,
+            'status': _statusFilter,
+            'priority': _priorityFilter,
+            ..._columnsQuery.searches,
+          },
           onFilterChanged: (key, value) {
-            if (key != 'category') return;
-            _applyFilter(category: value ?? '');
+            if (key == 'category') {
+              _applyFilter(category: value ?? '');
+              return;
+            }
+            if (key == 'status' &&
+                (!widget.seg.isClosed ||
+                    value != null &&
+                        !const {'DONE', 'CANCELED'}.contains(value))) {
+              return;
+            }
+            if (key == 'priority' &&
+                value != null &&
+                !const {'NORMAL', 'URGENT'}.contains(value)) {
+              return;
+            }
+            if (key != 'status' &&
+                key != 'priority' &&
+                !key.startsWith('search.')) {
+              return;
+            }
+            setState(() {
+              if (key == 'status') {
+                _statusFilter = value;
+              } else if (key == 'priority') {
+                _priorityFilter = value;
+              } else {
+                _columnsQuery = _columnsQuery.search(key, value);
+              }
+              _page = 1;
+              _selectedTaskId = null;
+            });
+            _load();
+          },
+          extraFacets: {
+            if (widget.seg.isClosed)
+              'status': [
+                for (final status in const ['DONE', 'CANCELED'])
+                  MasterFacetBucket(
+                    value: status,
+                    label: rdTaskStatusLabel(status),
+                    count: 0,
+                  ),
+              ],
+            'priority': [
+              for (final priority in const ['URGENT', 'NORMAL'])
+                MasterFacetBucket(
+                  value: priority,
+                  label: _priorityLabel(priority),
+                  count: 0,
+                ),
+            ],
+          },
+          sortColumn: _columnsQuery.sort,
+          sortAscending: _columnsQuery.ascending,
+          onSortChange: (key, ascending) {
+            setState(() {
+              _columnsQuery = _columnsQuery.sorted(key, ascending);
+              _page = 1;
+              _selectedTaskId = null;
+            });
+            _load();
           },
           onOpenGoods: _openGoodsBom,
           onSelectionChanged: (row) => setState(() => _selectedTaskId = row.id),
@@ -762,9 +864,17 @@ class _DesktopTaskTable extends StatelessWidget {
     required this.rowsController,
     this.canResolve,
     this.onResolve,
+    this.extraFacets = const {},
+    this.sortColumn,
+    this.sortAscending = true,
+    this.onSortChange,
   });
 
   final MasterDataTableRowsController<RdTaskRow> rowsController;
+  final Map<String, List<MasterFacetBucket>> extraFacets;
+  final String? sortColumn;
+  final bool sortAscending;
+  final void Function(String?, bool)? onSortChange;
   final RdTaskData data;
   final List<RdTaskRow> items;
   final bool loading;
@@ -841,6 +951,7 @@ class _DesktopTaskTable extends StatelessWidget {
           key: 'taskNo',
           label: '任务号',
           width: 148,
+          sortable: true,
           value: (item) => item.taskNo,
         ),
         MasterColumnDef(
@@ -892,6 +1003,7 @@ class _DesktopTaskTable extends StatelessWidget {
           key: 'priority',
           label: '优先级',
           width: 90,
+          facetSearchEnabled: true,
           value: (item) => _priorityLabel(item.priority),
         ),
         MasterColumnDef(
@@ -899,6 +1011,8 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '截止',
           width: 120,
           type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
           value: (item) => item.dueDate ?? '—',
         ),
         MasterColumnDef(
@@ -906,6 +1020,8 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '创建',
           width: 120,
           type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
           value: (item) => ChinaDateTime.formatIsoInstant(
             item.createdAt,
             fallback: '—',
@@ -914,8 +1030,12 @@ class _DesktopTaskTable extends StatelessWidget {
         ),
       ],
       items: items,
-      // 状态仅由主阶段作全结果查询；类别表头下推服务端，不裁剪当前页。
-      facets: _facets,
+      // 阶段限定资格；历史可再选已完成/已取消，各列均在服务器分页前查询。
+      facets: {..._facets, ...extraFacets},
+      serverColumnSearch: true,
+      sortColumn: sortColumn,
+      sortAscending: sortAscending,
+      onSortChange: onSortChange,
       nullCounts: const {},
       filters: filters,
       onFilterChanged: onFilterChanged,

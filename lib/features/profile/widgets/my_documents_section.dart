@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_empty.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../employee/models/employee_api_models.dart';
@@ -19,7 +18,6 @@ class MyDocumentsSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final canView = ref.watch(
       currentPermissionsProvider.select(
         (perms) => perms.contains(Perm.attachmentView),
@@ -35,13 +33,6 @@ class MyDocumentsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '你的档案文件由人事统一维护。可查看 / 下载，如需更新请联系人事。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
         AttachmentSection(
           ownerType: 'EMPLOYEE',
           ownerId: profile.id,
@@ -50,6 +41,7 @@ class MyDocumentsSection extends ConsumerWidget {
           ownerCanDelete: false,
           onChanged: () => ref.invalidate(myEmployeeProfileProvider),
           title: '我的档案文件',
+          info: '你的档案文件由人事统一维护。可查看 / 下载，如需更新请联系人事。',
           emptyHint: '暂无档案文件',
         ),
       ],

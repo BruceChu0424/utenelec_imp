@@ -13,7 +13,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
@@ -35,6 +34,8 @@ import '../../../components/cards/uten_card.dart';
 import '../../../core/input/china_input_formatters.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -443,12 +444,13 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   }
 
   Future<void> _backOrClose() async {
+    if (_submitting) return;
     if (_step > 0) {
       setState(() => _step--);
       return;
     }
     if (!await confirmFormDraftExit() || !mounted) return;
-    context.pop();
+    backTo(context, defaultPath: RouteName.employee);
   }
 
   Future<void> _submit() async {
@@ -595,7 +597,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
       }
       if (!mounted || !current()) return;
       context.appSuccess(l10n.employeeOnboardSuccess);
-      context.pop();
+      backTo(context, defaultPath: RouteName.employee);
     } on ApiException catch (e) {
       if (!mounted || !current()) return;
       context.appApiError(e, fallback: l10n.employeeOnboardSubmitFailed);

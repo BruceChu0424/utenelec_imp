@@ -2,6 +2,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/goods_import.dart';
 
 void main() {
+  test(
+    'preview preserves clean rows, raw cells and resolved category segments',
+    () {
+      final report = GoodsImportReport.fromJson({
+        'previewRows': [
+          {
+            'rowNum': 2,
+            'code': '0001',
+            'name': '开关',
+            'categoryPath': '成品-20A/45A',
+            'categorySegments': ['成品', '20A/45A'],
+            'cells': {'code': '0001', 'price': '1.23000001'},
+          },
+        ],
+        'readyRowNums': [2],
+      });
+      expect(report.previewRows.single.code, '0001');
+      expect(report.previewRows.single.cells['price'], '1.23000001');
+      expect(report.previewRows.single.categorySegments, ['成品', '20A/45A']);
+      expect(report.readyRowNums, [2]);
+    },
+  );
   test('detect report keeps the short-lived commit plan id', () {
     final report = GoodsImportReport.fromJson({
       'totalRows': 1,

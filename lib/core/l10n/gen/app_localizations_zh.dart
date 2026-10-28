@@ -3114,8 +3114,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportDialogTitle => '导出 Excel';
 
   @override
+  String get exportFileNameLabel => '文件名';
+
+  @override
+  String get exportFileNameRequired => '请填写文件名（不超过 150 个字符）';
+
+  @override
+  String get exportSaveLocationLabel => '保存位置';
+
+  @override
+  String get exportBrowse => '浏览…';
+
+  @override
   String get exportPasswordOptionalHint =>
       '密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。';
+
+  @override
+  String get exportSetPassword => '设置密码';
+
+  @override
+  String get exportRemovePassword => '取消密码';
+
+  @override
+  String get exportPreparingFile => '正在导出表格…';
 
   @override
   String get exportPasswordOptionalLabel => '打开密码(可选，1–128 位)';
@@ -3410,6 +3431,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get orderChangeQtyTitle => '订单改量';
+
+  @override
+  String get orderPendingChangeQtyHint => '数量修改后继续等待财务审核，财务将看到更新后的数量和修改记录。';
+
+  @override
+  String get orderPendingChangeQtySuccess => '已改量，待财务审核内容已更新';
 
   @override
   String get orderChangeQtyWarning =>
@@ -12624,6 +12651,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get companyFilesWhoCanRead => '谁可以查看';
+
+  @override
+  String get companyFilesEveryoneCanRead => '所有人可以看';
+
+  @override
+  String get companyFilesEveryoneReadHint =>
+      '资料库默认全员可见。这份资料对所有人开放查看和下载，可添加拒绝例外；上层文件夹已限制访问时，仍需先能进入上层文件夹。';
 
   @override
   String get companyFilesInheritEntryAccess => '继承所在文件夹的访问范围';

@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 // 应收应付总览页 (Z)（finance_report:view）—— 还原老系统树形分组功能，用已有组件。
@@ -45,11 +46,14 @@ import '../../basic_data/repositories/client_category_repository.dart';
 import '../../basic_data/repositories/supplier_category_repository.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../../shared/search/report_contact_query.dart';
 import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_column.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -85,6 +89,8 @@ class _FinanceArApOverviewPageState
   String _searchQuery = '';
   // 搜索始终在授权全集查往来单位/分类；导航分类留存，清空后恢复。
   String _keyword = '';
+  final Map<String, String?> _filters = {};
+  Set<String> _lastColumnSearchKeys = const {};
   final _searchController = TextEditingController();
   final _treeSearchController = TextEditingController();
   bool _syncingSearchControllers = false;
@@ -141,6 +147,8 @@ class _FinanceArApOverviewPageState
         _categoryType = null;
         _categoryId = null;
         _keyword = '';
+        _filters.clear();
+        _lastColumnSearchKeys = const {};
         _searchQuery = '';
         _visibleFilterIds = null;
         _noUnifiedSearchMatches = false;
@@ -468,6 +476,7 @@ class _FinanceArApOverviewPageState
     if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
     'size': _size,
     ...sortQueryParams(_sortKey, _sortAsc),
+    for (final entry in _filters.entries) 'f.${entry.key}': entry.value,
   };
 
   Future<void> _load({int? page, bool reuseMetadata = false}) async {
@@ -505,7 +514,8 @@ class _FinanceArApOverviewPageState
         query: query,
         readerEpoch: readEpoch,
         reusePages: reuseMetadata,
-        fetch: (parameters) => api.get(endpoint, query: parameters),
+        fetch: (parameters) =>
+            ReportContactQuery(parameters).fetch(api, endpoint),
         isCurrent: queryCurrent,
         canPrefetch: () =>
             mounted &&
@@ -522,6 +532,9 @@ class _FinanceArApOverviewPageState
           context.appError(error.message);
           setState(() {
             _data = null;
+            _lastColumns = const [];
+            _lastColumnSearchKeys = const {};
+            _acceptedReadQuery = null;
             _loading = false;
           });
         },
@@ -533,6 +546,7 @@ class _FinanceArApOverviewPageState
         _page = snapshot.page;
         _acceptedReadQuery = readIdentity;
         _lastColumns = _data!.columns;
+        _lastColumnSearchKeys = _data!.columnSearchKeys;
         _noUnifiedSearchMatches = _keyword.isNotEmpty && _data!.total == 0;
         _loading = false;
         _reportError = null;
@@ -541,11 +555,27 @@ class _FinanceArApOverviewPageState
       if (!mounted || !current()) return;
       context.appError(humanErrorMessage(e) ?? '应收应付没有加载出来，请稍后重试');
       setState(() {
+        if (pagedReadAccessDenied(e)) {
+          _reportRead.invalidate();
+          _data = null;
+          _lastColumns = const [];
+          _lastColumnSearchKeys = const {};
+          _acceptedReadQuery = null;
+        }
         _reportError = '加载应收应付失败，请重试';
         _loading = false;
       });
     }
   }
+
+  bool get _acceptedQueryCurrent =>
+      _data != null &&
+      const DeepCollectionEquality().equals(_acceptedReadQuery, [
+        ref.read(exportContextEpochProvider),
+        ref.read(apiClientProvider),
+        '/finance/reports/ar-ap/overview',
+        _readQuery,
+      ]);
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -555,6 +585,20 @@ class _FinanceArApOverviewPageState
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
+      _page = 1;
+    });
+    _persistPrefs();
+    _load();
+  }
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      if (value == null) {
+        _filters.remove(key);
+        if (!key.startsWith('search.')) _filters.remove('search.$key');
+      } else {
+        _filters[key] = value;
+      }
       _page = 1;
     });
     _persistPrefs();
@@ -573,33 +617,25 @@ class _FinanceArApOverviewPageState
     if (_effectiveCategoryType != null) 'categoryType': _effectiveCategoryType,
     if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
     ...sortQueryParams(_sortKey, _sortAsc),
+    for (final entry in _filters.entries) 'f.${entry.key}': entry.value,
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      '/finance/reports/ar-ap/overview',
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _reportRequestGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/finance/reports/ar-ap/overview',
+      queryOf: () => _exportQuery,
+      fetch: (endpoint, query) =>
+          ReportContactQuery(query).fetch(api, endpoint),
+      isCurrent: () =>
+          mounted &&
+          generation == _reportRequestGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -800,7 +836,10 @@ class _FinanceArApOverviewPageState
   );
 
   Widget _buildTable() {
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final data = _acceptedQueryCurrent
+        ? _data
+        : (_data?.pendingQuery() ??
+              (_loading ? _reportMetadata.loadingData : null));
     // 元数据未知时也先显示公共表壳；真实列确认后复用其布局。
     if (data == null && _lastColumns.isEmpty) {
       if (_noUnifiedSearchMatches) {
@@ -863,6 +902,16 @@ class _FinanceArApOverviewPageState
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
+            columnSearchEnabled:
+                (data?.columnSearchKeys ?? _lastColumnSearchKeys).contains(
+                  c.key,
+                ),
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
@@ -874,6 +923,8 @@ class _FinanceArApOverviewPageState
       tableKey:
           'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
+      serverColumnSearchKeys: data?.columnSearchKeys ?? _lastColumnSearchKeys,
+      headerFilterScopeDescription: '按往来单位汇总本币余额后筛选；合计覆盖当前条件的全部单位',
       items: data?.rows ?? const [],
       toolbarLeadingActions: _buildFilters(),
       toolbarActions: [
@@ -884,7 +935,8 @@ class _FinanceArApOverviewPageState
           exportEndpoint: '/finance/reports/export',
           exportPermission: Perm.financeReportExport,
           exportReport: _exportReport,
-          exportQuery: _exportQuery,
+          exportQuery: ReportContactQuery(_exportQuery).query,
+          exportBody: ReportContactQuery(_exportQuery).exportBody,
           exportFilename: '应收应付',
           type: UtenButtonType.primary,
           size: UtenButtonSize.large,
@@ -893,23 +945,30 @@ class _FinanceArApOverviewPageState
           endpoint: '/finance/reports/export',
           requiredPermission: Perm.financeReportExport,
           report: _exportReport,
-          queryParams: _exportQuery,
+          queryParams: ReportContactQuery(_exportQuery).query,
+          bodyParams: ReportContactQuery(_exportQuery).exportBody,
           filename: '应收应付',
           type: UtenButtonType.primary,
           size: UtenButtonSize.large,
         ),
       ],
-      facets: const {},
+      facets: {
+        ...?data?.facets,
+        'partyType': const [
+          MasterFacetBucket(value: '客户', label: '客户', count: 0),
+          MasterFacetBucket(value: '供应商', label: '供应商', count: 0),
+        ],
+      },
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: _filters,
+      onFilterChanged: _onFilterChanged,
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      isLoading: _loading && _data == null,
-      error: _data == null ? _reportError : null,
+      isLoading: _loading,
+      error: _acceptedQueryCurrent ? null : _reportError,
       onRetry: _load,
-      emptyMessage: _noUnifiedSearchMatches
+      emptyMessage: _noUnifiedSearchMatches && _filters.isEmpty
           ? '未找到匹配「$_searchQuery」的分类或往来单位'
           : '暂无应收应付数据',
       currentPage: data?.page ?? 1,
@@ -922,6 +981,7 @@ class _FinanceArApOverviewPageState
         _to,
         _displayMode,
         _keyword,
+        PagedReadQueryKey(_filters),
       ),
       onPageChange: (p) {
         _page = p;

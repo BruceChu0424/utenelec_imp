@@ -7,6 +7,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/layout/uten_section_header.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -97,6 +99,9 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
             children: [
               UtenInput(
                 label: l.companyFilesName,
+                info: widget.entry?.isFolder == false
+                    ? l.companyFilesKeepExtension
+                    : null,
                 controller: _name,
                 required: true,
                 validator: (v) {
@@ -118,10 +123,6 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
                 onFieldSubmitted: (_) => save(),
               ),
               const SizedBox(height: UtenSpacing.s16),
-              if (widget.entry?.isFolder == false) ...[
-                Text(l.companyFilesKeepExtension),
-                const SizedBox(height: UtenSpacing.s16),
-              ],
               if (widget.copy)
                 Text(l.companyFilesPasteCopyHint)
               else
@@ -132,12 +133,10 @@ class _CompanyFileNameDialogState extends State<CompanyFileNameDialog> {
                 ),
               if (widget.entry == null) ...[
                 const SizedBox(height: UtenSpacing.s16),
-                Text(
-                  l.companyFilesInherit,
-                  style: Theme.of(context).textTheme.titleSmall,
+                UtenSectionHeader(
+                  title: l.companyFilesInherit,
+                  info: l.companyFilesAccessHint,
                 ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(l.companyFilesAccessHint),
               ],
             ],
           ),
@@ -165,7 +164,7 @@ class CompanyFileCreateFolderDialog extends StatelessWidget {
     required this.boundary,
     this.initialName = '',
     this.initialDescription = '',
-    this.initialAccess = const CompanyFileInitialAccessDraft.inherited(),
+    this.initialAccess = const CompanyFileInitialAccessDraft.everyoneVisible(),
   });
 
   final CompanyFileRepository repository;
@@ -197,7 +196,7 @@ class CompanyFileUploadAccessDialog extends StatelessWidget {
     required this.scope,
     required this.boundary,
     required this.selectedNames,
-    this.initialAccess = const CompanyFileInitialAccessDraft.inherited(),
+    this.initialAccess = const CompanyFileInitialAccessDraft.everyoneVisible(),
   });
 
   final CompanyFileRepository repository;
@@ -543,11 +542,15 @@ class CompanyFileAccessDialog extends ConsumerStatefulWidget {
       _CompanyFileAccessDialogState();
 }
 
+/// 「谁可以查看」在设置弹窗里的同款三口径；ALL 规则由单选驱动，不进规则列表。
+enum _EntryAccessMode { everyone, inherit, specific }
+
 class _CompanyFileAccessDialogState
     extends ConsumerState<CompanyFileAccessDialog> {
   CompanyFileAccess? _access;
   List<CompanyFileAccessRule> _rules = [];
   bool _inherit = true;
+  _EntryAccessMode _mode = _EntryAccessMode.inherit;
   bool _busy = false;
   bool _picking = false;
   bool _invalidated = false;
@@ -588,12 +591,28 @@ class _CompanyFileAccessDialogState
         _access = value;
         _inherit = value.inheritPermissions;
         _rules = value.rules.toList();
+        _mode = _rules.any((rule) => rule.isEveryoneRule)
+            ? _EntryAccessMode.everyone
+            : _inherit
+            ? _EntryAccessMode.inherit
+            : _EntryAccessMode.specific;
       });
     } catch (e) {
       if (_current) setState(() => _error = e);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _selectMode(_EntryAccessMode mode) {
+    setState(() {
+      _mode = mode;
+      _rules.removeWhere((rule) => rule.isEveryoneRule);
+      if (mode == _EntryAccessMode.everyone) {
+        _rules.insert(0, kCompanyFileEveryoneRule);
+      }
+      _inherit = mode != _EntryAccessMode.specific;
+    });
   }
 
   Future<void> _save() async {
@@ -706,7 +725,11 @@ class _CompanyFileAccessDialogState
     return PopScope(
       canPop: !_busy,
       child: UtenAlertDialog(
-        title: Text(l.companyFilesEntryAccessTitle),
+        title: UtenSectionHeader(
+          title: l.companyFilesEntryAccessTitle,
+          info:
+              '${l.companyFilesEntryAccessHint}\n\n${l.companyFilesAccessOperationsHint}',
+        ),
         content: SizedBox(
           width: 650,
           child: !current
@@ -728,137 +751,185 @@ class _CompanyFileAccessDialogState
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Text(l.companyFilesEntryAccessHint),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(l.companyFilesAccessOperationsHint),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(l.companyFilesInherit),
-                      value: _inherit,
-                      onChanged: _busy
-                          ? null
-                          : (v) => setState(() => _inherit = v),
+                    UtenSectionHeader(
+                      title: l.companyFilesWhoCanRead,
+                      info: switch (_mode) {
+                        _EntryAccessMode.everyone =>
+                          l.companyFilesEveryoneReadHint,
+                        _EntryAccessMode.inherit => l.companyFilesAccessHint,
+                        _EntryAccessMode.specific =>
+                          l.companyFilesSpecificReadersHint,
+                      },
                     ),
-                    ..._rules.asMap().entries.map((row) {
-                      final i = row.key, rule = row.value;
-                      bool duplicate(String effect) =>
-                          _rules.asMap().entries.any(
-                            (other) =>
-                                other.key != i &&
-                                other.value.subjectType == rule.subjectType &&
-                                other.value.subjectId == rule.subjectId &&
-                                other.value.effect == effect,
-                          );
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.outlineVariant,
-                            ),
-                            borderRadius: UtenRadius.controlAll,
+                    const SizedBox(height: UtenSpacing.s4),
+                    RadioGroup<_EntryAccessMode>(
+                      groupValue: _mode,
+                      onChanged: (value) {
+                        if (_busy || value == null) return;
+                        _selectMode(value);
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RadioListTile<_EntryAccessMode>(
+                            key: const Key('entry-access-everyone'),
+                            contentPadding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            dense: true,
+                            value: _EntryAccessMode.everyone,
+                            enabled: !_busy,
+                            title: Text(l.companyFilesEveryoneCanRead),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(UtenSpacing.s12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      rule.subjectType == 'USER'
-                                          ? Icons.person_outline
-                                          : Icons.groups_outlined,
-                                    ),
-                                    const SizedBox(width: UtenSpacing.s8),
-                                    Expanded(
-                                      child: Text(
-                                        rule.subjectName,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.titleSmall,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: l.companyFilesRemoveRule,
-                                      onPressed: _busy
-                                          ? null
-                                          : () => setState(
-                                              () => _rules.removeAt(i),
-                                            ),
-                                      icon: const Icon(Icons.close),
-                                    ),
-                                  ],
+                          RadioListTile<_EntryAccessMode>(
+                            key: const Key('entry-access-inherit'),
+                            contentPadding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            dense: true,
+                            value: _EntryAccessMode.inherit,
+                            enabled: !_busy,
+                            title: Text(l.companyFilesInheritEntryAccess),
+                          ),
+                          RadioListTile<_EntryAccessMode>(
+                            key: const Key('entry-access-specific'),
+                            contentPadding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            dense: true,
+                            value: _EntryAccessMode.specific,
+                            enabled: !_busy,
+                            title: Text(l.companyFilesSpecificReaders),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ..._rules
+                        .asMap()
+                        .entries
+                        .where((row) => !row.value.isEveryoneRule)
+                        .map((row) {
+                          final i = row.key, rule = row.value;
+                          bool duplicate(String effect) =>
+                              _rules.asMap().entries.any(
+                                (other) =>
+                                    other.key != i &&
+                                    other.value.subjectType ==
+                                        rule.subjectType &&
+                                    other.value.subjectId == rule.subjectId &&
+                                    other.value.effect == effect,
+                              );
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s12,
+                            ),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
                                 ),
-                                Wrap(
-                                  spacing: UtenSpacing.s8,
-                                  runSpacing: UtenSpacing.s4,
+                                borderRadius: UtenRadius.controlAll,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(UtenSpacing.s12),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
-                                    ChoiceChip(
-                                      label: Text(l.companyFilesAllow),
-                                      selected: rule.effect == 'ALLOW',
-                                      onSelected: _busy || duplicate('ALLOW')
-                                          ? null
-                                          : (_) => setState(
-                                              () => _rules[i] = rule.copyWith(
-                                                effect: 'ALLOW',
-                                              ),
-                                            ),
-                                    ),
-                                    ChoiceChip(
-                                      label: Text(l.companyFilesDeny),
-                                      selected: rule.effect == 'DENY',
-                                      selectedColor: Theme.of(
-                                        context,
-                                      ).colorScheme.errorContainer,
-                                      onSelected: _busy || duplicate('DENY')
-                                          ? null
-                                          : (_) => setState(
-                                              () => _rules[i] = rule.copyWith(
-                                                effect: 'DENY',
-                                              ),
-                                            ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: UtenSpacing.s8),
-                                Wrap(
-                                  spacing: UtenSpacing.s6,
-                                  runSpacing: UtenSpacing.s4,
-                                  children: actions.entries
-                                      .map(
-                                        (a) => FilterChip(
-                                          label: Text(a.value),
-                                          selected: rule.actions.contains(
-                                            a.key,
-                                          ),
-                                          onSelected: _busy
-                                              ? null
-                                              : (selected) => setState(() {
-                                                  final next = {
-                                                    ...rule.actions,
-                                                  };
-                                                  if (selected) {
-                                                    next.add(a.key);
-                                                  } else {
-                                                    next.remove(a.key);
-                                                  }
-                                                  _rules[i] = rule.copyWith(
-                                                    actions: next,
-                                                  );
-                                                }),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          rule.subjectType == 'USER'
+                                              ? Icons.person_outline
+                                              : Icons.groups_outlined,
                                         ),
-                                      )
-                                      .toList(),
+                                        const SizedBox(width: UtenSpacing.s8),
+                                        Expanded(
+                                          child: Text(
+                                            rule.subjectName,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleSmall,
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: l.companyFilesRemoveRule,
+                                          onPressed: _busy
+                                              ? null
+                                              : () => setState(
+                                                  () => _rules.removeAt(i),
+                                                ),
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ],
+                                    ),
+                                    Wrap(
+                                      spacing: UtenSpacing.s8,
+                                      runSpacing: UtenSpacing.s4,
+                                      children: [
+                                        ChoiceChip(
+                                          label: Text(l.companyFilesAllow),
+                                          selected: rule.effect == 'ALLOW',
+                                          onSelected:
+                                              _busy || duplicate('ALLOW')
+                                              ? null
+                                              : (_) => setState(
+                                                  () =>
+                                                      _rules[i] = rule.copyWith(
+                                                        effect: 'ALLOW',
+                                                      ),
+                                                ),
+                                        ),
+                                        ChoiceChip(
+                                          label: Text(l.companyFilesDeny),
+                                          selected: rule.effect == 'DENY',
+                                          selectedColor: Theme.of(
+                                            context,
+                                          ).colorScheme.errorContainer,
+                                          onSelected: _busy || duplicate('DENY')
+                                              ? null
+                                              : (_) => setState(
+                                                  () => _rules[i] = rule
+                                                      .copyWith(effect: 'DENY'),
+                                                ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: UtenSpacing.s8),
+                                    Wrap(
+                                      spacing: UtenSpacing.s6,
+                                      runSpacing: UtenSpacing.s4,
+                                      children: actions.entries
+                                          .map(
+                                            (a) => FilterChip(
+                                              label: Text(a.value),
+                                              selected: rule.actions.contains(
+                                                a.key,
+                                              ),
+                                              onSelected: _busy
+                                                  ? null
+                                                  : (selected) => setState(() {
+                                                      final next = {
+                                                        ...rule.actions,
+                                                      };
+                                                      if (selected) {
+                                                        next.add(a.key);
+                                                      } else {
+                                                        next.remove(a.key);
+                                                      }
+                                                      _rules[i] = rule.copyWith(
+                                                        actions: next,
+                                                      );
+                                                    }),
+                                            ),
+                                          )
+                                          .toList(),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    }),
+                          );
+                        }),
                     Align(
                       alignment: Alignment.centerLeft,
                       child: UtenButton(
@@ -1021,33 +1092,17 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                     ),
             ),
             if (listing != null && listing.total > listing.size)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  IconButton(
-                    tooltip: l.companyFilesPrevious,
-                    onPressed: _page == 0
-                        ? null
-                        : () {
-                            _page--;
-                            _load();
-                          },
-                    icon: const Icon(Icons.chevron_left),
-                  ),
-                  Text(
-                    '${_page + 1} / ${(listing.total / listing.size).ceil()}',
-                  ),
-                  IconButton(
-                    tooltip: l.companyFilesNext,
-                    onPressed: (_page + 1) * listing.size >= listing.total
-                        ? null
-                        : () {
-                            _page++;
-                            _load();
-                          },
-                    icon: const Icon(Icons.chevron_right),
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: UtenPagination(
+                  currentPage: _page + 1,
+                  totalPages: (listing.total / listing.size).ceil(),
+                  busy: !widget.scope.isCurrent,
+                  onPageChanged: (target) {
+                    _page = target - 1;
+                    _load();
+                  },
+                ),
               ),
           ],
         ),

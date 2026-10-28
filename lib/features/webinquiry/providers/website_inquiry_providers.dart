@@ -68,6 +68,17 @@ class WebsiteInquiryListNotifier
     await _goTo(current.page + 1);
   }
 
+  Future<void> goToPage(int page) async {
+    final current = state.value;
+    if (current == null ||
+        page < 1 ||
+        page > current.totalPages ||
+        page == current.page) {
+      return;
+    }
+    await _goTo(page);
+  }
+
   /// 详情页写操作完成后，把服务端回执同步到当前页并保留页码。
   ///
   /// 2026-09-24 修补：写完的行如果已不在当前筛选口径里（如「新询盘」列表里

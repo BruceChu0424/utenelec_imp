@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -55,24 +56,10 @@ class PlatformSettingsEntryCard extends ConsumerWidget {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '平台设置',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s2),
-                      Text(
-                        '公司名称、Logo、主题色、服务器与配置入口',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '平台设置',
+                    info: '公司名称、Logo、主题色、服务器与配置入口',
                   ),
                 ),
                 Icon(

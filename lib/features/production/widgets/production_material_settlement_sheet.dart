@@ -697,6 +697,8 @@ class _MaterialSettlementSheetState
         appBar: UtenAppBar(
           showPagePermissionAction: false,
           title: _canRegister ? '登记实际用料' : '用料记录',
+          info:
+              '填写这次实际用掉的材料；剩余可留待后续生产，也可核对数量后退仓。待仓库收料的数量暂不可登记或重复退仓。可展开台账查看记录；完成任务仍需满足成品合格入库要求。',
           actions: [
             UtenRefreshButton(enabled: !(_editingLocked), onRefresh: _load),
             IconButton(
@@ -737,8 +739,10 @@ class _MaterialSettlementSheetState
                       children: [
                         _stats(theme),
                         const SizedBox(height: UtenSpacing.s8),
-                        _notice(theme),
-                        const SizedBox(height: UtenSpacing.s12),
+                        if (_allCleared || _grid.rows.isEmpty) ...[
+                          _notice(theme),
+                          const SizedBox(height: UtenSpacing.s12),
+                        ],
                         if (_grid.rows.isNotEmpty) ...[
                           Wrap(
                             alignment: WrapAlignment.spaceBetween,
@@ -935,40 +939,12 @@ class _MaterialSettlementSheetState
     );
   }
 
-  Widget _notice(ThemeData theme) {
-    final color = _allCleared
-        ? theme.colorScheme.primary
-        : theme.colorScheme.tertiary;
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .08),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: color.withValues(alpha: .35)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            _allCleared ? Icons.verified_outlined : Icons.info_outline_rounded,
-            size: 18,
-            color: color,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              _allCleared
-                  ? '当前材料已平衡，可展开台账查看记录。完成任务仍需满足成品合格入库要求。'
-                  : _grid.rows.isEmpty
-                  ? '当前没有已领未登记的材料，可展开台账查看记录。'
-                  : '填写这次实际用掉的材料；剩余可留待后续生产，也可核对数量后退仓。待仓库收料的数量暂不可登记或重复退仓。',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _notice(ThemeData theme) => _allCleared || _grid.rows.isEmpty
+      ? Text(
+          _allCleared ? '当前材料已平衡' : '当前没有已领未登记的材料',
+          style: theme.textTheme.bodySmall,
+        )
+      : const SizedBox.shrink();
 
   List<EditableGridColumn<_SettlementGridRow>> _columns() => [
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。登记
@@ -980,6 +956,7 @@ class _MaterialSettlementSheetState
       key: 'material',
       label: '物料名称',
       width: 200,
+      filterValueOf: (row) => row.source.goodsName,
       cellBuilder: (context, row) => UtenGoodsIdentityCell(
         name: row.source.goodsName,
         emptyPlaceholder: '未命名物料',

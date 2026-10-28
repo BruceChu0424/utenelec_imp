@@ -11,6 +11,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
+import 'package:uten_imp/features/admin/widgets/perm_catalog_group_section.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
@@ -121,6 +122,9 @@ class _Repository implements PagePermissionDelegationRepository {
     String? search,
     int page = 1,
     int size = 40,
+    Map<String, String?> columnQuery = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagePermissionStaffPage(
     surfaceKey: surfaceKey,
     departmentId: 'department',
@@ -252,6 +256,19 @@ Future<_Harness> _mount(
   await tester.pumpAndSettle();
   await tester.tap(find.text('确定'));
   await tester.pumpAndSettle();
+  final sections = find.byType(PermCatalogGroupSection);
+  if (sections.evaluate().isNotEmpty) {
+    final section = sections.first;
+    await tester.tap(
+      find.descendant(
+        of: section,
+        matching: find.text(
+          tester.widget<PermCatalogGroupSection>(section).title,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('编辑(含新增与修改)'));
   await tester.pumpAndSettle();
   return _Harness(container, snapshot, messages);

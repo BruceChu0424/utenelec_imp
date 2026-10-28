@@ -1,6 +1,7 @@
 import '../../basic_data/models/master_facet.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/formatters/quantity_display.dart';
 
 /// A warehouse projection keeps the original business object and its next action.
 /// A number shared by an order, receipt and exception is never a row identity.
@@ -123,6 +124,7 @@ class WarehouseTaskLine {
     this.colorName,
     this.unitName,
     this.quantity,
+    this.quantityText,
     this.weight,
   });
 
@@ -135,9 +137,13 @@ class WarehouseTaskLine {
   final String? colorName;
   final String? unitName;
   final num? quantity;
+  final String? quantityText;
   final num? weight;
 
   String get quantityLabel {
+    if (quantityText != null) {
+      return formatExactQtyWithUnit(quantityText, unitName);
+    }
     final value = quantity;
     if (value == null) return '—';
     final text = value == value.roundToDouble()
@@ -157,6 +163,9 @@ class WarehouseTaskLine {
         colorName: json['colorName']?.toString(),
         unitName: json['unitName']?.toString(),
         quantity: num.tryParse('${json['quantity']}'),
+        quantityText: json['quantity'] == null
+            ? null
+            : json['quantityText'] as String?,
         weight: num.tryParse('${json['weight']}'),
       );
 }

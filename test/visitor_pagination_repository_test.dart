@@ -7,6 +7,59 @@ import 'package:uten_imp/features/visitor/repositories/visitor_repository.dart';
 import 'package:uten_imp/features/visitor/repositories/visitor_staff_repository.dart';
 
 void main() {
+  test(
+    'column queries remain server criteria and phone searches stay in a body',
+    () async {
+      final requests = <RequestOptions>[];
+      final api = _api((request) {
+        requests.add(request);
+        return {
+          'items': <Object>[],
+          'page': 1,
+          'size': 20,
+          'total': 0,
+          'totalPages': 0,
+        };
+      });
+      final mine = DioVisitorRepository(
+        api,
+        SecureStorage(const FlutterSecureStorage()),
+      );
+      await mine.myApplications(
+        status: 'pending',
+        columns: {
+          'search.visitPurpose': '设备 核对',
+          'search.plannedVisitAt': '2026-10-28',
+        },
+        sort: 'plannedVisitAt',
+        ascending: false,
+      );
+      expect(requests.last.queryParameters['search.visitPurpose'], '设备 核对');
+      expect(
+        requests.last.queryParameters['search.plannedVisitAt'],
+        '2026-10-28',
+      );
+      expect(requests.last.queryParameters['order'], 'desc');
+      final staff = VisitorStaffRepository(api);
+      await staff.approvalList(columns: {'search.hostName': '接待人甲'});
+      expect(requests.last.queryParameters['search.hostName'], '接待人甲');
+      await staff.myAsHost(columns: {'search.company': '公司乙'});
+      expect(requests.last.queryParameters['search.company'], '公司乙');
+      await staff.blacklistPage(
+        columns: {'search.phone': '13800138000', 'search.name': '来访者'},
+      );
+      expect(requests.last.path, '/security/blacklist/search');
+      expect(requests.last.method, 'POST');
+      expect(
+        requests.last.queryParameters.keys.where(
+          (key) => key.startsWith('search.'),
+        ),
+        isEmpty,
+      );
+      expect(requests.last.data, {'phone': '13800138000', 'name': '来访者'});
+    },
+  );
+
   test('visitor mine requests and parses a real server page', () async {
     late RequestOptions captured;
     final repository = DioVisitorRepository(

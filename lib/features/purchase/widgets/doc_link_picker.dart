@@ -226,19 +226,22 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
           await ref.read(masterNameServiceProvider).loadGoodsNames(goodsIds);
           await ref.read(masterNameServiceProvider).loadGoodsDetails(goodsIds);
         },
-        listDocs: (ref, page, keyword, supplierId, sort, order) => ref
-            .read(purchaseRepositoryProvider(upstream))
-            .list(
-              page: page,
-              // 业务约束：只引入已审单（草稿/红冲不可引入）。
-              filter: PurchaseDocFilter(
-                keyword: keyword,
-                supplierId: supplierId,
-                status: kPurchaseStatusApproved,
-              ),
-              sort: sort,
-              order: order,
-            ),
+        serverColumnSearchKeys: const {'billNo', 'supplier'},
+        listDocsWithFilters:
+            (ref, page, keyword, supplierId, sort, order, filters) => ref
+                .read(purchaseRepositoryProvider(upstream))
+                .list(
+                  page: page,
+                  // 业务约束：只引入已审单（草稿/红冲不可引入）。
+                  filter: PurchaseDocFilter(
+                    keyword: keyword,
+                    supplierId: supplierId,
+                    status: kPurchaseStatusApproved,
+                    columnSearch: filters,
+                  ),
+                  sort: sort,
+                  order: order,
+                ),
         loadDetail: (ref, docId) async {
           final request = sourceRequests.begin();
           final detail = await ref
@@ -336,8 +339,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
   );
 }
 
-/// Step1 单据表列。面板服务端分页且无 facets 端点：文本列关闭列头搜索，
-/// 漏斗不再出空下拉（顶部关键字搜索走服务端）。
+/// Step1 单据表列。单号、供应商列搜索传给完整服务端查询，保留已审范围。
 List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
   MasterNameService names,
 ) => [
@@ -351,7 +353,7 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(
@@ -366,7 +368,7 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
     key: 'supplier',
     label: '供应商',
     width: 200,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => names.supplier(d.supplierId),
   ),
   MasterColumnDef(

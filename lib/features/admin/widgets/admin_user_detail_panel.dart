@@ -5,8 +5,10 @@
 // 「全部授权 / 本模块 / 本组」交给服务端按授权策略补齐(ADR-109)，本页不维护排除名单。
 
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../core/network/read_scope_revision.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../core/l10n/remote_access_text.dart';
@@ -41,7 +43,10 @@ import 'admin_permission_transfer_actions.dart';
 import 'admin_permission_templates.dart';
 import 'admin_permission_export_button.dart';
 import 'permission_catalog_browser.dart';
+import 'admin_permission_editor_surface.dart';
 import 'permission_action_badge.dart';
+import 'permission_draft_session.dart';
+import 'permission_template_binding_strip.dart';
 import 'set_temporary_password_dialog.dart';
 import 'admin_account_lifecycle_text.dart';
 
@@ -69,10 +74,11 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<AdminUserDetailPanel> createState() =>
-      _AdminUserDetailPanelState();
+      AdminUserDetailPanelState();
 }
 
-class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
+class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
+  final _catalogMount = PermissionCatalogMount();
   _UserDetailSection _section = _UserDetailSection.permissions;
 
   /// 本地待保存的加授/收回集合；null = 未做编辑（跟随服务端数据）。
@@ -86,11 +92,23 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   int _accountOperation = 0;
   final _credentialOwner = ValueNotifier<int>(0);
 
+  /// 可查看数据分区的草稿句柄（闲置自动保存/批量保存由分区自管，这里只取句柄）。
+  final _dataScopeHandle = AdminDataScopeSectionHandle();
+  bool _dataScopeDirty = false;
+  late final PermissionDraftSession _idleSave;
+
+  @override
+  void initState() {
+    super.initState();
+    _idleSave = PermissionDraftSession(onIdleSave: () => _saveOverrides());
+  }
+
   @override
   void dispose() {
     _accountOperation++;
     _credentialOwner.value++;
     _credentialOwner.dispose();
+    _idleSave.dispose();
     super.dispose();
   }
 
@@ -118,6 +136,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     _confirmingAccountAction = false;
     _localGrants = null;
     _localRevokes = null;
+    _dataScopeDirty = false;
+    _idleSave.clear();
     _lastReportedPermissionDirty = null;
     if (lifecycleChanged) {
       // didUpdateWidget 处于 build 期；Riverpod 3 的 provider 刷新经 vsync 在
@@ -177,7 +197,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final legacyUnknownCount = data == null
         ? 0
         : {...data.legacyUnknownGrants, ...data.legacyUnknownRevokes}.length;
-    final permissionDirty = dirtyCount > 0 || _savingOverrides || _acting;
+    final permissionDirty =
+        dirtyCount > 0 || _savingOverrides || _acting || _dataScopeDirty;
     if (_lastReportedPermissionDirty != permissionDirty) {
       _lastReportedPermissionDirty = permissionDirty;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -305,6 +326,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       user: widget.user,
                       effectiveAsync: effectiveAsync!,
                       onAccountChanged: widget.onAccountChanged,
+                      handle: _dataScopeHandle,
+                      onDirtyChanged: (dirty) {
+                        if (_dataScopeDirty == dirty || !mounted) return;
+                        setState(() => _dataScopeDirty = dirty);
+                      },
                     ),
                     _UserDetailSection.account => _accountSection(),
                   },
@@ -336,6 +362,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                       : () => setState(() {
                           _localGrants = null;
                           _localRevokes = null;
+                          _idleSave.clear();
                         }),
                   child: const Text('撤销'),
                 ),
@@ -343,9 +370,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 UtenButton(
                   size: UtenButtonSize.small,
                   isLoading: _savingOverrides,
-                  onPressed: _savingOverrides
-                      ? null
-                      : () => _saveOverrides(data),
+                  onPressed: _savingOverrides ? null : () => _saveOverrides(),
                   child: const Text('保存更改'),
                 ),
               ],
@@ -357,8 +382,65 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   void _changeSection(_UserDetailSection section) {
     if (_section == section) return;
-    setState(() => _section = section);
+    unawaited(
+      _guardDraftsBeforeLeave().then((allowed) {
+        if (allowed && mounted) setState(() => _section = section);
+      }),
+    );
   }
+
+  // ===== 草稿（操作权限覆盖 + 可查看数据）对宿主页面的统一出口 =====
+
+  /// 是否有待保存的本地修改（供员工切换/页面离开守卫判断）。
+  bool get hasDrafts =>
+      (_localGrants != null || _localRevokes != null) ||
+      _dataScopeHandle.hasDrafts;
+
+  /// 保存全部草稿（覆盖 + 可查看数据）；true=已全部落库。
+  Future<bool> saveDrafts() async {
+    final overridesSaved = await _saveOverrides();
+    if (!overridesSaved) return false;
+    if (_dataScopeHandle.hasDrafts) {
+      return _dataScopeHandle.saveDrafts();
+    }
+    return true;
+  }
+
+  /// 离开前三选一：保存并离开 / 不保存（丢弃） / 继续编辑。true=允许离开。
+  Future<bool> confirmLeaveDrafts() async {
+    if (!hasDrafts || !mounted) return true;
+    _idleSave.pause();
+    _dataScopeHandle.pauseAutoSave();
+    try {
+      final data = _currentEffective;
+      final count =
+          (data == null ? 0 : _dirtyCount(data)) +
+          (_dataScopeHandle.hasDrafts ? 1 : 0);
+      final allowed = await guardPermissionDraftLeave(
+        context,
+        subject: '${widget.user.employeeName ?? widget.user.loginAccount}：',
+        changeCount: count,
+        save: () => saveDrafts(),
+      );
+      if (allowed && mounted) _discardDrafts();
+      return allowed;
+    } finally {
+      if (mounted) {
+        _idleSave.resume();
+        _dataScopeHandle.resumeAutoSave();
+      }
+    }
+  }
+
+  /// 丢弃全部本地草稿（不落库）。
+  void _discardDrafts() {
+    _localGrants = null;
+    _localRevokes = null;
+    _idleSave.clear();
+    _dataScopeHandle.discardDrafts();
+  }
+
+  Future<bool> _guardDraftsBeforeLeave() => confirmLeaveDrafts();
 
   Widget _userSummary(EffectivePermissions? data) {
     final theme = Theme.of(context);
@@ -625,12 +707,18 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   ) {
     final theme = Theme.of(context);
     final data = effectiveAsync.value;
-    return UtenCard(
+    return AdminPermissionEditorSurface(
       key: const ValueKey('admin-user-permission-card'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _permissionHeading(data, catalogAsync.value),
+          PermissionTemplateBindingStrip(
+            kind: 'user',
+            targetId: widget.user.id,
+            enabled:
+                data != null && _dirtyCount(data) == 0 && !_savingOverrides,
+          ),
           if (!widget.user.authorizationGrantAllowed) ...[
             const SizedBox(height: UtenSpacing.s8),
             _authorizationRestrictionCard(data),
@@ -877,6 +965,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final revokes = _pendingRevokes(data);
     final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
     return PermissionCatalogBrowser(
+      key: _catalogMount.forOwner((
+        ref.watch(sensitiveReadBoundaryProvider),
+        ref.watch(readScopeRevisionProvider),
+        widget.user.id,
+      )),
       groups: groups,
       isEnabled: (permission) => _switchValue(data, permission.code),
       isChanged: (permission) =>
@@ -904,7 +997,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final inherited =
         data.departmentPermissions.contains(code) ||
         data.baselinePermissions.contains(code) ||
-        data.managerGrants.contains(code);
+        data.managerGrants.contains(code) ||
+        data.templatePermissions.contains(code);
     // A local switch previews only the requested configuration. The server
     // computes effective authority and required reads after saving.
     return !_pendingRevokes(data).contains(code) &&
@@ -922,6 +1016,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       ...data.departmentPermissions,
       ...data.baselinePermissions,
       ...data.managerGrants,
+      ...data.templatePermissions,
       ..._pendingGrants(data),
     }..removeAll(_pendingRevokes(data));
     final codes = <String>{};
@@ -1059,6 +1154,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       ...data.departmentPermissions,
       ...data.baselinePermissions,
       ...data.managerGrants,
+      ...data.templatePermissions,
     };
     final grants = {..._pendingGrants(data)};
     final revokes = {..._pendingRevokes(data)};
@@ -1075,6 +1171,8 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       _localGrants = grants;
       _localRevokes = revokes;
     });
+    // 本地草稿：闲置一分钟自动保存，离开/切员工前统一询问。
+    _idleSave.noteEdit();
   }
 
   Widget _permRow(EffectivePermissions data, AdminPermission permission) {
@@ -1084,6 +1182,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaDept = data.departmentPermissions.contains(permission.code);
     final viaBaseline = data.baselinePermissions.contains(permission.code);
     final viaManager = data.managerGrants.contains(permission.code);
+    final viaTemplate = data.templatePermissions.contains(permission.code);
     final revoked = !data.superAdmin && revokes.contains(permission.code);
     final pending = _isPermissionChanged(data, permission.code);
     final enabled = _switchValue(data, permission.code);
@@ -1133,6 +1232,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             if (viaDept) _sourceTag('部门'),
             if (viaBaseline) _sourceTag('基础'),
             if (viaManager) _sourceTag('负责人授权'),
+            if (viaTemplate) _sourceTag('模板'),
             if (grants.contains(permission.code)) _sourceTag('个人单独授权'),
             if (data.legacyUnknownGrants.contains(permission.code))
               _sourceTag('历史授权待确认', danger: true),
@@ -1170,6 +1270,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           enabled: canEdit,
           hint: canEdit ? null : editRestriction,
           child: Switch(
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
             value: enabled,
             onChanged: canEdit
                 ? (value) => _togglePerm(data, permission, value)
@@ -1183,7 +1284,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          if (constraints.maxWidth < 500) {
+          if (constraints.maxWidth < 370) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1224,17 +1325,20 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     );
   }
 
-  Future<void> _saveOverrides(EffectivePermissions data) async {
+  /// 保存个人覆盖草稿；true=已落库（或本就没有待保存内容）。
+  Future<bool> _saveOverrides() async {
+    final data = _currentEffective;
+    if (data == null) return false;
     final hasLegacyUnknown =
         data.legacyUnknownGrants.isNotEmpty ||
         data.legacyUnknownRevokes.isNotEmpty;
     if (_savingOverrides || (_dirtyCount(data) == 0 && !hasLegacyUnknown)) {
-      return;
+      return _dirtyCount(data) == 0;
     }
     if (!widget.user.authorizationGrantAllowed &&
         (_pendingGrants(data).isNotEmpty || _pendingRevokes(data).isNotEmpty)) {
       _explainAuthorizationRestriction();
-      return;
+      return false;
     }
     setState(() => _savingOverrides = true);
     try {
@@ -1246,22 +1350,25 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             revokes: _pendingRevokes(data).toList(),
           );
       ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
-      if (!mounted) return;
+      if (!mounted) return true;
       setState(() {
         _localGrants = null;
         _localRevokes = null;
       });
+      _idleSave.clear();
       UtenToast.success(
         context,
         hasLegacyUnknown ? '历史权限来源已确认并即时生效' : '权限调整已保存并即时生效',
       );
+      return true;
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       if (error.code == 'CONFLICT') {
         setState(() {
           _localGrants = null;
           _localRevokes = null;
         });
+        _idleSave.clear();
         ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
         widget.onAccountChanged();
       }
@@ -1269,9 +1376,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         context,
         error.message.isNotEmpty ? error.message : '保存失败，本地修改已保留，请稍后重试',
       );
+      return false;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return false;
       UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
+      return false;
     } finally {
       if (mounted) setState(() => _savingOverrides = false);
     }
@@ -1283,7 +1392,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       context,
       title: '清空个人授权？',
       content: const Text(
-        '将清空此人的单独授权、单独收回和待确认历史设置；之后按部门、全员基础和仍有效的负责人授权重新计算权限。',
+        '将清空此人的单独授权、单独收回和待确认历史设置；之后按部门、全员基础、关联模板和仍有效的负责人授权重新计算权限。',
       ),
       confirmLabel: '清空授权',
       danger: true,

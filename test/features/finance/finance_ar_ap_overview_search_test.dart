@@ -114,7 +114,12 @@ void main() {
     );
     unawaited(router.push<void>('/finance/test-detail'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(
       tester.state(find.byType(FinanceArApOverviewPage)),
@@ -136,7 +141,12 @@ void main() {
     for (final field in ['dateFrom', 'dateTo', 'displayMode']) {
       expect(api.reportQueries.last[field], filtered[field], reason: field);
     }
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
     expect(
@@ -227,7 +237,12 @@ void main() {
       expect(find.byType(FinanceDocDetailPage), findsOneWidget);
       expect(find.text('SK-20261021-001'), findsOneWidget);
       expect(router.canPop(), isTrue);
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         tester.state(find.byType(FinanceReportTablePage)),
@@ -239,7 +254,12 @@ void main() {
       expect(restored.from, dates.from);
       expect(restored.to, dates.to);
       expect(find.text('RECEIPT-001'), findsOneWidget);
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(tester.state(find.byType(FinanceHubPage)), same(hubState));
       expect(
@@ -358,6 +378,9 @@ void main() {
       expect(find.textContaining('应收应付 ·'), findsNothing);
       expect(_tree(tester).flatLevelColors, isTrue);
       _expectGlobal(api.reportQueries.last, 'C-002');
+      expect(api.reportSearchRequests, isNotEmpty);
+      expect(api.reportSearchRequests.last.query, isNot(contains('keyword')));
+      expect(api.reportSearchRequests.last.body['keyword'], 'C-002');
       expect(api.reportQueries.last['dateFrom'], baseline['dateFrom']);
       expect(api.reportQueries.last['dateTo'], baseline['dateTo']);
       await tester.tap(find.textContaining('海外客户'));
@@ -367,7 +390,13 @@ void main() {
       final export = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );
-      _expectGlobal(export.queryParams, 'C-002');
+      expect(export.queryParams, isNot(contains('keyword')));
+      expect(export.queryParams, isNot(contains('categoryType')));
+      expect(export.queryParams, isNot(contains('categoryId')));
+      expect(
+        export.bodyParams['sensitiveFilter'],
+        containsPair('keyword', 'C-002'),
+      );
       _table(tester).onPageChange!(2);
       await tester.pumpAndSettle();
       expect(api.reportQueries.last['page'], 2);
@@ -669,7 +698,11 @@ class _OverviewApi extends ApiClient {
 
   final bool delayFirstSearch;
   final String? delayLocationKeyword;
+  // Business criteria stay flat in this fake; private wire requests are
+  // captured separately so tests can verify contact values never enter URLs.
   final reportQueries = <Map<String, dynamic>>[];
+  final reportSearchRequests =
+      <({Map<String, dynamic> query, Map<String, dynamic> body})>[];
   final locationQueries = <Map<String, dynamic>>[];
   bool _holdNextReport = false;
   Completer<Map<String, dynamic>>? heldReport;
@@ -680,6 +713,34 @@ class _OverviewApi extends ApiClient {
     final held = heldReport;
     if (held == null || held.isCompleted) return;
     held.complete(_report(label));
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    if (path != '/finance/reports/ar-ap/overview/search') {
+      return super.post(path, body: body, headers: headers, query: query);
+    }
+    expect(
+      query,
+      isNot(contains('keyword')),
+      reason: 'contact keyword belongs only in the private POST body',
+    );
+    expect(body, isA<Map<String, dynamic>>());
+    final wireQuery = Map<String, dynamic>.from(query ?? const {});
+    final wireBody = Map<String, dynamic>.from(body! as Map<Object?, Object?>);
+    reportSearchRequests.add((query: wireQuery, body: wireBody));
+    return get(
+      '/finance/reports/ar-ap/overview',
+      query: {
+        ...wireQuery,
+        if (wireBody.containsKey('keyword')) 'keyword': wireBody['keyword'],
+      },
+    );
   }
 
   @override

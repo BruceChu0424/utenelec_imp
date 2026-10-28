@@ -12,6 +12,7 @@ import 'package:uten_imp/features/basic_data/repositories/supplier_repository.da
 import 'package:uten_imp/features/basic_data/widgets/uten_supplier_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import '../../../support/table_read_status.dart';
 
 class _Categories implements SupplierCategoryRepository {
   @override
@@ -295,7 +296,11 @@ void main() {
       await _edge(tester, top: false);
       await _wheel(tester, 150);
       expect(suppliers.requests, [('A', 1), ('A', 2)]);
-      expect(find.text('加载供应商失败，请稍后重试'), findsOneWidget);
+      await expectTableReadFailureDetails(
+        tester,
+        '加载供应商失败，请稍后重试',
+        keyPrefix: 'master-table-page-read',
+      );
       final retried = suppliers.hold('A', 2);
       await tester.tap(find.text('重试'));
       await tester.pump();

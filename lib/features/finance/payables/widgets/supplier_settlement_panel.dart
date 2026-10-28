@@ -20,6 +20,7 @@ import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../basic_data/models/master_facet.dart';
 import '../models/supplier_settlement.dart';
 import '../repositories/supplier_settlement_repository.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
@@ -48,6 +49,9 @@ class _SupplierSettlementPanelState
   String? _error;
   String _keyword = '';
   String? _status;
+  Map<String, String> _columnSearch = {};
+  String? _sort;
+  bool _sortAscending = true;
   int _page = 1;
 
   bool get _canCreate => ref
@@ -83,6 +87,9 @@ class _SupplierSettlementPanelState
     'repository': ref.read(supplierSettlementRepositoryProvider),
     'keyword': _keyword,
     'status': _status,
+    'columnSearch': Map<String, String>.of(_columnSearch),
+    'sort': _sort,
+    'sortAscending': _sortAscending,
   };
 
   Future<void> _navigatePage(int page) => _load(page, true);
@@ -92,6 +99,9 @@ class _SupplierSettlementPanelState
     final repo = ref.read(supplierSettlementRepositoryProvider);
     final status = _status;
     final keyword = _keyword;
+    final columnSearch = Map<String, String>.of(_columnSearch);
+    final sort = _sort;
+    final sortAscending = _sortAscending;
 
     final generation = _requests.begin();
     final page = requestedPage ?? _tableRows.visiblePage ?? _page;
@@ -110,6 +120,9 @@ class _SupplierSettlementPanelState
           final response = await repo.list(
             status: status,
             keyword: keyword,
+            columnSearch: columnSearch,
+            sort: sort,
+            sortAscending: sortAscending,
             page: target,
           );
           return PagedReadSnapshot<
@@ -199,7 +212,7 @@ class _SupplierSettlementPanelState
     // 详情面板内每个写动作成功都经 onChanged 重拉过；纯查看关闭不再多拉一次。
   }
 
-  /// 服务端分页且无 facets 端点：文本列关闭列头搜索，漏斗不再出空下拉。
+  /// Frozen batch facts are filtered and ordered by the server across all pages.
   List<MasterColumnDef<SupplierSettlementSummary>> get _columns => [
     MasterColumnDef(
       key: 'status',
@@ -223,14 +236,16 @@ class _SupplierSettlementPanelState
       key: 'batchNo',
       label: '批次号',
       width: 170,
-      columnSearchEnabled: false,
+      columnSearchEnabled: true,
+      sortable: true,
       value: (item) => item.batchNo,
     ),
     MasterColumnDef(
       key: 'supplierName',
       label: '供应商',
       width: 210,
-      columnSearchEnabled: false,
+      columnSearchEnabled: true,
+      sortable: true,
       value: (item) => [
         item.supplierCode,
         item.supplierName,
@@ -240,6 +255,7 @@ class _SupplierSettlementPanelState
       key: 'currencyCode',
       label: '币种',
       width: 80,
+      columnSearchEnabled: true,
       value: (item) =>
           financeCurrencyDisplayLabel(
             name: item.currencyName,
@@ -252,6 +268,8 @@ class _SupplierSettlementPanelState
       label: '月份',
       width: 100,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (item) => item.periodStart?.substring(0, 7),
     ),
     MasterColumnDef(
@@ -259,6 +277,8 @@ class _SupplierSettlementPanelState
       label: '到期日',
       width: 110,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (item) => item.dueDate,
     ),
     MasterColumnDef(
@@ -266,6 +286,9 @@ class _SupplierSettlementPanelState
       label: '期初(原币)',
       width: 120,
       type: 'money',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.openingBalanceOriginal,
       value: (item) => item.openingBalanceOriginal,
     ),
     MasterColumnDef(
@@ -273,6 +296,9 @@ class _SupplierSettlementPanelState
       label: '本期立账/红冲',
       width: 130,
       type: 'money',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.periodPostedOriginal,
       value: (item) => item.periodPostedOriginal,
     ),
     MasterColumnDef(
@@ -280,6 +306,9 @@ class _SupplierSettlementPanelState
       label: '账面付款',
       width: 120,
       type: 'money',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.periodPaidOriginal,
       value: (item) => item.periodPaidOriginal,
     ),
     MasterColumnDef(
@@ -287,6 +316,9 @@ class _SupplierSettlementPanelState
       label: '抵销',
       width: 110,
       type: 'money',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.periodOffsetOriginal,
       value: (item) => item.periodOffsetOriginal,
     ),
     MasterColumnDef(
@@ -294,6 +326,9 @@ class _SupplierSettlementPanelState
       label: '期末(原币)',
       width: 120,
       type: 'money',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.closingBalanceOriginal,
       value: (item) => item.closingBalanceOriginal,
     ),
     MasterColumnDef(
@@ -301,6 +336,9 @@ class _SupplierSettlementPanelState
       label: '行数',
       width: 70,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (item) => item.lineCount.toString(),
       value: (item) => item.lineCount.toString(),
     ),
   ];
@@ -335,6 +373,7 @@ class _SupplierSettlementPanelState
                 UtenFilterSegment(value: 'INTERNAL_CONFIRMED', label: '公司确认'),
                 UtenFilterSegment(value: 'BOTH_CONFIRMED', label: '双方确认'),
                 UtenFilterSegment(value: 'DISPUTED', label: '争议'),
+                UtenFilterSegment(value: 'CLOSED', label: '已关闭'),
                 UtenFilterSegment(value: 'REVERSED', label: '已反转'),
               ],
               selected: {_status},
@@ -359,10 +398,77 @@ class _SupplierSettlementPanelState
                 primary: true,
                 columns: _columns,
                 items: _result?.items ?? const [],
-                facets: const {},
+                facets: const {
+                  'status': [
+                    MasterFacetBucket(value: 'FROZEN', label: '已冻结', count: 0),
+                    MasterFacetBucket(
+                      value: 'SUPPLIER_CONFIRMED',
+                      label: '供应商确认',
+                      count: 0,
+                    ),
+                    MasterFacetBucket(
+                      value: 'INTERNAL_CONFIRMED',
+                      label: '公司确认',
+                      count: 0,
+                    ),
+                    MasterFacetBucket(
+                      value: 'BOTH_CONFIRMED',
+                      label: '双方确认',
+                      count: 0,
+                    ),
+                    MasterFacetBucket(value: 'DISPUTED', label: '争议', count: 0),
+                    MasterFacetBucket(value: 'CLOSED', label: '已关闭', count: 0),
+                    MasterFacetBucket(
+                      value: 'REVERSED',
+                      label: '已反转',
+                      count: 0,
+                    ),
+                  ],
+                },
                 nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
+                filters: {
+                  'status': _status,
+                  for (final entry in _columnSearch.entries)
+                    'search.${entry.key}': entry.value,
+                },
+                serverColumnSearchKeys: const {
+                  'batchNo',
+                  'supplierName',
+                  'currencyCode',
+                  'periodStart',
+                  'dueDate',
+                  'openingBalanceOriginal',
+                  'periodPostedOriginal',
+                  'periodPaidOriginal',
+                  'periodOffsetOriginal',
+                  'closingBalanceOriginal',
+                  'lineCount',
+                },
+                onFilterChanged: (key, value) {
+                  if (key == 'status') {
+                    setState(() => _status = value);
+                  } else if (key.startsWith('search.')) {
+                    final search = {..._columnSearch};
+                    if (value == null || value.trim().isEmpty) {
+                      search.remove(key.substring(7));
+                    } else {
+                      search[key.substring(7)] = value;
+                    }
+                    setState(() => _columnSearch = search);
+                  } else {
+                    return;
+                  }
+                  _load(1);
+                },
+                sortColumn: _sort,
+                sortAscending: _sortAscending,
+                onSortChange: (column, ascending) {
+                  setState(() {
+                    _sort = column;
+                    _sortAscending = ascending;
+                  });
+                  _load(1);
+                },
                 onRowTap: _open,
                 isLoading: _loading && _result == null,
                 loadingMore: _loading && _result != null,
@@ -371,7 +477,13 @@ class _SupplierSettlementPanelState
                 emptyMessage: '暂无供应商月结批次',
                 currentPage: _result?.page ?? 1,
                 totalPages: _result?.totalPages ?? 1,
-                paginationScope: (_keyword, _status),
+                paginationScope: (
+                  _keyword,
+                  _status,
+                  _columnSearch,
+                  _sort,
+                  _sortAscending,
+                ),
                 onPageChange: _navigatePage,
               ),
             ),

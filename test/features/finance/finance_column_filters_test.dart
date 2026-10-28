@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
@@ -12,6 +13,175 @@ import 'package:uten_imp/features/finance/pages/finance_reconciliation_page.dart
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'raw account flow headers retain exact money, full lineage and complete source choices',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final api = _FinanceFilterApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(home: FinanceReconciliationPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<ReconciliationItem> table() => tester.widget(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<ReconciliationItem>,
+        ),
+      );
+      expect(
+        table().facets['sourceDocType']!.map((item) => item.value),
+        containsAll(['RECEIPT_FEE', 'SUPPLIER_CLAIM_RECEIPT']),
+      );
+      table().onFilterChanged('accountId', 'account-1');
+      await tester.pumpAndSettle();
+      final header = find.byKey(
+        const ValueKey('master-column-filter-inAmount'),
+      );
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(header);
+      await tester.tapAt(Offset(rect.left + 16, rect.center.dy));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=90071992547409.1234',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      table().onFilterChanged('search.counterpartName', '对方%_');
+      await tester.pumpAndSettle();
+      const original = '11111111-2222-3333-4444-555555555555';
+      table().onFilterChanged('search.reversalOfId', original);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['search.inAmount'], '>=90071992547409.1234');
+      expect(api.lastQuery?['search.counterpartName'], '对方%_');
+      expect(api.lastQuery?['search.reversalOfId'], original);
+      final money = table().columns.singleWhere(
+        (column) => column.key == 'inAmount',
+      );
+      expect(money.exactValueOf!(table().items.single), '90071992547409.1234');
+      expect(money.value(table().items.single), '90071992547409.1234');
+      table().onFilterChanged('accountId', null);
+      await tester.pumpAndSettle();
+      expect(
+        api.lastQuery?.containsKey('search.inAmount'),
+        isFalse,
+        reason: '清账户时移除不再有原币资格的金额条件',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final type in FinanceDocType.values) {
+    testWidgets(
+      '${type.name} ordinary headers send exact server conditions and scope candidate counts',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1500, 950));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _FinanceFilterApi();
+        final router = GoRouter(
+          initialLocation: '/finance/${type.pathSegment}',
+          routes: [
+            GoRoute(
+              path: '/finance/${type.pathSegment}',
+              builder: (_, _) =>
+                  FinanceDocListPage(docType: type, initialStatus: 'draft'),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final amountHeader = tester.getRect(
+          find.byKey(const ValueKey('master-column-filter-amountLocal')),
+        );
+        await tester.tapAt(
+          Offset(amountHeader.left + 16, amountHeader.center.dy),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '>=90071992547409.1234',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('master-column-filter-billDate')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '2026-10-01..2026-10-31',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        final table = tester.widget<MasterDataTableView<dynamic>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<dynamic>,
+          ),
+        );
+        table.onFilterChanged('search.billNo', 'SK_%');
+        await tester.pumpAndSettle();
+        expect(
+          api.documentQueries.last['search.amountLocal'],
+          '>=90071992547409.1234',
+        );
+        expect(
+          api.documentQueries.last['search.billDate'],
+          '2026-10-01..2026-10-31',
+        );
+        expect(api.documentQueries.last['search.billNo'], 'SK_%');
+        expect(api.documentQueries.last['page'], 1);
+        expect(
+          api.facetQueries.last['search.amountLocal'],
+          '>=90071992547409.1234',
+        );
+        expect(
+          api.facetQueries.last['search.billDate'],
+          '2026-10-01..2026-10-31',
+        );
+        expect(api.facetQueries.last.containsKey('search.billNo'), isFalse);
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'accountId')
+              .facetSearchEnabled,
+          isTrue,
+        );
+        api.rejectDocumentQuery = true;
+        table.onFilterChanged('search.billNo', 'REJECTED-NEW-SCOPE');
+        await tester.pumpAndSettle();
+        final rejected = tester.widget<MasterDataTableView<dynamic>>(
+          find.byWidgetPredicate(
+            (widget) => widget is MasterDataTableView<dynamic>,
+          ),
+        );
+        expect(rejected.items, isEmpty, reason: '新条件失败不能沿用上一页正式行');
+        expect(rejected.error, '暂时无法检索');
+        expect(rejected.filters['search.billNo'], 'REJECTED-NEW-SCOPE');
+        api.rejectDocumentQuery = false;
+        rejected.onFilterChanged('search.billNo', null);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('finance document headers send UUID and status filters to API', (
     tester,
   ) async {
@@ -95,10 +265,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['status'], 1);
     expect(
-      api.lastQuery?.containsKey('hf.recordOrigin'),
-      isFalse,
-      reason: '历史内保留迁移只读记录',
+      api.lastQuery?['hf.recordOrigin'],
+      'CURRENT',
+      reason: '明确当前状态细筛时，来源控件同步可见，避免把原始历史当成当前状态',
     );
+    expect(api.lastQuery?['originScope'], 'CURRENT');
     expect(find.text('历史单据'), findsOneWidget);
 
     // 2026-09-16 收款类型表头筛选：固定枚举桶 + 回传 receiptKind 参数。
@@ -181,6 +352,9 @@ void main() {
 }
 
 class _FinanceFilterApi extends ApiClient {
+  final documentQueries = <Map<String, dynamic>>[];
+  bool rejectDocumentQuery = false;
+  final facetQueries = <Map<String, dynamic>>[];
   _FinanceFilterApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
@@ -204,6 +378,22 @@ class _FinanceFilterApi extends ApiClient {
       };
     }
     lastQuery = query == null ? null : Map<String, dynamic>.from(query);
+    const documents = {
+      '/finance/receipts',
+      '/finance/payments',
+      '/finance/expenses',
+      '/finance/incomes',
+      '/finance/bank-transfers',
+    };
+    if (documents.contains(path)) {
+      documentQueries.add(Map.of(query ?? const {}));
+      if (rejectDocumentQuery) {
+        throw ApiException('TEMPORARY', '暂时无法检索', httpStatus: 503);
+      }
+    }
+    if (documents.any((document) => path == '$document/facets')) {
+      facetQueries.add(Map.of(query ?? const {}));
+    }
     if (path == '/finance/reconciliations') {
       return {
         'items': [
@@ -214,7 +404,8 @@ class _FinanceFilterApi extends ApiClient {
             'accountId': 'account-1',
             'sourceDocType': 'RECEIPT',
             'entryKind': 'POSTING',
-            'inAmount': 100,
+            'inAmount': 90071992547409.12,
+            'inAmountExact': '90071992547409.1234',
             'outAmount': 0,
           },
         ],

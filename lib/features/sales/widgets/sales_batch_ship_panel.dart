@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 // 批量发货面板（SOP §一9，订单列表「批量发货」用）。
 //
 // 右滑入大面板（840，与 showSalesDocLinkPicker 统一；手机降级底部弹层）：
@@ -493,6 +494,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                const UtenFieldHintIcon(
+                  info: '每页100行，已选产品和输入跨页保留；单批最多500行。',
+                  dense: true,
+                ),
                 const SizedBox(width: UtenSpacing.s8),
                 if (page != null)
                   Flexible(
@@ -554,8 +559,6 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                             : null,
                         icon: const Icon(Icons.close),
                       ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    const Expanded(child: Text('每页100行，已选产品和输入跨页保留；单批最多500行。')),
                   ],
                 ),
               ],

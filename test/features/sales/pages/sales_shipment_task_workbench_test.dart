@@ -1,3 +1,4 @@
+import '../../../support/table_read_status.dart';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -82,7 +83,7 @@ void main() {
       await Future<void>.sync(refresh.onRefresh);
       await tester.pumpAndSettle();
       expect(find.text('XS202608310001'), findsNothing);
-      expect(find.text('服务器已撤销查看权'), findsOneWidget);
+      await expectTableReadFailureDetails(tester, '服务器已撤销查看权');
       expect(api.writes, isEmpty);
     },
   );
@@ -287,8 +288,11 @@ void main() {
       size: const Size(375, 812),
     );
 
-    expect(find.text('出货财务审核任务加载失败'), findsOneWidget);
-    expect(find.text('重试'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '出货财务审核任务加载失败');
+    expect(
+      find.byKey(const ValueKey('master-table-initial-read-retry')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('finance-shipment-audit-table')),
       findsOneWidget,

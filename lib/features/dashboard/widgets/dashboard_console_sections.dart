@@ -8,6 +8,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -19,7 +20,7 @@ import 'uten_console_panel.dart';
 
 /// 今日概览合并面板：横向指标带 + 待办任务装进同一块面板。
 ///
-/// 结构：标题栏(今日概览 + 授权范围 + 采样时刻) → [celebration] 插槽 →
+/// 结构：标题栏(今日概览及范围提示图标 + 采样时刻) → [celebration] 插槽 →
 /// 面板体(宽屏：指标带 │ 竖线 │ 待办区并排；窄屏：上下堆叠)。
 /// 指标和待办按服务端授权及对象范围展示，不以员工部门推断功能准入。
 class DashboardOverviewPanel extends StatelessWidget {
@@ -65,7 +66,7 @@ class DashboardOverviewPanel extends StatelessWidget {
   }
 }
 
-/// 面板标题栏：浅底色带内的「今日概览」主标题、授权范围副标题与采样时刻。
+/// 面板标题栏：浅底色带内的「今日概览」主标题、同行范围提示与采样时刻。
 /// 主色竖条延续全站分区标题语言，让这块面板在工作台里仍读作一个「区」。
 class _PanelHeaderBand extends StatelessWidget {
   const _PanelHeaderBand({required this.generatedAt});
@@ -95,35 +96,30 @@ class _PanelHeaderBand extends StatelessWidget {
           ),
           const SizedBox(width: UtenSpacing.s12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '今日概览',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '今日概览',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    // 采样时刻（HH:mm）给「这是实时仪表」一个锚点。
-                    Text(
-                      _sampledAt(generatedAt),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                  ],
+                      UtenFieldHintIcon(info: scopeLabel, dense: true),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: UtenSpacing.s2),
+                const SizedBox(width: UtenSpacing.s8),
+                // 采样时刻是当前数据事实，保持直接显示。
                 Text(
-                  scopeLabel,
+                  _sampledAt(generatedAt),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -237,6 +233,13 @@ class _StripMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 同一个指标的副标题也可能是“3 个已逾期”等即时事实。仅将已确认的
+    // 静态口径折叠；其他服务端副标题仍可见，不能按指标 id 一概隐藏。
+    final guidance = switch ((metric.id, metric.subtitle)) {
+      ('production-pending', '按销售订单需求实时汇总') ||
+      ('sales-active', '已审核且尚未结案') => metric.subtitle,
+      _ => null,
+    };
     final numeric = double.tryParse(metric.value.replaceAll(',', ''));
     final valueStyle = theme.textTheme.headlineMedium?.copyWith(
       fontSize: 24,
@@ -268,6 +271,8 @@ class _StripMetric extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (guidance != null)
+                    UtenFieldHintIcon(info: guidance, dense: true),
                   if (metric.sensitive) ...[
                     const SizedBox(width: 6),
                     Icon(
@@ -282,7 +287,7 @@ class _StripMetric extends StatelessWidget {
               numeric == null
                   ? Text(metric.value, style: valueStyle)
                   : UtenAnimatedNumber(value: numeric, style: valueStyle),
-              if (metric.subtitle.isNotEmpty) ...[
+              if (guidance == null && metric.subtitle.isNotEmpty) ...[
                 const SizedBox(height: UtenSpacing.s2),
                 // 副标题只给一行，长文案不撑宽指标带。
                 ConstrainedBox(

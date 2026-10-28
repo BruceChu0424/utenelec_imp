@@ -484,7 +484,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                   ),
                   if (_busy && !_confirmingChange)
                     const Positioned.fill(
-                      child: UtenBusyOverlay(title: '正在处理'),
+                      child: UtenBusyOverlay(
+                        showDoNotLeaveHint: false,
+                        title: '正在处理',
+                      ),
                     ),
                 ],
               ),
@@ -767,19 +770,12 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   }) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      UtenSectionHeader(title: title, icon: icon, trailing: trailing),
-      if (description != null) ...[
-        const SizedBox(height: UtenSpacing.s4),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-          child: Text(
-            description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
+      UtenSectionHeader(
+        title: title,
+        icon: icon,
+        trailing: trailing,
+        info: description,
+      ),
       const SizedBox(height: UtenSpacing.s8),
       UtenCard(padding: cardPadding, child: child),
     ],

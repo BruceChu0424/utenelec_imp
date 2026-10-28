@@ -126,6 +126,109 @@ void main() {
         );
         expect(export.queryParams['sort'], 'differenceQty');
         expect(export.queryParams['order'], 'asc');
+        for (final key in [
+          'requiredQty',
+          'allocatedQty',
+          'fulfilledQty',
+          'openQty',
+          'needDate',
+          'expectedDate',
+        ]) {
+          final typed = table.columns.singleWhere((value) => value.key == key);
+          expect(typed.columnSearchEnabled, isTrue);
+          expect(typed.sortable, isTrue);
+        }
+        final exactTask = OperationsWorkbenchTask.fromJson({
+          'taskId': 'exact',
+          'supplyRoute': 'BUY',
+          'taskStatus': 'WAITING_ORDER',
+          'unitName': '个',
+          'requiredQty': 9007199254740993.0001,
+          'requiredQtyExact': '9007199254740993.0001',
+          'allocatedQtyExact': '0.00001',
+          'fulfilledQtyExact': '0.00002',
+          'openQtyExact': '0.00003',
+        }, OperationsWorkbenchDepartment.purchase);
+        expect(
+          table.columns
+              .singleWhere((value) => value.key == 'requiredQty')
+              .value(exactTask),
+          '9007199254740993.0001 个',
+        );
+        for (final flags in [
+          {'goodsCount': 2, 'openLineCount': 2},
+          {
+            'taskStatus': 'MATERIALS_TO_DEFINE',
+            'actionDocType': 'MATERIAL_DISCOVERY',
+          },
+        ]) {
+          final hidden = OperationsWorkbenchTask.fromJson({
+            'taskId': 'hidden',
+            'supplyRoute': 'BUY',
+            'taskStatus': 'WAITING_ORDER',
+            'requiredQty': 999,
+            'allocatedQty': 999,
+            'fulfilledQty': 999,
+            'openQty': 999,
+            'requiredQtyExact': '999',
+            'allocatedQtyExact': '999',
+            'fulfilledQtyExact': '999',
+            'openQtyExact': '999',
+            ...flags,
+          }, OperationsWorkbenchDepartment.purchase);
+          for (final key in [
+            'requiredQty',
+            'allocatedQty',
+            'fulfilledQty',
+            'openQty',
+          ]) {
+            expect(
+              table.columns
+                  .singleWhere((value) => value.key == key)
+                  .exactValueOf!(hidden),
+              isNull,
+            );
+          }
+        }
+        if (scenario.name == 'desktop-light' && !capture) {
+          for (final entry in <String, String>{
+            'differenceQty': '<=0',
+            'requiredQty': '>=8',
+            'allocatedQty': '0..10.5',
+            'fulfilledQty': '>=0',
+            'openQty': '>0',
+            'needDate': '2026-10-01..2026-10-28',
+            'expectedDate': '2026-11',
+          }.entries) {
+            final label = table.columns
+                .singleWhere((value) => value.key == entry.key)
+                .label;
+            await tester.ensureVisible(find.text(label));
+            await tester.tap(find.text(label));
+            await tester.pumpAndSettle();
+            await tester.enterText(
+              find.byKey(const Key('uten-column-keyword-input')),
+              entry.value,
+            );
+            await tester.testTextInput.receiveAction(TextInputAction.search);
+            await tester.pumpAndSettle();
+            expect(gateway.filters['search.${entry.key}'], entry.value);
+            expect(gateway.page, 1);
+          }
+          final current = tester
+              .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+                tableFinder,
+              );
+          current.onSortChange!('expectedDate', false);
+          await tester.pumpAndSettle();
+          expect(gateway.sort, 'expectedDate');
+          final filteredExport = tester.widget<UtenExportButton>(
+            find.byKey(const Key('purchase-workbench-export')),
+          );
+          expect(filteredExport.queryParams['search.requiredQty'], '>=8');
+          expect(filteredExport.queryParams['search.expectedDate'], '2026-11');
+          expect(filteredExport.queryParams['sort'], 'expectedDate');
+        }
         await tester.ensureVisible(find.text('-8 个').first);
         await tester.pumpAndSettle();
         if (capture) {
@@ -158,6 +261,8 @@ class _Api extends ApiClient {
 class _Gateway implements OperationsWorkbenchGateway {
   String? sort;
   String? order;
+  Map<String, String?> filters = {};
+  int page = 1;
   @override
   Future<OperationsWorkbenchData> load({
     required OperationsWorkbenchDepartment department,
@@ -178,6 +283,8 @@ class _Gateway implements OperationsWorkbenchGateway {
   }) async {
     this.sort = sort;
     this.order = order;
+    filters = {...columnFilters};
+    this.page = page;
     return OperationsWorkbenchData(
       department: department,
       summary: const OperationsWorkbenchSummary(

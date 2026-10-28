@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/constants/app_info.dart';
@@ -17,8 +18,10 @@ class AppVersionTile extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return ListTile(
       leading: const Icon(Icons.info_outline, size: 20),
-      title: Text(l10n.settingsVersion),
-      subtitle: Text(l10n.releaseNotesOpen),
+      title: UtenSectionHeader(
+        title: l10n.settingsVersion,
+        info: l10n.releaseNotesOpen,
+      ),
       trailing: Text(version),
       contentPadding: EdgeInsets.zero,
       onTap: () => showDialog<void>(

@@ -11,6 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_learning_panel.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 /// 伪仓库：按服务端 JSON 契约返回学习记录，并记录重新学习调用。
@@ -190,6 +191,45 @@ Map<String, dynamic> _learned({
 };
 
 void main() {
+  testWidgets(
+    'complete learning headers sort and compare sample counts without relearning',
+    (tester) async {
+      final repo = _LearningRepo(_learned(sampleCount: 12, canRelearn: true));
+      await _pump(tester, repo);
+      final table = find.byType(MasterDataTableView<GoodsBomLearningComponent>);
+      final count = tester
+          .widget<MasterDataTableView<GoodsBomLearningComponent>>(table)
+          .columns
+          .singleWhere((c) => c.key == 'sampleCount');
+      await tester.ensureVisible(find.text(count.label));
+      await tester.tap(find.text(count.label));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('从小到大'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('纸箱')).dy,
+        lessThan(tester.getTopLeft(find.text('螺丝')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('螺丝')).dy,
+        lessThan(tester.getTopLeft(find.text('塑料')).dy),
+      );
+      await tester.tap(find.text(count.label));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=10',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('塑料'), findsOneWidget);
+      expect(find.text('螺丝'), findsNothing);
+      expect(find.text('纸箱'), findsNothing);
+      expect(repo.relearnCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'recognized material is visible before the first learning sample',
     (tester) async {

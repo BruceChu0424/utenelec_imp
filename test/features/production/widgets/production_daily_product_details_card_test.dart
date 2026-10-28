@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -611,7 +612,18 @@ void main() {
         const ValueKey('daily-product-add-allocation-product'),
       );
       expect(button, findsOneWidget);
-      expect(find.text('余量自动送仓库'), findsOneWidget);
+      expect(find.text('余量自动送仓库'), findsNothing);
+      final hint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info?.contains('其余送入仓库') == true,
+      );
+      expect(hint, findsOneWidget);
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('未分配余量自动送仓库'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       final card = find.byKey(
         const ValueKey('daily-product-allocations-card-product'),
       );

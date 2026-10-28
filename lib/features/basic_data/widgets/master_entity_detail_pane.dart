@@ -1,3 +1,5 @@
+import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 // 分类主档页的右侧明细区(客户/供应商/模具/货品四页共用，ADR-111)。
 //
 // 四页原先各写一遍整段 _DetailPane(加载/分页/筛选/排序/打印导出/启停/删除/批量)，
@@ -204,6 +206,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.backgroundMenuBuilder,
     this.extraBatchMenuItems,
     this.toolbarLeadingActions,
+    this.toolbarBeforeExportActions,
     this.loadLeadingGroups,
     this.inlineFields = const {},
     this.onInlineSave,
@@ -324,6 +327,10 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final List<Widget> Function(MasterEntityPaneController<TItem, TDetail> pane)?
   toolbarLeadingActions;
 
+  /// Page-specific actions between print preview and export, shared by normal/fullscreen tables.
+  final List<Widget> Function(MasterEntityPaneController<TItem, TDetail> pane)?
+  toolbarBeforeExportActions;
+
   /// 表头下前导分组(货品页：禁用货品 / 不明货品)，随列表一起重拉。
   final Future<List<MasterDataGroup<TItem>>> Function(
     MasterPaneQuery query,
@@ -392,6 +399,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   bool _sortAsc = true;
   Set<String> _selectedIds = {};
   bool _busy = false;
+  final _detailReadChanges = ValueNotifier<int>(0);
   bool _lifecycleWriting = false;
   int _writeEpoch = 0;
   final Set<PopupRoute<dynamic>> _writeDialogs = {};
@@ -415,6 +423,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () => _detailReadChanges.value++);
     _inlineEdit.addListener(_inlineChanged);
     _inlineIdentitySubscription = ref.listenManual(
       sensitiveReadBoundaryProvider,
@@ -497,6 +506,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   void dispose() {
+    _detailReadChanges.value++;
+    _detailReadChanges.dispose();
     _pageReads.dispose();
     _writeLifecycle.dispose();
     _invalidateWrites();
@@ -780,18 +791,29 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     Future<void> Function(TDetail detail) action,
   ) async {
     final version = _queryVersion;
+    final ownerCurrent = captureReadOwner(ref);
+    bool current() =>
+        ownerCurrent() && version == _queryVersion && !_queryPending;
     final loader = _c.loadDetail;
     if (loader == null) return;
     final detail = await runExclusive(
-      () => context.guardLoad(
-        () => loader(id),
-        errorFallback: '加载${_c.noun}详情失败', // TODO(l10n): 补 arb
+      () => context.guardAction(
+        () => runUtenBlockingTask<TDetail>(
+          context: context,
+          title: '正在读取${_c.noun}…',
+          task: () => loader(id),
+          isCurrent: current,
+          invalidation: _detailReadChanges,
+        ),
+        errorFallback: '加载${_c.noun}详情失败',
+        isCurrent: current,
       ),
     );
     if (detail == null ||
         !mounted ||
         _queryPending ||
-        version != _queryVersion) {
+        version != _queryVersion ||
+        !current()) {
       return;
     }
     final hint = _c.detailReadOnlyHint?.call(detail);
@@ -1455,6 +1477,8 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         type: UtenButtonType.primary,
         size: UtenButtonSize.large,
       ),
+      if (!_inlineEdit.active && _error == null)
+        ...?_c.toolbarBeforeExportActions?.call(this),
       UtenExportButton(
         enabled: !_queryPending && _error == null && !_loading && !_listLoading,
         prepareExport: () async {
@@ -1879,6 +1903,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
             ),
           if (_lifecycleWriting)
             const UtenBusyOverlay(
+              showDoNotLeaveHint: false,
               title: '正在处理资料',
               semanticsKey: Key('master-pane-lifecycle-writing'),
             ),

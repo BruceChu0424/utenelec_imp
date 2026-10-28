@@ -16,6 +16,21 @@ typedef PermissionPredicate = bool Function(AdminPermission permission);
 typedef PermissionItemBuilder =
     Widget Function(BuildContext context, AdminPermission permission);
 
+/// Retains a directory only across layout changes of the same current owner.
+/// Keeping just the last key prevents an A -> B -> A switch reviving old state.
+class PermissionCatalogMount {
+  Object? _owner;
+  GlobalKey? _key;
+
+  GlobalKey forOwner(Object owner) {
+    if (_owner != owner || _key == null) {
+      _owner = owner;
+      _key = GlobalKey(debugLabel: 'permission-catalog-owner');
+    }
+    return _key!;
+  }
+}
+
 /// 高密度权限目录的统一浏览器（两级：功能模块 → 子类 → 权限项）。
 ///
 /// 权限仍按后端动态目录完整保留。前端按 [PermissionCatalogGroup.module] 聚合成「模块段」，
@@ -324,6 +339,8 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
                   ),
               ],
             ),
+            if (actionTypes.isNotEmpty)
+              _actionFilterBar(actionTypes, allPermissions),
             if (!_isFiltering)
               TextButton.icon(
                 key: const ValueKey('permission-toggle-all-groups'),
@@ -340,8 +357,6 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               ),
           ],
         ),
-        if (actionTypes.isNotEmpty)
-          _actionFilterBar(actionTypes, allPermissions),
         if (widget.showGlobalBulkActions &&
             (widget.onGrantScope != null || widget.onDisableAll != null) &&
             allPermissions.isNotEmpty)
@@ -368,7 +383,7 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
               ],
             ),
           ),
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenSpacing.s4),
         if (modules.isEmpty)
           UtenEmpty(
             key: const ValueKey('permission-catalog-empty'),
@@ -412,44 +427,40 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     List<PermissionActionType> actionTypes,
     List<AdminPermission> allPermissions,
   ) {
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenFilterRow.rowGap),
-      child: Semantics(
-        container: true,
-        label: '按动作类型筛选权限',
-        child: Wrap(
-          spacing: UtenFilterRow.rowGap,
-          runSpacing: UtenFilterRow.rowGap,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            UtenSegmentRow<PermissionActionType?>(
-              showSelectedIcon: false,
-              emptySelectionAllowed: true,
-              selected: {_actionType},
-              onSelectionChanged: (next) =>
-                  _setActionType(next.isEmpty ? _actionType : next.single),
-              segments: [
-                ButtonSegment(
-                  value: null,
-                  label: Text(
-                    '全部 ${allPermissions.length}',
-                    key: const ValueKey('permission-action-filter-all'),
-                  ),
-                ),
-                for (final type in actionTypes)
-                  ButtonSegment(
-                    value: type,
-                    label: Text(
-                      '${type.label} '
-                      '${allPermissions.where((p) => p.actionType == type).length}',
-                      key: ValueKey(
-                        'permission-action-filter-${type.wireValue.toLowerCase()}',
-                      ),
-                    ),
-                  ),
-              ],
+    return UtenDropdownScrollScope(
+      child: PopupMenuButton<PermissionActionType?>(
+        tooltip: '按动作筛选',
+        onSelected: _setActionType,
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            onTap: () => _setActionType(null),
+            child: Text(
+              '全部动作 ${allPermissions.length}',
+              key: const ValueKey('permission-action-filter-all'),
             ),
-          ],
+          ),
+          for (final type in actionTypes)
+            PopupMenuItem(
+              value: type,
+              child: Text(
+                '${type.label} ${allPermissions.where((p) => p.actionType == type).length}',
+                key: ValueKey(
+                  'permission-action-filter-${type.wireValue.toLowerCase()}',
+                ),
+              ),
+            ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.filter_list_rounded, size: 16),
+              const SizedBox(width: 4),
+              Text(_actionType?.label ?? '全部动作'),
+              const Icon(Icons.arrow_drop_down_rounded, size: 16),
+            ],
+          ),
         ),
       ),
     );

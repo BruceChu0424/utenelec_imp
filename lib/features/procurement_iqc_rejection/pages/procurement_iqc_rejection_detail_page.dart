@@ -1,4 +1,6 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/china_datetime.dart';
@@ -279,9 +281,9 @@ class _ProcurementIqcRejectionDetailPageState
                   padding: const EdgeInsets.only(right: UtenSpacing.s8),
                   children: facts,
                 ),
-                trailing: ListView(
+                trailing: UtenPageEdgePadding.pane(
                   padding: const EdgeInsets.only(left: UtenSpacing.s8),
-                  children: workflow,
+                  child: ListView(padding: EdgeInsets.zero, children: workflow),
                 ),
               ),
             );
@@ -313,6 +315,7 @@ class _ProcurementIqcRejectionDetailPageState
           ),
           UtenSummaryField(
             label: '原币金额',
+            info: '来源金额保留品质记录中的名义份额。供应商实际贷项按原始凭证另行填写和确认。',
             value:
                 item.priceMasked ||
                     item.failedAmountOriginal?.trim().isNotEmpty != true
@@ -368,13 +371,6 @@ class _ProcurementIqcRejectionDetailPageState
               UtenSummaryField(label: '任务版本', value: item.version.toString()),
             ],
           ),
-          if (!item.priceMasked)
-            Text(
-              '来源金额保留品质记录中的名义份额。供应商实际贷项按原始凭证另行填写和确认。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
         ],
       ),
     );
@@ -406,21 +402,19 @@ class _ProcurementIqcRejectionDetailPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '当前责任动作',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            const UtenSectionHeader(
+              title: '当前责任动作',
+              info: '操作是否可用由你的权限和任务当前状态共同决定；被挡住时会说明原因。',
             ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              specs.isEmpty
-                  ? '当前账号在这个状态下没有可做的操作；相关记录仍可查看。'
-                  : '操作是否可用由你的权限和任务当前状态共同决定；被挡住时会说明原因。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            if (specs.isEmpty) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                '当前账号在这个状态下没有可做的操作；相关记录仍可查看。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
+            ],
             if (specs.isNotEmpty) ...[
               const SizedBox(height: UtenSpacing.s12),
               for (var index = 0; index < specs.length; index++) ...[
@@ -632,9 +626,10 @@ class _ProcurementIqcRejectionDetailPageState
       title: '退回份额处理进度',
       icon: Icons.fact_check_outlined,
       description: r.legacyUnclassified
-          ? '历史资金份额待核对，保留原始单据和已发生记录。'
+          ? null
           : '免费补回在合格实收入库后结清；未入库补回与已确认贷项分别记录。',
       children: [
+        if (r.legacyUnclassified) const _Fact('历史资金份额', '待核对，保留原始单据和已发生记录。'),
         _Fact('可确认贷项基本量', '${r.creditableBaseQty ?? '—'} $unit'),
         _Fact('补回待合格入库', '${r.replacementPendingBaseQty ?? '—'} $unit'),
         _Fact('补回已合格入库', '${r.replacementStockedBaseQty ?? '—'} $unit'),
@@ -695,24 +690,10 @@ class _ProcurementIqcRejectionDetailPageState
                 Icon(icon, size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: UtenSectionHeader(title: title, info: description),
                 ),
               ],
             ),
-            if (description != null) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                description,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
             const SizedBox(height: UtenSpacing.s12),
             LayoutBuilder(
               builder: (context, constraints) {

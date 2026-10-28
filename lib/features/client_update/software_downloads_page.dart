@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/inputs/uten_dropdown_scroll_scope.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
@@ -132,6 +133,11 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: '软件下载',
+        info:
+            '下载安装程序：根据电脑架构选择 Windows 版本，等待下载与校验完成。\n\n'
+            '双击完成安装：打开 Setup.exe，按提示完成首次安装。\n\n'
+            '登录并保持更新：使用本人账号登录。以后点击“立即更新”，自动下载、替换并重启，无需重新选择路径。\n\n'
+            '安装包由公司授权人员发布，下载完成后自动校验完整性。请使用本人账号登录。',
         showBackButton: true,
         showPagePermissionAction: false,
         actions: [
@@ -176,28 +182,8 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
                     onDownload: (release) =>
                         unawaited(_download(controller, release)),
                   ),
-                  const SizedBox(height: UtenSpacing.s24),
-                  const _InstallationGuide(),
                   const SizedBox(height: UtenSpacing.s32),
                   _OtherPlatforms(excluded: currentPlatform),
-                  const SizedBox(height: UtenSpacing.s24),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.verified_user_outlined,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          '安装包由公司授权人员发布，下载完成后自动校验完整性。请使用本人账号登录。',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -295,7 +281,17 @@ class _WindowsPanel extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Icon(Icons.window_rounded, size: 24, color: colors.primary),
-                  Text('Windows', style: theme.textTheme.titleMedium),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Windows', style: theme.textTheme.titleMedium),
+                      const UtenFieldHintIcon(
+                        info:
+                            '将优腾完整客户端保存到电脑，用熟悉的账号继续办公。\n\nSetup.exe · 双击安装，后续更新自动使用原安装位置',
+                        dense: true,
+                      ),
+                    ],
+                  ),
                   if (currentDevice) ...[
                     const SizedBox(width: UtenSpacing.s12),
                     Text(
@@ -312,14 +308,6 @@ class _WindowsPanel extends StatelessWidget {
                 softwareProductName(Localizations.localeOf(context)),
                 style: theme.textTheme.headlineLarge?.copyWith(
                   fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                '将优腾完整客户端保存到电脑，\n用熟悉的账号继续办公。',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  height: 1.7,
                 ),
               ),
               const SizedBox(height: UtenSpacing.s24),
@@ -390,11 +378,6 @@ class _WindowsPanel extends StatelessWidget {
                         ? '正在下载 ${(controller.progress * 100).floor()}%'
                         : '下载 Windows 安装程序',
                   ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  'Setup.exe · 双击安装，后续更新自动使用原安装位置',
-                  style: theme.textTheme.bodySmall,
                 ),
               ] else if (controller.loading) ...[
                 const SizedBox(
@@ -625,82 +608,6 @@ class _DesktopArtwork extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _InstallationGuide extends StatelessWidget {
-  const _InstallationGuide();
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    const steps = [
-      ('下载安装程序', '根据电脑架构选择 Windows 版本，等待下载与校验完成。'),
-      ('双击完成安装', '打开 Setup.exe，按提示完成首次安装。'),
-      ('登录并保持更新', '使用本人账号登录。以后点击“立即更新”，自动下载、替换并重启，无需重新选择路径。'),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('从下载到开始工作', style: theme.textTheme.titleLarge),
-        const SizedBox(height: UtenSpacing.s16),
-        LayoutBuilder(
-          builder: (context, bounds) {
-            final columns =
-                bounds.maxWidth >= 840 &&
-                MediaQuery.textScalerOf(context).scale(16) <= 24;
-            final children = [
-              for (var i = 0; i < steps.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s16,
-                    right: UtenSpacing.s16,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: theme.colorScheme.surfaceContainerHigh,
-                        child: Text(
-                          '${i + 1}',
-                          style: theme.textTheme.labelMedium,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              steps[i].$1,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: UtenSpacing.s8),
-                            Text(
-                              steps[i].$2,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                height: 1.7,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ];
-            return columns
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final child in children) Expanded(child: child),
-                    ],
-                  )
-                : Column(children: children);
-          },
-        ),
-      ],
     );
   }
 }

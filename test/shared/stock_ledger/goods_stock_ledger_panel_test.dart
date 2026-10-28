@@ -40,6 +40,8 @@ class _PanelApi extends ApiClient {
   String contextName = '螺丝';
 
   final ledgerQueries = <Map<String, dynamic>>[];
+  final balanceQueries = <Map<String, dynamic>>[];
+  final weightQueries = <Map<String, dynamic>>[];
   final posts = <(String, Object?)>[];
   int balanceCalls = 0;
   int traceCalls = 0;
@@ -166,6 +168,7 @@ class _PanelApi extends ApiClient {
         };
       case '/stock/balances':
         balanceCalls++;
+        balanceQueries.add(Map.of(query ?? const {}));
         return {
           'items': emptyBalances
               ? <Object>[]
@@ -302,6 +305,7 @@ class _PanelApi extends ApiClient {
           'counts': {'total': 4},
         };
       case '/stock/weight/goods/g1/observations':
+        weightQueries.add(Map.of(query ?? const {}));
         Map<String, dynamic> obs(String id, Map<String, dynamic> extra) => {
           'id': id,
           'sourceKind': 'SAMPLE',
@@ -668,7 +672,7 @@ void main() {
 
   testWidgets('balance segment shows KPI, estimated and unknown weights, '
       'and actions by permission', (tester) async {
-    await _pump(tester);
+    final api = await _pump(tester);
 
     expect(find.byKey(const ValueKey('stock-scoped-totals')), findsOneWidget);
     final balanceTable = tester.widget<MasterDataTableView<BalanceRow>>(
@@ -705,6 +709,22 @@ void main() {
     // 只有 stock:view: 看得到流水, 不能调整/核重。
     expect(find.byKey(const ValueKey('balance-adjust-b1')), findsNothing);
     expect(find.byKey(const ValueKey('balance-weigh-b1')), findsNothing);
+    await tester.tap(find.text('库存数量'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从大到小'));
+    await tester.pumpAndSettle();
+    expect(api.balanceQueries.last['sort'], 'qty');
+    expect(api.balanceQueries.last['order'], 'desc');
+    expect(api.balanceQueries.last['page'], 1);
+    expect(api.balanceQueries.last['goodsId'], 'g1');
+    tester
+        .widget<MasterDataTableView<BalanceRow>>(
+          find.byKey(const Key('stock-item-balance-table')),
+        )
+        .onFilterChanged('search.qty', '>=5000');
+    await tester.pumpAndSettle();
+    expect(api.balanceQueries.last['search.qty'], '>=5000');
+    expect(api.balanceQueries.last['sort'], 'qty');
   });
 
   testWidgets(
@@ -804,6 +824,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.ledgerQueries.last['includeWeightAdjustments'], isTrue);
     expect(api.ledgerQueries.last['warehouseId'], 'w1');
+    final table = find.byKey(const Key('stock-item-ledger-table'));
+    await tester.tap(
+      find.descendant(of: table, matching: find.textContaining(' ~ ')).last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('选择流水日期范围'), findsOneWidget);
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(
+      api.ledgerQueries.last['dateFrom'],
+      api.ledgerQueries.last['dateTo'],
+    );
+    expect(api.ledgerQueries.last['warehouseId'], 'w1');
+    expect(api.ledgerQueries.last['colorNull'], isTrue);
+    tester
+        .widget<MasterDataTableView<StockLedgerRow>>(table)
+        .onFilterChanged('search.billNo', 'SS-001');
+    await tester.pumpAndSettle();
+    expect(api.ledgerQueries.last['search.billNo'], 'SS-001');
+    expect(api.ledgerQueries.last['warehouseId'], 'w1');
+    expect(api.ledgerQueries.last['colorNull'], isTrue);
   });
 
   testWidgets(
@@ -830,7 +875,10 @@ void main() {
 
   testWidgets('weight learning card, permission-gated buttons and record '
       'statuses', (tester) async {
-    await _pump(tester, initialSegment: GoodsStockLedgerSegment.weight);
+    final api = await _pump(
+      tester,
+      initialSegment: GoodsStockLedgerSegment.weight,
+    );
 
     expect(find.text('当前单重 2.312 g/个'), findsOneWidget);
     expect(find.textContaining('依据 称重学习 23 次(有效21)'), findsOneWidget);
@@ -847,6 +895,18 @@ void main() {
     expect(find.text('PR-001'), findsNothing);
     // 单重列用服务端给的本条单重。
     expect(find.text('2.31 g'), findsNWidgets(4));
+    await tester.ensureVisible(find.text('单重'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('单重'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '2.31 g',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(api.weightQueries.last['search.unitWeight'], '2.31 g');
+    expect(api.weightQueries.last['page'], 1);
   });
 
   testWidgets('weight managers get sampling, manual weight, reset, '

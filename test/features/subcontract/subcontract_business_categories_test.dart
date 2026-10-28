@@ -25,7 +25,7 @@ void main() {
   testWidgets(
     'ordinary subcontract list keeps exact money with local unit and masks stale Exact',
     (tester) async {
-      await _mount(
+      final api = await _mount(
         tester,
         permissions: const {
           Perm.subcontractOrderView,
@@ -36,6 +36,18 @@ void main() {
       final amount = _table(
         tester,
       ).columns.singleWhere((c) => c.key == 'amount');
+      expect(amount.sortable, isTrue);
+      expect(amount.columnSearchEnabled, isTrue);
+      expect(
+        _table(
+          tester,
+        ).columns.singleWhere((c) => c.key == 'billDate').columnSearchEnabled,
+        isTrue,
+      );
+      _table(tester).onSortChange!('amount', false);
+      await tester.pumpAndSettle();
+      expect(_acceptedQuery(tester, api), containsPair('sort', 'total'));
+      expect(_acceptedQuery(tester, api), containsPair('order', 'desc'));
       for (final raw in ['0.0001', '99999999999999.9999']) {
         final row = SubcontractDocListItem.fromJson({
           'id': 'exact',
@@ -63,8 +75,60 @@ void main() {
         }).totalLocalText,
         isNull,
       );
+      _table(tester).onPageChange!(2);
+      await tester.pumpAndSettle();
+      _table(
+        tester,
+      ).onFilterChanged('search.amount', '-0.0001..99999999999999.9999');
+      await tester.pumpAndSettle();
+      _table(tester).onFilterChanged('search.billDate', '2026-08');
+      await tester.pumpAndSettle();
+      final query = _acceptedQuery(tester, api);
+      expect(query['search.amount'], '-0.0001..99999999999999.9999');
+      expect(query['search.billDate'], '2026-08');
+      expect(query['page'], 1);
+      expect(query['financeApproval'], 'IN_PROGRESS');
     },
   );
+
+  testWidgets('waste weight header queries all pages in its original unit', (
+    tester,
+  ) async {
+    final api = await _mount(
+      tester,
+      pathSegment: 'wastes',
+      page: const SubcontractWasteResponsibilityPage(),
+    );
+    await _tap(tester, '历史记录');
+    _table(tester).onFilterChanged('status', 'APPROVED');
+    await tester.pumpAndSettle();
+    final weight = _table(
+      tester,
+    ).columns.singleWhere((column) => column.key == 'weight');
+    expect(weight.columnSearchEnabled, isTrue);
+    final exact = SubcontractDocListItem.fromJson({
+      'id': 'half',
+      'totalWeight': 1.2345,
+      'totalWeightText': '1.2345',
+      'totalWeightDisplayText': '1.235',
+    });
+    expect(weight.value(exact), '1.235');
+    expect(weight.exactValueOf!(exact), '1.235');
+    final unknown = SubcontractDocListItem.fromJson({
+      'id': 'unknown',
+      'totalWeight': null,
+      'totalWeightDisplayText': '1.235',
+    });
+    expect(weight.value(unknown), isNull);
+    _table(tester).onPageChange!(2);
+    await tester.pumpAndSettle();
+    _table(tester).onFilterChanged('search.weight', '>1.234');
+    await tester.pumpAndSettle();
+    expect(_acceptedQuery(tester, api)['search.weight'], '>1.234');
+    expect(_acceptedQuery(tester, api)['page'], 1);
+    expect(_acceptedQuery(tester, api)['status'], 1);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('order stages filter the server aggregate and reset pagination', (
     tester,
   ) async {

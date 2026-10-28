@@ -75,6 +75,7 @@ Future<String> saveStream(
   bool Function()? stillCurrent,
   Future<void> Function()? verifyScope,
   int maxBytes = 384 * 1024 * 1024,
+  String? directory,
 }) async {
   void check() {
     if (!(stillCurrent?.call() ?? true)) throw StateError('导出身份或服务器已变化，已取消下载');
@@ -154,6 +155,7 @@ Future<String> saveBytes(
   Uint8List bytes,
   String filename, {
   bool Function()? stillCurrent,
+  String? directory,
 }) async {
   if (!(stillCurrent?.call() ?? true)) throw StateError('导出身份或服务器已变化，已取消下载');
   final blob = web.Blob(<JSAny>[bytes.toJS].toJS);
@@ -168,3 +170,6 @@ Future<String> saveBytes(
   web.URL.revokeObjectURL(url);
   return filename;
 }
+
+/// Web 由浏览器决定保存位置，无默认目录概念。
+Future<String?> defaultExportDirectory() async => null;

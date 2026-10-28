@@ -4,9 +4,9 @@
 // - 所有子页面左上角的返回键统一用本组件，样式/交互只在此维护一份
 // - 默认行为：能 pop 则 pop（go_router 下 push 进来的页面）；
 //   不能 pop（深链 / context.go 直达）则回工作台兜底，保证永远可返回
-// - 视觉与 IconButtonTheme 对齐：圆角 8、前景 textSecondary
-// - 图标保持 24，贴按钮左缘；桌面命中区至少 40×40，触屏至少 48×48。
-//   原来标题前的空隙收进按钮内部，视觉左对齐与可点击范围分别维护。
+// - 2026-10-28 用户选定 B：主题实心圆 + 对比色返回箭头。
+// - 可点击按钮与32dp可见圆形重合；标题前16dp空隙由宿主独立提供。
+//   不把标题留白加进按钮，不再使用此前40/48dp水平加宽方案。
 
 import 'package:flutter/material.dart';
 
@@ -38,30 +38,70 @@ class UtenBackButton extends StatelessWidget {
   /// 无障碍/悬停提示，默认「返回」
   final String? tooltip;
 
-  /// 图标颜色；默认取 IconButtonTheme 前景色
+  /// 图标颜色；默认取主题 onPrimary。
   final Color? color;
 
   /// 提交等不可离开状态禁用按钮，避免空回调触发默认返回。
   final bool enabled;
 
-  /// 图标大小独立于命中区。
-  static const double _extent = 24;
+  /// 箭头与圆形分别定义，圆形外不扩展可点击区域。
+  static const double iconExtent = UtenSpacing.s20;
+  static const double buttonExtent = UtenSpacing.s32;
+  static const double titleGap = UtenSpacing.s16;
 
-  /// 宿主的 leading 槽宽与整个可点击按钮一致，标题无需额外间距。
-  static double slotWidth(BuildContext context) =>
-      UtenControlMetrics.minimumHitExtent(context);
+  /// leading只占圆形宽度；宿主另外保留 [titleGap]，该间隙不响应返回。
+  static double slotWidth(BuildContext context) => buttonExtent;
 
   @override
   Widget build(BuildContext context) {
-    final extent = slotWidth(context);
-    return IconButton(
-      icon: Icon(Icons.arrow_back_ios_new_rounded, size: _extent, color: color),
-      tooltip: tooltip ?? '返回',
+    final scheme = Theme.of(context).colorScheme;
+    return Align(
       alignment: AlignmentDirectional.centerStart,
-      padding: EdgeInsets.zero,
-      constraints: BoxConstraints.tight(Size.square(extent)),
-      visualDensity: VisualDensity.standard,
-      onPressed: enabled ? onPressed ?? () => _defaultBack(context) : null,
+      child: SizedBox.square(
+        dimension: buttonExtent,
+        child: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, size: iconExtent),
+          tooltip: tooltip ?? '返回',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(
+            width: buttonExtent,
+            height: buttonExtent,
+          ),
+          visualDensity: VisualDensity.standard,
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(
+              Size.square(buttonExtent),
+            ),
+            maximumSize: const WidgetStatePropertyAll(
+              Size.square(buttonExtent),
+            ),
+            fixedSize: const WidgetStatePropertyAll(Size.square(buttonExtent)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const WidgetStatePropertyAll(CircleBorder()),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.disabled)
+                  ? scheme.onSurface.withValues(alpha: 0.12)
+                  : scheme.primary,
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.disabled)
+                  ? scheme.onSurface.withValues(alpha: 0.38)
+                  : color ?? scheme.onPrimary,
+            ),
+            overlayColor: WidgetStateProperty.resolveWith(
+              (states) => (color ?? scheme.onPrimary).withValues(
+                alpha: states.contains(WidgetState.focused) ? 0.20 : 0.12,
+              ),
+            ),
+            side: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.focused)
+                  ? BorderSide(color: scheme.onSurface, width: 2)
+                  : BorderSide.none,
+            ),
+          ),
+          onPressed: enabled ? onPressed ?? () => _defaultBack(context) : null,
+        ),
+      ),
     );
   }
 

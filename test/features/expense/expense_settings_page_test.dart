@@ -122,7 +122,17 @@ void main() {
         );
         // This is editable policy data and a live business requirement.
         expect(find.text('保留合法原始凭证并填写业务用途'), findsOneWidget);
-        expect(find.text('关闭后仍须上传合法原始凭证，并填写无发票情况说明。'), findsOneWidget);
+        const invoicePolicy = '关闭后仍须上传合法原始凭证，并填写无发票情况说明。';
+        expect(find.text(invoicePolicy), findsNothing);
+        final invoiceHint = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon && widget.info == invoicePolicy,
+        );
+        await tester.tap(invoiceHint);
+        await tester.pump();
+        expect(find.text(invoicePolicy), findsOneWidget);
+        Tooltip.dismissAllToolTips();
+        await tester.pumpAndSettle();
         const description = '由财务维护公司抬头和凭证要求，员工填单时自动显示。';
         expect(find.text(description), findsNothing);
         final hint = find.byWidgetPredicate(

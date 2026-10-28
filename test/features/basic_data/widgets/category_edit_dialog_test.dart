@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import '../../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/category_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
@@ -13,6 +15,37 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 
 void main() {
+  testWidgets('同父级名称即时标红，改名后才可创建；不同父级允许同名', (tester) async {
+    const capture = bool.fromEnvironment('UTEN_AUDIT_SCREENSHOTS');
+    final captureKey = capture ? GlobalKey() : null;
+    if (capture) await loadAuditScreenshotFonts(tester);
+    CategoryEditResult? submitted;
+    await _pumpCategoryDialog(
+      tester,
+      tree: _categoryTree(),
+      captureKey: captureKey,
+      onSubmit: (result) async {
+        submitted = result;
+        return true;
+      },
+    );
+    await tester.enterText(_textFieldWithLabel('名称'), '  原上级分类  ');
+    await tester.pumpAndSettle();
+    expect(find.text('同一上级下已有分类“原上级分类”，请更换名称'), findsOneWidget);
+    expect(_submitButton(tester, '创建').onPressed, isNull);
+    expect(submitted, isNull);
+    if (capture) {
+      await saveAuditScreenshot(tester, captureKey!, 'category-name-duplicate');
+    }
+    await tester.enterText(_textFieldWithLabel('名称'), '当前分类');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('同一上级下已有分类'), findsNothing);
+    await tester.tap(find.text('创建'));
+    await tester.pumpAndSettle();
+    expect(submitted!.name, '当前分类');
+    expect(submitted!.parentId, isNull);
+  });
+
   testWidgets('输入时检查全局占用并标红，换成可用前缀后才允许保存', (tester) async {
     final checked = <String>[];
     CategoryEditResult? submitted;
@@ -498,6 +531,7 @@ Future<void> _pumpCategoryDialog(
   Future<CategoryPrefixAvailability> Function(String)? onCheckPrefix,
   required Future<bool> Function(CategoryEditResult result) onSubmit,
   Size surfaceSize = const Size(1200, 900),
+  GlobalKey? captureKey,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = surfaceSize;
@@ -512,6 +546,12 @@ Future<void> _pumpCategoryDialog(
     ProviderScope(
       overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
       child: MaterialApp(
+        theme: captureKey == null
+            ? null
+            : auditScreenshotTheme(buildLightTheme()),
+        builder: (_, child) => captureKey == null
+            ? child!
+            : RepaintBoundary(key: captureKey, child: child),
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(

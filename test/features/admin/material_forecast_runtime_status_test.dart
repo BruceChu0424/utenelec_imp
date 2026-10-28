@@ -552,7 +552,13 @@ void main() {
         expect(find.byKey(ValueKey('system-setting-$key')), findsOneWidget);
       }
       expect(find.text('原材料行情与预测'), findsOneWidget);
-      expect(find.text('设置和货品关联随数据库保留，标准服务器部署会自动准备采集环境。'), findsOneWidget);
+      const policy = '设置和货品关联随数据库保留，标准服务器部署会自动准备采集环境。';
+      expect(find.text(policy), findsNothing);
+      final hint = find.byKey(const Key('material-forecast-portable-policy'));
+      await t.ensureVisible(hint);
+      await t.tap(hint);
+      await t.pumpAndSettle();
+      expect(find.text(policy), findsOneWidget);
       const capture = bool.fromEnvironment('UTEN_MATERIAL_RUNTIME_VISUALS');
       if (capture) {
         await saveAuditScreenshot(t, visual, 'material-runtime-wide');

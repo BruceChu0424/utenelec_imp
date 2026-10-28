@@ -356,6 +356,7 @@ class MasterRecordRevisionBodyState
             ),
           if (_mutating)
             UtenBusyOverlay(
+              showDoNotLeaveHint: false,
               title: _text(
                 '正在恢复资料版本',
                 'Restoring this revision',

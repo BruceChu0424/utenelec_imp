@@ -57,7 +57,16 @@ class PermissionTitleBlock extends StatelessWidget {
           runSpacing: UtenSpacing.s4,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(name, style: nameStyle),
+            Text(name, style: nameStyle ?? theme.textTheme.bodyMedium),
+            if (detail.isNotEmpty)
+              Tooltip(
+                message: detail,
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  size: 15,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             PermissionActionBadge(actionType: actionType),
             if (sensitivity == 'SENSITIVE_COMMERCIAL')
               const UtenStatusBadge(
@@ -82,16 +91,6 @@ class PermissionTitleBlock extends StatelessWidget {
               ),
           ],
         ),
-        if (detail.isNotEmpty) ...[
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            detail,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.4,
-            ),
-          ),
-        ],
       ],
     );
   }

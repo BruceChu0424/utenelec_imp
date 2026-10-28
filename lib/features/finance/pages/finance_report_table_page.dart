@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 // 钱流明细/汇总报表页（finance_report:view）—— 镜像 sales_report_page。
@@ -48,6 +49,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -88,6 +90,7 @@ class _FinanceReportTablePageState
   late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
+  Object? _acceptedReadQuery;
   bool _loading = false;
   int _loadGeneration = 0;
   String? _error;
@@ -122,6 +125,7 @@ class _FinanceReportTablePageState
         _reportRead.invalidate();
         ++_loadGeneration;
         _data = null;
+        _acceptedReadQuery = null;
         _loading = false;
         _page = 1;
         _keyword = '';
@@ -149,6 +153,7 @@ class _FinanceReportTablePageState
     _reportPages.invalidateReadOwner(notify: false);
     _reportRead.invalidate();
     _data = null;
+    _acceptedReadQuery = null;
     _loading = true;
     _page = 1;
     _keyword = '';
@@ -186,7 +191,8 @@ class _FinanceReportTablePageState
       // 日期范围与 facet 筛选不回灌：进页始终用默认日期范围（上月今日..今日）
       // + 空 filters = 「时间范围内的全部」，避免历史持久化的过时日期范围或失效
       // 筛选值把新数据滤成空白（销售报表已踩此坑，见 sales_report_page.dart）。
-      _sortKey = p.sortKey;
+      _sortKey = _fixedFinanceRowOrder ? null : p.sortKey;
+      if (_nonQueryableColumns.contains(_sortKey)) _sortKey = null;
       _sortAsc = p.sortAsc;
     });
   }
@@ -218,6 +224,36 @@ class _FinanceReportTablePageState
   FinanceReportVariant get _variant => _card.variants[_variantIndex];
   bool get _isCustomerPrepaymentEvents =>
       widget.cardId == 'customer-prepayment';
+
+  bool get _fixedFinanceRowOrder =>
+      _isCustomerPrepaymentEvents ||
+      _exportReport == 'statements/other-receivable' ||
+      const {
+        'gl/balance-sheet',
+        'gl/profit-annual',
+        'gl/profit-monthly',
+        'gl/manufacturing-expense',
+        'gl/admin-expense',
+        'gl/sales-expense',
+        'gl/operating-pl',
+      }.contains(_exportReport);
+
+  Set<String> get _nonQueryableColumns => switch (_exportReport) {
+    'statements/subcontract' => const {'materialPrice', 'materialAmount'},
+    'statements/other-receivable' => const {'price', 'processAmount'},
+    'cost/plastic' => const {'rejectQty'},
+    'cost/sales-summary' => const {
+      'manageFee',
+      'saleFee',
+      'taxFee',
+      'freight',
+      'netProfit',
+      'profitRate',
+    },
+    'ar-ap/summary' => const {'materialAmount'},
+    'payment/detail' => const {'incomeItem'},
+    _ => const {},
+  };
 
   /// 导出报表 key（剥离 /finance/reports/ 前缀，与 GET 路径一致：ar-ap/detail / receipt/summary …）。
   String get _exportReport =>
@@ -252,34 +288,24 @@ class _FinanceReportTablePageState
     if (_clientId != null) 'clientId': _clientId,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     for (final e in _filters.entries) 'f.${e.key}': e.value,
-    ...sortQueryParams(_sortKey, _sortAsc),
+    if (!_fixedFinanceRowOrder && !_nonQueryableColumns.contains(_sortKey))
+      ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      _variant.endpoint,
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => _variant.endpoint,
+      queryOf: () => _exportQuery,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -293,7 +319,8 @@ class _FinanceReportTablePageState
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     'size': _size,
     for (final e in _filters.entries) 'f.${e.key}': e.value,
-    ...sortQueryParams(_sortKey, _sortAsc),
+    if (!_fixedFinanceRowOrder && !_nonQueryableColumns.contains(_sortKey))
+      ...sortQueryParams(_sortKey, _sortAsc),
   };
 
   Future<void> _load({
@@ -311,6 +338,7 @@ class _FinanceReportTablePageState
     final api = ref.read(apiClientProvider);
     final endpoint = _readEndpoint;
     final query = _readQuery;
+    final readIdentity = [endpoint, query, readEpoch, api];
     bool queryCurrent() =>
         mounted &&
         readEpoch == ref.read(exportContextEpochProvider) &&
@@ -370,6 +398,7 @@ class _FinanceReportTablePageState
         _data = null;
       } else if (failure == null && _reportRead.accept(_reportPages.page)) {
         _data = (_reportPages.page! as ReportPageSnapshot).snapshot;
+        _acceptedReadQuery = readIdentity;
         _page = _reportPages.pageNum;
       }
     });
@@ -377,6 +406,14 @@ class _FinanceReportTablePageState
   }
 
   Future<ClientListItem?> _pickClient() => showUtenClientPicker(context, ref);
+
+  bool get _acceptedQueryCurrent =>
+      const DeepCollectionEquality().equals(_acceptedReadQuery, [
+        _readEndpoint,
+        _readQuery,
+        ref.read(exportContextEpochProvider),
+        ref.read(apiClientProvider),
+      ]);
 
   void _onClientChanged(String? id) {
     setState(() {
@@ -393,6 +430,7 @@ class _FinanceReportTablePageState
 
   /// 表头排序回调：column=null 取消排序回到默认；否则按该列升/降序重新请求后端。
   void _onSortChange(String? column, bool ascending) {
+    if (_fixedFinanceRowOrder || _nonQueryableColumns.contains(column)) return;
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
@@ -409,6 +447,15 @@ class _FinanceReportTablePageState
       } else {
         _filters[key] = value;
       }
+      if (key == 'currencyCode' &&
+          (value == null || value.isEmpty || value == kMasterFilterNullValue)) {
+        for (final column in _data?.columns ?? const <Never>[]) {
+          if (column.unitKey == 'currencyCode' && column.type == 'money') {
+            _filters.remove('search.${column.key}');
+            if (_sortKey == column.key) _sortKey = null;
+          }
+        }
+      }
       _page = 1;
     });
     _persistPrefs();
@@ -422,9 +469,29 @@ class _FinanceReportTablePageState
       _page = 1;
       _filters.clear();
       _data = null;
+      _sortKey = null;
+      _sortAsc = true;
     });
     _persistPrefs();
     _load();
+  }
+
+  String _filterCaption(String key, String value) {
+    final columnKey = key.startsWith('search.') ? key.substring(7) : key;
+    final label =
+        _data?.columns
+            .firstWhereOrNull((column) => column.key == columnKey)
+            ?.label ??
+        '筛选';
+    final display = value == kMasterFilterNullValue
+        ? '(空)'
+        : key.startsWith('search.')
+        ? value
+        : _data?.facets[columnKey]
+                  ?.firstWhereOrNull((bucket) => bucket.value == value)
+                  ?.display ??
+              value;
+    return '$label: $display';
   }
 
   @override
@@ -557,7 +624,7 @@ class _FinanceReportTablePageState
               for (final entry in _filters.entries)
                 Chip(
                   label: Text(
-                    '${entry.key}: ${entry.value == kMasterFilterNullValue ? '(空)' : entry.value}',
+                    _filterCaption(entry.key, entry.value),
                     style: theme.textTheme.labelSmall,
                   ),
                   onDeleted: () => _onFilterChanged(entry.key, null),
@@ -571,7 +638,10 @@ class _FinanceReportTablePageState
   }
 
   Widget _buildTable() {
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
+    final data = _acceptedQueryCurrent
+        ? _data
+        : (_data?.pendingQuery() ??
+              (_loading ? _reportMetadata.loadingData : null));
     if (_error != null && _data == null) {
       return Center(
         child: Column(
@@ -612,8 +682,35 @@ class _FinanceReportTablePageState
                 ? 72
                 : (c.width ?? 120).toDouble(),
             type: c.type,
+            columnSearchEnabled:
+                data.columnSearchKeys.contains(c.key) &&
+                !_nonQueryableColumns.contains(c.key) &&
+                (c.type != 'money' ||
+                    c.unitKey != 'currencyCode' ||
+                    (_filters['currencyCode'] != null &&
+                        _filters['currencyCode'] != kMasterFilterNullValue)),
+            info: c.unitKey == 'currencyCode' && c.type == 'money'
+                ? '原币金额检索与排序请先选择一个币别；合计按币种分别列出'
+                : _exportReport == 'statements/subcontract' &&
+                      const {
+                        'prevStock',
+                        'issueQty',
+                        'lossAllowed',
+                        'receiptQty',
+                        'balance',
+                      }.contains(c.key)
+                ? '同委外商、货品、颜色及数量单位的完整库存事实，在各加工币别行重复显示，不累计'
+                : null,
             sortable:
-                !_isCustomerPrepaymentEvents && isSortableReportType(c.type),
+                !_fixedFinanceRowOrder &&
+                !_nonQueryableColumns.contains(c.key) &&
+                (data.columnSearchKeys.isEmpty ||
+                    data.columnSearchKeys.contains(c.key)) &&
+                (c.type != 'money' ||
+                    c.unitKey != 'currencyCode' ||
+                    (_filters['currencyCode'] != null &&
+                        _filters['currencyCode'] != kMasterFilterNullValue)) &&
+                isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
             exactValueOf: (row) => row['${c.key}Exact']?.toString(),
           ),
@@ -625,6 +722,14 @@ class _FinanceReportTablePageState
       tableKey:
           'features.finance.pages.finance_report_table_page.FinanceReportTablePageState._buildTable.1',
       columns: columns,
+      serverColumnSearchKeys: data.columnSearchKeys,
+      headerFilterScopeDescription: _exportReport == 'statements/subcontract'
+          ? '库存为同委外商、货品、颜色及数量单位的整组事实，在各加工币别重复显示，不累计；加工金额按本币别计价数量检索'
+          : _exportReport == 'cost/copper-fee'
+          ? '按往来方、货品、单位及币别核算；金额使用组内最近已知单价'
+          : widget.cardId == 'gl' && _fixedFinanceRowOrder
+          ? '定位已计算行，原会计合计不重算'
+          : '检索所选条件的完整报表；合计与导出沿用同一范围',
       items: data.rows,
       toolbarActions: [
         if (widget.cardId == 'gl' &&
@@ -671,7 +776,7 @@ class _FinanceReportTablePageState
       refreshedPages: _reportPages.refreshedPages,
       onRetainedPagesChanged: _reportPages.retainPages,
       paginationRevision: _reportPages.paginationRevision,
-      error: _reportPages.error,
+      error: _acceptedQueryCurrent ? _reportPages.error : _error,
       onRetry: () => _load(background: _data != null),
       emptyMessage: _isCustomerPrepaymentEvents ? '所选日期和客户暂无客户预收流水' : '暂无报表数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
@@ -690,6 +795,9 @@ class _FinanceReportTablePageState
         _to,
         _keyword,
         _clientId,
+        PagedReadQueryKey(_filters),
+        _sortKey,
+        _sortAsc,
       ),
       onPageChange: (p) {
         _page = p;

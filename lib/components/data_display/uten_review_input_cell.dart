@@ -13,6 +13,7 @@ class UtenReviewInputCell extends StatelessWidget {
     this.beforeLabel,
     this.beforeKey,
     this.decimalValues = true,
+    this.replacementEnabled = true,
   });
   final String? before;
   final String? after;
@@ -22,6 +23,9 @@ class UtenReviewInputCell extends StatelessWidget {
   /// Numeric review cells compare equivalent decimal scales by default.
   /// Identifiers and other text preserve every character when this is false.
   final bool decimalValues;
+
+  /// A reviewed conflict can retain the original until replacement is chosen.
+  final bool replacementEnabled;
   final Widget child;
 
   @override
@@ -38,14 +42,20 @@ class UtenReviewInputCell extends StatelessWidget {
       maxLines: inTable ? 1 : null,
       overflow: inTable ? TextOverflow.ellipsis : null,
       style: TextStyle(
-        color: red,
-        decoration: TextDecoration.lineThrough,
+        color: replacementEnabled
+            ? red
+            : Theme.of(context).colorScheme.onSurface,
+        decoration: replacementEnabled
+            ? TextDecoration.lineThrough
+            : TextDecoration.none,
         decorationColor: red,
       ),
     );
     return Semantics(
       label: changed
-          ? '原值 ${beforeLabel ?? before ?? "未填写"}，修改为 ${after ?? "未填写"}'
+          ? replacementEnabled
+                ? '原值 ${beforeLabel ?? before ?? "未填写"}，修改为 ${after ?? "未填写"}'
+                : '保留原值 ${beforeLabel ?? before ?? "未填写"}，导入值 ${after ?? "未填写"}尚未采用'
           : null,
       // Table hosts provide finite column widths. Avoid LayoutBuilder here:
       // stretch rows measure intrinsic height to draw continuous tree guides.
@@ -58,7 +68,12 @@ class UtenReviewInputCell extends StatelessWidget {
                 Flexible(
                   flex: changed ? 1 : 0,
                   child: changed
-                      ? Tooltip(message: original, child: retained)
+                      // The enclosing label already states the original value.
+                      // Its visual disclosure must not lend an OverlayPortal
+                      // traversal owner to the adjacent native text editor.
+                      ? ExcludeSemantics(
+                          child: Tooltip(message: original, child: retained),
+                        )
                       : const SizedBox.shrink(),
                 ),
                 SizedBox(width: changed ? 6 : 0),

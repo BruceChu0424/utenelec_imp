@@ -111,6 +111,10 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                           currentPage: page.page,
                           totalPages: page.totalPages,
                           totalItems: page.total,
+                          busy: list.isLoading,
+                          onPageChanged: (target) => ref
+                              .read(websiteInquiryListProvider.notifier)
+                              .goToPage(target),
                           onPrev: !list.isLoading && page.page > 1
                               ? () => ref
                                     .read(websiteInquiryListProvider.notifier)

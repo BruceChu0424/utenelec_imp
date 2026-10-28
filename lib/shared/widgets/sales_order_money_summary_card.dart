@@ -5,6 +5,8 @@ import '../../core/network/api_exception.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../components/data_display/uten_detail_summary_card.dart';
+import '../../components/layout/uten_collapsible_content.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../features/finance/models/customer_prepayment.dart';
 import '../formatters/exact_decimal.dart';
 import '../formatters/money_display.dart';
@@ -128,6 +130,7 @@ class _SalesOrderMoneySummaryCardState
       );
       Widget metric(String label, String? value) => UtenSummaryField(
         label: label,
+        info: _metricInfo(label),
         value: financeMoneyWithUnitSuffix(
           value,
           currencyName: summary?.currencyName,
@@ -447,80 +450,59 @@ class _SalesOrderMoneySummaryCardState
                 ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            words?.moneySummaryBalanceHint ?? '待处理余额需财务确认抵扣或退款，不表示已退款。',
-            style: theme.textTheme.bodySmall,
-          ),
         ],
         if (!warningsOnly)
-          AnimatedSize(
+          UtenCollapsibleContent(
             key: const ValueKey('sales-order-money-summary-details'),
-            duration: const Duration(milliseconds: 180),
-            alignment: Alignment.topCenter,
-            child: _isExpanded || detailsOnly
-                ? Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          words?.moneySummarySourceHint ??
-                              '金额来自已审核单据。客户已付可能含代扣费用，银行实际到账以账户流水为准。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                        Text(
-                          words?.moneySummaryCollectionHint ??
-                              '按当前应收、后续发货及未使用预收估算，不会自动抵扣或退款。',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            if (_compact) {
-                              return UtenSummaryFacts(
-                                children: [
-                                  for (final metric in detailMetrics)
-                                    _metric(
-                                      theme,
-                                      summary,
-                                      metric.$1,
-                                      metric.$2,
-                                      emphasis: metric.$3,
-                                    ),
-                                ],
-                              );
-                            }
-                            final compact = constraints.maxWidth < 600;
-                            final width = compact
-                                ? constraints.maxWidth
-                                : (constraints.maxWidth - UtenSpacing.s8) / 2;
-                            return Wrap(
-                              spacing: UtenSpacing.s8,
-                              runSpacing: UtenSpacing.s8,
-                              children: [
-                                for (final metric in detailMetrics)
-                                  SizedBox(
-                                    width: width,
-                                    child: _metric(
-                                      theme,
-                                      summary,
-                                      metric.$1,
-                                      metric.$2,
-                                      emphasis: metric.$3,
-                                    ),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  )
-                : const SizedBox(width: double.infinity),
+            expanded: _isExpanded || detailsOnly,
+            maintainState: false,
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (_compact) {
+                        return UtenSummaryFacts(
+                          children: [
+                            for (final metric in detailMetrics)
+                              _metric(
+                                theme,
+                                summary,
+                                metric.$1,
+                                metric.$2,
+                                emphasis: metric.$3,
+                              ),
+                          ],
+                        );
+                      }
+                      final compact = constraints.maxWidth < 600;
+                      final width = compact
+                          ? constraints.maxWidth
+                          : (constraints.maxWidth - UtenSpacing.s8) / 2;
+                      return Wrap(
+                        spacing: UtenSpacing.s8,
+                        runSpacing: UtenSpacing.s8,
+                        children: [
+                          for (final metric in detailMetrics)
+                            SizedBox(
+                              width: width,
+                              child: _metric(
+                                theme,
+                                summary,
+                                metric.$1,
+                                metric.$2,
+                                emphasis: metric.$3,
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
         if (!detailsOnly &&
             (summary.hasUnallocated || summary.warnings.isNotEmpty)) ...[
@@ -549,6 +531,22 @@ class _SalesOrderMoneySummaryCardState
   }
 
   /// 一格资金指标：格内按「币种 金额」显示(ADR-128，2026-09-27 起不再只显示数值)。
+  String? _metricInfo(String label) {
+    final words = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    if (label == (words?.moneySummaryCustomerPaid ?? '客户已付')) {
+      return words?.moneySummarySourceHint ??
+          '金额来自已审核单据。客户已付可能含代扣费用，银行实际到账以账户流水为准。';
+    }
+    if (label == (words?.moneySummaryExpectedNewCash ?? '预计还需新收')) {
+      return words?.moneySummaryCollectionHint ??
+          '按当前应收、后续发货及未使用预收估算，不会自动抵扣或退款。';
+    }
+    if (label == (words?.moneySummaryPendingBalance ?? '客户待处理余额')) {
+      return words?.moneySummaryBalanceHint ?? '待处理余额需财务确认抵扣或退款，不表示已退款。';
+    }
+    return null;
+  }
+
   Widget _metric(
     ThemeData theme,
     SalesOrderMoneySummary summary,
@@ -559,6 +557,7 @@ class _SalesOrderMoneySummaryCardState
     if (_compact) {
       return UtenSummaryField(
         label: label,
+        info: _metricInfo(label),
         value: financeMoneyWithUnitSuffix(
           value,
           currencyName: summary.currencyName,
@@ -580,11 +579,20 @@ class _SalesOrderMoneySummaryCardState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              if (_metricInfo(label) case final info?)
+                UtenFieldHintIcon(info: info, dense: true),
+            ],
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(

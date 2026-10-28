@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/widgets/procurement_difference_column.dart';
@@ -34,7 +35,85 @@ void main() {
     }
     expect(column.filterFromRows, isTrue);
     expect(column.sortable, isTrue);
+    expect(column.supportsKeywordSearch, isTrue);
   });
+
+  testWidgets('paged differences require an explicit server search contract', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            MasterColumnDef<_Fact> column(bool serverSearch) =>
+                procurementDifferenceColumn<_Fact>(
+                  context: context,
+                  differenceOf: (row) => row.difference,
+                  unitOf: (row) => row.unit,
+                  filterFromRows: false,
+                  serverSearchEnabled: serverSearch,
+                );
+            expect(column(false).supportsKeywordSearch, isFalse);
+            expect(column(true).supportsKeywordSearch, isTrue);
+            expect(column(true).filterFromRows, isFalse);
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+  });
+
+  testWidgets(
+    'difference header searches exact numeric facts while retaining units',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return MasterDataTableView<_Fact>(
+                    columns: [
+                      procurementDifferenceColumn<_Fact>(
+                        context: context,
+                        differenceOf: (row) => row.difference,
+                        unitOf: (row) => row.unit,
+                      ),
+                    ],
+                    items: const [
+                      (difference: '-9007199254740993.0001', unit: '件'),
+                      (difference: '-9007199254740993.0002', unit: '箱'),
+                      (difference: '0', unit: '件'),
+                      (difference: null, unit: '件'),
+                    ],
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delivery difference'));
+      await tester.pumpAndSettle();
+      final input = find.byType(TextField);
+      expect(input, findsOneWidget);
+      await tester.enterText(input, '=-9007199254740993.0001');
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(find.text('-9007199254740993.0001 件'), findsOneWidget);
+      expect(find.text('-9007199254740993.0002 箱'), findsNothing);
+      expect(find.text('0 件'), findsNothing);
+      expect(find.text('—'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('request and source-order columns explain distinct quantities', (
     tester,

@@ -25,6 +25,37 @@ final _scopeForTest = StateProvider<AuthenticatedScope?>(
 );
 
 void main() {
+  testWidgets('无栈离职向导首步可返回员工详情', (tester) async {
+    final router = _router();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiBaseUrlProvider.overrideWithValue(
+            'https://offboarding-test.example/api',
+          ),
+          employeeRepositoryProvider.overrideWithValue(
+            _EmployeeRepositoryFake(),
+          ),
+          dataHandoverRepositoryProvider.overrideWithValue(
+            _HandoverRepositoryFake(_noDataPreview),
+          ),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('员工详情'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('首次离职资料GET跨身份回执不能绑定到新账号草稿', (tester) async {
     final pending = Completer<EmployeeProfile>();
     final employees = _DelayedEmployeeRepository(pending.future);

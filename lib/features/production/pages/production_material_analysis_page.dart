@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
@@ -6,6 +7,7 @@ import '../../../components/buttons/uten_tree_expansion_button.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 import '../../../shared/search/keyword_search.dart';
+import '../../../shared/search/retain_hierarchy_filter_context.dart';
 import '../widgets/production_sales_requirements.dart';
 import '../models/production_sales_requirement.dart';
 
@@ -39,6 +41,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_fit_or_compact.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -72,6 +75,7 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/uten_tree_row_projection.dart';
+import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../department/models/department_node.dart';
@@ -790,8 +794,10 @@ abstract class _MaterialAnalysisPageBase
 
   final Set<String> _dirtyRouteGroups = {};
   final Set<String> _selectedMaterialGroupKeys = {};
-  final Set<String> _collapsedBomProducts = {};
-  final Set<String> _collapsedBomBranches = {};
+  final _bomProductExpansion = UtenDefaultCollapsedTreeState();
+  final _bomBranchExpansion = UtenDefaultCollapsedTreeState();
+  Set<String> get _collapsedBomProducts => _bomProductExpansion.collapsedIds;
+  Set<String> get _collapsedBomBranches => _bomBranchExpansion.collapsedIds;
   _BomViewMode _bomViewMode = _BomViewMode.all;
 
   /// BOM 区展示的两种排布：false = 按产品分组的 BOM 树（默认，现状）；
@@ -1227,6 +1233,11 @@ abstract class _MaterialAnalysisPageBase
 
   /// 换成另一份分析时，把主表的行内输入与指派草稿整体作废(ADR-102)。
   void _resetMaterialTableInputsForNewAnalysis();
+
+  void _reconcileBomExpansion(
+    ProductionMaterialAnalysisView view,
+    bool newAnalysis,
+  );
 
   /// 同一份分析换了新快照后，把系统预填值刷新一遍——**只覆盖用户没动过的格子**。
   /// 轮询与 409 恢复都会整树换快照，少了这一步，用户填了一屏的数会被静默吃掉。
@@ -1721,15 +1732,7 @@ abstract class _MaterialAnalysisPageBase
     final validProductIds = view.products
         .map((product) => product.analysisLineId)
         .toSet();
-    _collapsedBomProducts.removeWhere(
-      (analysisLineId) => !validProductIds.contains(analysisLineId),
-    );
-    final validNodeKeys = view.materials
-        .map((material) => material.materialLineId)
-        .toSet();
-    _collapsedBomBranches.removeWhere(
-      (nodeKey) => !validNodeKeys.contains(nodeKey),
-    );
+    _reconcileBomExpansion(view, previousAnalysisId != view.analysisId);
     for (final key
         in _batchQtyControllers.keys
             .where((key) => !validProductIds.contains(key))

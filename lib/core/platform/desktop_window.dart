@@ -12,20 +12,26 @@ bool get supportsDesktopWindow =>
     (defaultTargetPlatform == TargetPlatform.windows ||
         defaultTargetPlatform == TargetPlatform.macOS);
 
-/// One entry point for Windows/AppKit window presentation and login controls.
+/// One entry point for Windows/AppKit window presentation and shared controls.
 /// Cosmetic failures must never replay login, logout, or other business work.
 class DesktopWindowController {
   DesktopWindowController({
     this.channel = const MethodChannel('com.uten.imp/desktop_window'),
     bool? enabled,
-  }) : enabled = enabled ?? supportsDesktopWindow;
+  }) : enabled = enabled ?? supportsDesktopWindow {
+    if (this.enabled) channel.setMethodCallHandler(_onWindowMethodCall);
+  }
 
   final MethodChannel channel;
   final bool enabled;
+  final _maximized = ValueNotifier(false);
+  ValueListenable<bool> get maximized => _maximized;
   bool _alive = true;
   bool _missingChannel = false;
   bool _scheduled = false;
   int _generation = 0;
+  int _windowStateRevision = 0;
+  bool _toggleInFlight = false;
   DesktopWindowMode? _desired;
   DesktopWindowMode? _lastSent;
   Completer<void>? _completion;
@@ -38,6 +44,7 @@ class DesktopWindowController {
     _complete(_completion);
     _desired = mode;
     _generation++;
+    if (mode == DesktopWindowMode.login) _updateMaximized(false);
     final completion = _completion = Completer<void>();
     if (!_scheduled) {
       _scheduled = true;
@@ -68,6 +75,9 @@ class DesktopWindowController {
   ) async {
     try {
       await channel.invokeMethod<void>('setMode', mode.name);
+      if (mode == DesktopWindowMode.main) {
+        await _refreshWindowState(generation);
+      }
     } on MissingPluginException {
       if (_alive && generation == _generation) _missingChannel = true;
     } on PlatformException {
@@ -77,15 +87,24 @@ class DesktopWindowController {
     }
   }
 
-  Future<void> beginDrag() => _loginAction('beginDrag');
-  Future<void> minimize() => _loginAction('minimize');
-  Future<void> close() => _loginAction('close');
+  Future<void> beginDrag() => _windowAction('beginDrag');
+  Future<void> minimize() => _windowAction('minimize');
+  Future<void> close() => _windowAction('close');
 
-  Future<void> _loginAction(String method) async {
-    if (!_alive ||
-        !enabled ||
-        _missingChannel ||
-        _desired != DesktopWindowMode.login) {
+  Future<void> toggleMaximize() async {
+    if (_toggleInFlight || _desired != DesktopWindowMode.main) return;
+    _toggleInFlight = true;
+    final generation = _generation;
+    try {
+      await _windowAction('toggleMaximize');
+      await _refreshWindowState(generation);
+    } finally {
+      _toggleInFlight = false;
+    }
+  }
+
+  Future<void> _windowAction(String method) async {
+    if (!_alive || !enabled || _missingChannel || _desired == null) {
       return;
     }
     try {
@@ -97,10 +116,57 @@ class DesktopWindowController {
     }
   }
 
+  Future<dynamic> _onWindowMethodCall(MethodCall call) async {
+    if (_alive &&
+        call.method == 'windowStateChanged' &&
+        _desired == DesktopWindowMode.main) {
+      final arguments = call.arguments;
+      if (arguments is Map && arguments['maximized'] is bool) {
+        _updateMaximized(arguments['maximized'] as bool);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _refreshWindowState(int generation) async {
+    if (!_alive ||
+        !enabled ||
+        _missingChannel ||
+        generation != _generation ||
+        _desired != DesktopWindowMode.main) {
+      return;
+    }
+    final revision = _windowStateRevision;
+    try {
+      final state = await channel.invokeMapMethod<String, dynamic>(
+        'getWindowState',
+      );
+      if (_alive &&
+          generation == _generation &&
+          _desired == DesktopWindowMode.main &&
+          revision == _windowStateRevision &&
+          state?['maximized'] is bool) {
+        _updateMaximized(state!['maximized'] as bool);
+      }
+    } on MissingPluginException {
+      // Older runners can still perform supported window actions.
+    } on PlatformException {
+      // A later native window event will refresh the presentation.
+    }
+  }
+
+  void _updateMaximized(bool value) {
+    _windowStateRevision++;
+    if (_alive) _maximized.value = value;
+  }
+
   void dispose() {
+    if (!_alive) return;
     _alive = false;
     _generation++;
     _complete(_completion);
+    if (enabled) channel.setMethodCallHandler(null);
+    _maximized.dispose();
   }
 
   static void _complete(Completer<void>? completion) {

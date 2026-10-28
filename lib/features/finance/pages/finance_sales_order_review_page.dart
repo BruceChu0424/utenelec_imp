@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 销售订货单财务审核详情页（V300 专用审核视图，与销售端订单详情分离）。
@@ -893,11 +894,23 @@ class _FinanceSalesOrderReviewPageState
             runSpacing: UtenSpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Text(
-                l10n.quoteFinanceOrderSourceQuote(quote.billNo ?? '—'),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      l10n.quoteFinanceOrderSourceQuote(quote.billNo ?? '—'),
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (allMatch)
+                    UtenFieldHintIcon(
+                      info: l10n.quoteFinanceOrderChipHint,
+                      dense: true,
+                    ),
+                ],
               ),
               UtenStatusBadge(
                 label: confirmedLabel,
@@ -918,15 +931,6 @@ class _FinanceSalesOrderReviewPageState
               ),
             ],
           ),
-          if (allMatch) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              l10n.quoteFinanceOrderChipHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
         ],
       ),
     );

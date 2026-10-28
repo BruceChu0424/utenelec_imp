@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
+import 'support/table_cell_geometry.dart';
 
 Widget _table(
   List<String> items, {
@@ -281,18 +282,6 @@ class _NonlinearScaler extends TextScaler {
   double get textScaleFactor => factor;
 }
 
-/// 该列表头单元格宽度(列宽由表头与表体共用; 表头格是定宽 Container)。
-double _columnWidth(WidgetTester tester) {
-  final containers = tester.widgetList<Container>(
-    find.ancestor(of: find.text('名称'), matching: find.byType(Container)),
-  );
-  for (final container in containers) {
-    final constraints = container.constraints;
-    if (constraints != null &&
-        constraints.maxWidth.isFinite &&
-        constraints.minWidth == constraints.maxWidth) {
-      return constraints.maxWidth;
-    }
-  }
-  fail('没有找到定宽的表头单元格');
-}
+/// Measure the shared painted header cell, independent of layout wrappers.
+double _columnWidth(WidgetTester tester) =>
+    tableCellWidth(tester, find.text('名称'));

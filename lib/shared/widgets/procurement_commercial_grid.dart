@@ -403,6 +403,8 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
           UtenEditableGridCellSpec.hintIconWidth,
       textOf: (r) =>
           r.currencyId == null ? '' : (currencyEntries[r.currencyId] ?? ''),
+      filterValueOf: (r) =>
+          r.currencyId == null ? '' : (currencyEntries[r.currencyId] ?? ''),
       listenableOf: (r) => r.currencyIdNotifier,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,
@@ -429,6 +431,8 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       numeric: true,
       headerInfo: l10n.workflowTaxRateHint,
       textOf: (r) => r.taxRate.text,
+      exactValueOf: (r) => r.taxRate.text,
+      exactListenableOf: (r) => r.taxRate,
       listenableOf: (r) => r.taxRate,
       cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
         valueListenable: row.termsAutofilledNotifier,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 // 共享明细区(ADR-111)：批量启停/删除一次请求、失败逐条展示原因；行启停带列表行版本、
 // 不先拉详情。锁住「选 100 条就是 200 次串行请求、catch 吞错只报 N 个跳过」不再回来。
 // 2026-10-18 口径：批量操作走右键菜单（多选时出批量项），右下悬浮组只挂
@@ -112,6 +113,7 @@ Future<_Counters> _pump(
   _FakeBatchRepository batch,
   _FakeStatusRepository status, {
   Future<PagedResult<_Row>> Function(MasterPaneQuery)? loadPage,
+  Future<_Row> Function(String)? loadDetail,
 }) async {
   final counters = _Counters();
   SharedPreferences.setMockInitialValues({});
@@ -162,7 +164,7 @@ Future<_Counters> _pump(
     canStatus: true,
     loadDetail: (id) async {
       counters.detailCalls++;
-      return _rows.first;
+      return loadDetail == null ? _rows.first : await loadDetail(id);
     },
   );
   await tester.pumpWidget(
@@ -225,6 +227,42 @@ Future<void> _statusAction(WidgetTester tester, UtenMenuItem entry) async {
 }
 
 void main() {
+  for (final stale in [false, true]) {
+    testWidgets('共享主档详情读取显示等待，${stale ? '范围变化后丢弃旧详情' : '完成后进入原编辑动作'}', (
+      tester,
+    ) async {
+      final response = Completer<_Row>();
+      await _pump(
+        tester,
+        _FakeBatchRepository(),
+        _FakeStatusRepository(),
+        loadDetail: (_) => response.future,
+      );
+      final finder = find.byType(MasterEntityDetailPane<_Row, _Row>);
+      final controller =
+          tester.state(finder) as MasterEntityPaneController<_Row, _Row>;
+      _Row? received;
+      final pending = controller.withDetail('g0', (row) async {
+        received = row;
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('正在读取货品…'), findsOneWidget);
+      if (stale) {
+        final container = ProviderScope.containerOf(tester.element(finder));
+        container.read(readScopeRevisionProvider.notifier).state++;
+        await tester.pumpAndSettle();
+        expect(find.text('正在读取货品…'), findsNothing);
+      }
+      response.complete(_rows.first);
+      await tester.pumpAndSettle();
+      await pending;
+      expect(received, stale ? isNull : same(_rows.first));
+      expect(find.text('正在读取货品…'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('主档viewport仍在1且最新DTO为3时显式跳3走缓存并完成同DTO导航', (tester) async {
     final reads = <int>[];
     await _pump(

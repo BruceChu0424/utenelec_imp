@@ -11,6 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -449,19 +450,26 @@ class _FinanceAssetWorkbenchPageState
             ),
             if (postingBlocked)
               Text('初始确认、处置和提前终止暂不可用。', style: theme.textTheme.bodySmall),
-            if (_restrictionsExpanded) ...[
-              const Divider(height: UtenSpacing.s24),
-              if (policyBlocked)
-                Text(
-                  '待配置：${overview.missingPolicyItems.isEmpty ? '类别与会计科目政策' : overview.missingPolicyItems.map(_friendlyPolicyLabel).join('、')}。',
-                ),
-              if (postingBlocked) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                const Text('落账功能需完成独立审批与反冲流程验收后开放；配置会计政策不能解除此安全门禁。'),
-                if (overview.operationalBlockers.isNotEmpty)
-                  Text('待完成事项：${overview.operationalBlockers.length} 项'),
-              ],
-            ],
+            UtenCollapsibleContent(
+              expanded: _restrictionsExpanded,
+              maintainState: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Divider(height: UtenSpacing.s24),
+                  if (policyBlocked)
+                    Text(
+                      '待配置：${overview.missingPolicyItems.isEmpty ? '类别与会计科目政策' : overview.missingPolicyItems.map(_friendlyPolicyLabel).join('、')}。',
+                    ),
+                  if (postingBlocked) ...[
+                    const SizedBox(height: UtenSpacing.s8),
+                    const Text('落账功能需完成独立审批与反冲流程验收后开放；配置会计政策不能解除此安全门禁。'),
+                    if (overview.operationalBlockers.isNotEmpty)
+                      Text('待完成事项：${overview.operationalBlockers.length} 项'),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),

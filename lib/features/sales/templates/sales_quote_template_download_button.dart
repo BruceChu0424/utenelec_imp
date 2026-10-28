@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import 'sales_quote_template.dart';
 import 'sales_quote_template_learning.dart';
@@ -159,7 +159,10 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return UtenAlertDialog(
-      title: Text(l10n.quoteTemplateChoose),
+      title: UtenSectionHeader(
+        title: l10n.quoteTemplateChoose,
+        info: l10n.quoteTemplateChooseHint,
+      ),
       // The shared shell scrolls the title and list together. Keeping one
       // scroll region lets long actions reserve their actual height on narrow
       // canvases without reducing a nested lazy viewport to zero.
@@ -169,11 +172,6 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              l10n.quoteTemplateChooseHint,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
             for (final template in widget.templates)
               CheckboxListTile(
                 key: ValueKey('quote-template-${template.id}'),

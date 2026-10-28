@@ -29,6 +29,53 @@ final _permissions = StateProvider<Set<String>>((_) => {'employee:view'});
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'relationship picker headers query all candidates within the fixed department and status eligibility',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repository = _FakeEmployeeRepository();
+      await _pumpPicker(tester, repository);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenDepartmentTreeView),
+          matching: find.text('销售部'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('master-column-filter-name')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '员工%_',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      MasterDataTableView<UtenEmployeePickerItem> table() => tester.widget(
+        find.byKey(const ValueKey('department-employee-table')),
+      );
+      table().onFilterChanged('accountStatus', 'disabled');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('employmentStatus', 'onLeave');
+      await tester.pumpAndSettle();
+      table().onSortChange!('employeeCode', false);
+      await tester.pumpAndSettle();
+      expect(repository.columnQueries.last, {
+        'search.name': '员工%_',
+        'accountStatus': 'disabled',
+        'employmentStatus': 'onLeave',
+      });
+      expect(repository.departments.last, 'sales');
+      expect(repository.eligibility.last, {'active', 'probation', 'onLeave'});
+      expect(repository.orders.last, 'desc');
+      expect(repository.sortKeys.last, 'employeeCode');
+      expect(
+        table().facets['employmentStatus']!.map((item) => item.value),
+        isNot(contains('resigned')),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final boundary in ['identity', 'server', 'permissions']) {
     testWidgets('$boundary ABA后迟到部门树不得打开旧身份滑窗', (tester) async {
@@ -675,12 +722,47 @@ class _Harness extends ConsumerWidget {
   );
 }
 
-class _FakeEmployeeRepository implements EmployeeRepository {
+class _FakeEmployeeRepository
+    implements EmployeeRepository, EmployeeHeaderQueryRepository {
   _FakeEmployeeRepository({this.suppliedRows});
   final List<EmployeeSummary>? suppliedRows;
   final searches = <String?>[];
   final departmentIds = <String?>[];
   final includeSubtrees = <bool>[];
+  final columnQueries = <Map<String, String?>>[];
+  final eligibility = <Set<String>?>[];
+  final departments = <String?>[];
+  final orders = <String?>[];
+  final sortKeys = <String?>[];
+
+  @override
+  Future<PagedResult<EmployeeSummary>> listWithColumnQuery({
+    int page = 1,
+    int size = 20,
+    String? search,
+    Set<String>? statuses,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? sort,
+    String? order,
+    Map<String, String?> columnQuery = const {},
+  }) {
+    columnQueries.add(Map.of(columnQuery));
+    eligibility.add(statuses);
+    departments.add(departmentId);
+    orders.add(order);
+    sortKeys.add(sort);
+    return list(
+      page: page,
+      size: size,
+      search: search,
+      statuses: statuses,
+      departmentId: departmentId,
+      includeSubtree: includeSubtree,
+      sort: sort,
+      order: order,
+    );
+  }
 
   @override
   Future<PagedResult<EmployeeSummary>> list({

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -89,7 +90,14 @@ void main() {
     await _pump(tester, router);
 
     expect(find.text(_zh.aiSettingsTitle), findsOneWidget);
-    expect(find.text(_zh.aiSettingsEntrySubtitle), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info == _zh.aiSettingsEntrySubtitle,
+      ),
+      findsOneWidget,
+    );
     expect(
       find.bySemanticsLabel(RegExp(_zh.aiSettingsEntrySubtitle)),
       findsOneWidget,

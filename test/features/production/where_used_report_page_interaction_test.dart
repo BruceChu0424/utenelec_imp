@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:io' show Directory;
@@ -6,6 +7,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
@@ -334,6 +337,17 @@ class _WhereUsedApi extends ApiClient {
     if (error != null) throw error;
     if (reportGate != null) await reportGate!.future;
     return <String, dynamic>{
+      'columnSearchKeys': [
+        'goodsName',
+        'goodsCode',
+        'colorName',
+        'spec',
+        'categoryName',
+        'sources',
+        'bomRelation',
+        'legacyRequiredQty',
+        'lastUsed',
+      ],
       'columns': const [
         {'key': 'goodsCode', 'label': '产成品编号', 'type': 'text', 'width': 130},
         {'key': 'goodsName', 'label': '产成品名称', 'type': 'text', 'width': 200},
@@ -691,6 +705,103 @@ Finder _suggestion(String type, String id) =>
     find.byKey(ValueKey(('where-used-suggestion', type, id)));
 
 void main() {
+  testWidgets(
+    'initial material search guidance stays beside the existing heading',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(tester, api, size: const Size(390, 844));
+      const guidance = '可搜索当前、停用、软删除及迁移占位的历史物料。';
+      expect(find.text('先搜索一个物料'), findsOneWidget);
+      expect(find.text(guidance), findsNothing);
+      final hint = find.byWidgetPredicate(
+        (widget) => widget is UtenFieldHintIcon && widget.info == guidance,
+      );
+      expect(hint, findsOneWidget);
+      expect(
+        (tester.getCenter(hint).dy - tester.getCenter(find.text('先搜索一个物料')).dy)
+            .abs(),
+        lessThan(16),
+      );
+      await tester.tap(hint);
+      await tester.pumpAndSettle();
+      expect(find.text(guidance), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
+      expect(find.text('选择物料'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'relationship pending headers hide old facts and failed headers restore the accepted snapshot',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(tester, api, size: const Size(1440, 900));
+      await _selectMaterial(tester);
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
+      expect(table().items, hasLength(1));
+      api.reportGate = Completer<void>();
+      table().onFilterChanged('search.goodsName', 'accepted-new-query');
+      await tester.pump();
+      await tester.pump();
+      expect(table().items, isEmpty);
+      expect(table().facets, isEmpty);
+      expect(table().serverColumnSearchKeys, contains('goodsName'));
+      api.reportGate!.complete();
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(1));
+      api.reportError = ApiException(
+        'SERVER',
+        'fixture header failed',
+        httpStatus: 503,
+      );
+      table().onFilterChanged('search.goodsName', 'failed-query');
+      await tester.pumpAndSettle();
+      expect(table().items, hasLength(1));
+      expect(
+        table().filters,
+        containsPair('search.goodsName', 'accepted-new-query'),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'relationship header input reaches the server and filtered export snapshot without page-local inference',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 900),
+        permissions: {
+          Perm.productionWhereUsedView,
+          Perm.productionWhereUsedExport,
+        },
+      );
+      await _selectMaterial(tester);
+      await tester.tap(find.text('产成品名称'));
+      await tester.pumpAndSettle();
+      final input = find.byKey(const Key('uten-column-keyword-input'));
+      expect(input, findsOneWidget);
+      await tester.enterText(input, '墙壁_% 插座');
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery, containsPair('f.search.goodsName', '墙壁_% 插座'));
+      final export = tester.widget<UtenExportButton>(
+        find.byKey(const Key('where-used-export')),
+      );
+      expect(export.queryParams, containsPair('f.search.goodsName', '墙壁_% 插座'));
+      expect(api.reportQueries.last['page'], 1);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.serverColumnSearchKeys, contains('goodsName'));
+      table.onFilterChanged('search.goodsName', null);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery!.containsKey('f.search.goodsName'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final exact in ['99999999999999.9999', '0.00000001']) {
     testWidgets('unattributed demand keeps server exact quantity $exact', (
       tester,
@@ -1619,8 +1730,12 @@ void main() {
       await _selectMaterial(tester);
       await selectFilterSegment(tester, '实际追溯');
       await tester.pumpAndSettle();
-      expect(find.text('无权查看实际生产凭证'), findsOneWidget);
+      await expectTableReadFailureDetails(tester, '无权查看实际生产凭证');
       expect(api.traceCalls, 1);
+      await tester.ensureVisible(
+        find.byKey(const Key('where-used-result-mode')),
+      );
+      await tester.pumpAndSettle();
       await selectFilterSegment(tester, 'BOM 与历史关系');
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsOneWidget);

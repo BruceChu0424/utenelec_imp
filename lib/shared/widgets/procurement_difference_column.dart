@@ -18,6 +18,7 @@ MasterColumnDef<T> procurementDifferenceColumn<T>({
   String key = 'differenceQty',
   ProcurementDifferenceScope scope = ProcurementDifferenceScope.order,
   bool filterFromRows = true,
+  bool serverSearchEnabled = false,
 }) {
   final words = procurementDeliveryDifferenceL10n(context);
   String display(T item) {
@@ -32,6 +33,7 @@ MasterColumnDef<T> procurementDifferenceColumn<T>({
     type: 'number',
     sortable: true,
     filterFromRows: filterFromRows,
+    columnSearchEnabled: filterFromRows || serverSearchEnabled,
     info: words.hintFor(scope),
     value: display,
     exactValueOf: differenceOf,

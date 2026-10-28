@@ -638,6 +638,7 @@ class ArApLedgerItem {
     this.amountBalanceText,
     this.dueDate,
     this.settlementStyleLegacy,
+    this.settlementStyleLabel,
     this.salesOrderIds = const [],
     this.authoritativeSalesOrderId,
     this.salesOrderNos = const [],
@@ -691,6 +692,7 @@ class ArApLedgerItem {
   final String? amountBalanceText;
   final String? dueDate;
   final int? settlementStyleLegacy;
+  final String? settlementStyleLabel;
   final List<String> salesOrderIds;
   final String? authoritativeSalesOrderId;
   final List<String> salesOrderNos;
@@ -760,18 +762,22 @@ class ArApLedgerItem {
     amountOffsetLocal: financeDecimalText(
       json['amountOffsetLocalExact'] ?? json['amountOffsetLocal'],
     ),
-    prepaymentAppliedOriginal: financeDecimalText(
-      json['prepaymentAppliedOriginalExact'] ??
-          json['prepaymentAppliedOriginal'] ??
-          json['amountOffsetOriginalExact'] ??
-          json['amountOffsetOriginal'],
-    ),
-    prepaymentAppliedLocal: financeDecimalText(
-      json['prepaymentAppliedLocalExact'] ??
-          json['prepaymentAppliedLocal'] ??
-          json['amountOffsetLocalExact'] ??
-          json['amountOffsetLocal'],
-    ),
+    prepaymentAppliedOriginal: json['direction'] == 'AR'
+        ? financeDecimalText(
+            json['prepaymentAppliedOriginalExact'] ??
+                json['prepaymentAppliedOriginal'] ??
+                json['amountOffsetOriginalExact'] ??
+                json['amountOffsetOriginal'],
+          )
+        : null,
+    prepaymentAppliedLocal: json['direction'] == 'AR'
+        ? financeDecimalText(
+            json['prepaymentAppliedLocalExact'] ??
+                json['prepaymentAppliedLocal'] ??
+                json['amountOffsetLocalExact'] ??
+                json['amountOffsetLocal'],
+          )
+        : null,
     amountSettled: (json['amountSettled'] as num?)?.toDouble(),
     amountSettledText: financeDecimalText(
       json['amountSettledExact'] ?? json['amountSettled'],
@@ -782,6 +788,7 @@ class ArApLedgerItem {
     ),
     dueDate: json['dueDate'] as String?,
     settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
+    settlementStyleLabel: json['settlementStyleLabel'] as String?,
     salesOrderIds:
         (json['salesOrderIds'] as List?)?.whereType<String>().toList() ??
         const [],

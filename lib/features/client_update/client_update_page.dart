@@ -137,7 +137,7 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           appBar: AppBar(
             toolbarHeight: 72,
             title: Text(l10n.clientUpdateTitle),
-            titleSpacing: 0,
+            titleSpacing: UtenBackButton.titleGap,
             leadingWidth: UtenBackButton.slotWidth(context) + UtenSpacing.s24,
             leading: Padding(
               padding: const EdgeInsetsDirectional.only(start: UtenSpacing.s24),

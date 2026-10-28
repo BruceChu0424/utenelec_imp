@@ -418,6 +418,7 @@ class _RateDetailState
     return Scaffold(
       appBar: UtenAppBar(
         title: '允许超产比例审批',
+        info: '红色删除线为申请前内容，绿色新增行为申请内容。',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(
             context,
@@ -474,8 +475,6 @@ class _RateDetailState
                                 color: Theme.of(context).colorScheme.error,
                               ),
                             ),
-                          const SizedBox(height: 8),
-                          const Text('红色删除线为申请前内容，绿色新增行为申请内容。'),
                           if (_error != null)
                             Text(
                               _error!,

@@ -389,7 +389,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         outputUnit: outputUnit,
         inBom: row.inBom,
       ),
-      child: Text(text),
+      child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
 
     // 2026-09-29 用户口径：名称列只放名称；学习状态徽章从名称格副行独立成列，
@@ -420,6 +420,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         key: 'learnState',
         label: '状态',
         width: 72,
+        filterFromRows: true,
         value: (row) => learnStateText(row) ?? '—',
         cellColor: (context, row) {
           final type = learnStateType(row);
@@ -447,13 +448,16 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomDesignQty,
         width: 135,
         type: 'number',
+        sortable: true,
         value: (row) => qtyOrDash(row.designQty, row.unitName),
       ),
       MasterColumnDef(
         key: 'actualQty',
         label: l10n.bomActualQty,
         width: 135,
+        minimumWidthOf: (_) => 48,
         type: 'number',
+        sortable: true,
         value: actualText,
         cellBuilder: (context, row) => withTip(row, actualText(row)),
       ),
@@ -462,6 +466,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningPerProduced,
         width: 135,
         type: 'number',
+        sortable: true,
         // 按实产(良品+不良)的用量，与真实使用数量同一口径；没有真实值为空。
         value: (row) => qtyOrDash(row.actual.perProducedQty, row.unitName),
       ),
@@ -470,6 +475,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningNet,
         width: 135,
         type: 'number',
+        sortable: true,
         value: (row) =>
             formatQtyWithUnit(row.actual.netQty, row.unitName, maxDecimals: 6),
       ),
@@ -478,6 +484,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningExposure,
         width: 125,
         type: 'number',
+        sortable: true,
         value: (row) =>
             formatQtyWithUnit(row.actual.outputQty, outputUnit, maxDecimals: 6),
       ),
@@ -486,6 +493,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningDefect,
         width: 115,
         type: 'number',
+        sortable: true,
         value: (row) =>
             formatQtyWithUnit(row.actual.defectQty, outputUnit, maxDecimals: 6),
       ),
@@ -494,6 +502,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningDefectRate,
         width: 76,
         type: 'number',
+        sortable: true,
         value: defectRateText,
       ),
       MasterColumnDef(
@@ -501,17 +510,24 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningSampleCount,
         width: 76,
         type: 'number',
+        sortable: true,
         value: (row) => '${row.actual.sampleCount}',
       ),
       MasterColumnDef(
         key: 'usageBasis',
         label: l10n.bomLearningBasis,
         width: 100,
+        minimumWidthOf: (_) => 48,
         filterFromRows: true,
         value: basisText,
         // BOM 外的料不参与计算(「—」)，说明挂在真实使用数量格上即可。
-        cellBuilder: (context, row) =>
-            row.inBom ? withTip(row, basisText(row)) : Text(basisText(row)),
+        cellBuilder: (context, row) => row.inBom
+            ? withTip(row, basisText(row))
+            : Text(
+                basisText(row),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
       ),
       // 重新学习只对已有累计记录的组件有意义(没有记录就没有可记的基线)。
       if (canRelearn)
@@ -519,6 +535,8 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
           key: 'relearn',
           label: l10n.bomLearningAction,
           width: 150,
+          columnSearchEnabled: false,
+          minimumWidthOf: (_) => 48,
           value: (row) =>
               row.actual.updatedAt == null ? null : l10n.bomLearningRelearn,
           cellBuilder: (context, row) => row.actual.updatedAt == null

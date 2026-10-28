@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -209,9 +210,23 @@ void main() {
   testWidgets('父子比例分别保留，预览不会互相覆盖', (tester) async {
     await _pump(tester);
     await _openOrder(tester);
+    final rootRate = tester.widget<TextField>(_rate('root-1')).controller!;
+    final childRate = tester.widget<TextField>(_rate('m-c')).controller!;
+    final rootQty = tester.widget<TextField>(_input('root-1')).controller!;
+    expect(childRate, isNot(same(rootRate)));
     await tester.enterText(_rate('root-1'), '15');
     await tester.enterText(_rate('m-c'), '25');
-    await _type(tester, 'root-1', '20');
+    final quantityElement = tester.element(_input('root-1'));
+    await tester.enterText(_input('root-1'), '20');
+    expect(tester.element(_input('root-1')), same(quantityElement));
+    expect(
+      tester.widget<TextField>(_input('root-1')).controller,
+      same(rootQty),
+    );
+    expect(rootQty.text, '20');
+    expect(rootRate.text, '15');
+    expect(childRate.text, '25');
+    await _preview(tester);
     expect(tester.widget<TextField>(_rate('root-1')).controller!.text, '15');
     expect(tester.widget<TextField>(_rate('m-c')).controller!.text, '25');
     expect(_rate('m-b'), findsNothing);
@@ -681,6 +696,7 @@ Future<_Harness> _pump(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  await expandMaterialAnalysisTree(tester);
   harness.writes.clear();
   return harness;
 }

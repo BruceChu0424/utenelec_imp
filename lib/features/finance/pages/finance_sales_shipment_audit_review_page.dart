@@ -1234,6 +1234,8 @@ class _FinanceSalesShipmentAuditReviewPageState
         ),
         UtenSummaryField(
           label: '应收未收',
+          info:
+              '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
           value: financeMoneyWithUnitSuffix(
             balance?.openOriginal,
             currencyName: currency,
@@ -1317,10 +1319,6 @@ class _FinanceSalesShipmentAuditReviewPageState
             if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
             if (d.financeAuditedAt != null) kv('放行时间', d.financeAuditedAt),
           ],
-        ),
-        Text(
-          '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
-          style: theme.textTheme.bodySmall,
         ),
       ],
     );

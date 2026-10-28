@@ -52,12 +52,21 @@ bool FlutterWindow::OnCreate() {
             return;
           }
           success = SetMainWindowMode(*mode == "main");
+          if (success) OnWindowStateChanged();
+        } else if (call.method_name() == "getWindowState") {
+          result->Success(flutter::EncodableValue(flutter::EncodableMap{
+              {flutter::EncodableValue("maximized"),
+               flutter::EncodableValue(IsMainWindowMaximized())},
+          }));
+          return;
         } else if (call.method_name() == "beginDrag") {
           success = BeginWindowDrag();
         } else if (call.method_name() == "minimize") {
           success = MinimizeWindow();
         } else if (call.method_name() == "close") {
           success = CloseWindow();
+        } else if (call.method_name() == "toggleMaximize") {
+          success = ToggleMaximizeWindow();
         } else {
           result->NotImplemented();
           return;
@@ -160,6 +169,20 @@ void FlutterWindow::ResetDesktopWindowChannel() {
     desktop_window_channel_->SetMethodCallHandler(nullptr);
     desktop_window_channel_.reset();
   }
+  last_sent_maximized_.reset();
+}
+
+void FlutterWindow::OnWindowStateChanged() {
+  if (!desktop_window_channel_ || !::IsWindow(GetHandle())) return;
+  const bool maximized = IsMainWindowMaximized();
+  if (last_sent_maximized_ == maximized) return;
+  last_sent_maximized_ = maximized;
+  desktop_window_channel_->InvokeMethod(
+      "windowStateChanged",
+      std::make_unique<flutter::EncodableValue>(flutter::EncodableMap{
+          {flutter::EncodableValue("maximized"),
+           flutter::EncodableValue(maximized)},
+      }));
 }
 
 void FlutterWindow::ResetWindowTitleChannel() {
@@ -175,6 +198,12 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  // The shared custom frame owns these messages, including resize edges.
+  // Plugins still receive ordinary content, keyboard and lifecycle messages.
+  if (message == WM_NCCALCSIZE || message == WM_NCHITTEST ||
+      message == WM_GETMINMAXINFO) {
+    return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
+  }
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result =

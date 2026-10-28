@@ -14,6 +14,9 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_dropdown_geometry.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_inline_edit_cell.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
@@ -613,14 +616,50 @@ class MasterInlineEditController<T> extends ChangeNotifier {
         MasterColumnDef<T>(
           key: column.key,
           label: column.label,
-          width: column.width < 140 ? 140 : column.width,
+          width: column.width,
           value: column.value,
           measureValueOf: column.measureValueOf,
-          measureWidthOf: column.measureWidthOf,
-          measureWidthScope: column.measureWidthScope,
+          measureWidthOf: _usesPlainInputGeometry(column, fields[column.key])
+              ? (context, row, scaler) {
+                  final body =
+                      Theme.of(context).textTheme.bodyMedium ??
+                      const TextStyle();
+                  final textStyle =
+                      column.emphasized ||
+                          utenIsStatusOrProgressColumn(column.key, column.label)
+                      ? body.copyWith(fontWeight: FontWeight.w700)
+                      : body;
+                  return utenTableCellTextWidth(
+                        column.value(row) ?? '',
+                        style: textStyle,
+                        textScaler: scaler,
+                        textDirection: Directionality.of(context),
+                      ) +
+                      UtenEditableGridCellSpec.contentPaddingOf(
+                        context,
+                      ).horizontal +
+                      (fields[column.key]!.type == MasterFieldType.select
+                          ? UtenEditableGridCellSpec.dropdownChevronWidth
+                          : 0);
+                }
+              : column.measureWidthOf,
+          measureWidthScope: _usesPlainInputGeometry(column, fields[column.key])
+              ? (
+                  column.measureWidthScope,
+                  'master.inline.input',
+                  fields[column.key]!.type,
+                )
+              : column.measureWidthScope,
           minimumWidthOf: (context) {
-            final minimum = column.minimumWidthOf?.call(context) ?? 0;
-            return minimum < 140 ? 140 : minimum;
+            // Unknown rich displays still own their control chrome. Plain
+            // fields fit their values; rich callers can supply a real minimum.
+            final minimum =
+                column.minimumWidthOf?.call(context) ??
+                (column.cellBuilder == null ? 0 : column.width);
+            final controlMinimum =
+                UtenEditableGridCellSpec.heightOf(context) +
+                UtenEditableGridCellSpec.contentPaddingOf(context).horizontal;
+            return minimum < controlMinimum ? controlMinimum : minimum;
           },
           cellHorizontalPaddingOf: column.cellHorizontalPaddingOf,
           type: column.type,
@@ -666,7 +705,11 @@ class MasterInlineEditController<T> extends ChangeNotifier {
             final field = fields[column.key];
             if (field == null || writableOf?.call(row) == false) {
               return column.cellBuilder?.call(context, row) ??
-                  Text(column.value(row) ?? '—');
+                  Text(
+                    column.value(row) ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
             }
             final id = idOf(row);
             rememberBaseline(id, row, fields: fields);
@@ -686,6 +729,22 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           },
         ),
   ];
+
+  bool _usesPlainInputGeometry(
+    MasterColumnDef<T> column,
+    MasterInlineField<T>? field,
+  ) =>
+      field != null &&
+      column.cellBuilder == null &&
+      column.measureWidthOf == null &&
+      field.cellBuilder == null &&
+      field.customBuilder == null &&
+      const {
+        MasterFieldType.text,
+        MasterFieldType.money,
+        MasterFieldType.integer,
+        MasterFieldType.select,
+      }.contains(field.type);
 }
 
 /// A record inspector uses the same lazy field cells, drafts and save contract
@@ -1004,7 +1063,11 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     final field = widget.field;
     if (!_editable) {
       return widget.readOnlyBuilder?.call(context, widget.row) ??
-          Text(widget.readOnlyValue(widget.row) ?? '—');
+          Text(
+            widget.readOnlyValue(widget.row) ?? '—',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
     }
     return UtenInlineEditCell(
       key: ObjectKey(widget.controller),
@@ -1073,12 +1136,6 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
           : TextInputType.text,
       decoration: UtenInputDecoration(
         InputDecoration(
-          isDense: true,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 8,
-            vertical: 10,
-          ),
-          border: const OutlineInputBorder(),
           hintText: widget.label,
           error: utenFieldError(_validationError),
           suffixIcon: _validating
@@ -1143,6 +1200,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
           UtenFloatingActionGroup(children: buildActions(context)),
         if (controller.busy || controller.preparing)
           UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: controller.preparing
                 ? masterEditText(
                     context,

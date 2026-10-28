@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -196,7 +197,16 @@ class _FinanceIntakeReviewDialogState extends State<FinanceIntakeReviewDialog> {
   Widget build(BuildContext context) => UtenAlertDialog(
     maxWidth: 620,
     scrollable: false,
-    title: Text(financeIntakeText(context, 'reviewTitle')),
+    title: Row(
+      children: [
+        Flexible(child: Text(financeIntakeText(context, 'reviewTitle'))),
+        UtenFieldHintIcon(
+          info:
+              '${financeIntakeText(context, 'reviewHint')}\n\n${financeIntakeText(context, 'dateHint')}',
+          dense: true,
+        ),
+      ],
+    ),
     content: SizedBox(
       width: 620,
       child: SingleChildScrollView(
@@ -206,8 +216,6 @@ class _FinanceIntakeReviewDialogState extends State<FinanceIntakeReviewDialog> {
           children: [
             Text(widget.result.fileName as String),
             const SizedBox(height: UtenSpacing.s12),
-            Text(financeIntakeText(context, 'reviewHint')),
-            Text(financeIntakeText(context, 'dateHint')),
             if (!widget.result.fields.containsKey(
               FinanceIntakeField.currencyCode,
             ))

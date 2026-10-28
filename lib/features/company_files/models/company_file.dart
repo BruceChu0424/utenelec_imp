@@ -144,6 +144,11 @@ class CompanyFileAccessRule {
   final String subjectName;
   final String effect;
   final Set<String> actions;
+
+  /// The synthetic "everyone" marker rule (server ALL subject): view + download.
+  bool get isEveryoneRule =>
+      subjectType == 'ALL' &&
+      subjectId == '00000000-0000-0000-0000-000000000000';
   CompanyFileAccessRule copyWith({String? effect, Set<String>? actions}) =>
       CompanyFileAccessRule(
         subjectType: subjectType,
@@ -167,6 +172,13 @@ class CompanyFileAccessRule {
         actions: Set.unmodifiable((json['actions'] as List).cast<String>()),
       );
 }
+
+/// 「所有人可以看」的服务端占位规则：全员允许查看和下载（默认动作集），拒绝规则仍可覆盖。
+const CompanyFileAccessRule kCompanyFileEveryoneRule = CompanyFileAccessRule(
+  subjectType: 'ALL',
+  subjectId: '00000000-0000-0000-0000-000000000000',
+  subjectName: '所有人',
+);
 
 class CompanyFileAccess {
   const CompanyFileAccess({

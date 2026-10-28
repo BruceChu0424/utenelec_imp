@@ -130,5 +130,8 @@ class _RetryPayrollRepository extends Fake
     int? year,
     int? month,
     String? departmentId,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
   }) => load(page);
 }

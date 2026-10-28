@@ -76,13 +76,27 @@ void main() {
       );
       // Ownership, duplicate loads and late completions are exercised by the
       // real full-editor widget tests; this contract keeps UUID dictionary use.
-      expect(loader, contains('barrierDismissible: false'));
+      expect(
+        loader,
+        contains('loadMasterReferenceOptions<ReferenceMethodOption>'),
+      );
       expect(loader, contains('.settlementMethods()'));
-      expect(loader, contains('if (methods.isEmpty)'));
-      expect(loader, contains("context.appError('暂无可用结账方式"));
-      expect(loader, contains('return null;'));
-      expect(loader, contains('on ApiException catch'));
-      expect(loader, contains("context.appError('加载结账方式失败，请重试')"));
+      expect(loader, contains("emptyMessage: '暂无可用结账方式"));
+      expect(loader, contains("errorFallback: '加载结账方式失败，请重试'"));
+      final sharedLoader = File(
+        'lib/features/basic_data/widgets/master_reference_options_loader.dart',
+      ).readAsStringSync();
+      expect(sharedLoader, contains('values.isEmpty && emptyMessage != null'));
+      expect(sharedLoader, contains('context.appError(emptyMessage)'));
+      expect(
+        sharedLoader,
+        contains('context.appApiError(error, fallback: errorFallback)'),
+      );
+      expect(sharedLoader, contains('return null;'));
+      final blockingTask = File(
+        'lib/components/feedback/uten_task_progress_dialog.dart',
+      ).readAsStringSync();
+      expect(blockingTask, contains('barrierDismissible: false'));
 
       // 2026-09-14：新建仍留在分类页，编辑流程在共享模块 showClientMasterEdit。
       final create = _between(
@@ -114,7 +128,9 @@ void main() {
 }
 
 void _expectCreateLoadGuardBeforeDialog(String source) {
-  final load = source.indexOf('await _loadSettlementMethods()');
+  final load = source.indexOf(
+    'await loadClientSettlementMethods(context, ref)',
+  );
   final guard = source.indexOf('settlementMethods == null) return');
   final dialog = source.indexOf('showMasterEditDialog(');
   expect(load, greaterThanOrEqualTo(0));

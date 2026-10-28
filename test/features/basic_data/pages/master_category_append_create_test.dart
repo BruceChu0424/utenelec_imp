@@ -168,8 +168,18 @@ Future<void> _open(
     ),
   );
   await tester.pumpAndSettle();
+  if (!tester.any(find.text('录入分类').hitTestable()) &&
+      tester.any(find.byTooltip('展开全部模具'))) {
+    await tester.tap(find.byTooltip('展开全部模具'));
+    await tester.pumpAndSettle();
+  }
   if (!tester.any(find.text('录入分类').hitTestable())) {
     await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pumpAndSettle();
+  }
+  if (!tester.any(find.text('录入分类').hitTestable()) &&
+      tester.any(find.byTooltip('展开全部模具'))) {
+    await tester.tap(find.byTooltip('展开全部模具'));
     await tester.pumpAndSettle();
   }
   await tester.tap(find.text('录入分类').hitTestable().first);

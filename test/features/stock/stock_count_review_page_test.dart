@@ -47,6 +47,7 @@ class _Repo implements StockCountRequestRepository {
   final queries = <({String? reviewRoute, String? status, int page})>[];
   String? lastScopeWarehouseId;
   String? lastKeyword;
+  final columnQueries = <Map<String, dynamic>>[];
   final List<String> actions = const ['APPROVE', 'REJECT'];
   int reads = 0;
   int approvals = 0;
@@ -127,8 +128,17 @@ class _Repo implements StockCountRequestRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     reads++;
+    columnQueries.add({
+      ...columns,
+      'sort': sort,
+      'ascending': ascending,
+      'page': page,
+    });
     queries.add((reviewRoute: reviewRoute, status: status, page: page));
     lastScopeWarehouseId = scopeWarehouseId;
     lastKeyword = keyword;
@@ -299,6 +309,89 @@ const _materialReviewPermissions = {
 };
 
 void main() {
+  testWidgets(
+    'detail headers filter the complete lines with exact quantities while retaining the whole approval',
+    (tester) async {
+      final repo = _Repo(lineCount: 2);
+      await _pump(tester, repo);
+      expect(find.byType(StockCountOldValue), findsNWidgets(4));
+      await tester.tap(find.text('货品').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '颗粒2',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.byType(StockCountOldValue), findsNWidgets(2));
+      await tester.tap(find.text('原数量'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=9007199254740994',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.byType(StockCountOldValue), findsNothing);
+      expect(find.byKey(const Key('stock-count-approve')), findsOneWidget);
+      expect(
+        tester
+            .widget<MasterDataTableView<StockCountRequestLine>>(
+              find.byType(MasterDataTableView<StockCountRequestLine>),
+            )
+            .items,
+        hasLength(2),
+      );
+      expect(repo.approvals, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'request headers send whole-scope criteria and clear the old selection',
+    (tester) async {
+      final repo = _Repo();
+      await _pump(
+        tester,
+        repo,
+        requestId: null,
+        embedded: true,
+        warehouseScope: const WarehouseTaskScope.warehouse('scope-a'),
+      );
+      MasterDataTableView<StockCountRequest> table() =>
+          tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
+      table().onSelectedIdsChanged!({'count-1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('盘点单号'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'PD%_',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.columnQueries.last['search.requestNo'], 'PD%_');
+      expect(repo.lastScopeWarehouseId, 'scope-a');
+      expect(table().selectedIds, isEmpty);
+      await tester.tap(find.text('提交时间'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '2026-10',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.columnQueries.last['search.submittedAt'], '2026-10');
+      expect(repo.columnQueries.last['search.requestNo'], 'PD%_');
+      table().onSortChange!('submittedAt', false);
+      await tester.pumpAndSettle();
+      expect(repo.columnQueries.last['sort'], 'submittedAt');
+      expect(repo.columnQueries.last['page'], 1);
+      expect(repo.approvals, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final history in [false, true]) {
     testWidgets('内嵌盘点${history ? '历史' : '审核'}详情去掉重复头部并保留业务表格与动作', (
       tester,
@@ -339,7 +432,12 @@ void main() {
     expect(find.textContaining('PD01 · 原料仓 ·'), findsOneWidget);
     expect(find.textContaining('提交人：'), findsOneWidget);
     expect(find.byType(UtenBackButton), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
     expect(

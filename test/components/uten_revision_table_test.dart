@@ -1,12 +1,127 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
+import 'package:uten_imp/components/data_display/uten_cell_revision_table.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_models.dart';
 
 void main() {
+  testWidgets(
+    'side-by-side revision columns retain exact values, sensitivity and explicit search rules',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenCellRevisionTable<String>(
+              columns: [
+                MasterColumnDef(
+                  key: 'amount',
+                  label: '金额',
+                  width: 180,
+                  type: 'money',
+                  sortable: true,
+                  aiSensitive: true,
+                  value: (_) => '1.00',
+                  exactValueOf: (row) => row,
+                ),
+              ],
+              rows: const [
+                UtenCellRevisionRow(
+                  before: '1',
+                  after: '1.000000000000000001',
+                  changedKeys: {'amount'},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester
+          .widget<MasterDataTableView<UtenCellRevisionRow<String>>>(
+            find.byType(MasterDataTableView<UtenCellRevisionRow<String>>),
+          );
+      expect(
+        table.columns
+            .where((c) => c.key != '_revision')
+            .every((c) => c.aiSensitive && c.sortable),
+        isTrue,
+      );
+      await tester.tap(
+        find
+            .byKey(const ValueKey('master-column-filter-_new_amount'))
+            .hitTestable(),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>1',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('已修改'), findsOneWidget);
+      await tester.tap(
+        find
+            .byKey(const ValueKey('master-column-filter-_new_amount'))
+            .hitTestable(),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '=1',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('已修改'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'paired revision snapshots keep adjacency and source search/sensitivity overrides',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: UtenRevisionTable<String>(
+              columns: [
+                MasterColumnDef(
+                  key: 'amount',
+                  label: '金额',
+                  width: 180,
+                  type: 'money',
+                  sortable: true,
+                  aiSensitive: true,
+                  columnSearchEnabled: false,
+                  value: (row) => row,
+                  exactValueOf: (row) => row,
+                ),
+              ],
+              rows: const [
+                UtenRevisionRow(value: '1', kind: UtenRevisionKind.removed),
+                UtenRevisionRow(value: '2', kind: UtenRevisionKind.added),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<UtenRevisionRow<String>>>(
+        find.byType(MasterDataTableView<UtenRevisionRow<String>>),
+      );
+      final amount = table.columns.singleWhere((c) => c.key == 'amount');
+      expect(amount.sortable, isFalse);
+      expect(amount.columnSearchEnabled, isFalse);
+      expect(amount.aiSensitive, isTrue);
+      expect(amount.exactValueOf!(table.items.last), '2');
+      expect(
+        tester.getTopLeft(find.text('1')).dy,
+        lessThan(tester.getTopLeft(find.text('2')).dy),
+      );
+    },
+  );
   testWidgets('冻结扩展字段沿用审核单格变化样式和基础隐藏列', (tester) async {
     const definition = PlatformColumnDefinition(
       id: 'note',

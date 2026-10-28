@@ -392,7 +392,12 @@ void main() {
       gate.completeError(NetworkTimeoutException());
       await tester.pumpAndSettle();
       expect(find.text('重试原报告'), findsOneWidget);
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('open-approval')), findsOneWidget);
       expect(iqc.sent.length, 1);
@@ -428,7 +433,12 @@ void main() {
       await tester.pump();
       expect(gates.length, 5);
       expect(active, 4);
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const Key('open-approval')), findsOneWidget);
       for (final entry in gates.entries) {

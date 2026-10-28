@@ -1642,6 +1642,7 @@ class _SubcontractOrderEditPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: _isCreate ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        info: '损耗增加领料，成品目标不变：100 件、损耗 10%，基准物料领 110；正常损耗随回厂估算核销，无需重复报损。',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),

@@ -46,6 +46,7 @@ void main() {
               body: SizedBox(
                 width: 320,
                 child: UtenHierarchyTreeView<_Node>(
+                  initiallyExpandDepth: 1,
                   nodes: nodes,
                   mode: UtenTreeSelectMode.single,
                   selectedIds: selected,

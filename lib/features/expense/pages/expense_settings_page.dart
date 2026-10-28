@@ -216,9 +216,16 @@ class _ExpenseSettingsPageState extends ConsumerState<ExpenseSettingsPage> {
                             const SizedBox(height: UtenSpacing.s16),
                             SwitchListTile.adaptive(
                               contentPadding: EdgeInsets.zero,
-                              title: Text(l10n.expenseFlowRequireInvoice),
-                              subtitle: Text(
-                                l10n.expenseFlowRequireInvoiceHint,
+                              title: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(l10n.expenseFlowRequireInvoice),
+                                  ),
+                                  UtenFieldHintIcon(
+                                    info: l10n.expenseFlowRequireInvoiceHint,
+                                    dense: true,
+                                  ),
+                                ],
                               ),
                               value: _requireInvoice,
                               onChanged: canEdit && !_saving

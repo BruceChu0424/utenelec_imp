@@ -10,6 +10,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +29,7 @@ import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import 'admin_audit_session_detail_page.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
@@ -96,6 +98,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   bool _anonymousMode = false;
   bool _systemAnomalyMode = false;
   bool _scopeApplied = false;
+  Map<String, String?> _eventColumnFilters = const {};
+  Map<String, String?> _sessionColumnFilters = const {};
+  String? _sessionSortColumn;
+  bool _sessionSortAscending = true;
   String? _riskFilter;
   String? _categoryFilter;
   String? _outcomeFilter;
@@ -153,6 +159,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _categoryFilter,
     _outcomeFilter,
     _dateRange,
+    _eventColumnFilters,
+    _sessionColumnFilters,
+    _sessionSortColumn,
+    _sessionSortAscending,
     ref.watch(masterDataSessionKeyProvider),
   );
 
@@ -644,6 +654,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Map<String, dynamic> get _eventReadQuery => {
+    ..._eventColumnFilters,
     'action': _actionFilter,
     'actorId': _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
         ? _selectedActor?.actorId
@@ -716,24 +727,32 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         !_sessionMode &&
         _canLoad &&
         samePagedReadQuery(query, _eventReadQuery);
-    Future<AuditLogPage> fetch(int target, int? highWater) => repository.list(
-      page: target,
-      action: query['action'] as String?,
-      actorId: query['actorId'] as String?,
-      keyword: query['keyword'] as String?,
-      targetType: query['targetType'] as String?,
-      eventSource: query['eventSource'] as String?,
-      requestId: query['requestId'] as String?,
-      operationKind: query['operationKind'] as String?,
-      actorScope: query['actorScope'] as String?,
-      activityOnly: query['activityOnly'] as bool,
-      snapshotId: highWater,
-      riskLevel: query['riskLevel'] as String?,
-      eventCategory: query['eventCategory'] as String?,
-      outcome: query['outcome'] as String?,
-      dateFrom: query['dateFrom'] as String?,
-      dateTo: query['dateTo'] as String?,
-    );
+    Future<AuditLogPage> fetch(int target, int? highWater) =>
+        repository is AuditHeaderEventRepository
+        ? (repository as AuditHeaderEventRepository).eventHeaderPage({
+            ...query,
+            'page': target,
+            'size': 20,
+            'snapshotId': ?highWater,
+          })
+        : repository.list(
+            page: target,
+            action: query['action'] as String?,
+            actorId: query['actorId'] as String?,
+            keyword: query['keyword'] as String?,
+            targetType: query['targetType'] as String?,
+            eventSource: query['eventSource'] as String?,
+            requestId: query['requestId'] as String?,
+            operationKind: query['operationKind'] as String?,
+            actorScope: query['actorScope'] as String?,
+            activityOnly: query['activityOnly'] as bool,
+            snapshotId: highWater,
+            riskLevel: query['riskLevel'] as String?,
+            eventCategory: query['eventCategory'] as String?,
+            outcome: query['outcome'] as String?,
+            dateFrom: query['dateFrom'] as String?,
+            dateTo: query['dateTo'] as String?,
+          );
     AuditLogPage? initial;
     var highWater = _snapshotId;
     if (highWater == null) {
@@ -823,28 +842,39 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       );
       if (requestedSnapshotId == null || _summary == null) {
         try {
-          final summary = await repository.summary(
-            action: _actionFilter,
-            actorId:
-                _requestId.isEmpty && !_anonymousMode && !_systemAnomalyMode
-                ? _selectedActor?.actorId
-                : null,
-            keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-            targetType: _targetTypeFilter,
-            eventSource: _eventSourceFilter,
-            requestId: _requestId.trim().isEmpty ? null : _requestId.trim(),
-            operationKind: _operationKindFilter,
-            actorScope: _actorScopeFilter,
-            activityOnly: !_isRequestInvestigation,
-            snapshotId: pageResult.snapshotId,
-            eventCategory: _categoryFilter,
-            dateFrom: _dateRange == null
-                ? null
-                : ChinaDateTime.formatDate(_dateRange!.start),
-            dateTo: _dateRange == null
-                ? null
-                : ChinaDateTime.formatDate(_dateRange!.end),
-          );
+          final summary = repository is AuditHeaderEventRepository
+              ? await (repository as AuditHeaderEventRepository)
+                    .eventHeaderSummary(
+                      {..._eventReadQuery, 'snapshotId': pageResult.snapshotId}
+                        ..remove('riskLevel')
+                        ..remove('outcome'),
+                    )
+              : await repository.summary(
+                  action: _actionFilter,
+                  actorId:
+                      _requestId.isEmpty &&
+                          !_anonymousMode &&
+                          !_systemAnomalyMode
+                      ? _selectedActor?.actorId
+                      : null,
+                  keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+                  targetType: _targetTypeFilter,
+                  eventSource: _eventSourceFilter,
+                  requestId: _requestId.trim().isEmpty
+                      ? null
+                      : _requestId.trim(),
+                  operationKind: _operationKindFilter,
+                  actorScope: _actorScopeFilter,
+                  activityOnly: !_isRequestInvestigation,
+                  snapshotId: pageResult.snapshotId,
+                  eventCategory: _categoryFilter,
+                  dateFrom: _dateRange == null
+                      ? null
+                      : ChinaDateTime.formatDate(_dateRange!.start),
+                  dateTo: _dateRange == null
+                      ? null
+                      : ChinaDateTime.formatDate(_dateRange!.end),
+                );
           if (!current()) return;
           setState(() => _summary = summary);
         } on ApiException catch (error) {
@@ -884,6 +914,9 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     _selectedActor?.actorId,
     _dateRange == null ? null : ChinaDateTime.formatDate(_dateRange!.start),
     _dateRange == null ? null : ChinaDateTime.formatDate(_dateRange!.end),
+    _sessionColumnFilters,
+    _sessionSortColumn,
+    _sessionSortAscending,
   );
 
   Future<AuditSessionPage> _readSessionPage(
@@ -901,7 +934,14 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
     final ownerCurrent = captureReadOwner(ref);
     final from = ChinaDateTime.formatDate(range.start);
     final to = ChinaDateTime.formatDate(range.end);
-    final query = (actor.actorId, from, to);
+    final query = (
+      actor.actorId,
+      from,
+      to,
+      _sessionColumnFilters,
+      _sessionSortColumn,
+      _sessionSortAscending,
+    );
     bool current() =>
         mounted &&
         ownerCurrent() &&
@@ -910,14 +950,33 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
         _sessionMode &&
         _canUseSessionView &&
         query == _sessionReadQuery;
+    final columnFilters = _sessionColumnFilters;
+    final sort = _sessionSortColumn, ascending = _sessionSortAscending;
     Future<AuditSessionPage> fetch(int target, int? highWater) =>
-        repository.sessions(
-          actorId: actor.actorId,
-          dateFrom: from,
-          dateTo: to,
-          page: target,
-          snapshotAuditId: highWater,
-        );
+        repository is AuditHeaderSessionRepository
+        ? (repository as AuditHeaderSessionRepository).sessionHeaderPage({
+            'actorId': actor.actorId,
+            'dateFrom': from,
+            'dateTo': to,
+            'page': target,
+            'size': 10,
+            'snapshotAuditId': ?highWater,
+            for (final entry in columnFilters.entries)
+              if (entry.value != null)
+                entry.key.startsWith('search.')
+                        ? entry.key
+                        : 'search.${entry.key}':
+                    entry.value,
+            'sort': ?sort,
+            if (sort != null) 'order': ascending ? 'asc' : 'desc',
+          })
+        : repository.sessions(
+            actorId: actor.actorId,
+            dateFrom: from,
+            dateTo: to,
+            page: target,
+            snapshotAuditId: highWater,
+          );
     AuditSessionPage? initial;
     var highWater = _snapshotId;
     if (highWater == null) {
@@ -1052,6 +1111,10 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   void _invalidateScopeResults() {
+    _eventColumnFilters = const {};
+    _sessionColumnFilters = const {};
+    _sessionSortColumn = null;
+    _sessionSortAscending = true;
     _invalidateAuditReads();
     _eventRows.update(const []);
     _sessionRows.update(const []);
@@ -1216,6 +1279,24 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
           (value == 'security' || value == 'authentication')) {
         _actorScopeFilter = null;
       }
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onRiskChanged(String? value) {
+    if (_riskFilter == value) return;
+    setState(() {
+      _riskFilter = value;
+      _snapshotId = null;
+    });
+    _load(1);
+  }
+
+  void _onOutcomeChanged(String? value) {
+    if (_outcomeFilter == value) return;
+    setState(() {
+      _outcomeFilter = value;
       _snapshotId = null;
     });
     _load(1);
@@ -1525,6 +1606,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Map<String, dynamic> get _exportQueryParams => <String, dynamic>{
+    if (!_sessionMode) ..._eventColumnFilters,
+    if (_sessionMode) ...{
+      for (final entry in _sessionColumnFilters.entries)
+        if (entry.value != null)
+          entry.key.startsWith('search.') ? entry.key : 'search.${entry.key}':
+              entry.value,
+      'sort': ?_sessionSortColumn,
+      if (_sessionSortColumn != null)
+        'order': _sessionSortAscending ? 'asc' : 'desc',
+    },
     if (_actionFilter != null) 'action': _actionFilter,
     if (_requestId.isEmpty &&
         !_anonymousMode &&
@@ -1756,20 +1847,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                             onTargetTypeChanged: _onTargetTypeChanged,
                             onEventSourceChanged: _onEventSourceChanged,
                             onCategoryChanged: _onCategoryChanged,
-                            onRiskChanged: (value) {
-                              setState(() {
-                                _riskFilter = value;
-                                _snapshotId = null;
-                              });
-                              _load(1);
-                            },
-                            onOutcomeChanged: (value) {
-                              setState(() {
-                                _outcomeFilter = value;
-                                _snapshotId = null;
-                              });
-                              _load(1);
-                            },
+                            onRiskChanged: _onRiskChanged,
+                            onOutcomeChanged: _onOutcomeChanged,
                             onClear: _resetFilters,
                           ),
                         ),
@@ -1827,7 +1906,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     if (_canLoad &&
                         _sessionMode &&
                         _sessionError != null &&
-                        sessions.isEmpty)
+                        sessions.isEmpty &&
+                        _sessionColumnFilters.isEmpty)
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _sessionError!,
@@ -1839,14 +1919,16 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     else if (_canLoad &&
                         _sessionMode &&
                         _sessionLoading &&
-                        sessions.isEmpty)
+                        sessions.isEmpty &&
+                        _sessionColumnFilters.isEmpty)
                       const SliverToBoxAdapter(
                         child: _AuditSessionLoadingList(),
                       )
                     else if (_canLoad &&
                         _sessionMode &&
                         !_sessionLoading &&
-                        sessions.isEmpty)
+                        sessions.isEmpty &&
+                        _sessionColumnFilters.isEmpty)
                       SliverToBoxAdapter(
                         child: _AuditSessionEmptyCard(
                           onShowEvents: () => _switchView(false),
@@ -1856,6 +1938,32 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditSessionTable(
                           sessions: sessions,
+                          headerQueries:
+                              ref.watch(auditLogRepositoryProvider)
+                                  is AuditHeaderSessionRepository,
+                          filters: _sessionColumnFilters,
+                          sortColumn: _sessionSortColumn,
+                          sortAscending: _sessionSortAscending,
+                          onFilterChanged: (key, value) {
+                            if (!_canLoad) return;
+                            setState(() {
+                              _sessionColumnFilters = Map.unmodifiable(
+                                {..._sessionColumnFilters, key: value}
+                                  ..removeWhere((_, value) => value == null),
+                              );
+                              _snapshotId = null;
+                            });
+                            _loadSessions(1);
+                          },
+                          onSortChange: (key, ascending) {
+                            if (!_canLoad) return;
+                            setState(() {
+                              _sessionSortColumn = key;
+                              _sessionSortAscending = ascending;
+                              _snapshotId = null;
+                            });
+                            _loadSessions(1);
+                          },
                           rowsController: _sessionRows,
                           tableAnchorKey: _sessionTableKey,
                           firstRowKey: _sessionFirstRowKey,
@@ -1891,7 +1999,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     if (_canLoad &&
                         !_sessionMode &&
                         _error != null &&
-                        items.isEmpty)
+                        items.isEmpty &&
+                        _eventColumnFilters.isEmpty &&
+                        _riskFilter == null &&
+                        _outcomeFilter == null &&
+                        _operationKindFilter == null &&
+                        _targetTypeFilter == null)
                       SliverToBoxAdapter(
                         child: _AuditErrorCard(
                           message: _error!,
@@ -1902,7 +2015,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                     else if (_canLoad &&
                         !_sessionMode &&
                         !_loading &&
-                        items.isEmpty)
+                        items.isEmpty &&
+                        _eventColumnFilters.isEmpty &&
+                        _riskFilter == null &&
+                        _outcomeFilter == null &&
+                        _operationKindFilter == null &&
+                        _targetTypeFilter == null)
                       SliverToBoxAdapter(
                         child: _AuditEmptyCard(onAdjustScope: _clearScope),
                       )
@@ -1910,6 +2028,50 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                       SliverToBoxAdapter(
                         child: _AuditEventTable(
                           items: items,
+                          headerQueries:
+                              ref.watch(auditLogRepositoryProvider)
+                                  is AuditHeaderEventRepository,
+                          headerFilters: _eventColumnFilters,
+                          operationFilter: _operationKindFilter,
+                          targetFilter: _targetTypeFilter,
+                          onPickDate: () async {
+                            final previous = _dateRange;
+                            await _pickDateRange();
+                            if (mounted && previous != _dateRange) {
+                              _applyScopeQuery();
+                            }
+                          },
+                          onPickActor: () async {
+                            final previous = _selectedActor;
+                            await _pickActor();
+                            if (mounted && previous != _selectedActor) {
+                              _applyScopeQuery();
+                            }
+                          },
+                          riskFilter: _riskFilter,
+                          outcomeFilter: _outcomeFilter,
+                          onFilterChanged: (key, value) {
+                            if (key == 'risk') _onRiskChanged(value);
+                            if (key == 'outcome') _onOutcomeChanged(value);
+                            if (key == 'summary') {
+                              _onOperationKindChanged(value);
+                            }
+                            if (key == 'object') _onTargetTypeChanged(value);
+                            if (key == 'search.device' || key == 'change') {
+                              if (!_canLoad) return;
+                              setState(() {
+                                _eventColumnFilters = Map.unmodifiable(
+                                  {
+                                    ..._eventColumnFilters,
+                                    key == 'change' ? 'search.change' : key:
+                                        value,
+                                  }..removeWhere((_, value) => value == null),
+                                );
+                                _snapshotId = null;
+                              });
+                              _load(1);
+                            }
+                          },
                           rowsController: _eventRows,
                           tableAnchorKey: _eventTableKey,
                           firstRowKey: _eventFirstRowKey,

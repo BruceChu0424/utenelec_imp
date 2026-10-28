@@ -12,8 +12,10 @@ import '../../../core/router/route_names.dart';
 import '../../../core/router/permission_by_path.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../features/basic_data/widgets/master_data_table_view.dart';
+import '../../../features/basic_data/models/master_facet.dart';
 import '../../auth/permissions.dart';
 import '../../models/paged_result.dart';
+import '../../search/table_column_query.dart';
 import '../../formatters/quantity_display.dart';
 import '../../providers/sensitive_read_boundary_provider.dart';
 import '../production_trace_models.dart';
@@ -80,6 +82,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
     if (mounted) {
       setState(() {
         _data = null;
+        _headers = const TableColumnQuery();
         _result = null;
         _loading = false;
       });
@@ -92,6 +95,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
   }
 
   String _direction = 'usage';
+  TableColumnQuery _headers = const TableColumnQuery();
   PagedResult<GoodsProductionTraceRow>? _data;
   MaterialTraceResult? _result;
   bool _loading = true;
@@ -112,6 +116,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
       _closeDetails();
       setState(() {
         _data = null;
+        _headers = const TableColumnQuery();
         _result = null;
         _error = null;
         _loading = false;
@@ -154,6 +159,13 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         oldWidget.dateTo != widget.dateTo ||
         oldWidget.reloadTick != widget.reloadTick) {
       _closeDetails();
+      if (oldWidget.goodsId != widget.goodsId ||
+          oldWidget.direction != widget.direction ||
+          oldWidget.subject?.identity != widget.subject?.identity ||
+          oldWidget.dateFrom != widget.dateFrom ||
+          oldWidget.dateTo != widget.dateTo) {
+        _headers = const TableColumnQuery();
+      }
       if (oldWidget.direction != widget.direction) {
         _direction = widget.direction ?? 'usage';
       }
@@ -173,6 +185,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         goodsId = widget.goodsId,
         direction = _direction;
     final from = widget.dateFrom, to = widget.dateTo;
+    final headers = _headers;
     final traceRepository = ref.read(materialTraceRepositoryProvider);
     final ledgerRepository = ref.read(goodsStockLedgerRepositoryProvider);
     Object pagingQuery() => [
@@ -184,6 +197,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
       widget.dateFrom,
       widget.dateTo,
       widget.reloadTick,
+      _headers,
     ];
     try {
       final cached = await readScopedPage<GoodsProductionTraceRow>(
@@ -197,6 +211,9 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
               goodsId!,
               direction: direction,
               page: target,
+              columns: headers.searches,
+              sort: headers.sort,
+              ascending: headers.ascending,
             );
           }
           final result = await traceRepository.trace(
@@ -205,6 +222,9 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             dateFrom: from,
             dateTo: to,
             page: target,
+            columns: headers.searches,
+            sort: headers.sort,
+            ascending: headers.ascending,
           );
           if (result.subject?.identity != subject.identity) {
             throw ApiException('INVALID_TRACE_RESPONSE', '追溯结果与当前对象不一致，请重新查询');
@@ -270,6 +290,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             onSelectionChanged: (direction) {
               if (direction == _direction) return;
               setState(() {
+                _headers = const TableColumnQuery();
                 _direction = direction;
                 _data = null;
                 _result = null;
@@ -316,10 +337,54 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             columns: _columns(),
             items: _data?.items ?? const [],
             rowKeyOf: (row) => row.id,
-            facets: const {},
+            facets: const {
+              'basis': [
+                MasterFacetBucket(value: 'ORDER', label: '按单用料', count: 0),
+                MasterFacetBucket(value: 'PERIODIC', label: '期间分摊', count: 0),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {
+              ..._headers.searches,
+              'basis': _headers.searches['search.basis'],
+            },
+            serverColumnSearchKeys: const {
+              'goods',
+              'code',
+              'color',
+              'workshop',
+              'plan',
+              'productionBatches',
+              'issued',
+              'returned',
+              'consumed',
+              'allocated',
+              'reports',
+              'workers',
+              'sources',
+            },
+            headerFilterScopeDescription:
+                '筛选当前追溯对象的全部关联行；数量仍按原任务或期间口径，来源凭证保持对象原范围。',
+            onFilterChanged: (key, value) {
+              if (key == 'basis') key = 'search.basis';
+              if (!key.startsWith('search.')) return;
+              _closeDetails();
+              setState(() {
+                _headers = _headers.search(key, value);
+                _data = null;
+              });
+              trackRefresh(_load(1));
+            },
+            sortColumn: _headers.sort,
+            sortAscending: _headers.ascending,
+            onSortChange: (key, ascending) {
+              _closeDetails();
+              setState(() {
+                _headers = _headers.sorted(key, ascending);
+                _data = null;
+              });
+              trackRefresh(_load(1));
+            },
             onRowTap: (row) {
               if (visibleEpoch == _readEpoch &&
                   visibleBoundary == ref.read(sensitiveReadBoundaryProvider)) {
@@ -330,7 +395,9 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             loadingMore: _loading && _data != null,
             error: _error,
             onRetry: () => _load(_visibleReadPage),
-            emptyMessage: _result?.sources.isNotEmpty == true
+            emptyMessage: _headers.searches.isNotEmpty
+                ? '当前表头条件下没有匹配的关联行'
+                : _result?.sources.isNotEmpty == true
                 ? '已找到来源凭证，暂无当前范围内可显示的后续用料记录'
                 : '暂无权限范围内的实际用料记录',
             currentPage: _data?.page ?? 1,
@@ -342,6 +409,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
               widget.dateTo,
               _direction,
               _readEpoch,
+              _headers,
             ),
             onPageChange: (page) => _load(page, useCache: true),
           ),
@@ -477,12 +545,14 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         defaultVisible: false,
         label: '编号',
         width: 120,
+        sortable: true,
         value: (row) => related(row).goodsCode ?? '—',
       ),
       MasterColumnDef(
         key: 'productionBatches',
         label: '生产批次 / 计划',
         width: 190,
+        info: '按本行可见的产出批次或计划文字定位，保留批次与报工之间的原始对应关系。',
         value: (row) => _joined(
           row.reports
               .expand((report) => report.batches)
@@ -526,36 +596,58 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         defaultVisible: false,
         label: '生产计划',
         width: 170,
+        sortable: true,
         value: (row) => row.planNo ?? row.segmentCode ?? '—',
       ),
       MasterColumnDef(
         key: 'issued',
         label: '已领数量',
         width: 120,
+        type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
+        exactValueOf: (row) => row.issuedQty,
+        info: '按本行物料基本单位的原始领料数量检索；可先定位物料，不跨单位汇总。',
         value: (row) => _qty(row.issuedQty, row.material.unitName),
       ),
       MasterColumnDef(
         key: 'returned',
         label: '已退数量',
         width: 120,
+        type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
+        exactValueOf: (row) => row.returnedQty,
+        info: '按本行物料基本单位的原始退料数量检索；退料与核销耗用分别保留。',
         value: (row) => _qty(row.returnedQty, row.material.unitName),
       ),
       MasterColumnDef(
         key: 'consumed',
         label: '核销耗用',
         width: 130,
+        type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
+        exactValueOf: (row) => row.consumedQty,
+        info: '检索已确认的核销耗用；没有可确认事实时为空，不当作零，也不按产出批次推算。',
         value: (row) => _qty(row.consumedQty, row.material.unitName),
       ),
       MasterColumnDef(
         key: 'allocated',
         label: '期间分摊量',
         width: 130,
+        type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
+        exactValueOf: (row) => row.allocatedQty,
+        info: '期间盘点的分摊数量，与按单领退及核销是不同事实；不作为逐批实际耗用。',
         value: (row) => _qty(row.allocatedQty, row.material.unitName),
       ),
       MasterColumnDef(
         key: 'reports',
         label: '报工日期',
         width: 170,
+        info: '一行可含多次报工，可按可见日期文字检索；对象日期范围仍决定原追溯口径。',
         value: (row) => _joined(row.reports.map((r) => r.billDate).nonNulls),
       ),
       MasterColumnDef(
@@ -563,6 +655,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         defaultVisible: false,
         label: '报工参与人',
         width: 180,
+        info: '按可见日报的参与人姓名检索，参与人属于整张日报，不代表逐人分摊的用量。',
         value: (row) => _joined(row.reports.expand((r) => r.workers)),
       ),
       MasterColumnDef(
@@ -570,6 +663,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
         defaultVisible: false,
         label: '入库来源单据',
         width: 190,
+        info: '仅检索本行有权查看的明确入库来源；不按缺少关联的凭证推测原料批次。',
         value: (row) => row.receiptSources.isEmpty
             ? '暂无可显示来源'
             : row.receiptSources.map((r) => r.billNo ?? '—').toSet().join('、'),

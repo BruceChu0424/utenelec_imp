@@ -187,15 +187,17 @@ class _MfaSessionState extends ConsumerState<_MfaSession> {
     final enrollment = _enrollment;
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: UtenAppBar(title: t('personal'), leading: const UtenBackButton()),
+      appBar: UtenAppBar(
+        title: t('personal'),
+        info: t('mfaIntro'),
+        leading: const UtenBackButton(),
+      ),
       body: UtenContentContainer.narrow(
         child: UtenPageEdgePadding.scroll(
           padding: const EdgeInsets.all(UtenSpacing.s16),
           builder: (context, pagePadding) => ListView(
             padding: pagePadding,
             children: [
-              Text(t('mfaIntro'), style: theme.textTheme.bodyMedium),
-              const SizedBox(height: UtenSpacing.s16),
               if (!_self)
                 Text(t('selfOnly'))
               else ...[

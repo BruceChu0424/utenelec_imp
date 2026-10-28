@@ -348,6 +348,52 @@ void main() {
       expect(find.text('1 个条目'), findsOneWidget);
     });
 
+    testWidgets('压缩包：目录行用资料库同款图标瓦片', (tester) async {
+      await _pumpPreview(
+        tester,
+        bytes: _singleEntryZip('归档目录/', 0),
+        name: '清单.zip',
+        contentType: 'application/zip',
+      );
+      expect(find.byIcon(Icons.folder_rounded), findsOneWidget);
+      expect(find.text('归档目录'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('全屏切换铺满画布并可退出', (tester) async {
+      await _pumpPreview(
+        tester,
+        bytes: _utf8('hello fullscreen'),
+        name: 'notes.txt',
+        contentType: 'text/plain',
+      );
+      final surface = find
+          .descendant(of: find.byType(Dialog), matching: find.byType(Material))
+          .first;
+      expect(
+        find.byKey(const ValueKey('attachment-preview-windowed')),
+        findsOneWidget,
+      );
+      final normal = tester.getRect(surface);
+      await tester.tap(find.byTooltip('全屏'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('退出全屏'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('attachment-preview-fullscreen')),
+        findsOneWidget,
+      );
+      final expanded = tester.getRect(surface);
+      // 普通档被内边距与 85% 高度钳制，全屏档铺满整个画布。
+      expect(expanded.width, greaterThan(normal.width));
+      expect(expanded.height, greaterThan(normal.height));
+      expect(expanded.width, greaterThanOrEqualTo(798));
+      expect(expanded.height, greaterThanOrEqualTo(598));
+      await tester.tap(find.byTooltip('退出全屏'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(surface).size, normal.size);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('archive list has one automatic visible scrollbar owner', (
       tester,
     ) async {

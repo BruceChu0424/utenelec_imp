@@ -417,6 +417,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
             ),
             if (_changeWriting)
               const UtenBusyOverlay(
+                showDoNotLeaveHint: false,
                 title: '正在处理货品资料',
                 semanticsKey: Key('goods-detail-lifecycle-writing'),
               ),

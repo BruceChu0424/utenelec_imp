@@ -361,9 +361,26 @@ void main() {
     );
     await tester.tap(find.text('下载表格'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).first, 'abc');
-    await tester.pump();
-    await tester.enterText(find.byType(TextField).last, 'different');
+    await tester.ensureVisible(find.text('设置密码'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设置密码'));
+    await tester.pumpAndSettle();
+    final password = find
+        .byWidgetPredicate(
+          (widget) => widget is TextField && widget.obscureText,
+        )
+        .first;
+    await tester.ensureVisible(password);
+    await tester.enterText(password, 'abc');
+    await tester.pumpAndSettle();
+    final confirm = find
+        .byWidgetPredicate(
+          (widget) => widget is TextField && widget.obscureText,
+        )
+        .last;
+    await tester.ensureVisible(confirm);
+    await tester.enterText(confirm, 'different');
+    await tester.ensureVisible(find.text('加密下载'));
     await tester.tap(find.text('加密下载'));
     await tester.pump();
     expect(find.textContaining('一致'), findsOneWidget);

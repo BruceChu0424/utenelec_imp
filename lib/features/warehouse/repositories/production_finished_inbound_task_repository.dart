@@ -23,6 +23,7 @@ class ProductionFinishedInboundTaskRepository {
     String? order,
     String? taskNo,
     String? planNo,
+    Map<String, String?> columns = const {},
   }) async {
     final normalized = keyword?.trim();
     final json = await api.get(
@@ -40,6 +41,10 @@ class ProductionFinishedInboundTaskRepository {
         if (order != null && order.isNotEmpty) 'order': order,
         if (taskNo != null && taskNo.trim().isNotEmpty) 'taskNo': taskNo.trim(),
         if (planNo != null && planNo.trim().isNotEmpty) 'planNo': planNo.trim(),
+        for (final entry in columns.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
       },
     );
     return PagedResult.fromJsonResponsive(
@@ -55,6 +60,9 @@ class ProductionFinishedInboundTaskRepository {
     String? taskStage,
     String? warehouseId,
     WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+    String? taskNo,
+    String? planNo,
+    Map<String, String?> columns = const {},
   }) async {
     final normalized = keyword?.trim();
     final json =
@@ -68,6 +76,12 @@ class ProductionFinishedInboundTaskRepository {
                 if (warehouseId != null && warehouseId.isNotEmpty)
                   'warehouseId': warehouseId,
                 ...scope.queryParameters,
+                'taskNo': ?taskNo,
+                'planNo': ?planNo,
+                for (final entry in columns.entries)
+                  if (entry.key.startsWith('search.') &&
+                      entry.value?.trim().isNotEmpty == true)
+                    entry.key: entry.value!.trim(),
               },
             )
             as Map;

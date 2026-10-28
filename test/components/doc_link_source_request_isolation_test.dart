@@ -30,6 +30,7 @@ class _DeferredApi extends ApiClient {
 
   final details = <Completer<Map<String, dynamic>>>[];
   final progress = <Completer<List<Map<String, dynamic>>>>[];
+  final listQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -41,6 +42,7 @@ class _DeferredApi extends ApiClient {
       details.add(gate);
       return gate.future;
     }
+    listQueries.add(Map.of(query ?? const {}));
     return {
       'items': [
         for (final suffix in ['a', 'b'])
@@ -227,6 +229,58 @@ List<Map<String, dynamic>> _progress(String suffix, double qty) => [
 ];
 
 void main() {
+  for (final kind in ['purchase', 'subcontract', 'sales']) {
+    testWidgets(
+      '$kind source headers forward independent server searches and preserve approved scope',
+      (tester) async {
+        final api = _DeferredApi();
+        await _open(
+          tester,
+          api,
+          purchase: kind == 'purchase',
+          subcontractReceipt: kind == 'subcontract',
+        );
+        Future<void> search(String key, String value) async {
+          await tester.tap(
+            find
+                .byKey(ValueKey('master-column-filter-$key'))
+                .hitTestable()
+                .first,
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('uten-column-keyword-input')),
+            value,
+          );
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+          await tester.pumpAndSettle();
+        }
+
+        await search('billNo', 'SOURCE A');
+        expect(api.listQueries.last['search.billNo'], 'SOURCE A');
+        expect(api.listQueries.last['page'], 1);
+        expect(api.listQueries.last['status'], 1);
+        final party = kind == 'sales' ? 'client' : 'supplier';
+        await search(party, '往来方');
+        expect(api.listQueries.last['search.billNo'], 'SOURCE A');
+        expect(api.listQueries.last['search.$party'], '往来方');
+        expect(api.listQueries.last['status'], 1);
+        await tester.tap(
+          find
+              .byKey(const ValueKey('master-column-filter-billNo'))
+              .hitTestable()
+              .first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('所有'));
+        await tester.pumpAndSettle();
+        expect(api.listQueries.last.containsKey('search.billNo'), isFalse);
+        expect(api.listQueries.last['search.$party'], '往来方');
+        expect(api.details, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final sub in [false, true]) {
     testWidgets(
       '${sub ? 'subcontract receipt' : 'sales return'} source keeps decimal 0.3 minus 0.1 selectable and submittable',

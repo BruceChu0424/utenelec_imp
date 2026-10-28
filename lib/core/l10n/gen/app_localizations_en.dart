@@ -3265,8 +3265,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportDialogTitle => 'Export Excel';
 
   @override
+  String get exportFileNameLabel => 'File name';
+
+  @override
+  String get exportFileNameRequired =>
+      'Enter a file name (up to 150 characters)';
+
+  @override
+  String get exportSaveLocationLabel => 'Save location';
+
+  @override
+  String get exportBrowse => 'Browse…';
+
+  @override
   String get exportPasswordOptionalHint =>
       'A password is optional. Leave it blank for a regular Excel file, or enter 1–128 characters to encrypt it.';
+
+  @override
+  String get exportSetPassword => 'Set password';
+
+  @override
+  String get exportRemovePassword => 'Remove password';
+
+  @override
+  String get exportPreparingFile => 'Exporting table…';
 
   @override
   String get exportPasswordOptionalLabel =>
@@ -3581,6 +3603,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get orderChangeQtyTitle => 'Order Qty Change';
+
+  @override
+  String get orderPendingChangeQtyHint =>
+      'The order remains in finance review. Finance will see the updated quantities and change history.';
+
+  @override
+  String get orderPendingChangeQtySuccess =>
+      'Quantities changed; the pending finance review has been updated';
 
   @override
   String get orderChangeQtyWarning =>
@@ -13431,6 +13461,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get companyFilesWhoCanRead => 'Who can read';
+
+  @override
+  String get companyFilesEveryoneCanRead => 'Everyone can view';
+
+  @override
+  String get companyFilesEveryoneReadHint =>
+      'The library is visible to everyone by default. Everyone can view and download this item; deny rules can carve out exceptions. When a parent folder restricts access, that folder must still be entered first.';
 
   @override
   String get companyFilesInheritEntryAccess =>

@@ -333,6 +333,9 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                                   label: priceText(context, 'records'),
                                   width: 95,
                                   type: 'number',
+                                  columnSearchEnabled: false,
+                                  info:
+                                      '该候选在原授权查询范围内的记录数；顶部搜索定位完整候选值，不按当前页次数筛选。',
                                   value: (row) => row.count.toString(),
                                 ),
                               ],
@@ -347,7 +350,10 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
           },
         ),
         if (_loading)
-          UtenBusyOverlay(title: priceText(context, 'loadingHistory')),
+          UtenBusyOverlay(
+            showDoNotLeaveHint: false,
+            title: priceText(context, 'loadingHistory'),
+          ),
       ],
     );
   }

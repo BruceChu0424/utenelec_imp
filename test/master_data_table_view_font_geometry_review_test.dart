@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'support/table_cell_geometry.dart';
 
 void main() {
   testWidgets('a smaller rich-cell font retires the previous automatic width', (
@@ -37,21 +38,7 @@ void main() {
       ),
     );
 
-    double width() => tester
-        .widgetList<Container>(
-          find.ancestor(
-            of: find.text('Name'),
-            matching: find.byType(Container),
-          ),
-        )
-        .firstWhere(
-          (container) =>
-              container.constraints?.hasBoundedWidth == true &&
-              container.constraints!.minWidth ==
-                  container.constraints!.maxWidth,
-        )
-        .constraints!
-        .maxWidth;
+    double width() => tableCellWidth(tester, find.text('Name'));
 
     await tester.pumpWidget(app(30));
     await tester.pumpAndSettle();

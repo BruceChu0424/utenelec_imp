@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
@@ -1691,9 +1693,14 @@ void main() {
         findsNothing,
       );
       expect(find.text('手机候选产品 A'), findsOneWidget);
-      expect(find.text('上一页'), findsOneWidget);
-      expect(find.text('下一页'), findsOneWidget);
-      expect(find.textContaining('第 1 / 2 页'), findsOneWidget);
+      expect(find.text('上一页'), findsNothing);
+      expect(find.text('下一页'), findsNothing);
+      expect(find.text('/ 2'), findsOneWidget);
+      expect(find.text('共 2 项'), findsOneWidget);
+      expect(
+        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+        1,
+      );
 
       final candidateCheckbox = find.descendant(
         of: mobileList,
@@ -1727,7 +1734,11 @@ void main() {
       await tester.tap(find.byKey(const Key('material-candidate-next-page')));
       await tester.pumpAndSettle();
       expect(find.text('手机候选产品 B'), findsOneWidget);
-      expect(find.textContaining('第 2 / 2 页'), findsOneWidget);
+      expect(find.text('/ 2'), findsOneWidget);
+      expect(
+        tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+        2,
+      );
       expect(
         find.byKey(const Key('source-qty-mobile-sales-line-a')),
         findsNothing,
@@ -4879,7 +4890,7 @@ void main() {
   });
 
   testWidgets(
-    'product and BOM branch are expanded by default and independently foldable',
+    'product and BOM branch start collapsed and independently expand and fold',
     (tester) async {
       await _pumpPage(
         tester,
@@ -4889,6 +4900,7 @@ void main() {
           Perm.productionMaterialAnalysisRefresh,
         },
         allowedActions: const ['VIEW'],
+        expandTree: false,
         analysisJson: _makeTreeAnalysisJson()
           ..['allowedActions'] = const ['VIEW'],
       );
@@ -4903,7 +4915,21 @@ void main() {
       final buyChild = find.byKey(
         const ValueKey('material-table-row-buy-child'),
       );
+      expect(makeNode, findsNothing);
+      expect(buyChild, findsNothing);
+
+      await tester.ensureVisible(productToggle);
+      await _resetTableHScroll(tester);
+      await tester.tap(productToggle);
+      await tester.pumpAndSettle();
       await _materialTableRowVisible(tester, 'make-path-1');
+      expect(makeNode, findsOneWidget);
+      expect(buyChild, findsNothing, reason: 'its branch is still collapsed');
+      final branchToggle = find.byKey(
+        const ValueKey('material-table-toggle-MATERIAL|make-path-1'),
+      );
+      await tester.tap(branchToggle);
+      await tester.pumpAndSettle();
       await _materialTableRowVisible(tester, 'buy-child');
       expect(makeNode, findsOneWidget);
       expect(buyChild, findsOneWidget);
@@ -4924,9 +4950,6 @@ void main() {
       expect(makeNode, findsOneWidget);
       expect(buyChild, findsOneWidget);
 
-      final branchToggle = find.byKey(
-        const ValueKey('material-table-toggle-MATERIAL|make-path-1'),
-      );
       await tester.tap(branchToggle);
       await tester.pumpAndSettle();
       expect(makeNode, findsOneWidget);
@@ -8734,6 +8757,7 @@ void main() {
       final harness = await _pumpPage(
         tester,
         size: const Size(1440, 1000),
+        expandTree: false,
         theme: ThemeData(platform: TargetPlatform.windows),
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
@@ -8859,11 +8883,25 @@ void main() {
         findsOneWidget,
       );
 
-      // 顶部按钮初始为「全部收起」（默认整树展开）。
+      // 新分析的产品与分支默认收起；先用公共动作展开，再验证两向切换。
       final toggle = find.byKey(
         const Key('material-analysis-bom-expansion-toggle'),
       );
       expect(toggle, findsOneWidget);
+      expect(
+        find.descendant(of: toggle, matching: find.text('全部展开')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsNothing,
+      );
+      await expandMaterialAnalysisTree(tester);
+      expect(harness.requests.length, reads, reason: '展开只改变本地展示');
       expect(
         find.descendant(of: toggle, matching: find.text('全部收起')),
         findsOneWidget,
@@ -9808,6 +9846,7 @@ Future<_Harness> _pumpPage(
   required Set<String> permissions,
   List<String> allowedActions = const ['PLAN_PREVIEW', 'GENERATE_PLAN'],
   bool seeded = true,
+  bool expandTree = true,
   String? analysisId,
   List<MaterialAnalysisSourceInput>? sources,
   Map<String, dynamic>? analysisJson,
@@ -9975,6 +10014,7 @@ Future<_Harness> _pumpPage(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  if (expandTree) await expandMaterialAnalysisTree(tester, ifPresent: true);
   return _Harness(requests);
 }
 

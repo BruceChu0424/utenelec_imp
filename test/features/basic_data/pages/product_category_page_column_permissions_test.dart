@@ -59,6 +59,18 @@ Finder _goodsColumnTooltip(String message) => find.descendant(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets('货品默认编号在名称前且未授权价格折扣列不进入表格', (tester) async {
+    await _pumpPage(tester, _FakePlatformTableRepository(), {Perm.goodsView});
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byType(MasterDataTableView<GoodsListItem>),
+    );
+    final keys = table.columns.map((column) => column.key).toList();
+    expect(keys.take(2), ['code', 'name']);
+    expect(keys, isNot(contains('price')));
+    expect(keys, isNot(contains('discount')));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('只有货品查看权限时远程候选和导出与含禁用品列表同范围', (tester) async {
     final facets = _ScopeFacetRepository();
     await _pumpPage(

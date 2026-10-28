@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -189,63 +190,12 @@ class _IntroCard extends StatelessWidget {
   const _IntroCard();
 
   @override
-  Widget build(BuildContext context) {
-    return UtenCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.policy_outlined,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '原设备核查入口',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    const Text(
-                      '本机最多保存最近 300 条回执，并按服务器公开的审计总留存月数清理。为保护共享设备上的其他使用者，这里不直接列出全部历史，只按完整操作 ID 精确查询。',
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          // 两条都是页面行为的静态说明（非进行中），按 ADR-169 灰档；
-          // 蓝档保留给「正在执行/已提交」。
-          const Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              UtenStatusBadge(
-                label: '只读核查',
-                type: UtenStatusBadgeType.neutral,
-                icon: Icons.visibility_outlined,
-                size: UtenStatusBadgeSize.small,
-              ),
-              UtenStatusBadge(
-                label: '不保存请求体 / 查询参数 / 令牌',
-                type: UtenStatusBadgeType.neutral,
-                icon: Icons.shield_outlined,
-                size: UtenStatusBadgeSize.small,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const UtenSectionHeader(
+    title: '原设备核查入口',
+    icon: Icons.policy_outlined,
+    info:
+        '本机最多保存最近 300 条回执，并按服务器公开的审计总留存月数清理。为保护共享设备上的其他使用者，这里不直接列出全部历史，只按完整操作 ID 精确查询。\n\n只读核查；不保存请求体、查询参数或令牌。',
+  );
 }
 
 class _DeviceProfileCard extends StatelessWidget {
@@ -259,11 +209,9 @@ class _DeviceProfileCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '当前设备',
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          const UtenSectionHeader(
+            title: '当前设备',
+            info: '本机安装标识是随机应用实例 UUID，不是 IMEI、MAC、硬盘序列号或物理设备认证。',
           ),
           const SizedBox(height: UtenSpacing.s12),
           Wrap(
@@ -281,13 +229,6 @@ class _DeviceProfileCard extends StatelessWidget {
               ),
               _CopyFact(label: '本机安装标识', value: profile.installationId),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Text(
-            '本机安装标识是随机应用实例 UUID，不是 IMEI、MAC、硬盘序列号或物理设备认证。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
           ),
         ],
       ),
@@ -320,8 +261,6 @@ class _SearchCard extends StatelessWidget {
               context,
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          const Text('从审计详情复制“本地操作 ID”，再回到原操作设备粘贴查询。'),
           const SizedBox(height: UtenSpacing.s12),
           TextField(
             controller: controller,
@@ -336,6 +275,7 @@ class _SearchCard extends StatelessWidget {
                 error: utenFieldError(error),
                 prefixIcon: const Icon(Icons.fingerprint_rounded),
               ),
+              info: '从审计详情复制“本地操作 ID”，再回到原操作设备粘贴查询。',
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),
@@ -372,12 +312,11 @@ class _ReceiptResultCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  '查询结果',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+              const Expanded(
+                child: UtenSectionHeader(
+                  title: '查询结果',
+                  info:
+                      '完整性通过表示内容与本机安全存储密钥计算出的 HMAC 一致；它不是服务器签名，也不能证明某一物理设备或某个人绝对真实。',
                 ),
               ),
               UtenStatusBadge(
@@ -440,13 +379,6 @@ class _ReceiptResultCard extends StatelessWidget {
               onPressed: onCopy,
               icon: const Icon(Icons.copy_all_outlined),
               label: const Text('复制回执 JSON'),
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '完整性通过表示内容与本机安全存储密钥计算出的 HMAC 一致；它不是服务器签名，也不能证明某一物理设备或某个人绝对真实。',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],

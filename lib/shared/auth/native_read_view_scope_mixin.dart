@@ -20,8 +20,8 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
   int _readEpoch = 0;
   bool _accepted = false;
   bool _pendingRead = false;
-  String? _acceptedResource;
-  String? _pendingResource;
+  Object? _acceptedResource;
+  Object? _pendingResource;
   String? _refreshError;
   bool _permissionReady = false;
   int? _snapshotGeneration;
@@ -143,9 +143,10 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     });
   }
 
+  /// Resource identity can be a stable string or an immutable compound query.
   bool Function() captureNativeRead(
-    String resource,
-    String Function() currentResource, {
+    Object resource,
+    Object Function() currentResource, {
     bool retainAccepted = false,
   }) {
     final scope = ref.read(authenticatedScopeProvider);

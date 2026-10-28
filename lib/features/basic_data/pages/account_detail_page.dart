@@ -1,8 +1,13 @@
+import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
+import '../widgets/master_reference_options_loader.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -35,6 +40,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/report/account_statement_column_query.dart';
 import '../models/account_node.dart';
 import '../models/currency_node.dart';
 import '../widgets/master_server_column_filters.dart';
@@ -76,11 +82,21 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   @override
   void scopedPagedReadOwnerChanged() {
     _detailLoadEpoch++;
+    _operationChanges.value++;
+    _referenceOptionsTicket = null;
+    _referenceOptionsFuture = null;
+    _changeTicket = null;
+    _editTicket = null;
     _flowRequests.begin();
     if (mounted) {
       setState(() {
         _detail = null;
         _statement = null;
+        _currencies = const {};
+        _styleOptions = const [];
+        _styleLoadError = null;
+        _detailBusy = false;
+        _editing = false;
         _flowLoading = false;
         _loading = false;
       });
@@ -98,6 +114,10 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   List<MasterSelectOption> _styleOptions = const [];
   String? _styleLoadError;
   Future<bool>? _referenceOptionsFuture;
+  Object? _referenceOptionsTicket;
+  Object? _changeTicket;
+  Object? _editTicket;
+  final _operationChanges = ValueNotifier<int>(0);
   bool _loading = true;
   bool _detailBusy = false;
   bool _editing = false;
@@ -143,6 +163,13 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     super.initState();
     _resetDates();
     _load(initial: true);
+  }
+
+  @override
+  void dispose() {
+    _operationChanges.value++;
+    _operationChanges.dispose();
+    super.dispose();
   }
 
   void _resetDates() {
@@ -215,24 +242,40 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     }
     final pending = _referenceOptionsFuture;
     if (pending != null) return pending;
-    context.appInfo('正在加载币种和会计科目，请稍候…');
-    final future = _loadReferenceOptions();
+    final ticket = Object();
+    _referenceOptionsTicket = ticket;
+    final future = _loadReferenceOptions(ticket);
     _referenceOptionsFuture = future;
     return future;
   }
 
-  Future<bool> _loadReferenceOptions() async {
+  Future<bool> _loadReferenceOptions(Object ticket) async {
+    final ownerCurrent = captureReadOwner(ref);
+    bool current() =>
+        ownerCurrent() && identical(_referenceOptionsTicket, ticket);
     try {
-      final results = await Future.wait<Object>([
-        ref.read(currencyRepositoryProvider).dict(),
-        ref
-            .read(paymentStyleRepositoryProvider)
-            .tree(category: PaymentStyleCategory.account.value),
-      ]);
+      final results = await loadMasterReferenceOptions<Object>(
+        context: context,
+        ref: ref,
+        resourceKey: 'account.detail.references.${widget.accountId}',
+        title: '正在读取币种和会计科目',
+        errorFallback: '币种或会计科目加载失败，请重试',
+        load: () => Future.wait<Object>([
+          ref.read(currencyRepositoryProvider).dict(),
+          ref
+              .read(paymentStyleRepositoryProvider)
+              .tree(category: PaymentStyleCategory.account.value),
+        ]),
+      );
+      if (!mounted || !current()) return false;
+      if (results == null) {
+        setState(() => _styleLoadError = '币种或会计科目加载失败，请重试');
+        return false;
+      }
       final currencies = results[0] as List<CurrencyListItem>;
       final roots = results[1] as List<PaymentStyleNode>;
       final leaves = activeAccountStyleLeaves(roots);
-      if (!mounted) return false;
+      if (!mounted || !current()) return false;
       setState(() {
         _currencies = {for (final item in currencies) item.id: item};
         _styleOptions = [
@@ -252,13 +295,16 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       });
       return _styleLoadError == null;
     } catch (_) {
-      if (!mounted) return false;
+      if (!mounted || !current()) return false;
       setState(() {
         _styleLoadError = '币种或会计科目加载失败，请重试';
       });
       return false;
     } finally {
-      _referenceOptionsFuture = null;
+      if (identical(_referenceOptionsTicket, ticket)) {
+        _referenceOptionsFuture = null;
+        _referenceOptionsTicket = null;
+      }
     }
   }
 
@@ -280,6 +326,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         to = _date(_to),
         keyword = _flowKeyword,
         billNo = _columnFilters['billNo'];
+    final columnQuery = Map<String, String?>.of(_columnFilters.values);
     Object pagingQuery() => [
       ref.read(accountRepositoryProvider),
       widget.accountId,
@@ -287,6 +334,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       _date(_to),
       _flowKeyword,
       _columnFilters['billNo'],
+      Map<String, String?>.of(_columnFilters.values),
     ];
     try {
       final cached = await readScopedPage<AccountStatementRow>(
@@ -302,6 +350,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             keyword: keyword,
             page: target,
             billNo: billNo,
+            columnQuery: columnQuery,
           );
           return PagedReadSnapshot<AccountStatementRow, AccountStatementPage>(
             page: PagedResult(
@@ -435,18 +484,23 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
 
   Future<void> _showEdit() async {
     if (_editing || _detailBusy || _detail == null || !_canEdit) return;
+    final ticket = _editTicket = Object();
     setState(() => _editing = true);
     try {
       await _openEditor();
     } finally {
-      if (mounted) setState(() => _editing = false);
+      if (mounted && identical(_editTicket, ticket)) {
+        _editTicket = null;
+        setState(() => _editing = false);
+      }
     }
   }
 
   Future<void> _openEditor() async {
     if (_detail == null || !_canEdit) return;
+    final current = captureReadOwner(ref);
     final referencesReady = await _ensureReferenceOptions();
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     if (!referencesReady) {
       context.appError(_styleLoadError ?? '币种或会计科目加载失败，请重试');
       return;
@@ -473,12 +527,14 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
       onSubmit: (body) async {
+        if (!current() || !_canEdit) return false;
         final updated = await context.guardAction<AccountDetail>(
           () => ref.read(accountRepositoryProvider).update(detail.id, body),
           success: '账户已更新',
           errorFallback: '更新失败，请稍后重试',
+          isCurrent: current,
         );
-        if (updated == null || !mounted) return false;
+        if (updated == null || !mounted || !current()) return false;
         setState(() => _detail = updated);
         return true;
       },
@@ -487,11 +543,15 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
 
   Future<void> _duringChange(Future<void> Function() action) async {
     if (_detailBusy || _editing) return;
+    final ticket = _changeTicket = Object();
     setState(() => _detailBusy = true);
     try {
       await action();
     } finally {
-      if (mounted) setState(() => _detailBusy = false);
+      if (mounted && identical(_changeTicket, ticket)) {
+        _changeTicket = null;
+        setState(() => _detailBusy = false);
+      }
     }
   }
 
@@ -509,6 +569,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       });
     }
     final epoch = ++_warningIntentEpoch;
+    final readOwnerCurrent = captureReadOwner(ref);
     final accountId = widget.accountId;
     final owner = ref.read(authenticatedScopeProvider);
     final repository = ref.read(accountRepositoryProvider);
@@ -517,6 +578,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     bool current() =>
         mounted &&
         epoch == _warningIntentEpoch &&
+        readOwnerCurrent() &&
         widget.accountId == accountId &&
         owner != null &&
         !owner.readOnly &&
@@ -593,11 +655,18 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     controller.dispose();
     if (value == null || !mounted || !requestScope.isCurrent) return;
     final ok = await context.guardRun(
-      () => requestScope.run(
-        () => repository.updateWarning(accountId, balanceFloor: value.value),
+      () => runUtenBlockingTask(
+        context: context,
+        title: '正在保存余额警戒线',
+        isCurrent: () => current() && requestScope.isCurrent,
+        invalidation: _operationChanges,
+        task: () => requestScope.run(
+          () => repository.updateWarning(accountId, balanceFloor: value.value),
+        ),
       ),
       success: value.value == null ? '已清除余额警戒线' : '余额警戒线已更新',
       errorFallback: '警戒线更新失败，请稍后重试',
+      isCurrent: () => current() && requestScope.isCurrent,
     );
     if (ok && requestScope.isCurrent) await _load();
   }
@@ -607,6 +676,11 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   Future<void> _changeStatus() async {
     final detail = _detail;
     if (detail == null || !_canStatus) return;
+    final ownerCurrent = captureReadOwner(ref);
+    final client = ref.read(apiClientProvider);
+    final repository = ref.read(masterStatusRepositoryProvider);
+    bool current() =>
+        ownerCurrent() && identical(_detail, detail) && _canStatus;
     final next = detail.status == '使用' ? '禁用' : '使用';
     if (!await confirmMasterStatusChange(
           context,
@@ -616,14 +690,29 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         !mounted) {
       return;
     }
+    if (!current()) return;
     final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: AccountEndpoints.one(detail.id), status: next),
+      () => runUtenBlockingTask<void>(
+        context: context,
+        title: next == '禁用' ? '正在停用账户' : '正在启用账户',
+        isCurrent: current,
+        invalidation: _operationChanges,
+        task: () async {
+          final scope = await client.captureRequestScope(isCurrent: current);
+          await scope.run(
+            () => repository.change(
+              resourcePath: AccountEndpoints.one(detail.id),
+              status: next,
+            ),
+          );
+          await scope.verify();
+        },
+      ),
       success: next == '禁用' ? '账户已停用' : '账户已启用',
       errorFallback: '状态变更失败，请稍后重试',
+      isCurrent: current,
     );
-    if (ok && mounted) await _load();
+    if (ok && mounted && current()) await _load();
   }
 
   Future<void> _adjustBalance() => _duringChange(_reconcileBalance);
@@ -647,7 +736,13 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   Future<void> _deleteAccount() async {
     final detail = _detail;
     if (detail == null || !_canDelete) return;
-    final confirmed = await showDialog<bool>(
+    final ownerCurrent = captureReadOwner(ref);
+    final client = ref.read(apiClientProvider);
+    final repository = ref.read(accountRepositoryProvider);
+    bool current() =>
+        ownerCurrent() && identical(_detail, detail) && _canDelete;
+    final confirmed = await showReadOwnedDialog<bool>(
+      ref: ref,
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
         title: const Text('删除账户'),
@@ -668,26 +763,29 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || !current()) return;
     final deleted = await context.guardRun(
-      () => ref.read(accountRepositoryProvider).delete(detail.id),
+      () => runUtenBlockingTask<void>(
+        context: context,
+        title: '正在删除账户',
+        isCurrent: current,
+        invalidation: _operationChanges,
+        task: () async {
+          final scope = await client.captureRequestScope(isCurrent: current);
+          await scope.run(() => repository.delete(detail.id));
+          await scope.verify();
+        },
+      ),
       success: '账户已删除',
       errorFallback: '删除失败，请稍后重试',
+      isCurrent: current,
     );
-    if (deleted && mounted) {
+    if (deleted && mounted && current()) {
       popOrBackTo(context, defaultPath: RouteName.basicinfoAccount);
     }
   }
 
-  Future<void> _refresh() async {
-    if (_detailBusy || _editing) return;
-    setState(() => _detailBusy = true);
-    try {
-      await _load();
-    } finally {
-      if (mounted) setState(() => _detailBusy = false);
-    }
-  }
+  Future<void> _refresh() => _duringChange(_load);
 
   List<MasterDetailStat> _cardStats(AccountDetail detail) {
     final stats = <MasterDetailStat>[];
@@ -747,6 +845,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       label: '日期',
       width: 150,
       type: 'date',
+      columnSearchEnabled: true,
+      info: '按北京时间筛选年份、年月、日期或范围，例如 2026-10、2026-10-01..2026-10-28。',
       value: (row) => _statementDateText(row.billDate),
     ),
     MasterColumnDef(
@@ -765,12 +865,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       key: 'entryKind',
       label: '流水类型',
       width: 110,
-      value: (row) => switch (row.entryKind) {
-        'POSTING' => '原始入账',
-        'REVERSAL' => '反向流水',
-        'ADJUSTMENT' => '余额调整',
-        _ => row.entryKind ?? '—',
-      },
+      value: (row) =>
+          accountStatementChoiceLabel(
+            accountStatementEntryKinds,
+            row.entryKind,
+          ) ??
+          '—',
     ),
     MasterColumnDef(
       key: 'summary',
@@ -795,6 +895,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       label: '收入',
       width: 130,
       type: 'money',
+      columnSearchEnabled: true,
+      exactValueOf: (row) => row.inAmountText,
       value: (row) =>
           row.inAmountText == null ? null : _money(row.inAmountText),
     ),
@@ -803,6 +905,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       label: '支出',
       width: 130,
       type: 'money',
+      columnSearchEnabled: true,
+      exactValueOf: (row) => row.outAmountText,
       value: (row) =>
           row.outAmountText == null ? null : _money(row.outAmountText),
     ),
@@ -811,6 +915,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       label: '余额',
       width: 140,
       type: 'money',
+      columnSearchEnabled: true,
+      exactValueOf: (row) => row.balanceText,
       value: (row) => row.balanceText == null ? null : _money(row.balanceText),
     ),
     MasterColumnDef(
@@ -841,16 +947,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     );
   }
 
-  String _flowSourceLabel(String? value) => switch (value) {
-    'RECEIPT' => '收款',
-    'PAYMENT' => '付款',
-    'EXPENSE' => '费用',
-    'INCOME' => '其他收入',
-    'BANK_TRANSFER' => '银行转账',
-    'BALANCE_ADJUSTMENT' => '余额校准',
-    null || '' => '—',
-    _ => value,
-  };
+  String _flowSourceLabel(String? value) =>
+      accountStatementChoiceLabel(accountStatementSources, value) ?? '—';
 
   @override
   Widget build(BuildContext context) {
@@ -1006,14 +1104,22 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
                 'features.basic_data.pages.account_detail_page.AccountDetailPageState._buildFlowBody.1',
             primary: true,
             columns: _flowColumns,
+            headerFilterScopeDescription: '先按所选日期范围完整计算余额，再筛选展示记录；收支可合计，余额不合计',
+            serverColumnSearchKeys: accountStatementSearchKeys,
             items: _statement?.rows ?? const [],
             // 单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
             // 滚动余额顺序语义固定，不做表头排序。
-            facets: {'billNo': _columnFilters.bucketOf('billNo')},
+            facets: {
+              'billNo': _columnFilters.bucketOf('billNo'),
+              'sourceDocType': accountStatementSources,
+              'entryKind': accountStatementEntryKinds,
+            },
             nullCounts: const {},
-            filters: {'billNo': _columnFilters['billNo']},
+            filters: _columnFilters.values,
             onFilterChanged: (key, value) {
-              if (key == 'billNo') {
+              if (key == 'billNo' ||
+                  key.startsWith('search.') ||
+                  accountStatementChoiceKeys.contains(key)) {
                 _columnFilters.handleFilterChanged(
                   key,
                   value,
@@ -1032,7 +1138,15 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             emptyMessage: '该时间范围内暂无账户流水',
             currentPage: _statement?.page ?? 1,
             totalPages: _statement?.totalPages ?? 1,
-            paginationScope: (widget.accountId, _flowKeyword, _from, _to),
+            paginationScope: (
+              widget.accountId,
+              _flowKeyword,
+              _from,
+              _to,
+              jsonEncode(
+                accountStatementColumnParameters(_columnFilters.values),
+              ),
+            ),
             onPageChange: (page) => _loadFlow(page, useCache: true),
           ),
         ),

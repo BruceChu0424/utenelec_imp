@@ -32,6 +32,7 @@
 // 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「待处理」并按通知里的
 // 委外任务 / 订货单定位；?segment=pending(&keyword=申请号) 直落「待处理」并按
 // 申请号搜索(可下单通知)。
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,6 +52,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -940,6 +942,9 @@ class _SubcontractDecompositionPageState
     _drawOrderItemId,
     _drawApplicationId,
     (_drawApplicationItemIds.toList()..sort()).join(','),
+    jsonEncode(_columnFilters),
+    _sortColumn,
+    _sortAscending,
   );
 
   Future<void> _loadDraw({
@@ -976,6 +981,9 @@ class _SubcontractDecompositionPageState
       _drawApplicationItemIds,
     );
     final applicationId = _drawApplicationId;
+    final columnFilters = Map<String, String?>.of(_columnFilters);
+    final sort = _sortColumn == 'status' ? null : _sortColumn;
+    final order = _sortAscending ? 'asc' : 'desc';
     bool readCurrent() =>
         mounted &&
         reader == _readerGeneration &&
@@ -1005,6 +1013,9 @@ class _SubcontractDecompositionPageState
         orderItemIds: orderItemId == null ? const [] : [orderItemId],
         applicationItemIds: applicationItemIds,
         applicationId: applicationId,
+        columnFilters: columnFilters,
+        sort: sort,
+        order: order,
       );
       final SubcontractDrawTaskList next;
       if (background) {
@@ -2043,6 +2054,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'colorName',
           label: '颜色',
+          sortable: true,
           width: 96,
           value: (t) => t.colorName,
         ),
@@ -2058,12 +2070,15 @@ class _SubcontractDecompositionPageState
           label: '需求量',
           width: 110,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (t) => formatQtyWithUnit(t.requiredQty, t.unitName),
         ),
         procurementDifferenceColumn<OperationsWorkbenchTask>(
           context: context,
           scope: ProcurementDifferenceScope.workbench,
           filterFromRows: false,
+          serverSearchEnabled: true,
           differenceOf: (task) =>
               task.isDocumentGrouped || task.actionDocumentRestricted
               ? null
@@ -2075,6 +2090,8 @@ class _SubcontractDecompositionPageState
           label: '待下单量',
           width: 120,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (t) => formatQtyWithUnit(t.openQty, t.unitName),
         ),
         MasterColumnDef(
@@ -2085,6 +2102,7 @@ class _SubcontractDecompositionPageState
           type: 'date',
           sortable: true,
           value: (task) => _issuedDate(task.issuedAt),
+          columnSearchEnabled: true,
         ),
         MasterColumnDef(
           key: 'needDate',
@@ -2093,6 +2111,7 @@ class _SubcontractDecompositionPageState
           width: 120,
           type: 'date',
           value: (t) => t.needDate,
+          columnSearchEnabled: true,
         ),
         // ADR-156：紧挨状态列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
         MasterColumnDef(
@@ -2104,11 +2123,14 @@ class _SubcontractDecompositionPageState
           width: 130,
           type: 'number',
           value: (t) => t.orderableQtyText ?? '—',
+          sortable: true,
+          columnSearchEnabled: true,
         ),
         MasterColumnDef(
           key: 'source',
           label: '只读申请',
-          columnSearchEnabled: false,
+          sortable: true,
+          columnSearchEnabled: true,
           width: 180,
           value: (t) => t.actionDocumentRestricted
               ? '无权查看关联申请'
@@ -2259,22 +2281,14 @@ class _SubcontractDecompositionPageState
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: UtenSpacing.s8,
       children: [
-        Text('领料任务 ${page.page} / ${page.totalPages} · 共 ${page.total} 条'),
-        TextButton.icon(
-          key: const Key('subcontract-draw-previous'),
-          onPressed: _drawLoading || page.page <= 1
-              ? null
-              : () => _changeDrawPage(page.page - 1),
-          icon: const Icon(Icons.chevron_left_rounded),
-          label: const Text('上一页领料任务'),
-        ),
-        TextButton.icon(
-          key: const Key('subcontract-draw-next'),
-          onPressed: _drawLoading || page.page >= page.totalPages
-              ? null
-              : () => _changeDrawPage(page.page + 1),
-          icon: const Icon(Icons.chevron_right_rounded),
-          label: const Text('下一页领料任务'),
+        Text('领料任务 · 共 ${page.total} 条'),
+        UtenPagination(
+          currentPage: page.page,
+          totalPages: page.totalPages,
+          busy: _drawLoading,
+          onPageChanged: _changeDrawPage,
+          previousKey: const Key('subcontract-draw-previous'),
+          nextKey: const Key('subcontract-draw-next'),
         ),
       ],
     );
@@ -2290,6 +2304,23 @@ class _SubcontractDecompositionPageState
 
   /// 「待处理」拍平表：领料当前页钉顶，申请行沿原工作台投影独立分页。
   Widget _buildPendingTable(OperationsWorkbenchData data) {
+    // Both lanes are server-paged. Candidate colors must cover their complete
+    // authorized scopes, including colors absent from either loaded page.
+    final colorBuckets = <String, MasterFacetBucket>{};
+    for (final bucket in [
+      ...data.facets['colorName'] ?? const <MasterFacetBucket>[],
+      if (_drawVisible)
+        ..._drawData?.facets['colorName'] ?? const <MasterFacetBucket>[],
+    ]) {
+      final previous = colorBuckets[bucket.value];
+      colorBuckets[bucket.value] = MasterFacetBucket(
+        value: bucket.value,
+        count: bucket.count + (previous?.count ?? 0),
+        label: previous?.label ?? bucket.label,
+      );
+    }
+    final colors = colorBuckets.values.toList()
+      ..sort((a, b) => a.display.compareTo(b.display));
     final canOrder =
         _hasDecomposePermissions && data.capabilities.canCreateSubcontractOrder;
     const selectable = true;
@@ -2405,6 +2436,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'supplierName',
           label: '委外商',
+          sortable: true,
           width: 150,
           // 2026-10-10：申请行的委外商改由服务端投影下发(V836，申请头上的
           // supplier_id→suppliers.name)；空=尚未定商，是业务事实，照旧显示「—」。
@@ -2437,6 +2469,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'colorName',
           label: '颜色',
+          sortable: true,
           width: 96,
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) => task.colorName,
@@ -2459,6 +2492,8 @@ class _SubcontractDecompositionPageState
           info: '申请行是原申请需求；领料行是该订货明细的需求，数量均使用本行单位。',
           width: 110,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) => formatQtyWithUnit(
               task.requiredQty,
@@ -2474,6 +2509,7 @@ class _SubcontractDecompositionPageState
           context: context,
           scope: ProcurementDifferenceScope.workbench,
           filterFromRows: false,
+          serverSearchEnabled: true,
           differenceOf: (row) => switch (row) {
             SubcontractApplicationRow(:final task)
                 when !task.isDocumentGrouped &&
@@ -2492,6 +2528,8 @@ class _SubcontractDecompositionPageState
           label: '待下单量',
           width: 120,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) => formatQtyWithUnit(
               task.openQty,
@@ -2523,6 +2561,8 @@ class _SubcontractDecompositionPageState
               '由服务端实时算好；订货数量超出会被拒绝。点状态列可看每种物料的齐套情况。',
           width: 130,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) =>
               task.orderableQtyText ?? '—',
@@ -2562,6 +2602,7 @@ class _SubcontractDecompositionPageState
             SubcontractApplicationRow(:final task) => task.needDate,
             SubcontractPendingDrawRow(:final row) => row.deliverDate,
           },
+          columnSearchEnabled: true,
         ),
         MasterColumnDef(
           key: 'issuedAt',
@@ -2576,19 +2617,37 @@ class _SubcontractDecompositionPageState
             ),
             SubcontractPendingDrawRow() => null,
           },
+          columnSearchEnabled: true,
         ),
       ],
       items: applicationRows,
-      // 拍平表不做列头筛选：两类行的状态/单据语义不同，服务端 facets 只覆盖申请行；
-      // 筛选用阶段搜索框与领料定位芯片。
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      // Shared identity/measure queries go to BOTH independently paged sources.
+      // A task's status retains its own domain meaning and is not merged into an enum.
+      serverColumnSearch: true,
+      facets: {'colorName': colors},
+      nullCounts: {
+        'colorName':
+            (data.nullCounts['colorName'] ?? 0) +
+            (_drawVisible ? (_drawData?.nullCounts['colorName'] ?? 0) : 0),
+      },
+      filters: _columnFilters,
+      onFilterChanged: (column, value) {
+        setState(() {
+          if (value == null) {
+            _columnFilters.remove(column);
+          } else {
+            _columnFilters[column] = value;
+          }
+          _selectedIds.clear();
+          _selectedDrawIds.clear();
+          _drawPage = 1;
+        });
+        _load(page: 1);
+        _loadDraw(page: 1);
+      },
       sortColumn: _sortColumn,
       sortAscending: _sortAscending,
-      // 排序/翻页走申请行的服务端链路；领料行钉顶不参与(顺序由服务端按
-      // 状态优先级排好)。
+      // Both sources sort within their own paged lanes; picking tasks remain pinned.
       onSortChange: (column, ascending) {
         setState(() {
           _sortColumn = column;
@@ -2596,6 +2655,7 @@ class _SubcontractDecompositionPageState
           _selectedIds.clear();
         });
         _load(page: 1);
+        _loadDraw(page: 1);
       },
       onRowTap: (row) => switch (row) {
         SubcontractApplicationRow(:final task) => _openTask(task),
@@ -2674,6 +2734,8 @@ class _SubcontractDecompositionPageState
     label: label,
     width: 96,
     type: 'number',
+    sortable: true,
+    columnSearchEnabled: true,
     // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
     // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {

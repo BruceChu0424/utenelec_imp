@@ -35,6 +35,21 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
+  testWidgets('无栈委外拣货保存成功回到委外出库入口', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(3000, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi(issues: 1);
+    final router = await _pumpRouted(tester, api, deepLink: true);
+    await tester.tap(
+      find.byKey(const Key('warehouse-subcontract-outbound-action-save')),
+    );
+    await tester.pumpAndSettle();
+    expect(api.updates, ['issue-1']);
+    expect(router.state.uri.path, RouteName.warehouseSubcontractOutbound);
+    expect(find.text('委外出库任务中心'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('骨架: 状态横幅 + 事实卡 + 明细表内滚; 回厂委外件列常驻; 按权限显隐动作', (tester) async {
     await tester.binding.setSurfaceSize(const Size(3000, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -532,9 +547,15 @@ Future<GoRouter> _pumpRouted(
   WidgetTester tester,
   SubcontractOutboundFakeApi api, {
   StateProvider<Set<String>>? permissions,
+  bool deepLink = false,
 }) async {
   final router = GoRouter(
+    initialLocation: deepLink ? '/warehouse/subcontract-outbound/issue-1' : '/',
     routes: [
+      GoRoute(
+        path: RouteName.warehouseSubcontractOutbound,
+        builder: (_, _) => const Scaffold(body: Text('委外出库任务中心')),
+      ),
       GoRoute(
         path: '/',
         builder: (_, _) => const Scaffold(body: Text('root')),
@@ -571,7 +592,9 @@ Future<GoRouter> _pumpRouted(
       child: MaterialApp.router(routerConfig: router),
     ),
   );
-  unawaited(router.push<void>('/warehouse/subcontract-outbound/issue-1'));
+  if (!deepLink) {
+    unawaited(router.push<void>('/warehouse/subcontract-outbound/issue-1'));
+  }
   await tester.pumpAndSettle();
   return router;
 }

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/department/providers/my_department_providers.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
@@ -75,19 +76,25 @@ void main() {
       expect(find.text('\u5408\u540c\u6458\u8981'), findsOneWidget);
       expect(find.text('SECRET-SALARY'), findsNothing);
       expect(find.text('SECRET-BANK'), findsNothing);
-      await tester.dragUntilVisible(
-        find.textContaining(
-          '\u85aa\u916c\u4e0e\u94f6\u884c\u4fe1\u606f\u4e0d\u4f1a',
-        ),
-        find.byType(ListView),
-        const Offset(0, -160),
+      expect(find.textContaining('薪酬与银行信息不会'), findsNothing);
+      final privacyHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('薪酬与银行信息不会') ?? false),
       );
+      await tester.ensureVisible(privacyHint);
+      await tester.tap(privacyHint);
+      await tester.pumpAndSettle();
       expect(
         find.textContaining(
           '\u85aa\u916c\u4e0e\u94f6\u884c\u4fe1\u606f\u4e0d\u4f1a',
         ),
         findsOneWidget,
       );
+      expect(find.text('SECRET-SALARY'), findsNothing);
+      expect(find.text('SECRET-BANK'), findsNothing);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
 
       // Tab 4 任职记录：轨迹段落存在（tab 标签 + 段落标题同文）。
       await tester.tap(find.text('\u4efb\u804c\u8bb0\u5f55'));

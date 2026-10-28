@@ -17,6 +17,7 @@ import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -1268,9 +1269,8 @@ void main() {
         of: find.text('委外 · 已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
-              widget is Container &&
-              widget.decoration is BoxDecoration &&
-              (widget.decoration as BoxDecoration).color ==
+              widget is UtenTableCellFrame &&
+              widget.backgroundColor ==
                   // ADR-169：明暗两主题同用亮琥珀实底(成套深棕字)。
                   UtenColors.warningStrong,
         ),
@@ -1315,10 +1315,8 @@ void main() {
         of: find.text('委外 · 已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
-              widget is Container &&
-              widget.decoration is BoxDecoration &&
-              (widget.decoration as BoxDecoration).color ==
-                  UtenColors.warningStrong,
+              widget is UtenTableCellFrame &&
+              widget.backgroundColor == UtenColors.warningStrong,
         ),
       ),
       findsOneWidget,

@@ -23,10 +23,15 @@ void main() {
         final session = _RecordingSessionNotifier(forced: forced);
         await _openPage(tester, session, forced: forced);
 
+        expect(find.text('密码不能为空'), findsNothing);
         expect(
           tester
-              .widget<Text>(find.byKey(const Key('change-password-rule')))
-              .data,
+              .widget<UtenInput>(
+                find.byWidgetPredicate(
+                  (widget) => widget is UtenInput && widget.label == '新密码',
+                ),
+              )
+              .info,
           '密码不能为空',
         );
         await _fillForm(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -546,9 +547,11 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                         ),
                         if (_category != null) ...[
                           const SizedBox(height: UtenSpacing.s24),
-                          Text(
-                            _category!.displayLabel,
-                            style: Theme.of(context).textTheme.titleLarge,
+                          UtenSectionHeader(
+                            title: _category!.displayLabel,
+                            info: _summary?.canCleanup == true
+                                ? '每次最多选择 50 项；受保护资源不可选择。'
+                                : null,
                           ),
                           if (_category!.detail != null)
                             Text(_category!.detail!),
@@ -566,8 +569,6 @@ class _ServerStorageState extends ConsumerState<_ServerStorageSession>
                             Text(
                               '已显示 ${_resources!.items.length} / ${_resources!.total ?? '—'} 项',
                             ),
-                          if (_summary?.canCleanup == true)
-                            const Text('每次最多选择 50 项；受保护资源不可选择。'),
                           if (_itemsLoading) const LinearProgressIndicator(),
                           if (!_itemsLoading &&
                               _resources?.items.isEmpty == true)

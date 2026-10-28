@@ -12,6 +12,8 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/data_display/uten_table_read_status.dart';
 import 'package:uten_imp/shared/models/party_open_balance.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -395,6 +397,60 @@ Future<void> _pumpReview(
 late SharedPreferences _preferences;
 
 void main() {
+  for (final config in [(375.0, null), (1400.0, null), (1400.0, 'changes')]) {
+    testWidgets(
+      'row interaction help is in the bill number header without changing selection (${config.$1}, ${config.$2})',
+      (tester) async {
+        final repository = _FakeConfirmationRepository([
+          _item(id: 'ord-help', billNo: 'XD-HELP', changeCount: 2),
+        ]);
+        await _pumpPage(
+          tester,
+          repository,
+          size: Size(config.$1, 900),
+          initialState: config.$2,
+        );
+        const help = '单击选择 · 双击查看详情';
+        final tableFinder = find.byKey(
+          const Key('sales-order-finance-desktop-table'),
+        );
+        final table = tester
+            .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+              tableFinder,
+            );
+        expect(
+          table.columns.singleWhere((column) => column.key == 'billNo').info,
+          help,
+        );
+        expect(find.text(help), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == help,
+        );
+        await tester.ensureVisible(hint);
+        final calls = repository.pendingQueries.length;
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
+        expect(find.text(help), findsOneWidget);
+        expect(
+          tester
+              .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+                tableFinder,
+              )
+              .selectedIds,
+          isEmpty,
+        );
+        expect(repository.pendingQueries.length, calls);
+        expect(repository.reviewedIds, isEmpty);
+        expect(repository.batchIds, isEmpty);
+        expect(
+          find.byKey(const Key('uten-column-keyword-input')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'slow bill-number query clears prior sales confirmations and selection',
     (tester) async {
@@ -945,7 +1001,20 @@ void main() {
       notifications.any((item) => item.message.contains('结果尚未确认')),
       isFalse,
     );
+    final failure = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenTableReadStatus && widget.reason == '待办列表权限已变化，请重新授权',
+    );
+    expect(failure, findsOneWidget);
+    expect(find.text('数据加载失败'), findsOneWidget);
+    await tester.tap(
+      find.descendant(of: failure, matching: find.byType(TextButton)),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('待办列表权限已变化，请重新授权'), findsOneWidget);
+    expect(repository.batchIds, [
+      ['order-1'],
+    ]);
     expect(
       tester
           .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(

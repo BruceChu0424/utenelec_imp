@@ -37,6 +37,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/profile_change_request.dart';
 import '../providers/profile_change_providers.dart';
 import '../repositories/profile_change_repository.dart';
+import '../providers/profile_column_queries.dart';
 import '../widgets/profile_change_diff_row.dart';
 
 class MyProfileChangesPage extends ConsumerStatefulWidget {
@@ -50,7 +51,8 @@ class MyProfileChangesPage extends ConsumerStatefulWidget {
 class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   final _retainedPage =
       RetainedAsyncPage<ProfileChangePage<MyProfileChangeListItem>>();
-  Object get _paginationScope => (_status, retainedReaderEpoch(ref));
+  Object get _paginationScope =>
+      (_status, ref.read(profileMineColumnsProvider), retainedReaderEpoch(ref));
   String? _status = 'pending';
   int _page = 1; // 当前页（服务端真分页：翻页/换筛选都从后端按页拉取）
   final _tableRows = MasterDataTableRowsController<MyProfileChangeListItem>();
@@ -65,6 +67,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       // Refresh an already observed profile queue before our first watch,
       // avoiding a cold GET immediately followed by a second invalidation GET.
       ref.invalidate(myProfileChangesProvider);
+      ref.invalidate(myProfileChangeTableProvider);
       setState(() => _initialReadReady = true);
     });
   }
@@ -101,6 +104,13 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
 
   /// 表头状态筛选 → 切到对应分段（下推后端 status）并回第 1 页；选「所有」= 全部段。
   void _onFilterChanged(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() => _page = 1);
+      ref.read(profileMineColumnsProvider.notifier).state = ref
+          .read(profileMineColumnsProvider)
+          .search(key, value);
+      return;
+    }
     if (key != 'status') return;
     setState(() {
       _status = value ?? (_status == 'pending' ? 'pending' : 'history');
@@ -123,6 +133,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       if (!mounted) return;
       setState(() => _page = _tableRows.visiblePage ?? _page);
       ref.invalidate(myProfileChangesProvider);
+      ref.invalidate(myProfileChangeTableProvider);
       context.appSuccess(l10n.profileChangeCancelledByMe);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -136,6 +147,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    ref.watch(profileMineColumnsProvider);
 
     _segments
       ..clear()
@@ -148,7 +160,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         ? _retainedPage.resolveFor(
             ref,
             _paginationScope,
-            myProfileChangesProvider((status: _status, page: _page)),
+            myProfileChangeTableProvider((status: _status, page: _page)),
           )
         : const AsyncLoading<ProfileChangePage<MyProfileChangeListItem>>();
 
@@ -195,8 +207,12 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     AppLocalizations l10n,
     AsyncValue<ProfileChangePage<MyProfileChangeListItem>> async,
   ) {
-    final readLease = ref.watch(myProfileChangesReadProvider(_status))
-      ..bindView(context, currentQuery: () => (_status,));
+    final columns = ref.watch(profileMineColumnsProvider);
+    final readLease = ref.watch(myProfileChangeTableReadProvider(_status))
+      ..bindView(
+        context,
+        currentQuery: () => (_status, ref.read(profileMineColumnsProvider)),
+      );
     final page =
         async.value ??
         const ProfileChangePage<MyProfileChangeListItem>(
@@ -210,9 +226,9 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       onRefresh: () async {
         setState(() => _page = _tableRows.visiblePage ?? _page);
         readLease.invalidate();
-        ref.invalidate(myProfileChangesProvider);
+        ref.invalidate(myProfileChangeTableProvider);
         await ref.read(
-          myProfileChangesProvider((status: _status, page: _page)).future,
+          myProfileChangeTableProvider((status: _status, page: _page)).future,
         );
       },
       child: MasterDataTableView<MyProfileChangeListItem>(
@@ -228,14 +244,27 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         onRetry: () {
           readLease.invalidate();
           ref.invalidate(
-            myProfileChangesProvider((status: _status, page: _page)),
+            myProfileChangeTableProvider((status: _status, page: _page)),
           );
         },
         columns: _columns(l10n),
+        serverColumnSearch: true,
+        sortColumn: columns.sort,
+        sortAscending: columns.ascending,
+        onSortChange: (key, ascending) {
+          setState(() => _page = 1);
+          ref.read(profileMineColumnsProvider.notifier).state = columns.sorted(
+            key,
+            ascending,
+          );
+        },
         items: page.items,
         facets: {'status': _statusFacets(l10n)},
         nullCounts: const {},
-        filters: {'status': _status == 'history' ? null : _status},
+        filters: {
+          'status': _status == 'history' ? null : _status,
+          ...columns.searches,
+        },
         onFilterChanged: _onFilterChanged,
         // 双击行打开本批旧→新差异弹窗（保留原卡片「查看差异」能力）。
         onRowTap: (item) => _openDetail(item.batchId),
@@ -262,13 +291,16 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
         onPageChange: (p) => readLease.paginate(p, () async {
           setState(() => _page = p);
           ref.invalidate(
-            myProfileChangesProvider((status: _status, page: _page)),
+            myProfileChangeTableProvider((status: _status, page: _page)),
           );
           await _retainedPage.waitFor(
             ref,
-            myProfileChangesProvider((status: _status, page: _page)),
+            myProfileChangeTableProvider((status: _status, page: _page)),
             () => ref.read(
-              myProfileChangesProvider((status: _status, page: _page)).future,
+              myProfileChangeTableProvider((
+                status: _status,
+                page: _page,
+              )).future,
             ),
           );
         }),
@@ -302,6 +334,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       label: '项数',
       width: 80,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (item) => item.itemCount.toString(),
     ),
     MasterColumnDef(
@@ -309,6 +343,9 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       label: '提交时间',
       width: 150,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
       value: (item) => _formatTime(item.submittedAt),
     ),
     MasterColumnDef(

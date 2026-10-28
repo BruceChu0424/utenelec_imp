@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_table_surface.dart';
@@ -57,6 +58,8 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
       label: label,
       width: 154,
       type: 'number',
+      sortable: true,
+      exactValueOf: value,
       info: info,
       value: (row) => '${value(row)} ${row.unitName ?? '单位待核实'}',
     );
@@ -206,6 +209,8 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                       key: 'action',
                       label: historical ? '处理结果' : '处理方式',
                       width: 180,
+                      filterFromRows: true,
+                      facetSearchEnabled: true,
                       value: (row) =>
                           actions[row.demandId]?.label ??
                           (row.requiresDecision ? '待选择' : '留在车间'),
@@ -245,7 +250,7 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
                           );
                         }
                         if (!editable) return text(action?.label ?? '待审核员选择');
-                        return Tooltip(
+                        return UtenEditorTooltip(
                           message:
                               row.returnBlockedReason?.trim().isNotEmpty == true
                               ? '只申请本次可退数量；${row.returnBlockedReason}，其余留在车间'

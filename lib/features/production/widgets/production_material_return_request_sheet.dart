@@ -384,8 +384,9 @@ class _MaterialReturnRequestState
       canPop: !_locked,
       child: Scaffold(
         appBar: UtenAppBar(
-          showPagePermissionAction: false,
+          showPagePermissionAction: !widget.inPanel,
           title: '核对余料退仓',
+          info: '填写当前车间本次送仓的余料数量，其余材料可留待后续生产。仓库核对实物后选择正常仓库收料；来源记录仅用于追溯。',
           actions: [
             UtenRefreshButton(
               tooltip: '刷新可退明细',
@@ -434,10 +435,6 @@ class _MaterialReturnRequestState
                           Text(
                             '${_grid.rows.where((row) => row.source.availableQty > 0).length} 项可退物料 · ${_grid.rows.map((row) => row.source.sourceWarehouseId).toSet().length} 个来源位置',
                             style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: UtenSpacing.s8),
-                          const Text(
-                            '填写当前车间本次送仓的余料数量，其余材料可留待后续生产。仓库核对实物后选择正常仓库收料；来源记录仅用于追溯。',
                           ),
                           const SizedBox(height: UtenSpacing.s8),
                           Align(
@@ -544,6 +541,7 @@ class _MaterialReturnRequestState
       key: 'warehouse',
       label: '来源位置',
       width: 145,
+      filterValueOf: (row) => row.source.sourceWarehouseName,
       cellBuilder: (_, row) => Text(row.source.sourceWarehouseName),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。退错
@@ -554,6 +552,7 @@ class _MaterialReturnRequestState
       key: 'material',
       label: '物料名称',
       width: 200,
+      filterValueOf: (row) => _omitPlaceholder(row.source.goodsName),
       cellBuilder: (context, row) =>
           UtenGoodsIdentityCell(name: _omitPlaceholder(row.source.goodsName)),
     ),

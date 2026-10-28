@@ -1,3 +1,5 @@
+import '../../../components/layout/uten_section_header.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -422,13 +424,6 @@ class _FinanceAssetPostingPanelState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '必须先预览并核对错误和逐项金额，不能跳过预览直接计提。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
           UtenSegmentRow<AssetPostingRunType>(
             segments: const [
               ButtonSegment(
@@ -463,12 +458,21 @@ class _FinanceAssetPostingPanelState
                   }
                 },
               );
-              final action = UtenActionButton(
-                key: const Key('finance-asset-post-preview'),
-                onAction: _previewPosting,
-                icon: Icons.preview_outlined,
-                label: const Text('生成预览'),
-                loadingLabel: const Text('预览中…'),
+              final action = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenActionButton(
+                    key: const Key('finance-asset-post-preview'),
+                    onAction: _previewPosting,
+                    icon: Icons.preview_outlined,
+                    label: const Text('生成预览'),
+                    loadingLabel: const Text('预览中…'),
+                  ),
+                  const UtenFieldHintIcon(
+                    info: '必须先预览并核对错误和逐项金额，不能跳过预览直接计提。',
+                    dense: true,
+                  ),
+                ],
               );
               if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
                 return Column(
@@ -654,6 +658,8 @@ class _FinanceAssetPostingPanelState
           key: 'status',
           label: '状态',
           width: 72,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (row) => financeAssetStatusLabel(row.status),
           cellBuilder: (_, row) => financeAssetStatusCell(row.status),
         ),
@@ -674,6 +680,8 @@ class _FinanceAssetPostingPanelState
           label: '计提金额',
           width: 130,
           type: 'money',
+          sortable: true,
+          exactValueOf: (row) => row.amount,
           value: (row) => formatFinanceDecimal(row.amount),
         ),
         MasterColumnDef(
@@ -843,12 +851,7 @@ class _FinanceAssetPostingPanelState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              subtitle,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            UtenSectionHeader(title: title, info: subtitle),
             const SizedBox(height: UtenSpacing.s16),
             child,
           ],

@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -92,6 +93,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// MasterServerColumnFilters）。
   final _columnFilters = MasterServerColumnFilters();
   int _reloadGeneration = 0;
+  List<Object?>? _activeQueryScope;
 
   @override
   void initState() {
@@ -99,6 +101,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     listenReadOwner(ref, () {
       setState(() {
         _reloadGeneration++;
+        _activeQueryScope = null;
         _columnFilters.reset();
         clearDraftSelection();
         _list.invalidateReadOwner(notify: false);
@@ -155,6 +158,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _receiptKindFilter = null;
     _recordOriginFilter = null;
     _columnFilters.reset();
+    _activeQueryScope = null;
     trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _list.reset(notify: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -224,7 +228,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// 当前分段/表头筛选组装查询条件（_fetch 与单号桶共用；[withBillNo] = false
   /// 供桶拉取——桶不算单号列自身的值筛选，2026-09-25 单号列统一）。
   FinanceDocFilter _docFilter({bool withBillNo = true}) => FinanceDocFilter(
-    origin: _historyMode ? BusinessDocumentOrigin.all : null,
+    origin: _historyMode
+        ? switch (_recordOriginFilter) {
+            FinanceRecordOrigin.current => BusinessDocumentOrigin.current,
+            FinanceRecordOrigin.legacy => BusinessDocumentOrigin.legacy,
+            null => BusinessDocumentOrigin.all,
+          }
+        : null,
     keyword: _list.normalizedKeyword,
     partyId: _cfg.hasParty ? _partyIdFilter : null,
     accountId: _cfg.type == FinanceDocType.bankTransfer
@@ -250,6 +260,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     dateTo: _historyMode && _historyTime.range != null
         ? ChinaDateTime.formatDate(_historyTime.range!.end)
         : null,
+    columnSearch: Map.unmodifiable({
+      for (final entry in _columnFilters.values.entries)
+        if (withBillNo || entry.key != 'search.billNo') entry.key: entry.value,
+    }),
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
@@ -330,11 +344,20 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     bool useCachedPage = false,
   ]) async {
     final cacheQuery = _pageQueryScope;
+    if (!const DeepCollectionEquality().equals(_activeQueryScope, cacheQuery)) {
+      _activeQueryScope = List.unmodifiable(cacheQuery);
+      _list.invalidateReadOwner(notify: false);
+      _tableRows.update(const []);
+      clearDraftSelection();
+    }
     final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
-    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) {
+    final hasHeaderDate =
+        _columnFilters['search.billDate']?.trim().isNotEmpty == true;
+    if (!_statusFilterSelected ||
+        (_historyMode && _historyTime.isNone && !hasHeaderDate)) {
       // Deselecting a query also supersedes pending data and errors.
       final keyword = _list.keyword;
       final sortKey = _list.sortKey;
@@ -397,7 +420,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
 
   void _onHistoryStatus(int? status) {
     clearDraftSelection();
-    setState(() => _statusFilter = status);
+    setState(() {
+      _statusFilter = status;
+      if (status != null) _recordOriginFilter = FinanceRecordOrigin.current;
+    });
     _reload(1);
   }
 
@@ -430,7 +456,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
 
   void _onColumnFilterChanged(String key, String? value) {
     clearDraftSelection();
-    if (key == 'billNo') {
+    if (!_statusFilterSelected && value != null) {
+      _statusFilterSelected = true;
+      if (!_historyMode) _statusFilter ??= kFinanceStatusDraft;
+    }
+    if (key == 'billNo' || key.startsWith('search.') || key.startsWith('hf.')) {
       _columnFilters.handleFilterChanged(
         key,
         value,
@@ -449,6 +479,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           _historyMode = true;
         }
         _statusFilterSelected = _historyMode || _statusFilter != null;
+        if (value != null) _recordOriginFilter = FinanceRecordOrigin.current;
       } else if (key == 'accountId') {
         _accountIdFilter = value;
       } else if (key == 'recordOrigin') {
@@ -457,9 +488,17 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
           _historyMode = true;
           _statusFilterSelected = true;
           _statusFilter = null;
+        } else if (_historyMode && _recordOriginFilter == null) {
+          _statusFilter = null;
         }
       } else if (key == 'receiptKind') {
         _receiptKindFilter = value;
+        if (value == 'LEGACY_UNCLASSIFIED') {
+          _historyMode = true;
+          _statusFilterSelected = true;
+          _statusFilter = null;
+          _recordOriginFilter = FinanceRecordOrigin.legacy;
+        }
       } else if (key == 'clientId' || key == 'supplierId') {
         _partyIdFilter = value;
       }
@@ -477,6 +516,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// 表头排序回调：column=null 取消排序回后端默认；否则按该列升/降序重查（回第 1 页）。
   void _onSortChange(String? column, bool ascending) {
     clearDraftSelection();
+    if (!_statusFilterSelected && column != null) {
+      setState(() {
+        _statusFilterSelected = true;
+        if (!_historyMode) _statusFilter ??= kFinanceStatusDraft;
+      });
+    }
     _list.onSortChange(column, ascending);
     _reload(1);
   }
@@ -485,6 +530,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     return <MasterColumnDef<FinanceDocListItem>>[
       MasterColumnDef(
         key: 'status',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
+        info: '状态细筛用于当前单据；历史只读记录请通过来源选择，不重新解释原始状态',
         label: '状态',
         width: 72,
         value: (it) => it.legacyImported
@@ -522,6 +570,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         width: 120,
         type: 'date',
         sortable: true,
+        columnSearchEnabled: true,
         value: (it) {
           final date = it.billDate;
           return date == null || date.length <= 10
@@ -532,6 +581,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       if (_cfg.type == FinanceDocType.receipt)
         MasterColumnDef(
           key: 'receiptKind',
+          columnSearchEnabled: false,
+          facetSearchEnabled: true,
           label: '收款类型',
           width: 130,
           value: (it) => financeReceiptKindLabel(
@@ -542,6 +593,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       if (_cfg.hasParty)
         MasterColumnDef(
           key: _cfg.isClient ? 'clientId' : 'supplierId',
+          columnSearchEnabled: false,
+          facetSearchEnabled: true,
           label: _cfg.partyLabel,
           width: 200,
           value: (it) => _cfg.isClient
@@ -550,6 +603,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         ),
       MasterColumnDef(
         key: 'accountId',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: _cfg.accountLabel,
         width: 180,
         value: (it) => names.account(it.accountId ?? it.outAccountId),
@@ -560,12 +615,19 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         width: 140,
         type: 'money',
         sortable: true,
+        columnSearchEnabled: true,
+        exactValueOf: (it) =>
+            it.amountLocalText ?? financeDecimalText(it.amountLocal),
+        info: '按本币记账金额的原始精度检索；未知金额不作零',
         value: (it) => financeExactMoneyDisplay(
           it.amountLocalText ?? financeDecimalText(it.amountLocal),
         ),
       ),
       MasterColumnDef(
         key: 'recordOrigin',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
+        info: '按实际来源区分当前单据和历史只读记录；切换为全部来源时清除当前状态细筛',
         label: '来源',
         width: 130,
         value: (it) => it.legacyImported ? '历史记录（只读）' : '当前单据',
@@ -672,6 +734,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                         ),
                       ],
                       columns: _columns(names),
+                      serverColumnSearchKeys: const {
+                        'billNo',
+                        'billDate',
+                        'amountLocal',
+                      },
+                      headerFilterScopeDescription:
+                          '检索当前分类及权限范围的完整结果；日期支持年、月、日或闭范围',
                       items: _list.page?.items ?? const [],
                       facets: {
                         // 单据号桶与列表同一过滤口径（2026-09-25 单号列统一）。
@@ -736,7 +805,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                       )),
                       nullCounts: const {},
                       filters: {
-                        'billNo': _columnFilters['billNo'],
+                        ..._columnFilters.values,
                         if (_cfg.type == FinanceDocType.receipt)
                           'receiptKind': _receiptKindFilter,
                         if (_cfg.hasParty)
@@ -772,6 +841,12 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                         _historyMode,
                         _historyTime,
                         _recordOriginFilter,
+                        _partyIdFilter,
+                        _accountIdFilter,
+                        _receiptKindFilter,
+                        PagedReadQueryKey(_columnFilters.values),
+                        _list.sortKey,
+                        _list.sortAsc,
                       ),
                       onPageChange: _navigatePage,
                     ),

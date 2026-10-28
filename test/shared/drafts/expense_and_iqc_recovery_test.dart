@@ -518,6 +518,17 @@ class _Iqc extends DioProcurementInspectionRepository {
   String? boundaryFailure;
   final sent = <Map<String, dynamic>>[];
   @override
+  Future<PendingInspectionReceipt?> pendingReceiptSummary(
+    String receiptType,
+    String receiptId,
+  ) async => (await pendingReceipts())
+      .where(
+        (receipt) =>
+            receipt.receiptType == receiptType &&
+            receipt.receiptId == receiptId,
+      )
+      .firstOrNull;
+  @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async => resolved
       ? []
       : [

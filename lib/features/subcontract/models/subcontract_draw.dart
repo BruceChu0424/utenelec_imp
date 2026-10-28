@@ -7,6 +7,7 @@
 // 数量单位：任务行 = 委外件的订货单位；物料行 = 各物料自己的单位。
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
+import '../../basic_data/models/master_facet.dart';
 
 /// 「待处理」领料行状态(服务端 status)。档位注释为 ADR-169 十档
 /// （实际取色见 widgets/subcontract_draw_status.dart 的 subcontractDrawCellColor）。
@@ -168,6 +169,8 @@ class SubcontractDrawTaskList {
     required this.page,
     required this.statusCounts,
     required this.canSubmitDraw,
+    this.facets = const {},
+    this.nullCounts = const {},
   });
 
   final PagedResult<SubcontractDrawTaskRow> page;
@@ -177,6 +180,8 @@ class SubcontractDrawTaskList {
 
   /// 账号能否提交领料(服务端按 subcontract_order:draw 与对象范围给出)。
   final bool canSubmitDraw;
+  final Map<String, List<MasterFacetBucket>> facets;
+  final Map<String, int> nullCounts;
 
   factory SubcontractDrawTaskList.fromJson(Map<String, dynamic> json) {
     final page = json['page'];
@@ -194,6 +199,15 @@ class SubcontractDrawTaskList {
             entry.key.toString(): (entry.value as num).toInt(),
       },
       canSubmitDraw: (json['capabilities'] as Map?)?['canSubmitDraw'] == true,
+      facets: {
+        for (final key in (json['facets'] as Map? ?? const {}).keys)
+          key.toString(): parseFacetBuckets(json['facets'], key.toString()),
+      },
+      nullCounts: {
+        for (final entry in (json['nullCounts'] as Map? ?? const {}).entries)
+          if (entry.value is num)
+            entry.key.toString(): (entry.value as num).toInt(),
+      },
     );
   }
 }

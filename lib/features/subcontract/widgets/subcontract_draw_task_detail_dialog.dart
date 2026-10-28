@@ -16,11 +16,11 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
 import 'subcontract_draw_status.dart';
+import 'subcontract_draw_material_columns.dart';
 
 /// 打开任务详情。撤回 / 结束领料成功后立刻回调 [onChanged](列表与红数重拉)；
 /// 返回值非空 = 用户点了「去领料」，值为该委外订货明细 id。
@@ -305,67 +305,9 @@ class _SubcontractDrawTaskDetailDialogState
     filters: const {},
     onFilterChanged: (_, _) {},
     showFullscreenToggle: false,
-    columns: [
-      MasterColumnDef(
-        key: 'state',
-        label: '状态',
-        width: 72,
-        value: subcontractDrawMaterialStateLabel,
-        // 状态整格底色（ADR-169）：共用 subcontractDrawMaterialCellColor，
-        // 与订货单进度物料表同口径（可领绿/已备紫/待仓库发料青/缺料红/
-        // 已发齐·已结束领料灰）。
-        cellColor: (context, row) => subcontractDrawMaterialCellColor(row),
-      ),
-      MasterColumnDef(
-        key: 'goodsName',
-        label: '物料名称',
-        width: 180,
-        value: (row) => _label(row.goodsName),
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '编号',
-        width: 130,
-        value: (row) => _label(row.goodsCode),
-      ),
-      MasterColumnDef(
-        key: 'colorName',
-        label: '颜色',
-        width: 90,
-        value: (row) => _label(row.colorName),
-      ),
-      // 「单位」列 2026-10-10 删除（数量+单位口径）：各数量列已内联该物料自己的
-      // 单位（物料间单位不同，逐行内联才不串）。
-      _qtyColumn('perUnitQty', '每套用量', (row) => row.perUnitQty),
-      _qtyColumn('requiredQty', '需求', (row) => row.requiredQty),
-      _qtyColumn('sentQty', '已发外', (row) => row.sentQty),
-      _qtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
-      _qtyColumn('availableQty', '仓库可用', (row) => row.availableQty),
-      _qtyColumn('drawableQty', '本次可领', (row) => row.drawableQty),
-      _qtyColumn('shortQty', '还缺', (row) => row.shortQty),
-      const MasterColumnDef(
-        key: 'supplySources',
-        label: '供应来源',
-        width: 240,
-        value: subcontractDrawSupplyText,
-      ),
-    ],
+    columns: subcontractDrawMaterialColumns(),
     items: detail.materials,
     emptyMessage: '本任务没有需要领的物料',
-  );
-
-  MasterColumnDef<SubcontractDrawMaterial> _qtyColumn(
-    String key,
-    String label,
-    double Function(SubcontractDrawMaterial row) qty,
-  ) => MasterColumnDef(
-    key: key,
-    label: label,
-    width: 96,
-    type: 'number',
-    // 2026-10-10 数量+单位口径：单位内联（每种物料自己的单位）；排序由表格
-    // 组件剥单位后缀兜底。
-    value: (row) => formatQtyWithUnit(qty(row), row.unitName),
   );
 
   Widget _pendingDrafts(

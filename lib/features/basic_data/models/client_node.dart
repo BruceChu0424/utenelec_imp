@@ -36,6 +36,8 @@ class ClientListItem {
     this.taxId,
     this.credit,
     this.creditFloor,
+    this.creditDisplayText,
+    this.creditFloorDisplayText,
     this.website,
     this.status,
     this.legacyId,
@@ -84,6 +86,8 @@ class ClientListItem {
   final String? taxId; // 纳税号（Tax_ID）
   final double? credit; // 信誉额度（Credit）
   final double? creditFloor; // 铺底额（未设置时服务端返回 0）
+  final String? creditDisplayText;
+  final String? creditFloorDisplayText;
   final String? website; // 网址（Http）
   final String? status; // 状态（使用/禁用，详情用，不进表格列）
   final int? legacyId;
@@ -130,6 +134,8 @@ class ClientListItem {
     bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
     taxId: (json['taxId'] ?? json['taxid']) as String?,
     credit: (json['credit'] as num?)?.toDouble(),
+    creditDisplayText: json['creditDisplayText'] as String?,
+    creditFloorDisplayText: json['creditFloorDisplayText'] as String?,
     creditFloor: (json['creditFloor'] as num?)?.toDouble() ?? 0,
     website: json['website'] as String?,
     status: json['status'] as String?,

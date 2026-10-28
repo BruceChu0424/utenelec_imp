@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 // ADR-156 委外任务中心「齐套情况」弹窗。
 //
 // 委外价格每天不同：委外申请的直属物料够做至少一套才解锁生成委外订货单，订货数量
@@ -119,21 +120,17 @@ class _SubcontractApplicationKitDialogState
                       ),
                     ),
                   ),
+                  const UtenFieldHintIcon(
+                    info:
+                        '委外价格每天不同，直属物料够做至少一套才解锁生成委外订货单；可下单 = 剩余未下单与现有物料够做的套数取小，订货数量超出会被拒绝。物料被别的委外单先占走时可下单会变少。',
+                    dense: true,
+                  ),
                   IconButton(
                     tooltip: '关闭',
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '委外价格每天不同，直属物料够做至少一套才解锁生成委外订货单；'
-                '可下单 = 剩余未下单与现有物料够做的套数取小，订货数量超出会被拒绝。'
-                '物料被别的委外单先占走时可下单会变少。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               if (_loading && kits == null)
@@ -286,18 +283,22 @@ class _KitSection extends StatelessWidget {
       MasterColumnDef(
         key: 'goodsName',
         label: '物料名称',
+        sortable: true,
         width: 180,
         value: (row) => _label(row.goodsName),
       ),
       MasterColumnDef(
         key: 'goodsCode',
         label: '编号',
+        sortable: true,
         width: 130,
         value: (row) => _label(row.goodsCode),
       ),
       MasterColumnDef(
         key: 'colorName',
         label: '颜色',
+        sortable: true,
+        filterFromRows: true,
         width: 90,
         value: (row) => _label(row.colorName),
       ),
@@ -324,6 +325,8 @@ class _KitSection extends StatelessWidget {
     label: label,
     width: 96,
     type: 'number',
+    sortable: true,
+    exactValueOf: (row) => qty(row).toString(),
     value: (row) => formatQtyWithUnit(qty(row), row.unitName, maxDecimals: 4),
   );
 

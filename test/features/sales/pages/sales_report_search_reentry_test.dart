@@ -165,6 +165,7 @@ class _SalesReportApi extends ApiClient {
     paths.add(path);
     queries.add(Map<String, dynamic>.of(query ?? const {}));
     return {
+      'columnSearchKeys': ['clientName'],
       'columns': [
         {'key': 'clientName', 'label': '客户', 'type': 'text', 'width': 220},
       ],

@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
 import 'uten_collapsing_header_scroll_view.dart';
+import 'uten_content_container.dart';
+import 'uten_page_layout.dart';
+import 'uten_scroll_gutter.dart';
 
 /// Keeps the same hierarchy and detail mounted while available space changes.
 /// A compact hierarchy opens inside this pane, so closing it cannot accidentally
@@ -69,7 +72,7 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ?widget.compactHeader,
-          Padding(
+          UtenPageEdgePadding.pane(
             padding: const EdgeInsets.all(8),
             child: OutlinedButton(
               key: widget.openButtonKey,
@@ -127,8 +130,13 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
       ),
     );
     final trailing = KeyedSubtree(key: _trailingKey, child: widget.trailing);
-    if (widget.canSplit) return widget.splitBuilder(leading, trailing);
-    return PopScope(
+    if (widget.canSplit) {
+      return UtenPagePaneScope(
+        split: true,
+        child: widget.splitBuilder(leading, trailing),
+      );
+    }
+    Widget merged = PopScope(
       canPop: !_open,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _open) _close();
@@ -185,6 +193,13 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
         ),
       ),
     );
+    // Standalone pages get one shared edge owner. Popup/local pickers retain
+    // their original panel spacing and scrollbar responsibility.
+    if (UtenPageScrollRoleScope.isPageOf(context) &&
+        !UtenContentInsetsScope.isPresentOf(context)) {
+      merged = UtenContentContainer(selectable: false, child: merged);
+    }
+    return UtenPagePaneScope(split: false, child: merged);
   }
 }
 

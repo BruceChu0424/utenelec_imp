@@ -15,6 +15,7 @@ import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/profile_change_request.dart';
 import '../repositories/profile_change_repository.dart';
+import 'profile_column_queries.dart';
 
 /// 本人完整员工档案。
 ///
@@ -96,6 +97,62 @@ final myProfileChangesProvider = FutureProvider.autoDispose
       ],
     );
 
+/// Table-only criteria stay separate from profile counters and other previews.
+final myProfileChangeTableReadProvider = Provider.autoDispose
+    .family<ScopedPagedReadProviderLease<MyProfileChangeListItem>, String?>(
+      (ref, status) {
+        ref.watch(masterDataSessionKeyProvider);
+        ref.watch(authenticatedScopeProvider);
+        ref.watch(profileChangeRepositoryProvider);
+        final columns = ref.watch(profileMineColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: (status, columns));
+      },
+      dependencies: [
+        exportContextEpochProvider,
+        masterDataSessionKeyProvider,
+        authenticatedScopeProvider,
+        profileChangeRepositoryProvider,
+        profileMineColumnsProvider,
+      ],
+    );
+
+final myProfileChangeTableProvider = FutureProvider.autoDispose
+    .family<
+      ProfileChangePage<MyProfileChangeListItem>,
+      ({String? status, int page})
+    >(
+      (ref, key) async {
+        final repository = ref.watch(profileChangeRepositoryProvider);
+        final columns = ref.watch(profileMineColumnsProvider);
+        final result = await ref
+            .watch(myProfileChangeTableReadProvider(key.status))
+            .read(
+              key.page,
+              fetchPage: (page) => _profilePageSnapshot(
+                repository.myList(
+                  page: page,
+                  status: key.status,
+                  columns: columns.searches,
+                  sort: columns.sort,
+                  ascending: columns.ascending,
+                ),
+              ),
+            );
+        return (result
+                as PagedReadSnapshot<
+                  MyProfileChangeListItem,
+                  ProfileChangePage<MyProfileChangeListItem>
+                >)
+            .snapshot;
+      },
+      retry: pagedReadProviderRetry,
+      dependencies: [
+        profileChangeRepositoryProvider,
+        profileMineColumnsProvider,
+        myProfileChangeTableReadProvider,
+      ],
+    );
+
 /// 员工自查单批详情。
 final myProfileChangeDetailProvider = FutureProvider.autoDispose
     .family<ProfileChangeBatch, String>((ref, batchId) {
@@ -146,13 +203,15 @@ final hrProfileChangeQueueReadProvider = Provider.autoDispose
         ref.watch(masterDataSessionKeyProvider);
         ref.watch(authenticatedScopeProvider);
         ref.watch(profileChangeRepositoryProvider);
-        return ScopedPagedReadProviderLease(ref, query: query);
+        final columns = ref.watch(profileHrColumnsProvider);
+        return ScopedPagedReadProviderLease(ref, query: (query, columns));
       },
       dependencies: [
         exportContextEpochProvider,
         masterDataSessionKeyProvider,
         authenticatedScopeProvider,
         profileChangeRepositoryProvider,
+        profileHrColumnsProvider,
       ],
     );
 
@@ -165,6 +224,7 @@ final hrProfileChangeQueueProvider = FutureProvider.autoDispose
         ref.watch(masterDataSessionKeyProvider);
         ref.watch(authenticatedScopeProvider);
         final repository = ref.watch(profileChangeRepositoryProvider);
+        final columns = ref.watch(profileHrColumnsProvider);
         final result = await ref
             .watch(
               hrProfileChangeQueueReadProvider((
@@ -179,6 +239,9 @@ final hrProfileChangeQueueProvider = FutureProvider.autoDispose
                   page: page,
                   status: key.status,
                   departmentId: key.departmentId,
+                  columns: columns.searches,
+                  sort: columns.sort,
+                  ascending: columns.ascending,
                 ),
               ),
             );
@@ -195,6 +258,7 @@ final hrProfileChangeQueueProvider = FutureProvider.autoDispose
         authenticatedScopeProvider,
         profileChangeRepositoryProvider,
         hrProfileChangeQueueReadProvider,
+        profileHrColumnsProvider,
       ],
     );
 

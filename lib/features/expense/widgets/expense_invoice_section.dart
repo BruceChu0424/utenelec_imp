@@ -4,6 +4,7 @@
 // 索引兜底，本区的前端预检只是提示层。
 // 文档：docs/03-页面/报销详情页.md §发票登记
 
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'dart:async';
@@ -316,6 +317,8 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     key: 'checkState',
     label: '人工查验',
     width: 90,
+    filterFromRows: true,
+    facetSearchEnabled: true,
     value: (invoice) => invoice.checkState.label,
     // 人工查验整格底色（ADR-169 逐页显式映射）：勾稽不符=橙（票面勾稽不符
     // 待审批人复核——风险中间态）/ 已人工查验=绿（查验通过，审批前置条件已
@@ -333,12 +336,16 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     key: 'lineNo',
     label: '#',
     width: 48,
+    type: 'count',
+    sortable: true,
     value: (invoice) => invoice.lineNo.toString(),
   ),
   MasterColumnDef(
     key: 'invoiceType',
     label: '类型',
     width: 110,
+    filterFromRows: true,
+    facetSearchEnabled: true,
     value: (invoice) => invoice.type.label,
   ),
   MasterColumnDef(
@@ -361,6 +368,7 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     label: '开票日期',
     width: 110,
     type: 'date',
+    sortable: true,
     value: (invoice) =>
         invoice.issueDate == null ? '' : _fmtDate(invoice.issueDate!),
   ),
@@ -387,6 +395,7 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     label: '金额',
     width: 100,
     type: 'money',
+    sortable: true,
     value: (invoice) => invoice.amountExclTax?.toStringAsFixed(2),
   ),
   MasterColumnDef(
@@ -394,6 +403,7 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     label: '税额',
     width: 90,
     type: 'money',
+    sortable: true,
     value: (invoice) => invoice.taxAmount?.toStringAsFixed(2),
   ),
   MasterColumnDef(
@@ -401,6 +411,7 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     label: '价税合计',
     width: 110,
     type: 'money',
+    sortable: true,
     value: (invoice) => invoice.totalAmount.toStringAsFixed(2),
   ),
   MasterColumnDef(
@@ -824,42 +835,24 @@ class _ExpenseInvoiceFormDialogState
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s12,
                           ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final guide = Text(
-                                l10n.expenseFlowOcrGuide,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: UtenButton(
+                                  key: const Key('expense-invoice-recognize'),
+                                  type: UtenButtonType.tonal,
+                                  size: UtenButtonSize.small,
+                                  icon: Icons.document_scanner_outlined,
+                                  isLoading: _recognizing,
+                                  onPressed: _recognizing ? null : _recognize,
+                                  child: const Text('识别发票图片'),
                                 ),
-                              );
-                              final recognize = UtenButton(
-                                key: const Key('expense-invoice-recognize'),
-                                type: UtenButtonType.tonal,
-                                size: UtenButtonSize.small,
-                                icon: Icons.document_scanner_outlined,
-                                isLoading: _recognizing,
-                                onPressed: _recognizing ? null : _recognize,
-                                child: const Text('识别发票图片'),
-                              );
-                              if (constraints.maxWidth < 520) {
-                                return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    guide,
-                                    const SizedBox(height: 8),
-                                    recognize,
-                                  ],
-                                );
-                              }
-                              return Row(
-                                children: [
-                                  Expanded(child: guide),
-                                  const SizedBox(width: 12),
-                                  recognize,
-                                ],
-                              );
-                            },
+                              ),
+                              UtenFieldHintIcon(
+                                info: l10n.expenseFlowOcrGuide,
+                                dense: true,
+                              ),
+                            ],
                           ),
                         ),
                       _invoiceFields(

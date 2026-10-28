@@ -25,12 +25,18 @@ class _FakeSuggestionRepository extends Fake implements SuggestionRepository {
     SuggestionStatus? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     listCalls.add({
       'mine': mine,
       'category': category?.name,
       'status': status?.name,
       'page': page,
+      ...columns,
+      'sort': ?sort,
+      if (sort != null) 'order': ascending ? 'asc' : 'desc',
     });
     return PagedResult(
       items: [
@@ -54,6 +60,70 @@ class _FakeSuggestionRepository extends Fake implements SuggestionRepository {
 }
 
 void main() {
+  testWidgets(
+    'ordinary headers query the full suggestion scope with typed counts and dates',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeSuggestionRepository();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            suggestionRepositoryProvider.overrideWithValue(repo),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(
+            locale: Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SuggestionListPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<Suggestion> table() =>
+          tester.widget(find.byKey(const Key('suggestion-list-table')));
+      await tester.tap(find.text('标题'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'HEADER%_',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.listCalls.last['search.title'], 'HEADER%_');
+      await tester.tap(find.text('回复数'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=2',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.listCalls.last['search.replyCount'], '>=2');
+      expect(repo.listCalls.last['search.title'], 'HEADER%_');
+      await tester.tap(find.text('提交时间'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '2026-10-28',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.listCalls.last['search.submittedAt'], '2026-10-28');
+      table().onSortChange!('submittedAt', false);
+      await tester.pumpAndSettle();
+      expect(repo.listCalls.last['sort'], 'submittedAt');
+      expect(repo.listCalls.last['order'], 'desc');
+      expect(repo.listCalls.last['page'], 1);
+      expect(table().serverColumnSearch, isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('status header facet is pushed to the backend query', (
     tester,
   ) async {

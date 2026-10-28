@@ -410,7 +410,8 @@ void main() {
         idOf: (value) => value,
         fields: const {},
       );
-      expect(columns.single.width, greaterThanOrEqualTo(140));
+      expect(columns.single.width, 64);
+      expect(columns.single.minimumWidthOf, isNotNull);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(

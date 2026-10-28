@@ -28,6 +28,8 @@ class TokenRefreshResult {
 /// servlet-container and WAF HTML/empty responses are service failures.
 const Map<String, int> _definitiveRefreshRejections = <String, int>{
   'UNAUTHORIZED': 401,
+  // 单设备顶号：会话被新的一次登录撤销，服务端 message 带「在哪台设备登录」。
+  'SESSION_REPLACED': 401,
   'ACCOUNT_LOCKED': 401,
   'ACCOUNT_DISABLED': 401,
   'VALIDATION_FAILED': 422,

@@ -15,7 +15,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -23,6 +22,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -182,18 +182,8 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
       children: [
         UtenSectionHeader(
           title: l10n.clientGoodsAliasTitle,
+          info: l10n.clientGoodsAliasDescription,
           icon: Icons.translate_rounded,
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-          child: Text(
-            l10n.clientGoodsAliasDescription,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
         ),
         const SizedBox(height: UtenSpacing.s12),
         UtenSearchBar(
@@ -228,7 +218,10 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
       children: [
         RefreshIndicator(onRefresh: () => _load(_page), child: list),
         if (_deletingId != null)
-          UtenBusyOverlay(title: l10n.clientGoodsAliasDeleting),
+          UtenBusyOverlay(
+            showDoNotLeaveHint: false,
+            title: l10n.clientGoodsAliasDeleting,
+          ),
       ],
     );
   }
@@ -419,8 +412,6 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
     final l10n = basicDataL10n(context);
     final result = _result!;
     final pages = result.totalPages < 1 ? 1 : result.totalPages;
-    final canPrev = !_loading && _page > 1;
-    final canNext = !_loading && _page < pages;
     return Wrap(
       key: const ValueKey('client-goods-alias-pager'),
       alignment: WrapAlignment.spaceBetween,
@@ -435,35 +426,13 @@ class _ClientGoodsAliasTabState extends ConsumerState<ClientGoodsAliasTab> {
           ),
         ),
         if (pages > 1)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              UtenButton(
-                key: const ValueKey('client-goods-alias-prev'),
-                type: UtenButtonType.secondary,
-                icon: Icons.chevron_left_rounded,
-                onPressed: canPrev ? () => _load(_page - 1) : null,
-                child: Text(l10n.clientGoodsAliasPrevPage),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                ),
-                child: Text(
-                  l10n.clientGoodsAliasPage(_page, pages),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              UtenButton(
-                key: const ValueKey('client-goods-alias-next'),
-                type: UtenButtonType.secondary,
-                icon: Icons.chevron_right_rounded,
-                onPressed: canNext ? () => _load(_page + 1) : null,
-                child: Text(l10n.clientGoodsAliasNextPage),
-              ),
-            ],
+          UtenPagination(
+            currentPage: _page,
+            totalPages: pages,
+            busy: _loading,
+            onPageChanged: _load,
+            previousKey: const ValueKey('client-goods-alias-prev'),
+            nextKey: const ValueKey('client-goods-alias-next'),
           ),
       ],
     );

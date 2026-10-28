@@ -316,6 +316,7 @@ class _FinanceQuoteReviewListPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.quoteFinanceListTitle,
+        info: l10n.quoteFinanceRowHint,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
@@ -365,12 +366,6 @@ class _FinanceQuoteReviewListPageState
       initialSearchValue: _keyword,
       onSearchInputChanged: (_) => ++_requestVersion,
       onSearchChanged: _applyKeyword,
-      trailing: Text(
-        l10n.quoteFinanceRowHint,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      ),
     );
   }
 

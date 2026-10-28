@@ -7,6 +7,7 @@ import '../stock_inventory/instant_inventory_column_layout.dart';
 import '../widgets/procurement_document_layout.dart';
 import 'platform_table_models.dart';
 import 'procurement_review_column_layout.dart';
+import 'goods_column_layout.dart';
 
 String platformTableFingerprint(String value) =>
     sha256.convert(utf8.encode(value)).toString().substring(0, 32);
@@ -144,7 +145,9 @@ class PlatformTableLayoutNotifier
   String get prefKey => 'platform.table.${platformTableFingerprint(tableKey)}';
   @override
   PlatformTableLayout get defaultValue => PlatformTableLayout(
-    layoutVersion: tableKey == purchaseOrderItemsTableKey
+    layoutVersion: tableKey == goodsMasterTableKey
+        ? goodsColumnLayoutVersion
+        : tableKey == purchaseOrderItemsTableKey
         ? purchaseOrderColumnLayoutVersion
         : _instantInventory
         ? instantInventoryColumnLayoutVersion
@@ -158,6 +161,16 @@ class PlatformTableLayoutNotifier
     final decoded = PlatformTableLayout.fromJson(
       Map<String, dynamic>.from(raw),
     );
+    if (tableKey == goodsMasterTableKey &&
+        decoded.layoutVersion < goodsColumnLayoutVersion) {
+      return decoded.copyWith(
+        order: migrateGoodsColumnOrder(
+          order: decoded.order,
+          pinned: decoded.pinned,
+        ),
+        layoutVersion: goodsColumnLayoutVersion,
+      );
+    }
     if (_instantInventory &&
         decoded.layoutVersion < instantInventoryColumnLayoutVersion) {
       return decoded.copyWith(

@@ -58,10 +58,12 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
     final scope = ref.watch(suggestionScopeProvider);
     final statusFilter = ref.watch(suggestionStatusFilterProvider);
     final categoryFilter = ref.watch(suggestionCategoryFilterProvider);
+    final columns = ref.watch(suggestionColumnsProvider);
     final list = _retainedPage.resolveFor(ref, (
       scope,
       statusFilter,
       categoryFilter,
+      columns,
       retainedReaderEpoch(ref),
     ), suggestionListProvider);
     final page =
@@ -73,7 +75,10 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
           total: 0,
           totalPages: 0,
         );
-    final hasColumnFilters = statusFilter != null || categoryFilter != null;
+    final hasColumnFilters =
+        statusFilter != null ||
+        categoryFilter != null ||
+        columns.searches.isNotEmpty;
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
@@ -95,6 +100,14 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
         bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
         key: const Key('suggestion-list-table'),
         columns: _columns,
+        serverColumnSearch: true,
+        sortColumn: columns.sort,
+        sortAscending: columns.ascending,
+        onSortChange: (key, ascending) =>
+            ref.read(suggestionColumnsProvider.notifier).state = columns.sorted(
+              key,
+              ascending,
+            ),
         items: page.items,
         isLoading: list.isLoading && !list.hasValue,
         loadingMore: list.isLoading && list.hasValue,
@@ -109,10 +122,20 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
         },
         nullCounts: const {},
         filters: {
+          ...columns.searches,
           'status': statusFilter?.name,
           'category': categoryFilter?.name,
         },
-        onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+        onFilterChanged: (key, value) {
+          if (key.startsWith('search.')) {
+            ref.read(suggestionColumnsProvider.notifier).state = columns.search(
+              key,
+              value,
+            );
+          } else {
+            _onFilterChanged(ref, key, value);
+          }
+        },
         // 双击行进入建议详情（保留现有路由与 push 语义）。
         onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
         // 行右键/长按菜单：点赞/取消点赞（原卡片点赞按钮能力移入此处）。
@@ -128,7 +151,7 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
         emptyMessage: hasColumnFilters ? '当前筛选下暂无建议，可调整表头筛选' : '暂无建议',
         currentPage: page.page,
         totalPages: page.totalPages,
-        paginationScope: (scope, statusFilter, categoryFilter),
+        paginationScope: (scope, statusFilter, categoryFilter, columns),
         onPageChange: (p) =>
             ref.read(suggestionListProvider.notifier).goToPage(p),
       ),
@@ -249,13 +272,22 @@ final List<MasterColumnDef<Suggestion>> _columns = [
     key: 'submittedAt',
     label: '提交时间',
     width: 110,
+    type: 'date',
+    columnSearchEnabled: true,
+    sortable: true,
+    info: '可按中国提交日期检索：年、年月、日期或范围，例如 2026-10-01..2026-10-31。',
     value: (s) => _fmt(s.submittedAt),
+    cellBuilder: (_, s) => Tooltip(
+      message: ChinaDateTime.formatDateTime(s.submittedAt),
+      child: Text(_fmt(s.submittedAt)),
+    ),
   ),
   MasterColumnDef(
     key: 'replyCount',
     label: '回复数',
     width: 80,
     type: 'number',
+    columnSearchEnabled: true,
     value: (s) => s.replyCount.toString(),
   ),
   MasterColumnDef(
@@ -263,6 +295,7 @@ final List<MasterColumnDef<Suggestion>> _columns = [
     label: '点赞数',
     width: 80,
     type: 'number',
+    columnSearchEnabled: true,
     value: (s) => s.likes.toString(),
   ),
 ];

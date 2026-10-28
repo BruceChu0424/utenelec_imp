@@ -1,6 +1,7 @@
 import '../../../core/theme/uten_tokens.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 /// Local, reversible color selection; nothing is published until platform save.
 class PlatformColorPickerDialog extends StatefulWidget {
@@ -71,17 +72,13 @@ class _PlatformColorPickerState extends State<PlatformColorPickerDialog> {
               onChanged: (value) =>
                   setState(() => _color = _color.withSaturation(value)),
             ),
-            const Text('明度'),
+            const UtenSectionHeader(title: '明度', info: '深浅模式会自动生成可读的文字和按钮色。'),
             Slider(
               value: _color.value,
               divisions: 100,
               semanticFormatterCallback: (value) => '${(value * 100).round()}%',
               onChanged: (value) =>
                   setState(() => _color = _color.withValue(value)),
-            ),
-            Text(
-              '深浅模式会自动生成可读的文字和按钮色。',
-              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),

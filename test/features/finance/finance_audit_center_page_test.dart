@@ -14,6 +14,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
@@ -25,6 +27,51 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+
+  for (final width in [375.0, 1200.0]) {
+    testWidgets(
+      'unselected audit category keeps its instruction and discloses badge help inline ($width)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final repository = _EmptyConfirmationRepository();
+        await tester.pumpWidget(
+          _app(
+            const FinanceAuditCenterPage(),
+            const {Perm.salesOrderFinanceView},
+            repository: repository,
+            emptyCounts: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        const instruction = '在上方选择分类后开始审核';
+        const help = '分段右侧数字徽章为该队列的待办数量';
+        expect(find.byType(UtenFilterPlaceholder), findsOneWidget);
+        expect(find.text(instruction), findsOneWidget);
+        expect(find.text(help), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == help,
+        );
+        final headingRect = tester.getRect(find.text(instruction));
+        final hintRect = tester.getRect(hint);
+        expect(hintRect.left, greaterThanOrEqualTo(headingRect.right));
+        expect(
+          (hintRect.center.dy - headingRect.center.dy).abs(),
+          lessThan(16),
+        );
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
+        expect(find.text(help), findsOneWidget);
+        expect(find.text(instruction), findsOneWidget);
+        expect(repository.pendingQueries, isEmpty);
+        expect(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'header refresh waits for the visible queue and prevents repeats',
@@ -210,19 +257,24 @@ Widget _app(
   Widget page,
   Set<String> permissions, {
   SalesOrderFinanceConfirmationRepository? repository,
+  bool emptyCounts = false,
 }) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      salesOrderFinanceQueueCountProvider(false).overrideWith((ref) async => 2),
-      salesOrderFinanceQueueCountProvider(true).overrideWith((ref) async => 1),
+      salesOrderFinanceQueueCountProvider(
+        false,
+      ).overrideWith((ref) async => emptyCounts ? 0 : 2),
+      salesOrderFinanceQueueCountProvider(
+        true,
+      ).overrideWith((ref) async => emptyCounts ? 0 : 1),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts: {
-            BadgeFact.salesOrderFinance: 3,
-            BadgeFact.shipmentFinance: 2,
+            BadgeFact.salesOrderFinance: emptyCounts ? 0 : 3,
+            BadgeFact.shipmentFinance: emptyCounts ? 0 : 2,
             BadgeFact.procurementApproval: 0,
             BadgeFact.financeArrivalException: 0,
           },

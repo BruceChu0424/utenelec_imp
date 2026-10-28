@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 物料反查产成品（production_where_used:view，只读 CQRS 报表）。
@@ -99,6 +100,7 @@ class _WhereUsedQuerySnapshot {
     required this.page,
     required this.sortKey,
     required this.sortAscending,
+    required this.headers,
   });
 
   final GoodsListItem material;
@@ -108,6 +110,7 @@ class _WhereUsedQuerySnapshot {
   final int page;
   final String? sortKey;
   final bool sortAscending;
+  final Map<String, String> headers;
 }
 
 class WhereUsedReportPage extends ConsumerStatefulWidget {
@@ -146,6 +149,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
 
   String? _sortKey;
   bool _sortAscending = true;
+  final Map<String, String> _headers = {};
   ReportData? _data;
   final _reportMetadata = ReportMetadataReuse();
   late final _reportRead = ReportPagedRead(_reportMetadata);
@@ -208,6 +212,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         _page = 1;
         _sortKey = null;
         _sortAscending = true;
+        _headers.clear();
         _invalidateLoadedResults();
       });
     });
@@ -330,6 +335,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
+      _headers.clear();
       ++_traceReloadTick;
     });
     if (candidate.material != null) await _load();
@@ -340,6 +346,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       ++_readEpoch;
       _subject = null;
       _material = null;
+      _headers.clear();
       _restoreSubjectDisplay();
       _invalidateLoadedResults();
       ++_traceReloadTick;
@@ -397,6 +404,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
+      _headers.clear();
       _invalidateLoadedResults();
       ++_traceReloadTick;
     });
@@ -436,6 +444,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
               : _page),
       sortKey: _sortKey,
       sortAscending: _sortAscending,
+      headers: Map.unmodifiable(_headers),
     );
     final generation = ++_loadGeneration;
     final readEpoch = ref.read(exportContextEpochProvider);
@@ -456,6 +465,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         if (snapshot.to != null) 'dateTo': _formatDate(snapshot.to!),
         'size': _size,
         ...sortQueryParams(snapshot.sortKey, snapshot.sortAscending),
+        for (final entry in snapshot.headers.entries)
+          'f.${entry.key}': entry.value,
       };
       final api = ref.read(apiClientProvider);
       bool queryCurrent() =>
@@ -510,6 +521,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           _page = loaded.page;
           _sortKey = loaded.sortKey;
           _sortAscending = loaded.sortAscending;
+          _headers
+            ..clear()
+            ..addAll(loaded.headers);
         }
       });
     }
@@ -522,6 +536,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     if (_limitHistoryDates) 'dateTo': _formatDate(_to),
     'size': _size,
     ...sortQueryParams(_sortKey, _sortAscending),
+    for (final entry in _headers.entries) 'f.${entry.key}': entry.value,
   };
 
   Future<void> _openProductDetail(Map<String, dynamic> row) async {
@@ -582,6 +597,20 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     setState(() {
       _sortKey = column;
       _sortAscending = ascending;
+      _page = 1;
+    });
+    _load();
+  }
+
+  void _onHeaderChanged(String key, String? value) {
+    if (_loading) return;
+    setState(() {
+      if (value == null || value.isEmpty) {
+        _headers.remove(key);
+      } else {
+        _headers[key] = value;
+      }
+      _selectedProductIds = {};
       _page = 1;
     });
     _load();
@@ -1071,7 +1100,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_mode == _TraceResultMode.relationships) ...[
-          _filterLabel('关系来源'),
+          _filterLabel('关系来源', info: filters.source.description),
           UtenDropdownField(
             key: const Key('where-used-source-filter'),
             value: filters.source.apiValue,
@@ -1094,13 +1123,6 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
                 ));
               }
             },
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            filters.source.description,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
         ],
@@ -1197,7 +1219,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       return _StatePanel(
         icon: Icons.manage_search_rounded,
         title: '先搜索一个物料',
-        message: '可搜索当前、停用、软删除及迁移占位的历史物料。',
+        info: '可搜索当前、停用、软删除及迁移占位的历史物料。',
         actionLabel: '选择物料',
         onAction: _pickSubject,
       );
@@ -1307,6 +1329,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     if (query.from != null) 'dateFrom': _formatDate(query.from!),
     if (query.to != null) 'dateTo': _formatDate(query.to!),
     ...sortQueryParams(query.sortKey, query.sortAscending),
+    for (final entry in query.headers.entries) 'f.${entry.key}': entry.value,
   };
 
   Future<UtenExportSelection?> _selectExportFormat() async {
@@ -1381,7 +1404,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     }
   }
 
-  Widget _buildTable(ReportData data) {
+  Widget _buildTable(ReportData acceptedData) {
+    final matches = samePagedReadQuery(_acceptedPageReadQuery, _pageReadQuery);
+    final data = matches ? acceptedData : acceptedData.pendingQuery();
     final l10n = AppLocalizations.of(context);
     final columns = data.columns
         .map(
@@ -1391,6 +1416,14 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             width: (column.width ?? 120).toDouble(),
             type: column.type,
             sortable: isSortableReportType(column.type),
+            columnSearchEnabled: data.columnSearchKeys.contains(column.key),
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(column.type)
+                ? (row) => row[column.key] == null
+                      ? null
+                      : (row['${column.key}Exact'] ?? row[column.key])
+                            .toString()
+                : null,
             value: (row) => formatReportCell(column, row),
             defaultVisible: !const {
               'categoryName',
@@ -1402,7 +1435,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           ),
         )
         .toList();
-    final range = _loadedQuery == null
+    final range = !matches || _loadedQuery == null
         ? '当前条件'
         : _historyRangeLabel(_loadedQuery!);
     return MasterDataTableView<Map<String, dynamic>>(
@@ -1450,7 +1483,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             prepareExport: _selectExportFormat,
           ),
         Text(
-          _data == null && _loading ? '正在加载已知关系' : '共 ${data.total} 个成品/半成品',
+          data.total < 0
+              ? (_loading ? '正在加载当前条件的已知关系' : '当前条件尚未取得结果')
+              : '共 ${data.total} 个成品/半成品',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         if (_limitHistoryDates)
@@ -1459,8 +1494,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       items: data.rows,
       facets: data.facets,
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: _headers,
+      serverColumnSearchKeys: data.columnSearchKeys,
+      onFilterChanged: _onHeaderChanged,
       sortColumn: _sortKey,
       sortAscending: _sortAscending,
       onSortChange: _onSortChange,
@@ -1489,17 +1525,24 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     );
   }
 
-  Widget _filterLabel(String text) {
+  Widget _filterLabel(String text, {String? info}) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-      child: Text(
-        text,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.25,
-        ),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(
+              text,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.25,
+              ),
+            ),
+          ),
+          if (info != null) UtenFieldHintIcon(info: info, dense: true),
+        ],
       ),
     );
   }
@@ -1634,14 +1677,16 @@ class _StatePanel extends StatelessWidget {
   const _StatePanel({
     required this.icon,
     required this.title,
-    required this.message,
+    this.message,
+    this.info,
     this.actionLabel,
     this.onAction,
   });
 
   final IconData icon;
   final String title;
-  final String message;
+  final String? message;
+  final String? info;
   final String? actionLabel;
   final VoidCallback? onAction;
 
@@ -1666,21 +1711,32 @@ class _StatePanel extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (info?.isNotEmpty == true)
+                        UtenFieldHintIcon(info: info, dense: true),
+                    ],
                   ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  if (message?.isNotEmpty == true) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      message!,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+                  ],
                   if (actionLabel != null && onAction != null) ...[
                     const SizedBox(height: UtenSpacing.s12),
                     FilledButton.tonal(

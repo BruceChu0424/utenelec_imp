@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 // ADR-143 §4.2 委外领料页(/operations/workbench/subcontract/draw-request?orderItemIds=...)。
 //
 // 2026-10-10 用户口径：页面不再放逐任务的领料数量输入表，只显示服务端预览出的
@@ -429,18 +430,21 @@ class _SubcontractDrawRequestPageState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '${_order.length} 个委外任务 · ${preview?.materialKindCount ?? 0} 种物料 · '
-            '预计 ${preview?.documentCount ?? 0} 张出仓单',
-            key: const Key('subcontract-draw-request-summary'),
-            style: theme.textTheme.titleMedium,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '本次领料按各任务的本批可领全量提交：多个任务共用同一种物料时，按交期、订货单号、'
-            '行号先后分配。要少领或不领某个任务，请返回委外任务中心调整勾选。'
-            '提交后仓库按领料仓库发出直属物料，委外商加工后分批回厂。',
-            style: theme.textTheme.bodySmall,
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  '${_order.length} 个委外任务 · ${preview?.materialKindCount ?? 0} 种物料 · 预计 ${preview?.documentCount ?? 0} 张出仓单',
+                  key: const Key('subcontract-draw-request-summary'),
+                  style: theme.textTheme.titleMedium,
+                ),
+              ),
+              const UtenFieldHintIcon(
+                info:
+                    '本次领料按各任务的本批可领全量提交：多个任务共用同一种物料时，按交期、订货单号、行号先后分配。要少领或不领某个任务，请返回委外任务中心调整勾选。提交后仓库按领料仓库发出直属物料，委外商加工后分批回厂。',
+                dense: true,
+              ),
+            ],
           ),
           if (_notice != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -488,24 +492,30 @@ class _SubcontractDrawRequestPageState
       MasterColumnDef(
         key: 'warehouseName',
         label: '领料仓库',
+        sortable: true,
+        filterFromRows: true,
         width: 160,
         value: (line) => _label(line.warehouseName),
       ),
       MasterColumnDef(
         key: 'goodsName',
         label: '物料名称',
+        sortable: true,
         width: 200,
         value: (line) => _label(line.goodsName),
       ),
       MasterColumnDef(
         key: 'goodsCode',
         label: '编号',
+        sortable: true,
         width: 130,
         value: (line) => _label(line.goodsCode),
       ),
       MasterColumnDef(
         key: 'colorName',
         label: '颜色',
+        sortable: true,
+        filterFromRows: true,
         width: 90,
         value: (line) => _label(line.colorName),
       ),
@@ -514,6 +524,8 @@ class _SubcontractDrawRequestPageState
       MasterColumnDef(
         key: 'qty',
         label: '本次领料数量',
+        sortable: true,
+        exactValueOf: (line) => line.qty.toString(),
         width: 130,
         type: 'number',
         value: (line) =>
@@ -522,6 +534,8 @@ class _SubcontractDrawRequestPageState
       MasterColumnDef(
         key: 'warehouseAvailableQty',
         label: '仓库可用',
+        sortable: true,
+        exactValueOf: (line) => line.warehouseAvailableQty.toString(),
         width: 120,
         type: 'number',
         value: (line) => formatQtyWithUnit(
@@ -533,6 +547,8 @@ class _SubcontractDrawRequestPageState
       MasterColumnDef(
         key: 'task',
         label: '委外任务',
+        sortable: true,
+        filterFromRows: true,
         width: 200,
         value: (line) {
           final task = _tasks[line.orderItemId];

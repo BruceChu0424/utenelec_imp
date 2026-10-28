@@ -32,6 +32,8 @@ void refreshPermissionConfiguration(WidgetRef ref) {
   ref.invalidate(adminPermissionBaselineProvider);
   ref.invalidate(adminDepartmentPermissionsProvider);
   ref.invalidate(adminEffectivePermissionsProvider);
+  ref.invalidate(permissionTemplatesProvider);
+  ref.invalidate(permissionTemplateBindingsProvider);
 }
 
 String permissionTransferError(Object error) => switch (error) {

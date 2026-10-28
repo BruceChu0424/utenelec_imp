@@ -76,7 +76,7 @@ class CompanyFileInitialAccessEditor extends StatefulWidget {
     required this.scope,
     required this.boundary,
     required this.onChanged,
-    this.initialValue = const CompanyFileInitialAccessDraft.inherited(),
+    this.initialValue = const CompanyFileInitialAccessDraft.everyoneVisible(),
     this.enabled = true,
   });
 
@@ -92,9 +92,16 @@ class CompanyFileInitialAccessEditor extends StatefulWidget {
       _CompanyFileInitialAccessEditorState();
 }
 
+/// 「谁可以查看」的三种口径：全员可见 / 跟随所在文件夹 / 指定人员或部门。
+enum _InitialAccessMode { everyone, inherit, specific }
+
 class _CompanyFileInitialAccessEditorState
     extends State<CompanyFileInitialAccessEditor> {
-  late bool _inherit = widget.initialValue.inheritPermissions;
+  late _InitialAccessMode _mode = widget.initialValue.marksEveryone
+      ? _InitialAccessMode.everyone
+      : widget.initialValue.inheritPermissions
+      ? _InitialAccessMode.inherit
+      : _InitialAccessMode.specific;
   late bool _passwordEnabled = widget.initialValue.password != null;
   late final _password = TextEditingController(
     text: widget.initialValue.password,
@@ -103,6 +110,7 @@ class _CompanyFileInitialAccessEditorState
     text: widget.initialValue.password,
   );
   late final List<CompanyFileAccessRule> _rules = widget.initialValue.rules
+      .where((rule) => !rule.isEveryoneRule)
       .toList();
   bool _picking = false;
   String? _error;
@@ -120,8 +128,10 @@ class _CompanyFileInitialAccessEditorState
 
   void _publish() => widget.onChanged(
     CompanyFileInitialAccessDraft(
-      inheritPermissions: _inherit,
-      rules: _rules,
+      inheritPermissions: _mode != _InitialAccessMode.specific,
+      rules: _mode == _InitialAccessMode.everyone
+          ? [kCompanyFileEveryoneRule, ..._rules]
+          : _rules,
       password: _passwordEnabled ? _password.text : null,
     ),
   );
@@ -227,50 +237,64 @@ class _CompanyFileInitialAccessEditorState
       children: [
         Text(l.companyFilesWhoCanRead, style: theme.textTheme.titleMedium),
         const SizedBox(height: UtenSpacing.s8),
-        RadioGroup<bool>(
-          groupValue: _inherit,
+        RadioGroup<_InitialAccessMode>(
+          groupValue: _mode,
           onChanged: (value) {
             if (!_enabled || value == null) return;
-            setState(() => _inherit = value);
+            setState(() => _mode = value);
             _publish();
           },
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<bool>(
+              RadioListTile<_InitialAccessMode>(
+                key: const Key('initial-access-everyone'),
+                contentPadding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                dense: true,
+                value: _InitialAccessMode.everyone,
+                enabled: _enabled,
+                title: Text(l.companyFilesEveryoneCanRead),
+              ),
+              RadioListTile<_InitialAccessMode>(
                 key: const Key('initial-access-inherit'),
                 contentPadding: EdgeInsets.zero,
-                value: true,
+                visualDensity: VisualDensity.compact,
+                dense: true,
+                value: _InitialAccessMode.inherit,
                 enabled: _enabled,
                 title: Text(l.companyFilesInheritEntryAccess),
               ),
-              RadioListTile<bool>(
+              RadioListTile<_InitialAccessMode>(
                 key: const Key('initial-access-specific'),
                 contentPadding: EdgeInsets.zero,
-                value: false,
+                visualDensity: VisualDensity.compact,
+                dense: true,
+                value: _InitialAccessMode.specific,
                 enabled: _enabled,
                 title: Text(l.companyFilesSpecificReaders),
               ),
             ],
           ),
         ),
-        Text(
-          _inherit
-              ? l.companyFilesAccessHint
-              : l.companyFilesSpecificReadersHint,
-          style: theme.textTheme.bodySmall,
-        ),
-        if (!_inherit || _rules.isNotEmpty) ...[
+        Text(switch (_mode) {
+          _InitialAccessMode.everyone => l.companyFilesEveryoneReadHint,
+          _InitialAccessMode.inherit => l.companyFilesAccessHint,
+          _InitialAccessMode.specific => l.companyFilesSpecificReadersHint,
+        }, style: theme.textTheme.bodySmall),
+        if (_mode != _InitialAccessMode.inherit || _rules.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s16),
-          if (_rules.isEmpty) ...[
-            Text(
-              l.companyFilesNoReadersSelected,
-              style: theme.textTheme.bodySmall,
-            ),
+          if (_mode == _InitialAccessMode.specific) ...[
+            if (_rules.isEmpty) ...[
+              Text(
+                l.companyFilesNoReadersSelected,
+                style: theme.textTheme.bodySmall,
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+            ],
+            _readers('ALLOW', l.companyFilesAllowedReaders),
             const SizedBox(height: UtenSpacing.s12),
           ],
-          _readers('ALLOW', l.companyFilesAllowedReaders),
-          const SizedBox(height: UtenSpacing.s12),
           _readers('DENY', l.companyFilesDeniedReaders),
         ],
         const SizedBox(height: UtenSpacing.s16),

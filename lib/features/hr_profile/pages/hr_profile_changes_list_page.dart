@@ -49,6 +49,7 @@ import '../../profile/field_policy.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
+import '../../profile/providers/profile_column_queries.dart';
 import '../../profile/widgets/profile_change_diff_row.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -67,8 +68,12 @@ class _HrProfileChangesListPageState
     extends ConsumerState<HrProfileChangesListPage> {
   final _retainedPage =
       RetainedAsyncPage<ProfileChangePage<HrProfileChangeListItem>>();
-  Object get _paginationScope =>
-      (_status, _departmentId, retainedReaderEpoch(ref));
+  Object get _paginationScope => (
+    _status,
+    _departmentId,
+    ref.read(profileHrColumnsProvider),
+    retainedReaderEpoch(ref),
+  );
   String? _status; // null = 默认待审
   int _page = 1; // 当前页（服务端真分页）
   final _tableRows = MasterDataTableRowsController<HrProfileChangeListItem>();
@@ -112,6 +117,16 @@ class _HrProfileChangesListPageState
 
   /// 表头筛选：部门 → 下推 departmentId；状态 → 切分段。两者都回第 1 页。
   void _onFilterChanged(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() {
+        _page = 1;
+        _selectedIds = {};
+      });
+      ref.read(profileHrColumnsProvider.notifier).state = ref
+          .read(profileHrColumnsProvider)
+          .search(key, value);
+      return;
+    }
     setState(() {
       switch (key) {
         case 'departmentName':
@@ -275,6 +290,7 @@ class _HrProfileChangesListPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(profileHrColumnsProvider);
     ref.onPageResume(RouteName.hrProfileChanges, () {
       setState(() => _page = _tableRows.visiblePage ?? _page);
       ref.invalidate(hrProfileChangeQueueProvider);
@@ -361,6 +377,7 @@ class _HrProfileChangesListPageState
     AppLocalizations l10n,
     AsyncValue<ProfileChangePage<HrProfileChangeListItem>> async,
   ) {
+    final columns = ref.watch(profileHrColumnsProvider);
     final readLease =
         ref.watch(
           hrProfileChangeQueueReadProvider((
@@ -369,7 +386,10 @@ class _HrProfileChangesListPageState
           )),
         )..bindView(
           context,
-          currentQuery: () => (status: _status, departmentId: _departmentId),
+          currentQuery: () => (
+            (status: _status, departmentId: _departmentId),
+            ref.read(profileHrColumnsProvider),
+          ),
         );
     final facets = ref.watch(hrProfileChangeFacetsProvider(_effectiveStatus));
     final page =
@@ -398,6 +418,19 @@ class _HrProfileChangesListPageState
         ref.invalidate(hrProfileChangeQueueProvider(_query));
       },
       columns: _columns(l10n),
+      serverColumnSearch: true,
+      sortColumn: columns.sort,
+      sortAscending: columns.ascending,
+      onSortChange: (key, ascending) {
+        setState(() {
+          _page = 1;
+          _selectedIds = {};
+        });
+        ref.read(profileHrColumnsProvider.notifier).state = columns.sorted(
+          key,
+          ascending,
+        );
+      },
       items: page.items,
       // 部门桶来自后端全量聚合；状态桶即三个队列分段。
       facets: {
@@ -407,6 +440,7 @@ class _HrProfileChangesListPageState
       },
       nullCounts: const {},
       filters: {
+        ...columns.searches,
         'departmentName': _departmentId,
         'status': _status == 'history' ? null : _effectiveStatus,
       },
@@ -473,6 +507,8 @@ class _HrProfileChangesListPageState
       label: '变更项数',
       width: 90,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (m) => m.itemCount.toString(),
     ),
     MasterColumnDef(
@@ -490,6 +526,9 @@ class _HrProfileChangesListPageState
       label: '提交时间',
       width: 150,
       type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
+      info: '按中国日期检索：年、年月、日期或日期范围，例如 2026-10-01..2026-10-31。',
       value: (m) => _formatTime(m.submittedAt),
     ),
   ];

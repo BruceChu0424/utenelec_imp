@@ -29,6 +29,7 @@ class UtenCard extends ConsumerWidget {
     this.borderRadius = UtenRadius.card,
     this.showBorder = true,
     this.elevation = UtenCardElevation.none,
+    this.selected = false,
   });
 
   final Widget child;
@@ -39,6 +40,11 @@ class UtenCard extends ConsumerWidget {
   final VoidCallback? onLongPress;
   final double borderRadius;
   final bool showBorder;
+
+  /// 选中态（主从列表「当前项」）：底色复用全站「选中行」定稿色
+  /// （[UtenColors.tableSelectedRow]，与 MasterDataTableView / 权限模板列表
+  /// 同语言），边框转主色加粗——整卡读作一个选中的整体。
+  final bool selected;
 
   /// 阴影层级
   final UtenCardElevation elevation;
@@ -55,15 +61,24 @@ class UtenCard extends ConsumerWidget {
         ? UtenCardVariant.solid
         : variant;
 
-    final bgColor = switch (effectiveVariant) {
-      UtenCardVariant.solid => theme.colorScheme.surface,
-      UtenCardVariant.glass =>
-        (isDark ? UtenColors.darkSurface : Colors.white).withValues(alpha: 0.7),
-      UtenCardVariant.outlined => Colors.transparent,
-    };
+    final bgColor = selected
+        ? (isDark
+              ? UtenColors.tableSelectedRowDark
+              : UtenColors.tableSelectedRow)
+        : switch (effectiveVariant) {
+            UtenCardVariant.solid => theme.colorScheme.surface,
+            UtenCardVariant.glass =>
+              (isDark ? UtenColors.darkSurface : Colors.white).withValues(
+                alpha: 0.7,
+              ),
+            UtenCardVariant.outlined => Colors.transparent,
+          };
 
-    final borderColor = showBorder
-        ? switch (effectiveVariant) {
+    final borderColor = !showBorder
+        ? null
+        : selected
+        ? theme.colorScheme.primary
+        : switch (effectiveVariant) {
             UtenCardVariant.solid =>
               isDark ? UtenColors.darkBorder : UtenColors.border,
             UtenCardVariant.glass => brandAccent(
@@ -72,8 +87,7 @@ class UtenCard extends ConsumerWidget {
             ).withValues(alpha: 0.3),
             UtenCardVariant.outlined =>
               isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
-          }
-        : null;
+          };
 
     final shadows = switch (elevation) {
       UtenCardElevation.none => null,
@@ -110,7 +124,7 @@ class UtenCard extends ConsumerWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(borderRadius),
         side: borderColor != null
-            ? BorderSide(color: borderColor)
+            ? BorderSide(color: borderColor, width: selected ? 1.5 : 1)
             : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,

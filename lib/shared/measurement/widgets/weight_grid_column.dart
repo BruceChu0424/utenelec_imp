@@ -6,9 +6,9 @@
 // - 有可靠依据时预填建议重量(黄框待核对, 与全站预填口径一致)；用户改字后停止自动覆盖；
 //   货品/行单位本身是重量单位时只读灰字「=25 kg」(服务端按数量精确换算)。
 // - 偏差: 琥珀框与文字提示，悬停给出依据；说明图标统一放表头。
-// - 格子外层 Tooltip 恒定包裹(空闲时给一句固定短提示): message 在 null/非null 间切换
-//   会让 Flutter 废弃重建 TextField 元素, 输入一位光标就丢(同 uten_editable_grid
-//   RequiredCellFrame 2026-10-06 的病灶), 结构恒定才能保住焦点。
+// - 格子外层用 UtenEditorTooltip 保留稳定输入子树(空闲时给一句固定短提示)：
+//   提示内容或 TooltipVisibility 变化会移除 Flutter 的 RawTooltip 包装；单靠同一
+//   Tooltip/ValueKey 不能保住 TextField，必须保留其 Element 与原生输入连接。
 // - **重量格与数量格永不批量生效**: 勾选多行后改一行的重量只改这一行 (一次称重是一个
 //   物理事实, 绝不能复制到其它行); 页面级的只有工具条上的录入单位。
 // - 数量为空 (盘点实盘 / 其它入库) 且单重不是未学准时, 填重量自动推算数量 (黄框预填,
@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
+import '../../../components/inputs/uten_editor_tooltip.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -313,6 +314,18 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     label: '$label(${entryUnit.symbol})',
     width: width,
     numeric: true,
+    // Exact facts are kg while entry/display can be g/kg/t. A bare numeric
+    // condition would silently compare different units. Search displayed,
+    // unit-bearing candidates instead; keep authoritative kg facts unchanged.
+    columnSearchEnabled: false,
+    filterValueOf: (row) {
+      final exact = _exactKg(row, exactKgOf, paramsOf, qtyBaseOf);
+      if (exact != null) return '=${formatWeight(exact)}';
+      final controller = controllerOf(row);
+      final text = controller.text.text.trim();
+      if (text.isEmpty) return null;
+      return '${controller.isSuggested ? '≈' : ''}$text ${entryUnit.symbol}';
+    },
     // Formula facts use kilograms regardless of the entry/display unit, and
     // follow the same exact-unit precedence as the visible weight cell.
     exactValueOf: (row) =>
@@ -728,10 +741,12 @@ class _WeightCellState<T extends EditableGridRow>
           ),
       ],
     );
-    // 结构恒定：空闲时也包一层 Tooltip(给固定短提示)。若按 message 有无切换
-    // Tooltip 包裹，首个字符击键就会让 TextField 元素被废弃重建、光标丢失
-    // (用户得再点一次才能继续输)；恒定结构下只有文本在变。
-    return Tooltip(message: message ?? weightCellIdleTooltip, child: content);
+    // 聚焦时公共表格会静默提示，RawTooltip 因此移除自己的包装。共享边界保留
+    // 编辑子树，避免第一次键盘输入被已关闭的 TextInputClient 吞掉。
+    return UtenEditorTooltip(
+      message: message ?? weightCellIdleTooltip,
+      child: content,
+    );
   }
 
   String? _referenceWeightHint(WeightParams? params, double? qtyBase) {

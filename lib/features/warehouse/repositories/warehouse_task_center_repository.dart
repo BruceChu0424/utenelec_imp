@@ -24,6 +24,7 @@ abstract interface class WarehouseTaskCenterGateway {
     int size = 20,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   });
 }
 
@@ -46,6 +47,7 @@ class WarehouseTaskCenterRepository implements WarehouseTaskCenterGateway {
     int size = 20,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   }) async {
     final json = await api.get(
       '/warehouse/task-center/${direction.name}',
@@ -62,6 +64,10 @@ class WarehouseTaskCenterRepository implements WarehouseTaskCenterGateway {
         'dateTo': ?dateTo,
         'sort': ?sort,
         'order': ?order,
+        for (final entry in columns.entries)
+          if (entry.key.startsWith('search.') &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
         ...warehouseScope.queryParameters,
       },
     );

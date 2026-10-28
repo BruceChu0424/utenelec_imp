@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
@@ -20,6 +21,10 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_page_scrollbar_host.dart';
+import '../../../components/layout/uten_pagination.dart';
+import '../../../components/layout/uten_grid_header_filter_cell.dart';
+import '../../../shared/search/calendar_column_query.dart';
+import '../../../shared/search/numeric_column_query.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -39,6 +44,7 @@ import '../models/company_file_upload.dart';
 import '../repositories/company_file_repository.dart';
 import '../widgets/company_file_dialogs.dart';
 import '../widgets/company_file_item.dart';
+import '../widgets/company_file_detail_row.dart';
 
 /// The explorer owns only selection, navigation and upload attempts. Every
 /// capability in a toolbar or context menu comes from the current server DTO.
@@ -52,10 +58,15 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     with WidgetsBindingObserver {
   CompanyFileListing? _listing;
   CompanyFile? _selected;
+
+  /// Content width from the last build; the details route (side panel vs sheet)
+  /// must use the same basis as the side-panel render condition.
+  double _contentWidth = 0;
   Object? _error;
   bool _loading = true, _busy = false, _trash = false, _details = false;
   String? _parentId;
   String _search = '', _sort = 'name', _direction = 'asc';
+  final Map<String, String?> _columnFilters = {};
   int _page = 0, _request = 0, _epoch = 0;
   CompanyFileView _view = CompanyFileView.icons;
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -91,6 +102,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         _parentId = null;
         _page = 0;
         _search = '';
+        _columnFilters.clear();
         _trash = false;
         _busy = false;
         _queueRunning = false;
@@ -146,6 +158,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         direction: _direction,
         trash: _trash,
         page: _page,
+        columnFilters: Map.unmodifiable(_columnFilters),
       );
       if (!mounted || !current()) return;
       setState(() {
@@ -179,6 +192,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _listing = null;
       _selected = null;
       _search = '';
+      _columnFilters.clear();
       _searchController.clear();
       _searchFieldKey = GlobalKey(debugLabel: 'companyFilesSearch');
     });
@@ -523,6 +537,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _sort == 'manual' &&
       _direction == 'asc' &&
       _search.isEmpty &&
+      _columnFilters.isEmpty &&
       _listing != null &&
       _listing!.total == _listing!.entries.length &&
       _listing!.canReorder &&
@@ -891,7 +906,10 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _selected = e;
       _details = true;
     });
-    if (MediaQuery.sizeOf(context).width < 1220) {
+    // Same basis as the render condition below: window width can exceed 1220
+    // while the content area (sidebar + page padding removed) stays under it,
+    // which used to leave both the side panel and the sheet unopened.
+    if (_contentWidth < 1220) {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
@@ -1144,20 +1162,35 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           child: LayoutBuilder(
             builder: (context, box) {
               final wide = _useSidebar(box.maxWidth);
+              _contentWidth = box.maxWidth;
               final showDetails =
                   _details && _selected != null && box.maxWidth >= 1220;
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
+                  UtenMotion(
                     key: const ValueKey('company-files-navigation'),
-                    width: wide ? (_directoryExpanded ? 180 : 56) : 0,
-                    child: wide
-                        ? _navigation(
-                            collapsed: !_directoryExpanded,
-                            sidebar: true,
-                          )
-                        : null,
+                    duration: UtenAnim.normal,
+                    builder: (context, duration) => AnimatedContainer(
+                      width: wide ? (_directoryExpanded ? 180 : 56) : 0,
+                      duration: duration,
+                      curve: UtenAnim.standard,
+                      child: ClipRect(
+                        // Lay out at the target width throughout the reveal.
+                        // Labels must not overflow while the rail is narrower.
+                        child: OverflowBox(
+                          alignment: AlignmentDirectional.centerStart,
+                          minWidth: _directoryExpanded ? 180 : 56,
+                          maxWidth: _directoryExpanded ? 180 : 56,
+                          child: wide
+                              ? _navigation(
+                                  collapsed: !_directoryExpanded,
+                                  sidebar: true,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
                   ),
                   SizedBox(
                     width: wide ? 1 : 0,
@@ -1220,6 +1253,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                                 ],
                               ),
                             ),
+                          if (_columnFilters.isNotEmpty) _columnFilterChips(),
                           Expanded(
                             child: Listener(
                               key: const ValueKey('company-files-canvas'),
@@ -1443,21 +1477,24 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     ),
   );
 
-  Widget _directoryToggle({required bool sidebar}) => IconButton(
-    key: const ValueKey('company-files-toggle-directory'),
-    tooltip: sidebar
-        ? (_directoryExpanded
-              ? l.companyFilesHideDirectory
-              : l.companyFilesShowDirectory)
-        : l.companyFilesDirectory,
-    onPressed: () {
-      if (sidebar) {
-        setState(() => _directoryExpanded = !_directoryExpanded);
-      } else {
-        _scaffoldKey.currentState?.openDrawer();
-      }
-    },
-    icon: Icon(sidebar && _directoryExpanded ? Icons.menu_open : Icons.menu),
+  Widget _directoryToggle({required bool sidebar}) => Semantics(
+    expanded: sidebar ? _directoryExpanded : null,
+    child: IconButton(
+      key: const ValueKey('company-files-toggle-directory'),
+      tooltip: sidebar
+          ? (_directoryExpanded
+                ? l.companyFilesHideDirectory
+                : l.companyFilesShowDirectory)
+          : l.companyFilesDirectory,
+      onPressed: () {
+        if (sidebar) {
+          setState(() => _directoryExpanded = !_directoryExpanded);
+        } else {
+          _scaffoldKey.currentState?.openDrawer();
+        }
+      },
+      icon: Icon(sidebar && _directoryExpanded ? Icons.menu_open : Icons.menu),
+    ),
   );
 
   Widget _navItem(
@@ -1709,12 +1746,12 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     if (listing.entries.isEmpty) {
       return UtenEmpty(
         icon: _trash ? Icons.delete_outline : Icons.folder_open_outlined,
-        message: _search.isNotEmpty
+        message: _search.isNotEmpty || _columnFilters.isNotEmpty
             ? l.companyFilesNoResults
             : _trash
             ? l.companyFilesTrashEmpty
             : l.companyFilesEmpty,
-        description: _search.isNotEmpty
+        description: _search.isNotEmpty || _columnFilters.isNotEmpty
             ? null
             : _trash
             ? l.companyFilesTrashHint
@@ -1760,7 +1797,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         final height = _view == CompanyFileView.icons
             ? 210.0 + (scale - 1) * 65
             : 106.0 + (scale - 1) * 58;
-        final wideDetails = box.maxWidth - 32 > 760 && scale < 1.5;
+        final wideDetails = box.maxWidth - 34 > 760 && scale < 1.5;
         return UtenMotion(
           duration: UtenAnim.fast,
           builder: (context, duration) => AnimatedSwitcher(
@@ -1811,32 +1848,152 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   }
 
   Widget _detailsHeader() {
-    Widget label(String text) => Text(
-      text,
-      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+    Widget header(
+      String key,
+      String label, {
+      String type = 'text',
+      bool sortable = false,
+      List<GridHeaderFilterBucket> buckets = const [],
+    }) => GridHeaderFilterCell(
+      key: ValueKey('company-file-header-$key'),
+      label: label,
+      buckets: buckets,
+      nullCount: 0,
+      selected: key == 'type' ? _columnFilters['search.kind'] : null,
+      search: _columnFilters['search.$key'] ?? '',
+      onChanged: (value) => _changeColumnFilter(
+        key == 'type' ? 'search.kind' : 'search.$key',
+        value,
+        replaceKey: key == 'type' ? 'search.type' : null,
       ),
+      onSearch: (value) => _changeColumnFilter(
+        'search.$key',
+        value,
+        replaceKey: key == 'type' ? 'search.kind' : null,
+      ),
+      numericSearch: type == 'number',
+      searchHelp: type == 'date'
+          ? CalendarColumnQuery.help
+          : type == 'number'
+          ? '${NumericColumnQuery.help}\n单位：字节 B；文件夹和待上传文件不参与大小比较'
+          : key == 'type'
+          ? '按扩展名检索，例如 PDF、XLSX；也可选择文件或文件夹'
+          : null,
+      searchValidation: type == 'date'
+          ? (value) =>
+                value.isEmpty || CalendarColumnQuery.tryParse(value) != null
+                ? null
+                : CalendarColumnQuery.error
+          : null,
+      scopeDescription: _trash ? '在当前回收站范围的全部可见项目中筛选' : '在当前目录的全部可见项目中筛选',
+      scope: (_parentId, _trash, _epoch),
+      isCurrent: () => mounted && !_blocked,
+      sortType: type,
+      sortActive: _sort == key,
+      sortAscending: _direction == 'asc',
+      onSort: !sortable
+          ? null
+          : (ascending) {
+              if (_blocked) return;
+              setState(() {
+                _sort = ascending == null ? 'manual' : key;
+                _direction = ascending == false ? 'desc' : 'asc';
+                _page = 0;
+                _selected = null;
+                _listing = null;
+              });
+              unawaited(_load());
+            },
     );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(28, UtenSpacing.s8, 28, 0),
-      child: Row(
-        children: [
-          const SizedBox(width: 44),
-          Expanded(child: label(l.companyFilesName)),
-          const SizedBox(width: UtenSpacing.s12),
-          SizedBox(
-            width: 100,
-            child: label('${l.companyFilesType} / ${l.companyFilesSize}'),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          SizedBox(width: 110, child: label(l.companyFilesUpdatedBy)),
-          const SizedBox(width: UtenSpacing.s12),
-          SizedBox(width: 150, child: label(l.companyFilesUpdated)),
-          const SizedBox(width: 48),
-        ],
+      padding: const EdgeInsets.fromLTRB(17, UtenSpacing.s8, 17, 0),
+      child: CompanyFileDetailRow(
+        header: true,
+        leading: const SizedBox.shrink(),
+        trailing: const SizedBox.shrink(),
+        name: header('name', l.companyFilesName, sortable: true),
+        type: header(
+          'type',
+          l.companyFilesType,
+          buckets: [
+            GridHeaderFilterBucket(
+              value: 'folder',
+              display: l.companyFilesFolder,
+              count: 0,
+            ),
+            GridHeaderFilterBucket(
+              value: 'file',
+              display: l.companyFilesFile,
+              count: 0,
+            ),
+          ],
+        ),
+        size: header(
+          'size',
+          l.companyFilesSize,
+          type: 'number',
+          sortable: true,
+        ),
+        updatedBy: header('updatedBy', l.companyFilesUpdatedBy),
+        updated: header(
+          'updated',
+          l.companyFilesUpdated,
+          type: 'date',
+          sortable: true,
+        ),
       ),
     );
   }
+
+  String _columnLabel(String key) => switch (key.replaceFirst('search.', '')) {
+    'name' => l.companyFilesName,
+    'type' || 'kind' => l.companyFilesType,
+    'size' => l.companyFilesSize,
+    'updatedBy' => l.companyFilesUpdatedBy,
+    'updated' => l.companyFilesUpdated,
+    _ => key,
+  };
+
+  void _changeColumnFilter(String key, String? value, {String? replaceKey}) {
+    if (_blocked) return;
+    setState(() {
+      final cleaned = value?.trim();
+      if (replaceKey != null) _columnFilters.remove(replaceKey);
+      if (cleaned == null || cleaned.isEmpty) {
+        _columnFilters.remove(key);
+      } else {
+        _columnFilters[key] = cleaned;
+      }
+      _page = 0;
+      _listing = null;
+      _selected = null;
+    });
+    unawaited(_load());
+  }
+
+  Widget _columnFilterChips() => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
+    child: Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s4,
+      children: [
+        for (final entry in _columnFilters.entries)
+          InputChip(
+            deleteIcon: const Icon(Icons.close_rounded, size: 18),
+            label: Text(
+              '${_columnLabel(entry.key)}：${entry.key == 'search.kind' && entry.value == 'folder'
+                  ? l.companyFilesFolder
+                  : entry.key == 'search.kind' && entry.value == 'file'
+                  ? l.companyFilesFile
+                  : entry.value}',
+            ),
+            onDeleted: _blocked
+                ? null
+                : () => _changeColumnFilter(entry.key, null),
+          ),
+      ],
+    ),
+  );
 
   Widget _footer() {
     final listing = _listing!;
@@ -1849,38 +2006,27 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         spacing: UtenSpacing.s12,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Text(
-            '${listing.total} ${l.companyFilesItems}',
-            style: Theme.of(context).textTheme.bodySmall,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${listing.total} ${l.companyFilesItems}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (_sort == 'manual' && !_trash)
+                UtenFieldHintIcon(info: l.companyFilesDragHint, dense: true),
+            ],
           ),
-          if (_sort == 'manual' && !_trash)
-            Text(
-              l.companyFilesDragHint,
-              style: Theme.of(context).textTheme.bodySmall,
+          if (listing.total > listing.size)
+            UtenPagination(
+              currentPage: _page + 1,
+              totalPages: (listing.total / listing.size).ceil(),
+              busy: _blocked || _loading,
+              onPageChanged: (target) {
+                _page = target - 1;
+                _load();
+              },
             ),
-          if (listing.total > listing.size) ...[
-            IconButton(
-              tooltip: l.companyFilesPrevious,
-              onPressed: _page == 0 || _blocked
-                  ? null
-                  : () {
-                      _page--;
-                      _load();
-                    },
-              icon: const Icon(Icons.chevron_left),
-            ),
-            Text('${_page + 1} / ${(listing.total / listing.size).ceil()}'),
-            IconButton(
-              tooltip: l.companyFilesNext,
-              onPressed: (_page + 1) * listing.size >= listing.total || _blocked
-                  ? null
-                  : () {
-                      _page++;
-                      _load();
-                    },
-              icon: const Icon(Icons.chevron_right),
-            ),
-          ],
         ],
       ),
     );
@@ -1948,7 +2094,14 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                   : e.contentType ?? l.companyFilesFile,
             ),
             if (!e.isFolder)
-              fact(l.companyFilesSize, formatAttachmentSize(e.sizeBytes)),
+              fact(
+                l.companyFilesSize,
+                e.pending
+                    ? l.companyFilesPending
+                    : e.attachmentId == null
+                    ? '—'
+                    : formatAttachmentSize(e.sizeBytes),
+              ),
             if (e.pending)
               fact(l.companyFilesPending, l.companyFilesUnknownHint),
             fact(l.companyFilesCreatedBy, e.createdByName),

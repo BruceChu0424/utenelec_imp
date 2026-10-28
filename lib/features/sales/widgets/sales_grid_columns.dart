@@ -837,6 +837,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       label: '数量',
       width: 160,
       numeric: true,
+      exactValueOf: (row) => row.qty.text,
+      exactListenableOf: (row) => row.qty,
       required: true,
       headerInfo: qtyHint,
       frozenTextOf: (r) => _qtyFrozenText(r, unitEntries),
@@ -873,6 +875,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         label: '单价',
         width: 128,
         numeric: true,
+        columnSearchEnabled: !priceMasked,
+        listenableOf: (row) => row.price,
         required: priceRequired,
         // 锁定/可编辑两种分支共用表头说明（锁定口径 + 录入口径按 docType 择一）。
         headerInfo: priceHint,
@@ -941,6 +945,8 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         // 默认列宽要把这句话和图标一起装下, 不被省略号吃成「财…」。
         width: isQuote ? 188 : 128,
         numeric: true,
+        columnSearchEnabled: !priceMasked,
+        listenableOf: (row) => row.discount,
         required: !isQuote && !priceMasked,
         // 表头 ⓘ 悬停说明折扣口径（2026-09-04 用户口径）；格内不再重复 ⓘ。
         headerInfo: l10n.workflowDiscountHint,
@@ -1041,6 +1047,10 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             : '总金额',
         width: allowsTotalInput ? 188 : 150,
         numeric: true,
+        columnSearchEnabled: !priceMasked,
+        exactValueOf: (row) =>
+            priceMasked ? null : row.amountExactNotifier.value,
+        exactListenableOf: (row) => row.amountExactNotifier,
         headerInfo: allowsTotalInput
             ? '可输入数量和总金额计算单价，也可选择按单价和总金额计算数量。'
                   '有关联来源的行沿用来源金额。'
@@ -1279,6 +1289,8 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
     label: label,
     width: 100,
     numeric: true,
+    columnSearchEnabled: !priceMasked,
+    listenableOf: controller,
     defaultVisible: false,
     frozenTextOf: (row) => priceMasked ? '***' : controller(row).text,
     cellBuilder: (context, row) => priceMasked

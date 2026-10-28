@@ -10,6 +10,7 @@ import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import 'uten_input_decoration.dart';
+import 'uten_field_suffix_icons.dart';
 import 'uten_picker_icon_button.dart';
 import 'uten_table_cell_spec.dart';
 
@@ -457,8 +458,7 @@ class _UtenReferencePickerFieldState<T>
                   // Keep the field name in semantics and its empty hint instead.
                   labelText: inTable ? null : widget.label,
                   hintText: inTable ? widget.label : widget.hint,
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  suffixIcon: UtenFieldSuffixIcons(
                     children: [
                       if (widget.controller.text.isNotEmpty)
                         IconButton(
@@ -481,21 +481,23 @@ class _UtenReferencePickerFieldState<T>
                               : null,
                           icon: const Icon(Icons.close_rounded, size: 18),
                         ),
-                      UtenPickerIconButton(
-                        key: widget.pickerKey,
-                        icon: widget.pickerIcon,
-                        tooltip:
-                            widget.pickerLabel ??
-                            (Localizations.of<AppLocalizations>(
-                                      context,
-                                      AppLocalizations,
-                                    ) ??
-                                    AppLocalizationsZh())
-                                .pickerChooseRecord(widget.label),
-                        isLoading: _pickerOpen,
-                        onPressed: _allowed && !_pickerOpen
-                            ? _openPicker
-                            : null,
+                      UtenFieldSuffixIcon(
+                        child: UtenPickerIconButton(
+                          key: widget.pickerKey,
+                          icon: widget.pickerIcon,
+                          tooltip:
+                              widget.pickerLabel ??
+                              (Localizations.of<AppLocalizations>(
+                                        context,
+                                        AppLocalizations,
+                                      ) ??
+                                      AppLocalizationsZh())
+                                  .pickerChooseRecord(widget.label),
+                          isLoading: _pickerOpen,
+                          onPressed: _allowed && !_pickerOpen
+                              ? _openPicker
+                              : null,
+                        ),
                       ),
                     ],
                   ),

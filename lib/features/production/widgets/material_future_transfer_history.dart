@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -129,8 +130,10 @@ class _MaterialFutureTransferHistoryState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: UtenSpacing.s8),
-        Text('专属在途调拨记录', style: theme.textTheme.titleSmall),
-        const Text('只调整已安排的未来供给；实际合格入库后才减少物理缺口。'),
+        const UtenSectionHeader(
+          title: '专属在途调拨记录',
+          info: '只调整已安排的未来供给；实际合格入库后才减少物理缺口。',
+        ),
         if (_loading) const LinearProgressIndicator(),
         if (_error != null)
           Wrap(

@@ -33,11 +33,16 @@ class _FakeProfileChangeRepository extends Fake
     String? status,
     String? employeeId,
     String? departmentId,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     listCalls.add({
       'page': page,
       'status': status,
       'departmentId': departmentId,
+      ...columns,
+      'sort': ?sort,
     });
     final itemStatus = switch (status) {
       'applied' => ProfileChangeStatus.applied,
@@ -298,6 +303,18 @@ void main() {
     expect(repo.listCalls.last['departmentId'], 'dept-1');
     expect(repo.listCalls.last['page'], 1, reason: '换筛选回第 1 页');
     expect(_table(tester).filters['departmentName'], 'dept-1');
+    _table(tester).onFilterChanged('search.employeeName', '王小明');
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['search.employeeName'], '王小明');
+    expect(repo.listCalls.last['departmentId'], 'dept-1');
+    _table(tester).onFilterChanged('search.itemCount', '>=1');
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['search.itemCount'], '>=1');
+    expect(repo.listCalls.last['search.employeeName'], '王小明');
+    _table(tester).onSortChange!('submittedAt', false);
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['sort'], 'submittedAt');
+    expect(repo.listCalls.last['page'], 1);
 
     await tester.pumpWidget(const SizedBox());
   });

@@ -637,7 +637,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
           onSelect: _selectDepartment,
         ),
         trailing: selected == null
-            ? Center(child: Text(l10n.departmentEmptySelect))
+            ? Center(child: Text(l10n.employeeOnboardPickDepartment))
             : _buildDetailPane(
                 selected,
                 canManage: canManage,

@@ -2,16 +2,19 @@
 //
 // 基础包取代了原来的「全员角色」(ADR-109)：只有超级管理员能改，保存时服务端按差量落库，
 // 能否放进基础包只看服务端下发的授权策略(需要逐项授予 / 只能逐人授予 / 超管专属的码不行)。
-// 基础包只能逐项勾选，不提供「全部授权」，避免一次把大量权限发给全公司。
+// 基础包批量操作仅选择服务端允许进入基础包的普通权限，提交仍由服务端校验。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../core/network/read_scope_revision.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -22,18 +25,23 @@ import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
 import 'permission_action_badge.dart';
 import 'permission_catalog_browser.dart';
+import 'admin_permission_editor_surface.dart';
+import 'permission_draft_session.dart';
 import 'admin_permission_workspace.dart';
 import 'admin_permission_export_button.dart';
+import 'admin_permission_transfer_actions.dart';
 
 class AdminBaselinePermView extends ConsumerStatefulWidget {
   const AdminBaselinePermView({
     super.key,
     this.leadingHeader = const SizedBox.shrink(),
     this.onPermissionDirtyChanged,
+    this.onLeaveGuardChanged,
   });
 
   final Widget leadingHeader;
   final ValueChanged<bool>? onPermissionDirtyChanged;
+  final ValueChanged<Future<bool> Function()?>? onLeaveGuardChanged;
 
   @override
   ConsumerState<AdminBaselinePermView> createState() =>
@@ -41,9 +49,46 @@ class AdminBaselinePermView extends ConsumerStatefulWidget {
 }
 
 class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
+  final _catalogMount = PermissionCatalogMount();
   Set<String>? _localChecked;
   bool _saving = false;
   bool? _lastReportedPending;
+  late final PermissionDraftSession _idleSave;
+
+  @override
+  void initState() {
+    super.initState();
+    _idleSave = PermissionDraftSession(onIdleSave: () => _save());
+    widget.onLeaveGuardChanged?.call(_confirmLeaveDrafts);
+  }
+
+  @override
+  void dispose() {
+    _idleSave.dispose();
+    widget.onLeaveGuardChanged?.call(null);
+    super.dispose();
+  }
+
+  /// 离开守卫：有草稿时三选一；保存并离开会先走一次保存（一次密码）。
+  Future<bool> _confirmLeaveDrafts() async {
+    if (!_isDirty) return true;
+    _idleSave.pause();
+    try {
+      final allowed = await guardPermissionDraftLeave(
+        context,
+        subject: '全员基础包',
+        changeCount: _dirtyCount,
+        save: () => _save(),
+      );
+      if (allowed && mounted && _isDirty) {
+        setState(() => _localChecked = null);
+        _idleSave.clear();
+      }
+      return allowed;
+    } finally {
+      if (mounted) _idleSave.resume();
+    }
+  }
 
   Set<String>? get _serverChecked =>
       ref.read(adminPermissionBaselineProvider).value?.toSet();
@@ -87,10 +132,12 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
       }
       _localChecked = next;
     });
+    _idleSave.noteEdit();
   }
 
-  Future<void> _save() async {
-    if (_saving || !_isDirty) return;
+  /// 保存基础包草稿；true=已落库（或本就没有改动）。
+  Future<bool> _save() async {
+    if (_saving || !_isDirty) return true;
     setState(() => _saving = true);
     try {
       // 钉死码恒在提交集合里：即使库被手工改坏，从这里保存也会把它们带回基础包。
@@ -98,20 +145,23 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
       final change = await ref
           .read(adminRepositoryProvider)
           .updatePermissionBaseline(desired.toList());
-      ref
-        ..invalidate(adminPermissionBaselineProvider)
-        ..invalidate(permissionCatalogProvider);
-      if (!mounted) return;
+      // All open consumers must recompute inherited sources and dependency diagnostics.
+      refreshPermissionConfiguration(ref);
+      if (!mounted) return true;
       setState(() => _localChecked = null);
+      _idleSave.clear();
       context.appSuccess(
         '已保存全员基础包：新增 ${change.added.length} 项，'
         '移出 ${change.removed.length} 项，即时生效',
       );
+      return true;
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       context.appApiError(error, fallback: '保存失败，本地修改已保留，请稍后重试');
+      return false;
     } catch (_) {
       if (mounted) context.appError('保存失败，本地修改已保留，请稍后重试');
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -130,22 +180,11 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
       navigation: widget.leadingHeader,
       leading: ListView(
         padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
-        children: [
-          UtenCard(
-            key: const ValueKey('admin-baseline-scope-card'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '全体在职员工',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                _scopeNotice(),
-              ],
-            ),
+        children: const [
+          UtenSectionHeader(
+            key: ValueKey('admin-baseline-scope-card'),
+            title: '全体在职员工',
+            info: _scopeMessage,
           ),
         ],
       ),
@@ -154,15 +193,10 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
     );
   }
 
-  Widget _scopeNotice() => Text(
-    '基础包内的权限由每个在职员工默认拥有，只放大家都需要的自助类权限。'
-    '需要逐项授权的敏感权限请按部门或员工配置。'
-    '带锁的通知与员工自助权限不能移出，个别人需要关闭时请用个人收回。',
-    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-      height: 1.5,
-    ),
-  );
+  static const _scopeMessage =
+      '基础包内的权限由每个在职员工默认拥有，只放大家都需要的自助类权限。'
+      '需要逐项授权的敏感权限请按部门或员工配置。'
+      '带锁的通知与员工自助权限不能移出，个别人需要关闭时请用个人收回。';
 
   Widget _details({required bool showNotice}) {
     final theme = Theme.of(context);
@@ -189,16 +223,7 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
             builder: (context, pagePadding) => ListView(
               padding: pagePadding,
               children: [
-                if (showNotice)
-                  UtenCard(
-                    margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s16,
-                      vertical: UtenSpacing.s12,
-                    ),
-                    child: _scopeNotice(),
-                  ),
-                UtenCard(
+                AdminPermissionEditorSurface(
                   key: const ValueKey('admin-baseline-permission-card'),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,11 +234,9 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
                         alignment: WrapAlignment.spaceBetween,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text(
-                            '权限明细',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
+                          const UtenSectionHeader(
+                            title: '权限明细',
+                            info: _scopeMessage,
                           ),
                           AdminPermissionExportButton(
                             scope: PermissionExportScope.baseline,
@@ -261,7 +284,10 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
                 TextButton(
                   onPressed: _saving
                       ? null
-                      : () => setState(() => _localChecked = null),
+                      : () => setState(() {
+                          _localChecked = null;
+                          _idleSave.clear();
+                        }),
                   child: const Text('撤销'),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
@@ -325,12 +351,39 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
       );
     }
     return PermissionCatalogBrowser(
+      key: _catalogMount.forOwner((
+        ref.watch(sensitiveReadBoundaryProvider),
+        ref.watch(readScopeRevisionProvider),
+        'baseline',
+      )),
       groups: groups,
       enabledFilterLabel: '已包含',
       disabledFilterLabel: '未包含',
       disableGroupLabel: '本组全部移出',
       disableModuleLabel: '本模块全部移出',
       isEnabled: (permission) => checked.contains(permission.code),
+      enableAllLabel: '全部加入基础包',
+      disableAllLabel: '全部移出',
+      enableModuleLabel: '本模块加入基础包',
+      enableGroupLabel: '本组加入基础包',
+      onGrantScope: (scope) async {
+        final confirmed = await UtenDialog.show(
+          context,
+          title: '批量设置全员基础权限',
+          content: Text('将${scope.label}内允许的普通权限加入基础包，保存后对所有在职员工生效；个人取消继续优先。'),
+          confirmLabel: '加入基础包',
+        );
+        if (!mounted || confirmed != true) return;
+        _setPermissions([
+          for (final group in groups)
+            if ((scope.module == null || scope.module == group.module) &&
+                (scope.category == null || scope.category == group.category))
+              for (final permission in group.permissions)
+                if (permission.grantPolicy.baselineEligible) permission.code,
+        ], true);
+      },
+      onDisableAll: (permissions) =>
+          _setPermissions(permissions.map((p) => p.code), false),
       onDisableGroup: (permissions) => _setPermissions(
         permissions.map((permission) => permission.code),
         false,

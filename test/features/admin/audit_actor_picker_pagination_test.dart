@@ -100,6 +100,9 @@ void main() {
         await tester.tap(find.byIcon(Icons.account_tree_rounded));
         await tester.pumpAndSettle();
       }
+      expect(find.byTooltip('展开测试公司'), findsOneWidget);
+      await tester.tap(find.byTooltip('展开测试公司'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find.descendant(of: departments, matching: find.text('财务部')),
       );

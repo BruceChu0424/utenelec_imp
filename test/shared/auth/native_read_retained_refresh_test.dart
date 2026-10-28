@@ -194,6 +194,36 @@ bool _canWrite(WidgetTester tester) =>
 
 void main() {
   testWidgets(
+    'compound filter identities fence stale reads and cannot revive after another read',
+    (tester) async {
+      final fixture = await _mount(
+        tester,
+        Queue.of([Future.value('Accepted')]),
+      );
+      var query = ('goods-a', 'name=开关', true);
+      final first = fixture.key.currentState!.captureNativeRead(
+        query,
+        () => query,
+      );
+      expect(first(), isTrue);
+      query = ('goods-a', 'name=端子', true);
+      expect(first(), isFalse);
+      final second = fixture.key.currentState!.captureNativeRead(
+        query,
+        () => query,
+      );
+      expect(second(), isTrue);
+      query = ('goods-a', 'name=开关', true);
+      expect(first(), isFalse);
+      expect(second(), isFalse);
+      final third = fixture.key.currentState!.captureNativeRead(
+        query,
+        () => query,
+      );
+      expect(third(), isTrue);
+    },
+  );
+  testWidgets(
     'background read retains the subtree and scroll until new data arrives',
     (tester) async {
       final gate = Completer<String>();

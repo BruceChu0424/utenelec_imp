@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -455,11 +456,19 @@ class _WarehouseDocumentHistoryViewState
       trailing: Semantics(
         liveRegion: true,
         label: '共 ${result.total} 张${widget.type.documentLabel}',
-        child: Text(
-          '共 ${result.total} 张 · 双击打开仓库详情',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                '共 ${result.total} 张',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const UtenFieldHintIcon(info: '双击打开仓库详情。', dense: true),
+          ],
         ),
       ),
     );

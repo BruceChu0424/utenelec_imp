@@ -11,8 +11,74 @@ import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_i
 import 'package:uten_imp/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets(
+    'ordinary header queries reach both list and badge counts before pagination',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _Gateway(items: [_case()]);
+      await tester.pumpWidget(
+        _app(gateway, permissions: {Perm.procurementIqcRejectionAmountView}),
+      );
+      await tester.pumpAndSettle();
+      final goods = find.byKey(
+        const ValueKey('master-column-filter-goodsName'),
+      );
+      await tester.ensureVisible(goods);
+      await tester.tap(goods);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '螺丝_%',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(gateway.filters.last.columnSearch['search.goodsName'], '螺丝_%');
+      expect(
+        gateway.countFilters.last.columnSearch['search.goodsName'],
+        '螺丝_%',
+      );
+      expect(gateway.filters.last.page, 1);
+      final amount = find.byKey(const ValueKey('master-column-filter-amount'));
+      await tester.ensureVisible(amount);
+      await tester.tap(amount);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=25.0001',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(gateway.filters.last.columnSearch['search.amount'], '>=25.0001');
+      expect(
+        gateway.countFilters.last.columnSearch['search.amount'],
+        '>=25.0001',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'server-masked amounts do not acquire query or sorting controls',
+    (tester) async {
+      await _pumpMaskedHeader(tester);
+      final table = tester
+          .widget<MasterDataTableView<ProcurementIqcRejectionCase>>(
+            find.byKey(const Key('iqc-rejection-task-table')),
+          );
+      final amount = table.columns.singleWhere(
+        (column) => column.key == 'amount',
+      );
+      expect(amount.sortable, isFalse);
+      expect(amount.columnSearchEnabled, isFalse);
+      expect(table.serverColumnSearchKeys, isNot(contains('amount')));
+      expect(amount.exactValueOf!(table.items.single), isNull);
+    },
+  );
+
   testWidgets('header filters send status and receiptType to gateway', (
     tester,
   ) async {
@@ -242,7 +308,26 @@ void main() {
   });
 }
 
-Widget _app(ProcurementIqcRejectionGateway gateway) => ProviderScope(
+Future<void> _pumpMaskedHeader(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1800, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    _app(
+      _Gateway(items: [_case(masked: true)]),
+      permissions: {Perm.procurementIqcRejectionAmountView},
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Widget _app(
+  ProcurementIqcRejectionGateway gateway, {
+  Set<String> permissions = const {},
+}) => ProviderScope(
+  overrides: [
+    currentPermissionsProvider.overrideWithValue(permissions),
+    isSuperAdminProvider.overrideWithValue(false),
+  ],
   child: MaterialApp(
     home: ProcurementIqcRejectionListPage(repository: gateway),
   ),
@@ -254,6 +339,7 @@ class _Gateway implements ProcurementIqcRejectionGateway {
   final List<ProcurementIqcRejectionCase> items;
   final bool failFirst;
   final List<ProcurementIqcRejectionFilter> filters = [];
+  final List<ProcurementIqcRejectionFilter> countFilters = [];
   int calls = 0;
 
   @override
@@ -280,19 +366,22 @@ class _Gateway implements ProcurementIqcRejectionGateway {
   @override
   Future<ProcurementIqcRejectionCounts> counts(
     ProcurementIqcRejectionFilter filter,
-  ) async => const ProcurementIqcRejectionCounts(
-    total: 2,
-    pendingReturn: 1,
-    returnRecorded: 0,
-    creditConfirmed: 0,
-    closedNoCredit: 0,
-    financeException: 1,
-    reversed: 0,
-    // ADR-184：服务端另发本人可动手口径；>0 时「待退回」分段挂红徽章，
-    // 进页面自动选中该段并发第一笔列表请求（autoSelectBadge 口径）。
-    actionablePendingReturn: 1,
-    actionableFinanceException: 1,
-  );
+  ) async {
+    countFilters.add(filter);
+    return const ProcurementIqcRejectionCounts(
+      total: 2,
+      pendingReturn: 1,
+      returnRecorded: 0,
+      creditConfirmed: 0,
+      closedNoCredit: 0,
+      financeException: 1,
+      reversed: 0,
+      // ADR-184：服务端另发本人可动手口径；>0 时「待退回」分段挂红徽章，
+      // 进页面自动选中该段并发第一笔列表请求（autoSelectBadge 口径）。
+      actionablePendingReturn: 1,
+      actionableFinanceException: 1,
+    );
+  }
 
   @override
   Future<ProcurementIqcRejectionDetail> detail(String id) =>

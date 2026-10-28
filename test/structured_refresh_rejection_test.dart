@@ -25,6 +25,7 @@ void main() {
     final request = RequestOptions(path: '/auth/refresh');
     for (final scenario in <(int, String)>[
       (401, 'UNAUTHORIZED'),
+      (401, 'SESSION_REPLACED'),
       (401, 'ACCOUNT_LOCKED'),
       (401, 'ACCOUNT_DISABLED'),
       (422, 'VALIDATION_FAILED'),

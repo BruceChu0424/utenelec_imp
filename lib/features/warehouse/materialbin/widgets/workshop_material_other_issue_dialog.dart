@@ -1,3 +1,4 @@
+import '../../../../components/layout/uten_section_header.dart';
 // 其它耗用登记对话框 (ADR-131 §5.3): 试模、清机、报废料、其它的公斤数和原因。
 //
 // 当场从内料仓出库记车间费用, 不摊给产品, 报表单列。不登记的话差额体现在浪费率里。
@@ -153,7 +154,10 @@ class _WorkshopMaterialOtherIssueDialogState
         children: [
           UtenAlertDialog(
             scrollable: false,
-            title: Text(l10n.wmOtherIssue),
+            title: UtenSectionHeader(
+              title: l10n.wmOtherIssue,
+              info: '试模、清机、报废的料在这里登记, 记车间费用, 不摊给产品。',
+            ),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),
               child: SingleChildScrollView(
@@ -161,13 +165,6 @@ class _WorkshopMaterialOtherIssueDialogState
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      '试模、清机、报废的料在这里登记, 记车间费用, 不摊给产品。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s12),
                     UtenDropdownField(
                       key: const Key('wm-other-issue-material'),
                       label: '料',

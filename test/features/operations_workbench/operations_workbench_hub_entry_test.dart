@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -135,6 +136,13 @@ void main() {
 
     expect(find.text('任务中心'), findsOneWidget);
     expect(find.text('委外任务中心'), findsOneWidget);
+    final explanation = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('按委外商拆订货') ?? false),
+    );
+    await tester.tap(explanation);
+    await tester.pumpAndSettle();
     expect(find.textContaining('按委外商拆订货'), findsOneWidget);
     expect(find.text('两种下单入口'), findsNothing);
     expect(find.text('直接委外下单'), findsNothing);

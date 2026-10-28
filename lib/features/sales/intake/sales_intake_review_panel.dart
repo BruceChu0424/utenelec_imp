@@ -12,6 +12,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 
@@ -973,55 +974,67 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
               ),
             ],
           ),
-          if (_enrichmentExpanded)
-            for (final field in fields)
-              Padding(
-                padding: const EdgeInsetsDirectional.only(
-                  start: UtenSpacing.s32,
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Checkbox(
-                      value:
-                          _decisions.enrichmentEnabled &&
-                          (_decisions.enrichmentFields[field.field] ?? false),
-                      onChanged: _decisions.enrichmentEnabled
-                          ? (v) => setState(
-                              () => _decisions.enrichmentFields[field.field] =
-                                  v ?? false,
-                            )
-                          : null,
+          UtenCollapsibleContent(
+            expanded: _enrichmentExpanded,
+            maintainState: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final field in fields)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      start: UtenSpacing.s32,
                     ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${field.label}: ${field.proposed}',
-                              style: theme.textTheme.bodyMedium,
-                            ),
-                            Text(
-                              field.differs && field.current != null
-                                  ? l10n.salesIntakeEnrichDiffers(
-                                      field.current!,
-                                    )
-                                  : l10n.salesIntakeEnrichCurrentEmpty,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: field.differs
-                                    ? AiTone.warning(theme)
-                                    : theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Checkbox(
+                          value:
+                              _decisions.enrichmentEnabled &&
+                              (_decisions.enrichmentFields[field.field] ??
+                                  false),
+                          onChanged: _decisions.enrichmentEnabled
+                              ? (v) => setState(
+                                  () =>
+                                      _decisions.enrichmentFields[field.field] =
+                                          v ?? false,
+                                )
+                              : null,
                         ),
-                      ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(
+                              top: UtenSpacing.s12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${field.label}: ${field.proposed}',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                                Text(
+                                  field.differs && field.current != null
+                                      ? l10n.salesIntakeEnrichDiffers(
+                                          field.current!,
+                                        )
+                                      : l10n.salesIntakeEnrichCurrentEmpty,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: field.differs
+                                        ? AiTone.warning(theme)
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );

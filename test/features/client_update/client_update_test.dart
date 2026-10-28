@@ -386,7 +386,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ClientUpdatePage), findsOneWidget);
     expect(find.text(release.releaseNotes), findsOneWidget);
-    await tester.tap(find.byType(UtenBackButton));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('发现新版本'), findsNothing);
     await login('login-two');

@@ -373,7 +373,7 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         ? _l10n.serverStatusCollecting
         : !_fresh
         ? _l10n.serverStatusStale
-        : _l10n.serverStatusOverviewHint;
+        : null;
     final ring = UtenGaugeRing(
       key: const Key('server-status-ring'),
       value: _fresh ? _worstPercent() : null,
@@ -396,6 +396,12 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
                 ),
               ),
             ),
+            UtenFieldHintIcon(
+              info:
+                  '${_l10n.serverStatusOverviewHint}\n\n'
+                  '${_l10n.serverStatusPolling(_snapshot?.pollSeconds ?? 15)}',
+              dense: true,
+            ),
             const SizedBox(width: UtenSpacing.s8),
             UtenLivePulseDot(
               key: const Key('server-status-pulse'),
@@ -407,14 +413,16 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
         ),
         const SizedBox(height: UtenSpacing.s8),
         _StatusBadge(status: status, key: const Key('server-status-overall')),
-        const SizedBox(height: UtenSpacing.s16),
-        Text(
-          message,
-          key: const Key('server-status-freshness'),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: _fresh ? theme.colorScheme.onSurfaceVariant : color,
+        if (message != null) ...[
+          const SizedBox(height: UtenSpacing.s16),
+          Text(
+            message,
+            key: const Key('server-status-freshness'),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: _fresh ? theme.colorScheme.onSurfaceVariant : color,
+            ),
           ),
-        ),
+        ],
         const SizedBox(height: UtenSpacing.s16),
         Wrap(
           spacing: UtenSpacing.s24,
@@ -431,13 +439,6 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
             ),
             _meta(_l10n.serverStatusUptime, _uptime(_snapshot?.uptimeSeconds)),
           ],
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          _l10n.serverStatusPolling(_snapshot?.pollSeconds ?? 15),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
         ),
       ],
     );
@@ -774,6 +775,8 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           // TODO(l10n): 补 arb
           label: '状态',
           width: 72,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (job) => _statusLabel(_effective(job.status)),
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：健康色铺整格。
           cellColor: (context, job) => utenStatusBadgeCellColor(
@@ -792,6 +795,9 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           // TODO(l10n): 补 arb
           label: '上次开始',
           width: 170,
+          type: 'date',
+          sortable: true,
+          filterFromRows: true,
           value: (job) => _date(job.lastStartAt),
         ),
         MasterColumnDef(
@@ -799,6 +805,9 @@ class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
           // TODO(l10n): 补 arb
           label: '上次结束',
           width: 170,
+          type: 'date',
+          sortable: true,
+          filterFromRows: true,
           value: (job) => _date(job.lastEndAt),
         ),
         MasterColumnDef(

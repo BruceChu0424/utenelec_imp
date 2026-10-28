@@ -715,8 +715,8 @@ public class GoodsService {
         boolean showPrice = canViewPrice();
         boolean showDiscount = canViewDiscount();
         List<ExportColumn> cols = new ArrayList<>();
-        // 2026-10-28 用户口径：导出列序「系统标识」最前、「组装信息ID」第二，
-        // 其余跟随表格导出顺序（默认列序已改为 编号、货品名称 打头）。
+        // 导出固定前三列：系统标识、组装信息ID、编号。其余按当前页面投影顺序；
+        // 未传投影的兼容入口使用表格默认列序，缺少的导入分类上下文放末尾。
         cols.add(new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
         // 组装信息ID（2026-10-28）：值=「货品编号-BOM」（有组装信息才有值，无则空）。
         // 回导时该列有值即把该编号货品的整棵组装信息复制到本行货品下，空=不复制。
@@ -726,7 +726,6 @@ public class GoodsService {
         cols.add(new ExportColumn("clientGoodsName", "客户货品名称", ExportColumn.TEXT));
         // 名称组与表格一致：编号、货品名称、客户货品名称、英文名称；同名表头支持导回。
         cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
-        cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
         cols.add(new ExportColumn("series", "系列", ExportColumn.TEXT));
         cols.add(new ExportColumn("owningWarehouseName", "所属仓库", ExportColumn.TEXT));
@@ -747,6 +746,7 @@ public class GoodsService {
         // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
         cols.add(new ExportColumn("minOrderQty", "最小起订量", ExportColumn.NUMBER));
         cols.add(new ExportColumn("orderMultipleQty", "订货倍数", ExportColumn.NUMBER));
+        cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
                 maxRows, (p, size) -> list(f, p, size, sort, order), g -> {

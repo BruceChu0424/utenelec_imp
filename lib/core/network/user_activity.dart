@@ -15,12 +15,22 @@ class UserActivity {
   static const idleAfter = Duration(seconds: 30);
 
   static DateTime? _lastInputAt;
+  static final Set<VoidCallback> _listeners = {};
 
   /// 输入与空闲判定共用的时钟 (生产即系统时钟；测试可替换)。
   static DateTime Function() clock = DateTime.now;
 
   /// 记一次人为输入。
-  static void record() => _lastInputAt = clock();
+  static void record() {
+    _lastInputAt = clock();
+    for (final listener in List<VoidCallback>.of(_listeners)) {
+      listener();
+    }
+  }
+
+  static void addListener(VoidCallback listener) => _listeners.add(listener);
+  static void removeListener(VoidCallback listener) =>
+      _listeners.remove(listener);
 
   /// 最近一次人为输入的时刻；应用启动后还没有任何输入时为 null。
   static DateTime? get lastInputAt => _lastInputAt;

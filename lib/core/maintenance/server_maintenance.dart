@@ -4,9 +4,9 @@ import 'package:dio/dio.dart';
 import '../network/company_tls.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../network/health_probe.dart';
+import '../network/http_response_date.dart';
 import '../network/server_config.dart';
 
 enum ServerMaintenancePhase { available, scheduled, updating, recoveryRequired }
@@ -94,17 +94,7 @@ typedef MaintenanceStatusReader = Future<ServerMaintenanceSnapshot> Function();
 
 /// Nginx serves an atomic status file; its Date header is fresher than the
 /// document timestamp. Both sources remain independent of the device clock.
-DateTime? maintenanceHttpDate(String? value) {
-  if (value == null || !value.endsWith(' GMT')) return null;
-  try {
-    return DateFormat(
-      'EEE, dd MMM yyyy HH:mm:ss',
-      'en_US',
-    ).parseStrict(value.substring(0, value.length - 4), true);
-  } on FormatException {
-    return null;
-  }
-}
+DateTime? maintenanceHttpDate(String? value) => parseHttpResponseDate(value);
 
 /// One bounded read loop shared by every route and every Flutter platform.
 /// It does not own credentials, navigation, drafts, or business requests.

@@ -60,6 +60,8 @@ class Win32Window {
   bool SetMainWindowMode(bool main_mode);
   bool BeginWindowDrag();
   bool MinimizeWindow();
+  bool ToggleMaximizeWindow();
+  bool IsMainWindowMaximized() const;
   bool CloseWindow();
 
  protected:
@@ -78,6 +80,9 @@ class Win32Window {
   // Called when Destroy is called.
   virtual void OnDestroy();
 
+  // Reports native state changes, including OS shortcuts and drag/snap actions.
+  virtual void OnWindowStateChanged();
+
  private:
   friend class WindowClassRegistrar;
 
@@ -93,6 +98,13 @@ class Win32Window {
 
   // Retrieves a class instance pointer for |window|
   static Win32Window* GetThisFromHandle(HWND const window) noexcept;
+
+  // Flutter's child HWND fills the client area. Make only the resize edges
+  // transparent to hit testing so their underlying parent receives the input.
+  static LRESULT CALLBACK ChildContentSubclassProc(
+      HWND window, UINT message, WPARAM wparam, LPARAM lparam,
+      UINT_PTR subclass_id, DWORD_PTR reference_data) noexcept;
+  LRESULT HitTestResizeBorder(LPARAM screen_position) const;
 
   // Update the window frame's theme to match the system theme.
   static void UpdateTheme(HWND const window);

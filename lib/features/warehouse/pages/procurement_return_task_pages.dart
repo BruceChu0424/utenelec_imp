@@ -20,6 +20,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -921,30 +922,13 @@ class _Pager extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_left_rounded,
-          onPressed: !loading && page > 1 ? () => onPage(page - 1) : null,
-          child: const Text('上一页'),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: Text('第 $page / $totalPages 页'),
-        ),
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_right_rounded,
-          onPressed: !loading && page < totalPages
-              ? () => onPage(page + 1)
-              : null,
-          child: const Text('下一页'),
-        ),
-      ],
+    return Center(
+      child: UtenPagination(
+        currentPage: page,
+        totalPages: totalPages,
+        busy: loading,
+        onPageChanged: onPage,
+      ),
     );
   }
 }

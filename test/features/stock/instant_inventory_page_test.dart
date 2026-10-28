@@ -27,6 +27,17 @@ const _capture = bool.fromEnvironment('UTEN_CAPTURE_INVENTORY_LAYOUT');
 final _captureKey = GlobalKey();
 
 void main() {
+  Future<void> expandInventoryRoot(WidgetTester tester) async {
+    final expand = find.descendant(
+      of: find.byKey(const Key('instant-inventory-category-tree')),
+      matching: find.byTooltip('展开货品资料'),
+    );
+    if (expand.evaluate().isEmpty) return;
+    await tester.ensureVisible(expand);
+    await tester.tap(expand);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> pumpPage(
     WidgetTester tester, {
     required _RecordingStockRepository stock,
@@ -84,6 +95,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await expandInventoryRoot(tester);
   }
 
   Future<void> tapInventoryHeader(WidgetTester tester, Key key) async {
@@ -93,6 +105,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(key));
     await tester.pumpAndSettle();
+    if (key == const Key('instant-inventory-open-categories')) {
+      await expandInventoryRoot(tester);
+    }
   }
 
   testWidgets(

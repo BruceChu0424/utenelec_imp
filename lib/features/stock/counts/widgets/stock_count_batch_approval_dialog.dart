@@ -234,6 +234,7 @@ class _StockCountBatchApprovalDialogState
                       key: 'document',
                       label: '盘点单 / 仓库',
                       width: 220,
+                      columnSearchEnabled: false,
                       value: (row) =>
                           '${row.request.requestNo} · ${row.request.warehouseName}',
                     ),
@@ -241,6 +242,7 @@ class _StockCountBatchApprovalDialogState
                       key: 'goods',
                       label: '物料',
                       width: 220,
+                      columnSearchEnabled: false,
                       value: (row) => [
                         row.line.goodsName,
                         if (row.line.colorName?.isNotEmpty == true)
@@ -251,6 +253,7 @@ class _StockCountBatchApprovalDialogState
                       key: 'beforeQty',
                       label: '账面数量',
                       width: 140,
+                      columnSearchEnabled: false,
                       value: (row) =>
                           _quantity(row.line.beforeQty, row.line.unitName),
                     ),
@@ -258,6 +261,7 @@ class _StockCountBatchApprovalDialogState
                       key: 'targetQty',
                       label: '实盘数量',
                       width: 140,
+                      columnSearchEnabled: false,
                       emphasized: true,
                       value: (row) =>
                           _quantity(row.line.targetQty, row.line.unitName),
@@ -266,12 +270,14 @@ class _StockCountBatchApprovalDialogState
                       key: 'beforeWeight',
                       label: '账面重量',
                       width: 140,
+                      columnSearchEnabled: false,
                       value: (row) => _quantity(row.line.beforeWeightKg, 'kg'),
                     ),
                     MasterColumnDef(
                       key: 'targetWeight',
                       label: '实盘重量',
                       width: 140,
+                      columnSearchEnabled: false,
                       emphasized: true,
                       value: (row) => _quantity(row.line.targetWeightKg, 'kg'),
                     ),

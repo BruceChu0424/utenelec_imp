@@ -23,6 +23,9 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
+import 'package:uten_imp/shared/search/keyword_search.dart';
+import 'package:uten_imp/shared/search/numeric_column_query.dart';
+import 'package:uten_imp/shared/search/calendar_column_query.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -89,6 +92,7 @@ class WarehouseTaskRecordsCall {
     this.billNo,
     this.sort,
     this.order,
+    this.columns = const {},
   });
   final WarehouseTaskDirection direction;
   final String source;
@@ -100,6 +104,7 @@ class WarehouseTaskRecordsCall {
   final String? billNo;
   final String? sort;
   final String? order;
+  final Map<String, String?> columns;
   final result = Completer<WarehouseTaskCenterPageResult>();
 }
 
@@ -155,6 +160,7 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
     int size = 20,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   }) async {
     final call = WarehouseTaskRecordsCall(
       direction: direction,
@@ -167,6 +173,7 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
       page: page,
       sort: sort,
       order: order,
+      columns: Map.of(columns),
     );
     calls.add(call);
     if (controlled) return call.result.future;
@@ -177,6 +184,34 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
               (source == 'ALL' || row.sourceType == source) &&
               (status == null || row.status == status) &&
               (billNo == null || row.billNo == billNo) &&
+              columns.entries.every((entry) {
+                final key = entry.key.substring(7), term = entry.value;
+                if (term == null) return true;
+                final value = switch (key) {
+                  'billNo' => row.billNo,
+                  'goodsName' => row.line?.goodsName,
+                  'goodsCode' => row.line?.goodsCode,
+                  'colorName' => row.line?.colorName,
+                  'specification' => row.line?.specification,
+                  'quantity' =>
+                    row.line?.quantityText ?? row.line?.quantity?.toString(),
+                  'businessDate' => row.businessDate,
+                  'sourceDocNo' => row.sourceDocNo,
+                  'partyName' => row.partyName,
+                  'warehouseName' => row.warehouseName,
+                  'responsibleName' => row.responsibleName,
+                  _ => null,
+                };
+                if (key == 'quantity') {
+                  return NumericColumnQuery.tryParse(term)?.matches(value) ??
+                      false;
+                }
+                if (key == 'businessDate') {
+                  return CalendarColumnQuery.tryParse(term)?.matches(value) ??
+                      false;
+                }
+                return matchesKeywordSearch([value], term);
+              }) &&
               (keywordText.isEmpty ||
                   '${row.billNo} ${row.statusLabel}'.toLowerCase().contains(
                     keywordText,
@@ -1537,6 +1572,10 @@ void main() {
         page: 2,
         sort: 'businessDate',
         order: 'desc',
+        columns: const {
+          'search.quantity': ' >=9007199254740993.0001 ',
+          'search.businessDate': '2026-10-01..2026-10-31',
+        },
       );
       expect(api.lastPath, '/warehouse/task-center/inbound');
       expect(api.lastQuery, {
@@ -1552,6 +1591,8 @@ void main() {
         'size': 20,
         'sort': 'businessDate',
         'order': 'desc',
+        'search.quantity': '>=9007199254740993.0001',
+        'search.businessDate': '2026-10-01..2026-10-31',
       });
     },
   );
@@ -1614,6 +1655,58 @@ void main() {
       isTrue,
     );
     expect(_table(tester).currentPage, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('普通列从完整物理行检索精确数量和业务日期并保留来源范围', (tester) async {
+    final gateway = WarehouseTaskRecordsFakeGateway([
+      for (var index = 0; index < 20; index++)
+        warehouseTestRecord(
+          source: 'SALES',
+          record: 'SALES_SHIPMENT',
+          id: 'early-$index',
+          billNo: 'EARLY-$index',
+        ),
+      warehouseTestRecord(
+        source: 'OTHER',
+        record: 'STOCK_DOC',
+        id: 'late-header',
+        billNo: 'LATE-HEADER',
+        line: const WarehouseTaskLine(
+          key: 'line-21',
+          goodsName: '指定%_货品',
+          goodsCode: 'G-21',
+          unitName: '件',
+          quantity: 9007199254740993,
+          quantityText: '9007199254740993.0001',
+        ),
+      ),
+    ]);
+    await _pump(tester, gateway);
+    expect(find.text('LATE-HEADER'), findsNothing);
+    expect(_table(tester).serverColumnSearch, isTrue);
+    _table(tester).onFilterChanged('search.goodsName', '指定%_');
+    await tester.pumpAndSettle();
+    expect(find.text('LATE-HEADER'), findsOneWidget);
+    _table(tester).onFilterChanged('search.quantity', '>9007199254740993');
+    await tester.pumpAndSettle();
+    _table(
+      tester,
+    ).onFilterChanged('search.businessDate', '2026-10-01..2026-10-31');
+    await tester.pumpAndSettle();
+    expect(gateway.calls.last.page, 1);
+    expect(gateway.calls.last.source, 'ALL');
+    expect(gateway.calls.last.columns, {
+      'search.goodsName': '指定%_',
+      'search.quantity': '>9007199254740993',
+      'search.businessDate': '2026-10-01..2026-10-31',
+    });
+    expect(find.text('9007199254740993.0001 件'), findsOneWidget);
+    _table(tester).onSortChange!('quantity', false);
+    await tester.pumpAndSettle();
+    expect(gateway.calls.last.sort, 'quantity');
+    expect(gateway.calls.last.order, 'desc');
+    expect(gateway.calls.last.columns.length, 3);
     expect(tester.takeException(), isNull);
   });
 

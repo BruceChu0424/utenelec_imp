@@ -11,6 +11,7 @@
 //   普通员工 403；故此处复用「布局与组件」但保留 my-department 安全花名册数据源。
 // 花名册：负责人/管理人排最前；仅安全联系字段；明确负责人看到“去业务页使用本页权限”的说明，
 // 不再在此处维护全目录或中央个人覆盖。
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
@@ -286,7 +287,6 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
       onNodeTap: (n) => onSelect(n.id),
       nodeEnabledPredicate: (_) => true,
       expandOnRowTap: true,
-      initiallyExpandDepth: 2,
       showSearch: false,
       visibleFilterIds: _visibleFilterIds,
       externalSearchQuery: _searchQuery,
@@ -572,47 +572,12 @@ class _ManagerPermissionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.admin_panel_settings_outlined,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '成员权限已按业务页面拆分',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '请在对应业务页面右上角点击“本页权限”。系统只列出你当前拥有且允许委派的权限，'
-                  '不会改写超级管理员的中央授权，也不会扩大客户、单据等对象数据范围。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return const UtenSectionHeader(
+      title: '成员权限已按业务页面拆分',
+      icon: Icons.admin_panel_settings_outlined,
+      info:
+          '请在对应业务页面右上角点击“本页权限”。系统只列出你当前拥有且允许委派的权限，'
+          '不会改写超级管理员的中央授权，也不会扩大客户、单据等对象数据范围。',
     );
   }
 }

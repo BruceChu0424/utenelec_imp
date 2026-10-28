@@ -94,6 +94,9 @@ class _Repo extends StockCountRequestRepository {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     expectSync(warehouseId, 'bin');
     requests.add('$categoryId|$keyword|$page');
@@ -511,6 +514,9 @@ class _PreviewRepo extends _Repo {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagedResult(
     items: [
       for (final (index, name) in [

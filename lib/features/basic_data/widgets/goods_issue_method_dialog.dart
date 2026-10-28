@@ -18,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_error.dart';
@@ -275,6 +276,7 @@ class _GoodsIssueMethodDialogState
             children: [
               if (_saving)
                 const UtenBusyOverlay(
+                  showDoNotLeaveHint: false,
                   title: '正在切换发料方式',
                   description: '正在核对并转换相关 BOM，请勿重复提交或关闭弹窗。',
                 ),
@@ -286,7 +288,14 @@ class _GoodsIssueMethodDialogState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _label(theme, l10n?.wmIssueMethod ?? '发料方式'),
+                      _label(
+                        theme,
+                        l10n?.wmIssueMethod ?? '发料方式',
+                        info: _periodic
+                            ? '仓库按公斤整批发到车间内料仓，车间照常报工；盘点时按「账面 − 实盘」算出实际用量，'
+                                  '再按「报工量 × BOM 单个重量」的比例分到各工单。'
+                            : '按工单领料、按工单退料清账 (原来的做法)。',
+                      ),
                       const SizedBox(height: UtenSpacing.s4),
                       UtenSegmentRow<String>(
                         key: const Key('goods-issue-method-segments'),
@@ -316,19 +325,18 @@ class _GoodsIssueMethodDialogState
                             ? null
                             : (v) => _setMethod(v.first),
                       ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        _periodic
-                            ? '仓库按公斤整批发到车间内料仓，车间照常报工；盘点时按「账面 − 实盘」算出实际用量，'
-                                  '再按「报工量 × BOM 单个重量」的比例分到各工单。'
-                            : '按工单领料、按工单退料清账 (原来的做法)。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
                       if (_periodic) ...[
                         const SizedBox(height: UtenSpacing.s16),
-                        _label(theme, l10n?.wmCostBasis ?? '分摊方式'),
+                        _label(
+                          theme,
+                          l10n?.wmCostBasis ?? '分摊方式',
+                          info: switch (_basis) {
+                            GoodsPeriodicCostBasis.shared =>
+                              '色母这类辅料不写进 BOM，按当期主料用量分到各产品。',
+                            GoodsPeriodicCostBasis.expense => '用量记车间费用，不分给产品。',
+                            _ => '颗粒这类主料在 BOM 里填单个重量 (克)，按报工量分到各工单。',
+                          },
+                        ),
                         const SizedBox(height: UtenSpacing.s4),
                         UtenSegmentRow<String>(
                           key: const Key('goods-cost-basis-segments'),
@@ -344,18 +352,6 @@ class _GoodsIssueMethodDialogState
                           onSelectionChanged: _saving
                               ? null
                               : (v) => _setBasis(v.first),
-                        ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          switch (_basis) {
-                            GoodsPeriodicCostBasis.shared =>
-                              '色母这类辅料不写进 BOM，按当期主料用量分到各产品。',
-                            GoodsPeriodicCostBasis.expense => '用量记车间费用，不分给产品。',
-                            _ => '颗粒这类主料在 BOM 里填单个重量 (克)，按报工量分到各工单。',
-                          },
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
                         ),
                         const SizedBox(height: UtenSpacing.s16),
                         TextField(
@@ -387,8 +383,17 @@ class _GoodsIssueMethodDialogState
                         onChanged: _saving
                             ? null
                             : (v) => setState(() => _recycled = v == true),
-                        title: Text(l10n?.wmRecycledMaterial ?? '回收料'),
-                        subtitle: const Text('水口料、破碎料：交回仓库走其它入库，按 0 成本进仓'),
+                        title: Row(
+                          children: [
+                            Flexible(
+                              child: Text(l10n?.wmRecycledMaterial ?? '回收料'),
+                            ),
+                            const UtenFieldHintIcon(
+                              info: '水口料、破碎料：交回仓库走其它入库，按 0 成本进仓',
+                              dense: true,
+                            ),
+                          ],
+                        ),
                       ),
                       if (_needsPreview) ...[
                         const SizedBox(height: UtenSpacing.s8),
@@ -473,9 +478,18 @@ class _GoodsIssueMethodDialogState
     );
   }
 
-  Widget _label(ThemeData theme, String text) => Text(
-    text,
-    style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+  Widget _label(ThemeData theme, String text, {String? info}) => Row(
+    children: [
+      Flexible(
+        child: Text(
+          text,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      if (info != null) UtenFieldHintIcon(info: info, dense: true),
+    ],
   );
 
   Widget _previewSection(ThemeData theme) {

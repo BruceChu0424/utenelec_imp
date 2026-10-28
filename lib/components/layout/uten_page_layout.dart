@@ -77,6 +77,25 @@ class UtenPageLayoutDomainScope extends InheritedWidget {
       domain != oldWidget.domain || active != oldWidget.active;
 }
 
+/// The actual adaptive pane decision, independent of the window breakpoint.
+/// A merged page shares its search/content edges; a split pane keeps its inset.
+class UtenPagePaneScope extends InheritedWidget {
+  const UtenPagePaneScope({
+    super.key,
+    required this.split,
+    required super.child,
+  });
+
+  final bool split;
+
+  static bool? splitOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<UtenPagePaneScope>()?.split;
+
+  @override
+  bool updateShouldNotify(UtenPagePaneScope oldWidget) =>
+      split != oldWidget.split;
+}
+
 /// Page horizontal ownership without LayoutBuilder, intrinsic or height changes.
 /// Local panels preserve the supplied padding in its original canvas units.
 class UtenPageEdgePadding extends StatelessWidget {
@@ -85,7 +104,18 @@ class UtenPageEdgePadding extends StatelessWidget {
     required this.child,
     this.padding = EdgeInsets.zero,
     this.preserveStart = false,
-  }) : scrollBuilder = null;
+  }) : scrollBuilder = null,
+       _pane = false;
+
+  /// Pane decoration is retained in split/local panels. In a merged page with
+  /// existing page margins, only its vertical spacing remains.
+  const UtenPageEdgePadding.pane({
+    super.key,
+    required this.child,
+    this.padding = EdgeInsets.zero,
+  }) : scrollBuilder = null,
+       preserveStart = true,
+       _pane = true;
 
   /// Keeps top/bottom inside the scroll content where they originally belonged.
   /// The returned scroll view's descendants inherit horizontal ownership.
@@ -95,11 +125,13 @@ class UtenPageEdgePadding extends StatelessWidget {
     this.preserveStart = false,
     required Widget Function(BuildContext context, EdgeInsets padding) builder,
   }) : scrollBuilder = builder,
-       child = null;
+       child = null,
+       _pane = false;
 
   final Widget? child;
   final EdgeInsetsGeometry padding;
   final bool preserveStart;
+  final bool _pane;
   final Widget Function(BuildContext context, EdgeInsets padding)?
   scrollBuilder;
 
@@ -111,8 +143,10 @@ class UtenPageEdgePadding extends StatelessWidget {
     final original = padding.resolve(Directionality.of(context));
     if (!UtenPageScrollRoleScope.isPageOf(context)) return original;
     final owned = UtenContentInsetsScope.isPresentOf(context);
+    final keepStart =
+        preserveStart && UtenPagePaneScope.splitOf(context) != false;
     return EdgeInsets.fromLTRB(
-      owned && !preserveStart ? 0 : original.left,
+      owned && !keepStart ? 0 : original.left,
       original.top,
       owned ? 0 : UtenPageChromeMetrics.endOf(context),
       original.bottom,
@@ -125,8 +159,28 @@ class UtenPageEdgePadding extends StatelessWidget {
     bool preserveStart = false,
   }) => resolve(context, padding, preserveStart: preserveStart);
 
+  static EdgeInsets resolvePanePadding(
+    BuildContext context,
+    EdgeInsetsGeometry padding,
+  ) {
+    final original = padding.resolve(Directionality.of(context));
+    final mergedPage =
+        UtenPagePaneScope.splitOf(context) == false &&
+        UtenPageScrollRoleScope.isPageOf(context) &&
+        UtenContentInsetsScope.isPresentOf(context);
+    return mergedPage
+        ? EdgeInsets.only(top: original.top, bottom: original.bottom)
+        : original;
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_pane) {
+      return Padding(
+        padding: resolvePanePadding(context, padding),
+        child: child,
+      );
+    }
     final resolved = resolve(context, padding, preserveStart: preserveStart);
     final page = UtenPageScrollRoleScope.isPageOf(context);
     final inherited = UtenContentInsetsScope.isPresentOf(context);

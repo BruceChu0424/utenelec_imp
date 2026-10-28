@@ -19,6 +19,8 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
+import 'package:uten_imp/features/quality/repositories/quality_pending_queue_repository.dart';
+import '../../support/quality_pending_receipt_queue.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -191,7 +193,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          procurementInspectionRepositoryProvider.overrideWithValue(repository),
+          ..._taskCenterOverrides(repository),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
         child: _routerApp(router),
@@ -681,6 +683,7 @@ Future<void> _pumpWorkbenchBadge(
 }
 
 List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
+  final api = ApiClient(Dio());
   return [
     sessionProvider.overrideWith(_QualityReviewerSessionNotifier.new),
     // The authenticated report now initializes durable draft protection. Keep
@@ -689,7 +692,7 @@ List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
     // 提交报告先经 captureFormDraftRequestScope 绑定当前会话；裸 ApiClient（无
     // AuthInterceptor → 无 SecureStorage）让该闸门按未认证客户端直通，与
     // quality_batch_approval_recovery_test.dart 同一测试缝隙。
-    apiClientProvider.overrideWithValue(ApiClient(Dio())),
+    apiClientProvider.overrideWithValue(api),
     formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
     currentPermissionsProvider.overrideWithValue({
       Perm.procurementInspectionView,
@@ -697,6 +700,9 @@ List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
     }),
     isSuperAdminProvider.overrideWithValue(false),
     procurementInspectionRepositoryProvider.overrideWithValue(repository),
+    qualityPendingQueueRepositoryProvider.overrideWithValue(
+      ReceiptQualityQueueFixture(api, repository),
+    ),
   ];
 }
 

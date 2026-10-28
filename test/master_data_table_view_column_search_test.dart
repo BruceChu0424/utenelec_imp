@@ -50,7 +50,7 @@ void main() {
   );
 
   testWidgets(
-    'date and status keep sort or exact choices without keyword input',
+    'local dates accept a date search and status searches candidate choices',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -86,13 +86,33 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('日期'));
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      final search = find.byKey(const Key('uten-column-keyword-search'));
+      expect(search.hitTestable(), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '2026-10-17',
+      );
+      await tester.tap(search);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('uten-column-keyword-input')), findsNothing);
+      expect(find.text('已完成'), findsOneWidget);
+      expect(find.text('日期：2026-10-17'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('master-column-filter-date')));
+      await tester.pumpAndSettle();
       expect(find.text('从远到近'), findsOneWidget);
       await tester.tap(find.text('从远到近'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('状态'));
       await tester.pumpAndSettle();
-      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.byKey(const Key('uten-column-keyword-search')), findsNothing);
+      await tester.enterText(find.byType(TextField), '不存在');
+      await tester.pump();
+      expect(find.text('已完成 (1)'), findsNothing);
+      expect(find.text('已完成'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '完成');
+      await tester.pump();
       expect(find.text('已完成 (1)'), findsOneWidget);
     },
   );

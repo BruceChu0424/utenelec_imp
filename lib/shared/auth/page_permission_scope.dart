@@ -41,16 +41,10 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     );
   }
   if (path == '/finance/stock-count-review') {
-    return const PagePermissionScope(
-      surfaceKey: 'finance.stock-count-review',
-      title: '普通仓盘点财务审核',
-    );
+    return _financeStockCountReviewScope;
   }
   if (path == '/warehouse/stock-count-review') {
-    return const PagePermissionScope(
-      surfaceKey: 'warehouse.stock-count-review',
-      title: '车间内料仓盘点审核',
-    );
+    return _warehouseStockCountReviewScope;
   }
 
   // 人事与组织。
@@ -107,12 +101,25 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     return _financeAuditCenterScope;
   }
   if (path == '/basicinfo') return _basicDataHubScope;
+  if (path == '/basicinfo/history') {
+    final entity = Uri.tryParse(location)?.queryParameters['entityType'];
+    return masterHistoryPermissionScopeFor(entity);
+  }
+  if (path.startsWith('/basicinfo/history/')) {
+    final parts = _segments(path);
+    return parts.length == 4 ? _masterHistoryScopes[parts[2]] : null;
+  }
   if (path == '/basicinfo/goods' || _isDescendant(path, '/basicinfo/goods')) {
     return _goodsScope;
   }
   if (path == '/basicinfo/mould') return _mouldScope;
-  if (path == '/basicinfo/client') return _clientScope;
-  if (path == '/basicinfo/supplier') return _supplierScope;
+  if (path == '/basicinfo/client' || _isDescendant(path, '/basicinfo/client')) {
+    return _clientScope;
+  }
+  if (path == '/basicinfo/supplier' ||
+      _isDescendant(path, '/basicinfo/supplier')) {
+    return _supplierScope;
+  }
   if (path == '/basicinfo/color') return _colorScope;
   if (path == '/basicinfo/unit') return _unitScope;
   if (path == '/basicinfo/currency') return _currencyScope;
@@ -174,6 +181,12 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
 
   return null;
 }
+
+/// 历史页本地切换资料类型时，与深链使用同一个页面权限归属。
+PagePermissionScope? masterHistoryPermissionScopeFor(String? entityType) =>
+    entityType == null || entityType == 'all'
+    ? _basicDataHubScope
+    : _masterHistoryScopes[entityType];
 
 /// 独立权限设置路由按稳定 surfaceKey 反查页面定义。
 ///
@@ -247,6 +260,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _warehouseSalesOutboundScope,
   _stockDocumentScope,
   _warehouseTasksScope,
+  _warehouseStockCountReviewScope,
   _stockItemScope,
   _workshopMaterialScope,
   _workshopMaterialSetupScope,
@@ -293,6 +307,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _reconciliationScope,
   _financeAssetScope,
   _financeChecksScope,
+  _financeStockCountReviewScope,
   _financeReceiptScope,
   _financePaymentScope,
   _financeExpenseScope,
@@ -386,6 +401,15 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   if (path == '/warehouse/workshop-material/setup') {
     return _workshopMaterialSetupScope;
   }
+  if (path == '/warehouse/material-returns/batch-receive' ||
+      (segments.length == 3 && segments[1] == 'material-discovery')) {
+    return _stockDocumentScope;
+  }
+  if (path == '/warehouse/production-finished-in/tasks' ||
+      path == '/warehouse/production-finished-in/batch-stock-in' ||
+      path == '/warehouse/production-finished-in/arrival-registrations') {
+    return _warehouseTasksScope;
+  }
   if (!_stockDocumentCodes.contains(segments[1])) return null;
   return _isDocumentPath(segments) ? _stockDocumentScope : null;
 }
@@ -424,6 +448,19 @@ PagePermissionScope? _subcontractScopeFor(List<String> segments) {
 
 PagePermissionScope? _productionScopeFor(List<String> segments) {
   if (segments.length == 1) return _productionHubScope;
+  if ((segments.length == 3 &&
+          segments[1] == 'material-return' &&
+          segments[2] == 'new') ||
+      (segments.length == 2 && segments[1] == 'material-discovery-request') ||
+      (segments.length == 3 &&
+          segments[1] == 'overproduction-rate-requests' &&
+          segments[2] == 'new') ||
+      (segments.length == 3 &&
+          segments[1] == 'material-increment-requests' &&
+          segments[2] == 'new')) {
+    // 申请动作属于车间任务；审批列表及详情仍使用计划审批面。
+    return _productionWorkshopTasksScope;
+  }
   switch (segments[1]) {
     // 2026-10-19 同页双路由收口：/production/progress 已重定向到
     // /production/schedule?tab=progress，production.progress 面退役，
@@ -438,6 +475,7 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
     case 'overproduction-rate-requests':
     case 'over-limit-dispositions':
     case 'material-increment-requests':
+    case 'actual-output-supplements':
       return _productionPlanScope;
     case 'workshop-tasks':
       return segments.length == 2 ||
@@ -503,7 +541,9 @@ PagePermissionScope? _financeScopeFor(String path, List<String> segments) {
   if (path == '/finance/payables') return _financePayablesScope;
   if (path == '/finance/reconciliations') return _reconciliationScope;
   if (path == '/finance/checks') return _financeChecksScope;
-  if (path == '/finance/assets') return _financeAssetScope;
+  if (path == '/finance/assets' || path == '/finance/assets/new') {
+    return _financeAssetScope;
+  }
 
   final scope = _financeDocumentScopes[segments[1]];
   if (scope == null || !_isDocumentPath(segments)) return null;
@@ -769,6 +809,29 @@ const _warehouseHistoryScopes = <String, PagePermissionScope>{
       _warehouseSubcontractMaterialReturnHistoryScope,
   'subcontract-wastes': _warehouseSubcontractWasteHistoryScope,
 };
+const _warehouseStockCountReviewScope = PagePermissionScope(
+  surfaceKey: 'warehouse.stock-count-review',
+  title: '车间内料仓盘点审核',
+);
+const _financeStockCountReviewScope = PagePermissionScope(
+  surfaceKey: 'finance.stock-count-review',
+  title: '普通仓盘点财务审核',
+);
+
+// 主档历史复用原主档的权限入口，不维护另一份权限码目录。
+const _masterHistoryScopes = <String, PagePermissionScope>{
+  'goods': _goodsScope,
+  'clients': _clientScope,
+  'suppliers': _supplierScope,
+  'moulds': _mouldScope,
+  'colors': _colorScope,
+  'units': _unitScope,
+  'currencies': _currencyScope,
+  'warehouses': _warehouseMasterScope,
+  'accounts': _accountScope,
+  'reference-methods': _settlementMethodScope,
+  'payment-styles': _paymentStyleScope,
+};
 const _warehouseReportScope = PagePermissionScope(
   surfaceKey: 'warehouse.report',
   title: '仓库报表',
@@ -815,6 +878,7 @@ const _stockDocumentCodes = <String>{
   'FINISHED_IN',
   'FINISHED_OUT',
   'CHECK',
+  'WASTE', // 旧损耗单只读入口；写动作仍由原路由和服务端禁止。
 };
 
 const _salesHubScope = PagePermissionScope(
@@ -862,6 +926,7 @@ const _salesDocumentScopes = <String, PagePermissionScope>{
   'quotes': _salesQuoteScope,
   'orders': _salesOrderScope,
   'shipments': _salesShipmentScope,
+  'customer-shipments': _salesOtherShipmentScope,
   'other-shipments': _salesOtherShipmentScope,
   'returns': _salesReturnScope,
 };

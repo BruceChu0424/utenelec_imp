@@ -306,6 +306,10 @@ class OperationsWorkbenchTask {
     this.warehouseId,
     this.supplierName,
     this.differenceQtyText,
+    this.requiredQtyText,
+    this.allocatedQtyText,
+    this.fulfilledQtyText,
+    this.openQtyText,
   });
 
   final String taskId;
@@ -377,6 +381,10 @@ class OperationsWorkbenchTask {
 
   /// Signed quantity from the server; no client-side reconstruction from openQty.
   final String? differenceQtyText;
+  final String? requiredQtyText,
+      allocatedQtyText,
+      fulfilledQtyText,
+      openQtyText;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
@@ -494,6 +502,10 @@ class OperationsWorkbenchTask {
       supplierName: _optionalString(json, 'supplierName'),
       differenceQtyText: (json['differenceQtyExact'] ?? json['differenceQty'])
           ?.toString(),
+      requiredQtyText: json['requiredQtyExact']?.toString(),
+      allocatedQtyText: json['allocatedQtyExact']?.toString(),
+      fulfilledQtyText: json['fulfilledQtyExact']?.toString(),
+      openQtyText: json['openQtyExact']?.toString(),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,

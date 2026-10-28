@@ -47,6 +47,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/stock_doc.dart';
+import '../models/stock_doc_header_query.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../providers/stock_draft_delete.dart';
 import '../pages/warehouse_stock_batch_outbound_page.dart';
@@ -159,6 +160,16 @@ class _WarehouseStockDocSegmentState
 
   /// DRAW 出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
+  String? _statusHeader;
+  List<MasterFacetBucket> get _statusFacets => stockDocHeaderStatuses(
+    history: _seg?.history == true,
+    stage: _seg?.status,
+    returnTaskLabels: widget.docType == StockDocType.wdraw,
+  );
+  int? get _queryStatus => stockDocHeaderStatus(
+    _statusHeader,
+    _seg?.history == true ? null : _seg?.status,
+  );
 
   /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
   UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
@@ -181,6 +192,7 @@ class _WarehouseStockDocSegmentState
       setState(() {
         _reloadGeneration++;
         _columnFilters.reset();
+        _statusHeader = null;
         clearDraftSelection();
         _list.invalidateReadOwner(notify: false);
       });
@@ -227,6 +239,7 @@ class _WarehouseStockDocSegmentState
         _historyTime = UtenHistoryTimeValue.lastThreeMonths();
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
+        _statusHeader = null;
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reload(queryChanged ? 1 : null, !queryChanged);
@@ -258,7 +271,14 @@ class _WarehouseStockDocSegmentState
             productionReturnRequests:
                 widget.productionReturnRequests && !seg.history ? true : null,
             keyword: _list.normalizedKeyword,
-            status: seg.history ? null : seg.status,
+            status: _queryStatus,
+            warehouseId: _columnFilters['warehouse'],
+            departmentId: widget.docType == StockDocType.draw
+                ? _columnFilters['department']
+                : null,
+            toWarehouseId: widget.docType == StockDocType.transfer
+                ? _columnFilters['toWarehouse']
+                : null,
             issueStatus: showIssue ? _issueStatus : null,
             dateFrom: range == null
                 ? null
@@ -266,6 +286,7 @@ class _WarehouseStockDocSegmentState
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
             warehouseScope: WarehouseListScope.of(context),
             billNo: _columnFilters['billNo'],
+            columnSearch: _columnFilters.values,
           ),
           sort: sort,
           order: sort == null ? null : _list.sortOrder,
@@ -293,7 +314,15 @@ class _WarehouseStockDocSegmentState
                     ? true
                     : null,
                 keyword: _list.normalizedKeyword,
-                status: seg.history ? null : seg.status,
+                status: _queryStatus,
+                warehouseId: _columnFilters['warehouse'],
+                departmentId: widget.docType == StockDocType.draw
+                    ? _columnFilters['department']
+                    : null,
+                toWarehouseId: widget.docType == StockDocType.transfer
+                    ? _columnFilters['toWarehouse']
+                    : null,
+                columnSearch: _columnFilters.values,
                 issueStatus: showIssue ? _issueStatus : null,
                 dateFrom: range == null
                     ? null
@@ -319,6 +348,7 @@ class _WarehouseStockDocSegmentState
     widget.docType,
     _seg,
     _issueStatus,
+    _statusHeader,
     _historyTime,
     _historyTime.range?.start,
     _historyTime.range?.end,
@@ -468,6 +498,7 @@ class _WarehouseStockDocSegmentState
     clearDraftSelection();
     setState(() {
       _seg = seg;
+      _statusHeader = null;
       _issueStatus = null;
       // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
       _historyTime = seg.history
@@ -514,6 +545,8 @@ class _WarehouseStockDocSegmentState
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
         key: 'status',
+        facetSearchEnabled: true,
+        columnSearchEnabled: false,
         label: '状态',
         width: 72,
         value: (it) => _taskDrafts(it).isNotEmpty
@@ -546,6 +579,8 @@ class _WarehouseStockDocSegmentState
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',
+          facetSearchEnabled: true,
+          columnSearchEnabled: false,
           label: '出库进度',
           width: 110,
           value: (it) => drawIssueStatusLabel(it.issueStatus),
@@ -558,6 +593,7 @@ class _WarehouseStockDocSegmentState
         label: '日期',
         width: 120,
         type: 'date',
+        columnSearchEnabled: true,
         sortable: true,
         value: (it) => it.billDate == null
             ? null
@@ -616,7 +652,7 @@ class _WarehouseStockDocSegmentState
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         AppLocalizationsZh();
     ref.watch(currentPermissionsProvider);
-    ref.watch(masterNameServiceProvider);
+    final names = ref.watch(masterNameServiceProvider);
     // 详情/编辑页保存、审核、红冲成功都会 bump 本 docType 的 tick：宿主任务中心就在
     // 栈顶时据此重拉；被详情页盖着时由宿主返回时的刷新带着重拉(ADR-108)。
     _hostLocation ??= currentLocationOr(context, '');
@@ -760,6 +796,7 @@ class _WarehouseStockDocSegmentState
                     // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                     primary: true,
                     key: Key('stock-doc-segment-table-${widget.docType.code}'),
+                    serverColumnSearch: true,
                     selectable: _canSelectDrafts,
                     rowKeyOf: (d) => d.id,
                     idOf: (d) =>
@@ -847,6 +884,18 @@ class _WarehouseStockDocSegmentState
                     items: _list.page?.items ?? const [],
                     // 2026-09-25 单号列统一：单据号桶走服务端（与列表同一过滤口径）。
                     facets: {
+                      'status': _statusFacets,
+                      'warehouse': masterDictionaryFacets(
+                        names.warehouseEntries,
+                      ),
+                      if (widget.docType == StockDocType.draw)
+                        'department': masterDictionaryFacets(
+                          names.departmentEntries,
+                        ),
+                      if (widget.docType == StockDocType.transfer)
+                        'toWarehouse': masterDictionaryFacets(
+                          names.warehouseEntries,
+                        ),
                       'billNo': _columnFilters.bucketOf('billNo'),
                       if (showIssueStatus)
                         'issueStatus': const [
@@ -860,11 +909,25 @@ class _WarehouseStockDocSegmentState
                     },
                     nullCounts: const {},
                     filters: {
+                      ..._columnFilters.values,
+                      'status': _statusHeader,
                       'billNo': _columnFilters['billNo'],
                       if (showIssueStatus)
                         'issueStatus': _issueStatus?.toString(),
                     },
                     onFilterChanged: (key, value) {
+                      if (key == 'status') {
+                        if (value != null &&
+                            !_statusFacets.any(
+                              (facet) => facet.value == value,
+                            )) {
+                          return;
+                        }
+                        clearDraftSelection();
+                        setState(() => _statusHeader = value);
+                        _reload(1);
+                        return;
+                      }
                       if (key == 'issueStatus' && showIssueStatus) {
                         final next = const {'0', '1'}.contains(value)
                             ? int.parse(value!)
@@ -875,7 +938,15 @@ class _WarehouseStockDocSegmentState
                         _reload(1);
                         return;
                       }
-                      if (key != 'billNo') return;
+                      if (key != 'billNo' &&
+                          !key.startsWith('search.') &&
+                          !{
+                            'warehouse',
+                            'department',
+                            'toWarehouse',
+                          }.contains(key)) {
+                        return;
+                      }
                       _columnFilters.handleFilterChanged(
                         key,
                         value,

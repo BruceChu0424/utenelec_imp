@@ -40,6 +40,7 @@ import 'dart:async';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import '../../../shared/search/retain_hierarchy_filter_context.dart';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -3514,6 +3515,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           key: 'audited',
           label: '已审',
           width: 64,
+          minimumWidthOf: (_) => 48,
           value: (r) => r.node.item.audited ? '已核对' : '',
           // 交互辅助列（点格翻核对状态），不进导出投影——后端导出列集没有它。
           exportable: false,
@@ -3570,6 +3572,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'learned',
         label: '学习来源',
         width: 110,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
         cellColor: (context, r) => r.node.item.systemLearned
             ? utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia)
@@ -3596,6 +3599,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'model',
         label: '型号',
         width: 120,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.componentModel,
         cellBuilder: (context, r) =>
             _masterCell(r, 'model', r.node.item.componentModel),
@@ -3604,6 +3608,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'spec',
         label: '规格',
         width: 170,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.componentSpec,
         cellBuilder: (context, r) =>
             _masterCell(r, 'spec', r.node.item.componentSpec),
@@ -3614,6 +3619,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'color',
         label: '颜色',
         width: 80,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.componentColorName,
         cellBuilder: !_canEdit ? null : (context, r) => _colorCell(r),
       ),
@@ -3621,6 +3627,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'material',
         label: '材质',
         width: 120,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.componentMaterial,
         cellBuilder: (context, r) =>
             _masterCell(r, 'material', r.node.item.componentMaterial),
@@ -3644,6 +3651,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'source',
         label: '来源',
         width: 64,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.componentSourceType,
         cellBuilder: (context, r) =>
             _masterCell(r, 'sourceType', r.node.item.componentSourceType),
@@ -3652,6 +3660,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'consumptionBasis',
         label: '计量方式',
         width: 92,
+        minimumWidthOf: (_) => 48,
         value: (r) =>
             r.isPlaceholder ? null : r.node.item.consumptionBasis.label,
         cellBuilder: !_canEdit
@@ -3659,7 +3668,11 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             : (context, r) {
                 if (r.isPlaceholder) return const SizedBox.shrink();
                 if (r.node.item.isPeriodicEdge) {
-                  return Text(r.node.item.consumptionBasis.label);
+                  return Text(
+                    r.node.item.consumptionBasis.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  );
                 }
                 final values = _valuesFor(r);
                 return _lazyCell(
@@ -3699,12 +3712,17 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'basisOutputQty',
         label: '基准产量',
         width: 88,
+        minimumWidthOf: (_) => 48,
         type: 'number',
         value: (r) => r.isPlaceholder ? null : r.node.item.basisOutputQtyText,
         cellBuilder: !_canEdit
             ? null
             : (context, r) => r.node.item.isPeriodicEdge
-                  ? Text(r.node.item.basisOutputQtyText)
+                  ? Text(
+                      r.node.item.basisOutputQtyText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
                   : _inlineText(r, 'basisOutputQty', '基准产量'),
         exactValueOf: (r) => r.node.item.basisOutputQty.toString(),
       ),
@@ -3712,6 +3730,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'allowPartialPackage',
         label: '尾包',
         width: 72,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.isPlaceholder ? null : r.node.item.partialPackageLabel,
         cellBuilder: !_canEdit
             ? null
@@ -3761,6 +3780,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'qty',
         label: l10n.bomDesignQty,
         width: 150,
+        minimumWidthOf: (_) => 48,
         type: 'number',
         info: '整批领到车间内料仓的料 (颗粒等)，这一格是单个重量，按克填写和显示。',
         value: (r) => _bomQtyText(r.node.item),
@@ -3784,6 +3804,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         key: 'actualQty',
         label: l10n.bomActualQty,
         width: 150,
+        minimumWidthOf: (_) => 48,
         type: 'number',
         value: (r) => _bomActualQtyText(r.node.item),
         exactValueOf: (r) => r.node.item.actual.qty?.toString(),
@@ -3793,13 +3814,18 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             r.node.item.actual,
             netUnit: r.node.item.componentUnitName,
           ),
-          child: Text(_bomActualQtyText(r.node.item)),
+          child: Text(
+            _bomActualQtyText(r.node.item),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ),
       MasterColumnDef(
         key: 'summary',
         label: '备注',
         width: 120,
+        minimumWidthOf: (_) => 48,
         value: (r) => r.node.item.summary,
         cellBuilder: !_canEdit
             ? null
@@ -3882,6 +3908,14 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   key: ValueKey('goods-bom-table-$selectable-$_auditMode'),
                   columns: _columns,
                   items: visible,
+                  filterContextRows: (all, matched) =>
+                      retainMatchedPreorderAncestors(
+                        all,
+                        matched,
+                        depthOf: (row) => row.depth,
+                      ),
+                  headerFilterScopeDescription:
+                      '仅定位当前已展开的BOM行并保留可见父节点；不自动展开，保存和审核仍作用于完整BOM。',
                   dataCellVerticalPadding:
                       UtenTreeTableCell.compactCellVerticalPadding,
                   bodyPresentationBuilder: (context, child) => Stack(
@@ -4104,12 +4138,14 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         // 确认框已经关掉才会挂上来，否则它会盖住确认框(见 _deleteSelected)。
         if (_deleting)
           const UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: '正在删除组件',
             description: '正在把所选组件从组装清单中移除，请勿重复提交或关闭页面。',
           ),
         // 拖拽移动网络段的全屏加载遮罩(落点已定，无确认框，直接包网络段)。
         if (_pasting || _switchingMode)
           UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: _pasting
                 ? _l10n.bomEditPasting
                 : _checkingChanges
@@ -4119,6 +4155,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           ),
         if (_moving)
           const UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: '正在移动组件',
             description: '正在保存新的组装层级与顺序，请勿重复提交或关闭页面。',
           ),
@@ -4723,6 +4760,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
           // 批量添加组件网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
           if (_saving)
             const UtenBusyOverlay(
+              showDoNotLeaveHint: false,
               title: '正在添加组件',
               description: '正在一次性保存全部组件，请勿重复提交或关闭弹窗。',
             ),
@@ -5141,13 +5179,18 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                                         const TextInputType.numberWithOptions(
                                           decimal: true,
                                         ),
-                                    decoration: InputDecoration(
-                                      labelText: _periodicWeightLabel(
-                                        context,
-                                        e.componentUnitName,
+                                    decoration: UtenInputDecoration(
+                                      InputDecoration(
+                                        labelText: _periodicWeightLabel(
+                                          context,
+                                          e.componentUnitName,
+                                        ),
+                                        border: const OutlineInputBorder(),
+                                        isDense: true,
                                       ),
-                                      border: const OutlineInputBorder(),
-                                      isDense: true,
+                                      info:
+                                          '整批领到车间内料仓的料：只填单个重量 (克，不含水口)；'
+                                          '管控阶段固定为开工前、按每件计量、不设齐套门槛。',
                                     ),
                                   )
                                 : _DesignQtyField(
@@ -5174,15 +5217,6 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                       ),
                       // 期间边 (ADR-131)：形状由系统固定，只读说明；单重偏差标黄提醒。
                       if (e.isPeriodicEdge) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        Text(
-                          '整批领到车间内料仓的料：只填单个重量 (克，不含水口)；'
-                          '管控阶段固定为开工前、按每件计量、不设齐套门槛。',
-                          key: const Key('goods-bom-periodic-readonly-note'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
                         if (_gramsDeviate)
                           Container(
                             key: const Key('goods-bom-weight-deviation'),

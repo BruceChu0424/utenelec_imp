@@ -6,6 +6,7 @@
 // - 盘点说明在「保存并送审」确认弹窗里选填；送审走 stock_count_requests；
 // - 切换仓库按仓保留未送审输入（内存暂存，随本机草稿落盘由 FormDraftMixin 负责，
 //   测试环境无登录身份，草稿通道自然关闭，只验业务流）。
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -67,6 +68,7 @@ class _SessionRepo extends StockCountRequestRepository {
   final warehouses = <StockCountWarehouse>[_warehouseA, _warehouseB];
   bool canSubmit = true;
   final relatedQueries = <bool>[];
+  final columnQueries = <Map<String, dynamic>>[];
   final candidateQueries =
       <({String warehouse, bool stockedOnly, bool sheet, String? keyword})>[];
   final categoryQueries = <({String warehouse, bool sheet})>[];
@@ -92,7 +94,16 @@ class _SessionRepo extends StockCountRequestRepository {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
+    columnQueries.add({
+      ...columns,
+      'sort': sort,
+      'ascending': ascending,
+      'page': page,
+    });
     relatedQueries.add(includeRelated);
     candidateQueries.add((
       warehouse: warehouseId,
@@ -225,6 +236,56 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 }
 
 void main() {
+  testWidgets(
+    'book header queries keep unsubmitted inputs and stay in the chosen warehouse',
+    (tester) async {
+      final repo = _SessionRepo({
+        'leaf-a': [_row(_screw, qty: '10', weight: '1.5')],
+      });
+      final router = await _mount(
+        tester,
+        repo,
+        warehouseId: 'leaf-a',
+        platform: TargetPlatform.windows,
+      );
+      addTearDown(router.dispose);
+      final input = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+      await tester.enterText(input, '12');
+      await tester.tap(find.text('账面数量'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=10',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repo.columnQueries.last['search.qty'], '>=10');
+      expect(repo.columnQueries.last['page'], 1);
+      expect(repo.candidateQueries.last.warehouse, 'leaf-a');
+      expect(tester.widget<TextField>(input).controller!.text, '12');
+      final table = tester.widget<MasterDataTableView<CountStockRow>>(
+        find.byType(MasterDataTableView<CountStockRow>),
+      );
+      expect(
+        table.columns
+            .singleWhere((c) => c.key == 'countTargetQty')
+            .columnSearchEnabled,
+        isFalse,
+      );
+      expect(
+        table.columns.singleWhere((c) => c.key == 'delta').columnSearchEnabled,
+        isFalse,
+      );
+      table.onSortChange!('qty', false);
+      await tester.pumpAndSettle();
+      expect(repo.columnQueries.last['sort'], 'qty');
+      expect(repo.columnQueries.last['ascending'], isFalse);
+      await _confirmSubmit(tester);
+      expect(repo.submissions.single.lines.single['targetQty'], '12');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final aba in [false, true]) {
     testWidgets(
       'late warehouse stash preserves touched input, new rows and session ABA=$aba',
@@ -636,7 +697,7 @@ void main() {
   testWidgets('没有可盘点仓库或提交权限时给出明确提示', (tester) async {
     final repo = _SessionRepo({})..canSubmit = false;
     await _mount(tester, repo);
-    expect(find.text('当前没有提交盘点的权限'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '当前没有提交盘点的权限');
     expect(find.byKey(const Key('stock-count-save')), findsNothing);
   });
 }
@@ -666,6 +727,9 @@ class _DelayedFilterRepo extends _SessionRepo {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) {
     calls++;
     if (calls == 2) return older.future;
@@ -703,6 +767,9 @@ class _DelayedStashRepo extends _SessionRepo {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) {
     if (hold && warehouseId == 'leaf-a' && goodsIds.isNotEmpty) {
       final gate = Completer<PagedResult<CountStockRow>>();
@@ -740,6 +807,9 @@ class _RelatedModeRepo extends _SessionRepo {
     int page = 1,
     int size = 50,
     bool includeRelated = false,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) {
     if (includeRelated) {
       final completer = Completer<PagedResult<CountStockRow>>();

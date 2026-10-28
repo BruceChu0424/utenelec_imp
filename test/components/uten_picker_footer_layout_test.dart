@@ -181,7 +181,7 @@ void main() {
       await tester.pumpAndSettle();
       final input = find.byType(TextField);
       final outline = find.byKey(const Key('picker-page-input-outline'));
-      expect(tester.getSize(outline).height, 40);
+      expect(tester.getSize(outline).height, 28);
       expect(
         tester.getCenter(find.byType(EditableText)).dy,
         closeTo(tester.getCenter(outline).dy, 1),

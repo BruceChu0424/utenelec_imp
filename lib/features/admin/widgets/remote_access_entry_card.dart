@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -26,8 +27,10 @@ class RemoteAccessEntryCard extends ConsumerWidget {
       child: ListTile(
         key: const Key('remote-access-settings-entry'),
         leading: const Icon(Icons.public_outlined),
-        title: Text(remoteAccessText(context, 'title')),
-        subtitle: Text(remoteAccessText(context, 'description')),
+        title: UtenSectionHeader(
+          title: remoteAccessText(context, 'title'),
+          info: remoteAccessText(context, 'description'),
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
           if (allowed()) context.push(RouteName.adminRemoteAccess);

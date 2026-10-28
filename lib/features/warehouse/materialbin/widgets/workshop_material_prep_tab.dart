@@ -564,6 +564,9 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 ),
               const SizedBox(height: UtenSpacing.s8),
               UtenEditableGrid<WmPrepRow>(
+                headerFilterScopeDescription: _truncated
+                    ? '筛选本次常做产品清单；进度统计仍按全部产品计算'
+                    : '筛选本次上线准备清单',
                 tableKey:
                     'features.warehouse.materialbin.widgets.workshop_material_prep_tab.WmPrepTabState.build.1',
                 key: const Key('wm-prep-grid'),

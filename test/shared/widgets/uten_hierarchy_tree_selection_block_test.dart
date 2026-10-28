@@ -240,6 +240,7 @@ class _TreeHostState extends State<_TreeHost> {
           width: 240,
           height: 500,
           child: UtenCategoryTreeView<PaymentStyleNode>(
+            initiallyExpandDepth: 1,
             nodes: [
               PaymentStyleNode(
                 id: 'root',

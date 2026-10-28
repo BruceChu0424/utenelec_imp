@@ -198,6 +198,7 @@ Future<ProviderContainer> _pump(
   _Storage storage,
   _Api api, {
   Future<SessionSnapshot?>? firstMe,
+  bool returnToEditor = false,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -206,8 +207,10 @@ Future<ProviderContainer> _pump(
     routes: [
       GoRoute(
         path: '/production/daily-reports/create-recovery',
-        builder: (_, _) =>
-            const ProductionDailyReportCreateRecoveryPage(draftId: 'local-1'),
+        builder: (_, _) => ProductionDailyReportCreateRecoveryPage(
+          draftId: 'local-1',
+          returnToEditor: returnToEditor,
+        ),
       ),
       GoRoute(
         path: '/production/daily-reports',
@@ -253,6 +256,22 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets('无编辑器路由栈的核对结果返回列表并保留确认检查点', (tester) async {
+    final command = _command(), storage = _Storage();
+    storage.records[_key] = jsonEncode(_draft(command).toJson());
+    final api = _Api(_receipt(command));
+    await _pump(tester, storage, api, returnToEditor: true);
+    await tester.pumpAndSettle();
+    expect(find.text('已确认原提交创建了生产日报'), findsOneWidget);
+    final before = storage.records[_key];
+    await tester.tap(find.text('返回原页面，保留已确认检查点'));
+    await tester.pumpAndSettle();
+    expect(find.text('report list'), findsOneWidget);
+    expect(storage.records[_key], before);
+    expect(api.businessWrites, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'malformed protocol fields cannot bypass public sensitive projection',
     () async {

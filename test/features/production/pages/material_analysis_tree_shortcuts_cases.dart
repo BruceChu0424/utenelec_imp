@@ -76,6 +76,43 @@ Future<void> _ctrlMaterialToggle(WidgetTester tester, String key) async {
 
 void materialTreeShortcutCases() {
   testWidgets(
+    'material data tree defaults closed and refresh retains manual expansion and collapse',
+    (tester) async {
+      await _pump(
+        tester,
+        platform: TargetPlatform.windows,
+        expandTree: false,
+        size: const Size(1800, 1400),
+        mutate: _materialShortcutForest,
+      );
+      final root = find.byKey(
+        const ValueKey('material-table-toggle-PRODUCT|shortcut-product-0'),
+      );
+      final child = find.byKey(
+        const ValueKey('material-table-tree-MATERIAL|shortcut-0-0'),
+      );
+      final grandchild = find.byKey(
+        const ValueKey('material-table-tree-MATERIAL|shortcut-0-0-leaf'),
+      );
+      expect(child, findsNothing);
+      await tester.tap(root);
+      await tester.pumpAndSettle();
+      expect(child, findsOneWidget);
+      expect(grandchild, findsNothing);
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+      expect(child, findsOneWidget);
+      expect(grandchild, findsNothing);
+      await tester.tap(root);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('按最新库存刷新分析'));
+      await tester.pumpAndSettle();
+      expect(child, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'read-only material trees mount text instead of disabled editors',
     (tester) async {
       await _pump(

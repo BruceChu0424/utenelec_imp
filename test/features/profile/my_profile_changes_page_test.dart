@@ -17,8 +17,11 @@ class _FakeProfileChangeRepository extends Fake
     int page = 1,
     int size = 20,
     String? status,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
-    listCalls.add({'page': page, 'status': status});
+    listCalls.add({'page': page, 'status': status, ...columns, 'sort': ?sort});
     return ProfileChangePage(
       items: [
         MyProfileChangeListItem(
@@ -95,6 +98,17 @@ void main() {
       find.byKey(const Key('my-profile-changes-table')),
     );
     expect(historyTable.filters['status'], isNull);
+    await tester.tap(find.text('项数'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '1',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['search.itemCount'], '1');
+    expect(repo.listCalls.last['status'], 'history');
+    expect(repo.listCalls.last['page'], 1);
 
     await tester.pumpWidget(const SizedBox());
   });

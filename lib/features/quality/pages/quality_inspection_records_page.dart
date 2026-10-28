@@ -28,6 +28,7 @@ import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/quality_inspection_record.dart';
@@ -85,6 +86,7 @@ class _QualityInspectionRecordsPageState
     ++_requestVersion;
     setState(() {
       _data = null;
+      _headers = const TableColumnQuery();
       _acceptedQuery = null;
       _loading = false;
       _error = scopedPagedReadRejection?.message;
@@ -100,6 +102,7 @@ class _QualityInspectionRecordsPageState
   String? _effective;
   String? _disposition;
   String _keyword = '';
+  TableColumnQuery _headers = const TableColumnQuery();
   QualityInspectionDateRange? _dateRange;
   bool _loading = true;
   String? _error;
@@ -155,6 +158,7 @@ class _QualityInspectionRecordsPageState
     final requestedDisposition = _disposition;
     final requestedKeyword = _keyword;
     final requestedRange = _dateRange;
+    final requestedHeaders = _headers;
     // 2026-09-25 单号列统一：单号排序/值筛选（sheetNo 仅 FQC 有列值）。
     final requestedSort = _sortColumn;
     final requestedOrder = _sortColumn == null
@@ -178,6 +182,7 @@ class _QualityInspectionRecordsPageState
       requestedSourceNo,
       requestedReferenceNo,
       requestedSheetNo,
+      requestedHeaders,
     );
     setState(() {
       if (_acceptedQuery != query) _data = null;
@@ -199,6 +204,7 @@ class _QualityInspectionRecordsPageState
       final pageSourceNo = requestedSourceNo;
       final pageReferenceNo = requestedReferenceNo;
       final pageSheetNo = requestedSheetNo;
+      final pageHeaders = requestedHeaders;
 
       final cached = await readScopedPage<QualityInspectionRecord>(
         requestedPage,
@@ -217,6 +223,7 @@ class _QualityInspectionRecordsPageState
           pageSourceNo,
           pageReferenceNo,
           pageSheetNo,
+          pageHeaders,
         ],
         currentQuery: () => [
           ref.read(qualityInspectionRecordRepositoryProvider),
@@ -232,6 +239,7 @@ class _QualityInspectionRecordsPageState
           _sourceNoFilter,
           _referenceNoFilter,
           _domain == QualityInspectionRecordDomain.fqc ? _sheetNoFilter : null,
+          _headers,
         ],
         useCache: useCache,
         fetchPage: (target) async {
@@ -249,6 +257,7 @@ class _QualityInspectionRecordsPageState
             sourceNo: pageSourceNo,
             referenceNo: pageReferenceNo,
             sheetNo: pageSheetNo,
+            columns: pageHeaders.searches,
           );
           return PagedReadSnapshot<
             QualityInspectionRecord,
@@ -307,6 +316,7 @@ class _QualityInspectionRecordsPageState
       // 表头筛选与域强相关（IQC 无不良处置、FQC 来源恒为生产），换域一并清空；
       // 单号值筛选/排序同理（IQC 无检查单号列值），一并复位。
       _sourceType = null;
+      _headers = const TableColumnQuery();
       _effective = null;
       _disposition = null;
       _sortColumn = null;
@@ -592,6 +602,18 @@ class _QualityInspectionRecordsPageState
     key: const Key('quality-inspection-record-table'),
     // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）切内建卡片形态。
     columns: _columns,
+    serverColumnSearchKeys: {
+      'sourceNo',
+      'referenceNo',
+      if (_domain == QualityInspectionRecordDomain.fqc) 'sheetNo',
+      'partnerName',
+      'goodsName',
+      'goodsCode',
+      'colorName',
+      'passQty',
+      'failQty',
+      'inspectorName',
+    },
     items: data.items,
     // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
     // 检验结果四态；检验类型仅 IQC（PURCHASE/SUBCONTRACT，FQC 恒为生产成品）；
@@ -628,6 +650,7 @@ class _QualityInspectionRecordsPageState
             sourceType: _sourceType,
             effective: _effective,
             disposition: _disposition,
+            columns: _headers.searches,
           ),
     ),
     facetSearchScope: nativeFacetSearchScope(
@@ -644,10 +667,12 @@ class _QualityInspectionRecordsPageState
             sourceType: _sourceType,
             effective: _effective,
             disposition: _disposition,
+            columns: _headers.searches,
           ),
     ),
 
     filters: {
+      ..._headers.searches,
       'decision': _decision,
       'sourceType': _sourceType,
       'effective': _effective,
@@ -657,7 +682,12 @@ class _QualityInspectionRecordsPageState
       'sheetNo': _sheetNoFilter,
     },
     onFilterChanged: (key, value) async {
-      if (key == 'decision') {
+      if (key.startsWith('search.')) {
+        setState(() {
+          _headers = _headers.search(key, value);
+        });
+        await _load(page: 1);
+      } else if (key == 'decision') {
         await _selectDecision(value);
       } else if (key == 'sourceNo' ||
           key == 'referenceNo' ||
@@ -700,6 +730,7 @@ class _QualityInspectionRecordsPageState
       _sourceType,
       _effective,
       _disposition,
+      _headers,
       _keyword,
       _dateRange?.start,
       _dateRange?.end,
@@ -791,6 +822,8 @@ class _QualityInspectionRecordsPageState
       label: '本次合格',
       width: 140,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (record) =>
           formatQtyWithUnit(record.passQty, record.unitName, maxDecimals: 4),
     ),
@@ -799,6 +832,8 @@ class _QualityInspectionRecordsPageState
       label: '本次不合格',
       width: 150,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (record) =>
           formatQtyWithUnit(record.failQty, record.unitName, maxDecimals: 4),
     ),
@@ -818,6 +853,15 @@ class _QualityInspectionRecordsPageState
       key: 'decidedAt',
       label: '决定时间',
       width: 170,
+      type: 'date',
+      sortable: true,
+      headerFilterAction: MasterHeaderFilterAction(
+        onTap: _pickDateRange,
+        value: _dateRange == null
+            ? null
+            : '${ChinaDateTime.formatDate(_dateRange!.start)} 至 '
+                  '${ChinaDateTime.formatDate(_dateRange!.end)}',
+      ),
       value: (record) => ChinaDateTime.formatInstant(record.decidedAt),
     ),
   ];

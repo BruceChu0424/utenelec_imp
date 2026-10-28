@@ -274,7 +274,7 @@ void main() {
       find.byKey(const ValueKey('payment-style-inline-table')),
       findsOneWidget,
     );
-    expect(find.textContaining('不支持删除'), findsOneWidget);
+    expect(find.textContaining('不支持删除'), findsNothing);
     expect(
       find.byKey(const ValueKey('inline-activate-root-code')),
       findsNothing,

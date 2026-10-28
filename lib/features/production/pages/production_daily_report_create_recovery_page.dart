@@ -6,6 +6,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/document_scope_capability.dart';
@@ -243,7 +244,11 @@ class _ProductionDailyReportCreateRecoveryPageState
             .contains(Perm.productionDailyReportView)) {
       return;
     }
-    context.pop(DailyReportCreateRecoveryResult(result!, checkpoint));
+    backTo(
+      context,
+      defaultPath: RouteName.productionDailyReportList,
+      result: DailyReportCreateRecoveryResult(result!, checkpoint),
+    );
   }
 
   Future<void> _continueAttachments() async {

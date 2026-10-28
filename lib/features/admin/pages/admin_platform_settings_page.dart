@@ -5,6 +5,7 @@ import 'dart:ui' show ImmutableBuffer, ImageDescriptor;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -486,17 +487,13 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('公司平台配置', style: theme.textTheme.titleLarge),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '管理公司品牌、服务器连接与配置入口。',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                        UtenSectionHeader(
+                          title: '公司平台配置',
+                          info: '管理公司品牌、服务器连接与配置入口。',
                         ),
                       ],
                     ),
@@ -867,22 +864,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          title,
-          style: Theme.of(
-            localContext ?? context,
-          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          subtitle,
-          style: Theme.of(localContext ?? context).textTheme.bodySmall
-              ?.copyWith(
-                color: Theme.of(
-                  localContext ?? context,
-                ).colorScheme.onSurfaceVariant,
-              ),
-        ),
+        UtenSectionHeader(title: title, info: subtitle),
         const SizedBox(height: 16),
         ...children,
       ],
@@ -1081,7 +1063,6 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
   }
 
   Widget _serverDetails() {
-    final theme = Theme.of(context);
     // A previous successful read is not evidence for the current connection.
     final status = _verified ? _status : null;
     final storageName = switch (status?.attachmentStorageBackend) {
@@ -1093,7 +1074,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     };
     final storage = _card(
       'Logo 与附件存储',
-      '公司品牌随数据库备份，业务附件由独立的文件存储管理。',
+      '公司品牌随数据库备份，业务附件由独立的文件存储管理。上传状态反映服务器配置，实际可用性以附件上传校验为准。',
       [
         _settingRow('品牌 Logo', status == null ? '等待验证' : '公司数据库'),
         const Divider(height: UtenSpacing.s24),
@@ -1112,39 +1093,26 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               ? Icons.check_circle_outline
               : Icons.pause_circle_outline,
         ),
-        const SizedBox(height: UtenSpacing.s16),
-        Text(
-          '上传状态反映服务器配置，实际可用性以附件上传校验为准。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ],
       key: const ValueKey('platform-storage-card'),
     );
-    final maintenance = _card('部署维护', '查看运行情况、数据库连接和备份记录。', [
-      Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: _busy
-              ? null
-              : () => _openConfiguration(RouteName.adminServerStatus),
-          icon: const Icon(Icons.dns_outlined),
-          label: const Text('服务器状态与备份'),
+    final maintenance = _card(
+      '部署维护',
+      '查看运行情况、数据库连接和备份记录。数据库地址、证书、文件目录、备份与加密密钥由服务器维护人员管理。本页的连接方式只影响当前设备。',
+      [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: _busy
+                ? null
+                : () => _openConfiguration(RouteName.adminServerStatus),
+            icon: const Icon(Icons.dns_outlined),
+            label: const Text('服务器状态与备份'),
+          ),
         ),
-      ),
-      const SizedBox(height: UtenSpacing.s20),
-      Text('由服务器维护人员管理', style: theme.textTheme.titleSmall),
-      const SizedBox(height: UtenSpacing.s8),
-      const Text('数据库地址、证书、文件目录、备份与加密密钥。'),
-      const SizedBox(height: UtenSpacing.s8),
-      Text(
-        '本页的连接方式只影响当前设备。',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    ], key: const ValueKey('platform-maintenance-card'));
+      ],
+      key: const ValueKey('platform-maintenance-card'),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1171,43 +1139,17 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
           },
         ),
         const SizedBox(height: UtenSpacing.s16),
-        _card(
-          '版本更新与设置保留',
-          '正常更新网页、桌面或手机应用，会继续保留已有配置。',
-          [
-            UtenResponsiveGrid(
-              itemCount: 2,
-              maxColumns: 2,
-              minItemWidth: 360,
-              itemBuilder: (_, index, _) => _retentionSummary(
-                index == 0 ? Icons.business_outlined : Icons.devices_outlined,
-                index == 0 ? '公司设置 · 保存在服务器' : '个人偏好 · 保存在当前设备',
-                index == 0 ? '公司名称、Logo、配色和联系信息。' : '同一访问入口、同一应用更新后继续使用。',
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            const Divider(height: 1),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              shape: const Border(),
-              collapsedShape: const Border(),
-              title: Text('查看更新与部署说明', style: theme.textTheme.bodyMedium),
-              expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  '公司配置随数据库备份与还原，不随安装包替换。切换到另一家公司服务器时，会重新读取该公司的品牌。',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  '卸载并清除应用数据、清理浏览器数据属于额外操作，可能清除个人偏好。更换公司部署须先完成独立数据库与服务器初始化，数据库和密钥不通过本页迁移或复制。',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ],
-          key: const ValueKey('platform-upgrade-card'),
+        const SizedBox(
+          key: ValueKey('platform-upgrade-card'),
+          width: double.infinity,
+          child: UtenSectionHeader(
+            title: '版本更新与设置保留',
+            info:
+                '正常更新网页、桌面或手机应用，会继续保留已有配置。\n\n'
+                '公司设置保存在服务器：公司名称、Logo、配色和联系信息。个人偏好保存在当前设备，同一访问入口、同一应用更新后继续使用。\n\n'
+                '公司配置随数据库备份与还原，不随安装包替换。切换到另一家公司服务器时，会重新读取该公司的品牌。\n\n'
+                '卸载并清除应用数据、清理浏览器数据属于额外操作，可能清除个人偏好。更换公司部署须先完成独立数据库与服务器初始化，数据库和密钥不通过本页迁移或复制。',
+          ),
         ),
       ],
     );
@@ -1261,25 +1203,6 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
         },
       );
 
-  Widget _retentionSummary(IconData icon, String title, String description) =>
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: Theme.of(context).textTheme.titleSmall),
-                const SizedBox(height: UtenSpacing.s6),
-                Text(description, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
-          ),
-        ],
-      );
-
   Widget _configurationLinks() {
     final entries = platformSettingsEntriesFor(
       ref.watch(currentPermissionsProvider),
@@ -1306,9 +1229,10 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('平台配置导航', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        const Text('公司统一策略、业务基础配置和运行维护分组管理，各项使用原有权限与保存规则。'),
+        const UtenSectionHeader(
+          title: '平台配置导航',
+          info: '公司统一策略、业务基础配置和运行维护分组管理，各项使用原有权限与保存规则。',
+        ),
         const SizedBox(height: 16),
         UtenResponsiveGrid(
           itemCount: visible.length,
@@ -1352,8 +1276,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: Icon(icon),
-        title: Text(title),
-        subtitle: Text(subtitle),
+        title: UtenSectionHeader(title: title, info: subtitle),
         trailing: const Icon(Icons.chevron_right),
         onTap: _busy ? null : () => _openConfiguration(route),
       );

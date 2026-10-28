@@ -517,6 +517,8 @@ class _WarehouseQualityBatchStockInPageState
         child: Scaffold(
           appBar: UtenAppBar(
             title: '批量入库 · ${_receipts.length} 张收货单',
+            info:
+                '核对每行来源商、合格待入量、目标叶仓和实际库位。默认勾选可入库明细；可改小本次数量，或为不同明细选择不同叶仓，提交后才增加库存。',
             leading: UtenBackButton(
               color: _saving ? theme.disabledColor : null,
               enabled: !_saving,
@@ -600,14 +602,13 @@ class _WarehouseQualityBatchStockInPageState
         controller: _pageScroll,
         padding: resolvedPagePadding,
         children: [
-          Text(
-            _canConfirmStockIn
-                ? '核对每行来源商、合格待入量、目标叶仓和实际库位。默认勾选可入库明细；'
-                      '可改小本次数量，或为不同明细选择不同叶仓，提交后才增加库存。'
-                : '当前为只读预览；入库办理需要 IQC 待入库查看和确认入库权限。',
-            style: theme.textTheme.bodySmall,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
+          if (!_canConfirmStockIn) ...[
+            Text(
+              '当前为只读预览；入库办理需要 IQC 待入库查看和确认入库权限。',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
           WarehouseQualityMergedTable(
             controller: _grid,
             editable: _canConfirmStockIn,

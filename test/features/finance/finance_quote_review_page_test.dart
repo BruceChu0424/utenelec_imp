@@ -737,8 +737,23 @@ void main() {
 
     await tester.enterText(_deal('c'), '120');
     await tester.pump();
-    expect(find.byTooltip('高于标价, 按财务定价保存(折扣为 1)'), findsOneWidget);
+    const aboveListHint = '高于标价, 按财务定价保存(折扣为 1)';
+    // Table cells suppress tooltip portals while typing to retain the native
+    // input client. The pricing marker itself must still update immediately.
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.icon == Icons.trending_up_rounded &&
+            widget.semanticLabel == aboveListHint,
+      ),
+      findsOneWidget,
+    );
     expect(_text(tester, _deal('c')), '120');
+    expect(_text(tester, _discount('c')), '1');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip(aboveListHint), findsOneWidget);
 
     await tester.enterText(_deal('a'), '12.5');
     await tester.pump();

@@ -11,6 +11,7 @@ import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/pages/production_analysis_sales_order_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import '../../../support/table_read_status.dart';
 
 void main() {
   testWidgets('read-only order lines render with unit-grouped totals', (
@@ -110,7 +111,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('不在本次物料分析的来源范围内'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '该销售订货单不在本次物料分析的来源范围内');
     expect(find.text('产品 A'), findsNothing);
     expect(tester.takeException(), isNull);
   });

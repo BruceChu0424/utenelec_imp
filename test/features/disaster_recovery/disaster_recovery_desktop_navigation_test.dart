@@ -82,8 +82,15 @@ void main() {
             ready: () async => true,
           );
           final calls = <MethodCall>[];
+          var nativeMaximized = false;
           messenger.setMockMethodCallHandler(channel, (call) async {
             calls.add(call);
+            if (call.method == 'toggleMaximize') {
+              nativeMaximized = !nativeMaximized;
+            }
+            if (call.method == 'getWindowState') {
+              return {'maximized': nativeMaximized};
+            }
             return null;
           });
           addTearDown(() {
@@ -178,8 +185,16 @@ void main() {
             RouteName.login,
           );
           expect(find.byType(DisasterRecoveryPage), findsOneWidget);
-          expect(find.byKey(const Key('desktop-window-drag')), findsNothing);
-          expect(find.byKey(const Key('desktop-window-close')), findsNothing);
+          expect(find.byKey(const Key('desktop-window-drag')), findsOneWidget);
+          expect(find.byKey(const Key('desktop-window-close')), findsOneWidget);
+          expect(
+            find.byKey(const Key('desktop-window-maximize')),
+            findsOneWidget,
+          );
+          expect(
+            tester.getRect(find.byType(UtenBackButton)).top,
+            greaterThanOrEqualTo(36),
+          );
           expect(
             calls.where((call) => call.method == 'setMode').last.arguments,
             'main',
@@ -189,6 +204,26 @@ void main() {
             captureKey,
             '${platform.name}-${size.width.toInt()}-recovery',
           );
+
+          // The routed main presentation and native state share the same
+          // controls, including restore, without recreating the login form.
+          await tester.tap(find.byKey(const Key('desktop-window-maximize')));
+          await tester.pumpAndSettle();
+          expect(find.byTooltip('还原'), findsOneWidget);
+          await tester.tap(find.byKey(const Key('desktop-window-maximize')));
+          await tester.pumpAndSettle();
+          expect(find.byTooltip('最大化'), findsOneWidget);
+          if (size.width == 800) {
+            tester.view.physicalSize = const Size(1280, 800);
+            await tester.pumpAndSettle();
+            await _capture(
+              tester,
+              captureKey,
+              '${platform.name}-1280-main-recovery',
+            );
+            tester.view.physicalSize = size;
+            await tester.pumpAndSettle();
+          }
 
           // This coordinate was swallowed by the login drag strip on Windows
           // and the close button on macOS, both occupying the top 36 pixels.
@@ -201,6 +236,10 @@ void main() {
             'keep-my-account',
           );
           expect(find.byKey(const Key('desktop-window-close')), findsOneWidget);
+          expect(
+            find.byKey(const Key('desktop-window-maximize')),
+            findsNothing,
+          );
           expect(
             calls
                 .where((call) => call.method == 'setMode')

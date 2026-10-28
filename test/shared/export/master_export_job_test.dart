@@ -4,6 +4,37 @@ import 'package:uten_imp/shared/export/master_export_job.dart';
 
 void main() {
   test(
+    'account asynchronous exports retain the same private bank and exact balance scope',
+    () {
+      final parameters = masterExportJobParameters(
+        'account',
+        {
+          'search.balanceCurrent': '>90071992547409.1234',
+          'sort': 'balanceCurrent',
+          'order': 'desc',
+        },
+        {
+          'sensitiveFilter': {
+            'keyword': '6222',
+            'columnSearch': {'bankAccountNo': '6222%_'},
+          },
+        },
+      );
+      final filter = jsonDecode(parameters['filter'] as String) as Map;
+      expect(filter['columnSearch'], {
+        'balanceCurrent': '>90071992547409.1234',
+        'bankAccountNo': '6222%_',
+      });
+      expect(filter['keyword'], '6222');
+      expect(
+        () => masterExportJobParameters('account', {
+          'search.bankAccountNo': 'unsafe-url',
+        }, {}),
+        throwsFormatException,
+      );
+    },
+  );
+  test(
     'sets, booleans, exact decimals and column searches retain typed filter structure',
     () {
       final parameters = masterExportJobParameters('goods', {

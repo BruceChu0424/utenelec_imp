@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,24 +179,10 @@ class _SalesReturnQualityCardState
                   semanticLabel: '质检冻结',
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '退货质检冻结',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '冻结余量不参与可售库存、预留或拣货；只有“良品释放”会正式增加可售库存。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '退货质检冻结',
+                    info: '冻结余量不参与可售库存、预留或拣货；只有“良品释放”会正式增加可售库存。',
                   ),
                 ),
                 if (_items != null || _error != null)

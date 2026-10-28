@@ -111,21 +111,23 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
                     Semantics(
                       namesRoute: true,
                       header: true,
-                      child: Text(
-                        '调入到哪条来源路径？',
-                        style: Theme.of(dialogContext).textTheme.titleLarge,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '调拨量记到所选路径的物料行上，其余路径缺口不变；同料各来源'
-                      '共享同一供方池。',
-                      style: Theme.of(dialogContext).textTheme.bodySmall
-                          ?.copyWith(
-                            color: Theme.of(
-                              dialogContext,
-                            ).colorScheme.onSurfaceVariant,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '调入到哪条来源路径？',
+                              style: Theme.of(
+                                dialogContext,
+                              ).textTheme.titleLarge,
+                            ),
                           ),
+                          const UtenFieldHintIcon(
+                            info: '调拨量记到所选路径的物料行上，其余路径缺口不变；同料各来源共享同一供方池。',
+                            dense: true,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

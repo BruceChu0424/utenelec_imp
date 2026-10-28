@@ -19,7 +19,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
@@ -1200,18 +1199,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           title: widget.id == null
               ? '新建${widget.docType.label}'
               : '编辑${widget.docType.label}',
-          showBackButton: true,
-          actions: [
-            if (_isCheck)
-              const UtenFieldHintIcon(
-                dense: true,
-                info:
-                    '账面数量由系统按所选仓库带出，保存时会记下当时的库存数。'
+          info: _isCheck
+              ? '账面数量由系统按所选仓库带出，保存时会记下当时的库存数。'
                     '送审前如有其它出入库，系统会提示库存已变化、不能按旧数字修正，'
-                    '请刷新账面并重新核对实盘数。',
-              ),
-            ...?_draftsAction,
-          ],
+                    '请刷新账面并重新核对实盘数。'
+              : null,
+          showBackButton: true,
+          actions: [...?_draftsAction],
         ),
         body: SafeArea(
           child: Stack(

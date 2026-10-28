@@ -25,6 +25,7 @@ import 'uten_page_layout.dart';
 import 'uten_scroll_gutter.dart';
 import '../buttons/uten_button.dart';
 import '../buttons/uten_app_bar_action_button.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 /// Uten 自适应顶栏
 ///
@@ -34,6 +35,7 @@ class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
     super.key,
     this.title,
     this.subtitle,
+    this.info,
     this.leading,
     this.actions,
     this.centerTitle = false,
@@ -51,6 +53,10 @@ class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
 
   final String? title;
   final String? subtitle;
+
+  /// Page guidance disclosed beside the title, without adding a subtitle row.
+  /// Keep current business state in [subtitle].
+  final String? info;
   final Widget? leading;
   final List<Widget>? actions;
   final bool centerTitle;
@@ -293,13 +299,13 @@ class _UtenAppBarState extends State<UtenAppBar> {
                   ? const UtenBackButton()
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
-          // 图标仍贴左，原有标题前空隙由返回键的命中区接管。
+          // 返回键只占可见圆形，标题间隔独立留白，不扩大返回点击区域。
           // 非返回型 leading 沿用 AppBar 的默认槽宽和标题间距。
           leadingWidth: (showBackButton || leading is UtenBackButton)
               ? UtenBackButton.slotWidth(context)
               : (leading == null && !showBackButton ? 0 : null),
           titleSpacing: (showBackButton || leading is UtenBackButton)
-              ? 0
+              ? UtenBackButton.titleGap
               : null,
           actions: [
             ConstrainedBox(
@@ -531,7 +537,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
 
   /// 组合标题区，优先级：[titleWidget] > [title]+[centerWidget] > [title]。
   Widget? _buildTitleArea(BuildContext context, ThemeData theme, bool isDark) {
-    if (titleWidget != null) return titleWidget;
+    if (titleWidget != null) return _withInfo(titleWidget!);
 
     final titleCol = title != null
         ? _titleColumn(context, theme, isDark)
@@ -548,19 +554,32 @@ class _UtenAppBarState extends State<UtenAppBar> {
     );
   }
 
+  Widget _withInfo(Widget heading) {
+    if (widget.info?.trim().isNotEmpty != true) return heading;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(child: heading),
+        UtenFieldHintIcon(info: widget.info, dense: true),
+      ],
+    );
+  }
+
   Widget _titleColumn(BuildContext context, ThemeData theme, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Tooltip(
-          message: subtitle == null ? title! : '$title\n$subtitle',
-          child: Text(
-            title!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.appBarTheme.titleTextStyle?.copyWith(
-              color: foregroundColor ?? theme.colorScheme.onSurface,
+        _withInfo(
+          Tooltip(
+            message: subtitle == null ? title! : '$title\n$subtitle',
+            child: Text(
+              title!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.appBarTheme.titleTextStyle?.copyWith(
+                color: foregroundColor ?? theme.colorScheme.onSurface,
+              ),
             ),
           ),
         ),

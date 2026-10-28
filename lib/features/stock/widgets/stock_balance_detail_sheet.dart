@@ -1,3 +1,5 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../components/layout/uten_section_header.dart';
 // 库存余额详情只读；目标数量/重量统一到即时库存的盘点模式送审。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,7 +65,6 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
         (ref.watch(isSuperAdminProvider) ||
             permissions.contains(Perm.stockCountSubmit));
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
-    final theme = Theme.of(context);
     final qty = balance.qty == null
         ? '未知'
         : balance.qty!.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
@@ -75,8 +76,11 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
             padding: const EdgeInsets.all(UtenSpacing.s16),
             child: Row(
               children: [
-                Expanded(
-                  child: Text('库存余额详情', style: theme.textTheme.titleLarge),
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '库存余额详情',
+                    info: '数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。',
+                  ),
                 ),
                 IconButton(
                   tooltip: '关闭',
@@ -112,11 +116,12 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                     display: display,
                     estimated: balance.weightEstimated,
                   ),
+                  info: [
+                    if (balance.weightEstimated) '库存重量包含估算值；如需修正，请记录实盘重量并送审。',
+                    if (weightExact && !balance.measurementPending)
+                      '此货品按重量计量，库存重量随数量和单位换算。',
+                  ].join('\n\n'),
                 ),
-                if (balance.weightEstimated)
-                  const Text('库存重量包含估算值；如需修正，请记录实盘重量并送审。'),
-                if (weightExact && !balance.measurementPending)
-                  const Text('此货品按重量计量，库存重量随数量和单位换算。'),
                 if (balance.lastMovementDate != null)
                   _info(
                     '最后变动',
@@ -126,12 +131,10 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                       seconds: true,
                     ),
                   ),
-                const SizedBox(height: UtenSpacing.s16),
-                Text(
-                  balance.measurementPending
-                      ? '该历史账面数的计量依据待核，普通盘点差量不能自动确认原单位或解除计量待核。'
-                      : '数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。',
-                ),
+                if (balance.measurementPending) ...[
+                  const SizedBox(height: UtenSpacing.s16),
+                  const Text('该历史账面数的计量依据待核，普通盘点差量不能自动确认原单位或解除计量待核。'),
+                ],
               ],
             ),
           ),
@@ -164,12 +167,21 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
     );
   }
 
-  Widget _info(String label, String value) => Padding(
+  Widget _info(String label, String value, {String? info}) => Padding(
     padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 90, child: Text(label)),
+        SizedBox(
+          width: 90,
+          child: Row(
+            children: [
+              Flexible(child: Text(label)),
+              if (info?.isNotEmpty == true)
+                UtenFieldHintIcon(info: info, dense: true),
+            ],
+          ),
+        ),
         Expanded(child: Text(value)),
       ],
     ),

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../shared/models/paged_result.dart';
@@ -43,6 +44,54 @@ final payrollFilterProvider = StateProvider<PayrollFilter>(
   (ref) => PayrollFilter.published,
 );
 
+class PayrollHeaderQuery {
+  PayrollHeaderQuery({
+    Map<String, String> searches = const {},
+    this.sort,
+    this.ascending = true,
+  }) : searches = Map.unmodifiable(searches);
+  final Map<String, String> searches;
+  final String? sort;
+  final bool ascending;
+  PayrollHeaderQuery withSearch(String key, String? value) {
+    final next = Map<String, String>.of(searches);
+    if (value == null || value.trim().isEmpty) {
+      next.remove(key);
+    } else {
+      next[key] = value.trim();
+    }
+    return PayrollHeaderQuery(searches: next, sort: sort, ascending: ascending);
+  }
+
+  PayrollHeaderQuery sorted(String? column, bool ascending) =>
+      PayrollHeaderQuery(
+        searches: searches,
+        sort: column,
+        ascending: ascending,
+      );
+  @override
+  bool operator ==(Object other) =>
+      other is PayrollHeaderQuery &&
+      other.sort == sort &&
+      other.ascending == ascending &&
+      mapEquals(other.searches, searches);
+  @override
+  int get hashCode => Object.hash(
+    sort,
+    ascending,
+    Object.hashAll(
+      (searches.keys.toList()..sort()).map(
+        (key) => Object.hash(key, searches[key]),
+      ),
+    ),
+  );
+}
+
+final payrollHeaderQueryProvider =
+    StateProvider.autoDispose<PayrollHeaderQuery>(
+      (ref) => PayrollHeaderQuery(),
+    );
+
 final payrollListProvider =
     AsyncNotifierProvider.autoDispose<
       PayrollListNotifier,
@@ -54,6 +103,7 @@ final payrollListProvider =
         _payrollReads,
         payrollRepositoryProvider,
         payrollFilterProvider,
+        payrollHeaderQueryProvider,
         masterDataSessionKeyProvider,
       ],
     );
@@ -68,9 +118,10 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
   int _page = 1;
   int? _requestedPage;
   int? Function()? _visiblePage;
-  PayrollFilter? _lastFilter;
+  Object? _lastQuery;
 
-  Object get _readQuery => (ref.read(payrollFilterProvider),);
+  Object get _readQuery =>
+      (ref.read(payrollFilterProvider), ref.read(payrollHeaderQueryProvider));
   ScopedPagedReadProviderLease<PayrollSlip> get _reader =>
       ref.read(_payrollReads(_readQuery));
   void bindReadView(BuildContext context, {int? Function()? visiblePage}) {
@@ -88,18 +139,25 @@ class PayrollListNotifier extends AsyncNotifier<PagedResult<PayrollSlip>> {
       ref.invalidateSelf();
     });
     final filter = ref.watch(payrollFilterProvider);
+    final headers = ref.watch(payrollHeaderQueryProvider);
+    final query = (filter, headers);
     final requestedPage = _requestedPage;
     _requestedPage = null;
-    _page = _lastFilter != filter
+    _page = _lastQuery != query
         ? 1
         : (requestedPage ?? _visiblePage?.call() ?? _page);
-    _lastFilter = filter;
+    _lastQuery = query;
     final repository = ref.watch(payrollRepositoryProvider);
     final reader = ref.watch(_payrollReads(_readQuery));
     return reader.read(
       _page,
-      fetchPage: (page) =>
-          repository.listSlips(status: filter.apiStatus, page: page),
+      fetchPage: (page) => repository.listSlips(
+        status: filter.apiStatus,
+        page: page,
+        columnSearch: headers.searches,
+        sort: headers.sort,
+        order: headers.ascending ? 'asc' : 'desc',
+      ),
     );
   }
 
@@ -233,6 +291,17 @@ class PayrollBatchListNotifier
     final current = state.value;
     if (current == null || current.page >= current.totalPages) return;
     await _goTo(current.page + 1);
+  }
+
+  Future<void> goToPage(int page) async {
+    final current = state.value;
+    if (current == null ||
+        page < 1 ||
+        page > current.totalPages ||
+        page == current.page) {
+      return;
+    }
+    await _goTo(page);
   }
 
   Future<void> _goTo(int page) async {

@@ -8,12 +8,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/print/isolated_print_pdf_native.dart';
 import 'package:uten_imp/core/print/print_pdf_document.dart';
+import '../../support/print_test_font.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   for (final duringSpawn in [true, false]) {
     test(
       'dispose kills the actual PDF isolate ${duringSpawn ? 'during spawn' : 'after start'}',
       () async {
+        final fontBytes = await loadPrintTestFontBytes();
         final exit = ReceivePort();
         addTearDown(exit.close);
         final started = Completer<void>();
@@ -27,6 +30,7 @@ void main() {
         final future = generator.generate(
           PrintPdfRequest(
             title: 'cancel',
+            fontBytes: fontBytes,
             headers: const ['Item', 'Amount'],
             rows: [
               for (var i = 0; i < 20000; i++) ['item-$i', '$i.12345678'],

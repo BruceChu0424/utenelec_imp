@@ -1,3 +1,4 @@
+import '../../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/uten_tokens.dart';
@@ -77,7 +78,7 @@ class FinancePayablesKpiStrip extends StatelessWidget {
                       color: theme.colorScheme.primary,
                     ),
                     const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
+                    Flexible(
                       child: Text(
                         '本币应付概览',
                         style: theme.textTheme.titleSmall?.copyWith(
@@ -85,18 +86,11 @@ class FinancePayablesKpiStrip extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Semantics(
-                  label: '应付减账面核销减抵销等于未付，现金已付与汇兑差额分列',
-                  child: Text(
-                    '核对恒等式：应付 − 账面核销 − 抵销 = 未付；'
-                    '现金已付与汇兑差额分列。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    const UtenFieldHintIcon(
+                      info: '核对恒等式：应付 − 账面核销 − 抵销 = 未付；现金已付与汇兑差额分列。',
+                      dense: true,
                     ),
-                  ),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 if (useHorizontalPrimary)

@@ -1,3 +1,4 @@
+import '../support/table_cell_geometry.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -142,22 +143,7 @@ void main() {
         addTearDown(row.dispose);
         var weighs = 0;
         double? minimum;
-        Finder header() {
-          final containers = find.ancestor(
-            of: find.text('实称重量(kg)'),
-            matching: find.byType(Container),
-          );
-          for (final element in containers.evaluate()) {
-            final container = element.widget as Container;
-            final constraints = container.constraints;
-            if (constraints != null &&
-                constraints.maxWidth.isFinite &&
-                constraints.minWidth == constraints.maxWidth) {
-              return find.byWidget(container);
-            }
-          }
-          throw TestFailure('The real weight column header is missing');
-        }
+        Finder header() => tableCellFrame(find.text('实称重量(kg)'));
 
         await _pump(
           tester,

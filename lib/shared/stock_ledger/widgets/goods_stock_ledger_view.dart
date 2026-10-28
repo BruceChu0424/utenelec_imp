@@ -11,6 +11,7 @@ import '../../paging/scoped_paged_read_view_mixin.dart';
 // 重量悬停说明来源: 实称 / 按数量(精确) / 按比例分摊 / ≈按库存均重 / ≈按单重估算;
 // 重量调整行: 重量起算 / 重量尾差调整 / 盘点定重 / 人工核重 / 撤销盘点重量。
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,6 +35,7 @@ import '../../widgets/warehouse_selection.dart';
 import '../stock_ledger_models.dart';
 import '../stock_ledger_repository.dart';
 import '../../../features/stock/models/instant_inventory_scope.dart';
+import '../../search/table_column_query.dart';
 
 /// 流水分段的起始范围 (余额行「查看流水」带过来的仓库 + 颜色)。
 class StockLedgerScope extends InstantInventoryScope {
@@ -81,6 +83,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
 
   @override
   void scopedPagedReadOwnerChanged() {
+    _columnQuery = const TableColumnQuery();
     _version++;
     if (mounted) {
       setState(() {
@@ -113,6 +116,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
   bool _loading = false;
   String? _error;
   int _version = 0;
+  TableColumnQuery _columnQuery = const TableColumnQuery();
 
   @override
   void initState() {
@@ -161,6 +165,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       dateTo: _to,
       movementTypes: type == null ? const [] : [type],
       includeWeightAdjustments: _includeAdjustments || adjustmentsOnly,
+      columns: _columnQuery.searches,
+      sort: _columnQuery.sort,
+      ascending: _columnQuery.ascending,
       page: page,
     );
   }
@@ -200,6 +207,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
               includeWeightAdjustments: frozen.includeWeightAdjustments,
               page: target,
               size: frozen.size,
+              columns: frozen.columns,
+              sort: frozen.sort,
+              ascending: frozen.ascending,
             ),
           );
           return PagedReadSnapshot<StockLedgerRow, StockLedgerPage>(
@@ -232,6 +242,11 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
   }
 
   void _onFilterChanged(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() => _columnQuery = _columnQuery.search(key, value));
+      _load(1);
+      return;
+    }
     setState(() {
       switch (key) {
         case 'type':
@@ -310,6 +325,13 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
       primary: true,
       columns: _columns(display),
+      serverColumnSearch: true,
+      sortColumn: _columnQuery.sort,
+      sortAscending: _columnQuery.ascending,
+      onSortChange: (key, ascending) {
+        setState(() => _columnQuery = _columnQuery.sorted(key, ascending));
+        _load(1);
+      },
       items: rows,
       rowKeyOf: (row) => '${row.rowKind}:${row.id}',
       facets: {
@@ -320,12 +342,24 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       // 「无颜色」是服务端的普通桶 (值 '__null__' = kMasterFilterNullValue), 不另走空值计数。
       nullCounts: const {},
       filters: {
+        ..._columnQuery.searches,
         if (_typeFilter != null) 'type': _typeFilter,
         if (_warehouseId != null) 'warehouse': _warehouseId,
         if (_colorFilter != null) 'color': _colorFilter,
       },
       onFilterChanged: _onFilterChanged,
       toolbarLeadingActions: [
+        if (_columnQuery.searches.isNotEmpty)
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('列检索'),
+              UtenFieldHintIcon(
+                info: '列检索定位记录；台账结存及合计仍按所选日期、仓库、颜色和类型范围。',
+                dense: true,
+              ),
+            ],
+          ),
         OutlinedButton.icon(
           key: const ValueKey('stock-ledger-date-range'),
           onPressed: _pickDates,
@@ -383,6 +417,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         _from,
         _to,
         _includeAdjustments,
+        _columnQuery,
       ),
       onPageChange: (page) => _load(page, useCache: true),
     );
@@ -431,6 +466,12 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         label: '日期',
         width: 130,
         type: 'date',
+        headerFilterAction: MasterHeaderFilterAction(
+          onTap: _pickDates,
+          value:
+              '${ChinaDateTime.formatDate(_from)} ~ '
+              '${ChinaDateTime.formatDate(_to)}',
+        ),
         value: (r) => _date(r.transactionDate),
       ),
       MasterColumnDef(
@@ -499,6 +540,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         width: 145,
         type: 'number',
         value: inQty,
+        columnSearchEnabled: true,
+        sortable: true,
       ),
       MasterColumnDef(
         key: 'outQty',
@@ -506,6 +549,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         width: 145,
         type: 'number',
         value: outQty,
+        columnSearchEnabled: true,
+        sortable: true,
       ),
       MasterColumnDef(
         key: 'balanceQty',
@@ -513,6 +558,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         width: 155,
         type: 'number',
         value: (r) => _qtyWithUnit(r.balanceQtyAfter, unitOf(r)),
+        columnSearchEnabled: true,
+        sortable: true,
       ),
       MasterColumnDef(
         key: 'inWeight',
@@ -520,6 +567,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         width: 120,
         type: 'weight',
         value: (r) => weightValue(r, inbound: true),
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '按千克检索；未知重量不作为 0。',
         cellBuilder: (_, r) => weightCell(r, inbound: true),
       ),
       MasterColumnDef(
@@ -528,6 +578,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         width: 120,
         type: 'weight',
         value: (r) => weightValue(r, inbound: false),
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '按千克检索；未知重量不作为 0。',
         cellBuilder: (_, r) => weightCell(r, inbound: false),
       ),
       MasterColumnDef(
@@ -535,6 +588,9 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         label: '结存重量',
         width: 130,
         type: 'weight',
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '按千克检索原台账结存；排序与检索不重算结存。',
         value: (r) => formatWeightValue(
           r.balanceWeightKgAfter,
           display: display,

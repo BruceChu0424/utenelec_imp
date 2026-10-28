@@ -8,6 +8,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 
@@ -62,6 +63,99 @@ final _auditDepartmentTree = [
 ];
 
 void main() {
+  for (final sessionMode in [true, false]) {
+    testWidgets(
+      'header query ${sessionMode ? 'session' : 'event'} applies before paging and matches export scope',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final repository = _HeaderAuditRepository();
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              employeePickerDepartmentTreeProvider.overrideWith(
+                (ref) async => _auditDepartmentTree,
+              ),
+              auditLogRepositoryProvider.overrideWithValue(repository),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.auditLogExport,
+              }),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+            ],
+            child: const MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: Locale('zh'),
+              home: AdminAuditLogPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _selectDefaultAuditScope(tester, eventView: !sessionMode);
+        final column = sessionMode ? 'operations' : 'device';
+        final header = find.byKey(ValueKey('master-column-filter-$column'));
+        await _scrollAuditPageUntilBuilt(
+          tester,
+          find.byKey(
+            Key(sessionMode ? 'audit-session-table' : 'audit-event-table'),
+          ),
+        );
+        await tester.ensureVisible(header.first);
+        await tester.pumpAndSettle();
+        await tester.tap(header.hitTestable().first);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          sessionMode ? '>=2' : '设备 %_',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        final reads = sessionMode
+            ? repository.headerSessions
+            : repository.headerEvents;
+        final filtered = reads
+            .where((q) => q['search.$column'] != null)
+            .toList();
+        expect(filtered.first['page'], 1);
+        expect(filtered.first['actorId'], _AuditRepository.actorId);
+        final export = tester.widget<UtenExportButton>(
+          find.byType(UtenExportButton),
+        );
+        expect(
+          export.queryParams['search.$column'],
+          sessionMode ? '>=2' : '设备 %_',
+        );
+        if (!sessionMode) {
+          expect(repository.headerSummaries.last['search.device'], '设备 %_');
+        }
+        if (sessionMode) {
+          await tester.ensureVisible(header.first);
+          await tester.pumpAndSettle();
+          await tester.tap(header.hitTestable().first);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('uten-column-keyword-input')),
+            '>=999',
+          );
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('audit-session-table')), findsOneWidget);
+          await tester.ensureVisible(header.first);
+          await tester.pumpAndSettle();
+          await tester.tap(header.hitTestable().first);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('所有'));
+          await tester.pumpAndSettle();
+          expect(repository.headerSessions.last['search.operations'], isNull);
+        }
+        await tester.pump(const Duration(seconds: 1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   auditCacheCases();
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -381,7 +475,12 @@ void main() {
       );
       expect(repository.sessionEventCalls, hasLength(1));
       expect(repository.sessionEventCalls.single['snapshotAuditId'], 9001);
-      await tester.tap(find.byType(UtenBackButton).last);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton).last,
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(AdminAuditSessionDetailPage), findsNothing);
       expect(find.byKey(const Key('audit-session-table')), findsOneWidget);
@@ -405,12 +504,12 @@ void main() {
     testWidgets(
       '${sessions ? 'session' : 'event'} table ${thumbStyle ? 'thumb-style position' : 'wheel'} scrolls upward to prepend and preserves its row at $zoom x ($rowsPerPage rows)',
       (tester) async {
-        // One short session fits the 900px viewport at 1x, so there is no thumb
-        // movement to test there. Use a genuinely scrollable viewport instead
-        // of jumpTo(-1), which is an out-of-range overscroll that springs back.
+        // A single event or session fits the tall viewport after the compact
+        // controls/guidance changes. Thumb tests need a genuinely scrollable
+        // viewport, rather than an out-of-range jump that springs back.
         tester.view.physicalSize = Size(
           1200,
-          sessions && zoom == 1 && thumbStyle ? 500 : 900,
+          thumbStyle && rowsPerPage == 1 ? 500 : 900,
         );
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
@@ -1249,6 +1348,28 @@ void main() {
     expect(find.text('导出当前结果'), findsOneWidget);
     expect(exportButton.enabled, isTrue);
     expect(exportButton.queryParams['riskLevel'], 'risky');
+
+    final table = find.byKey(const Key('audit-event-table'));
+    await _scrollAuditPageUntilBuilt(tester, table);
+    await tester.tap(find.descendant(of: table, matching: find.text('有风险')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('高风险').last);
+    await tester.pumpAndSettle();
+    expect(repository.listCalls.last['riskLevel'], 'high');
+    expect(repository.listCalls.last['page'], 1);
+    await tester.tap(find.descendant(of: table, matching: find.text('结果')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('失败').last);
+    await tester.pumpAndSettle();
+    expect(repository.listCalls.last['outcome'], 'failure');
+    expect(repository.listCalls.last['riskLevel'], 'high');
+    expect(repository.listCalls.last['actorId'], _AuditRepository.actorId);
+    final filteredExport = tester.widget<UtenExportButton>(
+      find.byType(UtenExportButton),
+    );
+    expect(filteredExport.queryParams['outcome'], 'failure');
+    expect(filteredExport.queryParams['riskLevel'], 'high');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('personnel directory search debounces rapid input', (
@@ -1719,7 +1840,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('系统异常'), findsWidgets);
+      expect(find.text('仅调查失败的系统异常，不包含日常成功自动任务'), findsNothing);
+      final help = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            widget.info == '仅调查失败的系统异常，不包含日常成功自动任务',
+      );
+      await tester.tap(help);
+      await tester.pumpAndSettle();
       expect(find.text('仅调查失败的系统异常，不包含日常成功自动任务'), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       expect(repository.listCalls, isEmpty);
 
       await tester.tap(find.byKey(const ValueKey('audit-date-today')));
@@ -2213,6 +2344,59 @@ class _Api extends ApiClient {
     final error = postError;
     if (error != null) throw error;
     return const <String, dynamic>{};
+  }
+}
+
+class _HeaderAuditRepository extends _AuditRepository
+    implements AuditHeaderSessionRepository, AuditHeaderEventRepository {
+  final headerSessions = <Map<String, dynamic>>[];
+  final headerEvents = <Map<String, dynamic>>[];
+  final headerSummaries = <Map<String, dynamic>>[];
+  @override
+  Future<AuditSessionPage> sessionHeaderPage(Map<String, dynamic> query) async {
+    headerSessions.add(Map.of(query));
+    if (query['search.operations'] == '>=999') {
+      return const AuditSessionPage(
+        items: [],
+        page: 1,
+        size: 10,
+        total: 0,
+        totalPages: 0,
+        snapshotAuditId: 9001,
+      );
+    }
+    return super.sessions(
+      actorId: query['actorId'] as String,
+      dateFrom: query['dateFrom'] as String,
+      dateTo: query['dateTo'] as String,
+      page: query['page'] as int,
+      snapshotAuditId: query['snapshotAuditId'] as int?,
+    );
+  }
+
+  @override
+  Future<AuditLogPage> eventHeaderPage(Map<String, dynamic> query) {
+    headerEvents.add(Map.of(query));
+    return super.list(
+      page: query['page'] as int,
+      actorId: query['actorId'] as String?,
+      dateFrom: query['dateFrom'] as String?,
+      dateTo: query['dateTo'] as String?,
+      snapshotId: query['snapshotId'] as int?,
+      activityOnly: query['activityOnly'] as bool,
+    );
+  }
+
+  @override
+  Future<AuditSummary> eventHeaderSummary(Map<String, dynamic> query) {
+    headerSummaries.add(Map.of(query));
+    return super.summary(
+      actorId: query['actorId'] as String?,
+      dateFrom: query['dateFrom'] as String?,
+      dateTo: query['dateTo'] as String?,
+      snapshotId: query['snapshotId'] as int?,
+      activityOnly: query['activityOnly'] as bool,
+    );
   }
 }
 

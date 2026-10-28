@@ -10,6 +10,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -521,25 +522,14 @@ class _InstantInventoryOverviewPageState
               ],
               if (page.totalPages > 1) ...[
                 const Divider(height: UtenSpacing.s24),
-                Wrap(
-                  alignment: WrapAlignment.end,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: UtenSpacing.s8,
-                  children: [
-                    TextButton(
-                      onPressed: page.page > 1
-                          ? () => _loadRisk(risk, page.page - 1)
-                          : null,
-                      child: const Text('上一页'),
-                    ),
-                    Text('${page.page} / ${page.totalPages}'),
-                    TextButton(
-                      onPressed: page.page < page.totalPages
-                          ? () => _loadRisk(risk, page.page + 1)
-                          : null,
-                      child: const Text('下一页'),
-                    ),
-                  ],
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: UtenPagination(
+                    currentPage: page.page,
+                    totalPages: page.totalPages,
+                    busy: _riskLoading,
+                    onPageChanged: (target) => _loadRisk(risk, target),
+                  ),
                 ),
               ],
             ],

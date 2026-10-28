@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
@@ -149,6 +150,60 @@ void main() {
         locale: const Locale('zh'),
         home: page,
       ),
+    );
+  }
+
+  for (final entry in <(String, Widget, Set<String>)>[
+    ('root', const WarehouseTaskCenterPage(), {Perm.stockDocView}),
+    (
+      'outbound',
+      const WarehouseOutboundTaskCenterPage(),
+      {Perm.subcontractOutboundView},
+    ),
+    (
+      'inbound',
+      const WarehouseInboundTaskCenterPage(),
+      {Perm.warehouseInboundView},
+    ),
+  ]) {
+    testWidgets(
+      'warehouse ${entry.$1} placeholder keeps badge guidance beside its existing instruction',
+      (tester) async {
+        final api = _FakeApi();
+        await tester.pumpWidget(
+          app(
+            entry.$2,
+            entry.$3,
+            api: api,
+            subcontractOutboundCount: entry.$1 == 'outbound' ? 0 : 2,
+          ),
+        );
+        await tester.pumpAndSettle();
+        const guidance = '分段右侧数字徽章为该分类的待办数量';
+        const instruction = '在上方选择分类后开始办理';
+        expect(find.byType(UtenFilterPlaceholder), findsOneWidget);
+        expect(find.text(instruction), findsOneWidget);
+        expect(find.text(guidance), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) => widget is UtenFieldHintIcon && widget.info == guidance,
+        );
+        expect(hint, findsOneWidget);
+        expect(
+          (tester.getCenter(hint).dy -
+                  tester.getCenter(find.text(instruction)).dy)
+              .abs(),
+          lessThan(16),
+        );
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
+        expect(find.text(guidance), findsOneWidget);
+        expect(api.lastTaskListQuery, isNull);
+        expect(api.lastStockListQuery, isNull);
+        expect(tester.takeException(), isNull);
+        Tooltip.dismissAllToolTips();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+      },
     );
   }
 

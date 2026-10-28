@@ -122,9 +122,14 @@ void main() {
 
     await _openFilter(tester, 1);
     expect(find.text('甲产品（1）'), findsOneWidget);
-    // 只有「所有」+ 一个真实桶，没有空串桶。
+    // 空值走单独的「其他」，不伪造成一个空串候选。
     expect(find.text('（2）'), findsNothing);
-    expect(find.textContaining('（'), findsOneWidget);
+    expect(find.text('其他（2）'), findsOneWidget);
+    expect(find.textContaining('（'), findsNWidgets(2));
+    await tester.tap(find.text('其他（2）'));
+    await tester.pumpAndSettle();
+    expect(find.text('甲产品'), findsNothing);
+    expect(controller.rows.length, 3);
   });
 
   testWidgets('换行集后失效的筛选值自动撤回，不留看不见的筛选', (tester) async {

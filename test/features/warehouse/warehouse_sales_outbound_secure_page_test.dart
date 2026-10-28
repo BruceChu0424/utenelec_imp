@@ -638,6 +638,7 @@ class _SecureTaskCenterGateway implements WarehouseTaskCenterGateway {
     int size = 20,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   }) async => WarehouseTaskCenterPageResult(
     items: [
       WarehouseTaskCenterRecord(

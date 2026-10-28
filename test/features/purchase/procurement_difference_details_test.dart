@@ -98,6 +98,7 @@ void _expectDifference<T>(
   expect(column.info, contains(request ? '尚未下单' : '未到齐'));
   expect(column.sortable, isTrue);
   expect(column.filterFromRows, isTrue);
+  expect(column.supportsKeywordSearch, isTrue);
   expect(table.items.map(column.value), [
     '-90071992547409.1234 $unit',
     '0 $unit',

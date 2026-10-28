@@ -44,13 +44,22 @@ class _Repository extends Fake implements EmployeeRepository {
   ) async => replacements.add(List.of(departments));
 }
 
-Future<void> _pump(WidgetTester tester, _Repository repository) async {
+Future<void> _pump(
+  WidgetTester tester,
+  _Repository repository, {
+  String? initialLocation,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1200, 1800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final router = GoRouter(
+    initialLocation: initialLocation,
     routes: [
+      GoRoute(
+        path: '/employee/employee-1',
+        builder: (_, _) => const Scaffold(body: Text('员工详情')),
+      ),
       GoRoute(
         path: '/',
         builder: (_, _) => const Scaffold(body: Text('员工列表')),
@@ -77,7 +86,7 @@ Future<void> _pump(WidgetTester tester, _Repository repository) async {
       ),
     ),
   );
-  router.push<void>('/edit');
+  if (initialLocation == null) router.push<void>('/edit');
   for (var frame = 0; frame < 12; frame++) {
     await tester.pump(const Duration(milliseconds: 30));
   }
@@ -90,6 +99,20 @@ Finder _departments() =>
     find.byKey(const Key('employee-edit-secondary-departments'));
 
 void main() {
+  for (final changed in [false, true]) {
+    testWidgets('无路由栈员工编辑保存可返回详情 changed=$changed', (tester) async {
+      final repository = _Repository()..secondary.complete(const []);
+      await _pump(tester, repository, initialLocation: '/edit');
+      await tester.pumpAndSettle();
+      if (changed) await tester.enterText(_name(), '修改后的姓名');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      expect(find.text('员工详情'), findsOneWidget);
+      expect(repository.updates, hasLength(changed ? 1 : 0));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'late auxiliary departments do not block or overwrite core employee edits',
     (tester) async {

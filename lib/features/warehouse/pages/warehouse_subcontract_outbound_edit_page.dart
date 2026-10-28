@@ -22,7 +22,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -627,7 +626,11 @@ class _WarehouseSubcontractOutboundEditPageState
       await completeFormDraft();
       if (!mounted) return;
       context.appSuccess('拣货修改已保存');
-      context.pop(true);
+      backTo(
+        context,
+        defaultPath: RouteName.warehouseSubcontractOutbound,
+        result: true,
+      );
     } on ApiException catch (error) {
       if (mounted && formDraftIdentityIsCurrent) {
         _requiresReload = true;

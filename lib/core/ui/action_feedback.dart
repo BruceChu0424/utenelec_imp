@@ -35,14 +35,17 @@ extension GuardedActionContextX on BuildContext {
     Future<T> Function() action, {
     String? success,
     String errorFallback = '操作失败，请稍后重试',
+    bool Function()? isCurrent,
   }) async {
     try {
       final r = await action();
       // context 可能已随页面销毁（async gap）：只在存活时弹通知。
-      if (success != null && mounted) appSuccess(success);
+      if (success != null && mounted && (isCurrent?.call() ?? true)) {
+        appSuccess(success);
+      }
       return r;
     } on ApiException catch (e) {
-      if (mounted) {
+      if (mounted && (isCurrent?.call() ?? true)) {
         appError(
           e.message.isNotEmpty ? e.message : errorFallback,
           fieldErrors: e.fieldErrors,
@@ -50,7 +53,7 @@ extension GuardedActionContextX on BuildContext {
       }
       return null;
     } catch (_) {
-      if (mounted) appError(errorFallback);
+      if (mounted && (isCurrent?.call() ?? true)) appError(errorFallback);
       return null;
     }
   }
@@ -67,6 +70,7 @@ extension GuardedActionContextX on BuildContext {
     Future<void> Function() action, {
     String? success,
     String errorFallback = '操作失败，请稍后重试',
+    bool Function()? isCurrent,
   }) async {
     final ok = await guardAction(
       () async {
@@ -75,6 +79,7 @@ extension GuardedActionContextX on BuildContext {
       },
       success: success,
       errorFallback: errorFallback,
+      isCurrent: isCurrent,
     );
     return ok != null;
   }

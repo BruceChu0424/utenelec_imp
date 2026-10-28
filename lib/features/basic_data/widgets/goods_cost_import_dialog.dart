@@ -36,6 +36,11 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
   List<_CostImportRow> _rows = [];
   List<Map<String, dynamic>> get _blocks => costMaps(widget.preview['blocks']);
   AppLocalizations get _l => AppLocalizations.of(context);
+  late final _targetLabels = <String?, String>{
+    for (final line in widget.lines)
+      costText(line['path']):
+          '${line['goodsName'] ?? ''} · ${line['goodsCode'] ?? ''}',
+  };
   @override
   void initState() {
     super.initState();
@@ -98,6 +103,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
     floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
     appBar: UtenAppBar(
       title: _l.costImport,
+      info: _l.costImportReview,
       leading: UtenBackButton(onPressed: () => Navigator.pop(context)),
       showPagePermissionAction: false,
     ),
@@ -111,7 +117,6 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
               SelectableText(
                 '${widget.fileNumber}/${widget.fileCount}  ${widget.filename}',
               ),
-            Text(_l.costImportReview),
             if (widget.preview['warnings'] is List)
               Tooltip(
                 message: (widget.preview['warnings'] as List).join('\n'),
@@ -154,11 +159,12 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'reviewed',
                     label: _l.costImportReviewed,
                     width: 90,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => r.reviewed ? _l.costYes : _l.costNo,
                     // 2026-10-06 全站表格行高统一：Checkbox 默认 40 点击区会把行撑高，
                     // 编辑行行高以 39 输入控件为准——收紧点击区到控件本身。
-                    cellBuilder: (_, r) => Theme(
-                      data: Theme.of(context).copyWith(
+                    cellBuilder: (cellContext, r) => Theme(
+                      data: Theme.of(cellContext).copyWith(
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: Checkbox(
@@ -175,6 +181,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'name',
                     label: _l.costGoodsName,
                     width: 230,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => costText(r.source['name']),
                     cellBuilder: (_, r) => Tooltip(
                       message: costText(r.source['formula']) ?? '',
@@ -185,6 +192,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'code',
                     label: _l.costGoodsCode,
                     width: 150,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => costText(r.source['code']),
                     cellBuilder: (_, r) => _text(r.source['code']),
                   ),
@@ -192,6 +200,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'unit',
                     label: _l.costUnit,
                     width: 100,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => costText(r.source['unit']),
                     cellBuilder: (_, r) => _text(r.source['unit']),
                   ),
@@ -199,7 +208,13 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'kind',
                     label: _l.costImportKind,
                     width: 180,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => r.kind,
+                    measureValueOf: (r) => switch (r.kind) {
+                      'MATERIAL' => _l.costImportMaterial,
+                      'FEE' => _l.costImportFee,
+                      _ => _l.costImportSkip,
+                    },
                     cellBuilder: (_, r) => UtenDropdownField(
                       hintText: _l.costImportKind,
                       value: r.kind,
@@ -229,7 +244,9 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'target',
                     label: _l.costImportTarget,
                     width: 300,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => r.targetPath,
+                    measureValueOf: (r) => _targetLabels[r.targetPath],
                     cellBuilder: (_, r) => r.kind == 'MATERIAL'
                         ? UtenDropdownField(
                             key: ValueKey(
@@ -258,6 +275,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'price',
                     label: _l.costPrice,
                     width: 150,
+                    minimumWidthOf: (_) => 48,
                     type: 'number',
                     value: (r) => r.price.text,
                     exactValueOf: (r) => r.kind == 'SKIP' ? null : r.price.text,
@@ -270,6 +288,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'rate',
                     label: _l.costPriceUnitRate,
                     width: 170,
+                    minimumWidthOf: (_) => 48,
                     type: 'number',
                     value: (r) => r.rate.text,
                     exactValueOf: (r) =>
@@ -283,6 +302,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                     key: 'reason',
                     label: _l.costNotes,
                     width: 250,
+                    minimumWidthOf: (_) => 48,
                     value: (r) => r.reason.text,
                     cellBuilder: (_, r) => _input(r.reason, _l.costNotes),
                   ),

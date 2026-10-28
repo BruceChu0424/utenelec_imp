@@ -40,7 +40,7 @@ void main() {
           final title = tester.getRect(find.text(_title));
           final hint = tester.getRect(find.byType(UtenFieldHintIcon));
           expect(hint.left, greaterThanOrEqualTo(title.right));
-          expect((hint.center.dy - title.center.dy).abs(), lessThan(16));
+          expect((hint.center.dy - title.center.dy).abs(), lessThan(2));
           if (interaction == 'hover') {
             final mouse = await tester.createGesture(
               kind: PointerDeviceKind.mouse,

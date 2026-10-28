@@ -150,6 +150,9 @@ class FinanceAssetQuery {
     this.status,
     this.categoryId,
     this.departmentId,
+    this.columnSearch = const {},
+    this.sort,
+    this.sortAscending = true,
   });
 
   final int page;
@@ -158,6 +161,9 @@ class FinanceAssetQuery {
   final String? status;
   final String? categoryId;
   final String? departmentId;
+  final Map<String, String> columnSearch;
+  final String? sort;
+  final bool sortAscending;
 
   Map<String, dynamic> toQuery() => <String, dynamic>{
     'page': page,
@@ -168,6 +174,11 @@ class FinanceAssetQuery {
       'categoryId': categoryId!.trim(),
     if (departmentId?.trim().isNotEmpty ?? false)
       'departmentId': departmentId!.trim(),
+    for (final entry in columnSearch.entries)
+      if (entry.value.trim().isNotEmpty)
+        'search.${entry.key}': entry.value.trim(),
+    if (sort != null) 'sort': sort,
+    if (sort != null) 'order': sortAscending ? 'asc' : 'desc',
   };
 
   FinanceAssetQuery copyWith({
@@ -181,6 +192,10 @@ class FinanceAssetQuery {
     bool clearCategoryId = false,
     String? departmentId,
     bool clearDepartmentId = false,
+    Map<String, String>? columnSearch,
+    String? sort,
+    bool clearSort = false,
+    bool? sortAscending,
   }) {
     return FinanceAssetQuery(
       page: page ?? this.page,
@@ -191,6 +206,9 @@ class FinanceAssetQuery {
       departmentId: clearDepartmentId
           ? null
           : (departmentId ?? this.departmentId),
+      columnSearch: columnSearch ?? this.columnSearch,
+      sort: clearSort ? null : (sort ?? this.sort),
+      sortAscending: sortAscending ?? this.sortAscending,
     );
   }
 }

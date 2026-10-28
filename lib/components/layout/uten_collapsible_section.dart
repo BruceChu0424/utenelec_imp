@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
 import '../feedback/uten_motion.dart';
+import 'uten_collapsible_content.dart';
 
 class UtenCollapsibleSection extends StatefulWidget {
   const UtenCollapsibleSection({
@@ -148,35 +149,11 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
               ),
             ),
           ),
-          TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: isExpanded ? 1 : 0),
-            duration: duration,
-            curve: UtenAnim.standard,
-            builder: (context, factor, child) => ClipRect(
-              child: Align(
-                alignment: Alignment.topCenter,
-                heightFactor: factor,
-                child: child,
-              ),
-            ),
-            child: ExcludeFocus(
-              excluding: !isExpanded,
-              child: ExcludeSemantics(
-                excluding: !isExpanded,
-                child: IgnorePointer(
-                  ignoring: !isExpanded,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: TickerMode(
-                      enabled: isExpanded,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: widget.child,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+          UtenCollapsibleContent(
+            expanded: isExpanded,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: SizedBox(width: double.infinity, child: widget.child),
             ),
           ),
         ],

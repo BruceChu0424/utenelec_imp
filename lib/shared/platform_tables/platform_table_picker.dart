@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uuid/uuid.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
@@ -1038,8 +1039,13 @@ class _ColumnOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     contentPadding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-    title: Text(title),
-    subtitle: Text(selected ? '$subtitle · 已显示' : subtitle),
+    title: Row(
+      children: [
+        Flexible(child: Text(title)),
+        UtenFieldHintIcon(info: subtitle, dense: true),
+      ],
+    ),
+    subtitle: selected ? const Text('已显示') : null,
     leading: Icon(icon),
     trailing: Row(
       mainAxisSize: MainAxisSize.min,

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/client_access_models.dart';
 import 'package:uten_imp/features/basic_data/widgets/client_access_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -54,8 +55,19 @@ void main() {
 
     expect(find.text('负责人和可见人'), findsOneWidget);
     expect(find.text('客户一号'), findsOneWidget);
+    expect(find.textContaining('内销、外贸客户使用同一套规则'), findsNothing);
+    final scopeHint = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('内销、外贸客户使用同一套规则') ?? false),
+    );
+    expect(scopeHint, findsOneWidget);
+    await tester.tap(scopeHint);
+    await tester.pumpAndSettle();
     expect(find.textContaining('内销、外贸客户使用同一套规则'), findsOneWidget);
     expect(find.textContaining('历史制单、审批和审计记录不会被改写'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(find.text('负责人甲'), findsOneWidget);
     expect(find.text('协同人乙(E002)'), findsOneWidget);
   });

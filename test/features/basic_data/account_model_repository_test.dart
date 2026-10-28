@@ -5,6 +5,100 @@ import 'package:uten_imp/features/basic_data/models/account_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/account_repository.dart';
 
 void main() {
+  test(
+    'account bank header and broad keyword stay in POST body while decimal criteria stay exact',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            captured = request;
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: {
+                  'items': <Map<String, dynamic>>[],
+                  'total': 0,
+                  'page': 1,
+                  'size': 20,
+                  'totalPages': 0,
+                },
+              ),
+            );
+          },
+        ),
+      );
+      await DioAccountRepository(ApiClient(dio)).list(
+        keyword: '6222',
+        filters: {
+          'search.bankAccountNo': '6222%_',
+          'search.balanceCurrent': '>90071992547409.1234',
+        },
+      );
+      expect(captured.method, 'POST');
+      expect(captured.path, '/master/accounts/search');
+      expect(captured.queryParameters.containsKey('keyword'), isFalse);
+      expect(
+        captured.queryParameters.containsKey('search.bankAccountNo'),
+        isFalse,
+      );
+      expect(
+        captured.queryParameters['search.balanceCurrent'],
+        '>90071992547409.1234',
+      );
+      expect(captured.data, {
+        'keyword': '6222',
+        'columnSearch': {'bankAccountNo': '6222%_'},
+      });
+    },
+  );
+  test(
+    'account statement repository sends exact column conditions without a sort',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            captured = request;
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: {
+                  'rows': <Object?>[],
+                  'page': 1,
+                  'size': 50,
+                  'total': 0,
+                  'totalPages': 0,
+                },
+              ),
+            );
+          },
+        ),
+      );
+      await DioAccountRepository(ApiClient(dio)).statement(
+        accountId: 'account-1',
+        dateFrom: '2026-10-01',
+        dateTo: '2026-10-28',
+        columnQuery: {
+          'search.balance': '>=90071992547409.1234',
+          'search.summary': '调整_%',
+          'entryKind': 'REVERSAL',
+        },
+      );
+      expect(
+        captured.queryParameters['search.balance'],
+        '>=90071992547409.1234',
+      );
+      expect(captured.queryParameters['search.summary'], '调整_%');
+      expect(captured.queryParameters['entryKind'], 'REVERSAL');
+      expect(captured.queryParameters.containsKey('sort'), isFalse);
+    },
+  );
+
   test('account detail retains the authorized related subject label', () {
     final detail = AccountDetail.fromJson({
       'id': 'account-1',

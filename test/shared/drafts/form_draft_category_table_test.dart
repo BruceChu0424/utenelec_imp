@@ -45,25 +45,252 @@ class _Record {
   final String id, number;
 }
 
-FormDraft _draft(String id, {String kind = 'salesOrder', String? createdId}) =>
-    FormDraft(
-      id: id,
-      title: '新建订货单',
-      module: BadgeModule.sales,
-      route: '/sales/orders/new?returnTo=%2Fsales%2Ftasks',
-      permission: 'sales_order:create',
-      draftKind: kind,
-      updatedAt: DateTime(2026, 9, 27),
-      data: {
-        'clientId': 'client-a',
-        'text': {'remark': '半途保存'},
-        'createdDocId': createdId,
-      },
-    );
+FormDraft _draft(
+  String id, {
+  String kind = 'salesOrder',
+  String? createdId,
+  String? total,
+  String? billDate,
+  String? remark,
+}) => FormDraft(
+  id: id,
+  title: '新建订货单',
+  module: BadgeModule.sales,
+  route: '/sales/orders/new?returnTo=%2Fsales%2Ftasks',
+  permission: 'sales_order:create',
+  draftKind: kind,
+  updatedAt: DateTime(2026, 9, 27),
+  data: {
+    'clientId': 'client-a',
+    'text': {
+      'remark': remark ?? '半途保存',
+      'total': ?total,
+      'billDate': ?billDate,
+    },
+    'createdDocId': createdId,
+  },
+);
 typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets(
+    'wrapper retains complete header contracts without invoking formal model accessors for a local draft',
+    (tester) async {
+      var opened = 0;
+      final signal = ValueNotifier(1);
+      addTearDown(signal.dispose);
+      final action = MasterHeaderFilterAction(onTap: () => opened++);
+      Widget trailing(BuildContext context) => const Text('列尾');
+      final draft = _draft('known', total: '20.1500');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => _Drafts([draft])),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: FormDraftCategoryTable<_Record>(
+                scope: _scope,
+                table: MasterDataTableView<_Record>(
+                  requiredLeadingColumnKeys: const ['custom'],
+                  temporaryLeadingColumnKeys: const ['total'],
+                  preserveQueryOnReturn: true,
+                  maxRetainedPages: 3,
+                  maxRetainedRows: 3000,
+                  dataCellVerticalPadding: 5,
+                  columns: [
+                    MasterColumnDef(
+                      key: 'total',
+                      label: '金额',
+                      width: 200,
+                      type: 'money',
+                      value: (row) => row.number,
+                      exactValueOf: (row) => row.number,
+                      aiSensitive: true,
+                      emphasized: true,
+                      exportable: false,
+                    ),
+                    MasterColumnDef(
+                      key: 'custom',
+                      label: '自定义',
+                      width: 200,
+                      value: (row) => row.number,
+                      facetSearchEnabled: true,
+                      headerFilterAction: action,
+                      headerTrailingBuilder: trailing,
+                      measureValueOf: (row) => row.number,
+                      measureWidthOf: (_, row, _) => row.number.length * 10.0,
+                      measureWidthScope: 'geometry-v1',
+                      minimumWidthOf: (_) => 180,
+                      cellHorizontalPaddingOf: (_) => 8,
+                      cellColorListenableOf: (_) => signal,
+                      legendOf: (_) => '真实说明',
+                    ),
+                  ],
+                  items: const [_Record('server', '30')],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final wrapped = tester.widget<MasterDataTableView<_Union>>(
+        find.byType(MasterDataTableView<_Union>),
+      );
+      final local = wrapped.items.singleWhere((row) => row.isLocal);
+      final formal = wrapped.items.singleWhere((row) => !row.isLocal);
+      final money = wrapped.columns.first;
+      expect(wrapped.requiredLeadingColumnKeys, ['custom']);
+      expect(wrapped.temporaryLeadingColumnKeys, ['total']);
+      expect(wrapped.preserveQueryOnReturn, isTrue);
+      expect(wrapped.maxRetainedPages, 3);
+      expect(wrapped.maxRetainedRows, 3000);
+      expect(wrapped.dataCellVerticalPadding, 5);
+      expect(
+        money.aiSensitive && money.emphasized && !money.exportable,
+        isTrue,
+      );
+      expect(money.exactValueOf!(local), '20.1500');
+      expect(money.exactValueOf!(formal), '30');
+      final custom = wrapped.columns.last;
+      expect(custom.headerFilterAction, same(action));
+      expect(custom.headerTrailingBuilder, same(trailing));
+      expect(custom.facetSearchEnabled, isTrue);
+      expect(custom.measureWidthScope, 'geometry-v1');
+      final context = tester.element(find.byType(MasterDataTableView<_Union>));
+      expect(custom.measureWidthOf!(context, formal, TextScaler.noScaling), 20);
+      expect(custom.measureWidthOf!(context, local, TextScaler.noScaling), 200);
+      expect(custom.cellColorListenableOf!(local), isNull);
+      expect(custom.cellColorListenableOf!(formal), same(signal));
+      expect(custom.legendOf!(local), isNull);
+      expect(custom.legendOf!(formal), '真实说明');
+      await tester.tap(
+        find
+            .byKey(const ValueKey('master-column-filter-custom'))
+            .hitTestable()
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final mode in ['local', 'page', 'loadMore']) {
+    final paged = mode != 'local';
+    testWidgets(
+      '$mode typed amount and date conditions filter actual draft inputs while unknown values remain unknown',
+      (tester) async {
+        final store = _Drafts([
+          _draft(
+            'known',
+            total: '20.1500',
+            billDate: '2026-10-28',
+            remark: 'known',
+          ),
+          _draft('less', total: '5', billDate: '2026-10-01', remark: 'less'),
+          _draft('unknown', billDate: '2026-10-01', remark: 'unknown'),
+        ]);
+        var filters = <String, String?>{};
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(_ReferenceApi()),
+              formDraftsProvider.overrideWith(() => store),
+            ],
+            child: MaterialApp(
+              home: Scaffold(
+                body: StatefulBuilder(
+                  builder: (context, update) => FormDraftCategoryTable<_Record>(
+                    scope: _scope,
+                    table: MasterDataTableView<_Record>(
+                      columns: [
+                        MasterColumnDef(
+                          key: 'remark',
+                          label: '备注',
+                          width: 100,
+                          value: (row) => row.id,
+                        ),
+                        MasterColumnDef(
+                          key: 'total',
+                          label: '金额',
+                          width: 170,
+                          type: 'money',
+                          columnSearchEnabled: true,
+                          value: (row) => row.number,
+                          exactValueOf: (row) => row.number,
+                        ),
+                        MasterColumnDef(
+                          key: 'date',
+                          label: '日期',
+                          width: 150,
+                          type: 'date',
+                          columnSearchEnabled: true,
+                          value: (_) => '2026-10-28',
+                        ),
+                      ],
+                      items: const [_Record('server', '30')],
+                      onPageChange: mode == 'page' ? (_) async {} : null,
+                      onLoadMore: mode == 'loadMore' ? () async {} : null,
+                      serverColumnSearchKeys: paged
+                          ? const {'total', 'date'}
+                          : const {},
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: filters,
+                      onFilterChanged: (key, value) => update(() {
+                        filters = {...filters, key: value};
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        Future<void> search(String key, String value) async {
+          await tester.tap(
+            find
+                .byKey(ValueKey('master-column-filter-$key'))
+                .hitTestable()
+                .first,
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('uten-column-keyword-input')),
+            value,
+          );
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+          await tester.pumpAndSettle();
+        }
+
+        await search('total', '>=10');
+        expect(find.text('known'), findsOneWidget);
+        expect(find.text('less'), findsNothing);
+        expect(find.text('unknown'), findsNothing);
+        await search('date', '2026-09');
+        expect(find.text('known'), findsNothing);
+        final saved = ProviderScope.containerOf(
+          tester.element(find.byType(FormDraftCategoryTable<_Record>)),
+        ).read(formDraftsProvider);
+        expect(saved.length, 3);
+        expect(
+          saved.singleWhere((draft) => draft.id == 'unknown').data['total'],
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'draft wrapper requires fresh reference proof and forwards complete party candidates',
     (tester) async {

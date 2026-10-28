@@ -10,6 +10,7 @@ import 'package:uten_imp/shared/providers/native_facet_options.dart';
 // 入口：委外 hub 卡片、任务中心状态列「回厂短交待判定」（?orderId=）、通知卡片（?caseId=）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +37,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/models/subcontract_short_delivery.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
@@ -147,7 +149,7 @@ class _SubcontractShortDeliveryPageState
       _supplierId,
       _columnFilters.sortColumn,
       _columnFilters.sortAscending,
-      _columnFilters['orderBillNo'],
+      jsonEncode(_columnFilters.values),
     );
     bool current() => mounted && requestId == _requestId && ownerCurrent();
     setState(() {
@@ -180,6 +182,9 @@ class _SubcontractShortDeliveryPageState
             ? null
             : (_columnFilters.sortAscending ? 'asc' : 'desc');
         final pageOrderBillNo = _columnFilters['orderBillNo'];
+        final pageColumnFilters = Map<String, String?>.of(
+          _columnFilters.values,
+        );
 
         next = await readScopedPage(
           page ?? _refreshPage,
@@ -195,6 +200,7 @@ class _SubcontractShortDeliveryPageState
             pageSort,
             pageOrder,
             pageOrderBillNo,
+            pageColumnFilters,
           ],
           currentQuery: () => [
             _repo,
@@ -209,6 +215,7 @@ class _SubcontractShortDeliveryPageState
                 ? null
                 : (_columnFilters.sortAscending ? 'asc' : 'desc'),
             _columnFilters['orderBillNo'],
+            Map<String, String?>.of(_columnFilters.values),
           ],
           useCache: useCache,
           fetchPage: (target) => pageRepository.list(
@@ -222,6 +229,7 @@ class _SubcontractShortDeliveryPageState
             sort: pageSort,
             order: pageOrder,
             orderBillNo: pageOrderBillNo,
+            columnFilters: pageColumnFilters,
           ),
         );
       }
@@ -271,7 +279,28 @@ class _SubcontractShortDeliveryPageState
   }
 
   /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
-  static const _kSortFields = <String, String>{'orderBillNo': 'orderBillNo'};
+  static const _kSortFields = <String, String>{
+    'orderBillNo': 'orderBillNo',
+    'supplierName': 'supplierName',
+    'goodsName': 'goodsName',
+    'goodsCode': 'goodsCode',
+    'colorName': 'colorName',
+    'orderedQty': 'orderedQty',
+    'allowedLossPct': 'allowedLossPct',
+    'floorQty': 'floorQty',
+    'deliveredQty': 'deliveredQty',
+    'shortfallQty': 'shortfallQty',
+    'shortfallPct': 'shortfallPct',
+    'receiptBillNo': 'receiptBillNo',
+    'arrivalCount': 'arrivalCount',
+    'detectedAt': 'detectedAt',
+    'expectedCompleteBy': 'expectedCompleteBy',
+    'lossQty': 'lossQty',
+    'lossPct': 'lossPct',
+    'wasteBillNo': 'wasteBillNo',
+    'closedAt': 'closedAt',
+    'ownerName': 'ownerName',
+  };
 
   /// 表头排序变化：服务端重排整个结果集，回第 1 页。
   void _onSortChange(String? column, bool ascending) {
@@ -414,6 +443,16 @@ class _SubcontractShortDeliveryPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '委外回厂短交判定',
+        info: switch (_seg) {
+          SubcontractShortDeliverySegment.pending =>
+            '低于允许损耗下限的短交与过了预计到齐日的分批等待；「严重」为短交率超过允许损耗两倍或 20%。仓库照实登记，判定权在委外。',
+          SubcontractShortDeliverySegment.tolerant =>
+            '已按损耗增加供料的新计划，仍须补齐成品目标或由委外明确接受短交。历史未加料计划在容差内完成质检入库后自动结清；其余由委外判定。',
+          SubcontractShortDeliverySegment.waiting =>
+            '已判定分批到货；新加料计划继续等齐成品目标。历史未加料计划进入容差并入库后自动结清；仍低于下限且逾期的回到「待判定」。',
+          SubcontractShortDeliverySegment.history =>
+            '已接受损耗结清、自然到齐或作废的案件；原订货量保留，实收与核销损耗分别记录。',
+        },
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),
@@ -432,7 +471,6 @@ class _SubcontractShortDeliveryPageState
   }
 
   Widget _buildBody() {
-    final theme = Theme.of(context);
     final scoped = _orderId != null || _supplierId != null;
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -491,22 +529,6 @@ class _SubcontractShortDeliveryPageState
             onChanged: _onHistoryTime,
           ),
         ],
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          switch (_seg) {
-            SubcontractShortDeliverySegment.pending =>
-              '低于允许损耗下限的短交与过了预计到齐日的分批等待；「严重」为短交率超过允许损耗两倍或 20%。仓库照实登记，判定权在委外。',
-            SubcontractShortDeliverySegment.tolerant =>
-              '已达到允许损耗下限的行，在质检与入库完成后自动结清；未设允许损耗或无法自动核销的行由委外判定。',
-            SubcontractShortDeliverySegment.waiting =>
-              '已判定分批到货；累计回厂进入允许损耗范围并完成入库后自动结清，仍低于下限且逾期的回到「待判定」。',
-            SubcontractShortDeliverySegment.history =>
-              '已接受损耗结清、自然到齐或作废的案件；原订货量保留，实收与核销损耗分别记录。',
-          },
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
       ],
     );
     // 2026-09-22 全站表格滚动口径：上滑先收分段/说明（表头随之顶到视口顶），
@@ -543,6 +565,7 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'severity',
           label: '程度',
+          facetSearchEnabled: true,
           width: 72,
           value: (c) => c.severityLabel,
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
@@ -551,6 +574,7 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'status',
           label: '状态',
+          facetSearchEnabled: true,
           width: 72,
           value: (c) =>
               c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
@@ -567,30 +591,36 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'supplierName',
           label: '委外商',
+          sortable: true,
           width: 140,
           value: (c) => c.supplierName,
         ),
         MasterColumnDef(
           key: 'goodsName',
           label: '货品名称',
+          sortable: true,
           width: 170,
           value: (c) => c.goodsName,
         ),
         MasterColumnDef(
           key: 'goodsCode',
           label: '编号',
+          sortable: true,
           width: 120,
           value: (c) => c.goodsCode,
         ),
         MasterColumnDef(
           key: 'colorName',
           label: '颜色',
+          sortable: true,
           width: 90,
           value: (c) => c.colorName,
         ),
         MasterColumnDef(
           key: 'orderedQty',
           label: '原订货量',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 100,
           type: 'number',
           value: (c) => formatSubcontractQty(c.orderedQty, c.unitName),
@@ -598,6 +628,8 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'allowedLossPct',
           label: '允许损耗',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 90,
           type: 'number',
           value: (c) => c.allowedLossPct == null
@@ -607,6 +639,8 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'floorQty',
           label: '最少应到',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 100,
           type: 'number',
           value: (c) => c.floorQty == null
@@ -616,6 +650,8 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'deliveredQty',
           label: '累计回厂',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 100,
           type: 'number',
           value: (c) => formatSubcontractQty(c.deliveredQty, c.unitName),
@@ -623,6 +659,8 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'shortfallQty',
           label: '短交量',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 100,
           type: 'number',
           value: (c) => formatSubcontractQty(c.shortfallQty, c.unitName),
@@ -630,6 +668,8 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'shortfallPct',
           label: '短交率',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 90,
           type: 'number',
           value: (c) => formatSubcontractPct(c.shortfallPct),
@@ -637,12 +677,15 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'receiptBillNo',
           label: '最近收货单',
+          sortable: true,
           width: 140,
           value: (c) => c.receiptBillNo,
         ),
         MasterColumnDef(
           key: 'arrivalCount',
           label: '到货次数',
+          sortable: true,
+          columnSearchEnabled: true,
           width: 80,
           type: 'number',
           value: (c) => c.arrivalCount.toString(),
@@ -650,6 +693,9 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'detectedAt',
           label: '发现时间',
+          sortable: true,
+          columnSearchEnabled: true,
+          info: '按北京时间搜索日期或时间片段，例如 2026-10 或 2026-10-28。',
           width: 150,
           type: 'date',
           value: (c) =>
@@ -659,6 +705,9 @@ class _SubcontractShortDeliveryPageState
           MasterColumnDef(
             key: 'expectedCompleteBy',
             label: '预计到齐',
+            sortable: true,
+            columnSearchEnabled: true,
+            info: '搜索日期片段，例如 2026-10。',
             width: 110,
             type: 'date',
             value: (c) => c.expectedCompleteBy ?? '—',
@@ -667,6 +716,8 @@ class _SubcontractShortDeliveryPageState
           MasterColumnDef(
             key: 'lossQty',
             label: '核销损耗',
+            sortable: true,
+            columnSearchEnabled: true,
             width: 110,
             type: 'number',
             value: (c) => c.lossQty == null
@@ -676,6 +727,8 @@ class _SubcontractShortDeliveryPageState
           MasterColumnDef(
             key: 'lossPct',
             label: '损耗率',
+            sortable: true,
+            columnSearchEnabled: true,
             width: 90,
             type: 'number',
             value: (c) =>
@@ -684,12 +737,16 @@ class _SubcontractShortDeliveryPageState
           MasterColumnDef(
             key: 'wasteBillNo',
             label: '损耗单',
+            sortable: true,
             width: 140,
             value: (c) => c.wasteBillNo ?? '—',
           ),
           MasterColumnDef(
             key: 'closedAt',
             label: '结案时间',
+            sortable: true,
+            columnSearchEnabled: true,
+            info: '按北京时间搜索日期或时间片段，例如 2026-10。',
             width: 150,
             type: 'date',
             value: (c) =>
@@ -699,6 +756,7 @@ class _SubcontractShortDeliveryPageState
         MasterColumnDef(
           key: 'ownerName',
           label: '负责人',
+          sortable: true,
           width: 100,
           value: (c) => c.ownerName,
         ),
@@ -706,6 +764,7 @@ class _SubcontractShortDeliveryPageState
           MasterColumnDef(
             key: 'actions',
             label: '操作',
+            columnSearchEnabled: false,
             width: 240,
             value: (c) => c.canDecide ? '分批到货 / 接受损耗' : '—',
             cellBuilderHandlesSemantics: true,
@@ -746,7 +805,39 @@ class _SubcontractShortDeliveryPageState
       ],
       items: result?.items ?? const [],
       // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
-      facets: {'orderBillNo': _columnFilters.bucketOf('orderBillNo')},
+      serverColumnSearch: true,
+      facets: {
+        'orderBillNo': _columnFilters.bucketOf('orderBillNo'),
+        'severity': [
+          for (final code in const [
+            'SEVERE',
+            'BELOW_FLOOR',
+            'WITHIN_TOLERANCE',
+            'UNSET_TOLERANCE',
+          ])
+            MasterFacetBucket(
+              value: code,
+              label: subcontractShortDeliverySeverityLabel(code),
+              count: 0,
+            ),
+        ],
+        'status': [
+          for (final code in const [
+            'PENDING_OWNER',
+            'WAITING_MORE',
+            'ACCEPTED_LOSS',
+            'COMPLETED',
+            'CANCELED',
+          ])
+            MasterFacetBucket(
+              value: code,
+              label: code == 'ACCEPTED_LOSS'
+                  ? '已结清（接受损耗）'
+                  : subcontractShortDeliveryStatusLabel(code),
+              count: 0,
+            ),
+        ],
+      },
       facetPageLoaders: nativeFacetLoaders(
         ref,
         path: '/subcontract/short-deliveries/facets',
@@ -756,6 +847,10 @@ class _SubcontractShortDeliveryPageState
           'keyword': _keyword,
           'supplierId': _supplierId,
           'orderId': _orderId,
+          for (final entry in _columnFilters.values.entries)
+            if (entry.value != null && entry.key != 'orderBillNo')
+              (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+                  entry.value,
           'dateFrom':
               _seg == SubcontractShortDeliverySegment.history &&
                   _historyTime.range != null
@@ -768,32 +863,42 @@ class _SubcontractShortDeliveryPageState
               : null,
         },
       ),
-      facetSearchScope:
-          nativeFacetSearchScope(ref, '/subcontract/short-deliveries/facets', {
-            'segment': _seg.api,
-            'keyword': _keyword,
-            'supplierId': _supplierId,
-            'orderId': _orderId,
-            'dateFrom':
-                _seg == SubcontractShortDeliverySegment.history &&
-                    _historyTime.range != null
-                ? ChinaDateTime.formatDate(_historyTime.range!.start)
-                : null,
-            'dateTo':
-                _seg == SubcontractShortDeliverySegment.history &&
-                    _historyTime.range != null
-                ? ChinaDateTime.formatDate(_historyTime.range!.end)
-                : null,
-          }),
+      facetSearchScope: nativeFacetSearchScope(
+        ref,
+        '/subcontract/short-deliveries/facets',
+        {
+          'segment': _seg.api,
+          'keyword': _keyword,
+          'supplierId': _supplierId,
+          'orderId': _orderId,
+          for (final entry in _columnFilters.values.entries)
+            if (entry.value != null && entry.key != 'orderBillNo')
+              (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+                  entry.value,
+          'dateFrom':
+              _seg == SubcontractShortDeliverySegment.history &&
+                  _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.start)
+              : null,
+          'dateTo':
+              _seg == SubcontractShortDeliverySegment.history &&
+                  _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.end)
+              : null,
+        },
+      ),
 
       nullCounts: const {},
-      filters: {'orderBillNo': _columnFilters['orderBillNo']},
+      filters: Map<String, String?>.of(_columnFilters.values),
       // 表头排序走服务端（2026-09-25 单号列统一）。
       sortColumn: _columnFilters.sortColumn,
       sortAscending: _columnFilters.sortAscending,
       onSortChange: _onSortChange,
       onFilterChanged: (key, value) {
-        if (key == 'orderBillNo') {
+        if (key == 'orderBillNo' ||
+            key == 'status' ||
+            key == 'severity' ||
+            key.startsWith('search.')) {
           _columnFilters.handleFilterChanged(
             key,
             value,
@@ -829,7 +934,7 @@ class _SubcontractShortDeliveryPageState
   }
 
   /// 程度列（ADR-169 档位：风险按 灰→橙→红 分层）：
-  /// 容差内=中性灰（在允许损耗内，质检入库后自动结清）、
+  /// 容差内=中性灰（新加料计划须明确判定，历史未加料计划质检入库后可自动结清）、
   /// 低于允许下限=橙（超出容差的风险中间态，未到严重）、严重短交=红（异常）。
   static UtenStatusBadgeType _severityType(SubcontractShortDeliveryCase c) =>
       switch (c.severity) {

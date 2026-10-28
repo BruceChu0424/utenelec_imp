@@ -171,7 +171,9 @@ warehouseSalesOutboundTableColumns({
         key: 'weight',
         label: l10n.warehouseOutboundWeight,
         width: 110,
-        type: 'number',
+        type: 'weight',
+        sortable: true,
+        filterFromRows: true,
         exactValueOf: (row) => row.line.weightKg?.toString(),
         value: (row) => formatWeightValue(
           row.line.weightKg,
@@ -194,6 +196,15 @@ warehouseSalesOutboundTableColumns({
     width: width,
     type: type,
     info: info,
+    // This table receives complete document details. Numeric facts can be
+    // ordered locally; row numbers identify lines and are not summed facts.
+    sortable: type == 'number',
+    filterFromRows: const {
+      'result',
+      'warehouseWorkStatus',
+      'unitName',
+    }.contains(key),
+    facetSearchEnabled: true,
     value: (row) => value(row) ?? '—',
     // These numeric callbacks read API decimal strings, before the display
     // placeholder is introduced. A line number is an identity, not a fact.

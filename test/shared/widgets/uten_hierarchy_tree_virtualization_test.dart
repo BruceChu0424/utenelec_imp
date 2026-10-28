@@ -26,6 +26,7 @@ void main() {
               body: SizedBox(
                 width: 320,
                 child: UtenHierarchyTreeView<PaymentStyleNode>(
+                  initiallyExpandDepth: 1,
                   nodes: [
                     PaymentStyleNode(
                       id: 'root',

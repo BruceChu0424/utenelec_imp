@@ -3,6 +3,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../shared/search/table_column_query.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
@@ -73,12 +74,16 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
   int get _refreshPage => _readingRows.visiblePage ?? (_page?.page ?? 1);
 
   final _readingRows = MasterDataTableRowsController<StockCountRequest>();
+  TableColumnQuery _columnsQuery = const TableColumnQuery();
+  Map<String, String?> _lineFilters = {};
   @override
   void scopedPagedReadOwnerChanged() {
     if (!mounted) return;
     ++_sequence;
     setState(() {
       _page = null;
+      _columnsQuery = const TableColumnQuery();
+      _lineFilters = {};
       _detail = null;
       _openingDetail = false;
       _loading = false;
@@ -222,6 +227,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
       final pageStatus = _status.isEmpty ? null : _status;
       final pageScopeWarehouseId = widget.warehouseScope.warehouseId;
       final pageKeyword = widget.keyword;
+      final pageColumns = _columnsQuery;
 
       final result = await readScopedPage(
         requestedPage,
@@ -232,6 +238,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           pageStatus,
           pageScopeWarehouseId,
           pageKeyword,
+          pageColumns,
         ],
         currentQuery: () => [
           ref.read(stockCountRequestRepositoryProvider),
@@ -239,6 +246,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           _status.isEmpty ? null : _status,
           widget.warehouseScope.warehouseId,
           widget.keyword,
+          _columnsQuery,
         ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.list(
@@ -247,6 +255,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           scopeWarehouseId: pageScopeWarehouseId,
           keyword: pageKeyword,
           page: target,
+          columns: pageColumns.searches,
+          sort: pageColumns.sort,
+          ascending: pageColumns.ascending,
         ),
       );
       if (mounted && sequence == _sequence) {
@@ -315,6 +326,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
               detail.reviewRoute != widget.reviewRoute) {
             _error = '该盘点不属于当前审核队列';
           } else {
+            if (_detail?.id != detail.id) _lineFilters = {};
             _detail = detail;
           }
         });
@@ -758,6 +770,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'requestNo',
                 label: '盘点单号',
                 width: 190,
+                sortable: true,
                 value: (r) => r.requestNo,
               ),
               MasterColumnDef(
@@ -782,6 +795,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'submittedAt',
                 label: '提交时间',
                 width: 180,
+                type: 'date',
+                columnSearchEnabled: true,
+                sortable: true,
                 value: (r) => DisplayDateTime.format(r.submittedAt),
               ),
               MasterColumnDef(
@@ -794,6 +810,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'open',
                 label: '查看',
                 width: 90,
+                columnSearchEnabled: false,
                 value: (_) => '查看明细',
                 // 2026-10-06 行高统一口径：单行文字动作，不用 min40 的 TextButton。
                 cellBuilder: (_, r) => UtenTableCellAction(
@@ -803,7 +820,29 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
               ),
             ],
             items: _page?.items ?? const [],
+            serverColumnSearchKeys: const {
+              'requestNo',
+              'warehouse',
+              'submittedBy',
+              'submittedAt',
+              'reason',
+            },
+            sortColumn: _columnsQuery.sort,
+            sortAscending: _columnsQuery.ascending,
+            onSortChange: (key, ascending) {
+              setState(() {
+                _columnsQuery = _columnsQuery.sorted(key, ascending);
+                _page = null;
+                _selectedRequestIds.clear();
+              });
+              _load(1);
+            },
             facets: {
+              if (widget.reviewRoute == null)
+                'reviewRoute': const [
+                  MasterFacetBucket(value: 'FINANCE', label: '财务', count: 0),
+                  MasterFacetBucket(value: 'WAREHOUSE', label: '仓库', count: 0),
+                ],
               if (widget.embedded)
                 'status': [
                   if (!_history)
@@ -833,11 +872,30 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
             },
             nullCounts: const {},
             filters: {
+              ..._columnsQuery.searches,
+              'reviewRoute': _columnsQuery.searches['search.reviewRoute'],
               if (widget.embedded)
                 'status': _status == 'HISTORY' ? null : _status,
             },
             onFilterChanged: (key, value) {
-              if (widget.embedded && key == 'status') _selectStatus(value);
+              if (widget.embedded && key == 'status') {
+                _selectStatus(value);
+                return;
+              }
+              if (key == 'reviewRoute' && widget.reviewRoute == null) {
+                if (value != null &&
+                    !const {'WAREHOUSE', 'FINANCE'}.contains(value)) {
+                  return;
+                }
+                key = 'search.reviewRoute';
+              }
+              if (!key.startsWith('search.')) return;
+              setState(() {
+                _columnsQuery = _columnsQuery.search(key, value);
+                _page = null;
+                _selectedRequestIds.clear();
+              });
+              _load(1);
             },
             selectable: !_history,
             showSelectionColumn:
@@ -877,6 +935,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
               _status,
               widget.warehouseScope,
               widget.keyword,
+              _columnsQuery,
             ),
             onRetry: _load,
           ),
@@ -958,12 +1017,14 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'code',
                 label: '编号',
                 width: 100,
+                sortable: true,
                 value: (r) => r.goodsCode,
               ),
               MasterColumnDef(
                 key: 'color',
                 label: '颜色',
                 width: 85,
+                filterFromRows: true,
                 value: (r) => r.colorName,
               ),
               // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
@@ -974,6 +1035,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'beforeQty',
                 label: '原数量',
                 width: 145,
+                type: 'number',
+                sortable: true,
+                exactValueOf: (r) => r.beforeQty,
                 value: (r) => _qtyWithUnit(r.beforeQty, r.unitName),
                 cellBuilder: (_, r) => StockCountOldValue(
                   before: r.beforeQty,
@@ -985,18 +1049,27 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'targetQty',
                 label: '盘点数量',
                 width: 145,
+                type: 'number',
+                sortable: true,
+                exactValueOf: (r) => r.targetQty,
                 value: (r) => _qtyWithUnit(r.targetQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'deltaQty',
                 label: '数量差额',
                 width: 140,
+                type: 'number',
+                sortable: true,
+                exactValueOf: (r) => r.deltaQty,
                 value: (r) => _qtyWithUnit(r.deltaQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'beforeWeight',
                 label: '原重量 (kg)',
                 width: 115,
+                type: 'number',
+                sortable: true,
+                exactValueOf: (r) => r.beforeWeightKg,
                 value: (r) => r.beforeWeightKg,
                 cellBuilder: (_, r) => StockCountOldValue(
                   before: r.beforeWeightKg,
@@ -1007,6 +1080,10 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'targetWeight',
                 label: '盘点重量 (kg)',
                 width: 125,
+                type: 'number',
+                sortable: true,
+                filterFromRows: true,
+                exactValueOf: (r) => r.weightChanged ? r.targetWeightKg : null,
                 value: (r) =>
                     r.weightChanged ? r.targetWeightKg ?? '未知' : '未修改',
               ),
@@ -1014,24 +1091,33 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                 key: 'deltaWeight',
                 label: '重量差额 (kg)',
                 width: 125,
+                type: 'number',
+                sortable: true,
+                filterFromRows: true,
+                exactValueOf: (r) => r.weightChanged ? r.deltaWeightKg : null,
                 value: (r) => r.weightChanged ? r.deltaWeightKg ?? '未知' : '—',
               ),
               MasterColumnDef(
                 key: 'currentQty',
                 label: '当前数量',
                 width: 140,
+                type: 'number',
+                sortable: true,
+                exactValueOf: (r) => r.currentQty,
                 value: (r) => _qtyWithUnit(r.currentQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'stale',
                 label: '账面核对',
                 width: 135,
+                filterFromRows: true,
                 value: (r) => r.stale ? '库存已变化' : '一致',
               ),
               MasterColumnDef(
                 key: 'basis',
                 label: '首次材料用途',
                 width: 135,
+                filterFromRows: true,
                 value: (r) => switch (r.materialSetupBasis) {
                   'OWN' => '主料',
                   'SHARED' => '辅料',
@@ -1044,6 +1130,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
                   key: 'materialImpact',
                   label: '用途及 BOM 影响',
                   width: 235,
+                  columnSearchEnabled: false,
                   value: _setupImpactLabel,
                   cellBuilderHandlesSemantics: true,
                   cellBuilder: (_, line) => _setupImpactCell(detail, line),
@@ -1052,8 +1139,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
             items: detail.lines,
             facets: const {},
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: _lineFilters,
+            onFilterChanged: (key, value) => setState(() {
+              _lineFilters = {..._lineFilters, key: value};
+            }),
+            headerFilterScopeDescription: '定位本单完整明细；整单审核仍核对并处理全部明细，不随可见行改变。',
             emptyMessage: '没有盘点明细',
           ),
         ),

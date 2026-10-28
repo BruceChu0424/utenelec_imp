@@ -170,6 +170,19 @@ void main() {
           .onPressed,
       isNull,
     );
+    await tester.tap(find.text('仓库名称'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '包材',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('warehouse-picker-entry-good')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('warehouse-picker-entry-bad')), findsNothing);
     await tester.tap(find.byKey(const Key('warehouse-picker-entry-good')));
     await tester.pumpAndSettle();
     expect(picked, isNull);

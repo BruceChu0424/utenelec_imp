@@ -7,6 +7,7 @@
 #include <flutter/encodable_value.h>
 
 #include <memory>
+#include <optional>
 
 #include "win32_window.h"
 #include "client_update_channel.h"
@@ -22,6 +23,7 @@ class FlutterWindow : public Win32Window {
   // Win32Window:
   bool OnCreate() override;
   void OnDestroy() override;
+  void OnWindowStateChanged() override;
   LRESULT MessageHandler(HWND window, UINT const message, WPARAM const wparam,
                          LPARAM const lparam) noexcept override;
 
@@ -41,6 +43,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       desktop_window_channel_;
   void ResetDesktopWindowChannel();
+  std::optional<bool> last_sent_maximized_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

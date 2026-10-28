@@ -287,6 +287,7 @@ class _GoodsPriceObservationDetailState
         ),
         if (_loading)
           UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: priceText(context, 'loadingDetail'),
             semanticsKey: const Key('price-detail-loading'),
           ),

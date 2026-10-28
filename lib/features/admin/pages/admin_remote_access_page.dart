@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter/services.dart';
@@ -234,6 +235,7 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
               if (status != null) ...[
                 SettingsSection(
                   title: t('connection'),
+                  info: t('channelHint'),
                   children: [
                     _StatusRow(
                       t('currentPath'),
@@ -253,13 +255,6 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
                         status.observedAt.toIso8601String(),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        t('channelHint'),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
@@ -274,8 +269,10 @@ class _RemoteAccessSessionState extends ConsumerState<_RemoteAccessSession> {
                     SwitchListTile.adaptive(
                       key: const Key('remote-access-enabled'),
                       contentPadding: EdgeInsets.zero,
-                      title: Text(t('enabled')),
-                      subtitle: Text(t('enabledHint')),
+                      title: UtenSectionHeader(
+                        title: t('enabled'),
+                        info: t('enabledHint'),
+                      ),
                       value: _enabled,
                       onChanged: _busy || status.currentAccessChannel != 'local'
                           ? null

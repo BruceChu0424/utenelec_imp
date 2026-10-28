@@ -267,7 +267,11 @@ void main() {
       }
       expect(_table(tester).items.single.name, '${warehouse.id}库存货品');
       if (warehouse.isMain) {
-        expect(find.text('包含下级核算仓的即时库存'), findsOneWidget);
+        const hint = '包含下级核算仓的即时库存';
+        expect(find.text(hint), findsNothing);
+        await tester.tap(find.byTooltip(hint));
+        await tester.pumpAndSettle();
+        expect(find.text(hint), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
     });

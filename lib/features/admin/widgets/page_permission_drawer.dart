@@ -10,17 +10,23 @@
 //
 // 数据契约：权限项零写死，全部来自服务端目录(page_permission_delegation_models)。
 
+import 'dart:async';
+
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_motion.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../department/widgets/uten_department_tree_view.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -42,10 +48,13 @@ import '../../employee/repositories/employee_repository.dart'
     show EmployeeOnboardingResult;
 import '../../../shared/auth/account_action_owner.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../../shared/search/table_column_query.dart';
 import 'perm_catalog_group_section.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import 'admin_data_scope_section.dart';
+import 'permission_draft_session.dart';
 
 final _pageDataScopeBoundaryProvider = Provider(
   (ref) => (
@@ -75,6 +84,28 @@ class _PageDataScopePanelState extends ConsumerState<_PageDataScopePanel> {
   String? _error;
   int _loadRequest = 0;
   Object? _loadedBoundary;
+  final _scopeHandle = AdminDataScopeSectionHandle();
+  bool _allowClose = false;
+
+  Future<bool> _confirmClose() async {
+    if (_scopeHandle.hasDrafts && mounted) {
+      _scopeHandle.pauseAutoSave();
+      try {
+        final allowed = await guardPermissionDraftLeave(
+          context,
+          subject: '${_user?.employeeName ?? _user?.loginAccount ?? ''}的可查看数据',
+          save: () => _scopeHandle.saveDrafts(),
+        );
+        if (allowed && mounted && _scopeHandle.hasDrafts) {
+          _scopeHandle.discardDrafts();
+        }
+        return allowed;
+      } finally {
+        if (mounted) _scopeHandle.resumeAutoSave();
+      }
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -129,46 +160,60 @@ class _PageDataScopePanelState extends ConsumerState<_PageDataScopePanel> {
     }
   }
 
+  /// 关闭前守卫草稿（三选一）；放行后真正 pop（用 State 自身 context，过同步间隙检查）。
+  Future<void> _closePanel() async {
+    if (!await _confirmClose() || !mounted) return;
+    setState(() => _allowClose = true);
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final boundary = ref.watch(_pageDataScopeBoundaryProvider);
     final allowed = boundary.$2 && boundary.$3;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ListTile(
-          title: const Text('配置可查看数据'),
-          trailing: IconButton(
-            tooltip: '关闭',
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.of(context).pop(),
+    return PopScope<void>(
+      canPop: _allowClose || !_scopeHandle.hasDrafts,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_closePanel());
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: const Text('配置可查看数据'),
+            trailing: IconButton(
+              tooltip: '关闭',
+              icon: const Icon(Icons.close),
+              onPressed: _closePanel,
+            ),
           ),
-        ),
-        Expanded(
-          child: !allowed
-              ? const UtenEmpty(message: '需要超级管理员配置可查看数据范围')
-              : _loadedBoundary == boundary && _error != null
-              ? UtenEmpty.error(
-                  message: _error,
-                  actionLabel: '重试',
-                  onAction: _load,
-                )
-              : _loadedBoundary != boundary ||
-                    _user == null ||
-                    _permissions == null
-              ? const Center(child: CircularProgressIndicator())
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: AdminDataScopeSection(
-                    user: _user!,
-                    effectiveAsync: AsyncValue.data(_permissions!),
-                    viewAllPermissions: widget.viewAllPermissions,
-                    showHandover: false,
-                    onAccountChanged: _load,
+          Expanded(
+            child: !allowed
+                ? const UtenEmpty(message: '需要超级管理员配置可查看数据范围')
+                : _loadedBoundary == boundary && _error != null
+                ? UtenEmpty.error(
+                    message: _error,
+                    actionLabel: '重试',
+                    onAction: _load,
+                  )
+                : _loadedBoundary != boundary ||
+                      _user == null ||
+                      _permissions == null
+                ? const Center(child: CircularProgressIndicator())
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: AdminDataScopeSection(
+                      user: _user!,
+                      effectiveAsync: AsyncValue.data(_permissions!),
+                      viewAllPermissions: widget.viewAllPermissions,
+                      handle: _scopeHandle,
+                      showHandover: false,
+                      onAccountChanged: _load,
+                    ),
                   ),
-                ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -206,6 +251,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
 
   List<PagePermissionStaffSummary> _staff = const [];
   String _search = '';
+  TableColumnQuery _staffHeaders = const TableColumnQuery();
   int _page = 0;
   int _totalPages = 0;
   int _total = 0;
@@ -230,6 +276,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   bool _saving = false;
   bool _allowClose = false;
   final Set<String> _expandedFamilies = <String>{};
+  late final PermissionDraftSession _idleSave;
 
   bool get _dirty => _pending.isNotEmpty;
   bool get _current => mounted && !_contextInvalidated && _operator.isCurrent;
@@ -251,6 +298,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           !boundary.identity!.readOnly,
       onInvalidated: () => _invalidateContext(),
     );
+    _idleSave = PermissionDraftSession(onIdleSave: () => _save());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_current) _loadDepartments();
     });
@@ -276,6 +324,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _detailError = null;
       _pending.clear();
       _search = '';
+      _staffHeaders = const TableColumnQuery();
       _saving = false;
       _provisioning = false;
     }
@@ -289,6 +338,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
 
   @override
   void dispose() {
+    _idleSave.dispose();
     _operator.dispose();
     _provisionRequest++;
     _provisionTargetChanges.value++;
@@ -353,6 +403,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         departmentId: departmentId,
         search: _search,
         page: nextPage,
+        columnQuery: _staffHeaders.searches,
+        sort: _staffHeaders.sort,
+        ascending: _staffHeaders.ascending,
       );
       if (!_current || request != _staffRequest) return false;
       final combined = append
@@ -420,6 +473,19 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final normalized = value.trim();
     _search = normalized;
     _loadStaff();
+  }
+
+  Future<void> _changeStaffHeaders(TableColumnQuery headers) async {
+    if (!_current || !await _confirmDiscard() || !_current) return;
+    setState(() {
+      _staffHeaders = headers;
+      _pickedStaff = null;
+      _staff = const [];
+      _page = 0;
+      _total = 0;
+      _totalPages = 0;
+    });
+    await _loadStaff();
   }
 
   Future<void> _selectStaff(
@@ -613,10 +679,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     }
   }
 
-  Future<void> _save() async {
-    if (!mounted || !_current) return;
+  /// 保存本页权限草稿；true=草稿已清（保存成功或结果未知已按服务器刷新）。
+  Future<bool> _save() async {
+    if (!mounted || !_current) return false;
     final detail = _detail;
-    if (detail == null || _pending.isEmpty || _saving) return;
+    if (detail == null || _pending.isEmpty || _saving) return _pending.isEmpty;
     final byCode = {for (final item in detail.permissions) item.code: item};
     final changes =
         _pending.entries
@@ -630,6 +697,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             .toList()
           ..sort((left, right) => left.code.compareTo(right.code));
     setState(() => _saving = true);
+    bool resolved = false;
     try {
       final value = await _repository.saveEmployeePermissions(
         surfaceKey: widget.scope.surfaceKey,
@@ -637,7 +705,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         employeeId: detail.employeeId,
         changes: changes,
       );
-      if (!mounted || !_current) return;
+      if (!mounted || !_current) return true;
       if (value.employeeId != detail.employeeId ||
           value.surfaceKey != widget.scope.surfaceKey) {
         throw const FormatException(
@@ -648,14 +716,15 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _detail = value;
         _pending.clear();
       });
+      resolved = true;
       try {
         await ref.read(sessionSnapshotProvider.notifier).refresh();
-        if (!mounted || !_current) return;
+        if (!mounted || !_current) return true;
         if (ref.read(sessionSnapshotProvider).hasError) {
           context.appWarning(
             AppLocalizations.of(context).permissionSavedRefreshPending,
           );
-          return;
+          return true;
         }
       } catch (_) {
         if (mounted && _current) {
@@ -663,29 +732,33 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             AppLocalizations.of(context).permissionSavedRefreshPending,
           );
         }
-        return;
+        return true;
       }
-      if (!mounted || !_current) return;
+      if (!mounted || !_current) return true;
       context.appSuccess(AppLocalizations.of(context).permissionSaved);
+      return true;
     } on PagePermissionSaveCommittedError {
-      if (!mounted || !_current) return;
+      if (!mounted || !_current) return true;
       final message = AppLocalizations.of(context).permissionSavedDetailPending;
       setState(() {
         _detail = null;
         _pending.clear();
         _detailError = message;
       });
+      resolved = true;
       try {
         await ref.read(sessionSnapshotProvider.notifier).refresh();
       } catch (_) {
         // The assignment is already committed; session recovery retries separately.
       }
       if (mounted && _current) context.appWarning(message);
+      return true;
     } on ApiException catch (error) {
-      if (!mounted || !_current) return;
+      if (!mounted || !_current) return false;
       if (error.code == 'CONFLICT') {
         context.appError('权限已被其他人更新，正在刷新当前员工');
         await _loadDetail();
+        return true;
       } else if (error is NetworkException ||
           error is NetworkTimeoutException ||
           error.code == 'UNKNOWN' ||
@@ -693,12 +766,16 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           error.httpStatus == 408 ||
           (error.httpStatus ?? 0) >= 500) {
         _markSaveOutcomeUnknown();
+        return true;
       } else {
         context.appError(error.message);
+        return false;
       }
     } catch (_) {
       if (_current) _markSaveOutcomeUnknown();
+      return true;
     } finally {
+      if (_pending.isEmpty && (_current || resolved)) _idleSave.clear();
       if (_current) setState(() => _saving = false);
     }
   }
@@ -717,14 +794,19 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   Future<bool> _confirmDiscard() async {
     if (!_current) return false;
     if (!_dirty) return true;
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '丢弃未保存修改',
-      content: const Text('当前员工有尚未保存的页面权限修改。确定丢弃吗？'),
-      confirmLabel: '丢弃',
-      danger: true,
-    );
-    return _current && confirmed == true;
+    _idleSave.pause();
+    try {
+      final name = _selected?.fullName ?? '当前员工';
+      final allowed = await guardPermissionDraftLeave(
+        context,
+        subject: '$name 的本页权限',
+        changeCount: _pending.length,
+        save: () => _save(),
+      );
+      return _current && allowed;
+    } finally {
+      if (mounted) _idleSave.resume();
+    }
   }
 
   Future<void> _close() async {
@@ -772,6 +854,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         _pending[permission.code] = next;
       }
     });
+    if (_pending.isEmpty) {
+      _idleSave.clear();
+    } else {
+      _idleSave.noteEdit();
+    }
   }
 
   Future<void> _toggleCode(PageStaffPermissionState permission) async {
@@ -823,6 +910,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         }
       }
     });
+    if (_pending.isEmpty) {
+      _idleSave.clear();
+    } else {
+      _idleSave.noteEdit();
+    }
   }
 
   Future<bool> _confirmSensitiveGrant(
@@ -986,7 +1078,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       flatLevelColors: true,
       mode: UtenDepartmentTreeMode.single,
       showSearch: false,
-      initiallyExpandDepth: 0,
       expandOnRowTap: true,
       selectedIds: _departmentId == null ? const {} : {_departmentId!},
       nodeEnabledPredicate: (node) =>
@@ -1060,7 +1151,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         onAction: _loadStaff,
       );
     }
-    if (_staff.isEmpty) {
+    if (_staff.isEmpty &&
+        _staffHeaders.searches.isEmpty &&
+        _staffHeaders.sort == null) {
       return UtenEmpty(
         icon: Icons.people_outline_rounded,
         message: _search.isNotEmpty
@@ -1085,28 +1178,32 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                 label: '姓名',
                 width: 140,
                 value: (employee) => employee.fullName ?? '未命名员工',
-                columnSearchEnabled: false,
+                sortable: true,
+                columnSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'employeeCode',
                 label: '工号',
                 width: 120,
                 value: (employee) => employee.code,
-                columnSearchEnabled: false,
+                sortable: true,
+                columnSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'department',
                 label: '部门',
                 width: 200,
                 value: (employee) => employee.departmentName,
-                columnSearchEnabled: false,
+                sortable: true,
+                columnSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'position',
                 label: '岗位',
                 width: 140,
                 value: (employee) => employee.positionName,
-                columnSearchEnabled: false,
+                sortable: true,
+                columnSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'accountStatus',
@@ -1116,6 +1213,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                 cellBuilder: (context, employee) =>
                     _staffAccountStatus(employee),
                 columnSearchEnabled: false,
+                facetSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'employmentStatus',
@@ -1124,6 +1222,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                 value: (employee) =>
                     employeeEmploymentStatusLabel(employee.employmentStatus),
                 columnSearchEnabled: false,
+                facetSearchEnabled: true,
               ),
             ],
             items: _staff,
@@ -1137,11 +1236,45 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               if (_staffLoading || requestVersion != _staffRequest) return;
               setState(() => _pickedStaff = employee);
             },
-            facets: const {},
+            serverColumnSearchKeys: const {
+              'name',
+              'employeeCode',
+              'department',
+              'position',
+            },
+            headerFilterScopeDescription: '检索当前可管理部门范围的全部在岗员工；筛选不改变可授权范围',
+            facets: {
+              'accountStatus': [
+                for (final status in const [
+                  'notProvisioned',
+                  'active',
+                  'locked',
+                  'disabled',
+                ])
+                  MasterFacetBucket(
+                    value: status,
+                    label: employeeAccountStatusLabel(status),
+                    count: 0,
+                  ),
+              ],
+              'employmentStatus': [
+                for (final status in const ['active', 'probation', 'onLeave'])
+                  MasterFacetBucket(
+                    value: status,
+                    label: employeeEmploymentStatusLabel(status),
+                    count: 0,
+                  ),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            paginationScope: (_departmentId, _search),
+            filters: _staffHeaders.searches,
+            onFilterChanged: (key, value) =>
+                _changeStaffHeaders(_staffHeaders.search(key, value)),
+            sortColumn: _staffHeaders.sort,
+            sortAscending: _staffHeaders.ascending,
+            onSortChange: (key, ascending) =>
+                _changeStaffHeaders(_staffHeaders.sorted(key, ascending)),
+            paginationScope: (_departmentId, _search, _staffHeaders),
             loadingMore: _loadingMore,
             showPaginationControls: false,
             showFullscreenToggle: false,
@@ -1301,10 +1434,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('可查看数据范围', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            isClient
+          UtenSectionHeader(
+            title: '可查看数据范围',
+            info: isClient
                 ? '开启“查看客户”后，默认可查看本人负责及被指定共享的客户。'
                       '还可额外选择指定负责人的客户；拥有“查看全部客户资料”权限时可查看全部客户。'
                       '如只看本人或指定负责人，请先关闭“查看全部”并保存。'
@@ -1552,18 +1684,24 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                           )
                         : null,
                   ),
-                  AnimatedRotation(
-                    turns: expanded ? 0 : -0.25,
-                    duration: const Duration(milliseconds: 180),
-                    child: const Icon(Icons.chevron_right_rounded, size: 20),
+                  UtenMotion(
+                    duration: UtenAnim.normal,
+                    builder: (context, duration) => AnimatedRotation(
+                      turns: expanded ? .25 : 0,
+                      duration: duration,
+                      curve: UtenAnim.standard,
+                      child: const Icon(Icons.chevron_right_rounded, size: 20),
+                    ),
                   ),
                 ],
               ),
             ),
           ),
         ),
-        if (expanded)
-          Padding(
+        UtenCollapsibleContent(
+          expanded: expanded,
+          maintainState: false,
+          child: Padding(
             padding: const EdgeInsets.only(left: UtenSpacing.s12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1573,6 +1711,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               ],
             ),
           ),
+        ),
         const Divider(height: 1),
       ],
     );
@@ -1723,7 +1862,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
             ),
             TextButton(
               onPressed: changed > 0 && !_saving
-                  ? () => setState(_pending.clear)
+                  ? () => setState(() {
+                      _pending.clear();
+                      _idleSave.clear();
+                    })
                   : null,
               child: const Text('撤销修改'),
             ),

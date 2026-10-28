@@ -37,13 +37,24 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   int summaryCalls = 0;
   final claimed = <(String, String)>[];
   final historyPages = <int>[];
+  final historyQueries = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
     required String type,
     int page = 1,
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     historyPages.add(page);
+    historyQueries.add({
+      'page': page,
+      'type': type,
+      'search': Map<String, String?>.of(columnSearch),
+      'sort': sort,
+      'ascending': ascending,
+    });
     return PagedResult(
       items: [
         HrCelebrationPublication(
@@ -409,6 +420,37 @@ void main() {
       );
       expect(history.items.single.publishedAt, startsWith('2024-'));
       expect(hrTasks.historyPages, [1, 2]);
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-employeeName')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '历史员工',
+      );
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      history = tester.widget<MasterDataTableView<HrCelebrationPublication>>(
+        find.byKey(const Key('hr-celebration-history-table')),
+      );
+      expect(history.currentPage, 1);
+      expect(
+        hrTasks.historyQueries.last['search'],
+        containsPair('search.employeeName', '历史员工'),
+      );
+      history.onFilterChanged('search.publishedAt', '2024-02');
+      await tester.pumpAndSettle();
+      history = tester.widget<MasterDataTableView<HrCelebrationPublication>>(
+        find.byKey(const Key('hr-celebration-history-table')),
+      );
+      history.onSortChange!('publishedAt', true);
+      await tester.pumpAndSettle();
+      expect(
+        hrTasks.historyQueries.last['search'],
+        containsPair('search.publishedAt', '2024-02'),
+      );
+      expect(hrTasks.historyQueries.last['sort'], 'publishedAt');
+      expect(hrTasks.historyQueries.last['ascending'], isTrue);
       expect(hrTasks.claimed, isEmpty);
       expect(tester.takeException(), isNull);
     },

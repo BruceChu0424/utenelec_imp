@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
@@ -862,7 +863,7 @@ class _ProductionWorkshopTasksPageState
           const SizedBox(width: UtenSpacing.s4),
         ],
         Expanded(
-          child: Tooltip(
+          child: UtenEditorTooltip(
             message: current == null && remembered != null
                 ? '${_routeMemoryHint(task)}，点开核对后选择确认。${_routeChangeHint(task)}'
                 : _routeChangeHint(task),

@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 
@@ -152,8 +153,10 @@ class _SalesQuoteRevisionComparisonState
     return ExpansionTile(
       key: const ValueKey('sales-quote-revision-comparison'),
       initiallyExpanded: true,
-      title: const Text('逐项修改对照'),
-      subtitle: const Text('仅修改格划去旧值，右侧红字显示新值；删除明细才整行划去'),
+      title: const UtenSectionHeader(
+        title: '逐项修改对照',
+        info: '仅修改格划去旧值，右侧红字显示新值；删除明细才整行划去',
+      ),
       children: [
         UtenDropdownScrollScope(
           nativeDropdown: true,

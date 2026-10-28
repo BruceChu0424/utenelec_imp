@@ -1,8 +1,8 @@
 // 再认证拦截器回归 (ADR-110)。
 //
-// 钉住的规则：服务端回 403 REAUTH_REQUIRED 时向统一弹窗要一张一次性凭证，带
+// 钉住的规则：服务端回 403 REAUTH_REQUIRED 时向统一弹窗要一张会话凭证，带
 // X-Uten-Step-Up 把原请求原样重发且只重发一次；用户取消时原 403 照常抛出；
-// 别的 403 一律不碰；并发要凭证时弹窗排队、一次只弹一个。
+// 别的 403 一律不碰；连续与并发操作共用验证，空闲后重新验证。
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -160,7 +160,7 @@ void main() {
     expect(adapter.sent, hasLength(1));
   });
 
-  test('并发要凭证时弹窗排队：前一个结束后才弹下一个，各拿各的凭证', () async {
+  test('并发要凭证只弹一次框，连续操作复用同一会话凭证', () async {
     final gates = <Completer<String?>>[];
     var active = 0;
     var maxActive = 0;
@@ -179,12 +179,67 @@ void main() {
 
     gates.first.complete('token-1');
     expect(await first, 'token-1');
-    await Future<void>.delayed(Duration.zero);
-    expect(gates, hasLength(2));
-
-    gates.last.complete('token-2');
-    expect(await second, 'token-2');
+    expect(await second, 'token-1');
+    expect(await StepUpCoordinator.instance.obtain(), 'token-1');
+    expect(gates, hasLength(1));
     expect(maxActive, 1);
+  });
+
+  test('连续保存复用凭证，不再先被拒或再次弹框', () async {
+    var prompts = 0;
+    unregister = StepUpCoordinator.instance.register(() async {
+      prompts++;
+      return 'shared-session-proof';
+    });
+    final adapter = _Adapter((options) {
+      return options.headers[StepUpInterceptor.header] == 'shared-session-proof'
+          ? _json(200, {'ok': true})
+          : _json(403, {'code': 'REAUTH_REQUIRED'});
+    });
+    final dio = _dio(adapter);
+    await dio.put<dynamic>('/admin/departments/d-1/permissions');
+    await dio.put<dynamic>('/admin/departments/d-2/permissions');
+    expect(prompts, 1);
+    expect(adapter.sent, hasLength(3));
+    expect(
+      adapter.sent.last.headers[StepUpInterceptor.header],
+      'shared-session-proof',
+    );
+  });
+
+  test('活动保活被拒时清理凭证且不弹密码框', () async {
+    var prompts = 0;
+    unregister = StepUpCoordinator.instance.register(() async {
+      prompts++;
+      return 'old-proof';
+    });
+    final adapter = _Adapter((_) => _json(403, {'code': 'REAUTH_REQUIRED'}));
+    final dio = _dio(adapter);
+    await expectLater(
+      dio.post<dynamic>(StepUpInterceptor.activityPath),
+      throwsA(isA<DioException>()),
+    );
+    expect(prompts, 0);
+    expect(adapter.sent, hasLength(1));
+  });
+
+  test('验证期间身份变化不重放原写请求', () async {
+    final proof = Completer<String?>();
+    var current = true;
+    unregister = StepUpCoordinator.instance.register(() => proof.future);
+    final adapter = _Adapter((_) => _json(403, {'code': 'REAUTH_REQUIRED'}));
+    final dio = Dio(BaseOptions(baseUrl: 'https://erp.example.test/api'));
+    dio.httpClientAdapter = adapter;
+    dio.interceptors.add(
+      StepUpInterceptor(dio, isCurrent: (_) async => current),
+    );
+    final result = dio.put<dynamic>('/admin/system-settings');
+    final expectation = expectLater(result, throwsA(isA<DioException>()));
+    await Future<void>.delayed(Duration.zero);
+    current = false;
+    proof.complete('late-proof');
+    await expectation;
+    expect(adapter.sent, hasLength(1));
   });
 }
 

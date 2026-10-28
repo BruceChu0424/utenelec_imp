@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import '../support/table_cell_geometry.dart';
 
 class _ResizeRow extends EditableGridRow {
   _ResizeRow() {
@@ -25,17 +26,7 @@ Finder _nameGrip() => find.byWidgetPredicate(
   (widget) => widget is UtenColumnResizeHandle && widget.label == 'Product',
 );
 
-Finder _headerCell(String label) => find
-    .ancestor(
-      of: find.text(label),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is SizedBox &&
-            widget.width != null &&
-            widget.child is DecoratedBox,
-      ),
-    )
-    .first;
+Finder _headerCell(String label) => tableCellFrame(find.text(label));
 
 Future<void> _pumpGrid(
   WidgetTester tester,

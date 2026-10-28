@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -176,15 +177,21 @@ class _GoodsCostProductionEvidenceState
           }
           return UtenAlertDialog(
             maxWidth: 820,
-            title: Text(_l.costProductionEvidence),
+            title: Row(
+              children: [
+                Flexible(child: Text(_l.costProductionEvidence)),
+                UtenFieldHintIcon(
+                  info: _l.costProductionScopeHelp,
+                  dense: true,
+                ),
+              ],
+            ),
             content: SizedBox(
               width: 820,
               height: MediaQuery.sizeOf(context).height * .65,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(_l.costProductionScopeHelp),
-                  const SizedBox(height: 12),
                   Expanded(
                     child: MasterDataTableView<Map<String, dynamic>>(
                       expensiveRowMounts: false,
@@ -194,6 +201,7 @@ class _GoodsCostProductionEvidenceState
                           key: 'label',
                           label: _l.costEvidenceField,
                           width: 260,
+                          minimumWidthOf: (_) => 48,
                           value: (r) => costText(r['label']),
                           cellBuilder: (_, r) => _cell(r['label']),
                         ),
@@ -201,6 +209,7 @@ class _GoodsCostProductionEvidenceState
                           key: 'value',
                           label: _l.costEvidenceValue,
                           width: 390,
+                          minimumWidthOf: (_) => 48,
                           value: (r) => costText(r['value']),
                           cellBuilder: (_, r) => _cell(r['value']),
                         ),

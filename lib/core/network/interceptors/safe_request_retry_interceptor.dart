@@ -5,15 +5,19 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:clock/clock.dart';
 
 import '../connection_recovery.dart';
+import '../http_response_date.dart';
 
 const _retryCountKey = 'utenSafeRetryCount';
 const safeRequestRetryDisabledKey = 'utenSafeRetryDisabled';
 
 typedef RetryDelay = Future<void> Function(Duration duration);
 
-/// Only retries unreachable-server failures for GET/HEAD/OPTIONS.
+/// Retries safe reads for GET/HEAD/OPTIONS and the explicit, read-only platform
+/// values batch endpoint. The POST allowlist is deliberately exact: another
+/// POST in the same feature can create/delete a definition or record usage.
 ///
 /// Business writes are never replayed here, even if they carry an idempotency
 /// key. This prevents a weak connection from duplicating an order, approval or
@@ -67,7 +71,11 @@ class SafeRequestRetryInterceptor extends Interceptor {
     if (isTransientConnectivityFailure(err, web: web)) {
       _recovery?.markRetrying(attempts + 1);
     }
-    await _delay(retryDelayForAttempt(attempts));
+    final backoff = retryDelayForAttempt(attempts);
+    final serverDelay = safeRequestRetryAfter(err);
+    await _delay(
+      serverDelay != null && serverDelay > backoff ? serverDelay : backoff,
+    );
 
     if (options.cancelToken?.isCancelled == true) {
       handler.next(err);
@@ -122,11 +130,52 @@ bool shouldRetrySafeRequest(
   }
 
   final method = options.method.toUpperCase();
-  if (method != 'GET' && method != 'HEAD' && method != 'OPTIONS') return false;
+  final readOnlyBatch =
+      method == 'POST' && _platformValuesRead.hasMatch(options.path);
+  if (method != 'GET' &&
+      method != 'HEAD' &&
+      method != 'OPTIONS' &&
+      !readOnlyBatch) {
+    return false;
+  }
 
-  return isTransientConnectivityFailure(error, web: web) ||
-      isStructuredServiceUnavailable(error);
+  if (!isTransientConnectivityFailure(error, web: web) &&
+      !isStructuredServiceUnavailable(error)) {
+    return false;
+  }
+  final serverDelay = safeRequestRetryAfter(error);
+  // A long service cooldown belongs to the manual recovery UI; do not retain
+  // the table request or retry earlier than the server explicitly requested.
+  return serverDelay == null || serverDelay <= const Duration(seconds: 10);
 }
+
+/// Only a single valid server hint influences this small automatic retry
+/// window. Rate limits, business failures and writes remain non-retriable.
+Duration? safeRequestRetryAfter(DioException error) {
+  final headers = error.response?.headers;
+  final values = headers?['retry-after'];
+  if (values == null || values.length != 1) return null;
+  final value = values.single.trim();
+  if (RegExp(r'^\d+$').hasMatch(value)) {
+    final seconds = int.tryParse(value);
+    // Preserve the long-cooldown decision without overflowing a Duration.
+    return Duration(seconds: seconds == null || seconds > 10 ? 11 : seconds);
+  }
+  final retryAt = parseHttpResponseDate(value);
+  if (retryAt == null) return null;
+  final responseDates = headers?['date'];
+  final serverNow = responseDates?.length == 1
+      ? parseHttpResponseDate(responseDates!.single)
+      : null;
+  final delay = retryAt.difference(serverNow ?? clock.now().toUtc());
+  return delay.isNegative ? Duration.zero : delay;
+}
+
+// This endpoint only projects authorized values; it never commits staged cells
+// or changes a business record. Keep write endpoints out of the retry policy.
+final _platformValuesRead = RegExp(
+  r'^/platform-columns/[a-z][a-z0-9_]*/values:batch$',
+);
 
 /// A backend-generated resolver outage is retriable for safe reads, but it is
 /// not evidence that the host or network is unreachable.

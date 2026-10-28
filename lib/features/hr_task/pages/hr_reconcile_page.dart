@@ -1597,6 +1597,8 @@ class _HrReconcileRecordsSheetState
                                 currentPage: page.page,
                                 totalPages: page.totalPages,
                                 totalItems: page.total,
+                                onPageChanged: (target) =>
+                                    setState(() => _page = target),
                                 onPrev: page.page > 1
                                     ? () =>
                                           setState(() => _page = page.page - 1)

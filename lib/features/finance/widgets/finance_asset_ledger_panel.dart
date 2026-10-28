@@ -21,6 +21,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/search/numeric_column_query.dart';
 import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_category_repository.dart';
@@ -344,6 +345,16 @@ class _FinanceAssetLedgerPanelState
         values['departmentId'] != _query.departmentId) {
       return false;
     }
+    for (final entry in _query.columnSearch.entries) {
+      final value = _assetDraftValue(draft, entry.key);
+      if (const {'grossAmount', 'balance'}.contains(entry.key)) {
+        if (NumericColumnQuery.tryParse(entry.value)?.matches(value) != true) {
+          return false;
+        }
+      } else if (!matchesKeywordSearch([value], entry.value)) {
+        return false;
+      }
+    }
     final search = _query.q?.trim().toLowerCase() ?? '';
     return matchesKeywordSearch([
       draft.title,
@@ -663,6 +674,57 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
+  void _headerFilterChanged(String key, String? value) {
+    if (key == 'status') {
+      _changeQuery(
+        _query.copyWith(page: 1, status: value, clearStatus: value == null),
+      );
+    } else if (key == 'categoryName') {
+      _changeQuery(
+        _query.copyWith(
+          page: 1,
+          categoryId: value,
+          clearCategoryId: value == null,
+        ),
+      );
+    } else if (key == 'departmentName' && value == null) {
+      _department = null;
+      _changeQuery(_query.copyWith(page: 1, clearDepartmentId: true));
+    } else if (key.startsWith('search.')) {
+      final search = {..._query.columnSearch};
+      final field = key.substring(7);
+      if (value == null || value.trim().isEmpty) {
+        search.remove(field);
+      } else {
+        search[field] = value;
+      }
+      _changeQuery(_query.copyWith(page: 1, columnSearch: search));
+    }
+  }
+
+  Future<void> _headerDepartmentFilter() async {
+    try {
+      final tree = await ref.read(departmentPickerTreeProvider.future);
+      if (!mounted) return;
+      final selection = await showUtenDepartmentPickerPanel(
+        context,
+        tree: tree,
+        initialSelection: _department == null ? const [] : [_department!],
+      );
+      if (!mounted || selection == null) return;
+      _department = selection.firstOrNull;
+      _changeQuery(
+        _query.copyWith(
+          page: 1,
+          departmentId: _department?.id,
+          clearDepartmentId: _department == null,
+        ),
+      );
+    } catch (error) {
+      if (mounted) context.appApiError(error, fallback: '部门筛选加载失败，请重试');
+    }
+  }
+
   Widget _table({required double filterWidth}) {
     final result = _result;
     return _withFormDraftRows(
@@ -706,12 +768,16 @@ class _FinanceAssetLedgerPanelState
             key: 'code',
             label: '编号',
             width: 128,
+            sortable: true,
+            columnSearchEnabled: true,
             value: (item) => item.code,
           ),
           MasterColumnDef(
             key: 'name',
             label: '名称',
             width: 180,
+            sortable: true,
+            columnSearchEnabled: true,
             value: (item) => item.name,
           ),
           MasterColumnDef(
@@ -724,6 +790,10 @@ class _FinanceAssetLedgerPanelState
             key: 'departmentName',
             label: '归属部门',
             width: 140,
+            headerFilterAction: MasterHeaderFilterAction(
+              onTap: _headerDepartmentFilter,
+              value: _department?.fullPath,
+            ),
             value: (item) => item.departmentName ?? '—',
           ),
           MasterColumnDef(
@@ -731,6 +801,12 @@ class _FinanceAssetLedgerPanelState
             label: widget.ledger.amountLabel,
             width: 140,
             type: 'money',
+            sortable: true,
+            columnSearchEnabled: true,
+            exactValueOf: (item) =>
+                widget.ledger == FinanceAssetLedger.fixedAsset
+                ? item.originalValue
+                : item.totalAmount,
             value: (item) => formatFinanceDecimal(
               widget.ledger == FinanceAssetLedger.fixedAsset
                   ? item.originalValue
@@ -744,20 +820,66 @@ class _FinanceAssetLedgerPanelState
                 : '待摊余额',
             width: 140,
             type: 'money',
+            sortable: true,
+            columnSearchEnabled: true,
+            exactValueOf: (item) => item.displayedBalance,
             value: (item) => formatFinanceDecimal(item.displayedBalance),
           ),
           MasterColumnDef(
             key: 'startPeriod',
             label: '开始期间',
             width: 110,
+            type: 'date',
+            sortable: true,
+            columnSearchEnabled: true,
             value: (item) => item.startPeriod ?? '—',
           ),
         ],
         items: result?.items ?? const [],
-        facets: const <String, List<MasterFacetBucket>>{},
+        facets: {
+          'status': [
+            for (final option in _statusItems)
+              MasterFacetBucket(
+                value: option.value!,
+                label: option.label,
+                count: 0,
+              ),
+          ],
+          'categoryName': [
+            for (final category in _categories)
+              MasterFacetBucket(
+                value: category.id,
+                label: '${category.code} · ${category.name}',
+                count: 0,
+              ),
+          ],
+        },
         nullCounts: const <String, int>{},
-        filters: const <String, String?>{},
-        onFilterChanged: (_, _) {},
+        filters: {
+          'status': _query.status,
+          'categoryName': _query.categoryId,
+          'departmentName': _query.departmentId,
+          for (final entry in _query.columnSearch.entries)
+            'search.${entry.key}': entry.value,
+        },
+        serverColumnSearchKeys: const {
+          'code',
+          'name',
+          'startPeriod',
+          'grossAmount',
+          'balance',
+        },
+        onFilterChanged: _headerFilterChanged,
+        sortColumn: _query.sort,
+        sortAscending: _query.sortAscending,
+        onSortChange: (column, ascending) => _changeQuery(
+          _query.copyWith(
+            page: 1,
+            sort: column,
+            clearSort: column == null,
+            sortAscending: ascending,
+          ),
+        ),
         // 联动折叠模式：竖向表体拾取工作台页 NestedScrollView 注入的
         // PrimaryScrollController，参与「横幅收起 → Tab 吸顶 → 表格内滚」。
         primary: true,

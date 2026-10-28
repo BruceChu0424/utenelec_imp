@@ -189,6 +189,7 @@ class ReportExportJobsClient {
     String id,
     String password,
     String filename, {
+    String? directory,
     required bool Function() stillCurrent,
   }) async {
     if (!api.streamingDownloads || !await canSaveStream()) return null;
@@ -204,6 +205,7 @@ class ReportExportJobsClient {
           filename,
           stillCurrent: () => stillCurrent() && scope.isCurrent,
           verifyScope: () => verifyDownload(id),
+          directory: directory,
         ),
       );
     } on ApiException {

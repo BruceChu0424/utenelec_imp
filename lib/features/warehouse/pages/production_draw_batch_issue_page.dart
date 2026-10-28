@@ -1001,6 +1001,9 @@ class _ProductionDrawBatchIssuePageState
         child: Scaffold(
           appBar: UtenAppBar(
             title: '批量出库详情',
+            info: _discoveries.isEmpty
+                ? '请核对每行仓库、车间和待出库数量。确认后按各单当前剩余量全部出库；需要部分出库时，请返回逐单办理。'
+                : '请在表格红框内补齐材料申请的领料数量和实际发料仓。确认后一起生成领料单并出库；现有领料单仍按各单剩余量全部出库。',
             leading: UtenBackButton(
               enabled: !_saving,
               onPressed: () => popOrBackTo(
@@ -1037,15 +1040,6 @@ class _ProductionDrawBatchIssuePageState
                                     style: Theme.of(
                                       context,
                                     ).textTheme.titleMedium,
-                                  ),
-                                  const SizedBox(height: UtenSpacing.s8),
-                                  Text(
-                                    _discoveries.isEmpty
-                                        ? '请核对每行仓库、车间和待出库数量。确认后按各单当前剩余量全部出库；需要部分出库时，请返回逐单办理。'
-                                        : '请在表格红框内补齐材料申请的领料数量和实际发料仓。确认后一起生成领料单并出库；现有领料单仍按各单剩余量全部出库。',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                   if (_submitError != null)

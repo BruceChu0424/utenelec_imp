@@ -21,7 +21,6 @@ Widget _tree() => UtenCategoryTreeView<PaymentStyleNode>(
     ),
   ],
   showSearch: false,
-  initiallyExpandDepth: 0,
   flatLevelColors: true,
 );
 

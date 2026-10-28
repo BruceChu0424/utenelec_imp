@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -85,6 +86,22 @@ void main() {
     await tester.pumpAndSettle();
 
     final grid = find.byType(UtenEditableGrid<StockGridRow>);
+    const guidance =
+        '账面数量由系统按所选仓库带出，保存时会记下当时的库存数。送审前如有其它出入库，系统会提示库存已变化、不能按旧数字修正，请刷新账面并重新核对实盘数。';
+    expect(find.text(guidance), findsNothing);
+    final hint = find.byWidgetPredicate(
+      (widget) => widget is UtenFieldHintIcon && widget.info == guidance,
+    );
+    expect(hint, findsOneWidget);
+    expect(
+      tester.getRect(hint).left - tester.getRect(find.text('新建盘点')).right,
+      inInclusiveRange(0, 8),
+    );
+    await tester.tap(hint);
+    await tester.pumpAndSettle();
+    expect(find.text(guidance), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     final labels = tester
         .widget<UtenEditableGrid<StockGridRow>>(grid)
         .columns
@@ -194,6 +211,8 @@ void main() {
       '0.02',
     );
     await tester.pump();
+    expect(inbound.weight.kg, 0.02);
+    expect(inbound.weight.userEdited, isTrue);
     expect(inbound.qty.text, '10');
     expect(inbound.qty.autofilled, isTrue);
     expect(inbound.weight.qtyFromWeight, isTrue);

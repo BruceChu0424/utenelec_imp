@@ -21,10 +21,6 @@ void main() {
       'assembler',
       'quality',
     ]);
-    expect(
-      table.columns.every((column) => column.columnSearchEnabled == false),
-      isTrue,
-    );
     await tester.tap(find.byKey(const Key('position-option-assembler')));
     await tester.pumpAndSettle();
     expect(selected, isNull);
@@ -39,6 +35,29 @@ void main() {
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     expect(selected?.id, 'assembler');
+  });
+
+  testWidgets('岗位表头自定义检索只定位候选，确认后才回填', (tester) async {
+    Position? selected;
+    await _pump(tester, onChanged: (value) => selected = value);
+    await _open(tester);
+    await tester.tap(find.text('岗位名称'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '装配',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('position-option-assembler')), findsOneWidget);
+    expect(find.byKey(const Key('position-option-manager')), findsNothing);
+    expect(selected, isNull);
+    await tester.tap(find.byKey(const Key('position-option-assembler')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(selected?.id, 'assembler');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('取消岗位选择不回填', (tester) async {

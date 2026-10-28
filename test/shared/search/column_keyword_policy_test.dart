@@ -58,7 +58,7 @@ void main() {
   );
 
   test(
-    'business overrides cannot fabricate an editing-grid text source or turn numeric cells into keyword fields',
+    'business overrides require a real source and allow explicitly typed numeric queries',
     () {
       expect(
         supportsColumnKeywordSearch(key: 'name', label: '名称', type: 'date'),
@@ -86,6 +86,17 @@ void main() {
           numeric: true,
           columnSearchEnabled: true,
           textOf: (_) => '10',
+          cellBuilder: (_, _) => const SizedBox.shrink(),
+        ).supportsKeywordSearch,
+        isTrue,
+      );
+      expect(
+        EditableGridColumn<_Row>(
+          key: 'quantity',
+          label: '数量',
+          width: 100,
+          numeric: true,
+          columnSearchEnabled: true,
           cellBuilder: (_, _) => const SizedBox.shrink(),
         ).supportsKeywordSearch,
         isFalse,

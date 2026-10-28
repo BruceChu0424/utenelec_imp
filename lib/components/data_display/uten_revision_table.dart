@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
+import '../../shared/search/retain_hierarchy_filter_context.dart';
 
 enum UtenRevisionKind { unchanged, removed, added }
 
@@ -176,6 +177,13 @@ class UtenRevisionTable<T> extends StatelessWidget {
         );
     final interactiveKeys = cellBuilders?.keys.toSet() ?? const <String>{};
     return MasterDataTableView<UtenRevisionRow<T>>(
+      headerFilterScopeDescription: '命中修改前后任一侧时保留整组对照；汇总以当前单据为准。',
+      filterContextRows: (all, matched) => retainMatchedPreorderGroups(
+        all,
+        matched,
+        isGroupStart: (row) =>
+            !(row.kind == UtenRevisionKind.added && row.changedKeys.isNotEmpty),
+      ),
       expensiveRowMounts: expensiveRowMounts ?? interactiveKeys.isNotEmpty,
       tableKey: tableKey,
       platformBinding: binding == null
@@ -247,6 +255,8 @@ class UtenRevisionTable<T> extends StatelessWidget {
           key: '_revision',
           label: '变更',
           width: 108,
+          filterFromRows: true,
+          columnSearchEnabled: false,
           value: (row) =>
               '${switch (row.kind) {
                 UtenRevisionKind.unchanged => '=',
@@ -260,6 +270,11 @@ class UtenRevisionTable<T> extends StatelessWidget {
             label: column.label,
             width: column.width,
             type: column.type,
+            filterFromRows: column.filterFromRows,
+            columnSearchEnabled: column.columnSearchEnabled,
+            facetSearchEnabled: column.facetSearchEnabled,
+            aiSensitive: column.aiSensitive,
+            exportable: column.exportable,
             info: column.info,
             defaultVisible: column.defaultVisible,
             exportDefinition: column.exportDefinition,
@@ -307,6 +322,9 @@ class UtenRevisionTable<T> extends StatelessWidget {
             // [cellBuilders] is the sanctioned escape hatch for interactive cells
             // (e.g. the finance rate editor); highlight decoration is skipped for
             // those keys so it cannot clobber the caller's widget.
+            // Sorting stays disabled: the old/new adjacency is part of the
+            // comparison. Its summaryBar remains the current document's total,
+            // never a sum of both snapshots or of the visible subset.
           ),
       ],
       items: rows,

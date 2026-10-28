@@ -78,7 +78,7 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     this.onNodeTap,
     this.nodeEnabledPredicate,
     this.showSearch = true,
-    this.initiallyExpandDepth = 1,
+    this.initiallyExpandDepth = 0,
     this.trailingBuilder,
     this.header,
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb

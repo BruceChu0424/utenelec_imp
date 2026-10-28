@@ -10,8 +10,10 @@
 // 仓库负责人(仓管员, ADR-115 / ADR-149)：列表「负责人」列 + 详情「设置负责人」。负责关系决定
 // 谁看、谁收仓库任务(服务端唯一判定)：登记在主仓上 = 仓库主管(看全部、可挑任一仓)；登记在子仓上
 // = 只看、只收自己负责的仓；没登记负责人的仓交主管，没登记的同事也看得到。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -25,6 +27,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/print/uten_print_preview.dart';
 import 'package:collection/collection.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -33,6 +36,9 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -69,6 +75,7 @@ import '../repositories/master_batch_repository.dart';
 import '../widgets/master_batch_feedback.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_edit_dialog.dart';
+import '../widgets/master_edit_owner.dart';
 import '../widgets/master_status_confirmation.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_page_mixin.dart';
@@ -105,6 +112,8 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   void inlineClearView() {
     _loadRequests.begin();
     _detailRequests.begin();
+    _directoryActionRequests.begin();
+    _directoryActionBusy = false;
     _warehouses = null;
     _selectedId = null;
     _selectedDetail = null;
@@ -201,11 +210,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   String? _detailError;
   final _detailRequests = LatestRequestGuard();
   bool _directoryActionBusy = false;
+  final _directoryActionRequests = LatestRequestGuard();
   bool _tableView = false;
   bool _tableBatchBusy = false;
   bool _tableBatchWriting = false;
   int _tableBatchEpoch = 0;
   final Set<ModalRoute<dynamic>> _tableBatchDialogs = {};
+  final _readOwnerChanges = ValueNotifier<int>(0);
   Set<String> _selectedWarehouseIds = {};
 
   /// 仓库 id → 负责人姓名(ADR-115)；加载失败时列显示「—」不挡列表。
@@ -214,6 +225,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () => _readOwnerChanges.value++);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadWarehouses();
       _loadKeepers();
@@ -307,28 +319,43 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   /// 设置负责人：整组替换；保存后刷新负责人列。
   Future<void> _editKeepers(WarehouseDetail d) async {
     if (!_canEdit) return;
+    final owner = captureReadOwner(ref);
+    bool current() => owner() && _canEdit;
     final repo = ref.read(warehouseKeeperRepositoryProvider);
-    List<WarehouseKeeper> current;
+    List<WarehouseKeeper> keepers;
     try {
-      current = await repo.keepers(d.id);
+      keepers = await runUtenBlockingTask(
+        context: context,
+        title: '正在读取仓库负责人',
+        task: () => repo.keepers(d.id),
+        isCurrent: current,
+        invalidation: _readOwnerChanges,
+      );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && current()) context.appError(e.message);
       return;
     } catch (_) {
-      if (mounted) context.appError('加载仓库负责人失败');
+      if (mounted && current()) context.appError('加载仓库负责人失败');
       return;
     }
-    if (!mounted || !_canEdit) return;
-    final saved = await showDialog<List<WarehouseKeeper>>(
+    if (!mounted || !current()) return;
+    final saved = await showReadOwnedDialog<List<WarehouseKeeper>>(
+      ref: ref,
       context: context,
       builder: (_) => _WarehouseKeepersDialog(
         warehouseId: d.id,
         warehouseName: d.name?.isNotEmpty == true ? d.name! : (d.code ?? '仓库'),
-        initial: current,
+        initial: keepers,
         repository: repo,
+        isCurrent: current,
+        onSave: (ids) => runSensitiveWrite(
+          ref,
+          isCurrent: current,
+          write: () => repo.replace(d.id, ids),
+        ),
       ),
     );
-    if (saved == null || !mounted) return;
+    if (saved == null || !mounted || !current()) return;
     final l10n = AppLocalizations.of(context);
     final warnings = [
       for (final keeper in saved)
@@ -509,33 +536,57 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   Future<void> _showCreate() async {
     if (!_canCreate) return;
-    if (!await inlineEdit.confirmLeave(context) || !mounted) return;
-    await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
-    if (!mounted || !_canCreate) return;
-    await showMasterEditDialog(
-      context: context,
-      draftSpec: FormDraftCatalog.warehouse.spec(title: '新增仓库'),
-      title: '新增仓库',
-      fields: _fields(),
-      initialValues: {
-        'accountable': 'true',
-        'defective': 'false',
-        'parentName': _mainWarehouseName ?? '',
-        'status': '使用',
-      },
-      readOnlyKeys: _canStatus ? null : const {'status'},
-      onSubmit: _doCreate,
-    );
-  }
-
-  Future<bool> _doCreate(Map<String, dynamic> body) async {
-    // Preserve the actual API failure for the shared draft submission fence.
-    await ref.read(warehouseRepositoryProvider).create(body);
-    if (mounted) {
-      context.appSuccess('仓库已创建');
-      await _loadWarehouses();
+    final readOwner = captureReadOwner(ref);
+    if (!await inlineEdit.confirmLeave(context) || !mounted || !readOwner()) {
+      return;
     }
-    return true;
+    final loaded = await context.guardRun(
+      () => runUtenBlockingTask(
+        context: context,
+        title: '正在读取仓库资料',
+        task: () =>
+            ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
+        isCurrent: readOwner,
+        invalidation: _readOwnerChanges,
+      ),
+      isCurrent: readOwner,
+      errorFallback: '加载仓库资料失败',
+    );
+    if (!loaded || !mounted || !readOwner() || !_canCreate) return;
+    final owner = MasterEditOwner(
+      context,
+      ref,
+      permissions: {Perm.warehouseCreate},
+    );
+    try {
+      if (!await owner.bindRequests() || !mounted) return;
+      if (!mounted || !owner.isCurrent || !_canCreate) return;
+      await showMasterEditDialog(
+        context: context,
+        draftSpec: FormDraftCatalog.warehouse.spec(title: '新增仓库'),
+        title: '新增仓库',
+        fields: _fields(),
+        initialValues: {
+          'accountable': 'true',
+          'defective': 'false',
+          'parentName': _mainWarehouseName ?? '',
+          'status': '使用',
+        },
+        readOnlyKeys: _canStatus ? null : const {'status'},
+        submissionOwner: owner,
+        onSubmit: (body) async {
+          await ref.read(warehouseRepositoryProvider).create(body);
+          return true;
+        },
+        onAccepted: () {
+          if (!owner.isCurrent) return;
+          context.appSuccess('仓库已创建');
+          unawaited(_loadWarehouses());
+        },
+      );
+    } finally {
+      owner.dispose();
+    }
   }
 
   @override
@@ -573,23 +624,37 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   Future<void> _toggleDetailStatus(WarehouseDetail d) async {
     if (!_canStatus || d.lineSide || d.isMain) return;
+    final owner = captureReadOwner(ref);
+    bool current() => owner() && _canStatus;
     final next = d.status == '使用' ? '禁用' : '使用';
     if (!await confirmMasterStatusChange(
           context,
           disabling: next == '禁用',
           label: d.name ?? d.code ?? '该仓库',
         ) ||
-        !mounted) {
+        !mounted ||
+        !current()) {
       return;
     }
     final ok = await context.guardRun(
-      () => ref
-          .read(masterStatusRepositoryProvider)
-          .change(resourcePath: ApiEndpoints.warehouse(d.id), status: next),
+      () => runUtenBlockingTask(
+        context: context,
+        title: next == '禁用' ? '正在停用仓库' : '正在启用仓库',
+        isCurrent: current,
+        invalidation: _readOwnerChanges,
+        task: () => runSensitiveWrite(
+          ref,
+          isCurrent: current,
+          write: () => ref
+              .read(masterStatusRepositoryProvider)
+              .change(resourcePath: ApiEndpoints.warehouse(d.id), status: next),
+        ),
+      ),
       success: next == '禁用' ? '已停用' : '已启用',
       errorFallback: '状态变更失败，请稍后重试',
+      isCurrent: current,
     );
-    if (ok && mounted) {
+    if (ok && current()) {
       await _loadWarehouses();
       if (mounted && _selectedId == d.id) await _showDetail(d.id);
     }
@@ -597,21 +662,29 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   Future<void> _delete(WarehouseDetail d) async {
     if (!_canDelete || d.lineSide || d.isMain) return;
-    final ok = await showDialog<bool>(
+    final owner = captureReadOwner(ref);
+    bool current() => owner() && _canDelete;
+    final ok = await showReadOwnedDialog<bool>(
+      ref: ref,
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Text('删除仓库'),
+        title: const UtenDialogHeading(
+          title: Text('删除仓库'),
+          icon: Icons.delete_outline_rounded,
+          danger: true,
+        ),
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该仓库')}」吗？',
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(
+          UtenButton(
+            type: UtenButtonType.secondary,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('取消'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          UtenButton(
+            type: UtenButtonType.danger,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),
@@ -619,15 +692,24 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       ),
     );
     if (ok != true) return;
-    if (!mounted || !_canDelete) return;
+    if (!mounted || !current()) return;
     final deleted = await context.guardRun(
-      () async {
-        await ref.read(warehouseRepositoryProvider).delete(d.id);
-      },
+      () => runUtenBlockingTask(
+        context: context,
+        title: '正在删除仓库',
+        isCurrent: current,
+        invalidation: _readOwnerChanges,
+        task: () => runSensitiveWrite(
+          ref,
+          isCurrent: current,
+          write: () => ref.read(warehouseRepositoryProvider).delete(d.id),
+        ),
+      ),
       success: '仓库已删除', // TODO(l10n): 补 arb
       errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
-    if (!deleted || !mounted) return;
+    if (!deleted || !current()) return;
     await _loadWarehouses();
   }
 
@@ -675,7 +757,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   String? _displayField(WarehouseDetail row, MasterFieldDef field) {
     if (field.key == 'parentName' && row.isMain) {
-      return AppLocalizations.of(context).warehouseMasterParentSelf;
+      return '—';
     }
     if (field.key == 'workshopDepartmentId') {
       return row.workshopDepartmentName;
@@ -758,7 +840,29 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         key: 'name',
         label: '仓库名称',
         width: 200,
+        minimumWidthOf: (_) => 48,
         value: (w) => w.name,
+        measureValueOf: (w) => '${w.name ?? ''}|${w.isMain}',
+        measureWidthOf: (context, w, scaler) =>
+            utenTableCellTextWidth(
+              w.name ?? '',
+              style:
+                  Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+              textScaler: scaler,
+              textDirection: Directionality.of(context),
+            ) +
+            (w.isMain
+                ? UtenSpacing.s8 +
+                      UtenStatusBadge.measureWidth(
+                        context,
+                        l10n.warehouseMasterMainTag,
+                        size: UtenStatusBadgeSize.small,
+                      )
+                : UtenSpacing.s16),
+        measureWidthScope: (
+          l10n.warehouseMasterMainTag,
+          Directionality.of(context),
+        ),
         // ADR-145：主仓置顶带「主仓」标签，子仓缩进一级。
         cellBuilder: (context, w) => Padding(
           padding: EdgeInsets.only(left: w.isMain ? 0 : UtenSpacing.s16),
@@ -868,19 +972,32 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
   }) async {
     if (_directoryActionBusy) return;
     if (inlineEdit.busy || inlineEdit.preparing) return;
+    final owner = captureReadOwner(ref);
     if (!keepInlineDrafts &&
-        (!await inlineEdit.confirmLeave(context) || !mounted)) {
+        (!await inlineEdit.confirmLeave(context) || !mounted || !owner())) {
       return;
     }
     _directoryActionBusy = true;
+    final request = _directoryActionRequests.begin();
+    bool current() => owner() && _directoryActionRequests.isCurrent(request);
     try {
-      await _showDetail(warehouse.id);
+      await runUtenBlockingTask(
+        context: context,
+        title: '正在读取仓库资料',
+        task: () => _showDetail(warehouse.id),
+        isCurrent: current,
+        invalidation: _readOwnerChanges,
+      );
       final detail = _selectedDetail;
-      if (mounted && _selectedId == warehouse.id && detail != null) {
+      if (current() && _selectedId == warehouse.id && detail != null) {
         await action(detail);
       }
+    } catch (error) {
+      if (mounted && current()) context.appApiError(error);
     } finally {
-      _directoryActionBusy = false;
+      if (_directoryActionRequests.isCurrent(request)) {
+        _directoryActionBusy = false;
+      }
     }
   }
 
@@ -1094,7 +1211,6 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
       sortByCode: false,
       flatLevelColors: true,
       expandOnRowTap: true,
-      initiallyExpandDepth: 2,
       header: _directoryHeader(context),
       selectedIds: {?_selectedId},
       visibleFilterIds: _visibleDirectoryIds,
@@ -1156,6 +1272,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
 
   @override
   void dispose() {
+    _readOwnerChanges.dispose();
     final routes = _tableBatchDialogs.toList();
     _tableBatchDialogs.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1364,6 +1481,9 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                         key: field.key,
                         label: field.label,
                         width: 180,
+                        filterFromRows: field.type == MasterFieldType.select,
+                        facetSearchEnabled:
+                            field.type == MasterFieldType.select,
                         value: (row) => _displayField(row, field),
                       ),
                   ]),
@@ -1392,13 +1512,13 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
                   error: _error,
                   onRetry: _loadWarehouses,
                   emptyMessage: '暂无符合筛选的仓库',
-                  toolbarLeadingActions: const [Text('主仓与车间内料仓不可批量启停或删除')],
                 ),
               ),
             ],
           ),
         ),
-        if (_tableBatchWriting) const UtenBusyOverlay(title: '正在处理仓库资料'),
+        if (_tableBatchWriting)
+          const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理仓库资料'),
       ],
     ),
   );
@@ -1698,12 +1818,16 @@ class _WarehouseKeepersDialog extends StatefulWidget {
     required this.warehouseName,
     required this.initial,
     required this.repository,
+    required this.isCurrent,
+    required this.onSave,
   });
 
   final String warehouseId;
   final String warehouseName;
   final List<WarehouseKeeper> initial;
   final WarehouseKeeperRepository repository;
+  final bool Function() isCurrent;
+  final Future<List<WarehouseKeeper>> Function(List<String> ids) onSave;
 
   @override
   State<_WarehouseKeepersDialog> createState() =>
@@ -1742,7 +1866,9 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   }
 
   Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
+    if (!widget.isCurrent()) return const [];
     final candidates = await widget.repository.candidates(keyword);
+    if (!mounted || !widget.isCurrent()) return const [];
     for (final candidate in candidates) {
       _known[candidate.employeeId] = candidate;
     }
@@ -1750,19 +1876,20 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   }
 
   Future<void> _save() async {
+    if (_saving || !widget.isCurrent()) return;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      final saved = await widget.repository.replace(widget.warehouseId, [
+      final saved = await widget.onSave([
         for (final item in _selection) item.id,
       ]);
-      if (mounted) Navigator.of(context).pop(saved);
+      if (mounted && widget.isCurrent()) Navigator.of(context).pop(saved);
     } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
+      if (mounted && widget.isCurrent()) setState(() => _error = e.message);
     } catch (_) {
-      if (mounted) setState(() => _error = '保存失败，请稍后重试');
+      if (mounted && widget.isCurrent()) setState(() => _error = '保存失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1778,20 +1905,20 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
           '${item.name}: $warning',
     ];
     return UtenAlertDialog(
-      title: Text(l10n.warehouseKeeperDialogTitle(widget.warehouseName)),
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(l10n.warehouseKeeperDialogTitle(widget.warehouseName)),
+          ),
+          UtenFieldHintIcon(info: l10n.warehouseKeeperRolesHint, dense: true),
+        ],
+      ),
       content: SizedBox(
         width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              l10n.warehouseKeeperRolesHint,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
             UtenEmployeeMultiPicker(
               key: const Key('warehouse-keeper-picker'),
               label: '负责人',

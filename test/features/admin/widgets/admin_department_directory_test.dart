@@ -44,7 +44,7 @@ void main() {
     expect(repository.departmentReads, isEmpty);
     expect(find.text('先选择一个部门，再为其设置权限'), findsOneWidget);
 
-    await tester.tap(_departmentRow('仓库部'));
+    await _tapDepartment(tester, '仓库部');
     await tester.pumpAndSettle();
     expect(repository.departmentReads, ['warehouse']);
     expect(find.text('部门权限 · 仓库部'), findsOneWidget);
@@ -79,7 +79,7 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _mount(tester, repository);
-      await tester.tap(_departmentRow('仓库部'));
+      await _tapDepartment(tester, '仓库部');
       await tester.pumpAndSettle();
       await _modifyPermission(tester);
       expect(
@@ -91,18 +91,19 @@ void main() {
         isFalse,
       );
 
-      await tester.tap(_departmentRow('采购部'));
+      await _tapDepartment(tester, '采购部');
       await tester.pumpAndSettle();
-      expect(find.text('丢弃未保存修改'), findsOneWidget);
-      await tester.tap(find.text('取消'));
+      // 三选一离开弹窗：继续编辑留在当前部门，草稿保留。
+      expect(find.text('保存未提交的修改？'), findsOneWidget);
+      await tester.tap(find.text('继续编辑'));
       await tester.pumpAndSettle();
       expect(find.text('部门权限 · 仓库部'), findsOneWidget);
       expect(repository.departmentReads, ['warehouse']);
       expect(find.text('已修改 1 项'), findsOneWidget);
 
-      await tester.tap(_departmentRow('采购部'));
+      await _tapDepartment(tester, '采购部');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('丢弃并切换'));
+      await tester.tap(find.text('不保存离开'));
       await tester.pumpAndSettle();
       expect(find.text('部门权限 · 采购部'), findsOneWidget);
       expect(repository.departmentReads, ['warehouse', 'purchase']);
@@ -117,7 +118,7 @@ void main() {
   ) async {
     final repository = _Repository();
     await _mount(tester, repository, width: 375, scale: 1.8);
-    await tester.tap(_departmentRow('仓库部'));
+    await _tapDepartment(tester, '仓库部');
     await tester.pumpAndSettle();
     expect(find.text('部门权限 · 仓库部'), findsOneWidget);
     expect(find.byType(UtenDepartmentTreeView), findsNothing);
@@ -134,7 +135,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(UtenDepartmentTreeView), findsOneWidget);
-    await tester.tap(_departmentRow('仓库部'));
+    await _tapDepartment(tester, '仓库部');
     await tester.pumpAndSettle();
     expect(find.text('已修改 1 项'), findsOneWidget);
     expect(repository.writes, 0);
@@ -148,6 +149,8 @@ void main() {
     repository.treeFails = false;
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
+    expect(_departmentRow('仓库部'), findsNothing);
+    await _expandDepartmentAncestors(tester);
     expect(_departmentRow('仓库部'), findsOneWidget);
     expect(repository.treeReads, 2);
     expect(tester.takeException(), isNull);
@@ -222,6 +225,24 @@ Future<void> _mount(
     ),
   );
   await tester.pumpAndSettle();
+}
+
+Future<void> _tapDepartment(WidgetTester tester, String label) async {
+  if (_departmentRow(label).evaluate().isEmpty) {
+    await _expandDepartmentAncestors(tester);
+  }
+  await tester.tap(_departmentRow(label));
+}
+
+Future<void> _expandDepartmentAncestors(WidgetTester tester) async {
+  for (final label in ['决策层', '制造中心']) {
+    final toggle = find.byTooltip('展开$label');
+    if (toggle.evaluate().isNotEmpty) {
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+    }
+  }
 }
 
 class _Repository implements AdminRepository {

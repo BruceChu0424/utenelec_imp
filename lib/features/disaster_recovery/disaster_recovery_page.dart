@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
+import '../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -150,13 +152,12 @@ class _DisasterRecoveryPageState extends ConsumerState<DisasterRecoveryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      recoveryText(context, '本机连接'),
-                      style: Theme.of(context).textTheme.titleMedium,
+                    UtenSectionHeader(
+                      title: recoveryText(context, '本机连接'),
+                      info: recoveryText(context, '这里只调整这台设备的连接，不改变公司业务运行位置。'),
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     Text(connection),
-                    Text(recoveryText(context, '这里只调整这台设备的连接，不改变公司业务运行位置。')),
                     UtenButton(
                       type: UtenButtonType.secondary,
                       onPressed: () => showDialog<void>(
@@ -173,13 +174,9 @@ class _DisasterRecoveryPageState extends ConsumerState<DisasterRecoveryPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      recoveryText(context, '独立救援入口'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      recoveryText(
+                    UtenSectionHeader(
+                      title: recoveryText(context, '独立救援入口'),
+                      info: recoveryText(
                         context,
                         '公司业务服务不可达时，仍可在独立入口查询备份、管理已登记目标和恢复演练。需要另行绑定的救援口令与动态验证码。',
                       ),
@@ -206,17 +203,24 @@ class _DisasterRecoveryPageState extends ConsumerState<DisasterRecoveryPage> {
                     ),
                     if (superAdmin && rescue != null) ...[
                       const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        recoveryText(
-                          context,
-                          '出差时按人开通远程访问，回来后关闭；同时最多授权5人，不是固定名单。',
-                        ),
-                      ),
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        onPressed: () =>
-                            context.push(RouteName.adminPermissions),
-                        child: Text(recoveryText(context, '管理出差远程授权')),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: UtenButton(
+                              type: UtenButtonType.secondary,
+                              onPressed: () =>
+                                  context.push(RouteName.adminPermissions),
+                              child: Text(recoveryText(context, '管理出差远程授权')),
+                            ),
+                          ),
+                          UtenFieldHintIcon(
+                            dense: true,
+                            info: recoveryText(
+                              context,
+                              '出差时按人开通远程访问，回来后关闭；同时最多授权5人，不是固定名单。',
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       Text(

@@ -136,6 +136,124 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 表头列筛选：供应商/仓库（dict 桶，value=UUID，回传 supplierId/warehouseId）。
   String? _supplierIdFilter;
   String? _warehouseIdFilter;
+  String? _statusHeader;
+
+  List<MasterFacetBucket> get _statusFacets {
+    final seg = _seg;
+    if (seg == null) return const [];
+    const draft = MasterFacetBucket(
+      value: 'DRAFT',
+      label: '草稿 / 待提交',
+      count: 0,
+    );
+    const pending = MasterFacetBucket(
+      value: 'PENDING',
+      label: '等待财务审核',
+      count: 0,
+    );
+    const rejected = MasterFacetBucket(
+      value: 'REJECTED',
+      label: '财务退回',
+      count: 0,
+    );
+    const reviewPending = MasterFacetBucket(
+      value: 'REVIEW_PENDING',
+      label: '改量待财务复核',
+      count: 0,
+    );
+    const reviewRejected = MasterFacetBucket(
+      value: 'REVIEW_REJECTED',
+      label: '改量财务退回',
+      count: 0,
+    );
+    const executing = MasterFacetBucket(
+      value: 'EXECUTING',
+      label: '财务已通过 / 执行中',
+      count: 0,
+    );
+    final approved = MasterFacetBucket(
+      value: 'APPROVED',
+      count: 0,
+      label: widget.docType == PurchaseDocType.request
+          ? '计划已下达'
+          : widget.docType == PurchaseDocType.order
+          ? '财务已通过 / 已审'
+          : '已审',
+    );
+    if (seg.history) {
+      return [
+        draft,
+        if (widget.docType == PurchaseDocType.order) ...[
+          pending,
+          rejected,
+          reviewPending,
+          reviewRejected,
+        ],
+        approved,
+        const MasterFacetBucket(value: 'REVERSED', label: '已反审', count: 0),
+        const MasterFacetBucket(value: 'CANCELED', label: '已取消', count: 0),
+        const MasterFacetBucket(
+          value: 'LEGACY',
+          label: importedBusinessHistoryLabel,
+          count: 0,
+        ),
+      ];
+    }
+    if (widget.docType == PurchaseDocType.order) {
+      return switch (seg.financeApproval) {
+        'IN_PROGRESS' => [
+          pending,
+          rejected,
+          reviewPending,
+          reviewRejected,
+          executing,
+        ],
+        'PENDING' => [pending, reviewPending],
+        'REJECTED' => [rejected, reviewRejected],
+        _ => [draft],
+      };
+    }
+    return [seg.status == kPurchaseStatusApproved ? approved : draft];
+  }
+
+  ({int? status, String? finance, bool? closed})? get _headerState =>
+      switch (_statusHeader) {
+        'DRAFT' => (status: 0, finance: 'NONE', closed: null),
+        'PENDING' => (status: 0, finance: 'PENDING', closed: null),
+        'REJECTED' => (status: 0, finance: 'REJECTED', closed: null),
+        'REVIEW_PENDING' => (status: 1, finance: 'PENDING', closed: null),
+        'REVIEW_REJECTED' => (status: 1, finance: 'REJECTED', closed: null),
+        'EXECUTING' => (status: 1, finance: 'NONE', closed: false),
+        'APPROVED' => (
+          status: 1,
+          finance: widget.docType == PurchaseDocType.order ? 'NONE' : null,
+          closed: null,
+        ),
+        'REVERSED' => (status: -1, finance: null, closed: null),
+        'CANCELED' => (status: 2, finance: null, closed: null),
+        _ => null,
+      };
+
+  int? get _queryStatus =>
+      _headerState?.status ?? (_seg?.history == true ? null : _seg?.status);
+  String? get _queryFinance => widget.docType != PurchaseDocType.order
+      ? null
+      : _headerState?.finance ??
+            (_seg?.history == true ? null : _seg?.financeApproval);
+  bool? get _queryClosed =>
+      _headerState?.closed ??
+      (_seg?.history != true &&
+              widget.docType == PurchaseDocType.request &&
+              _seg?.status == kPurchaseStatusApproved
+          ? false
+          : null);
+  BusinessDocumentOrigin? get _queryOrigin => _seg?.history != true
+      ? null
+      : _statusHeader == null
+      ? BusinessDocumentOrigin.all
+      : _statusHeader == 'LEGACY'
+      ? BusinessDocumentOrigin.legacy
+      : BusinessDocumentOrigin.current;
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -199,6 +317,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     _actionableCount = null;
     _supplierIdFilter = null;
     _warehouseIdFilter = null;
+    _statusHeader = null;
     _historyTime = UtenHistoryTimeValue.lastThreeMonths();
   }
 
@@ -316,18 +435,13 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         .list(
           page: requestedPage ?? _list.pageNum,
           filter: PurchaseDocFilter(
-            origin: seg.history ? BusinessDocumentOrigin.all : null,
+            origin: _queryOrigin,
             keyword: _list.normalizedKeyword,
             supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
             warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
-            status: seg.history ? null : seg.status,
-            closed:
-                !seg.history &&
-                    widget.docType == PurchaseDocType.request &&
-                    seg.status == kPurchaseStatusApproved
-                ? false
-                : null,
-            financeApproval: seg.history ? null : seg.financeApproval,
+            status: _queryStatus,
+            closed: _queryClosed,
+            financeApproval: _queryFinance,
             dateFrom: range == null
                 ? null
                 : ChinaDateTime.formatDate(range.start),
@@ -361,19 +475,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
             .read(purchaseRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: PurchaseDocFilter(
-                origin: seg.history ? BusinessDocumentOrigin.all : null,
+                origin: _queryOrigin,
                 columnSearch: _columnFilters.values,
                 keyword: _list.normalizedKeyword,
                 supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
                 warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
-                status: seg.history ? null : seg.status,
-                closed:
-                    !seg.history &&
-                        widget.docType == PurchaseDocType.request &&
-                        seg.status == kPurchaseStatusApproved
-                    ? false
-                    : null,
-                financeApproval: seg.history ? null : seg.financeApproval,
+                status: _queryStatus,
+                closed: _queryClosed,
+                financeApproval: _queryFinance,
                 dateFrom: range == null
                     ? null
                     : ChinaDateTime.formatDate(range.start),
@@ -415,6 +524,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     _historyTime.range?.end,
     _supplierIdFilter,
     _warehouseIdFilter,
+    _statusHeader,
     Map.of(_columnFilters.values),
   ];
 
@@ -482,6 +592,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     clearDraftSelection();
     setState(() {
       _seg = seg;
+      _statusHeader = null;
       // 进历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
       _historyTime = seg.history
           ? UtenHistoryTimeValue.lastThreeMonths()
@@ -520,6 +631,15 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
 
   void _onColumnFilterChanged(String key, String? value) {
     clearDraftSelection();
+    if (key == 'status') {
+      if (value != null &&
+          !_statusFacets.any((facet) => facet.value == value)) {
+        return;
+      }
+      setState(() => _statusHeader = value);
+      _reload(1);
+      return;
+    }
     if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(
         key,
@@ -610,6 +730,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       MasterColumnDef(
         key: 'status',
         label: '状态',
+        facetSearchEnabled: true,
+        columnSearchEnabled: false,
         width: 72,
         value: _statusLabel,
         // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
@@ -631,7 +753,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         width: 120,
         type: 'date',
         sortable: true,
-        value: (it) => (it.billDate ?? '').substring(0, 10),
+        columnSearchEnabled: true,
+        value: (it) => it.billDate,
       ),
       if (_cfg.hasSupplier)
         MasterColumnDef(
@@ -654,6 +777,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
           width: 170,
           type: 'money',
           sortable: true,
+          columnSearchEnabled: true,
+          exactValueOf: (it) => it.priceMasked
+              ? null
+              : it.totalLocalText ?? it.totalLocal?.toString(),
           // 合计恒本币（折合人民币）：金额带「元」后缀；历史原始表头值/未知原文不拼。
           value: (it) => it.priceMasked
               ? '***'
@@ -874,6 +1001,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                                   ]
                                 : null,
                             facets: {
+                              'status': _statusFacets,
                               'billNo': _columnFilters.bucketOf('billNo'),
                               if (_cfg.hasSupplier)
                                 'supplier': selectedPartyFacet(
@@ -894,6 +1022,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             )),
                             nullCounts: const {},
                             filters: {
+                              'status': _statusHeader,
                               ..._columnFilters.values,
                               'billNo': _columnFilters['billNo'],
                               if (_cfg.hasSupplier)

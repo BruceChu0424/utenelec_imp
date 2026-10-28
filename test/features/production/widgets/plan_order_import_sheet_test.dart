@@ -47,6 +47,14 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('无下层物料'), findsOneWidget);
+      final directMakeHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('该产品无子层级物料') ?? false),
+      );
+      await tester.tap(directMakeHint);
+      await tester.pumpAndSettle();
+
       expect(
         find.text(
           '该产品无子层级物料，按直接自制处理：可带入计划，不生成生产领料明细；'
@@ -54,6 +62,8 @@ void main() {
         ),
         findsOneWidget,
       );
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
       final inventoryHint = find.byWidgetPredicate(
         (widget) =>
             widget is UtenFieldHintIcon &&

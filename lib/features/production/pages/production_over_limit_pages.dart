@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,6 +25,7 @@ import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_over_limit_repository.dart';
 import '../widgets/production_review_reason_dialog.dart';
@@ -58,6 +60,30 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
       MasterDataTableRowsController<ProductionOverLimitDisposition>();
   Object? _acceptedReadQuery;
   String _status = 'PENDING';
+  String? _headerStatus;
+  final _headerSearch = <String, String?>{};
+  String? _sort;
+  bool _ascending = true;
+  String get _effectiveStatus => _headerStatus ?? _status;
+  Object get _readQuery =>
+      (_effectiveStatus, jsonEncode(_headerSearch), _sort, _ascending);
+
+  List<MasterFacetBucket> get _statusChoices => [
+    if (_status == 'ALL')
+      const MasterFacetBucket(
+        value: 'PENDING',
+        label: '全部待处理（含继续待处理、待核实）',
+        count: 0,
+      ),
+    if (_status == 'PENDING' || _status == 'ALL') ...const [
+      MasterFacetBucket(value: 'HELD', label: '继续待处理', count: 0),
+      MasterFacetBucket(value: 'RETURNED', label: '待核实', count: 0),
+    ],
+    if (_status == 'ACCEPTED' || _status == 'ALL')
+      const MasterFacetBucket(value: 'ACCEPTED', label: '已批准转公共', count: 0),
+    if (_status == 'WITHDRAWN' || _status == 'ALL')
+      const MasterFacetBucket(value: 'WITHDRAWN', label: '已撤回', count: 0),
+  ];
   String? _error;
   bool _loading = true;
   int _request = 0;
@@ -93,8 +119,12 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
     final scope = ref.read(authenticatedScopeProvider);
     final server = ref.read(apiBaseUrlProvider);
     final repository = ref.read(productionOverLimitRepositoryProvider);
-    final status = _status;
-    page ??= _acceptedReadQuery == status
+    final status = _effectiveStatus;
+    final headers = Map<String, String?>.of(_headerSearch);
+    final sort = _sort;
+    final order = _ascending ? 'asc' : 'desc';
+    final query = _readQuery;
+    page ??= _acceptedReadQuery == query
         ? _tableRows.visiblePage ?? _data?.page ?? 1
         : 1;
     bool current() =>
@@ -109,16 +139,22 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
     try {
       final data = await readScopedPage<ProductionOverLimitDisposition>(
         page,
-        query: (repository, status),
+        query: (repository, query),
         currentQuery: () =>
-            (ref.read(productionOverLimitRepositoryProvider), _status),
+            (ref.read(productionOverLimitRepositoryProvider), _readQuery),
         useCache: useCache,
-        fetchPage: (target) => repository.list(status: status, page: target),
+        fetchPage: (target) => repository.list(
+          status: status,
+          page: target,
+          columnSearch: headers,
+          sort: sort,
+          order: order,
+        ),
       );
       if (current()) {
         setState(() {
           _data = data;
-          _acceptedReadQuery = status;
+          _acceptedReadQuery = query;
         });
       }
     } on ApiException catch (error) {
@@ -142,6 +178,9 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
     return Scaffold(
       appBar: UtenAppBar(
         title: '超限产出处置',
+        info:
+            '额度内产出继续原流程。这里处理同批超出有效额度的实物，批准不代表品质合格或已入库。'
+            '额度内产出继续原品质和交接流程。超限部分在批准前保持待处理；批准后仍以品质结果与仓库实收形成库存。',
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.productionPlanList),
@@ -169,28 +208,50 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                 onSelectionChanged: (value) {
                   setState(() {
                     _status = value;
+                    _headerStatus = null;
                     _data = null;
                   });
                   _load();
                 },
-              ),
-              const UtenPageEdgePadding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('额度内产出继续原流程。这里处理同批超出有效额度的实物，批准不代表品质合格或已入库。'),
               ),
               Expanded(
                 child: MasterDataTableView<ProductionOverLimitDisposition>(
                   rowsController: _tableRows,
                   expensiveRowMounts: false,
                   tableKey: 'production.over-limit-dispositions',
-                  facets: const {},
-                  filters: const {},
+                  facets: {'status': _statusChoices},
+                  serverColumnSearch: true,
+                  filters: {'status': _headerStatus, ..._headerSearch},
                   nullCounts: const {},
-                  onFilterChanged: (_, _) {},
+                  onFilterChanged: (key, value) {
+                    if (key != 'status' && !key.startsWith('search.')) return;
+                    setState(() {
+                      if (key == 'status') {
+                        _headerStatus = value;
+                      } else if (value == null) {
+                        _headerSearch.remove(key);
+                      } else {
+                        _headerSearch[key] = value;
+                      }
+                      _data = null;
+                    });
+                    _load(1);
+                  },
+                  sortColumn: _sort,
+                  sortAscending: _ascending,
+                  onSortChange: (column, ascending) {
+                    setState(() {
+                      _sort = column;
+                      _ascending = ascending;
+                      _data = null;
+                    });
+                    _load(1);
+                  },
                   columns: [
                     MasterColumnDef(
                       key: 'status',
                       label: '状态',
+                      facetSearchEnabled: true,
                       width: 125,
                       value: (row) => productionOverLimitStatus(row.status),
                       // 状态整格底色（ADR-169 逐页显式映射，按本页处置流语义）：
@@ -215,36 +276,42 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                     MasterColumnDef(
                       key: 'reportNo',
                       label: '日报号',
+                      sortable: true,
                       width: 170,
                       value: (row) => row.reportNo,
                     ),
                     MasterColumnDef(
                       key: 'planNo',
                       label: '计划号',
+                      sortable: true,
                       width: 150,
                       value: (row) => row.planNo,
                     ),
                     MasterColumnDef(
                       key: 'segmentCode',
                       label: '工单号',
+                      sortable: true,
                       width: 150,
                       value: (row) => row.segmentCode,
                     ),
                     MasterColumnDef(
                       key: 'goodsName',
                       label: '货品名称',
+                      sortable: true,
                       width: 210,
                       value: (row) => row.goodsName,
                     ),
                     MasterColumnDef(
                       key: 'goodsCode',
                       label: '编号',
+                      sortable: true,
                       width: 130,
                       value: (row) => row.goodsCode,
                     ),
                     MasterColumnDef(
                       key: 'colorName',
                       label: '颜色',
+                      sortable: true,
                       width: 90,
                       value: (row) => row.colorName,
                     ),
@@ -253,6 +320,9 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                     MasterColumnDef(
                       key: 'actual',
                       label: '本批实际',
+                      sortable: true,
+                      columnSearchEnabled: true,
+                      exactValueOf: (row) => row.actualBatchQty,
                       width: 150,
                       type: 'number',
                       value: (row) =>
@@ -261,6 +331,9 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                     MasterColumnDef(
                       key: 'within',
                       label: '额度内',
+                      sortable: true,
+                      columnSearchEnabled: true,
+                      exactValueOf: (row) => row.withinAuthorizationQty,
                       width: 144,
                       type: 'number',
                       value: (row) => _quantityWithUnit(
@@ -271,6 +344,9 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                     MasterColumnDef(
                       key: 'over',
                       label: '本次超限',
+                      sortable: true,
+                      columnSearchEnabled: true,
+                      exactValueOf: (row) => row.overLimitQty,
                       width: 144,
                       type: 'number',
                       value: (row) =>
@@ -279,6 +355,7 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                     MasterColumnDef(
                       key: 'reason',
                       label: '超限原因',
+                      sortable: true,
                       width: 240,
                       value: (row) => row.overLimitReason,
                     ),
@@ -292,7 +369,7 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage>
                   ),
                   currentPage: _data?.page ?? 1,
                   totalPages: _data?.totalPages ?? 0,
-                  paginationScope: _status,
+                  paginationScope: (_status, _readQuery),
                   onPageChange: (page) => _load(page, true),
                   emptyMessage: '没有符合条件的超限产出',
                 ),
@@ -478,6 +555,7 @@ class _OverLimitDetailState
     return Scaffold(
       appBar: UtenAppBar(
         title: '超限产出处置',
+        info: '额度内产出继续原品质和交接流程。超限部分在批准前保持待处理；批准后仍以品质结果与仓库实收形成库存。',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: backRoute),
         ),
@@ -538,10 +616,6 @@ class _OverLimitDetailState
                             '处理人：${detail.text('decidedByName') ?? '—'} · ${_decisionTime(detail.text('decidedAt'))}',
                           ),
                         ],
-                        const SizedBox(height: 12),
-                        const Text(
-                          '额度内产出继续原品质和交接流程。超限部分在批准前保持待处理；批准后仍以品质结果与仓库实收形成库存。',
-                        ),
                         if (detail.blockingReason?.isNotEmpty == true)
                           Padding(
                             padding: const EdgeInsets.only(top: 12),

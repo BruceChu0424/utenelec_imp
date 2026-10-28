@@ -7,8 +7,10 @@ import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_load_more_boundary.dart';
 import '../../../../core/network/api_exception.dart';
@@ -286,8 +288,19 @@ class _SupplierCreditApplyPanelState
   @override
   Widget build(BuildContext context) {
     if (_readRetired) {
+      final route = ModalRoute.of(context);
       return Scaffold(
-        appBar: AppBar(title: const Text('读取范围已变化')),
+        appBar: UtenAppBar(
+          title: '读取范围已变化',
+          showPagePermissionAction: false,
+          leading: route?.impliesAppBarDismissal == true
+              ? route!.fullscreenDialog
+                    ? const CloseButton()
+                    : UtenBackButton(
+                        onPressed: () => Navigator.maybePop(context),
+                      )
+              : null,
+        ),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,

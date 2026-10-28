@@ -402,7 +402,12 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     final accepted = await _dialogWhenRemoved<bool>(
       context: context,
       builder: (dialog) => UtenAlertDialog(
-        title: Text(_l.costConvertCurrency),
+        title: Row(
+          children: [
+            Flexible(child: Text(_l.costConvertCurrency)),
+            UtenFieldHintIcon(info: _l.costCurrencyConversionHint, dense: true),
+          ],
+        ),
         content: SizedBox(
           width: 520,
           child: Form(
@@ -415,8 +420,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                   '${currentCurrency?.name ?? costText(_calculation?.json['currencyName']) ?? _l.costCurrency} → ${targetCurrency?.name ?? _l.costCurrency}',
                 ),
                 const SizedBox(height: 12),
-                Text(_l.costCurrencyConversionHint),
-                const SizedBox(height: 16),
                 if (needsSource && !sameCurrency) ...[
                   TextFormField(
                     key: const Key('cost-convert-source-rate'),
@@ -856,6 +859,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       key: key,
       label: label,
       width: width,
+      minimumWidthOf: (_) => 48,
       type: 'number',
       aiSensitive: const {
         'unitPrice',
@@ -991,6 +995,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         key: 'route',
         label: _l.costRoute,
         width: 170,
+        minimumWidthOf: (_) => 48,
         defaultVisible: false,
         value: (r) => costText(r['route']),
         cellBuilder: (_, row) => _editable
@@ -1035,6 +1040,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         key: 'usageBasis',
         label: _l.costUsageSource,
         width: 90,
+        minimumWidthOf: (_) => 48,
         defaultVisible: false,
         value: (r) => _status(r['usageBasis']),
         cellBuilder: (_, r) => Tooltip(
@@ -1056,6 +1062,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         key: 'priceSource',
         label: _l.costPriceSource,
         width: 165,
+        minimumWidthOf: (_) => 48,
         defaultVisible: false,
         value: (r) =>
             costText(costMap(r['priceEvidence'])['sourceNumber']) ??
@@ -1076,6 +1083,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           key: 'fee:${column['key']}',
           label: costText(column['name']) ?? '',
           width: 110,
+          minimumWidthOf: (_) => 80,
           type: 'money',
           aiSensitive: true,
           value: (r) => _priceCell(
@@ -1089,6 +1097,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           key: 'feeQty:${column['key']}',
           label: '${column['name']} · ${_l.costFeeQuantity}',
           width: 160,
+          minimumWidthOf: (_) => 48,
           type: 'number',
           defaultVisible: column['type'] == 'PER_CYCLE',
           value: (r) => costText(
@@ -1103,6 +1112,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           key: 'feeAmount:${column['key']}',
           label: '${column['name']} · ${_l.costLineAmount}',
           width: 150,
+          minimumWidthOf: (_) => 48,
           type: 'money',
           aiSensitive: true,
           defaultVisible: false,
@@ -1115,6 +1125,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         key: 'adjust',
         label: _l.costAdjustment,
         width: 130,
+        minimumWidthOf: (_) => 48,
         value: (_) => _l.costAdjustment,
         cellBuilder: (_, row) => !_editable
             ? const SizedBox.shrink()
@@ -1133,6 +1144,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         key: 'details',
         label: _l.costExplanation,
         width: 90,
+        minimumWidthOf: (_) => 48,
         value: (_) => _l.costExplanation,
         cellBuilder: (_, r) => UtenTableCellAction(
           label: _l.costOpen,
@@ -1189,6 +1201,14 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       ),
       columns: columns,
       items: visible,
+      filterContextRows: (all, matched) => retainMatchedPreorderAncestors(
+        all,
+        matched,
+        depthOf: (row) =>
+            _onlyPending ? 0 : treeByPath[row['path']]?.depth ?? 0,
+      ),
+      headerFilterScopeDescription:
+          '仅定位当前可见材料，保留已展开的父节点；待处理模式为平面行，计算、保存及确认仍使用完整成本模型。',
       facets: const {},
       nullCounts: const {},
       filters: const {},
@@ -1522,10 +1542,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                     errorBuilder: utenTextFieldErrorBuilder,
                     decoration: UtenInputDecoration(
                       InputDecoration(labelText: _l.costFeeName),
+                      info: _l.costDefaultFeeHelp,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(_l.costDefaultFeeHelp),
                   TextButton(
                     key: const Key('cost-column-advanced'),
                     onPressed: () => update(() => advanced = !advanced),
@@ -2069,13 +2088,22 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             tableKey: 'master.goods.cost.snapshots',
             expensiveRowMounts: false,
             columns: [
-              _readColumn('kind', _l.costStatus, 72),
+              _readColumn(
+                'kind',
+                _l.costStatus,
+                72,
+                text: (row) => _status(
+                  row['kind'] == 'DRAFT_EXPORT' ? 'DRAFT' : row['kind'],
+                ),
+              ),
               _readColumn('sheetVersion', _l.costVersion, 100),
               _readColumn('createdAt', _l.costUpdated, 200),
               MasterColumnDef(
                 key: 'open',
                 label: _l.costOpen,
                 width: 120,
+                columnSearchEnabled: false,
+                minimumWidthOf: (_) => 48,
                 value: (_) => _l.costOpen,
                 cellBuilder: (_, row) => UtenTableCellAction(
                   label: _l.costOpen,

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -112,6 +113,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('material-analysis-start')));
     await tester.pumpAndSettle();
+    await expandMaterialAnalysisTree(tester);
 
     final preview = server.requests.singleWhere(
       (r) =>

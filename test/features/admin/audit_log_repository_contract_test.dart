@@ -118,7 +118,7 @@ void main() {
             'failureCount': 1,
             'riskCount': 2,
             'postLogoutCount': 0,
-            'timelinePartial': false,
+            'spansArchive': false,
           },
         ],
         'page': 1,
@@ -212,7 +212,7 @@ void main() {
       'successCount': 5,
       'failureCount': 0,
       'postLogoutCount': 0,
-      'timelinePartial': false,
+      'spansArchive': false,
       'snapshotAuditId': 9001,
     });
     final repository = DioAuditLogRepository(api);

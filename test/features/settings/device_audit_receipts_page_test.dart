@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +73,15 @@ void main() {
         ),
         matchesSemantics(label: '本机操作回执只读核查', isReadOnly: true),
       );
-      expect(find.text('只读核查'), findsOneWidget);
+      final policy = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon &&
+            (widget.info?.contains('只读核查') ?? false),
+      );
+      expect(policy, findsOneWidget);
+      await tester.tap(policy);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('只读核查；不保存请求体、查询参数或令牌'), findsOneWidget);
       expect(find.text('清除本机回执'), findsNothing);
       expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
     } finally {

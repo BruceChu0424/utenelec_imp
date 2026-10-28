@@ -207,7 +207,12 @@ class _FinanceAuditCenterPageState
                           children: [
                             _categoryBar(segments),
                             const SizedBox(height: UtenSpacing.s8),
-                            const Expanded(child: _SegmentPlaceholder()),
+                            const Expanded(
+                              child: UtenFilterPlaceholder(
+                                message: '在上方选择分类后开始审核',
+                                description: '分段右侧数字徽章为该队列的待办数量',
+                              ),
+                            ),
                           ],
                         )
                       : _buildSegment(
@@ -291,40 +296,6 @@ class _FinanceAuditCenterPageState
           externalHeader: externalHeader,
         ),
       };
-}
-
-/// 大类未选时的内容区占位：进页面不预选，引导先选分类。
-class _SegmentPlaceholder extends StatelessWidget {
-  const _SegmentPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      label: '请先在上方选择分类',
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.touch_app_outlined,
-              size: 40,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Text('在上方选择分类后开始审核', style: theme.textTheme.titleSmall),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '分段右侧数字徽章为该队列的待办数量',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _NoAuditPermission extends StatelessWidget {

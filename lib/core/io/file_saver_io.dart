@@ -1,4 +1,5 @@
-// 移动/桌面实现：写入下载目录(桌面)或文档目录(移动)，返回完整路径。
+// 移动/桌面实现：桌面端默认写入「桌面」目录（2026-10-28 用户口径，OneDrive
+// 重定向优先），可显式传 directory 指定目录；移动端写入文档目录。返回完整路径。
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +10,34 @@ Future<bool> canSaveStream() async => true;
 
 Future<void> _publishTail = Future<void>.value();
 
+/// 导出默认目录：桌面端=桌面（OneDrive 桌面重定向优先，找不到回退本地桌面，
+/// 再回退系统下载目录）；移动端=文档目录。
+Future<String?> defaultExportDirectory() async {
+  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+    final home =
+        Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+    if (home != null) {
+      final bases = [
+        if (Platform.isWindows) ...[
+          Platform.environment['OneDrive'],
+          home,
+        ] else
+          home,
+      ];
+      for (final base in bases) {
+        if (base == null || base.isEmpty) continue;
+        final desktop = Directory('$base${Platform.pathSeparator}Desktop');
+        if (await desktop.exists()) return desktop.path;
+      }
+    }
+    final downloads = await getDownloadsDirectory();
+    if (downloads != null) return downloads.path;
+    final documents = await getApplicationDocumentsDirectory();
+    return documents.path;
+  }
+  return await getApplicationDocumentsDirectory().then((dir) => dir.path);
+}
+
 Future<String> saveStream(
   Stream<Uint8List> chunks,
   String filename, {
@@ -16,6 +45,7 @@ Future<String> saveStream(
   Future<void> Function()? verifyScope,
   int maxBytes = 384 * 1024 * 1024,
   Future<Directory> Function()? destination,
+  String? directory,
 }) async {
   void check() {
     if (!(stillCurrent?.call() ?? true)) throw StateError('导出身份或服务器已变化，已取消保存');
@@ -23,12 +53,20 @@ Future<String> saveStream(
 
   check();
   final Directory dir;
-  if (destination != null) {
+  if (directory != null && directory.trim().isNotEmpty) {
+    // 用户在导出弹窗里明确选择的目录；不存在时直接报错，不静默换地方。
+    final chosen = Directory(directory.trim());
+    if (!await chosen.exists()) {
+      throw StateError('所选保存目录不存在，请重新选择');
+    }
+    dir = chosen;
+  } else if (destination != null) {
     dir = await destination();
   } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    dir =
-        await getDownloadsDirectory() ??
-        await getApplicationDocumentsDirectory();
+    dir = Directory(
+      (await defaultExportDirectory()) ??
+          (await getApplicationDocumentsDirectory()).path,
+    );
   } else {
     dir = await getApplicationDocumentsDirectory();
   }
@@ -90,10 +128,12 @@ Future<String> saveBytes(
   Uint8List bytes,
   String filename, {
   bool Function()? stillCurrent,
+  String? directory,
 }) => saveStream(
   Stream.value(bytes),
   filename,
   stillCurrent: stillCurrent,
+  directory: directory,
   maxBytes: bytes.length,
 );
 

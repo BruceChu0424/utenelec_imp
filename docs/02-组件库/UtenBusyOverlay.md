@@ -12,6 +12,7 @@ if (_saving)
 
 - `title` 必填一句话；`description` 可选（讲清在做什么、别做什么）；
 - `semanticsKey` 供宿主测试锁定（如物料分析的 `material-analysis-plan-submission-progress`）。
+- `showDoNotLeaveHint` 默认 `true`，透传卡片的同名参数。基础资料的 26 个调用统一传 `false`，只去掉通用“请勿重复点击或关闭页面”尾句；动作标题、必要业务 `description`、模态阻挡、任务生命周期和无障碍进度继续保留。其他模块默认行为不变。
 
 ## 行为契约
 

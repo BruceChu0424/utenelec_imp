@@ -1,3 +1,5 @@
+import '../../../shared/formatters/quantity_display.dart';
+
 enum ProductionFinishedInboundTaskStage {
   arrivalRegistration('ARRIVAL_REGISTRATION'),
   finalCount('FINAL_COUNT');
@@ -177,6 +179,10 @@ class ProductionFinishedInboundTask {
     this.publicQty = 0,
     this.actualSurplusQty = 0,
     this.actualSurplusNote,
+    this.pendingQtyText,
+    this.documentDateKnown = true,
+    this.createdAtKnown = true,
+    this.pendingQtyKnown = true,
   });
 
   final ProductionFinishedInboundTaskStage taskStage;
@@ -193,6 +199,11 @@ class ProductionFinishedInboundTask {
   final String? goodsSummary;
   final int lineCount;
   final double pendingQty;
+  final String? pendingQtyText;
+  final bool documentDateKnown, createdAtKnown, pendingQtyKnown;
+  String get pendingQuantityLabel =>
+      pendingQtyText ??
+      (pendingQtyKnown ? formatQty(pendingQty, maxDecimals: 4) : '—');
   final DateTime createdAt;
   final bool residualTask;
 
@@ -237,6 +248,15 @@ class ProductionFinishedInboundTask {
       publicQty: (json['publicQty'] as num?)?.toDouble() ?? 0,
       actualSurplusQty: (json['actualSurplusQty'] as num?)?.toDouble() ?? 0,
       actualSurplusNote: json['actualSurplusNote'] as String?,
+      pendingQtyText: json['pendingQtyText'] as String?,
+      documentDateKnown:
+          json['documentDateKnown'] != false &&
+          DateTime.tryParse(json['documentDate']?.toString() ?? '') != null,
+      createdAtKnown:
+          json['createdAtKnown'] != false &&
+          DateTime.tryParse(json['createdAt']?.toString() ?? '') != null,
+      pendingQtyKnown:
+          json['pendingQtyKnown'] != false && json['pendingQty'] is num,
     );
   }
 }

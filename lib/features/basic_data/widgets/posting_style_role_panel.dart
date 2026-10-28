@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -182,9 +183,19 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '系统科目用途',
-                      style: Theme.of(context).textTheme.titleLarge,
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '系统科目用途',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                        const UtenFieldHintIcon(
+                          info: '为尚未配置的用途选择对应类别的独立科目。已配置用途保留原科目。',
+                          dense: true,
+                        ),
+                      ],
                     ),
                   ),
                   IconButton(
@@ -219,8 +230,6 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
                 child: ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    const Text('为尚未配置的用途选择对应类别的独立科目。已配置用途保留原科目。'),
-                    const SizedBox(height: 16),
                     for (final role in _roles)
                       Padding(
                         key: ValueKey('posting-role-${role.roleKey}'),

@@ -1825,10 +1825,13 @@ void main() {
       final existing = _table(tester).issueWeights!['item-normal']!;
       existing.weight.setKg(1.25);
       // 带单位后缀的输入换成千克 (850g -> 0.85 kg)。
-      await tester.enterText(
-        find.byKey(const ValueKey('weight-cell-input')).last,
-        '850g',
+      final discoveryWeight = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, row.weight.weight.text),
       );
+      await tester.ensureVisible(discoveryWeight);
+      await tester.enterText(discoveryWeight, '850g');
       await tester.pump();
       expect(row.weight.kg, 0.85);
       await _submit(tester);

@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -237,7 +238,7 @@ void main() {
               reason: 'denial of any page retires every cached private row',
             );
             expect(find.text('FIRST-NEW'), findsNothing);
-            expect(find.text('ACCESS-REMOVED'), findsOneWidget);
+            await expectTableReadFailureDetails(tester, 'ACCESS-REMOVED');
             expect(tableState.mounted, isTrue);
             final table = tester
                 .widget<MasterDataTableView<OperationsWorkbenchTask>>(

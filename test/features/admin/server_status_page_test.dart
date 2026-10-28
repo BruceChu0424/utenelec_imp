@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:clock/clock.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -47,6 +49,49 @@ void main() {
       'MaterialIcons',
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
+
+  for (final interaction in ['hover', 'tap']) {
+    testWidgets(
+      'overview guidance opens by $interaction without hiding current alerts',
+      (tester) async {
+        await withClock(Clock.fixed(sampledAt), () async {
+          await _pump(tester, _Repository(() async => _sample(sampledAt)));
+          await tester.pumpAndSettle();
+          expect(find.text('根据服务器最近一次采集的数据展示运行情况。'), findsNothing);
+          expect(find.text('每 15 秒自动刷新，离开页面后暂停'), findsNothing);
+          expect(
+            find.byKey(const Key('server-status-freshness')),
+            findsNothing,
+          );
+          expect(find.text('尚未接入备份结果'), findsOneWidget);
+          final help = find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenFieldHintIcon &&
+                (widget.info?.contains('根据服务器最近一次采集的数据展示运行情况。') ?? false),
+          );
+          final message = tester.widget<UtenFieldHintIcon>(help).info!;
+          if (interaction == 'hover') {
+            final mouse = await tester.createGesture(
+              kind: PointerDeviceKind.mouse,
+            );
+            await mouse.addPointer(location: const Offset(1400, 1400));
+            await mouse.moveTo(tester.getCenter(help));
+            await tester.pump(const Duration(milliseconds: 300));
+            await tester.pumpAndSettle();
+            expect(find.text(message), findsOneWidget);
+            await mouse.removePointer();
+          } else {
+            await tester.tap(help);
+            await tester.pumpAndSettle();
+            expect(find.text(message), findsOneWidget);
+          }
+          expect(find.text('尚未接入备份结果'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      },
+    );
+  }
 
   test(
     'unknown capacity stays null and stale samples are not current health',
@@ -451,6 +496,42 @@ void main() {
       });
     },
   );
+
+  testWidgets('job headers filter health and order runs by date', (
+    tester,
+  ) async {
+    await withClock(Clock.fixed(sampledAt), () async {
+      await _pump(tester, _Repository(() async => _withExtras(sampledAt)));
+      final table = find.byType(MasterDataTableView<ServerJob>);
+      final status = find.descendant(of: table, matching: find.text('状态'));
+      await tester.ensureVisible(status);
+      await tester.pumpAndSettle();
+      await tester.tap(status);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('留意 (1)'));
+      await tester.pumpAndSettle();
+      expect(find.text('CelebrationScheduler.publishDaily'), findsOneWidget);
+      expect(find.text('OutboxScheduler.drain'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pump(tester, _Repository(() async => _withExtras(sampledAt)));
+      final start = find.descendant(of: table, matching: find.text('上次开始'));
+      await tester.ensureVisible(start);
+      await tester.pumpAndSettle();
+      await tester.tap(start);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('从近到远'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('OutboxScheduler.drain')).dy,
+        lessThan(
+          tester.getTopLeft(find.text('CelebrationScheduler.publishDaily')).dy,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
 
   testWidgets('stale samples grey every ring and the live pulse dot', (
     tester,

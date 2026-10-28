@@ -6,6 +6,7 @@ import '../../paging/scoped_paged_read_view_mixin.dart';
 // ADR-146: 不良品仓行带「不良品」标签；有权办理时，良品仓行可「转不良品仓」、不良品仓行可
 // 「不良复判转回」(能不能办由服务端 options 下发, 页面不拼权限)。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/china_datetime.dart';
@@ -28,6 +29,7 @@ import '../../measurement/widgets/weight_text.dart';
 import '../../models/paged_result.dart';
 import '../../providers/master_name_provider.dart';
 import '../../../features/stock/models/instant_inventory_scope.dart';
+import '../../search/table_column_query.dart';
 
 class GoodsStockBalanceView extends ConsumerStatefulWidget {
   const GoodsStockBalanceView({
@@ -71,6 +73,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
 
   @override
   void scopedPagedReadOwnerChanged() {
+    _columnQuery = const TableColumnQuery();
+    _sortColumn = null;
+    _sortAscending = true;
     _version++;
     if (mounted) {
       setState(() {
@@ -92,6 +97,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
   bool _loading = false;
   String? _error;
   int _version = 0;
+  String? _sortColumn;
+  bool _sortAscending = true;
+  TableColumnQuery _columnQuery = const TableColumnQuery();
 
   /// 货品按重量计 (基本单位是重量单位): 重量随数量精确换算, 不核重。
   bool _weightExact = false;
@@ -139,11 +147,17 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
     final repository = ref.read(stockQueryRepositoryProvider);
     final goodsId = widget.goodsId;
     final scope = widget.scope;
+    final sort = _sortColumn;
+    final ascending = _sortAscending;
+    final columns = _columnQuery;
     Object pagingQuery() => [
       ref.read(stockQueryRepositoryProvider),
       widget.goodsId,
       widget.scope,
       widget.reloadTick,
+      _sortColumn,
+      _sortAscending,
+      _columnQuery,
       _pageSize,
     ];
     try {
@@ -157,6 +171,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
           size: _pageSize,
           goodsId: goodsId,
           scope: scope,
+          sort: sort,
+          order: sort == null ? null : (ascending ? 'asc' : 'desc'),
+          columns: columns.searches,
         ),
       );
       if (!mounted || version != _version) return;
@@ -250,8 +267,33 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
       items: rows,
       facets: const {},
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      serverColumnSearch: true,
+      filters: _columnQuery.searches,
+      onFilterChanged: (key, value) {
+        if (!key.startsWith('search.')) return;
+        setState(() => _columnQuery = _columnQuery.search(key, value));
+        _load(1);
+      },
+      toolbarLeadingActions: [
+        if (_columnQuery.searches.isNotEmpty)
+          const UtenSectionHeader(
+            title: '列检索',
+            info: '列检索定位余额行；合计仍按所选货品、仓库和颜色范围。',
+          ),
+      ],
+      sortColumn: _sortColumn,
+      sortAscending: _sortAscending,
+      onSortChange: (column, ascending) {
+        if (column != null &&
+            !const {'qty', 'weight', 'lastMovementDate'}.contains(column)) {
+          return;
+        }
+        setState(() {
+          _sortColumn = column;
+          _sortAscending = column == null ? true : ascending;
+        });
+        _load(1);
+      },
       onRowTap: (row) => _open(row),
       isLoading: _loading && _balances == null,
       loadingMore: _loading && _balances != null,
@@ -260,7 +302,13 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
       emptyMessage: '该货品暂无库存余额',
       currentPage: _balances?.page ?? 1,
       totalPages: _balances?.totalPages ?? 1,
-      paginationScope: (widget.goodsId, widget.scope),
+      paginationScope: (
+        widget.goodsId,
+        widget.scope,
+        _sortColumn,
+        _sortAscending,
+        _columnQuery,
+      ),
       onPageChange: (page) => _load(page, useCache: true),
       summaryBar: widget.summaryBar,
     );
@@ -312,6 +360,7 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         label: '库存数量',
         width: 160,
         type: 'number',
+        columnSearchEnabled: true,
         sortable: true,
         // 2026-10-10 数量+单位口径：单位内联在数量后，独立「单位」列删除。
         value: (row) {
@@ -326,6 +375,8 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         label: '库存重量',
         width: 140,
         type: 'weight',
+        columnSearchEnabled: true,
+        info: '按千克检索库存重量；未知重量不会按 0 处理。',
         sortable: true,
         value: (row) => formatWeightValue(
           row.weight,
@@ -342,6 +393,9 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         key: 'lastMovementDate',
         label: '最后变动',
         width: 160,
+        type: 'date',
+        columnSearchEnabled: true,
+        sortable: true,
         value: (row) =>
             ChinaDateTime.formatIsoInstant(row.lastMovementDate, fallback: '—'),
       ),

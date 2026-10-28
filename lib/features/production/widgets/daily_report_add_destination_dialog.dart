@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -172,7 +173,7 @@ class _AddDestinationDialogState extends State<_AddDestinationDialog> {
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: UtenSpacing.s16),
-            Tooltip(
+            UtenEditorTooltip(
               message: target?.label ?? '选择去向工单',
               child: UtenDropdownField(
                 key: const ValueKey('daily-add-destination-target'),

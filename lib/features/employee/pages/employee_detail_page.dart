@@ -678,8 +678,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     );
   }
 
-  // 注：禁止删除员工——⋯ 菜单与"归档删除"入口已下线。员工离职走「办理离职」流程，
-  // status='resigned' 永久留存，可在花名册"离职"筛选查看。
+  // 正常离职保留档案。误建的重复档案须经同一人核验、交接及账号检查后单独归档。
 
   /// 联系方式与证件(更换手机号 / 备用手机号 / 修改证件信息)写权限：employee:pii:edit。
   bool get _canPiiEdit => _allowsEmployeeWrite(

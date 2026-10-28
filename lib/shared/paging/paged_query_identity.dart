@@ -14,3 +14,20 @@ Object? freezePagedReadQuery(Object? value) => switch (value) {
 
 bool samePagedReadQuery(Object? before, Object? after) =>
     const DeepCollectionEquality().equals(before, after);
+
+/// An immutable collection value inside a table's otherwise scalar scope.
+/// Records compare their fields with ==, so fresh Maps/Lists need this value
+/// boundary to avoid resetting pagination during an unrelated rebuild.
+final class PagedReadQueryKey {
+  PagedReadQueryKey(Object? value) : _value = freezePagedReadQuery(value);
+
+  final Object? _value;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PagedReadQueryKey && samePagedReadQuery(_value, other._value);
+
+  @override
+  int get hashCode => const DeepCollectionEquality().hash(_value);
+}

@@ -24,6 +24,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -49,6 +50,7 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/stock_doc.dart';
+import '../models/stock_doc_header_query.dart';
 import '../providers/stock_draft_delete.dart';
 import '../repositories/stock_doc_repository.dart';
 
@@ -111,6 +113,16 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   String? _warehouseIdFilter;
   String? _departmentIdFilter;
   String? _toWarehouseIdFilter;
+  String? _statusHeader;
+  List<MasterFacetBucket> get _statusFacets => stockDocHeaderStatuses(
+    history: _seg?.history == true,
+    stage: _seg?.status,
+    includeLegacy: true,
+  );
+  int? get _queryStatus => stockDocHeaderStatus(
+    _statusHeader,
+    _seg?.history == true ? null : _seg?.status,
+  );
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -137,6 +149,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       setState(() {
         _reloadGeneration++;
         _columnFilters.reset();
+        _statusHeader = null;
         clearDraftSelection();
         _list.invalidateReadOwner(notify: false);
       });
@@ -184,6 +197,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     _departmentIdFilter = null;
     _toWarehouseIdFilter = null;
     _columnFilters.reset();
+    _statusHeader = null;
     trackRefresh(Future<void>.value(), replaceKey: 'rows');
     _list.reset(notify: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -215,7 +229,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         .list(
           page: requestedPage ?? _list.pageNum,
           filter: StockDocFilter(
-            origin: seg.history ? BusinessDocumentOrigin.all : null,
+            origin: stockDocHeaderOrigin(
+              _statusHeader,
+              history: seg.history,
+              includeLegacy: true,
+            ),
             view: seg.history
                 ? WarehouseTaskView.history
                 : WarehouseTaskView.active,
@@ -225,13 +243,14 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
             toWarehouseId: widget.docType == StockDocType.transfer
                 ? _toWarehouseIdFilter
                 : null,
-            status: seg.history ? null : seg.status,
+            status: _queryStatus,
             issueStatus: _canFilterIssueStatus ? _issueStatus : null,
             dateFrom: range == null
                 ? null
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
             billNo: _columnFilters['billNo'],
+            columnSearch: _columnFilters.values,
           ),
           sort: sort,
           order: sort == null ? null : _list.sortOrder,
@@ -249,7 +268,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
             .read(stockDocRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: StockDocFilter(
-                origin: seg.history ? BusinessDocumentOrigin.all : null,
+                origin: stockDocHeaderOrigin(
+                  _statusHeader,
+                  history: seg.history,
+                  includeLegacy: true,
+                ),
+                columnSearch: _columnFilters.values,
                 view: seg.history
                     ? WarehouseTaskView.history
                     : WarehouseTaskView.active,
@@ -259,7 +283,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                 toWarehouseId: widget.docType == StockDocType.transfer
                     ? _toWarehouseIdFilter
                     : null,
-                status: seg.history ? null : seg.status,
+                status: _queryStatus,
                 issueStatus: _canFilterIssueStatus ? _issueStatus : null,
                 dateFrom: range == null
                     ? null
@@ -290,6 +314,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     _warehouseIdFilter,
     _departmentIdFilter,
     _toWarehouseIdFilter,
+    _statusHeader,
     Map.of(_columnFilters.values),
   ];
 
@@ -359,6 +384,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     clearDraftSelection();
     setState(() {
       _seg = seg;
+      _statusHeader = null;
       _issueStatus = null;
       // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
       _historyTime = seg.history
@@ -378,7 +404,16 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   /// 表头筛选回调：值并进既有 repository.list 参数，重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
     clearDraftSelection();
-    if (key == 'billNo') {
+    if (key == 'status') {
+      if (value != null &&
+          !_statusFacets.any((facet) => facet.value == value)) {
+        return;
+      }
+      setState(() => _statusHeader = value);
+      _reload(1);
+      return;
+    }
+    if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(
         key,
         value,
@@ -435,15 +470,20 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
         key: 'status',
+        facetSearchEnabled: true,
+        columnSearchEnabled: false,
         label: '状态',
         width: 72,
-        value: (it) => it.legacyId != null
+        value: (it) => it.legacyImported
             ? importedBusinessHistoryLabel
             : stockStatusLabel(it.status),
         // 状态分类色铺整格底色（ADR-169）：0/1/-1 与采购单据列表同款
         // docStatusBadgeType（草稿灰/已审绿/红冲红）。
-        cellColor: (context, it) =>
-            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
+        cellColor: (context, it) => utenStatusBadgeCellColor(
+          it.legacyImported
+              ? UtenStatusBadgeType.neutral
+              : docStatusBadgeType(it.status),
+        ),
       ),
       MasterColumnDef(
         key: 'billNo',
@@ -455,6 +495,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',
+          facetSearchEnabled: true,
+          columnSearchEnabled: false,
           label: '出库进度',
           width: 110,
           value: (it) => drawIssueStatusLabel(it.issueStatus),
@@ -467,6 +509,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         label: '日期',
         width: 120,
         type: 'date',
+        columnSearchEnabled: true,
         sortable: true,
         value: (it) => it.billDate == null
             ? null
@@ -682,8 +725,10 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                               ),
                             ],
                             columns: _columns(),
+                            serverColumnSearch: true,
                             items: _list.page?.items ?? const [],
                             facets: {
+                              'status': _statusFacets,
                               if (_canFilterIssueStatus)
                                 'issueStatus': const [
                                   MasterFacetBucket(
@@ -712,6 +757,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             },
                             nullCounts: const {},
                             filters: {
+                              ..._columnFilters.values,
+                              'status': _statusHeader,
                               if (_canFilterIssueStatus)
                                 'issueStatus': _issueStatus?.toString(),
                               'billNo': _columnFilters['billNo'],

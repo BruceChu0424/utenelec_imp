@@ -52,7 +52,8 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
         .read(payrollListProvider.notifier)
         .bindReadView(context, visiblePage: () => _tableRows.visiblePage);
     final filter = ref.watch(payrollFilterProvider);
-    final paginationScope = (filter, retainedReaderEpoch(ref));
+    final headers = ref.watch(payrollHeaderQueryProvider);
+    final paginationScope = (filter, headers, retainedReaderEpoch(ref));
     final list = _retainedPage.resolveFor(
       ref,
       paginationScope,
@@ -88,8 +89,14 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
         items: page.items,
         facets: {'status': _statusFacets(filter)},
         nullCounts: const {},
-        filters: {'status': _statusFilterOf(filter)},
+        serverColumnSearch: true,
+        filters: {'status': _statusFilterOf(filter), ...headers.searches},
         onFilterChanged: (key, value) => _onFilterChanged(ref, key, value),
+        sortColumn: headers.sort,
+        sortAscending: headers.ascending,
+        onSortChange: (column, ascending) =>
+            ref.read(payrollHeaderQueryProvider.notifier).state = headers
+                .sorted(column, ascending),
         // 双击行进入工资条详情。
         onRowTap: (slip) => context.push(RoutePath.payrollSlipDetail(slip.id)),
         emptyMessage: '此状态下暂无工资条',
@@ -147,6 +154,14 @@ String? _statusFilterOf(PayrollFilter filter) => switch (filter) {
 
 /// 清除表头细筛仅回当前分类全集，始终保留一个可见分类。
 void _onFilterChanged(WidgetRef ref, String key, String? value) {
+  if (key.startsWith('search.')) {
+    final current = ref.read(payrollHeaderQueryProvider);
+    ref.read(payrollHeaderQueryProvider.notifier).state = current.withSearch(
+      key,
+      value,
+    );
+    return;
+  }
   if (key != 'status') return;
   final next = switch (value) {
     null => ref.read(payrollFilterProvider).category,
@@ -174,6 +189,9 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
     key: 'period',
     label: '期间',
+    sortable: true,
+    columnSearchEnabled: true,
+    info: '精确筛选工资年份或年月，例如 2026、2026-10 或 2026年10月。',
     width: 110,
     value: (s) => s.periodLabelZh,
   ),
@@ -181,6 +199,8 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
     key: 'grossIncome',
     label: '应发合计',
+    sortable: true,
+    columnSearchEnabled: true,
     width: 140,
     type: 'money',
     aiSensitive: true,
@@ -190,6 +210,8 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
     key: 'totalDeduction',
     label: '扣除合计',
+    sortable: true,
+    columnSearchEnabled: true,
     width: 140,
     type: 'money',
     aiSensitive: true,
@@ -199,6 +221,8 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
     key: 'netIncome',
     label: '实发合计',
+    sortable: true,
+    columnSearchEnabled: true,
     width: 150,
     type: 'money',
     aiSensitive: true,
@@ -208,6 +232,9 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
     key: 'publishedAt',
     label: '发布时间',
+    sortable: true,
+    columnSearchEnabled: true,
+    info: '按北京时间精确筛选发布年月、日期或日期范围，例如 2026-10 或 2026-10-01..2026-10-28。',
     width: 160,
     type: 'date',
     value: (s) => s.publishedAt == null ? '—' : _formatTime(s.publishedAt!),

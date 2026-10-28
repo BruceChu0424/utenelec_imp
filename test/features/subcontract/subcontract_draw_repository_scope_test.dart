@@ -27,6 +27,12 @@ void main() {
                   },
                   'statusCounts': {'ALL': 201},
                   'capabilities': {'canSubmitDraw': false},
+                  'facets': {
+                    'colorName': [
+                      {'value': '浅灰', 'count': 201},
+                    ],
+                  },
+                  'nullCounts': {'colorName': 3},
                 },
               ),
             );
@@ -51,12 +57,39 @@ void main() {
       expect(page.page.totalPages, 2);
       expect(page.statusCounts['ALL'], 201);
       expect(page.canSubmitDraw, isFalse);
+      expect(page.facets['colorName']!.single.value, '浅灰');
+      expect(page.facets['colorName']!.single.count, 201);
+      expect(page.nullCounts['colorName'], 3);
       await repository.list(page: 2, size: 200, applicationId: 'parent-id');
       expect(requests.last.queryParameters, {
         'page': 2,
         'size': 200,
         'applicationId': 'parent-id',
       });
+      await repository.list(
+        applicationId: 'parent-id',
+        sort: 'differenceQty',
+        order: 'desc',
+        columnFilters: {
+          'search.differenceQty': '-9007199254740993.0001..0',
+          'search.goods': '毛坯',
+          'colorName': '浅灰',
+        },
+      );
+      expect(
+        requests.last.queryParameters,
+        containsPair('applicationId', 'parent-id'),
+      );
+      expect(
+        requests.last.queryParameters,
+        containsPair('search.differenceQty', '-9007199254740993.0001..0'),
+      );
+      expect(requests.last.queryParameters, containsPair('search.goods', '毛坯'));
+      expect(requests.last.queryParameters, containsPair('f.colorName', '浅灰'));
+      expect(
+        requests.last.queryParameters,
+        containsPair('sort', 'differenceQty'),
+      );
     },
   );
 }

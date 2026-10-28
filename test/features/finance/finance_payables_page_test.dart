@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -226,6 +227,14 @@ void main() {
     expect(find.text('¥5000.00'), findsOneWidget);
     expect(find.text('账面核销(本币)'), findsOneWidget);
     expect(find.text('汇兑差额(本币)'), findsOneWidget);
+    final explanation = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon &&
+          (widget.info?.contains('应付 − 账面核销 − 抵销 = 未付') ?? false),
+    );
+    await tester.ensureVisible(explanation);
+    await tester.tap(explanation);
+    await tester.pumpAndSettle();
     expect(find.textContaining('应付 − 账面核销 − 抵销 = 未付'), findsOneWidget);
 
     final table = tester.widget<MasterDataTableView<FinancePayableItem>>(

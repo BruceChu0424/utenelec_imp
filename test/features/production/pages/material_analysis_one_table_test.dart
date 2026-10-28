@@ -1,3 +1,5 @@
+import '../../../support/table_cell_geometry.dart';
+import '../../../support/material_analysis_tree.dart';
 // ADR-102「一张表」：把分桶详情页与「父件 + 下层一起下单」弹窗的能力搬进主
 // 物料表之后，这张表上新增的行为由本文件守着。
 //
@@ -112,16 +114,7 @@ Future<Finder> _resizeMaterialHandlingColumn(
   expect(handle, findsOneWidget);
   // Start at the shared column handle, rather than a label's inner container.
   // Its public resize contract leaves the host's desktop/touch minimum intact.
-  final column = find
-      .ancestor(
-        of: handle,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Container &&
-              widget.constraints?.hasBoundedWidth == true,
-        ),
-      )
-      .first;
+  final column = tableCellFrame(handle);
   tester
       .widget<UtenColumnResizeHandle>(handle)
       .onResize(width - tester.getSize(column).width);
@@ -7594,6 +7587,7 @@ requests = [];
 Future<void> _pump(
   WidgetTester tester, {
   TargetPlatform? platform,
+  bool expandTree = true,
   double fontFactor = 1,
   TextScaler? textScaler,
   Set<String> permissions = _permissions,
@@ -7985,6 +7979,9 @@ Future<void> _pump(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  // Other business tests intentionally work in an expanded fixture. The real
+  // page defaults to collapsed; dedicated presentation tests opt out.
+  if (expandTree) await expandMaterialAnalysisTree(tester, ifPresent: true);
 }
 
 Map<String, dynamic> _threeSharedBuySources(Map<String, dynamic> data) {

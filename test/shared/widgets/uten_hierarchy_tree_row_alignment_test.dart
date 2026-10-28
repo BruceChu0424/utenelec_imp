@@ -131,7 +131,6 @@ void main() {
               selectedIds: const {'long'},
               showSearch: false,
               flatLevelColors: true,
-              initiallyExpandDepth: 0,
             ),
             width: 360,
             scale: scale,
@@ -249,7 +248,6 @@ Widget _categories({
   selectedIds: selected,
   flatLevelColors: true,
   showSearch: false,
-  initiallyExpandDepth: 0,
   onToggleSelect: onSelect ?? (_) {},
   nodeEnabledPredicate: enabled,
 );

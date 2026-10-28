@@ -31,6 +31,7 @@
 // 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList、区块卡片统一 UtenCard、
 // 批量登记转正弹窗改公共 UtenDialog（按钮/限高与全仓弹窗规范一致）。
 // 文档：docs/03-页面/HR任务中心.md
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
 
@@ -1110,22 +1111,19 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                 size: 20,
                 color: theme.colorScheme.primary,
               );
-              final description = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              final description = Row(
                 children: [
-                  Text(
-                    '自动发送祝福',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      '自动发送祝福',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
-                    '关：由人事在本页手动送祝福',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  const UtenFieldHintIcon(
+                    info: '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；关：由人事在本页手动送祝福',
+                    dense: true,
                   ),
                 ],
               );

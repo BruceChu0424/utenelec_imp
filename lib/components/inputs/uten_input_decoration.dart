@@ -9,6 +9,7 @@ import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
 import 'uten_field_placeholder.dart';
+import 'uten_field_suffix_icons.dart';
 import 'uten_filter_field_theme.dart';
 import 'uten_table_cell_hints.dart';
 import 'uten_table_cell_spec.dart';
@@ -139,14 +140,10 @@ class UtenInputDecoration extends InputDecoration {
 
   @override
   Widget? get suffixIcon {
-    if (!_hasMessage) return _businessAdornment(base.suffixIcon);
-    final hint = UtenFieldHintIcon(
-      info: _infoMessage,
-      errorMessage: _errorMessage,
-      autofillMessage: _autofillMessage,
-      autofilled: autofilled,
-    );
-    final original = _businessAdornment(base.suffixIcon);
+    final original = base.suffixIcon;
+    if (!_hasMessage && !UtenFieldSuffixIcons.canCompact(original)) {
+      return _businessAdornment(original);
+    }
     return Builder(
       builder: (context) {
         final inCell =
@@ -157,7 +154,54 @@ class UtenInputDecoration extends InputDecoration {
             : UtenFilterFieldTheme.contains(context)
             ? UtenFilterRow.heightOf(context)
             : UtenPageField.heightOf(context);
-        final content = original == null
+        final hint = UtenFieldHintIcon(
+          info: _infoMessage,
+          errorMessage: _errorMessage,
+          autofillMessage: _autofillMessage,
+          autofilled: autofilled,
+          compact: !inCell,
+        );
+        if (!inCell) {
+          return ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: _hasMessage
+                  ? height
+                  : base.suffixIconConstraints?.minHeight ??
+                        kMinInteractiveDimension,
+            ),
+            child: UtenFieldSuffixIcons(
+              children: [
+                if (_hasMessage) hint,
+                if (original != null)
+                  _businessAdornment(
+                    UtenFieldSuffixIcons.canCompact(original)
+                        ? UtenFieldSuffixIcons(children: [original])
+                        : ConstrainedBox(
+                            constraints:
+                                base.suffixIconConstraints ??
+                                BoxConstraints(
+                                  minWidth: height,
+                                  minHeight: height,
+                                ),
+                            child: original,
+                          ),
+                  )!,
+              ],
+            ),
+          );
+        }
+        if (!_hasMessage) {
+          return ConstrainedBox(
+            constraints:
+                base.suffixIconConstraints ??
+                const BoxConstraints(
+                  minWidth: kMinInteractiveDimension,
+                  minHeight: kMinInteractiveDimension,
+                ),
+            child: _businessAdornment(original),
+          );
+        }
+        return original == null
             ? hint
             : Row(
                 mainAxisSize: MainAxisSize.min,
@@ -175,18 +219,9 @@ class UtenInputDecoration extends InputDecoration {
                                 minWidth: height,
                                 minHeight: height,
                               )),
-                    child: original,
+                    child: _businessAdornment(original),
                   ),
                 ],
-              );
-        return inCell
-            ? content
-            : ConstrainedBox(
-                constraints: BoxConstraints(
-                  minWidth: height,
-                  minHeight: height,
-                ),
-                child: content,
               );
       },
     );
@@ -196,7 +231,9 @@ class UtenInputDecoration extends InputDecoration {
   BoxConstraints? get suffixIconConstraints {
     // Each visible adornment owns its constraints. A table hint builds to zero
     // size, so its absence must not leave the default 48px suffix slot behind.
-    return _hasMessage ? const BoxConstraints() : base.suffixIconConstraints;
+    return _hasMessage || UtenFieldSuffixIcons.canCompact(base.suffixIcon)
+        ? const BoxConstraints()
+        : base.suffixIconConstraints;
   }
 
   @override

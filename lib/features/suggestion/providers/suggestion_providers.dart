@@ -10,6 +10,7 @@ import '../../../shared/paging/scoped_paged_read_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../models/suggestion.dart';
 import '../repositories/suggestion_repository.dart';
+import '../../../shared/search/table_column_query.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -43,6 +44,13 @@ final suggestionCategoryFilterProvider = StateProvider<SuggestionCategory?>(
   (ref) => null,
 );
 
+final suggestionColumnsProvider = StateProvider.autoDispose<TableColumnQuery>((
+  ref,
+) {
+  ref.watch(exportContextEpochProvider);
+  return const TableColumnQuery();
+}, dependencies: [exportContextEpochProvider]);
+
 final suggestionListProvider =
     AsyncNotifierProvider.autoDispose<
       SuggestionListNotifier,
@@ -56,6 +64,7 @@ final suggestionListProvider =
         suggestionScopeProvider,
         suggestionCategoryFilterProvider,
         suggestionStatusFilterProvider,
+        suggestionColumnsProvider,
       ],
     );
 
@@ -79,6 +88,7 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
     ref.read(suggestionScopeProvider),
     ref.read(suggestionCategoryFilterProvider),
     ref.read(suggestionStatusFilterProvider),
+    ref.read(suggestionColumnsProvider),
   );
   ScopedPagedReadProviderLease<Suggestion> get _reader =>
       ref.read(_suggestionReads(_readQuery));
@@ -95,6 +105,7 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
     ref.watch(suggestionScopeProvider);
     ref.watch(suggestionStatusFilterProvider);
     ref.watch(suggestionCategoryFilterProvider);
+    ref.watch(suggestionColumnsProvider);
     ref.watch(_suggestionReads(_readQuery));
     final query = _readQuery;
     _page = _lastReadQuery == query ? (_visiblePage?.call() ?? _page) : 1;
@@ -153,6 +164,10 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
   /// 回复等详情页写操作完成后，把服务端回执同步到当前页并保留页码。
   void replaceIfPresent(Suggestion updated) {
     _reader.invalidate();
+    if (ref.read(suggestionColumnsProvider).searches.isNotEmpty) {
+      ref.invalidateSelf();
+      return;
+    }
     final current = state.value;
     if (current == null ||
         !current.items.any((item) => item.id == updated.id)) {
@@ -196,6 +211,7 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
     final repository = ref.read(suggestionRepositoryProvider);
     final category = ref.read(suggestionCategoryFilterProvider);
     final status = ref.read(suggestionStatusFilterProvider);
+    final columns = ref.read(suggestionColumnsProvider);
     return _reader.read(
       page,
       fetchPage: (page) => repository.list(
@@ -203,6 +219,9 @@ class SuggestionListNotifier extends AsyncNotifier<PagedResult<Suggestion>> {
         category: category,
         status: status,
         page: page,
+        columns: columns.searches,
+        sort: columns.sort,
+        ascending: columns.ascending,
       ),
     );
   }

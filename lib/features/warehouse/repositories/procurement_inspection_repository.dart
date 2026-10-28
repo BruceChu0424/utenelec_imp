@@ -2,6 +2,7 @@ import '../../../shared/models/procurement_quantity.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/warehouse_pre_stocked_location.dart';
 
@@ -181,6 +182,13 @@ class ProcurementInspectionBatchPassItem {
   };
 }
 
+abstract interface class ProcurementPendingReceiptReader {
+  Future<PendingInspectionReceipt?> pendingReceiptSummary(
+    String receiptType,
+    String receiptId,
+  );
+}
+
 abstract interface class ProcurementInspectionRepository {
   Future<List<PendingInspectionReceipt>> pendingReceipts();
 
@@ -273,10 +281,27 @@ class ProcurementInspectionReportReceipt {
 }
 
 class DioProcurementInspectionRepository
-    implements ProcurementInspectionRepository {
+    implements
+        ProcurementInspectionRepository,
+        ProcurementPendingReceiptReader {
   const DioProcurementInspectionRepository(this.api);
 
   final ApiClient api;
+  @override
+  Future<PendingInspectionReceipt?> pendingReceiptSummary(
+    String receiptType,
+    String receiptId,
+  ) async {
+    try {
+      final value = await api.get(
+        '${ApiEndpoints.procurementInspectionPendingReceipts}/$receiptType/$receiptId',
+      );
+      return PendingInspectionReceipt.fromJson(value);
+    } on ApiException catch (error) {
+      if (error.code == 'NOT_FOUND') return null;
+      rethrow;
+    }
+  }
 
   @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async {

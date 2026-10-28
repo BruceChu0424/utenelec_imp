@@ -11,6 +11,8 @@ import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/features/stock/models/instant_inventory_scope.dart';
+import 'package:uten_imp/features/stock/models/instant_inventory_summary.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/stock/pages/instant_inventory_overview_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -33,6 +35,44 @@ const _scope = InstantInventoryScope(
 );
 
 void main() {
+  testWidgets(
+    'complete unit summary headers locate one unit and compare displayed quantities without changing scope',
+    (tester) async {
+      final api = _api();
+      await _pump(tester, api: api);
+      final reads = api.inventoryRequests.length;
+      await tester.ensureVisible(find.text('单位').first);
+      await tester.tap(find.text('单位').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('箱 (1)'));
+      await tester.pumpAndSettle();
+      final table = find.byType(MasterDataTableView<InventoryUnitSummary>);
+      expect(
+        find.descendant(of: table, matching: find.text('900')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: table, matching: find.text('20')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('库存数量').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>20',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: table, matching: find.text('20')),
+        findsNothing,
+      );
+      expect(api.inventoryRequests.length, reads);
+      expect(find.text('库存总览与分析'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final fail in [false, true]) {
     testWidgets(
       'overview return keeps content during ${fail ? 'failed' : 'external'} update',

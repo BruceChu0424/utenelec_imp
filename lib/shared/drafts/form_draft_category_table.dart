@@ -23,6 +23,8 @@ import 'form_draft_catalog.dart';
 import 'form_draft_history_view.dart';
 import 'draft_workspace_sources.dart' show formDraftCategoryLabel;
 import '../search/keyword_search.dart';
+import '../search/numeric_column_query.dart';
+import '../search/calendar_column_query.dart';
 
 export 'form_draft_category.dart';
 
@@ -205,6 +207,27 @@ class _FormDraftCategoryTableState<T>
 
   void _open(FormDraft draft) => context.push(draft.resumeLocation);
 
+  static const _numericTypes = {'number', 'money', 'count', 'int'};
+  String? _draftDecimal(FormDraft draft, String key) =>
+      displayedColumnDecimal(_value(draft, key));
+
+  bool _supportsDraftQuery(MasterColumnDef<T> column) {
+    if (column.columnSearchEnabled == false) return false;
+    final table = widget.table;
+    final paged =
+        table.onPageChange != null ||
+        table.onLoadMore != null ||
+        table.totalPages > 1;
+    if (paged &&
+        !table.serverColumnSearch &&
+        !table.serverColumnSearchKeys.contains(column.key)) {
+      return false;
+    }
+    return column.supportsKeywordSearch ||
+        (!paged &&
+            (_numericTypes.contains(column.type) || column.type == 'date'));
+  }
+
   bool _matches(FormDraft draft) {
     if (widget.localPredicate?.call(draft) == false) return false;
     final text = widget.search.trim().toLowerCase();
@@ -227,11 +250,27 @@ class _FormDraftCategoryTableState<T>
             .where((column) => column.key == key)
             .firstOrNull;
         if (column == null ||
-            !column.supportsKeywordSearch ||
+            !_supportsDraftQuery(column) ||
             widget.table.externalFilterKeys.contains(key)) {
           continue;
         }
-        if (!matchesKeywordSearch([_value(draft, key)], expected)) return false;
+        if (_numericTypes.contains(column.type)) {
+          if (NumericColumnQuery.tryParse(
+                expected,
+              )?.matches(_draftDecimal(draft, key)) !=
+              true) {
+            return false;
+          }
+        } else if (column.type == 'date') {
+          if (CalendarColumnQuery.tryParse(
+                expected,
+              )?.matches(_value(draft, key)) !=
+              true) {
+            return false;
+          }
+        } else if (!matchesKeywordSearch([_value(draft, key)], expected)) {
+          return false;
+        }
         continue;
       }
       if (filter.key == 'status' || filter.key == 'stage') {
@@ -254,7 +293,9 @@ class _FormDraftCategoryTableState<T>
   @override
   Widget build(BuildContext context) {
     final table = widget.table;
-    final paginated = table.onPageChange != null;
+    // Only a managed server window pins drafts independently of its pages.
+    // A bare external page label retains the original first-page-only policy.
+    final paginated = table.onPageChange != null || table.onLoadMore != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
     final referenceKey = [
@@ -408,23 +449,55 @@ class _FormDraftCategoryTableState<T>
                   ),
       errorKey: table.errorKey,
       key: table.key,
+      requiredLeadingColumnKeys: table.requiredLeadingColumnKeys,
+      temporaryLeadingColumnKeys: table.temporaryLeadingColumnKeys,
+      preserveQueryOnReturn: table.preserveQueryOnReturn,
       columns: [
         for (final column in table.columns)
           MasterColumnDef(
             key: column.key,
             label: column.label,
             width: column.width,
+            measureValueOf: column.measureValueOf == null
+                ? null
+                : (row) => row.isLocal
+                      ? _value(row.draft!, column.key)
+                      : column.measureValueOf!(row.record as T),
+            measureWidthOf: column.measureWidthOf == null
+                ? null
+                : (context, row, scaler) => row.isLocal
+                      ? column.width
+                      : column.measureWidthOf!(
+                          context,
+                          row.record as T,
+                          scaler,
+                        ),
+            measureWidthScope: column.measureWidthScope,
+            minimumWidthOf: column.minimumWidthOf,
+            cellHorizontalPaddingOf: column.cellHorizontalPaddingOf,
             type: column.type,
             sortable: column.sortable,
             filterFromRows: column.filterFromRows,
             columnSearchEnabled: column.columnSearchEnabled,
+            facetSearchEnabled: column.facetSearchEnabled,
+            headerFilterAction: column.headerFilterAction,
+            headerTrailingBuilder: column.headerTrailingBuilder,
+            emphasized: column.emphasized,
+            aiSensitive: column.aiSensitive,
+            exportable: column.exportable,
+            legendOf: column.legendOf == null
+                ? null
+                : (row) =>
+                      row.isLocal ? null : column.legendOf!(row.record as T),
             info: column.info,
             defaultVisible: column.defaultVisible,
             exportDefinition: column.exportDefinition,
             exactValueOf: column.exactValueOf == null
                 ? null
                 : (row) => row.isLocal
-                      ? null
+                      ? (_numericTypes.contains(column.type)
+                            ? _draftDecimal(row.draft!, column.key)
+                            : null)
                       : column.exactValueOf!(row.record as T),
             exactListenableOf: column.exactListenableOf == null
                 ? null
@@ -459,6 +532,11 @@ class _FormDraftCategoryTableState<T>
                 : (ctx, row) => row.isLocal
                       ? null
                       : column.cellColor!(ctx, row.record as T),
+            cellColorListenableOf: column.cellColorListenableOf == null
+                ? null
+                : (row) => row.isLocal
+                      ? null
+                      : column.cellColorListenableOf!(row.record as T),
           ),
       ],
       items: rows,
@@ -469,6 +547,34 @@ class _FormDraftCategoryTableState<T>
       nullCounts: table.nullCounts,
       filters: table.filters,
       serverColumnSearch: table.serverColumnSearch,
+      serverColumnSearchKeys: table.serverColumnSearchKeys,
+      headerFilterScopeDescription: table.headerFilterScopeDescription,
+      filterContextRows: table.filterContextRows == null
+          ? null
+          : (all, matched) {
+              final recordMatches = Set<T>.identity()
+                ..addAll(
+                  table.filterContextRows!(
+                    [
+                      for (final row in all)
+                        if (row.record != null) row.record as T,
+                    ],
+                    [
+                      for (final row in matched)
+                        if (row.record != null) row.record as T,
+                    ],
+                  ),
+                );
+              final draftMatches = Set<FormDraftCategoryRow<T>>.identity()
+                ..addAll(matched.where((row) => row.isLocal));
+              return all
+                  .where(
+                    (row) => row.record != null
+                        ? recordMatches.contains(row.record)
+                        : draftMatches.contains(row),
+                  )
+                  .toList();
+            },
       externalFilterKeys: table.externalFilterKeys,
       onFilterChanged: table.onFilterChanged,
       onRowTap: (row) {
@@ -703,7 +809,13 @@ class _FormDraftCategoryTableState<T>
       onRetry: table.onRetry,
       emptyMessage: table.emptyMessage,
       currentPage: table.currentPage,
+      scrollToEndRequest: table.scrollToEndRequest,
+      revealItemId: table.revealItemId,
+      revealRequest: table.revealRequest,
       totalPages: table.totalPages,
+      showPaginationControls: table.showPaginationControls,
+      maxRetainedPages: table.maxRetainedPages,
+      maxRetainedRows: table.maxRetainedRows,
       onPageChange: table.onPageChange,
       expensiveRowMounts: table.expensiveRowMounts,
       summaryBar: table.error != null && local.isNotEmpty
@@ -740,6 +852,10 @@ class _FormDraftCategoryTableState<T>
         FormDraftHistoryButton(scope: widget.scope),
       ],
       toolbarLeadingActions: table.toolbarLeadingActions,
+      bodyPresentationBuilder: table.bodyPresentationBuilder,
+      dataCellVerticalPadding: table.dataCellVerticalPadding,
+      // Mixed local/server records keep one table presentation. Typed source
+      // cards and row-reorder commands cannot be invoked on local draft rows.
       embedded: table.embedded,
       singleTapRows: table.singleTapRows,
       primary: table.primary,

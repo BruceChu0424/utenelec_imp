@@ -623,6 +623,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         entry.key: [...entry.value],
     };
     for (final entry in _tableFilters.entries) {
+      if (entry.key.startsWith('search.')) continue;
       final value = entry.value;
       if (value == null || value == kMasterFilterNullValue) continue;
       final buckets = result.putIfAbsent(entry.key, () => []);
@@ -642,6 +643,52 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       }
     }
     return result;
+  }
+
+  static const _historySearchKeys = {
+    'businessDate',
+    'sourceNo',
+    'partnerName',
+    'unitPrice',
+    'quantity',
+    'amount',
+    'colorName',
+  };
+  Future<MasterFacetPage> _headerFacet(
+    String column,
+    String keyword,
+    int page,
+  ) async {
+    if (!nativeReadAccessConfirmed || !_allowed) {
+      throw ApiException('FORBIDDEN', '没有当前历史读取权限');
+    }
+    final owns = captureNativeOwnership();
+    final repository = ref.read(priceAnalysisRepositoryProvider),
+        goodsId = widget.goodsId;
+    final identity = '$_identity|${jsonEncode(_tableParameters(1))}';
+    final parameters = Map<String, dynamic>.unmodifiable({
+      ..._tableParameters(1),
+      'column': column,
+      'search': keyword,
+      'page': page,
+      'size': 100,
+    });
+    final response = await repository.historyFacets(goodsId, parameters);
+    if (!mounted ||
+        !owns() ||
+        !nativeReadAccessConfirmed ||
+        !identical(repository, ref.read(priceAnalysisRepositoryProvider)) ||
+        identity != '$_identity|${jsonEncode(_tableParameters(1))}') {
+      throw ApiException('FORBIDDEN', '读取范围已变化，请重新打开筛选');
+    }
+    return MasterFacetPage(
+      items: [
+        for (final bucket in response['buckets'] as List? ?? const [])
+          if (bucket is Map)
+            MasterFacetBucket.fromJson(Map<String, dynamic>.from(bucket)),
+      ],
+      hasMore: response['hasMore'] == true,
+    );
   }
 
   void _tableFilterChanged(String key, String? value) {
@@ -900,6 +947,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                     ),
                     if (_loading || _historyLoading || _supplierLoading)
                       UtenBusyOverlay(
+                        showDoNotLeaveHint: false,
                         title: priceText(
                           context,
                           _historyLoading
@@ -1196,12 +1244,17 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       key: key,
       label: priceText(context, label),
       width: width,
+      minimumWidthOf: (_) => 48,
       type: numeric
           ? 'number'
           : key == 'businessDate'
           ? 'date'
           : 'text',
       sortable: !(_historyTableMode && key == 'comparable'),
+      columnSearchEnabled: _historyTableMode
+          ? _historySearchKeys.contains(key)
+          : null,
+      facetSearchEnabled: true,
       filterFromRows: !_historyTableMode,
       info:
           _historyPage is PriceHistoryTableResult &&
@@ -1209,10 +1262,13 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
           ? priceText(context, 'allValuesHint')
           : null,
       value: text ?? (row) => row.text(key),
+      measureValueOf: numeric ? (row) => priceObservationValue(row, key) : text,
       cellBuilder: numeric
           ? (cellContext, row) => Text(
               priceObservationValue(row, key),
-              style: Theme.of(cellContext).textTheme.bodySmall?.copyWith(
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(cellContext).textTheme.bodyMedium?.copyWith(
                 color: MasterDataTableCellScope.maybeOf(
                   cellContext,
                 )?.foregroundColor,
@@ -1243,6 +1299,21 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
             virtualized: true,
             items: rows,
             facets: _historyTableMode ? _historyFacets() : const {},
+            serverColumnSearchKeys: _historyTableMode
+                ? _historySearchKeys
+                : const {},
+            facetPageLoaders: _historyTableMode
+                ? {
+                    for (final key in [..._historySearchKeys, 'lifecycle'])
+                      key: (keyword, page) => _headerFacet(key, keyword, page),
+                  }
+                : const {},
+            facetSearchScope: (
+              ref.watch(priceAnalysisRepositoryProvider),
+              _identity,
+              _historyTableMode,
+              jsonEncode(_tableParameters(1)),
+            ),
             nullCounts: _historyTableMode
                 ? _historyPage?.facetNullCounts ?? const {}
                 : const {},

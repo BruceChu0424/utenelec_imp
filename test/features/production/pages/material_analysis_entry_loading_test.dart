@@ -17,6 +17,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
@@ -313,6 +314,7 @@ void main() {
         server.requests.where((request) => unrelated.contains(request.path)),
         isEmpty,
       );
+      await expandMaterialAnalysisTree(tester);
       expect(find.text('紧固件 1'), findsWidgets);
       expect(tester.takeException(), isNull);
     });

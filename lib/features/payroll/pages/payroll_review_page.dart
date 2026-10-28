@@ -109,6 +109,10 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
                 currentPage: page.page,
                 totalPages: page.totalPages,
                 totalItems: page.total,
+                busy: batchesAsync.isLoading,
+                onPageChanged: (target) => ref
+                    .read(payrollBatchListProvider.notifier)
+                    .goToPage(target),
                 onPrev: !batchesAsync.isLoading && page.page > 1
                     ? () => ref
                           .read(payrollBatchListProvider.notifier)
@@ -586,6 +590,7 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     key: 'employeeCode',
     label: '工号',
     width: 100,
+    sortable: true,
     value: (s) => s.employeeCode,
   ),
   MasterColumnDef(
@@ -600,26 +605,32 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     label: '应发',
     width: 140,
     type: 'money',
+    sortable: true,
     aiSensitive: true,
     value: (s) =>
         financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
+    exactValueOf: (s) => s.grossIncome.toStringAsFixed(2),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
     label: '扣减',
     width: 140,
     type: 'money',
+    sortable: true,
     aiSensitive: true,
     value: (s) =>
         financeLocalMoneyWithUnitSuffix(s.totalDeduction.toStringAsFixed(2)),
+    exactValueOf: (s) => s.totalDeduction.toStringAsFixed(2),
   ),
   MasterColumnDef(
     key: 'netIncome',
     label: '实发',
     width: 150,
     type: 'money',
+    sortable: true,
     aiSensitive: true,
     value: (s) =>
         financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
+    exactValueOf: (s) => s.netIncome.toStringAsFixed(2),
   ),
 ];

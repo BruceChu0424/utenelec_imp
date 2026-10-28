@@ -3,6 +3,7 @@
 // - 车辆管理（整体替换：车牌必填，车型/品牌/颜色/备注非必填）
 // - 备用手机号管理（整体替换：号码必填，标签默认「备用」）
 // 文案硬编码中文（与 HR 运维页同惯例）。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -322,18 +323,23 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => UtenAlertDialog(
         scrollable: false,
-        title: const Text('备用手机号管理'),
+        title: const Row(
+          children: [
+            Flexible(child: Text('备用手机号管理')),
+            UtenFieldHintIcon(
+              info:
+                  '主手机号用于登录，在这里之外的「更换手机号」维护；'
+                  '此处登记额外联系号码(不参与登录)。',
+              dense: true,
+            ),
+          ],
+        ),
         content: SizedBox(
           width: 420,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '主手机号用于登录，在这里之外的「更换手机号」维护；'
-                '此处登记额外联系号码(不参与登录)。',
-              ),
-              const SizedBox(height: UtenSpacing.s8),
               if (error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: UtenSpacing.s8),

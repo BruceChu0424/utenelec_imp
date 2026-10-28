@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/stock_ledger/production_trace_models.dart';
@@ -103,6 +104,45 @@ Future<void> _pump(WidgetTester tester, _TraceApi api) async {
 }
 
 void main() {
+  testWidgets(
+    'trace headers send full-source criteria and numeric sort without changing the subject',
+    (tester) async {
+      final api = _TraceApi();
+      await _pump(tester, api);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('生产产品'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '产品%_',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(api.queries.last['search.goods'], '产品%_');
+      await tester.ensureVisible(find.text('已领数量'));
+      await tester.tap(find.text('已领数量'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=0.0001',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(api.queries.last['search.issued'], '>=0.0001');
+      expect(api.queries.last['search.goods'], '产品%_');
+      final table = tester.widget<MasterDataTableView<GoodsProductionTraceRow>>(
+        find.byType(MasterDataTableView<GoodsProductionTraceRow>),
+      );
+      table.onSortChange!('issued', false);
+      await tester.pumpAndSettle();
+      expect(api.queries.last['sort'], 'issued');
+      expect(api.queries.last['order'], 'desc');
+      expect(api.queries.last['direction'], 'usage');
+      expect(api.queries.last['page'], 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'tiny consumption and large report quantities retain every recorded digit',
     (tester) async {

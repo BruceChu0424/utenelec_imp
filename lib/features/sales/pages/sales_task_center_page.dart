@@ -189,8 +189,19 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
     ];
 
     if (groups.isEmpty) {
+      final route = ModalRoute.of(context);
       return Scaffold(
-        appBar: AppBar(title: const Text('销售任务中心')),
+        appBar: UtenAppBar(
+          title: '销售任务中心',
+          showPagePermissionAction: false,
+          leading: route?.impliesAppBarDismissal == true
+              ? route!.fullscreenDialog
+                    ? const CloseButton()
+                    : UtenBackButton(
+                        onPressed: () => Navigator.maybePop(context),
+                      )
+              : null,
+        ),
         body: Center(
           child: Text('暂无已授权的销售页面，请联系主管开通。', style: theme.textTheme.bodyMedium),
         ),

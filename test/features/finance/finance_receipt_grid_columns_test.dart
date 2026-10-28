@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/components/data_display/uten_review_input_cell.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
@@ -28,6 +29,61 @@ Widget _app(WidgetBuilder builder) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'payment header searches exact raw amounts without changing hidden input rows',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final first = FinanceGridRow(mode: ItemMode.settle)
+        ..amount.text = '90071992547409.123456';
+      final second = FinanceGridRow(mode: ItemMode.settle)
+        ..amount.text = '90071992547409.123457';
+      final controller = UtenEditableGridController<FinanceGridRow>(
+        initial: [first, second],
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        _app(
+          (context) => UtenEditableGrid<FinanceGridRow>(
+            controller: controller,
+            columns: financeGridColumns(
+              ItemMode.settle,
+              context: context,
+              names: _Names(),
+              type: FinanceDocType.payment,
+            ),
+            showAddRow: false,
+            showRowDelete: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is GridHeaderFilterCell && widget.label == '本次付款(原币)',
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '90071992547409.123457',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      Finder amountOf(FinanceGridRow row) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, row.amount),
+      );
+      expect(amountOf(first), findsNothing);
+      expect(amountOf(second), findsOneWidget);
+      expect(controller.rows, [first, second]);
+      expect(first.amount.text, '90071992547409.123456');
+      expect(second.amount.text, '90071992547409.123457');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'empty receipt allocation identifies its amount without replacing the exact controller',
     (tester) async {

@@ -1,3 +1,4 @@
+import '../../../../components/layout/uten_section_header.dart';
 // 车间内料仓盘点页 (/workshop-material/count?periodId=, ADR-131 §5.7), 手机优先。
 //
 // - 开着的一期: 选截止到今天 / 昨天, 点"开始盘点" (当场截止本期并开出下一期)。
@@ -881,12 +882,11 @@ class _WorkshopMaterialCountPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '${wmPeriodLabel(period)} · ${wmPeriodStatusLabel(period.status)}',
-              style: theme.textTheme.titleMedium,
+            UtenSectionHeader(
+              title:
+                  '${wmPeriodLabel(period)} · ${wmPeriodStatusLabel(period.status)}',
+              info: '选择截止日，开始后录入容器和袋料余量。',
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text('选择截止日，开始后录入容器和袋料余量。', style: theme.textTheme.bodyMedium),
             const SizedBox(height: UtenSpacing.s12),
             UtenSegmentRow<bool>(
               key: const Key('wm-count-cutoff'),

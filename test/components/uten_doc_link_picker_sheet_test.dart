@@ -15,6 +15,7 @@ import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/l10n/table_read_status_text.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_master_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -274,15 +275,31 @@ void main() {
         );
         await _doubleTapRow(tester, find.text('RETRY-001'));
         await tester.pump();
+        await tester.tap(
+          find.byKey(const ValueKey('master-table-initial-read-details')),
+        );
+        await tester.pumpAndSettle();
         expect(
-          find.text(lookupAppLocalizations(locale).docLinkDetailLoadFailed),
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is SelectableText &&
+                widget.data ==
+                    lookupAppLocalizations(locale).docLinkDetailLoadFailed,
+          ),
           findsOneWidget,
         );
         expect(find.textContaining('private implementation'), findsNothing);
         final table = tester.widget<MasterDataTableView<_Doc>>(
           find.byType(MasterDataTableView<_Doc>),
         );
-        table.onRetry!();
+        expect(table.onRetry, isNotNull);
+        final retry = tableReadStatusText(
+          tester.element(
+            find.byKey(const ValueKey('master-table-initial-read-details')),
+          ),
+          'retry',
+        );
+        await tester.tap(find.text(retry).last);
         await tester.pumpAndSettle();
         await _doubleTapRow(tester, find.text('RETRY-001'));
         await tester.pump();
@@ -303,7 +320,16 @@ void main() {
     );
     await _doubleTapRow(tester, find.text('DENIED-001'));
     await tester.pump();
-    expect(find.text('该来源单据权限已收回'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('master-table-initial-read-details')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == '该来源单据权限已收回',
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets(

@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_party_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -759,36 +760,23 @@ class _WarehouseArrivalExceptionsViewState
                 ? null
                 : (_) => _requestVersion++,
             onSearchChanged: widget.embedded ? null : _applySearch,
-            trailing: Text(
-              '共 ${result.total} 条 · 单击多选，双击详情',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '共 ${result.total} 条',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                UtenFieldHintIcon(
+                  info:
+                      '单击多选，双击详情。\n\n${_history ? '入库完成或取消的到货异常归档于此。' : '财务已定案且等待仓库重新审核的行可多选，并在右下角批量按批准量处理；处理后先进入 IQC 待检；品质放行并经仓库确认入库前，不进入可用库存。'}',
+                  dense: true,
+                ),
+              ],
             ),
           ),
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              _history ? Icons.history_rounded : Icons.warning_amber_rounded,
-              size: 18,
-              color: _history
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                _history
-                    ? '入库完成或取消的到货异常归档于此。'
-                    : '财务已定案且等待仓库重新审核的行可多选，并在右下角批量按批准量处理；'
-                          '处理后先进入 IQC 待检；品质放行并经仓库确认入库前，不进入可用库存。',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
         ),
       ],
     );

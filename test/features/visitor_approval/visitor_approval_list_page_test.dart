@@ -25,6 +25,9 @@ class _FakeVisitorStaffRepository extends Fake
     String? hostDepartmentId,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     listCalls.add({
       'status': status,

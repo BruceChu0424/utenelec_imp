@@ -34,6 +34,7 @@ class _FakeRepo extends SubcontractShortDeliveryRepository {
   final List<SubcontractShortDeliveryCase> rows;
   final List<Map<String, dynamic>> decisions = [];
   final List<String> segments = [];
+  final queries = <Map<String, dynamic>>[];
 
   @override
   Future<PagedResult<SubcontractShortDeliveryCase>> list({
@@ -48,8 +49,16 @@ class _FakeRepo extends SubcontractShortDeliveryRepository {
     String? sort, // 2026-09-25 单号列统一：签名随仓储扩展。
     String? order,
     String? orderBillNo,
+    Map<String, String?> columnFilters = const {},
   }) async {
     segments.add(segment);
+    queries.add({
+      'page': page,
+      'sort': sort,
+      'order': order,
+      'orderBillNo': orderBillNo,
+      'filters': Map<String, String?>.of(columnFilters),
+    });
     final items = rows.where((r) {
       final pending = r.effectiveStatus == 'PENDING_OWNER' && r.isBelowFloor;
       final tolerant = r.effectiveStatus == 'PENDING_OWNER' && !r.isBelowFloor;
@@ -216,6 +225,56 @@ Future<_FakeRepo> _pump(
 }
 
 void main() {
+  testWidgets(
+    'ordinary headers submit complete server text numeric and enum queries',
+    (tester) async {
+      final repo = await _pump(
+        tester,
+        rows: [_case(id: 'a', severity: 'SEVERE')],
+      );
+      MasterDataTableView<SubcontractShortDeliveryCase> table() =>
+          tester.widget(
+            find.byType(MasterDataTableView<SubcontractShortDeliveryCase>),
+          );
+      expect(table().serverColumnSearch, isTrue);
+      expect(
+        table().columns
+            .singleWhere((c) => c.key == 'actions')
+            .supportsKeywordSearch,
+        isFalse,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-shortfallQty')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=0.0001',
+      );
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(
+        repo.queries.last['filters'],
+        containsPair('search.shortfallQty', '>=0.0001'),
+      );
+      expect(repo.queries.last['page'], 1);
+      table().onFilterChanged('search.goodsName', '毛坯');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('severity', 'SEVERE');
+      await tester.pumpAndSettle();
+      table().onSortChange!('shortfallQty', false);
+      await tester.pumpAndSettle();
+      expect(
+        repo.queries.last['filters'],
+        containsPair('search.goodsName', '毛坯'),
+      );
+      expect(repo.queries.last['filters'], containsPair('severity', 'SEVERE'));
+      expect(repo.queries.last['sort'], 'shortfallQty');
+      expect(repo.queries.last['order'], 'desc');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('分批到货同一业务日保留原预计日期并标准化选择器值', (tester) async {
     final today = ChinaDateTime.today();
     final date = ChinaDateTime.formatDate(today);

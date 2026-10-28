@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -97,6 +98,7 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
       );
       if (mounted && _current) {
         ref.invalidate(permissionTemplatesProvider);
+        ref.invalidate(permissionTemplateBindingsProvider);
         context.appSuccess(l.permissionTemplateSaved);
         Navigator.pop(context, saved);
       }
@@ -127,12 +129,15 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
     return PopScope(
       canPop: !_saving,
       child: UtenAlertDialog(
-        title: Text(
-          widget.template != null
+        title: UtenSectionHeader(
+          title: widget.template != null
               ? '编辑模板信息'
               : widget.importing
               ? '导入模板'
               : l.permissionTemplateNew,
+          info: widget.template != null
+              ? '权限在右侧面板直接设置，修改后自动保存。'
+              : '创建后进入权限设置，勾选权限后自动保存。',
         ),
         content: SizedBox(
           width: 480,
@@ -154,13 +159,6 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
                 controller: _description,
                 enabled: enabled,
               ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                widget.template != null
-                    ? '权限在右侧面板直接设置，修改后自动保存。'
-                    : '创建后进入权限设置，勾选权限后自动保存。',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
               if (widget.importing)
                 Text(
                   l.permissionTemplateSelectedCount(widget.initialCodes.length),
@@ -179,7 +177,10 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
             type: UtenButtonType.secondary,
             onPressed: !_saving
                 ? () {
-                    if (_uncertain) ref.invalidate(permissionTemplatesProvider);
+                    if (_uncertain && _current) {
+                      ref.invalidate(permissionTemplatesProvider);
+                      ref.invalidate(permissionTemplateBindingsProvider);
+                    }
                     Navigator.pop(context);
                   }
                 : null,

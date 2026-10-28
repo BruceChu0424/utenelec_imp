@@ -51,6 +51,99 @@ Future<void> _pumpPage(
 }
 
 void main() {
+  for (final fqc in [false, true]) {
+    testWidgets(
+      'ordinary ${fqc ? 'FQC' : 'IQC'} record headers keep full criteria for list and candidates',
+      (tester) async {
+        final api = _RecordApi();
+        await _pumpPage(
+          tester,
+          api: api,
+          permissions: {
+            fqc
+                ? Perm.productionQualityInspectionView
+                : Perm.procurementInspectionView,
+          },
+          size: const Size(1700, 950),
+          initialDomain: fqc
+              ? QualityInspectionRecordDomain.fqc
+              : QualityInspectionRecordDomain.iqc,
+        );
+        await tester.ensureVisible(find.text('货品名称'));
+        await tester.tap(find.text('货品名称'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '10%_',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(api.listQueries.last['search.goodsName'], '10%_');
+        await tester.ensureVisible(find.text('本次合格'));
+        await tester.tap(find.text('本次合格'));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '>=0.25',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(api.listQueries.last['search.passQty'], '>=0.25');
+        expect(api.listQueries.last['search.goodsName'], '10%_');
+        final table = tester
+            .widget<MasterDataTableView<QualityInspectionRecord>>(
+              find.byKey(const Key('quality-inspection-record-table')),
+            );
+        table.onSortChange!('passQty', false);
+        await tester.pumpAndSettle();
+        expect(api.listQueries.last['sort'], 'passQty');
+        expect(api.listQueries.last['order'], 'desc');
+        expect(api.listQueries.last['page'], 1);
+        expect(
+          api.listPaths.last,
+          fqc
+              ? '/production/quality-inspections/records'
+              : '/procurement/inspection/records',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('decided time header reuses the server business-day range', (
+    tester,
+  ) async {
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.procurementInspectionView},
+      size: const Size(1400, 950),
+    );
+    final header = find.text('决定时间');
+    await tester.ensureVisible(header);
+    await tester.pumpAndSettle();
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+    expect(find.text('选择检验决定日期范围'), findsOneWidget);
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.tap(find.text('1'));
+    await tester.pump();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['from'], isNotNull);
+    expect(api.listQueries.last['to'], isNotNull);
+    expect(api.listQueries.last['page'], 1);
+    final from = DateTime.parse(api.listQueries.last['from'] as String);
+    final to = DateTime.parse(api.listQueries.last['to'] as String);
+    expect(
+      to.difference(from),
+      const Duration(days: 1) - const Duration(microseconds: 1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test('repository sends one complete China business-day range', () async {
     final api = _RecordApi();
     await QualityInspectionRecordRepository(api).list(

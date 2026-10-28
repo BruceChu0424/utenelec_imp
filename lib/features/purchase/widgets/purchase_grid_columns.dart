@@ -722,7 +722,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
         chromeWidth:
             UtenEditableGridCellSpec.dropdownChevronWidth +
             UtenEditableGridCellSpec.hintIconWidth,
-        textOf: (r) => supplierEntries[r.supplierId] ?? '',
+        textOf: (r) => supplierEntries[r.supplierId ?? headerSupplierId] ?? '',
         listenableOf: (r) => r.supplierIdNotifier,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
           valueListenable: row.termsAutofilledNotifier,
@@ -748,6 +748,9 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       required: true,
       headerInfo: l10n.workflowQuantityHint,
       frozenTextOf: qtySnapshotOf,
+      exactValueOf: (row) => row.qty.text,
+      exactListenableOf: (row) => row.qty,
+      listenableOf: (row) => row.qty,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: Listenable.merge([
           row.qty,
@@ -781,6 +784,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       numeric: true,
       exactValueOf: (row) => row.giftQty.text,
       exactListenableOf: (row) => row.giftQty,
+      listenableOf: (row) => row.giftQty,
+      frozenTextOf: (row) => row.giftQty.text,
       cellBuilder: (context, row) => ValueListenableBuilder<bool>(
         valueListenable: row.giftSemanticsConfirmed,
         builder: (_, _, _) => TextField(
@@ -802,6 +807,14 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       label: '实物数量',
       width: 150,
       numeric: true,
+      exactValueOf: (row) => row.physicalQtyText,
+      exactListenableOf: (row) =>
+          Listenable.merge([row.qty, row.giftQty, row.giftSemanticsConfirmed]),
+      listenableOf: (row) =>
+          Listenable.merge([row.qty, row.giftQty, row.giftSemanticsConfirmed]),
+      frozenTextOf: (row) => row.physicalQtyText == null
+          ? '数量未留存'
+          : '${row.physicalQtyText}${unitSuffixOf(row) == null ? '' : ' ${unitSuffixOf(row)}'}',
       cellBuilder: (context, row) => ListenableBuilder(
         listenable: Listenable.merge([
           row.qty,
@@ -827,6 +840,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             '在这以内照常入库、立应付；超过的部分才转财务审批。留空 = 不允许超收(按 0%)。'
             '按货品主档记忆预填，保存后记住本次填写值；财务批准后不能再改。',
         textOf: (r) => r.allowedOverReceiptPct.text,
+        exactValueOf: (r) => r.allowedOverReceiptPct.text,
+        exactListenableOf: (r) => r.allowedOverReceiptPct,
         listenableOf: (r) => r.allowedOverReceiptPct,
         cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
           valueListenable: row.termsAutofilledNotifier,
@@ -853,6 +868,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       headerInfo: l10n.workflowPriceHint,
       frozenTextOf: (r) => r.price.text,
       textOf: (r) => r.price.text,
+      exactValueOf: (r) => r.price.text,
+      exactListenableOf: (r) => r.price,
       listenableOf: (r) => r.price,
       chromeWidthOf: PriceCheckCell.evidenceExtentOf,
       cellBuilder: (context, row) => PriceCheckCell(
@@ -884,7 +901,9 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       textOf: (r) => r.hasSourceAmount
           ? (r.amountExactNotifier.value ?? '')
           : r.pricing.totalAmount.text,
-      listenableOf: (r) => r.pricing,
+      listenableOf: (r) => Listenable.merge([r.pricing, r.amountExactNotifier]),
+      exactValueOf: (r) => r.amountExactNotifier.value,
+      exactListenableOf: (r) => r.amountExactNotifier,
       frozenTextOf: (r) => r.amountExactNotifier.value == null
           ? ''
           : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',

@@ -82,6 +82,13 @@ abstract interface class AdminRepository {
     required List<String> expectedOwnerEmployeeIds,
   });
 
+  /// 批量保存多个数据范围（一次再认证覆盖一次批量编辑；服务端单事务整批落库）。
+  /// 返回 (有改动的范围数, 新增负责人数, 移除负责人数)。
+  Future<(int, int, int)> updateUserDataScopesBatch(
+    String userId,
+    Map<String, (List<String> ids, List<String> expected)> entries,
+  );
+
   /// 授权归属人候选（范围内实际有归属数据的员工 + 数量）。
   Future<List<DataScopeOwner>> dataScopeOwners(String scope);
 
@@ -188,6 +195,9 @@ class DioAdminRepository implements AdminRepository {
       inheritedPermissions:
           (json['inheritedPermissions'] as List<dynamic>? ?? const [])
               .cast<String>(),
+      templatePermissions:
+          (json['templatePermissions'] as List<dynamic>? ?? const [])
+              .cast<String>(),
       requiredPermissions: permissionDependencyMap(json['requiredPermissions']),
       missingDependencies: permissionDependencyMap(json['missingDependencies']),
     );
@@ -269,6 +279,31 @@ class DioAdminRepository implements AdminRepository {
       'expectedOwnerEmployeeIds': expectedOwnerEmployeeIds,
     },
   );
+
+  @override
+  Future<(int, int, int)> updateUserDataScopesBatch(
+    String userId,
+    Map<String, (List<String> ids, List<String> expected)> entries,
+  ) async {
+    final json = await api.put(
+      ApiEndpoints.userDataScopesBatch(userId),
+      body: {
+        'scopes': [
+          for (final entry in entries.entries)
+            {
+              'scope': entry.key,
+              'ownerEmployeeIds': entry.value.$1,
+              'expectedOwnerEmployeeIds': entry.value.$2,
+            },
+        ],
+      },
+    );
+    return (
+      (json['changedScopes'] as num?)?.toInt() ?? 0,
+      (json['addedOwners'] as num?)?.toInt() ?? 0,
+      (json['removedOwners'] as num?)?.toInt() ?? 0,
+    );
+  }
 
   @override
   Future<List<DataScopeOwner>> dataScopeOwners(String scope) async {

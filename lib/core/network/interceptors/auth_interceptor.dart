@@ -632,8 +632,21 @@ class AuthInterceptor extends Interceptor {
         error,
       );
     }
-    SessionEventBus.instance.expire();
+    SessionEventBus.instance.expire(_replacedNotice(error));
     return TokenRefreshResult.rejected(error);
+  }
+
+  /// 明确拒绝的响应体里若是单设备顶号（SESSION_REPLACED），提取服务端说明给 UI
+  /// （「账号已在「Windows 客户端」登录，本设备已自动下线」）；其余结束原因不带载荷。
+  SessionExpiryNotice? _replacedNotice(DioException? error) {
+    final data = error?.response?.data;
+    if (data is Map && data['code'] == 'SESSION_REPLACED') {
+      final message = data['message'];
+      return SessionExpiryNotice.replaced(
+        message is String && message.isNotEmpty ? message : null,
+      );
+    }
+    return null;
   }
 
   TokenRefreshResult _resultForLatestSession(

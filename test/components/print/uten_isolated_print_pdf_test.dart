@@ -5,9 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/print/isolated_print_pdf.dart';
+import '../../support/print_test_font.dart';
+
+late Uint8List _fontBytes;
 
 PrintPdfRequest _request() => PrintPdfRequest(
   title: 'Large table',
+  fontBytes: _fontBytes,
   headers: const ['Item', 'Exact amount'],
   rows: [
     for (var i = 0; i < 2800; i++) ['item-$i', '$i.12345678'],
@@ -15,8 +19,10 @@ PrintPdfRequest _request() => PrintPdfRequest(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async => _fontBytes = await loadPrintTestFontBytes());
   test(
-    'complete 81-page PDF generation leaves the UI event loop running',
+    'complete 94-page PDF generation leaves the UI event loop running',
     () async {
       final generator = IsolatedPrintPdfGenerator();
       addTearDown(generator.dispose);
@@ -38,7 +44,7 @@ void main() {
       final counts = RegExp(
         r'/Count\s+(\d+)',
       ).allMatches(latin1.decode(bytes)).map((match) => int.parse(match[1]!));
-      expect(counts, contains(81));
+      expect(counts, contains(94));
       expect(ticks, greaterThan(10));
       expect(
         maxGap,
@@ -46,7 +52,7 @@ void main() {
         reason: 'complete document layout must run outside the UI isolate',
       );
       debugPrint(
-        'isolated-print-heartbeat ${jsonEncode({'web': kIsWeb, 'rows': 2800, 'pages': 81, 'bytes': bytes.length, 'totalMs': clock.elapsedMilliseconds, 'uiTicks': ticks, 'uiMaxGapMs': maxGap})}',
+        'isolated-print-heartbeat ${jsonEncode({'web': kIsWeb, 'rows': 2800, 'pages': 94, 'bytes': bytes.length, 'totalMs': clock.elapsedMilliseconds, 'uiTicks': ticks, 'uiMaxGapMs': maxGap})}',
       );
     },
     timeout: const Timeout(Duration(minutes: 2)),

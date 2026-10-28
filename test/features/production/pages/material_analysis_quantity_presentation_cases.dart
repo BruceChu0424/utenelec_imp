@@ -118,16 +118,7 @@ void materialQuantityPresentationCases() {
       final handle = find.byWidgetPredicate(
         (widget) => widget is UtenColumnResizeHandle && widget.label == '追加下单',
       );
-      final column = find
-          .ancestor(
-            of: handle,
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Container &&
-                  widget.constraints?.hasBoundedWidth == true,
-            ),
-          )
-          .first;
+      final column = tableCellFrame(handle);
       tester
           .widget<UtenColumnResizeHandle>(handle)
           .onResize(110 - tester.getSize(column).width);
@@ -324,15 +315,6 @@ double _quantityColumnWidth(WidgetTester tester) {
   final handle = find.byWidgetPredicate(
     (widget) => widget is UtenColumnResizeHandle && widget.label == '下单数量',
   );
-  final column = find
-      .ancestor(
-        of: handle,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Container &&
-              widget.constraints?.hasBoundedWidth == true,
-        ),
-      )
-      .first;
+  final column = tableCellFrame(handle);
   return tester.getSize(column).width;
 }

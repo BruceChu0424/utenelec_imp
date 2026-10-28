@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/search/table_column_query.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../models/stock_count_request.dart';
 
@@ -24,6 +25,9 @@ class StockCountRequestRepository {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagedResult.fromJsonResponsive(
     await api.get(
       '$base/candidates',
@@ -39,6 +43,7 @@ class StockCountRequestRepository {
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
         'page': page,
         'size': size,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     ),
     CountStockRow.fromJson,
@@ -93,6 +98,9 @@ class StockCountRequestRepository {
     String? keyword,
     int page = 1,
     int size = 50,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagedResult.fromJsonResponsive(
     await api.get(
       base,
@@ -104,6 +112,7 @@ class StockCountRequestRepository {
         'keyword': ?keyword,
         'page': page,
         'size': size,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     ),
     StockCountRequest.fromJson,

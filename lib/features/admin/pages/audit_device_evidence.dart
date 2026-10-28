@@ -719,8 +719,10 @@ class _LocalReceiptCard extends StatelessWidget {
           ],
           const Divider(height: 1),
           ExpansionTile(
-            title: Text('请求尝试链(${receipt.allAttempts.length} 次)'),
-            subtitle: const Text('自动刷新令牌或网络重试会保留为同一操作下的多次请求'),
+            title: UtenSectionHeader(
+              title: '请求尝试链(${receipt.allAttempts.length} 次)',
+              info: '自动刷新令牌或网络重试会保留为同一操作下的多次请求',
+            ),
             children: [
               for (final entry in receipt.allAttempts.indexed)
                 ListTile(
@@ -905,25 +907,7 @@ class _EvidenceSectionTitle extends StatelessWidget {
         Icon(icon, color: theme.colorScheme.primary),
         const SizedBox(width: UtenSpacing.s8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                subtitle,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.5,
-                ),
-              ),
-            ],
-          ),
+          child: UtenSectionHeader(title: title, info: subtitle),
         ),
       ],
     );
@@ -937,30 +921,10 @@ class _DeviceTrustNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.mdAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '可信度说明：服务器可以证明它在该时间收到这些客户端声明并处理了请求；本机 HMAC 只能发现普通编辑或写入损坏，回执仍可被清除，改造客户端也能伪造设备名、型号和安装标识。系统不采集 IMEI、MAC、硬盘序列号。若需更强证明，应另接企业 MDM、设备证书或平台设备证明。当前采集状态：${_captureStatusLabel(captureStatus)}。',
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
-            ),
-          ),
-        ],
-      ),
+    return UtenSectionHeader(
+      title: '采集状态：${_captureStatusLabel(captureStatus)}',
+      info:
+          '可信度说明：服务器可以证明它在该时间收到这些客户端声明并处理了请求；本机 HMAC 只能发现普通编辑或写入损坏，回执仍可被清除，改造客户端也能伪造设备名、型号和安装标识。系统不采集 IMEI、MAC、硬盘序列号。若需更强证明，应另接企业 MDM、设备证书或平台设备证明。',
     );
   }
 }
@@ -1032,7 +996,6 @@ class _AuditTechnicalTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
       children: [
@@ -1045,7 +1008,7 @@ class _AuditTechnicalTab extends StatelessWidget {
                 Expanded(child: Text('展开技术排查数据')),
                 UtenFieldHintIcon(
                   info:
-                      '以下内容仅用于技术排查。普通核查请优先阅读概览、业务变化和设备证据。\n\n包含操作关联编号、请求路径、中文对象类型和客户端标识',
+                      '以下内容仅用于技术排查。普通核查请优先阅读概览、业务变化和设备证据。\n\n包含操作关联编号、请求路径、中文对象类型和客户端标识。\n\n请求正文、密码、令牌、手机号、地址、银行账号和自由文本不会复制进审计详情。',
                   dense: true,
                 ),
               ],
@@ -1119,14 +1082,6 @@ class _AuditTechnicalTab extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Text(
-          '请求正文、密码、令牌、手机号、地址、银行账号和自由文本不会复制进审计详情。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            height: 1.5,
           ),
         ),
       ],

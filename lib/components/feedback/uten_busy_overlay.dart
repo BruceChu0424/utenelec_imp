@@ -21,6 +21,7 @@ class UtenBusyOverlay extends StatefulWidget {
     required this.title,
     this.description,
     this.semanticsKey,
+    this.showDoNotLeaveHint = true,
   });
 
   /// 进度卡片的语义 key（宿主测试锁定用，如物料分析的
@@ -32,6 +33,10 @@ class UtenBusyOverlay extends StatefulWidget {
 
   /// 补充说明（可空）：讲清“在做什么、别做什么”。
   final String? description;
+
+  /// Optional waiting guidance. Hiding the copy keeps the same blocking mask,
+  /// task lifetime and accessibility progress announcement.
+  final bool showDoNotLeaveHint;
 
   /// 全局「让位」计数：大于 0 时所有忙碌遮罩暂不绘制、不挡点击。
   static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
@@ -151,6 +156,7 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
             title: widget.title,
             description: widget.description,
             semanticsKey: widget.semanticsKey,
+            showDoNotLeaveHint: widget.showDoNotLeaveHint,
           ),
         ),
       ],
@@ -183,9 +189,8 @@ class UtenBusyOverlayCard extends StatelessWidget {
   final String title;
   final String? description;
 
-  /// 是否附带「请勿重复点击或关闭页面」那句尾巴。跑批遮罩恒为真；单独拿卡片
-  /// 画**首屏加载**时要关掉——那种场景没有可重复点的按钮，返回按钮也是故意
-  /// 留着能点的，再劝人别关页面就是自相矛盾(领料汇总页首屏，2026-09-21)。
+  /// 是否附带通用等待说明。主档操作或首屏加载可只保留动作标题，
+  /// 其余场景保持默认提示；这只控制文案，不改变阻止重复操作的蒙版。
   final bool showDoNotLeaveHint;
 
   @override

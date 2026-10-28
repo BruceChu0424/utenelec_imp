@@ -24,6 +24,15 @@ final class CompanyFileInitialAccessDraft {
       rules = const [],
       password = null;
 
+  /// 「所有人可以看」：继承上层并显式标记全员可见（含下载）。
+  const CompanyFileInitialAccessDraft.everyoneVisible()
+    : inheritPermissions = true,
+      rules = const [kCompanyFileEveryoneRule],
+      password = null;
+
+  /// 是否显式标记为全员可见（ALL 规则在场）。
+  bool get marksEveryone => rules.any((rule) => rule.isEveryoneRule);
+
   final bool inheritPermissions;
   final List<CompanyFileAccessRule> rules;
   final String? password;

@@ -2,14 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../core/network/read_scope_revision.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_page_layout.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -19,6 +21,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/admin_models.dart';
 import '../models/permission_template.dart';
+import '../models/permission_template_selection_plan.dart';
 import '../providers/admin_providers.dart';
 import '../repositories/permission_template_repository.dart';
 import '../services/permission_archive_files.dart';
@@ -27,6 +30,8 @@ import 'admin_permission_transfer_actions.dart';
 import 'admin_permission_workspace.dart';
 import 'permission_action_badge.dart';
 import 'permission_catalog_browser.dart';
+import 'admin_permission_editor_surface.dart';
+import 'permission_draft_session.dart';
 import 'permission_template_metadata_dialog.dart';
 
 /// The draft belongs to the workspace, above both responsive pane layouts.
@@ -35,20 +40,25 @@ class AdminPermissionTemplatesView extends ConsumerStatefulWidget {
     super.key,
     required this.navigation,
     this.onPermissionDirtyChanged,
+    this.onLeaveGuardChanged,
   });
   final Widget navigation;
   final ValueChanged<bool>? onPermissionDirtyChanged;
+
+  /// 宿主页面的离开守卫登记（有草稿时三选一，返回 true 才放行）。
+  final ValueChanged<Future<bool> Function()?>? onLeaveGuardChanged;
   @override
   ConsumerState<AdminPermissionTemplatesView> createState() =>
       _TemplatesState();
 }
 
 class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
+  final _catalogMount = PermissionCatalogMount();
   final _search = TextEditingController();
   late final SensitiveReadBoundary _boundary;
   PermissionTemplate? _selected;
   Set<String> _codes = {};
-  Timer? _autosave;
+  final _sensitiveConfirmed = <String>{};
   Future<bool>? _inFlight;
   String _query = '';
   String? _error;
@@ -57,6 +67,7 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
   bool _saving = false;
   bool _uncertain = false;
   bool? _reportedPending;
+  late final PermissionDraftSession _idleSave;
   bool get _current =>
       mounted &&
       ref.read(isSuperAdminProvider) &&
@@ -69,24 +80,55 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
   void initState() {
     super.initState();
     _boundary = ref.read(sensitiveReadBoundaryProvider);
+    _idleSave = PermissionDraftSession(onIdleSave: () => _save());
+    widget.onLeaveGuardChanged?.call(_confirmLeave);
   }
 
   @override
   void dispose() {
-    _autosave?.cancel();
+    _idleSave.dispose();
+    widget.onLeaveGuardChanged?.call(null);
     _search.dispose();
     super.dispose();
   }
 
+  /// 离开守卫：有草稿时三选一；保存需一次密码（模板保存接口要求再认证）。
+  Future<bool> _confirmLeave() async {
+    if (!_dirty || !mounted) return true;
+    _idleSave.pause();
+    try {
+      final allowed = await guardPermissionDraftLeave(
+        context,
+        subject: '权限模板「${_selected?.name ?? ''}」',
+        changeCount:
+            _codes.difference(_selected!.permissions.toSet()).length +
+            _selected!.permissions.toSet().difference(_codes).length,
+        save: () => _save(),
+      );
+      if (allowed && mounted && _dirty) {
+        // 不保存离开：丢弃本地草稿，回到已保存版本。
+        setState(() {
+          _codes = _selected!.permissions.toSet();
+          _error = null;
+        });
+        _idleSave.clear();
+      }
+      return allowed;
+    } finally {
+      if (mounted) _idleSave.resume();
+    }
+  }
+
   void _select(PermissionTemplate template) {
-    _autosave?.cancel();
     setState(() {
       _selected = template;
       _codes = template.permissions.toSet();
+      _sensitiveConfirmed.clear();
       _detail = true;
       _error = null;
       _uncertain = false;
     });
+    _idleSave.clear();
   }
 
   Future<void> _choose(PermissionTemplate template) async {
@@ -95,29 +137,76 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
       setState(() => _detail = true);
       return;
     }
-    if (await _save() && _current) _select(template);
+    if (await _confirmLeave() && _current) _select(template);
   }
 
-  void _change(String code, bool value) {
+  void _change(String code, bool value) => _changeMany([code], value);
+
+  void _changeMany(Iterable<String> codes, bool value) {
     if (!_current || _uncertain || _busy) return;
+    final catalog = [
+      for (final group
+          in ref.read(permissionCatalogProvider).value ??
+              const <PermissionCatalogGroup>[])
+        ...group.permissions,
+    ];
+    final plan = PermissionTemplateSelectionPlan.selectMany(
+      current: _codes,
+      catalog: catalog,
+      codes: codes,
+      enabled: value,
+    );
+    if (plan.blocked.isNotEmpty) {
+      context.appWarning('请先单独选择所需查看权限：${plan.blocked.join('、')}');
+      return;
+    }
     setState(() {
-      if (value) {
-        _codes.add(code);
-      } else {
-        _codes.remove(code);
-      }
+      _codes = plan.codes;
       _error = null;
     });
-    _autosave?.cancel();
-    if (_dirty) {
-      _autosave = Timer(const Duration(milliseconds: 650), () => _save());
+    if (plan.relatedRemoved.isNotEmpty) {
+      context.appInfo('已同时移出 ${plan.relatedRemoved.length} 项依赖该查看权限的动作，保存后生效');
     }
+    // 本地草稿：不再 650ms 即存（每次保存都要输一次密码）；
+    // 停止操作一段时间后自动保存，切模板/离开页面时三选一。
+    if (_dirty) {
+      _idleSave.noteEdit();
+    } else {
+      _idleSave.clear();
+    }
+  }
+
+  Future<void> _togglePermission(AdminPermission permission, bool value) async {
+    final target = _selected?.id;
+    final needsConfirmation =
+        value &&
+        !_codes.contains(permission.code) &&
+        (!permission.grantPolicy.bulkEligible ||
+            permission.sensitivity != 'NORMAL');
+    if (needsConfirmation) {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '确认模板敏感权限',
+        content: Text(
+          '「${permission.name}」涉及敏感能力。保存后会同步到此模板的所有实时关联对象；个人取消继续优先。',
+        ),
+        confirmLabel: '确认加入模板',
+        danger: true,
+      );
+      if (!mounted ||
+          !_current ||
+          _selected?.id != target ||
+          confirmed != true) {
+        return;
+      }
+      _sensitiveConfirmed.add(permission.code);
+    }
+    _change(permission.code, value);
   }
 
   /// A single versioned queue flushes newer choices after the active write.
   /// Unknown outcomes stop the queue rather than replaying a business write.
   Future<bool> _save({bool notify = false}) async {
-    _autosave?.cancel();
     while (_inFlight != null) {
       final previous = _inFlight!;
       if (!await previous) return false;
@@ -159,17 +248,24 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
       final saved = await scope.run(
         () => ref
             .read(permissionTemplateRepositoryProvider)
-            .save(
+            .saveReviewed(
               template: template,
               name: template.name,
               description: template.description,
               permissions: codes,
+              sensitiveConfirmations: _sensitiveConfirmed.intersection(
+                codes.difference(template.permissions.toSet()),
+              ),
             ),
       );
       if (!current()) return false;
       // Advance the saved version; never overwrite edits made during the request.
       setState(() => _selected = saved);
-      ref.invalidate(permissionTemplatesProvider);
+      _sensitiveConfirmed.removeWhere(
+        (code) => saved.permissions.contains(code),
+      );
+      _idleSave.clear();
+      refreshPermissionConfiguration(ref);
       return true;
     } catch (error) {
       if (current()) {
@@ -240,7 +336,7 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
       ),
     );
     if (confirmed != true || !_current) return;
-    _autosave?.cancel();
+    _idleSave.pause();
     setState(() => _busy = true);
     try {
       final id = _selected?.id;
@@ -269,14 +365,17 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
         context.appError(_errorText(error));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        _idleSave.resume();
+      }
     }
   }
 
   Future<void> _delete() async {
     final template = _selected;
     if (template == null || _busy || _saving || !_current || _uncertain) return;
-    _autosave?.cancel();
+    _idleSave.pause();
     final l = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -300,7 +399,9 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
     );
     if (confirmed != true || !_current) {
       if (_current && _dirty && _error == null) {
-        _autosave = Timer(const Duration(milliseconds: 650), () => _save());
+        _idleSave.noteEdit();
+      } else {
+        _idleSave.resume();
       }
       return;
     }
@@ -319,6 +420,8 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
           _detail = false;
           _error = null;
         });
+        _idleSave.clear();
+        refreshPermissionConfiguration(ref);
         context.appSuccess(l.permissionTemplateDeleted);
       }
     } catch (error) {
@@ -335,8 +438,9 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
       }
     } finally {
       if (mounted) {
-        ref.invalidate(permissionTemplatesProvider);
+        if (_current) refreshPermissionConfiguration(ref);
         setState(() => _busy = false);
+        _idleSave.resume();
       }
     }
   }
@@ -409,13 +513,20 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                     shape: const RoundedRectangleBorder(
                       borderRadius: UtenRadius.controlAll,
                     ),
-                    selectedTileColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer,
-                    leading: const Icon(Icons.fact_check_outlined),
+                    // 与「按员工」卡片列表、表格选中行同语言的定稿选中色
+                    // （primaryContainer 亮薄荷与全站选中口径不一致）。
+                    selectedTileColor: utenTableSelectedRowColor(
+                      Theme.of(context),
+                    ),
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: const Icon(Icons.fact_check_outlined, size: 20),
                     title: Text(row.name),
                     subtitle: Text(
-                      '${l.permissionTemplateSelectedCount(row.id == selected?.id ? _codes.length : row.permissions.length)}${row.description.isEmpty ? '' : '\n${row.description}'}',
+                      '${l.permissionTemplateSelectedCount(row.id == selected?.id ? _codes.length : row.permissions.length)}'
+                      '${row.appliedCount > 0 ? ' · ${row.appliedUserCount} 人 / ${row.appliedDepartmentCount} 部门' : ''}'
+                      '${row.description.isEmpty ? '' : '\n${row.description}'}',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -452,67 +563,61 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
             )
           : leading,
     );
-    return PopScope(
-      canPop: !_pending,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop || _busy) return;
-        if (await _save() && context.mounted) {
-          Navigator.of(context).pop(result);
-        }
-      },
-      child: Stack(
-        children: [
-          Positioned.fill(child: workspace),
-          Positioned(
-            right: UtenPageEdgePadding.resolve(
-              context,
-              const EdgeInsets.all(UtenSpacing.s16),
-            ).right,
-            bottom: UtenSpacing.s16,
-            left: UtenSpacing.s16,
-            child: Align(
-              alignment: Alignment.bottomRight,
-              child: UtenFloatingActionGroup(
-                children: [
+    // 离开守卫由宿主 AdminPermissionsPage 的路由级 PopScope 统一处理
+    //（本视图经 onLeaveGuardChanged 登记三选一）；这里不再自持 PopScope，
+    // 避免同一路由两道 canPop 互相卡死。
+    return Stack(
+      children: [
+        Positioned.fill(child: workspace),
+        Positioned(
+          right: UtenPageEdgePadding.resolve(
+            context,
+            const EdgeInsets.all(UtenSpacing.s16),
+          ).right,
+          bottom: UtenSpacing.s16,
+          left: UtenSpacing.s16,
+          child: Align(
+            alignment: Alignment.bottomRight,
+            child: UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const ValueKey('import-permission-template'),
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.upload_outlined,
+                  onPressed: _current && !_busy && !_uncertain
+                      ? () => _metadata(importing: true)
+                      : null,
+                  child: const Text('导入模板'),
+                ),
+                UtenButton(
+                  key: const ValueKey('new-permission-template'),
+                  type: selected == null
+                      ? UtenButtonType.primary
+                      : UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.add,
+                  onPressed: _current && !_busy && !_uncertain
+                      ? () => _metadata()
+                      : null,
+                  child: Text(l.permissionTemplateNew),
+                ),
+                if (selected != null)
                   UtenButton(
-                    key: const ValueKey('import-permission-template'),
-                    type: UtenButtonType.secondary,
+                    key: const ValueKey('save-permission-template'),
                     size: UtenButtonSize.large,
-                    icon: Icons.upload_outlined,
-                    onPressed: _current && !_busy && !_uncertain
-                        ? () => _metadata(importing: true)
+                    icon: Icons.save_outlined,
+                    isLoading: _saving,
+                    onPressed: _current && !_busy && !_saving && !_uncertain
+                        ? () => _save(notify: true)
                         : null,
-                    child: const Text('导入模板'),
+                    child: Text(l.permissionTemplateSave),
                   ),
-                  UtenButton(
-                    key: const ValueKey('new-permission-template'),
-                    type: selected == null
-                        ? UtenButtonType.primary
-                        : UtenButtonType.secondary,
-                    size: UtenButtonSize.large,
-                    icon: Icons.add,
-                    onPressed: _current && !_busy && !_uncertain
-                        ? () => _metadata()
-                        : null,
-                    child: Text(l.permissionTemplateNew),
-                  ),
-                  if (selected != null)
-                    UtenButton(
-                      key: const ValueKey('save-permission-template'),
-                      size: UtenButtonSize.large,
-                      icon: Icons.save_outlined,
-                      isLoading: _saving,
-                      onPressed: _current && !_busy && !_saving && !_uncertain
-                          ? () => _save(notify: true)
-                          : null,
-                      child: Text(l.permissionTemplateSave),
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -547,8 +652,8 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
         : _error != null
         ? '保存未完成'
         : _dirty
-        ? '等待自动保存'
-        : '已自动保存';
+        ? '有未保存修改（闲置后自动保存）'
+        : '已保存';
     return UtenPageEdgePadding.scroll(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s16,
@@ -560,7 +665,7 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
       builder: (context, pagePadding) => ListView(
         padding: pagePadding,
         children: [
-          UtenCard(
+          AdminPermissionEditorSurface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -623,6 +728,14 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                     ),
                   ],
                 ),
+                if (selected.appliedCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '关联 ${selected.appliedUserCount} 名员工、${selected.appliedDepartmentCount} 个部门；实时关联随修改同步；旧版快照需重新应用，负责人委派按最新权限核对。',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
                 if (selected.description.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -685,11 +798,42 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                     () => ref.invalidate(permissionCatalogProvider),
                   ),
                   data: (groups) => PermissionCatalogBrowser(
-                    key: ValueKey(selected.id),
+                    key: _catalogMount.forOwner((
+                      ref.watch(sensitiveReadBoundaryProvider),
+                      ref.watch(readScopeRevisionProvider),
+                      selected.id,
+                    )),
                     groups: groups,
                     enabledFilterLabel: '已选',
                     disabledFilterLabel: '未选',
                     isEnabled: (permission) => _codes.contains(permission.code),
+                    enableAllLabel: '选择全部普通权限',
+                    disableAllLabel: '清空模板权限',
+                    enableModuleLabel: '选择本模块普通权限',
+                    disableModuleLabel: '移出本模块权限',
+                    enableGroupLabel: '选择本组普通权限',
+                    disableGroupLabel: '移出本组权限',
+                    onGrantScope: enabled
+                        ? (scope) => _changeMany([
+                            for (final group in groups)
+                              if ((scope.module == null ||
+                                      scope.module == group.module) &&
+                                  (scope.category == null ||
+                                      scope.category == group.category))
+                                for (final permission in group.permissions)
+                                  if (permission.grantPolicy.bulkEligible)
+                                    permission.code,
+                          ], true)
+                        : null,
+                    onDisableGroup: enabled
+                        ? (permissions) => _changeMany(
+                            permissions.map((permission) => permission.code),
+                            false,
+                          )
+                        : null,
+                    onDisableAll: enabled
+                        ? (_) => _changeMany(_codes.toList(), false)
+                        : null,
                     itemBuilder: (context, permission) => Padding(
                       padding: const EdgeInsets.symmetric(
                         vertical: UtenSpacing.s4,
@@ -712,7 +856,8 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                             onChanged:
                                 enabled &&
                                     permission.grantPolicy.individuallyGrantable
-                                ? (value) => _change(permission.code, value)
+                                ? (value) =>
+                                      _togglePermission(permission, value)
                                 : null,
                           ),
                         ],

@@ -1017,22 +1017,18 @@ abstract class _MaterialAnalysisCandidatesState
     ),
     child: LayoutBuilder(
       builder: (context, constraints) {
-        final summary = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        final summary = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '已选 ${_sourceQtyControllers.length} 个销售产品',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w800,
+            Flexible(
+              child: Text(
+                '已选 ${_sourceQtyControllers.length} 个销售产品',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
-            Text(
-              '数量已按待排量预填，只需核对例外。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            const UtenFieldHintIcon(info: '数量已按待排量预填，只需核对例外。', dense: true),
           ],
         );
         final action = OutlinedButton(
@@ -1096,13 +1092,26 @@ abstract class _MaterialAnalysisCandidatesState
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '核对本次分析数量',
-                            style: Theme.of(sheetContext).textTheme.titleLarge
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  '核对本次分析数量',
+                                  style: Theme.of(sheetContext)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                              ),
+                              const UtenFieldHintIcon(
+                                info: '默认值来自当前待排量，只修改例外。',
+                                dense: true,
+                              ),
+                            ],
                           ),
                           Text(
-                            '共 ${entries.length} 项；默认值来自当前待排量，只修改例外。',
+                            '共 ${entries.length} 项',
                             style: Theme.of(sheetContext).textTheme.bodyMedium,
                           ),
                         ],
@@ -1442,55 +1451,28 @@ abstract class _MaterialAnalysisCandidatesState
         borderRadius: UtenRadius.mdAll,
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final extent = UtenControlMetrics.minimumHitExtent(
-            context,
-            desktop: 48,
-          );
-          final previous = TextButton.icon(
-            key: const Key('material-candidate-prev-page'),
-            style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
-            onPressed: _loadingCandidates || currentPage <= 1
-                ? null
-                : () => _loadCandidates(page: currentPage - 1, useCache: true),
-            icon: const Icon(Icons.chevron_left_rounded),
-            label: const Text('上一页'),
-          );
-          final summary = Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-            child: Text(
-              '第 $currentPage / $totalPages 页\n共 ${page.total} 项',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s4,
+        children: [
+          UtenPagination(
+            currentPage: currentPage,
+            totalPages: totalPages,
+            busy: _loadingCandidates,
+            onPageChanged: (target) =>
+                _loadCandidates(page: target, useCache: true),
+            previousKey: const Key('material-candidate-prev-page'),
+            nextKey: const Key('material-candidate-next-page'),
+          ),
+          Text(
+            '共 ${page.total} 项',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
-          );
-          final next = TextButton.icon(
-            key: const Key('material-candidate-next-page'),
-            style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
-            onPressed: _loadingCandidates || currentPage >= totalPages
-                ? null
-                : () => _loadCandidates(page: currentPage + 1, useCache: true),
-            iconAlignment: IconAlignment.end,
-            icon: const Icon(Icons.chevron_right_rounded),
-            label: const Text('下一页'),
-          );
-          if (constraints.maxWidth < 360) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [summary, previous, next],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: previous),
-              summary,
-              Expanded(child: next),
-            ],
-          );
-        },
+          ),
+        ],
       ),
     );
   }

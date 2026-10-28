@@ -242,11 +242,6 @@ class _WebsiteWorkspaceState extends ConsumerState<_WebsiteWorkspace> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l.websiteManageSubtitle,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-                const SizedBox(height: UtenSpacing.s20),
                 UtenCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,11 +251,11 @@ class _WebsiteWorkspaceState extends ConsumerState<_WebsiteWorkspace> {
                         runSpacing: UtenSpacing.s8,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Text(
-                            info.displayName.isEmpty
+                          UtenSectionHeader(
+                            title: info.displayName.isEmpty
                                 ? l.websiteConnectionTitle
                                 : info.displayName,
-                            style: Theme.of(context).textTheme.titleLarge,
+                            info: l.websiteManageSubtitle,
                           ),
                           UtenStatusBadge(
                             label: snapshot.ready
@@ -482,14 +477,7 @@ class _SectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final text = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(description, style: Theme.of(context).textTheme.bodyMedium),
-        ],
-      );
+      final text = UtenSectionHeader(title: title, info: description);
       if (constraints.maxWidth < 580 ||
           MediaQuery.textScalerOf(context).scale(1) > 1.4) {
         return Column(
@@ -548,8 +536,10 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          UtenSectionHeader(title: l.websiteConfigure),
-          Text(l.websiteConfigureHelp),
+          UtenSectionHeader(
+            title: l.websiteConfigure,
+            info: l.websiteConfigureHelp,
+          ),
           const SizedBox(height: UtenSpacing.s16),
           UtenInput(
             label: l.websiteDisplayName,

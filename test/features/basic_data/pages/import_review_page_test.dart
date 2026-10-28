@@ -66,6 +66,8 @@ Future<void> _open(
   Size size = const Size(1440, 900),
   double textScale = 1,
   bool dark = false,
+  String? description = '新增 1，补齐 1，冲突 2，相同 1。空白不覆盖已有值。',
+  String? ignoreDescription,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -93,7 +95,8 @@ Future<void> _open(
                 context,
                 title: '核对货品导入差异',
                 rows: rows,
-                description: '新增 1，补齐 1，冲突 2，相同 1。空白不覆盖已有值。',
+                description: description,
+                ignoreDescription: ignoreDescription,
               );
               result.completed = true;
             },
@@ -133,12 +136,18 @@ void main() {
     );
     expect(before.data, '111');
     expect(before.style!.decoration, TextDecoration.lineThrough);
+    expect(before.maxLines, 1);
+    expect(before.overflow, TextOverflow.ellipsis);
     final after = tester.widget<Text>(
       find.byWidgetPredicate(
         (widget) => widget is Text && widget.semanticsLabel == '导入值: 222',
       ),
     );
     expect(after.data, '222');
+    expect(after.maxLines, 1);
+    expect(after.overflow, TextOverflow.ellipsis);
+    expect(find.byTooltip('原值: 111'), findsOneWidget);
+    expect(find.byTooltip('导入值: 222'), findsOneWidget);
     expect(find.text('M8'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
@@ -166,6 +175,65 @@ void main() {
       );
     }
   });
+
+  testWidgets(
+    'the compact summary keeps the source file and actual row counts without repeated instructions',
+    (tester) async {
+      await _open(
+        tester,
+        _Result(),
+        description: '本次导入.xlsx\n新增 1，补齐 1，冲突 2，相同 1。',
+        ignoreDescription: '很长的忽略操作说明',
+      );
+      expect(find.text('本次导入.xlsx'), findsOneWidget);
+      expect(find.text('共 3 行'), findsOneWidget);
+      expect(find.text('需核对 2 行'), findsOneWidget);
+      expect(find.text('自动补齐 1 行'), findsOneWidget);
+      expect(find.text('很长的忽略操作说明'), findsNothing);
+      expect(find.textContaining('新增 1，补齐 1'), findsNothing);
+      expect(find.byTooltip('很长的忽略操作说明'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'rich difference columns use their measured content rather than the old fixed minimum',
+    (tester) async {
+      await _open(tester, _Result());
+      final column = _table(
+        tester,
+      ).columns.singleWhere((column) => column.key == 'field:clientModel');
+      final context = tester.element(
+        find.byKey(const ValueKey('import-review-table')),
+      );
+      expect(column.minimumWidthOf!(context), lessThan(280));
+      expect(column.measureWidthOf, isNotNull);
+      final shortWidth = column.measureWidthOf!(
+        context,
+        _rows.first,
+        TextScaler.noScaling,
+      );
+      final longRow = ImportReviewRow(
+        rowKey: 'long-measure',
+        sourceRow: 9,
+        identityLabel: '长值',
+        matchReason: '编号匹配',
+        cells: [
+          ImportReviewCell(
+            key: 'clientModel',
+            label: '客户型号',
+            before: List.filled(20, 'OLD').join(),
+            after: List.filled(20, 'NEW').join(),
+          ),
+        ],
+      );
+      expect(shortWidth, lessThan(280));
+      expect(
+        column.measureWidthOf!(context, longRow, TextScaler.noScaling),
+        greaterThan(shortWidth),
+      );
+      expect(tester.getSize(find.text('M8')).width, lessThan(200));
+    },
+  );
 
   testWidgets('select all excludes automatic fills and returns explicit keys', (
     tester,
@@ -356,24 +424,56 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(_table(tester).selectedIds, isEmpty);
         final row = find.byKey(const ValueKey('import-review-row-long'));
-        expect(tester.getSize(row).height, lessThan(400));
+        expect(tester.getSize(row).height, lessThan(96));
+        final rowAction = find.byKey(
+          const ValueKey('import-review-ignore-long'),
+        );
+        final actionIcon = find.descendant(
+          of: rowAction,
+          matching: find.byType(Icon),
+        );
+        final actionLabel = find.descendant(
+          of: rowAction,
+          matching: find.byType(Text),
+        );
+        expect(
+          tester.getRect(actionIcon).center.dy,
+          closeTo(tester.getRect(actionLabel).center.dy, 1),
+          reason:
+              'A table action icon must not wrap above its single-line label',
+        );
         final valueBars = find.descendant(
           of: row,
           matching: find.byType(Scrollbar),
         );
-        expect(valueBars, findsNWidgets(2));
-        for (final bar in valueBars.evaluate()) {
-          final barFinder = find.byWidget(bar.widget);
-          final viewport = find.descendant(
-            of: barFinder,
+        expect(valueBars, findsNothing);
+        expect(
+          find.descendant(
+            of: row,
             matching: find.byType(SingleChildScrollView),
-          );
-          expect(
-            tester.getRect(barFinder).right - tester.getRect(viewport).right,
-            greaterThanOrEqualTo(16),
-            reason: 'A long imported value must not sit under its scroll thumb',
-          );
+          ),
+          findsNothing,
+        );
+        final beforeValue = longRow.cells.single.before!;
+        final afterValue = longRow.cells.single.after!;
+        final before = find.byWidgetPredicate(
+          (widget) =>
+              widget is Text && widget.semanticsLabel == '原值: $beforeValue',
+        );
+        final after = find.byWidgetPredicate(
+          (widget) =>
+              widget is Text && widget.semanticsLabel == '导入值: $afterValue',
+        );
+        for (final value in [before, after]) {
+          expect(tester.widget<Text>(value).maxLines, 1);
+          expect(tester.widget<Text>(value).overflow, TextOverflow.ellipsis);
         }
+        expect(
+          tester.getRect(before).center.dy,
+          closeTo(tester.getRect(after).center.dy, 1),
+        );
+        expect(find.byTooltip('原值: $beforeValue'), findsOneWidget);
+        expect(find.byTooltip('导入值: $afterValue'), findsOneWidget);
         if (_capture) {
           await saveAuditScreenshot(
             tester,

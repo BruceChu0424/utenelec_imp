@@ -125,6 +125,10 @@ void main() {
     expect(find.text('休假'), findsOneWidget);
     expect(find.text('离职'), findsOneWidget);
     expect(find.text('试用'), findsOneWidget);
+    if (_treeText(_salesCenter).evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('展开$_company'));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(_treeText(_salesCenter));
     await tester.pumpAndSettle();
     expect(_visibleCandidateIds(tester), {
@@ -151,6 +155,10 @@ void main() {
         return query == null ? _rows : const [];
       },
     );
+    if (_treeText(_salesCenter).evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('展开$_company'));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(_treeText(_salesCenter));
     await tester.pumpAndSettle();
     await tester.tap(_treeText(_productionCenter));
@@ -197,6 +205,10 @@ void main() {
   testWidgets('跨部门多选与表头全选只选择授权且可用人员，确认前不返回', (tester) async {
     List<UtenEmployeePickerItem>? result;
     await _pump(tester, multiple: true, onConfirm: (items) => result = items);
+    if (_treeText(_salesCenter).evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('展开$_company'));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(_treeText(_salesCenter));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('master-data-table-select-all')));
@@ -207,6 +219,10 @@ void main() {
     await tester.tap(find.text('陈华'));
     await tester.pumpAndSettle();
     expect(find.text('已选 3 人'), findsOneWidget);
+    if (_treeText(_salesCenter).evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('展开$_company'));
+      await tester.pumpAndSettle();
+    }
     await tester.tap(_treeText(_salesCenter));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('master-data-table-select-all')));
@@ -322,6 +338,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(_treeText('旧营销中心'), findsNothing);
+    await tester.tap(find.byTooltip('展开$_company'));
+    await tester.pumpAndSettle();
     expect(_treeText('旧营销中心'), findsOneWidget);
     expect(_visibleCandidateIds(tester), {'sales-person'});
 
@@ -376,10 +395,17 @@ void main() {
       if (scenario == 'compact') {
         await tester.tap(find.byIcon(Icons.account_tree_rounded));
         await tester.pumpAndSettle();
+        if (_treeText(_salesCenter).evaluate().isEmpty) {
+          await tester.tap(find.byTooltip('展开$_company'));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(_treeText(_salesCenter));
         await tester.pumpAndSettle();
         expect(find.byKey(_treeKey), findsNothing);
       } else {
+        expect(_treeText(_salesCenter), findsNothing);
+        await tester.tap(find.byTooltip('展开$_company'));
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('展开$_salesCenter'));
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('展开业务部').first);
@@ -455,8 +481,25 @@ void main() {
         );
       }
       if (scenario == 'compact') {
-        await tester.drag(find.text('TEST001'), const Offset(-300, 0));
-        await tester.pumpAndSettle();
+        final horizontalBody = find
+            .descendant(
+              of: find.byKey(_tableKey),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is SingleChildScrollView &&
+                    widget.scrollDirection == Axis.horizontal,
+              ),
+            )
+            .hitTestable()
+            .last;
+        for (
+          var step = 0;
+          step < 12 && find.text('休假').hitTestable().evaluate().isEmpty;
+          step++
+        ) {
+          await tester.drag(horizontalBody, const Offset(-120, 0));
+          await tester.pumpAndSettle();
+        }
         expect(find.text('锁定').hitTestable(), findsOneWidget);
         expect(find.text('休假').hitTestable(), findsOneWidget);
         if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {

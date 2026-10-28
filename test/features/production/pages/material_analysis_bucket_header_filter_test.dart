@@ -1,3 +1,4 @@
+import '../../../support/table_cell_geometry.dart';
 // 「下达车间」桶详情页（物料分析可安排桶）的表头快速筛选回归测试。
 //
 // 2026-09-11 用户截图反馈：同一张表里「生产车间/负责人/状态」有下拉小箭头，
@@ -95,17 +96,7 @@ Finder _headerColumn(String label) {
       (widget) => widget is UtenColumnResizeHandle && widget.label == label,
     ),
   );
-  return find
-      .ancestor(
-        of: grip,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Container &&
-              widget.constraints?.hasBoundedWidth == true &&
-              widget.child is Stack,
-        ),
-      )
-      .first;
+  return tableCellFrame(grip);
 }
 
 Finder _headerCell(String label) => find

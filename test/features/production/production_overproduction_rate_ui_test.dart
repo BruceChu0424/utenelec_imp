@@ -10,6 +10,7 @@ import 'package:uten_imp/features/production/models/production_execution_workben
 import 'package:uten_imp/features/production/repositories/production_overproduction_rate_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_overproduction_rate_request_dialog.dart';
 import 'package:uten_imp/features/production/widgets/production_overproduction_rate_revision.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 
 ProductionOverproductionRateRequest _request() =>
     ProductionOverproductionRateRequest({
@@ -44,6 +45,48 @@ ProductionOverproductionRateRequest _request() =>
     });
 
 void main() {
+  for (final inDialog in [false, true]) {
+    testWidgets(
+      'standalone rate request owns its permission entry: dialog=$inDialog',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1200, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final router = GoRouter(
+          initialLocation: ProductionOverproductionRateRequestEditor.route,
+          routes: [
+            GoRoute(
+              path: ProductionOverproductionRateRequestEditor.route,
+              builder: (_, _) => ProductionOverproductionRateRequestEditor(
+                inDialog: inDialog,
+                source: ProductionOverproductionRateContext({
+                  'segmentId': '',
+                  'canSubmit': false,
+                }),
+              ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              sessionSnapshotProvider.overrideWith(
+                () => _PermissionEntrySnapshot(),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('page-permission-action')),
+          inDialog ? findsNothing : findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   test(
     'pending request keeps effective rate and uses immutable old/new rows',
     () {
@@ -236,6 +279,13 @@ void main() {
       },
     );
   }
+}
+
+class _PermissionEntrySnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot(
+    delegableSurfaceKeys: const {'production.workshop-tasks'},
+  );
 }
 
 class _FailingRepository extends ProductionOverproductionRateRepository {

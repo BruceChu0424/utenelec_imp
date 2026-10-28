@@ -5995,11 +5995,53 @@ abstract class AppLocalizations {
   /// **'导出 Excel'**
   String get exportDialogTitle;
 
+  /// No description provided for @exportFileNameLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件名'**
+  String get exportFileNameLabel;
+
+  /// No description provided for @exportFileNameRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写文件名（不超过 150 个字符）'**
+  String get exportFileNameRequired;
+
+  /// No description provided for @exportSaveLocationLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存位置'**
+  String get exportSaveLocationLabel;
+
+  /// No description provided for @exportBrowse.
+  ///
+  /// In zh, this message translates to:
+  /// **'浏览…'**
+  String get exportBrowse;
+
   /// No description provided for @exportPasswordOptionalHint.
   ///
   /// In zh, this message translates to:
   /// **'密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。'**
   String get exportPasswordOptionalHint;
+
+  /// No description provided for @exportSetPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置密码'**
+  String get exportSetPassword;
+
+  /// No description provided for @exportRemovePassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消密码'**
+  String get exportRemovePassword;
+
+  /// No description provided for @exportPreparingFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在导出表格…'**
+  String get exportPreparingFile;
 
   /// No description provided for @exportPasswordOptionalLabel.
   ///
@@ -6552,6 +6594,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'订单改量'**
   String get orderChangeQtyTitle;
+
+  /// No description provided for @orderPendingChangeQtyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量修改后继续等待财务审核，财务将看到更新后的数量和修改记录。'**
+  String get orderPendingChangeQtyHint;
+
+  /// No description provided for @orderPendingChangeQtySuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'已改量，待财务审核内容已更新'**
+  String get orderPendingChangeQtySuccess;
 
   /// 改量弹窗顶部红色警示
   ///
@@ -23203,6 +23257,18 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'谁可以查看'**
   String get companyFilesWhoCanRead;
+
+  /// No description provided for @companyFilesEveryoneCanRead.
+  ///
+  /// In zh, this message translates to:
+  /// **'所有人可以看'**
+  String get companyFilesEveryoneCanRead;
+
+  /// No description provided for @companyFilesEveryoneReadHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料库默认全员可见。这份资料对所有人开放查看和下载，可添加拒绝例外；上层文件夹已限制访问时，仍需先能进入上层文件夹。'**
+  String get companyFilesEveryoneReadHint;
 
   /// No description provided for @companyFilesInheritEntryAccess.
   ///

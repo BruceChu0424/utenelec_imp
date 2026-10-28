@@ -1,9 +1,9 @@
+import 'master_reference_options_loader.dart';
 // 供应商主档「编辑」表单的公共实现（2026-09-14 抽取）。
 // 供应商分类页（列表内编辑）与供应商详情整页（/basicinfo/suppliers/:id）共用。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_exception.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
@@ -19,61 +19,20 @@ import '../repositories/supplier_repository.dart';
 import '../widgets/master_edit_dialog.dart';
 import 'master_edit_owner.dart';
 
-/// 加载启用中的结算方式（范式同客户侧 loadClientSettlementMethods）。
-Object? _settlementOptionsLoading;
-MasterEditOwner? _settlementOptionsOwner;
 Future<List<ReferenceMethodOption>?> loadSupplierSettlementMethods(
   BuildContext context,
   WidgetRef ref, {
   MasterEditOwner? owner,
-}) async {
-  if (owner?.isCurrent == false) return null;
-  if (_settlementOptionsLoading != null &&
-      (_settlementOptionsOwner?.isCurrent ?? true)) {
-    return null;
-  }
-  final ticket = Object();
-  _settlementOptionsLoading = ticket;
-  _settlementOptionsOwner = owner;
-  final nav = Navigator.of(context, rootNavigator: true);
-  final route = DialogRoute<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => const Center(child: CircularProgressIndicator()),
-  );
-  owner?.trackRoute(route);
-  nav.push(route);
-  try {
-    Future<List<ReferenceMethodOption>> read() =>
-        ref.read(referenceMethodRepositoryProvider).settlementMethods();
-    final methods = owner == null ? await read() : await owner.run(read);
-    if (!context.mounted || owner?.isCurrent == false) return null;
-    if (methods.isEmpty) {
-      if (context.mounted) context.appError('暂无可用结算方式，请先维护结算方式字典');
-      return null;
-    }
-    return methods;
-  } on ApiException catch (e) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError(e.message);
-    }
-  } catch (_) {
-    if (context.mounted && owner?.isCurrent != false) {
-      context.appError('加载结算方式失败，请重试');
-    }
-  } finally {
-    if (owner != null) {
-      owner.closeRoute(route);
-    } else if (route.isActive) {
-      route.navigator?.removeRoute(route);
-    }
-    if (identical(_settlementOptionsLoading, ticket)) {
-      _settlementOptionsLoading = null;
-      _settlementOptionsOwner = null;
-    }
-  }
-  return null;
-}
+}) => loadMasterReferenceOptions<ReferenceMethodOption>(
+  context: context,
+  ref: ref,
+  resourceKey: 'supplier.settlementMethods',
+  title: '正在读取结账方式…',
+  load: () => ref.read(referenceMethodRepositoryProvider).settlementMethods(),
+  emptyMessage: '暂无可用结算方式，请先维护结账方式字典',
+  errorFallback: '加载结算方式失败，请重试',
+  owner: owner,
+);
 
 /// 供应商主档可编辑字段（与后端 SupplierSaveRequest 对齐）。
 List<MasterFieldDef> buildSupplierFields(

@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 // 委外订货单「全链路进度」区(ADR-143 §4.6)。
 //
 // 每条订货明细 = 一个委外任务，一条时间线：下单 → 财务审批 → 领料发外(已领 x/Q) →
@@ -22,6 +23,7 @@ import '../models/subcontract_draw.dart';
 import '../models/subcontract_order_progress.dart';
 import '../repositories/subcontract_repository.dart';
 import 'subcontract_draw_status.dart';
+import 'subcontract_draw_material_columns.dart';
 
 class SubcontractOrderProgressSection extends ConsumerStatefulWidget {
   const SubcontractOrderProgressSection({super.key, required this.orderId});
@@ -390,66 +392,10 @@ class _SubcontractOrderProgressSectionState
         nullCounts: const {},
         filters: const {},
         onFilterChanged: (_, _) {},
-        columns: [
-          MasterColumnDef(
-            key: 'state',
-            label: '状态',
-            width: 72,
-            value: subcontractDrawMaterialStateLabel,
-            // 状态整格底色（ADR-169）：共用 subcontractDrawMaterialCellColor，
-            // 与领料任务详情物料表同口径（可领绿/已备紫/待仓库发料青/缺料红/
-            // 已发齐·已结束领料灰）。
-            cellColor: (context, row) => subcontractDrawMaterialCellColor(row),
-          ),
-          MasterColumnDef(
-            key: 'goodsName',
-            label: '物料名称',
-            width: 180,
-            value: (row) => _label(row.goodsName),
-          ),
-          MasterColumnDef(
-            key: 'goodsCode',
-            label: '编号',
-            width: 130,
-            value: (row) => _label(row.goodsCode),
-          ),
-          MasterColumnDef(
-            key: 'colorName',
-            label: '颜色',
-            width: 90,
-            value: (row) => _label(row.colorName),
-          ),
-          // 2026-10-10 数量+单位口径：单位内联在数量后，独立「单位」列删除
-          //（与委外任务详情物料表同口径）。
-          _qtyColumn('perUnitQty', '每套用量', (row) => row.perUnitQty),
-          _qtyColumn('requiredQty', '需求', (row) => row.requiredQty),
-          _qtyColumn('sentQty', '已发外', (row) => row.sentQty),
-          _qtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
-          _qtyColumn('availableQty', '仓库可用', (row) => row.availableQty),
-          _qtyColumn('drawableQty', '本次可领', (row) => row.drawableQty),
-          _qtyColumn('shortQty', '还缺', (row) => row.shortQty),
-          const MasterColumnDef(
-            key: 'supplySources',
-            label: '供应来源',
-            width: 240,
-            value: subcontractDrawSupplyText,
-          ),
-        ],
+        columns: subcontractDrawMaterialColumns(quantityWidth: 130),
         items: item.materials,
         emptyMessage: '本任务没有需要领的物料',
       );
-
-  MasterColumnDef<SubcontractDrawMaterial> _qtyColumn(
-    String key,
-    String label,
-    double Function(SubcontractDrawMaterial row) qty,
-  ) => MasterColumnDef(
-    key: key,
-    label: label,
-    width: 130,
-    type: 'number',
-    value: (row) => formatQtyWithUnit(qty(row), row.unitName),
-  );
 
   Widget _docSection(
     ThemeData theme, {
@@ -541,6 +487,7 @@ class _SubcontractOrderProgressSectionState
     return _sectionBox(
       theme,
       title: '委外商处物料台账(守恒)',
+      info: '委外商处物料逐种按发出、回厂核销、退回、损耗守恒；未清结存要由退料单或损耗单核销，回厂入仓不会自动抹平。',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -564,18 +511,22 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'goodsName',
                 label: '物料名称',
+                sortable: true,
                 width: 180,
                 value: (row) => row.goodsName,
               ),
               MasterColumnDef(
                 key: 'goodsCode',
                 label: '编号',
+                sortable: true,
                 width: 130,
                 value: (row) => row.goodsCode,
               ),
               MasterColumnDef(
                 key: 'colorName',
                 label: '颜色',
+                sortable: true,
+                filterFromRows: true,
                 width: 90,
                 value: (row) => row.colorName,
               ),
@@ -583,6 +534,8 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'atSupplierQty',
                 label: '发出',
+                sortable: true,
+                exactValueOf: (row) => row.atSupplierQty.toString(),
                 width: 120,
                 type: 'number',
                 value: (row) =>
@@ -591,6 +544,8 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'consumedQty',
                 label: '回厂核销',
+                sortable: true,
+                exactValueOf: (row) => row.consumedQty.toString(),
                 width: 140,
                 type: 'number',
                 value: (row) =>
@@ -599,6 +554,8 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'returnedQty',
                 label: '已退',
+                sortable: true,
+                exactValueOf: (row) => row.returnedQty.toString(),
                 width: 110,
                 type: 'number',
                 value: (row) =>
@@ -607,6 +564,8 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'wastedQty',
                 label: '损耗',
+                sortable: true,
+                exactValueOf: (row) => row.wastedQty.toString(),
                 width: 110,
                 type: 'number',
                 value: (row) => formatQtyWithUnit(row.wastedQty, row.unitName),
@@ -614,6 +573,8 @@ class _SubcontractOrderProgressSectionState
               MasterColumnDef(
                 key: 'supplierEnding',
                 label: '结存',
+                sortable: true,
+                exactValueOf: (row) => row.supplierEnding.toString(),
                 width: 120,
                 type: 'number',
                 value: (row) =>
@@ -630,17 +591,6 @@ class _SubcontractOrderProgressSectionState
             filters: const {},
             onFilterChanged: (_, _) {},
           ),
-          if (p.supplierLedger.any((l) => l.supplierEnding > 0.0001))
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Text(
-                '委外商处物料逐种按发出、回厂核销、退回、损耗守恒；'
-                '未清结存要由退料单或损耗单核销，回厂入仓不会自动抹平。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -683,7 +633,12 @@ class _SubcontractOrderProgressSectionState
     );
   }
 
-  Widget _sectionBox(ThemeData theme, {String? title, required Widget child}) {
+  Widget _sectionBox(
+    ThemeData theme, {
+    String? title,
+    String? info,
+    required Widget child,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -697,12 +652,7 @@ class _SubcontractOrderProgressSectionState
           if (title != null)
             Padding(
               padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-              child: Text(
-                title,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              child: UtenSectionHeader(title: title, info: info),
             ),
           child,
         ],
@@ -757,7 +707,4 @@ class _SubcontractOrderProgressSectionState
     final trimmed = unit.trim();
     return '${subcontractDrawQty(value)}${trimmed.isEmpty ? '' : ' $trimmed'}';
   }
-
-  static String _label(String? value) =>
-      value?.trim().isNotEmpty == true ? value!.trim() : '—';
 }

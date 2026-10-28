@@ -462,6 +462,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '账面重量',
         width: 110,
         numeric: true,
+        columnSearchEnabled: false,
+        filterValueOf: (r) => _bookWeightText(r, weight.display),
         headerInfo:
             '读取账面数量时一并带出的库存重量(只读)；「≈」= 含估算，「未称」= 账面重量未知。'
             '填了实盘重量，审核后账面重量按实盘重量定。',
@@ -498,6 +500,9 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '盘盈亏',
         width: 145,
         numeric: true,
+        exactValueOf: (row) => row.surplusQtyText,
+        exactListenableOf: (row) =>
+            Listenable.merge([row.bookQty, row.checkQty]),
         cellBuilder: (context, row) => ListenableBuilder(
           listenable: Listenable.merge([row.bookQty, row.checkQty]),
           builder: (_, _) => Text(

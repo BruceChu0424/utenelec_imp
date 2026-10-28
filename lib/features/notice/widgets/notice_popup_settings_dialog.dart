@@ -8,6 +8,7 @@
 // - 开关即时保存（每行独立 busy，失败回滚本地状态并提示重试）；
 // - 列表=当前资格：调部门/收回权限后自动收窄，历史关闭行不再展示（无害）；
 // - 人事打卡与运维/账号安全告警不在此列（强制动作/面向超管，不开放关闭）。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -114,22 +115,19 @@ class _NoticePopupSettingsDialogState
               Row(
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          '通知设置',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
+                        Flexible(
+                          child: Text(
+                            '通知设置',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: UtenSpacing.s4),
-                        Text(
-                          '关闭后该类通知不再弹窗提醒；通知仍保留在通知中心，未读徽章照常显示。',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            height: 1.5,
-                          ),
+                        const UtenFieldHintIcon(
+                          info: '关闭后该类通知不再弹窗提醒；通知仍保留在通知中心，未读徽章照常显示。',
+                          dense: true,
                         ),
                       ],
                     ),

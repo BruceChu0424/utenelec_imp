@@ -201,7 +201,6 @@ class _ProductCategoryPickerSheetState
                         selectedIds: {?_pendingSelection?.id},
                         // 行点击只暂存选择；展开/收起交给左侧 chevron。
                         // 左树默认全部收起（2026-09-24 用户口径，与货品选择滑窗同款）。
-                        initiallyExpandDepth: 0,
                         initiallyCollapsedNames: const {'未分类'},
                         searchFieldKey: const Key('category-picker-search'),
                         searchHint: '搜索分类名称 / 编号', // TODO(l10n): 补 arb

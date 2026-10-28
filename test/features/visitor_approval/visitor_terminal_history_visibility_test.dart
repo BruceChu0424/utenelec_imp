@@ -70,6 +70,68 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  for (final host in [false, true]) {
+    testWidgets(
+      '${host ? 'host' : 'HR'} header searches are sent before paging',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _Api();
+        await tester.binding.setSurfaceSize(const Size(1500, 950));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                host ? Perm.visitorHostConfirm : Perm.visitorApprove,
+              }),
+              isSuperAdminProvider.overrideWithValue(false),
+              fixedBadgeSummaryOverride(),
+            ],
+            child: MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: host
+                  ? const MyVisitorsPage()
+                  : const VisitorApprovalListPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final tableFinder = find.byType(
+          MasterDataTableView<VisitorApplication>,
+        );
+        final table = tester.widget<MasterDataTableView<VisitorApplication>>(
+          tableFinder,
+        );
+        final nameColumn = table.columns.singleWhere(
+          (column) => column.key == 'visitorName',
+        );
+        await tester.tap(find.text(nameColumn.label));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '访客',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(api.queries.last.$2['search.visitorName'], '访客');
+        expect(api.queries.last.$2['page'], 1);
+        final queried = tester.widget<MasterDataTableView<VisitorApplication>>(
+          tableFinder,
+        );
+        queried.onFilterChanged('search.plannedVisitAt', '2026-10-11');
+        await tester.pumpAndSettle();
+        expect(api.queries.last.$2['search.plannedVisitAt'], '2026-10-11');
+        expect(api.queries.last.$2['search.visitorName'], '访客');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'visitor home separates every terminal state from its default active requests',
     (tester) async {
@@ -102,12 +164,35 @@ void main() {
         tester.getTopLeft(find.byType(UtenFilterToolbar<VisitorFilter>)).dy,
         greaterThanOrEqualTo(tester.getBottomLeft(find.byType(UtenAppBar)).dy),
       );
+      await tester.tap(find.text(l10n.visitorColStatus));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(l10n.visitorStatusHostReviewing));
+      await tester.pumpAndSettle();
+      expect(repository.statuses.last, 'hostReviewing');
+      tester
+          .widget<MasterDataTableView<VisitorApplication>>(
+            find.byType(MasterDataTableView<VisitorApplication>),
+          )
+          .onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(repository.statuses.last, 'pending,hostReviewing');
       await tester.tap(find.text(l10n.visitorFilterApproved));
       await tester.pumpAndSettle();
       expect(repository.statuses.last, 'approved');
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
       expect(repository.statuses.last, 'checkedIn,rejected,cancelled');
+      final table = tester.widget<MasterDataTableView<VisitorApplication>>(
+        find.byType(MasterDataTableView<VisitorApplication>),
+      );
+      expect(table.facets['status']!.map((bucket) => bucket.value), [
+        'checkedIn',
+        'rejected',
+        'cancelled',
+      ]);
+      table.onFilterChanged('status', 'cancelled');
+      await tester.pumpAndSettle();
+      expect(repository.statuses.last, 'cancelled');
       expect(find.text('全部在办'), findsNothing);
       await tester.tap(
         find.text(
@@ -233,6 +318,9 @@ class _VisitorRepo extends Fake implements VisitorRepository {
     String? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     statuses.add(status);
     return PagedResult(

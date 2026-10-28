@@ -421,6 +421,8 @@ class _WorkshopMaterialOverviewState
       key: 'status',
       label: l10n.wmBinColStatus,
       width: 72,
+      filterFromRows: true,
+      facetSearchEnabled: true,
       value: (s) => wmBinStatusLabel(l10n, s.status),
       // 三态三色: 未开通灰 / 已开通蓝 / 整批领料中绿。
       cellColor: (context, s) => utenStatusBadgeCellColor(switch (s.status) {

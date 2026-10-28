@@ -96,6 +96,7 @@ class _UtenTableCellHintsState extends State<UtenTableCellHints>
   // blur callbacks; hint registration must never recreate the input field.
   final _contentKey = GlobalKey();
   bool _queued = false;
+  bool _inputFocused = false;
 
   void _scheduleRefresh() {
     if (_queued || !mounted) return;
@@ -150,24 +151,29 @@ class _UtenTableCellHintsState extends State<UtenTableCellHints>
       child: Focus(
         canRequestFocus: false,
         onFocusChange: (focused) {
-          if (focused && liveRegion) {
-            _tooltipKey.currentState?.ensureTooltipVisible();
-          } else if (!focused) {
-            Tooltip.dismissAllToolTips();
-          }
+          if (_inputFocused != focused) setState(() => _inputFocused = focused);
+          // Error details remain in the textbox hint while typing. Opening a
+          // portal as the Web input client activates can blur that DOM client.
+          Tooltip.dismissAllToolTips();
         },
-        child: Tooltip(
-          key: _tooltipKey,
-          message: message,
-          waitDuration: const Duration(milliseconds: 250),
-          showDuration: const Duration(seconds: 10),
-          constraints: const BoxConstraints(maxWidth: 480),
-          excludeFromSemantics: true,
-          child: Semantics(
-            key: _contentKey,
-            hint: message.isEmpty ? null : message,
-            liveRegion: liveRegion,
-            child: widget.child,
+        child: TooltipVisibility(
+          visible: !_inputFocused,
+          child: Tooltip(
+            key: _tooltipKey,
+            message: message,
+            waitDuration: const Duration(milliseconds: 250),
+            showDuration: const Duration(seconds: 10),
+            constraints: const BoxConstraints(maxWidth: 480),
+            excludeFromSemantics: true,
+            child: Semantics(
+              key: _contentKey,
+              // Keep the tooltip's OverlayPortal traversal owner outside native
+              // input semantics; Web textboxes must not own popup text via aria-owns.
+              container: true,
+              hint: message.isEmpty ? null : message,
+              liveRegion: liveRegion,
+              child: widget.child,
+            ),
           ),
         ),
       ),

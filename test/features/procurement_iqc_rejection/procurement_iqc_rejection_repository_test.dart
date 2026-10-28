@@ -6,6 +6,41 @@ import 'package:uten_imp/features/procurement_iqc_rejection/repositories/procure
 
 void main() {
   test(
+    'header criteria reach rows and status distribution with exact decimal strings',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = ProcurementIqcRejectionRepository(_api(requests));
+      const filter = ProcurementIqcRejectionFilter(
+        status: 'ACTIVE',
+        page: 2,
+        columnSearch: {
+          'search.goodsName': '螺丝_%',
+          'search.amount': '>=90071992547409.1234',
+        },
+        sort: 'amount',
+        ascending: false,
+      );
+      await repository.list(filter);
+      await repository.counts(filter);
+      expect(
+        requests.first.queryParameters['search.amount'],
+        '>=90071992547409.1234',
+      );
+      expect(requests.first.queryParameters['sort'], 'amount');
+      expect(requests.first.queryParameters['order'], 'desc');
+      expect(requests.last.queryParameters['search.goodsName'], '螺丝_%');
+      expect(
+        requests.last.queryParameters['search.amount'],
+        '>=90071992547409.1234',
+      );
+      expect(
+        requests.last.queryParameters.keys,
+        isNot(contains(anyOf('status', 'page', 'size', 'sort', 'order'))),
+      );
+    },
+  );
+
+  test(
     'actual credit preview and confirmation keep all decimal strings and one command UUID',
     () async {
       final requests = <RequestOptions>[];

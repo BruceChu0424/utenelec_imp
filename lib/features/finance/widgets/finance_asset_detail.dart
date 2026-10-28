@@ -624,6 +624,8 @@ class _FinanceAssetDetailSurfaceState
                 key: 'status',
                 label: '状态',
                 width: 72,
+                filterFromRows: true,
+                facetSearchEnabled: true,
                 value: (row) => financeAssetStatusLabel(row.status),
                 cellBuilder: (_, row) => financeAssetStatusCell(row.status),
               ),
@@ -631,6 +633,8 @@ class _FinanceAssetDetailSurfaceState
                 key: 'period',
                 label: '期间',
                 width: 110,
+                type: 'date',
+                sortable: true,
                 value: (row) => row.period,
               ),
               MasterColumnDef(
@@ -638,6 +642,8 @@ class _FinanceAssetDetailSurfaceState
                 label: '期初',
                 width: 120,
                 type: 'money',
+                sortable: true,
+                exactValueOf: (row) => row.openingBalance,
                 value: (row) => formatFinanceDecimal(row.openingBalance),
               ),
               MasterColumnDef(
@@ -645,6 +651,8 @@ class _FinanceAssetDetailSurfaceState
                 label: '本期计提',
                 width: 120,
                 type: 'money',
+                sortable: true,
+                exactValueOf: (row) => row.amount,
                 value: (row) => formatFinanceDecimal(row.amount),
               ),
               MasterColumnDef(
@@ -652,6 +660,8 @@ class _FinanceAssetDetailSurfaceState
                 label: '累计',
                 width: 120,
                 type: 'money',
+                sortable: true,
+                exactValueOf: (row) => row.accumulatedAmount,
                 value: (row) => formatFinanceDecimal(row.accumulatedAmount),
               ),
               MasterColumnDef(
@@ -659,6 +669,8 @@ class _FinanceAssetDetailSurfaceState
                 label: '期末',
                 width: 120,
                 type: 'money',
+                sortable: true,
+                exactValueOf: (row) => row.closingBalance,
                 value: (row) => formatFinanceDecimal(row.closingBalance),
               ),
             ],

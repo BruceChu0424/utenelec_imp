@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,8 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../repositories/goods_quote_history_repository.dart';
 import 'master_data_table_view.dart';
+import '../../../shared/search/table_column_query.dart';
+import '../models/master_facet.dart';
 
 /// Finance-only commercial history, based on immutable quote revisions.
 class GoodsQuoteHistoryTab extends ConsumerStatefulWidget {
@@ -49,6 +52,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
   GoodsQuoteHistoryRow? _selected;
   String? _error;
   bool _loading = false;
+  TableColumnQuery _columnsQuery = const TableColumnQuery();
+  String? _actionFilter;
 
   bool get _canRead =>
       ref.read(isSuperAdminProvider) ||
@@ -68,6 +73,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
   void didUpdateWidget(covariant GoodsQuoteHistoryTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.goodsId != widget.goodsId) {
+      _columnsQuery = const TableColumnQuery();
+      _actionFilter = null;
       _result = null;
       _selected = null;
       _load(1);
@@ -86,6 +93,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
   void _clearHistory() {
     if (!mounted) return;
     setState(() {
+      _columnsQuery = const TableColumnQuery();
+      _actionFilter = null;
       _result = null;
       _selected = null;
       _error = null;
@@ -95,7 +104,11 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
 
   Future<void> _load(int page, {bool useCache = false}) async {
     if (!mounted || !_canRead) return;
-    final acceptsRead = captureNativeRead(widget.goodsId, () => widget.goodsId);
+    final readQuery = (widget.goodsId, _columnsQuery, _actionFilter);
+    final acceptsRead = captureNativeRead(
+      readQuery,
+      () => (widget.goodsId, _columnsQuery, _actionFilter),
+    );
     if (!acceptsRead()) return;
     setState(() {
       _loading = true;
@@ -104,9 +117,13 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
     });
     final repository = ref.read(goodsQuoteHistoryRepositoryProvider);
     final goodsId = widget.goodsId;
+    final columns = _columnsQuery;
+    final action = _actionFilter;
     Object pagingQuery() => [
       ref.read(goodsQuoteHistoryRepositoryProvider),
       widget.goodsId,
+      _columnsQuery,
+      _actionFilter,
     ];
     try {
       final result = await readScopedPage<GoodsQuoteHistoryRow>(
@@ -114,7 +131,13 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) => repository.list(goodsId, page: target),
+        fetchPage: (target) => repository.list(
+          goodsId,
+          page: target,
+          columns: {...columns.searches, 'search.action': ?action},
+          sort: columns.sort,
+          ascending: columns.ascending,
+        ),
       );
       if (!acceptsRead() || !_canRead) return;
       acceptNativeRead();
@@ -173,7 +196,15 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('本次报价历史快照'),
+                  const Row(
+                    children: [
+                      Flexible(child: Text('本次报价历史快照')),
+                      UtenFieldHintIcon(
+                        info: '此处保留当时记录，不受当前报价草稿或货品资料修改影响。',
+                        dense: true,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: UtenSpacing.s12),
                   for (final field in const [
                     ('clientName', '客户'),
@@ -202,8 +233,6 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                       ),
                     ),
                   Text('记录时间：${utenFmtIsoTime(row.text('occurredAt'))}'),
-                  const SizedBox(height: UtenSpacing.s12),
-                  const Text('此处保留当时记录，不受当前报价草稿或货品资料修改影响。'),
                 ],
               ),
             ),
@@ -272,12 +301,16 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                   key: 'billNo',
                   label: '报价单号',
                   width: 155,
+                  sortable: true,
                   value: (r) => r.text('billNo'),
                 ),
                 MasterColumnDef(
                   key: 'occurredAt',
                   label: '时间',
                   width: 160,
+                  type: 'date',
+                  columnSearchEnabled: true,
+                  sortable: true,
                   value: (r) => utenFmtIsoTime(r.text('occurredAt')),
                 ),
                 MasterColumnDef(
@@ -296,12 +329,16 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                   key: 'revision',
                   label: '版本',
                   width: 75,
+                  type: 'number',
+                  columnSearchEnabled: true,
+                  sortable: true,
                   value: (r) => r.text('revision'),
                 ),
                 MasterColumnDef(
                   key: 'action',
                   label: '环节',
                   width: 115,
+                  facetSearchEnabled: true,
                   value: (r) => switch (r.text('action')) {
                     'SUBMIT' => '销售提交',
                     'FINANCE_EDIT' => '财务修改',
@@ -320,6 +357,9 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                     label: column.$2,
                     width: 115,
                     type: 'number',
+                    columnSearchEnabled: true,
+                    sortable: true,
+                    info: '按该次快照的原始数值检索，不跨币种、单位或不同版本汇总。',
                     value: (r) =>
                         r.text(column.$1).isEmpty ? '—' : r.text(column.$1),
                   ),
@@ -333,10 +373,38 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                 ),
               ],
               items: result?.items ?? const [],
-              facets: const {},
+              serverColumnSearch: true,
+              facets: const {
+                'action': [
+                  MasterFacetBucket(value: 'SUBMIT', label: '销售提交', count: 0),
+                  MasterFacetBucket(
+                    value: 'FINANCE_EDIT',
+                    label: '财务修改',
+                    count: 0,
+                  ),
+                  MasterFacetBucket(value: 'CONFIRM', label: '财务确认', count: 0),
+                ],
+              },
               nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
+              filters: {'action': _actionFilter, ..._columnsQuery.searches},
+              onFilterChanged: (key, value) {
+                setState(() {
+                  if (key == 'action') {
+                    _actionFilter = value;
+                  } else if (key.startsWith('search.')) {
+                    _columnsQuery = _columnsQuery.search(key, value);
+                  }
+                });
+                _load(1);
+              },
+              sortColumn: _columnsQuery.sort,
+              sortAscending: _columnsQuery.ascending,
+              onSortChange: (key, ascending) {
+                setState(
+                  () => _columnsQuery = _columnsQuery.sorted(key, ascending),
+                );
+                _load(1);
+              },
               onRowTap: _open,
               onSelectionChanged: (row) => setState(() => _selected = row),
               onSelectionCleared: () => setState(() => _selected = null),
@@ -344,7 +412,7 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
               emptyMessage: _error ?? '暂无已提交的报价记录',
               currentPage: result?.page ?? 1,
               totalPages: result?.totalPages ?? 0,
-              paginationScope: widget.goodsId,
+              paginationScope: (widget.goodsId, _columnsQuery, _actionFilter),
               onPageChange: (page) => _load(page, useCache: true),
               toolbarActions: [
                 UtenButton(

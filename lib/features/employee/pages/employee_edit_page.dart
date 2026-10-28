@@ -25,6 +25,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -423,7 +424,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
         _secondaryReady &&
         !_listEquals(currentSecondaryIds, _loadedSecondaryDepartmentIds);
     if (body.isEmpty && !secondaryChanged) {
-      context.pop();
+      backTo(context, defaultPath: '/employee/${widget.employeeId}');
       return;
     }
     setState(() => _saving = true);
@@ -440,7 +441,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
       }
       if (!mounted) return;
       context.appSuccess(l10n.employeeEditSaved);
-      context.pop();
+      backTo(context, defaultPath: '/employee/${widget.employeeId}');
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appApiError(e, fallback: l10n.employeeEditSaveFailed);
@@ -514,41 +515,44 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                         bottom: UtenFloatingActionGroup.scrollClearance,
                       ),
                       children: [
-                        _section(l10n.employeeIdentitySectionTitle, [
-                          Text(
-                            '${_identityProfile?.idType ?? '—'}：${_identityProfile?.idNumber ?? '—'}',
-                          ),
-                          if (_identityRefreshError != null) ...[
+                        _section(
+                          l10n.employeeIdentitySectionTitle,
+                          [
                             Text(
-                              _identityRefreshError!,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
+                              '${_identityProfile?.idType ?? '—'}：${_identityProfile?.idNumber ?? '—'}',
                             ),
-                            UtenButton(
-                              key: const ValueKey(
-                                'employee-edit-identity-retry',
+                            if (_identityRefreshError != null) ...[
+                              Text(
+                                _identityRefreshError!,
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
                               ),
-                              type: UtenButtonType.secondary,
-                              onPressed: _identityBusy
-                                  ? null
-                                  : _refreshIdentity,
-                              child: Text(l10n.commonRetry),
-                            ),
-                          ] else if (canEditPii)
-                            UtenButton(
-                              key: const ValueKey(
-                                'employee-edit-correct-identity',
+                              UtenButton(
+                                key: const ValueKey(
+                                  'employee-edit-identity-retry',
+                                ),
+                                type: UtenButtonType.secondary,
+                                onPressed: _identityBusy
+                                    ? null
+                                    : _refreshIdentity,
+                                child: Text(l10n.commonRetry),
                               ),
-                              type: UtenButtonType.secondary,
-                              icon: Icons.badge_outlined,
-                              onPressed: _saving || _identityBusy
-                                  ? null
-                                  : _correctIdentity,
-                              child: Text(l10n.employeeIdentityCorrectTitle),
-                            ),
-                          Text(l10n.employeeIdentitySeparateSaveHint),
-                        ]),
+                            ] else if (canEditPii)
+                              UtenButton(
+                                key: const ValueKey(
+                                  'employee-edit-correct-identity',
+                                ),
+                                type: UtenButtonType.secondary,
+                                icon: Icons.badge_outlined,
+                                onPressed: _saving || _identityBusy
+                                    ? null
+                                    : _correctIdentity,
+                                child: Text(l10n.employeeIdentityCorrectTitle),
+                              ),
+                          ],
+                          info: l10n.employeeIdentitySeparateSaveHint,
+                        ),
                         _section(l10n.employeeEditBasic, [
                           _text(
                             _name,
@@ -836,13 +840,13 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   }
 
   /// 分组：UtenSectionHeader（卡外标题）+ UtenCard（字段），字段间距 12、区块间距 24。
-  Widget _section(String title, List<Widget> children) {
+  Widget _section(String title, List<Widget> children, {String? info}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          UtenSectionHeader(title: title),
+          UtenSectionHeader(title: title, info: info),
           const SizedBox(height: UtenSpacing.s8),
           UtenCard(
             child: Column(

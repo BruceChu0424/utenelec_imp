@@ -19,6 +19,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       SharedPreferences.setMockInitialValues({});
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
+      final reads = <Map<String, dynamic>>[];
       dio.interceptors.add(
         InterceptorsWrapper(
           onRequest: (request, handler) {
@@ -45,6 +46,7 @@ void main() {
               };
             } else if (request.path.endsWith('/suppliers') ||
                 request.path.endsWith('/suppliers/search')) {
+              reads.add({...request.queryParameters});
               data = {
                 'items': [
                   {
@@ -113,6 +115,26 @@ void main() {
             'A legacy numeric snapshot is not an authoritative settlement name',
       );
       expect(find.text('Local UAT Net30'), findsOneWidget);
+      await tester.ensureVisible(find.text('损耗率(%)'));
+      await tester.tap(find.text('损耗率(%)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '5..10',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(reads.last['search.lossRate'], '5..10');
+      expect(reads.last['categoryId'], 'category');
+      tester
+          .widget<MasterDataTableView<SupplierListItem>>(
+            find.byType(MasterDataTableView<SupplierListItem>),
+          )
+          .onSortChange!('lossRate', false);
+      await tester.pumpAndSettle();
+      expect(reads.last['sort'], 'lossRate');
+      expect(reads.last['order'], 'desc');
+      expect(reads.last['page'], 1);
       expect(tester.takeException(), isNull);
     },
   );

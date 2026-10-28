@@ -40,7 +40,7 @@ class UtenDepartmentTreeView extends StatelessWidget {
     this.nodeEnabledPredicate,
     this.showCompanyRoot = false,
     this.showSearch = true,
-    this.initiallyExpandDepth = 1,
+    this.initiallyExpandDepth = 0,
     this.trailingBuilder,
     this.header,
     this.searchHint = '搜索部门名称',

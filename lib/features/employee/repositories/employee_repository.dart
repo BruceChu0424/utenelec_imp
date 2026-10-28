@@ -1,5 +1,5 @@
 // 员工仓库：分页列表/详情/入职/调岗/离职/复职。
-// 注：禁止删除员工——离职即终态（status='resigned' 永久留存），无 delete 能力。
+// 正常员工离职永久留存；误建重复档案经显式核验后归档为同一人的历史身份，不删除记录。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/auth/account_write_receipt.dart';
 
@@ -9,6 +9,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/employee_api_models.dart';
 import '../models/employee_id_number_issue.dart';
+import '../models/employee_duplicate_archive.dart';
 
 abstract interface class EmployeeRepository {
   Future<PagedResult<EmployeeSummary>> list({
@@ -66,6 +67,79 @@ abstract interface class EmployeeSelfProfileRepository {
   Future<EmployeeProfile?> getMe();
 }
 
+abstract interface class EmployeeDuplicateArchiveRepository {
+  Future<EmployeeDuplicateArchivePreview> previewDuplicateArchive(
+    String id,
+    String retainedCode,
+  );
+  Future<String> archiveDuplicate(
+    String id,
+    EmployeeDuplicateArchivePreview preview,
+    String reason, {
+    bool documentConflictVerified = false,
+  });
+}
+
+/// Optional server-column reads keep ordinary roster clients on the same list
+/// contract while allowing a paged relationship picker to query all candidates.
+abstract interface class EmployeeHeaderQueryRepository {
+  Future<PagedResult<EmployeeSummary>> listWithColumnQuery({
+    int page = 1,
+    int size = 20,
+    String? search,
+    Set<String>? statuses,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? sort,
+    String? order,
+    Map<String, String?> columnQuery = const {},
+  });
+}
+
+extension EmployeeRepositoryColumnQuery on EmployeeRepository {
+  Future<PagedResult<EmployeeSummary>> listWithColumnQuery({
+    int page = 1,
+    int size = 20,
+    String? search,
+    Set<String>? statuses,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? sort,
+    String? order,
+    Map<String, String?> columnQuery = const {},
+  }) {
+    final repository = this;
+    if (repository is EmployeeHeaderQueryRepository) {
+      return (repository as EmployeeHeaderQueryRepository).listWithColumnQuery(
+        page: page,
+        size: size,
+        search: search,
+        statuses: statuses,
+        departmentId: departmentId,
+        includeSubtree: includeSubtree,
+        sort: sort,
+        order: order,
+        columnQuery: columnQuery,
+      );
+    }
+    if (columnQuery.isNotEmpty) {
+      throw UnsupportedError(
+        'Employee repository does not support server column conditions',
+      );
+    }
+    return repository.list(
+      page: page,
+      size: size,
+      search: search,
+      statuses: statuses,
+      departmentId: departmentId,
+      includeSubtree: includeSubtree,
+      sort: sort,
+      order: order,
+    );
+  }
+}
+
 extension EmployeeRepositorySelfProfile on EmployeeRepository {
   Future<EmployeeProfile?> getMe() {
     final repository = this;
@@ -80,9 +154,45 @@ extension EmployeeRepositorySelfProfile on EmployeeRepository {
 }
 
 class DioEmployeeRepository
-    implements EmployeeRepository, EmployeeSelfProfileRepository {
+    implements
+        EmployeeRepository,
+        EmployeeSelfProfileRepository,
+        EmployeeDuplicateArchiveRepository,
+        EmployeeHeaderQueryRepository {
   DioEmployeeRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<EmployeeDuplicateArchivePreview> previewDuplicateArchive(
+    String id,
+    String retainedCode,
+  ) async => EmployeeDuplicateArchivePreview.fromJson(
+    await api.get(
+      '${ApiEndpoints.employee(id)}/duplicate-archive/preview',
+      query: {'retainedCode': retainedCode.trim()},
+    ),
+  );
+
+  @override
+  Future<String> archiveDuplicate(
+    String id,
+    EmployeeDuplicateArchivePreview preview,
+    String reason, {
+    bool documentConflictVerified = false,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.employee(id)}/duplicate-archive',
+      body: {
+        'retainedEmployeeId': preview.retainedId,
+        'sourceVersion': preview.sourceVersion,
+        'retainedVersion': preview.retainedVersion,
+        'reason': reason.trim(),
+        'identityVerified': true,
+        'documentConflictVerified': documentConflictVerified,
+      },
+    );
+    return json['retainedEmployeeId'] as String;
+  }
 
   @override
   Future<PagedResult<EmployeeSummary>> list({
@@ -94,6 +204,28 @@ class DioEmployeeRepository
     bool includeSubtree = false,
     String? sort,
     String? order,
+  }) => listWithColumnQuery(
+    page: page,
+    size: size,
+    search: search,
+    statuses: statuses,
+    departmentId: departmentId,
+    includeSubtree: includeSubtree,
+    sort: sort,
+    order: order,
+  );
+
+  @override
+  Future<PagedResult<EmployeeSummary>> listWithColumnQuery({
+    int page = 1,
+    int size = 20,
+    String? search,
+    Set<String>? statuses,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? sort,
+    String? order,
+    Map<String, String?> columnQuery = const {},
   }) async {
     final query = <String, dynamic>{
       'page': page,
@@ -105,6 +237,14 @@ class DioEmployeeRepository
         'statuses': statuses.toList(),
       'sort': ?sort,
       'order': ?order,
+      for (final entry in columnQuery.entries)
+        if ((entry.key.startsWith('search.') ||
+                const {
+                  'accountStatus',
+                  'employmentStatus',
+                }.contains(entry.key)) &&
+            entry.value?.trim().isNotEmpty == true)
+          entry.key: entry.value!.trim(),
     };
     final json = await api.get(ApiEndpoints.employees, query: query);
     return PagedResult.fromJsonResponsive(json, EmployeeSummary.fromJson);

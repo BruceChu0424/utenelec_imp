@@ -7,6 +7,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/components/data_display/uten_doc_status_pill.dart';
 import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -324,13 +325,11 @@ void main() {
             findsNothing,
           );
           final colors = find
-              .ancestor(of: badge, matching: find.byType(Container))
+              .ancestor(of: badge, matching: find.byType(UtenTableCellFrame))
               .evaluate()
               .map((element) => element.widget)
-              .whereType<Container>()
-              .map((container) => container.decoration)
-              .whereType<BoxDecoration>()
-              .map((decoration) => decoration.color);
+              .whereType<UtenTableCellFrame>()
+              .map((frame) => frame.backgroundColor);
           expect(
             colors,
             contains(utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)),

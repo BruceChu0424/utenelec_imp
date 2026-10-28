@@ -57,7 +57,6 @@ abstract final class Perm {
   static const expensePay = 'expense:pay';
   static const expenseSettings = 'expense:settings';
   static const companyFileView = 'company_file:view';
-  static const companyFileDownload = 'company_file:download';
   static const companyFileUpload = 'company_file:upload';
   static const companyFileCreate = 'company_file:create';
   static const companyFileEdit = 'company_file:edit';
@@ -598,7 +597,7 @@ abstract final class Perm {
   static const purchaseOrderReverse = 'purchase_order:reverse';
   static const purchaseOrderDecompose = 'purchase_order:decompose';
 
-  /// 批准后改量（财务批准后的订货单逐行改数量，改后自动重回财务复核）。
+  /// 受控改量：待审修订原审批数量；批准后改量重回财务复核。
   static const purchaseOrderChangeQty = 'purchase_order:change_qty';
   static const purchaseReceiptCreate = 'purchase_receipt:create';
   static const purchaseReceiptDelete = 'purchase_receipt:delete';

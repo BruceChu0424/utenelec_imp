@@ -87,9 +87,52 @@ abstract interface class AuditLogRepository {
   Future<AuditLogDetail> detail(int id);
 }
 
-class DioAuditLogRepository implements AuditLogRepository {
+abstract interface class AuditHeaderSessionRepository {
+  Future<AuditSessionPage> sessionHeaderPage(Map<String, dynamic> query);
+}
+
+abstract interface class AuditHeaderEventRepository {
+  Future<AuditLogPage> eventHeaderPage(Map<String, dynamic> query);
+  Future<AuditSummary> eventHeaderSummary(Map<String, dynamic> query);
+}
+
+class DioAuditLogRepository
+    implements
+        AuditLogRepository,
+        AuditHeaderSessionRepository,
+        AuditHeaderEventRepository {
   DioAuditLogRepository(this.api);
   final ApiClient api;
+
+  @override
+  Future<AuditLogPage> eventHeaderPage(Map<String, dynamic> query) async {
+    final json = await api.get(
+      ApiEndpoints.adminAuditLogs,
+      query: Map<String, dynamic>.of(query)
+        ..removeWhere((_, value) => value == null),
+    );
+    return AuditLogPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
+  Future<AuditSummary> eventHeaderSummary(Map<String, dynamic> query) async {
+    final json = await api.get(
+      '${ApiEndpoints.adminAuditLogs}/summary',
+      query: Map<String, dynamic>.of(query)
+        ..removeWhere((_, value) => value == null),
+    );
+    return AuditSummary.fromJson(Map<String, dynamic>.from(json as Map));
+  }
+
+  @override
+  Future<AuditSessionPage> sessionHeaderPage(Map<String, dynamic> query) async {
+    final json = await api.get(
+      '/admin/audit-sessions',
+      query: Map<String, dynamic>.of(query)
+        ..removeWhere((_, value) => value == null),
+    );
+    return AuditSessionPage.fromJson(Map<String, dynamic>.from(json as Map));
+  }
 
   @override
   Future<AuditActorPage> actors({

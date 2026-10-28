@@ -102,15 +102,20 @@ class _SourceEntryState extends ConsumerState<ServerUpdateSourceEditor> {
         key: const ValueKey('server-source-editor'),
         contentPadding: const EdgeInsets.all(UtenSpacing.s16),
         leading: const Icon(Icons.settings_input_component_outlined),
-        title: Text(
-          l.serverUpdateSource,
-          style: Theme.of(context).textTheme.titleMedium,
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                l.serverUpdateSource,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            UtenFieldHintIcon(info: l.serverUpdateSourceHint, dense: true),
+          ],
         ),
-        subtitle: Text(
-          _pendingRequestId == null
-              ? l.serverUpdateSourceHint
-              : l.serverUpdateSourcePending,
-        ),
+        subtitle: _pendingRequestId == null
+            ? null
+            : Text(l.serverUpdateSourcePending),
         trailing: const Icon(Icons.chevron_right_rounded),
         enabled: !widget.busy && ref.watch(serverOperationsWritableProvider),
         onTap:
@@ -299,8 +304,9 @@ class _ServerUpdateSourceEditorState
         title: Row(
           children: [
             Expanded(child: Text(l.serverUpdateSource)),
-            const UtenFieldHintIcon(
-              info: '保存仅更新此公司的配置，不检查或下载版本。更新作业运行时不能更换发布源。',
+            UtenFieldHintIcon(
+              info:
+                  '${l.serverUpdateSourceHint}\n\n保存仅更新此公司的配置，不检查或下载版本。更新作业运行时不能更换发布源。',
               dense: true,
             ),
           ],
@@ -311,7 +317,6 @@ class _ServerUpdateSourceEditorState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(l.serverUpdateSourceHint, style: theme.textTheme.bodySmall),
               if (_loading) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 const LinearProgressIndicator(),

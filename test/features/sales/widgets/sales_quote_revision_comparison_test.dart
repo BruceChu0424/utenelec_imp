@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'dart:ui' as ui;
@@ -79,6 +80,23 @@ void main() {
     );
     expect(find.text('现金'), findsOneWidget);
     expect(find.text('月结30天'), findsOneWidget);
+    const guidance = '仅修改格划去旧值，右侧红字显示新值；删除明细才整行划去';
+    expect(find.text(guidance), findsNothing);
+    final hint = find
+        .descendant(
+          of: find.byKey(const ValueKey('sales-quote-revision-comparison')),
+          matching: find.byType(UtenFieldHintIcon),
+        )
+        .first;
+    expect(
+      tester.getRect(hint).center.dy,
+      closeTo(tester.getRect(find.text('逐项修改对照')).center.dy, 16),
+    );
+    await tester.tap(hint);
+    await tester.pumpAndSettle();
+    expect(find.text(guidance), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(const ValueKey('quote-revision-narrow-capture')),

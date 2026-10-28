@@ -41,77 +41,66 @@ class BasicDataHubPage extends ConsumerWidget {
               _BasicResource(
                 icon: Icons.inventory_2_outlined,
                 label: l10n.basicDataHubGoods,
-                description: l10n.basicDataHubGoodsSub,
                 location: RouteName.basicinfoGoods,
                 color: _C.green,
               ),
               _BasicResource(
                 icon: Icons.precision_manufacturing_outlined,
                 label: l10n.basicDataHubMould,
-                description: l10n.basicDataHubMouldSub,
                 location: RouteName.basicinfoMould,
                 color: _C.teal,
               ),
               _BasicResource(
                 icon: Icons.people_outline,
                 label: l10n.basicDataHubClient,
-                description: l10n.basicDataHubClientSub,
                 location: RouteName.basicinfoClient,
                 color: _C.green,
               ),
               _BasicResource(
                 icon: Icons.local_shipping_outlined,
                 label: l10n.basicDataHubSupplier,
-                description: l10n.basicDataHubSupplierSub,
                 location: RouteName.basicinfoSupplier,
                 color: _C.teal,
               ),
               _BasicResource(
                 icon: Icons.palette_outlined,
                 label: l10n.basicDataHubColor,
-                description: l10n.basicDataHubColorSub,
                 location: RouteName.basicinfoColor,
                 color: _C.green,
               ),
               _BasicResource(
                 icon: Icons.straighten_outlined,
                 label: l10n.basicDataHubUnit,
-                description: l10n.basicDataHubUnitSub,
                 location: RouteName.basicinfoUnit,
                 color: _C.teal,
               ),
               _BasicResource(
                 icon: Icons.attach_money_rounded,
                 label: l10n.basicDataHubCurrency,
-                description: l10n.basicDataHubCurrencySub,
                 location: RouteName.basicinfoCurrency,
                 color: _C.green,
               ),
               _BasicResource(
                 icon: Icons.warehouse_outlined,
                 label: l10n.basicDataHubWarehouse,
-                description: l10n.basicDataHubWarehouseSub,
                 location: RouteName.basicinfoWarehouse,
                 color: _C.teal,
               ),
               _BasicResource(
                 icon: Icons.account_balance_outlined,
                 label: l10n.basicDataHubAccount,
-                description: l10n.basicDataHubAccountSub,
                 location: RouteName.basicinfoAccount,
                 color: _C.green,
               ),
               _BasicResource(
                 icon: Icons.category_outlined,
                 label: l10n.basicDataHubPaymentStyle,
-                description: l10n.basicDataHubPaymentStyleSub,
                 location: RouteName.basicinfoPaymentStyle,
                 color: _C.teal,
               ),
               _BasicResource(
                 icon: Icons.event_note_outlined,
                 label: l10n.basicDataHubSettlementMethod,
-                description: l10n.basicDataHubSettlementMethodSub,
                 location: RouteName.basicinfoSettlementMethod,
                 color: _C.green,
               ),
@@ -161,7 +150,6 @@ class BasicDataHubPage extends ConsumerWidget {
                 itemBuilder: (context, i, _) => UtenHubCard(
                   icon: resources[i].icon,
                   label: resources[i].label,
-                  description: resources[i].description,
                   color: resources[i].color,
                   labelStyle: theme.textTheme.titleMedium,
                   onTap: () => goFrom(context, resources[i].location),
@@ -179,14 +167,12 @@ class _BasicResource {
   const _BasicResource({
     required this.icon,
     required this.label,
-    required this.description,
     required this.location,
     required this.color,
   });
 
   final IconData icon;
   final String label;
-  final String description;
   final String location;
   final Color color;
 }

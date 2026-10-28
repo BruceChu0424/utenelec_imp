@@ -1480,7 +1480,12 @@ void main() {
         find.byKey(const Key('hr-reconcile-records-pager')),
       );
       expect(pager.onPrev, isNull);
-      pager.onNext!();
+      final pageInput = find.descendant(
+        of: find.byKey(const Key('hr-reconcile-records-pager')),
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(pageInput, '2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(repo.recordPagesRequested, [1, 2]);
       expect(

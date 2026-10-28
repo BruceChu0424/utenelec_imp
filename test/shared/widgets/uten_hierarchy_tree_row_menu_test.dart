@@ -53,7 +53,6 @@ void main() {
           selectedIds: selected,
           flatLevelColors: true,
           showSearch: false,
-          initiallyExpandDepth: 0,
           onToggleSelect: (node) => selected = {...selected, node.id},
         ),
       ),
@@ -90,7 +89,6 @@ void main() {
           nodes: _nodes(),
           flatLevelColors: true,
           showSearch: false,
-          initiallyExpandDepth: 0,
           rowMenuBuilder: (node) => [
             UtenMenuItem(label: '宿主动作', onTap: () => hostTapped = true),
           ],

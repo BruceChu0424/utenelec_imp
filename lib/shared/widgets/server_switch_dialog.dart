@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/inputs/required_field_decoration.dart';
 import '../../components/inputs/uten_input_decoration.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/layout/uten_segmented_filter.dart';
 import '../../core/network/server_config.dart';
 import '../../core/network/server_selection.dart';
@@ -50,7 +51,19 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
     final theme = Theme.of(context);
     return UtenAlertDialog(
       scrollable: false,
-      title: const Text('服务器'),
+      title: Row(
+        children: [
+          const Flexible(child: Text('服务器')),
+          UtenFieldHintIcon(
+            info: kIsWeb
+                ? webSameOrigin
+                      ? '生产 Web 版始终请求当前页面同源的 /api。公司内网与云端请使用管理员提供的对应入口；同源接口可达不代表设备位于公司局域网。'
+                      : '当前为 Debug Web 开发端点。生产 Web 构建会强制使用同源 /api，且不会用同源探针推断局域网位置。'
+                : _modeHint(cloudConfigured: cloud != null),
+            dense: true,
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 360,
         child: SingleChildScrollView(
@@ -63,16 +76,8 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
                 value: effective,
                 healthy: kIsWeb ? null : localReachable,
               ),
-              const SizedBox(height: 12),
-              if (kIsWeb)
-                Text(
-                  webSameOrigin
-                      ? '生产 Web 版始终请求当前页面同源的 /api。公司内网与云端请使用管理员提供的对应入口；'
-                            '同源接口可达不代表设备位于公司局域网。'
-                      : '当前为 Debug Web 开发端点。生产 Web 构建会强制使用同源 /api，且不会用同源探针推断局域网位置。',
-                  style: theme.textTheme.bodySmall,
-                )
-              else ...[
+              if (!kIsWeb) ...[
+                const SizedBox(height: 12),
                 UtenSegmentedFilter<ServerMode>(
                   segments: const [
                     UtenSegment(value: ServerMode.auto, label: '自动'),
@@ -87,11 +92,6 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
                     }
                     setState(() => _mode = mode);
                   },
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _modeHint(cloudConfigured: cloud != null),
-                  style: theme.textTheme.bodySmall,
                 ),
                 const SizedBox(height: 12),
                 if (kDebugMode)

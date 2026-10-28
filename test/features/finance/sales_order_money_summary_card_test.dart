@@ -6,6 +6,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/widgets/sales_order_money_summary_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 
 void main() {
   testWidgets(
@@ -133,6 +134,18 @@ void main() {
       find.byKey(const ValueKey('sales-order-money-summary-toggle')),
     );
     await tester.pumpAndSettle();
+    expect(find.textContaining('银行实际到账以账户流水为准'), findsNothing);
+    await tester.tap(
+      find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is UtenFieldHintIcon &&
+                widget.info?.contains('银行实际到账以账户流水为准') == true,
+          )
+          .hitTestable()
+          .first,
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('银行实际到账以账户流水为准'), findsOneWidget);
     expect(find.text('其中：预收到账'), findsOneWidget);
     expect(find.text('预收已抵扣'), findsOneWidget);
@@ -201,7 +214,18 @@ void main() {
       expect(find.text('退货金额'), findsOneWidget);
       expect(find.text('当前还需收款'), findsOneWidget);
       expect(find.text('客户待处理余额'), findsOneWidget);
-      expect(find.text('待处理余额需财务确认抵扣或退款，不表示已退款。'), findsOneWidget);
+      const help = '待处理余额需财务确认抵扣或退款，不表示已退款。';
+      expect(find.text(help), findsNothing);
+      await tester.tap(
+        find
+            .byWidgetPredicate(
+              (widget) => widget is UtenFieldHintIcon && widget.info == help,
+            )
+            .hitTestable()
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(help), findsOneWidget);
       expect(find.text('已退款金额'), findsNothing);
       expect(find.text('0.00 美金'), findsOneWidget);
     },

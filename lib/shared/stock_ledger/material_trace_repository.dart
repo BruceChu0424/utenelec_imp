@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../models/paged_result.dart';
+import '../search/table_column_query.dart';
 import 'material_trace_models.dart';
 
 class MaterialTraceRepository {
@@ -35,6 +36,9 @@ class MaterialTraceRepository {
     String? dateFrom,
     String? dateTo,
     int page = 1,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => MaterialTraceResult.fromJson(
     await api.get(
       '$_base/trace',
@@ -46,6 +50,7 @@ class MaterialTraceRepository {
         'dateTo': ?dateTo,
         'page': page,
         'size': 50,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     ),
   );

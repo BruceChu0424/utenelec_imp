@@ -219,6 +219,8 @@ void main() {
   ) async {
     await tester.pumpWidget(buildSubject());
 
+    await tester.tap(find.byTooltip('按动作筛选'));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('permission-action-filter-export')),
     );
@@ -226,6 +228,8 @@ void main() {
     expect(find.text('导出报表'), findsOneWidget);
     expect(find.text('查看销售单据'), findsNothing);
 
+    await tester.tap(find.byTooltip('按动作筛选'));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey('permission-action-filter-all')),
     );

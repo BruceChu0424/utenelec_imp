@@ -21,6 +21,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -266,7 +267,7 @@ class _FinanceArrivalExceptionTasksPageState
                 message: _status == 'PENDING_FINANCE'
                     ? '目前没有待审批的超量到货'
                     : '目前没有已处理的超量到货',
-                description: AppLocalizations.of(
+                info: AppLocalizations.of(
                   context,
                 ).financeArrivalReviewAccessHint,
               ),
@@ -1066,30 +1067,13 @@ class _Pager extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_left_rounded,
-          onPressed: !loading && page > 1 ? () => onPage(page - 1) : null,
-          child: const Text('上一页'),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: Text('第 $page / $totalPages 页'),
-        ),
-        UtenButton(
-          size: UtenButtonSize.large,
-          type: UtenButtonType.tonal,
-          icon: Icons.chevron_right_rounded,
-          onPressed: !loading && page < totalPages
-              ? () => onPage(page + 1)
-              : null,
-          child: const Text('下一页'),
-        ),
-      ],
+    return Center(
+      child: UtenPagination(
+        currentPage: page,
+        totalPages: totalPages,
+        busy: loading,
+        onPageChanged: onPage,
+      ),
     );
   }
 }

@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -165,7 +167,15 @@ void main() {
     await tester.tap(find.byKey(const Key('wm-request-material-confirm')));
     await tester.pumpAndSettle();
     expect(find.text('g'), findsWidgets);
+    final requestHint = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon && (widget.info?.contains('每袋') ?? false),
+    );
+    await tester.tap(requestHint);
+    await tester.pumpAndSettle();
     expect(find.textContaining('每袋'), findsWidgets);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('wm-line-qty-r1')),
       '12.5',
@@ -265,7 +275,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    expect(find.text('申请范围已变化'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '申请范围已变化');
     expect(
       tester
           .widget<UtenPickerConfirmBar>(find.byType(UtenPickerConfirmBar))
@@ -349,7 +359,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(results, isEmpty);
     expect(row, findsNothing);
-    expect(find.text('账号、服务器或权限已变化，请重新搜索'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '账号、服务器或权限已变化，请重新搜索');
     expect(
       tester
           .widget<UtenButton>(

@@ -552,7 +552,7 @@ void main() {
     expect(find.text('查看库存'), findsOneWidget);
     expect(find.text('查看全部钱流数据'), findsNothing);
     expect(find.text('查看审计日志'), findsNothing);
-    expect(find.byKey(const ValueKey('permission-grant-all')), findsNothing);
+    expect(find.byKey(const ValueKey('permission-grant-all')), findsOneWidget);
 
     tester
         .widget<Switch>(find.byKey(const ValueKey('baseline-switch-$_normal')))

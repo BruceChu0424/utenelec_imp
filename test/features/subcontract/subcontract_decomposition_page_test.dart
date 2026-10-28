@@ -10,6 +10,8 @@ import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/filter_segment_tap.dart';
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'fake_subcontract_draw_gateway.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
@@ -49,6 +51,103 @@ const _decomposePermissions = {
 };
 
 void main() {
+  testWidgets(
+    'pending color choices combine both complete server scopes and filter both lanes',
+    (tester) async {
+      _desktop(tester, const Size(1800, 1000));
+      const capture = bool.fromEnvironment('UI_CAPTURE');
+      final captureKey = GlobalKey();
+      final previousShadows = debugDisableShadows;
+      if (capture) debugDisableShadows = false;
+      addTearDown(() => debugDisableShadows = previousShadows);
+      if (capture) await loadAuditScreenshotFonts(tester);
+      final source = _data(capability: true);
+      final gateway = _Gateway(
+        OperationsWorkbenchData(
+          department: source.department,
+          summary: source.summary,
+          capabilities: source.capabilities,
+          items: source.items,
+          page: source.page,
+          size: source.size,
+          total: source.total,
+          totalPages: source.totalPages,
+          facets: const {
+            'colorName': [
+              MasterFacetBucket(value: '浅灰', count: 125),
+              MasterFacetBucket(value: '玫瑰金', count: 7),
+            ],
+          },
+          nullCounts: const {'colorName': 2},
+        ),
+      );
+      final draw = FakeSubcontractDrawGateway()
+        ..onList = (_) async => SubcontractDrawTaskList.fromJson({
+          'page': {
+            'items': <Object>[],
+            'page': 1,
+            'size': 200,
+            'total': 201,
+            'totalPages': 2,
+          },
+          'facets': {
+            'colorName': [
+              {'value': '浅灰', 'count': 201},
+              {'value': '梦幻金', 'count': 5},
+            ],
+          },
+          'nullCounts': {'colorName': 3},
+        });
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: captureKey,
+          child: _scope(
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: capture ? auditScreenshotTheme(buildLightTheme()) : null,
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: SubcontractDecompositionPage(
+                repository: gateway,
+                drawRepository: draw,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('颜色'));
+      await tester.pumpAndSettle();
+      expect(find.text('浅灰 (326)'), findsOneWidget);
+      expect(find.text('玫瑰金 (7)'), findsOneWidget);
+      expect(find.text('梦幻金 (5)'), findsOneWidget);
+      if (capture) {
+        await saveAuditScreenshot(
+          tester,
+          captureKey,
+          'internal-feedback-subcontract-colors',
+        );
+        debugDisableShadows = previousShadows;
+      }
+      await tester.tap(find.text('梦幻金 (5)'));
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['filters'], {'colorName': '梦幻金'});
+      expect(draw.listQueries.last['columnFilters'], {'colorName': '梦幻金'});
+      expect(gateway.queries.last['page'], 1);
+      expect(
+        draw.listQueries,
+        contains(
+          allOf(
+            containsPair('page', 1),
+            containsPair('columnFilters', {'colorName': '梦幻金'}),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('visible pending orders export once per document and retire '
       'when the workbench segment changes', (tester) async {
     _desktop(tester, const Size(1600, 1000));
@@ -175,13 +274,25 @@ void main() {
     expect(table().serverColumnSearch, isTrue);
     expect(
       table().columns
+          .singleWhere((column) => column.key == 'differenceQty')
+          .supportsKeywordSearch,
+      isTrue,
+    );
+    expect(
+      table().columns
           .singleWhere((column) => column.key == 'source')
           .supportsKeywordSearch,
-      isFalse,
+      isTrue,
     );
     table().onFilterChanged('search.goods', '开关');
     await tester.pumpAndSettle();
     expect(gateway.queries.last['filters'], containsPair('search.goods', '开关'));
+    table().onFilterChanged('search.differenceQty', '-8..0');
+    await tester.pumpAndSettle();
+    expect(
+      gateway.queries.last['filters'],
+      containsPair('search.differenceQty', '-8..0'),
+    );
     table().onFilterChanged('status', 'AT_SUPPLIER');
     await tester.pumpAndSettle();
     table().onSortChange!('differenceQty', false);
@@ -190,6 +301,7 @@ void main() {
         tester.widget(find.byKey(const Key('subcontract-workbench-export')));
     expect(export().queryParams, containsPair('status', 'IN_PROGRESS'));
     expect(export().queryParams, containsPair('search.goods', '开关'));
+    expect(export().queryParams, containsPair('search.differenceQty', '-8..0'));
     expect(export().queryParams, containsPair('f.status', 'AT_SUPPLIER'));
     expect(export().queryParams, containsPair('sort', 'differenceQty'));
     expect(export().queryParams, containsPair('order', 'desc'));
@@ -214,6 +326,14 @@ void main() {
         _data(capability: true, firstDifferenceQtyText: '-6.0000'),
         inProgress: true,
       );
+      final drawGateway = FakeSubcontractDrawGateway(
+        rows: [
+          SubcontractDrawTaskRow.fromJson({
+            ...drawRowJson(drawRow('draw', unitName: '套')),
+            'differenceQtyExact': '-7.1250',
+          }),
+        ],
+      );
       await tester.pumpWidget(
         _scope(
           child: MaterialApp(
@@ -222,14 +342,7 @@ void main() {
             supportedLocales: AppLocalizations.supportedLocales,
             home: SubcontractDecompositionPage(
               repository: gateway,
-              drawRepository: FakeSubcontractDrawGateway(
-                rows: [
-                  SubcontractDrawTaskRow.fromJson({
-                    ...drawRowJson(drawRow('draw', unitName: '套')),
-                    'differenceQtyExact': '-7.1250',
-                  }),
-                ],
-              ),
+              drawRepository: drawGateway,
             ),
           ),
         ),
@@ -245,10 +358,24 @@ void main() {
       expect(difference.value(pending.items.first), '-6 件');
       expect(difference.value(pending.items.last), '—');
       expect(difference.value(pending.unpagedItems.single), '-7.125 套');
+      expect(difference.supportsKeywordSearch, isTrue);
+      pending.onFilterChanged('search.differenceQty', '-8..0');
+      await tester.pumpAndSettle();
+      expect(
+        gateway.queries.last['filters'],
+        containsPair('search.differenceQty', '-8..0'),
+      );
+      expect(
+        drawGateway.listQueries.last['columnFilters'],
+        containsPair('search.differenceQty', '-8..0'),
+      );
+      expect(drawGateway.listQueries.last['page'], 1);
       pending.onSortChange!('differenceQty', true);
       await tester.pumpAndSettle();
       expect(gateway.queries.last['sort'], 'differenceQty');
       expect(gateway.queries.last['order'], 'asc');
+      expect(drawGateway.listQueries.last['sort'], 'differenceQty');
+      expect(drawGateway.listQueries.last['order'], 'asc');
       pending.onRowTap!(pending.items.first);
       await tester.pumpAndSettle();
       final dialog = find.byType(Dialog);
@@ -802,7 +929,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(draw.listQueries.last['applicationId'], 'application-parent');
       expect(draw.listQueries.last['applicationItemIds'], isEmpty);
-      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
       await tester.tap(find.byKey(const Key('subcontract-draw-next')));
       await tester.pumpAndSettle();
       expect(draw.listQueries.last['applicationId'], 'application-parent');
@@ -849,7 +976,7 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
       expect(table().unpagedItems, hasLength(200));
-      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
       final link =
           table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
                 tester.element(
@@ -938,7 +1065,7 @@ void main() {
               as InkWell;
       link.onTap!();
       await tester.pumpAndSettle();
-      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      expect(find.text('领料任务 · 共 201 条'), findsOneWidget);
       await tester.tap(find.byKey(const Key('subcontract-draw-next')));
       await tester.pumpAndSettle();
       expect(draw.listQueries.last['applicationItemIds'], [

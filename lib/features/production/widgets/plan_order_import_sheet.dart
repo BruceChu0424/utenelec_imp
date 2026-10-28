@@ -1,3 +1,5 @@
+import '../../../components/layout/uten_section_header.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 // 新建生产计划单「从订单带明细」面板。
 //
 // 有子层级物料时默认全部展开：每个产品卡片直接展示统一只读表格，不提供折叠控件。
@@ -246,18 +248,25 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                _materialCountBadge(theme, line.bom.length),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _materialCountBadge(theme, line.bom.length),
+                    if (!hasChildMaterials)
+                      const UtenFieldHintIcon(
+                        info:
+                            '该产品无子层级物料，按直接自制处理：可带入计划，不生成生产领料明细；最终可生产数量由物料分析确认。',
+                        dense: true,
+                      ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
-            if (!hasChildMaterials)
-              _directMakeHint(theme)
-            else ...[
-              Text(
-                '物料明细(按待排数量 ${_fmt(line.needQty)} 折算)',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            if (hasChildMaterials) ...[
+              UtenSectionHeader(
+                title: '物料明细(按待排数量 ${_fmt(line.needQty)} 折算)',
+                info: '物料单位可能不同，不汇总缺口数量；最终以物料分析齐套结果为准。',
               ),
               const SizedBox(height: UtenSpacing.s8),
               MasterDataTableView<ScheduleBomComponent>(
@@ -353,8 +362,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
               Text(
                 '即时初筛：共 ${line.bom.length} 种，已知缺 $shortageCount 种'
                 '${unknownCount == 0 ? '' : '，待复核 $unknownCount 种'}'
-                '${periodicCount == 0 ? '' : '，车间内料仓供料 $periodicCount 种 (不算需求)'}。'
-                '物料单位可能不同，不汇总缺口数量；最终以物料分析齐套结果为准。',
+                '${periodicCount == 0 ? '' : '，车间内料仓供料 $periodicCount 种 (不算需求)'}。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: shortageCount > 0
                       ? theme.colorScheme.error
@@ -384,37 +392,6 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
           color: color,
           fontWeight: FontWeight.w700,
         ),
-      ),
-    );
-  }
-
-  /// 无子层级物料的产品按「直接自制」处理，不阻断带入排产。
-  Widget _directMakeHint(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '该产品无子层级物料，按直接自制处理：可带入计划，不生成生产领料明细；'
-              '最终可生产数量由物料分析确认。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -13,7 +13,7 @@ class AccountActionOwner {
     this._ref, {
     bool Function()? isCurrent,
     Listenable? targetChanges,
-    this._onInvalidated,
+    this.onInvalidated,
   }) : boundary = _ref.read(sensitiveReadBoundaryProvider),
        _targetIsCurrent = isCurrent {
     _boundaryChanges = _ref.listenManual(
@@ -33,7 +33,7 @@ class AccountActionOwner {
   final WidgetRef _ref;
   final SensitiveReadBoundary boundary;
   final bool Function()? _targetIsCurrent;
-  final VoidCallback? _onInvalidated;
+  final VoidCallback? onInvalidated;
   late final ProviderSubscription<SensitiveReadBoundary> _boundaryChanges;
   late final ProviderSubscription<SessionState> _sessionChanges;
   late final ProviderSubscription<int> _epochChanges;
@@ -59,7 +59,7 @@ class AccountActionOwner {
   void _changed() {
     if (!isCurrent && !_notified && !_disposed) {
       _notified = true;
-      _onInvalidated?.call();
+      onInvalidated?.call();
     }
   }
 

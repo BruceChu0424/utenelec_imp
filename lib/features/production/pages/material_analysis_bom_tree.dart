@@ -23,6 +23,24 @@ int _compareBomSiblings(
 
 abstract class _MaterialAnalysisBomTreeState
     extends _MaterialAnalysisProductTasksState {
+  @override
+  void _reconcileBomExpansion(
+    ProductionMaterialAnalysisView view,
+    bool newAnalysis,
+  ) {
+    if (newAnalysis) {
+      _bomProductExpansion.reset();
+      _bomBranchExpansion.reset();
+      _expandedMaterialAggregates.clear();
+    }
+    _bomProductExpansion.reconcile(
+      view.products.map((product) => product.analysisLineId),
+    );
+    _bomBranchExpansion.reconcile(
+      _bomPresentation(view).parentIdsByMaterial.values.whereType<String>(),
+    );
+  }
+
   ProductionMaterialAnalysisView? _bomPresentationAnalysis;
   _BomPresentation? _bomPresentationCache;
 

@@ -84,6 +84,50 @@ void main() {
     expect(historyReads.first['page'], 1);
     expect(historyReads.every((query) => query['status'] == 'done'), isTrue);
     expect(table().currentPage, 1);
+    expect(table().facets['status']!.map((bucket) => bucket.value), [
+      'DONE',
+      'CANCELED',
+    ]);
+    await tester.tap(find.text('优先级'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('紧急').last);
+    await tester.pumpAndSettle();
+    expect(api.queries.last['search.priority'], 'URGENT');
+    table().onFilterChanged('status', 'CANCELED');
+    await tester.pumpAndSettle();
+    expect(api.queries.last['search.status'], 'CANCELED');
+    expect(api.queries.last['status'], 'done');
+    await tester.tap(find.text('任务号'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      'HEADER%_',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(api.queries.last['search.taskNo'], 'HEADER%_');
+    await tester.tap(find.text('截止'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '2026-10-28',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(api.queries.last['search.dueDate'], '2026-10-28');
+    table().onSortChange!('dueDate', false);
+    await tester.pumpAndSettle();
+    expect(api.queries.last['sort'], 'dueDate');
+    expect(api.queries.last['order'], 'desc');
+    expect(api.queries.last['search.priority'], 'URGENT');
+    expect(api.queries.last['search.status'], 'CANCELED');
+    expect(api.queries.last['search.taskNo'], 'HEADER%_');
+    expect(
+      api.queries.firstWhere((query) => query['sort'] == 'dueDate')['page'],
+      1,
+    );
+    expect(table().currentPage, 1);
+    expect(tester.takeException(), isNull);
   });
 }
 

@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -187,6 +188,7 @@ class _ProductionFinishedInboundTasksViewState
           : (_columnFilters.sortAscending ? 'asc' : 'desc');
       final pageTaskNo = _columnFilters['taskNo'];
       final pagePlanNo = _columnFilters['planNo'];
+      final pageColumns = Map<String, String?>.of(_columnFilters.values);
 
       final result = await readScopedPage(
         page,
@@ -201,6 +203,7 @@ class _ProductionFinishedInboundTasksViewState
           pageOrder,
           pageTaskNo,
           pagePlanNo,
+          pageColumns,
         ],
         currentQuery: () => [
           ref.read(productionFinishedInboundTaskRepositoryProvider),
@@ -214,6 +217,7 @@ class _ProductionFinishedInboundTasksViewState
               : (_columnFilters.sortAscending ? 'asc' : 'desc'),
           _columnFilters['taskNo'],
           _columnFilters['planNo'],
+          Map<String, String?>.of(_columnFilters.values),
         ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.tasks(
@@ -226,6 +230,7 @@ class _ProductionFinishedInboundTasksViewState
           order: pageOrder,
           taskNo: pageTaskNo,
           planNo: pagePlanNo,
+          columns: pageColumns,
         ),
       );
       if (!mounted || requestVersion != _requestVersion) return;
@@ -273,6 +278,10 @@ class _ProductionFinishedInboundTasksViewState
   static const _kSortFields = <String, String>{
     'taskNo': 'taskNo',
     'planNo': 'planNo',
+    'warehouseName': 'warehouseName',
+    'lineCount': 'lineCount',
+    'documentDate': 'documentDate',
+    'createdAt': 'createdAt',
   };
 
   /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选跨页保留，不清）。
@@ -553,6 +562,7 @@ class _ProductionFinishedInboundTasksViewState
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('production-finished-inbound-task-table'),
+        serverColumnSearch: true,
         columns: _columns,
         items: result.items,
         // 表头筛选桶（2026-09-16）：任务步骤固定枚举两档（服务端 task_stage）；
@@ -586,6 +596,7 @@ class _ProductionFinishedInboundTasksViewState
             'keyword': _keyword,
             'taskStage': _taskStageFilter,
             'warehouseId': _warehouseIdFilter,
+            ..._columnFilters.values,
             ...WarehouseListScope.of(context).queryParameters,
           },
         ),
@@ -596,11 +607,13 @@ class _ProductionFinishedInboundTasksViewState
             'keyword': _keyword,
             'taskStage': _taskStageFilter,
             'warehouseId': _warehouseIdFilter,
+            ..._columnFilters.values,
             ...WarehouseListScope.of(context).queryParameters,
           },
         ),
 
         filters: {
+          ..._columnFilters.values,
           'taskStage': _taskStageFilter,
           'warehouseName': _warehouseIdFilter,
           'taskNo': _columnFilters['taskNo'],
@@ -611,7 +624,7 @@ class _ProductionFinishedInboundTasksViewState
         sortAscending: _columnFilters.sortAscending,
         onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
-          if (key == 'taskNo' || key == 'planNo') {
+          if (key == 'taskNo' || key == 'planNo' || key.startsWith('search.')) {
             _columnFilters.handleFilterChanged(
               key,
               value,
@@ -675,11 +688,19 @@ class _ProductionFinishedInboundTasksViewState
         label: '共有 ${result.total} 项产成品入库任务',
         child: Align(
           alignment: Alignment.centerRight,
-          child: Text(
-            '共 ${result.total} 项 · 单击多选，双击详情',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  '共 ${result.total} 项',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const UtenFieldHintIcon(info: '单击多选，双击详情。', dense: true),
+            ],
           ),
         ),
       );
@@ -691,11 +712,19 @@ class _ProductionFinishedInboundTasksViewState
       onInputChanged: _onSearchInput,
       onChanged: _search,
     );
-    final count = Text(
-      '共 ${result.total} 项 · 单击多选，双击详情',
-      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
+    final count = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            '共 ${result.total} 项',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const UtenFieldHintIcon(info: '单击多选，双击详情。', dense: true),
+      ],
     );
     return Semantics(
       header: true,
@@ -728,7 +757,10 @@ class _ProductionFinishedInboundTasksViewState
   List<MasterColumnDef<ProductionFinishedInboundTask>> get _columns => [
     MasterColumnDef(
       key: 'taskStage',
+      columnSearchEnabled: false,
+      facetSearchEnabled: true,
       label: '任务步骤',
+      info: '按动作步骤筛选；本地填写草稿保留原任务步骤与恢复入口。',
       width: 190,
       value: (task) {
         final drafts = finishedInboundTaskDrafts(
@@ -782,6 +814,7 @@ class _ProductionFinishedInboundTasksViewState
     ),
     MasterColumnDef(
       key: 'warehouseName',
+      sortable: true,
       label: '仓库',
       width: 160,
       value: (task) =>
@@ -792,17 +825,19 @@ class _ProductionFinishedInboundTasksViewState
       key: 'pendingQty',
       label: '待处理数量',
       width: 200,
-      type: 'number',
-      value: (task) => _quantity(task.pendingQty),
+      columnSearchEnabled: true,
+      info: '数量按原单位分组展示，可按数量或单位检索；不合并不同单位排序或求和。',
+      value: (task) =>
+          '${task.pendingQuantityLabel}${task.actualSurplusNote == null ? '' : ' (${task.actualSurplusNote})'}',
       cellBuilder: (context, task) {
         final note = task.actualSurplusNote;
         if (note == null || note.isEmpty) {
-          return Text(_quantity(task.pendingQty));
+          return Text(task.pendingQuantityLabel);
         }
         final theme = Theme.of(context);
         return Text.rich(
           TextSpan(
-            text: _quantity(task.pendingQty),
+            text: task.pendingQuantityLabel,
             children: [
               TextSpan(
                 text: ' ($note)',
@@ -824,6 +859,9 @@ class _ProductionFinishedInboundTasksViewState
       info: '一批实物 = 同一报工、同一次录入送入仓库的需求份、计划公共备货与实际超产，合在一起登记、判定和点收。',
       width: 100,
       type: 'number',
+      sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (task) => '${task.lineCount}',
       value: (task) => '${task.lineCount}',
     ),
     MasterColumnDef(
@@ -831,13 +869,22 @@ class _ProductionFinishedInboundTasksViewState
       label: '单据日期',
       width: 120,
       type: 'date',
-      value: (task) => ChinaDateTime.formatDate(task.documentDate),
+      sortable: true,
+      columnSearchEnabled: true,
+      value: (task) => task.documentDateKnown
+          ? ChinaDateTime.formatDate(task.documentDate)
+          : '—',
     ),
     MasterColumnDef(
       key: 'createdAt',
       label: '进入队列时间',
       width: 170,
-      value: (task) => ChinaDateTime.formatInstant(task.createdAt),
+      type: 'date',
+      sortable: true,
+      columnSearchEnabled: true,
+      value: (task) => task.createdAtKnown
+          ? ChinaDateTime.formatInstant(task.createdAt)
+          : '—',
     ),
   ];
 }
@@ -866,5 +913,3 @@ String _taskActionLabel(
     : task.isArrivalRegistration
     ? '查看到货登记详情'
     : '查看待点收详情';
-
-String _quantity(double value) => inboundQty(value);

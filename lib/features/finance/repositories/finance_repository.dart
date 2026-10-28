@@ -60,6 +60,7 @@ class FinanceDocFilter {
     this.dateTo,
     this.billNo,
     this.view,
+    this.columnSearch = const {},
   });
   final BusinessDocumentOrigin? origin;
   final String? keyword;
@@ -76,7 +77,19 @@ class FinanceDocFilter {
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+  final Map<String, String?> columnSearch;
 }
+
+Map<String, dynamic> _financeHeaderParameters(
+  FinanceDocFilter filter, {
+  bool includeBillNo = true,
+}) => {
+  for (final entry in filter.columnSearch.entries)
+    if ((entry.key.startsWith('search.') || entry.key.startsWith('hf.')) &&
+        (includeBillNo || entry.key != 'search.billNo') &&
+        entry.value?.trim().isNotEmpty == true)
+      entry.key: entry.value!.trim(),
+};
 
 class FinanceRepository {
   FinanceRepository(this.api, this.type);
@@ -130,6 +143,7 @@ class FinanceRepository {
         'billNo': filter.billNo!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      ..._financeHeaderParameters(filter),
     };
     final json = await api.get(FinanceEndpoints.docBase(_seg), query: query);
     return PagedResult.fromJsonResponsive(json, FinanceDocListItem.fromJson);
@@ -158,6 +172,7 @@ class FinanceRepository {
         'hf.recordOrigin': filter.recordOrigin!.wireValue,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      ..._financeHeaderParameters(filter, includeBillNo: false),
     };
     final json = await api.get(
       '${FinanceEndpoints.docBase(_seg)}/facets',
@@ -228,6 +243,7 @@ class ArApFilter {
     this.billNo,
     this.sourceDocNo,
     this.salesOrderNos,
+    this.columnQuery = const {},
   });
   final String? keyword;
   final String? direction;
@@ -246,7 +262,20 @@ class ArApFilter {
 
   /// 关联销售单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? salesOrderNos;
+  final Map<String, String?> columnQuery;
 }
+
+Map<String, dynamic> _arApHeaderParameters(ArApFilter filter) => {
+  for (final entry in filter.columnQuery.entries)
+    if ((entry.key.startsWith('search.') ||
+            const {
+              'openItemKind',
+              'legacySourceResolution',
+              'settlementStyleLegacy',
+            }.contains(entry.key)) &&
+        entry.value?.trim().isNotEmpty == true)
+      entry.key: entry.value!.trim(),
+};
 
 class ArApLedgerRepository {
   ArApLedgerRepository(this.api);
@@ -280,6 +309,7 @@ class ArApLedgerRepository {
         'salesOrderNos': filter.salesOrderNos!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      ..._arApHeaderParameters(filter),
     };
     final json = await api.get(FinanceEndpoints.arAp, query: query);
     return PagedResult.fromJsonResponsive(json, ArApLedgerItem.fromJson);
@@ -300,10 +330,17 @@ class ArApLedgerRepository {
       if (filter.settled != null) 'settled': filter.settled,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      if (filter.billNo?.trim().isNotEmpty == true)
+        'billNo': filter.billNo!.trim(),
+      if (filter.sourceDocNo?.trim().isNotEmpty == true)
+        'sourceDocNo': filter.sourceDocNo!.trim(),
+      if (filter.salesOrderNos?.trim().isNotEmpty == true)
+        'salesOrderNos': filter.salesOrderNos!.trim(),
+      ..._arApHeaderParameters(filter),
     };
     final json = await api.get('${FinanceEndpoints.arAp}/facets', query: query);
     return {
-      for (final key in const ['billNo', 'sourceDocNo'])
+      for (final key in const ['billNo', 'sourceDocNo', 'currency'])
         key: parseFacetBuckets(json, key),
     };
   }
@@ -346,6 +383,7 @@ class ReconciliationFilter {
     this.dateTo,
     this.entryKind,
     this.billNo,
+    this.columnSearch = const {},
   });
   final String? keyword;
   final String? accountId;
@@ -359,7 +397,19 @@ class ReconciliationFilter {
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+  final Map<String, String?> columnSearch;
 }
+
+Map<String, dynamic> _reconciliationHeaderParameters(
+  ReconciliationFilter filter, {
+  bool includeBillNo = true,
+}) => {
+  for (final entry in filter.columnSearch.entries)
+    if (entry.key.startsWith('search.') &&
+        (includeBillNo || entry.key != 'search.billNo') &&
+        entry.value?.trim().isNotEmpty == true)
+      entry.key: entry.value!.trim(),
+};
 
 class ReconciliationRepository {
   ReconciliationRepository(this.api);
@@ -387,6 +437,7 @@ class ReconciliationRepository {
         'billNo': filter.billNo!.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
+      ..._reconciliationHeaderParameters(filter),
     };
     final json = await api.get(FinanceEndpoints.reconciliations, query: query);
     return PagedResult.fromJsonResponsive(json, ReconciliationItem.fromJson);
@@ -406,6 +457,7 @@ class ReconciliationRepository {
       if (filter.entryKind != null) 'entryKind': filter.entryKind,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
+      ..._reconciliationHeaderParameters(filter, includeBillNo: false),
     };
     final json = await api.get(
       '${FinanceEndpoints.reconciliations}/facets',

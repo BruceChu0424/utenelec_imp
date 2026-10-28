@@ -287,6 +287,7 @@ class _EmployeeIdentityCorrectionDialogState
                         isDense: true,
                         error: utenFieldError(problem),
                       ),
+                      info: _isIdCard ? l10n.employeeIdentityCorrectHint : null,
                     ),
                     onChanged: (_) => setState(() => _error = null),
                     onSubmitted: (_) => _submit(),
@@ -306,8 +307,6 @@ class _EmployeeIdentityCorrectionDialogState
                     ),
                   ],
                   const SizedBox(height: UtenSpacing.s8),
-                  if (_isIdCard)
-                    Text(l10n.employeeIdentityCorrectHint, style: muted),
                   if (_masked) ...[
                     const SizedBox(height: UtenSpacing.s4),
                     Text(l10n.employeeIdentityCorrectNoPrefill, style: muted),

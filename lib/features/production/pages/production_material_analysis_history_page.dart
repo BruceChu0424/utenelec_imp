@@ -13,6 +13,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -182,6 +183,7 @@ class _ProductionMaterialAnalysisHistoryPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '物料分析记录',
+        info: '这里用于找回销售、返工、试制、样品、备库和自制子需求的物料分析。记录范围由服务端按负责人和部门权限控制。',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(
             context,
@@ -224,8 +226,6 @@ class _ProductionMaterialAnalysisHistoryPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _intro(theme),
-                const SizedBox(height: UtenSpacing.s8),
                 _filters(),
                 const SizedBox(height: UtenSpacing.s8),
                 Expanded(child: _content(theme, compact)),
@@ -236,28 +236,6 @@ class _ProductionMaterialAnalysisHistoryPageState
       ),
     );
   }
-
-  Widget _intro(ThemeData theme) => Container(
-    padding: const EdgeInsets.all(UtenSpacing.s12),
-    decoration: BoxDecoration(
-      color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.35),
-      border: Border.all(color: theme.colorScheme.outlineVariant),
-      borderRadius: UtenRadius.mdAll,
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
-        const SizedBox(width: UtenSpacing.s8),
-        const Expanded(
-          child: Text(
-            '这里用于找回销售、返工、试制、样品、备库和自制子需求的物料分析。'
-            '记录范围由服务端按负责人和部门权限控制。',
-          ),
-        ),
-      ],
-    ),
-  );
 
   Widget _filters() {
     return LayoutBuilder(
@@ -588,29 +566,19 @@ class _ProductionMaterialAnalysisHistoryPageState
     ),
   );
 
-  Widget _mobilePager(PagedResult<MaterialAnalysisListItem> page) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
+  Widget _mobilePager(PagedResult<MaterialAnalysisListItem> page) => Wrap(
+    alignment: WrapAlignment.center,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: UtenSpacing.s8,
+    runSpacing: UtenSpacing.s4,
     children: [
-      IconButton(
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        tooltip: '上一页',
-        onPressed: !_loading && page.page > 1
-            ? () => _load(page: page.page - 1, useCache: true)
-            : null,
-        icon: const Icon(Icons.chevron_left_rounded),
+      UtenPagination(
+        currentPage: page.page,
+        totalPages: page.totalPages,
+        busy: _loading,
+        onPageChanged: (target) => _load(page: target, useCache: true),
       ),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-        child: Text('${page.page} / ${page.totalPages} · 共 ${page.total} 条'),
-      ),
-      IconButton(
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        tooltip: '下一页',
-        onPressed: !_loading && page.page < page.totalPages
-            ? () => _load(page: page.page + 1, useCache: true)
-            : null,
-        icon: const Icon(Icons.chevron_right_rounded),
-      ),
+      Text('共 ${page.total} 条'),
     ],
   );
 

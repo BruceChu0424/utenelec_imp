@@ -62,11 +62,17 @@ class GoodsSubcontractSupplierTable extends StatelessWidget {
       key: key,
       label: priceText(context, label),
       width: width,
+      minimumWidthOf: (_) => 48,
       sortable: true,
       filterFromRows: true,
       type: quantity || ratio || key.endsWith('Count') ? 'number' : 'text',
       aiSensitive: quantity || ratio || key == 'supplierName',
       value: (row) => _text(row, key),
+      measureValueOf: (row) => quantity
+          ? _quantity(row, key, _text(row, 'unitName'))
+          : ratio
+          ? '${compactPriceStatistic(row[key])}%'
+          : _text(row, key),
       exactValueOf: quantity || ratio || key.endsWith('Count')
           ? (row) => _text(row, key)
           : null,
@@ -84,7 +90,7 @@ class GoodsSubcontractSupplierTable extends StatelessWidget {
                       : exact,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(cellContext).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(cellContext).textTheme.bodyMedium?.copyWith(
                     color: MasterDataTableCellScope.maybeOf(
                       cellContext,
                     )?.foregroundColor,
@@ -297,10 +303,13 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
       key: key,
       label: priceText(context, label),
       width: width,
+      minimumWidthOf: (_) => 48,
       sortable: true,
       filterFromRows: true,
       type: qty ? 'number' : 'text',
       value: (row) => _text(row, key),
+      measureValueOf: (row) =>
+          qty ? _quantity(row, key, unit) : _text(row, key),
       exactValueOf: qty ? (row) => _text(row, key) : null,
       aiSensitive: qty,
       cellBuilder: qty
@@ -310,7 +319,7 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
                 _quantity(row, key, unit),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(cellContext).textTheme.bodySmall?.copyWith(
+                style: Theme.of(cellContext).textTheme.bodyMedium?.copyWith(
                   color: MasterDataTableCellScope.maybeOf(
                     cellContext,
                   )?.foregroundColor,
@@ -438,6 +447,7 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
                         key: 'action',
                         label: priceText(context, 'openSource'),
                         width: 105,
+                        minimumWidthOf: (_) => 48,
                         value: (_) => '',
                         cellBuilder: (_, row) => _canOpen(row)
                             ? Align(
@@ -461,7 +471,10 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
           ),
         ),
         if (_loading)
-          UtenBusyOverlay(title: priceText(context, 'loadingDetail')),
+          UtenBusyOverlay(
+            showDoNotLeaveHint: false,
+            title: priceText(context, 'loadingDetail'),
+          ),
       ],
     );
   }

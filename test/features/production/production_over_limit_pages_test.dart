@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/production/pages/production_over_limit_pages.dart';
 import 'package:uten_imp/features/production/repositories/production_over_limit_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -52,20 +54,36 @@ class _Repository extends ProductionOverLimitRepository {
 }
 
 class _ListRepository extends _Repository {
-  _ListRepository(this.row);
+  _ListRepository(this.row, {this.pages = 1});
   final ProductionOverLimitDisposition row;
+  final int pages;
+  final queries = <(String, int)>[];
+  final headerCalls = <Map<String, dynamic>>[];
   @override
   Future<PagedResult<ProductionOverLimitDisposition>> list({
     String status = 'PENDING',
     int page = 1,
     int size = 20,
-  }) async => PagedResult(
-    items: [row],
-    page: page,
-    size: size,
-    total: 1,
-    totalPages: 1,
-  );
+    Map<String, String?> columnSearch = const {},
+    String? sort,
+    String? order,
+  }) async {
+    queries.add((status, page));
+    headerCalls.add({
+      'status': status,
+      'page': page,
+      'search': Map<String, String?>.of(columnSearch),
+      'sort': sort,
+      'order': order,
+    });
+    return PagedResult(
+      items: [row],
+      page: page,
+      size: size,
+      total: pages == 1 ? 1 : pages * size,
+      totalPages: pages,
+    );
+  }
 }
 
 Widget _precisionPage(ProductionOverLimitRepository repo, Widget page) =>
@@ -85,6 +103,104 @@ Widget _precisionPage(ProductionOverLimitRepository repo, Widget page) =>
     );
 
 void main() {
+  testWidgets(
+    'over limit ordinary fields submit full result queries without changing status scope',
+    (tester) async {
+      tester.view.physicalSize = const Size(1800, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _ListRepository(_detail(), pages: 3);
+      await tester.pumpWidget(
+        _precisionPage(repo, const ProductionOverLimitListPage()),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<ProductionOverLimitDisposition> table() =>
+          tester.widget(
+            find.byType(MasterDataTableView<ProductionOverLimitDisposition>),
+          );
+      table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-within')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '=1100',
+      );
+      await tester.tap(find.text('搜索'));
+      await tester.pumpAndSettle();
+      expect(table().currentPage, 1);
+      expect(
+        repo.headerCalls.last['search'],
+        containsPair('search.within', '=1100'),
+      );
+      table().onFilterChanged('search.goodsName', '自制');
+      await tester.pumpAndSettle();
+      table().onSortChange!('actual', false);
+      await tester.pumpAndSettle();
+      expect(
+        repo.headerCalls.last['search'],
+        containsPair('search.goodsName', '自制'),
+      );
+      expect(repo.headerCalls.last['status'], 'PENDING');
+      expect(repo.headerCalls.last['sort'], 'actual');
+      expect(repo.headerCalls.last['order'], 'desc');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'status header refines the complete pending group and resets paging',
+    (tester) async {
+      tester.view.physicalSize = const Size(1500, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _ListRepository(_detail(), pages: 3);
+      await tester.pumpWidget(
+        _precisionPage(repo, const ProductionOverLimitListPage()),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<ProductionOverLimitDisposition> table() =>
+          tester.widget(
+            find.byType(MasterDataTableView<ProductionOverLimitDisposition>),
+          );
+      table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(repo.queries, contains(('PENDING', 2)));
+      expect(table().currentPage, 2);
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-status')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '核实',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('继续待处理'), findsNothing);
+      repo.queries.clear();
+      await tester.tap(find.text('待核实'));
+      await tester.pumpAndSettle();
+      expect(repo.queries.first, ('RETURNED', 1));
+      expect(table().currentPage, 1);
+      expect(table().filters['status'], 'RETURNED');
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-status')),
+      );
+      await tester.pumpAndSettle();
+      repo.queries.clear();
+      await tester.tap(find.text('所有'));
+      await tester.pumpAndSettle();
+      expect(repo.queries.first, ('PENDING', 1));
+      expect(table().currentPage, 1);
+      expect(table().filters['status'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final quantity in ['9999999999999.9999', '0.0001']) {
     testWidgets('处置详情与确认原样显示精确数量 $quantity', (tester) async {
       final repo = _Repository();
@@ -330,6 +446,15 @@ void main() {
           find.text('接收为公共产出'),
           permission && canDecide && !readOnly ? findsOneWidget : findsNothing,
         );
+        expect(find.textContaining('品质结果与仓库实收'), findsNothing);
+        final hint = find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFieldHintIcon &&
+              widget.info?.contains('品质结果与仓库实收') == true,
+        );
+        expect(hint, findsOneWidget);
+        await tester.tap(hint);
+        await tester.pumpAndSettle();
         expect(find.textContaining('品质结果与仓库实收'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },

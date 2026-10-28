@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -260,7 +261,15 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                     ),
                   ),
                   Step(
-                    title: Text(l10n.payrollStepItems),
+                    title: Row(
+                      children: [
+                        Flexible(child: Text(l10n.payrollStepItems)),
+                        const UtenFieldHintIcon(
+                          info: '工资、社保与个税全部由服务器规则计算，前端不会预估或修正金额。',
+                          dense: true,
+                        ),
+                      ],
+                    ),
                     isActive: _step >= 1,
                     state: _step > 1
                         ? StepState.complete
@@ -294,16 +303,6 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                           onChanged: _draftBatch == null
                               ? (value) => setState(() => _tax = value)
                               : null,
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
-                        Text(
-                          '工资、社保与个税全部由服务器规则计算，前端不会预估或修正金额。',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
                         ),
                         if (_operationError != null) ...[
                           const SizedBox(height: UtenSpacing.s8),

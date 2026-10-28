@@ -8,9 +8,11 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/l10n/maintenance_text.dart';
 import '../../core/maintenance/server_maintenance.dart';
+import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/display_datetime.dart';
 import '../providers/app_visibility_provider.dart';
+import '../providers/performance_provider.dart';
 
 /// Covers login, business routes and native clients through the same status.
 class ServerMaintenanceHost extends ConsumerWidget {
@@ -21,6 +23,7 @@ class ServerMaintenanceHost extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => ServerMaintenanceView(
     controller: ref.watch(serverMaintenanceControllerProvider),
     visible: ref.watch(appVisibilityProvider),
+    animateCountdown: !ref.watch(performanceProvider).isLite,
     child: child,
   );
 }
@@ -33,11 +36,13 @@ class ServerMaintenanceView extends StatefulWidget {
     required this.controller,
     required this.child,
     this.visible = true,
+    this.animateCountdown = true,
   });
 
   final ServerMaintenanceController controller;
   final Widget child;
   final bool visible;
+  final bool animateCountdown;
 
   @override
   State<ServerMaintenanceView> createState() => _ServerMaintenanceViewState();
@@ -129,43 +134,31 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
             child: AbsorbPointer(absorbing: modal, child: widget.child),
           ),
         ),
-        if (warns && !showReminder)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              top: false,
-              child: Material(
-                color: scheme.secondaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s16,
-                    vertical: UtenSpacing.s4,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.schedule_rounded,
-                        color: scheme.onSecondaryContainer,
-                        size: 20,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          '${maintenanceText(context, '更新时连接会暂时中断')} · ${_countdown(controller.remaining)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSecondaryContainer,
+        if (warns)
+          Positioned.fill(
+            child: ExcludeFocus(
+              excluding: showReminder || !widget.visible,
+              child: TickerMode(
+                enabled: widget.visible && !showReminder,
+                // Retain the chosen position while the details are open.
+                child: Offstage(
+                  offstage: showReminder,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.viewInsetsOf(context).bottom,
+                    ),
+                    child: SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: _MaintenanceCountdown(
+                          remaining: controller.remaining,
+                          animate: widget.animateCountdown,
+                          onTap: () => setState(
+                            () => _acknowledged.remove(snapshot!.noticeKey),
                           ),
                         ),
                       ),
-                      TextButton(
-                        onPressed: () => setState(
-                          () => _acknowledged.remove(snapshot!.noticeKey),
-                        ),
-                        child: Text(maintenanceText(context, '查看更新提醒')),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -240,6 +233,255 @@ String _countdown(Duration? duration) {
   if (duration == null || duration.isNegative) return '00:00';
   final seconds = duration.inSeconds;
   return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+}
+
+/// A status capsule, rather than an editor window: no modal surface, resize
+/// controls or focus changes when dragged. The root host covers every route.
+class _MaintenanceCountdown extends StatefulWidget {
+  const _MaintenanceCountdown({
+    required this.remaining,
+    required this.animate,
+    required this.onTap,
+  });
+
+  final Duration? remaining;
+  final bool animate;
+  final VoidCallback onTap;
+
+  @override
+  State<_MaintenanceCountdown> createState() => _MaintenanceCountdownState();
+}
+
+class _MaintenanceCountdownState extends State<_MaintenanceCountdown>
+    with SingleTickerProviderStateMixin {
+  final _areaKey = GlobalKey();
+  final _capsuleKey = GlobalKey();
+  Offset? _position;
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+  );
+
+  bool get _urgent =>
+      widget.remaining != null &&
+      widget.remaining! < const Duration(minutes: 1);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncPulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MaintenanceCountdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncPulse();
+  }
+
+  void _syncPulse() {
+    final animate =
+        _urgent &&
+        widget.animate &&
+        TickerMode.valuesOf(context).enabled &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!animate) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  void _startDrag(DragStartDetails details) {
+    final area = _areaKey.currentContext?.findRenderObject() as RenderBox?;
+    final capsule =
+        _capsuleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (area == null || capsule == null) return;
+    // Seed from the laid-out position after any resize or text-size change.
+    _position = capsule.localToGlobal(Offset.zero, ancestor: area);
+  }
+
+  void _drag(DragUpdateDetails details) {
+    final area = _areaKey.currentContext?.findRenderObject() as RenderBox?;
+    final capsule =
+        _capsuleKey.currentContext?.findRenderObject() as RenderBox?;
+    if (area == null || capsule == null || _position == null) return;
+    setState(() {
+      _position = _CountdownLayout.clamp(
+        _position! + details.delta,
+        area.size,
+        capsule.size,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final time = _countdown(widget.remaining);
+    final foreground = _urgent ? scheme.error : scheme.primary;
+    final hint = maintenanceText(context, '拖动调整位置，点击查看更新提醒');
+    final label = '${maintenanceText(context, '服务器更新倒计时')} $time';
+    Widget capsule = Semantics(
+      button: true,
+      label: label,
+      hint: hint,
+      excludeSemantics: true,
+      onTap: widget.onTap,
+      child: MouseRegion(
+        key: _capsuleKey,
+        cursor: SystemMouseCursors.grab,
+        child: GestureDetector(
+          key: const ValueKey('server-maintenance-countdown'),
+          excludeFromSemantics: true,
+          onPanStart: _startDrag,
+          onPanUpdate: _drag,
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _pulse,
+              builder: (context, child) {
+                final pulse = Curves.easeInOut.transform(_pulse.value);
+                return DecoratedBox(
+                  key: const ValueKey('server-maintenance-countdown-surface'),
+                  decoration: BoxDecoration(
+                    color: _urgent
+                        ? Color.lerp(
+                            scheme.surface,
+                            scheme.errorContainer,
+                            0.6 + 0.4 * pulse,
+                          )
+                        : scheme.surface,
+                    borderRadius: UtenRadius.pillAll,
+                    border: Border.all(
+                      color: foreground.withValues(
+                        alpha: _urgent ? 0.55 + 0.45 * pulse : 0.35,
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: (_urgent ? scheme.error : scheme.shadow)
+                            .withValues(
+                              alpha: _urgent ? 0.14 + 0.24 * pulse : 0.12,
+                            ),
+                        blurRadius: _urgent ? 8 + 12 * pulse : 12,
+                        spreadRadius: _urgent ? 1 + 2 * pulse : 0,
+                        offset: Offset(0, _urgent ? 0 : 3),
+                      ),
+                    ],
+                  ),
+                  child: child,
+                );
+              },
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: widget.onTap,
+                  borderRadius: UtenRadius.pillAll,
+                  focusColor: foreground.withValues(alpha: 0.16),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: UtenControlMetrics.minimumHitExtent(
+                        context,
+                        desktop: 48,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s12,
+                        vertical: UtenSpacing.s8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 20,
+                            color: foreground,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                time,
+                                maxLines: 1,
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  color: foreground,
+                                  fontWeight: FontWeight.w700,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          Icon(
+                            Icons.drag_indicator_rounded,
+                            size: 16,
+                            color: foreground.withValues(alpha: 0.6),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    // This host can be a sibling of Navigator, without an Overlay ancestor.
+    if (Overlay.maybeOf(context) != null) {
+      capsule = Tooltip(message: '$label\n$hint', child: capsule);
+    }
+    return CustomSingleChildLayout(
+      key: _areaKey,
+      delegate: _CountdownLayout(_position),
+      child: capsule,
+    );
+  }
+}
+
+/// Uses the actual capsule size, including accessibility text scaling, so the
+/// entire status remains reachable after dragging, resizing or opening a keyboard.
+class _CountdownLayout extends SingleChildLayoutDelegate {
+  const _CountdownLayout(this.position);
+  final Offset? position;
+
+  static Offset clamp(Offset position, Size area, Size child) => Offset(
+    position.dx.clamp(
+      0.0,
+      (area.width - child.width).clamp(0.0, double.infinity),
+    ),
+    position.dy.clamp(
+      0.0,
+      (area.height - child.height).clamp(0.0, double.infinity),
+    ),
+  );
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      BoxConstraints.loose(constraints.biggest);
+
+  @override
+  Offset getPositionForChild(Size size, Size childSize) => clamp(
+    position ?? Offset(size.width - childSize.width, 0),
+    size,
+    childSize,
+  );
+
+  @override
+  bool shouldRelayout(_CountdownLayout oldDelegate) =>
+      position != oldDelegate.position;
 }
 
 class _ScheduledContent extends StatelessWidget {

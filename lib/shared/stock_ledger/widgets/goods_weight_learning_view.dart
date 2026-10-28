@@ -39,6 +39,7 @@ import '../../measurement/widgets/weight_sample_dialog.dart';
 import '../../measurement/widgets/weight_text.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../search/table_column_query.dart';
 import '../../models/paged_result.dart';
 import '../stock_ledger_models.dart';
 
@@ -91,6 +92,7 @@ class _GoodsWeightLearningViewState
 
   @override
   void scopedPagedReadOwnerChanged() {
+    _recordQuery = const TableColumnQuery();
     _version++;
     _recordsVersion++;
     if (mounted) {
@@ -121,6 +123,7 @@ class _GoodsWeightLearningViewState
   int _recordsVersion = 0;
   String? _kindFilter;
   String? _stageFilter;
+  TableColumnQuery _recordQuery = const TableColumnQuery();
   bool _busy = false;
 
   @override
@@ -186,12 +189,14 @@ class _GoodsWeightLearningViewState
     });
     final repository = ref.read(weightRepositoryProvider);
     final goodsId = widget.goodsId, kind = _kindFilter, stage = _stageFilter;
+    final columns = _recordQuery;
     Object pagingQuery() => [
       ref.read(weightRepositoryProvider),
       widget.goodsId,
       widget.reloadTick,
       _kindFilter,
       _stageFilter,
+      _recordQuery,
     ];
     try {
       final result = await readScopedPage<WeightObservation>(
@@ -204,6 +209,9 @@ class _GoodsWeightLearningViewState
           page: target,
           kind: kind,
           stage: stage,
+          columns: columns.searches,
+          sort: columns.sort,
+          ascending: columns.ascending,
         ),
       );
       if (!mounted || version != _recordsVersion) return;
@@ -561,6 +569,23 @@ class _GoodsWeightLearningViewState
       // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
       primary: true,
       columns: _recordColumns(theme, display),
+      serverColumnSearch: true,
+      sortColumn: _recordQuery.sort,
+      sortAscending: _recordQuery.ascending,
+      onSortChange: (key, ascending) {
+        setState(() => _recordQuery = _recordQuery.sorted(key, ascending));
+        _loadRecords(1);
+      },
+      toolbarLeadingActions: [
+        if (_recordQuery.searches.isNotEmpty)
+          const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('列检索'),
+              UtenFieldHintIcon(info: '列检索仅定位称重记录，不改变单重学习样本及统计。', dense: true),
+            ],
+          ),
+      ],
       items: rows,
       rowKeyOf: (o) => o.id,
       facets: {
@@ -580,10 +605,16 @@ class _GoodsWeightLearningViewState
       },
       nullCounts: const {},
       filters: {
+        ..._recordQuery.searches,
         if (_kindFilter != null) 'kind': _kindFilter,
         if (_stageFilter != null) 'status': _stageFilter,
       },
       onFilterChanged: (key, value) {
+        if (key.startsWith('search.')) {
+          setState(() => _recordQuery = _recordQuery.search(key, value));
+          _loadRecords(1);
+          return;
+        }
         setState(() {
           if (key == 'kind') _kindFilter = value;
           if (key == 'status') _stageFilter = value;
@@ -613,7 +644,12 @@ class _GoodsWeightLearningViewState
       emptyMessage: '还没有称重记录',
       currentPage: _records?.page ?? 1,
       totalPages: _records?.totalPages ?? 1,
-      paginationScope: (widget.goodsId, _kindFilter, _stageFilter),
+      paginationScope: (
+        widget.goodsId,
+        _kindFilter,
+        _stageFilter,
+        _recordQuery,
+      ),
       onPageChange: (page) => _loadRecords(page, useCache: true),
     );
   }
@@ -652,6 +688,8 @@ class _GoodsWeightLearningViewState
         label: '日期',
         width: 130,
         type: 'date',
+        columnSearchEnabled: true,
+        sortable: true,
         value: (o) => o.observedAt == null
             ? ''
             : ChinaDateTime.formatInstant(o.observedAt!),
@@ -674,6 +712,7 @@ class _GoodsWeightLearningViewState
         key: 'party',
         label: '供应商/车间',
         width: 140,
+        columnSearchEnabled: _canSeeSuppliers,
         value: (o) => o.supplierName ?? o.counterpartName ?? '',
       ),
       MasterColumnDef(
@@ -681,6 +720,8 @@ class _GoodsWeightLearningViewState
         label: '数量',
         width: 100,
         type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
         value: (o) => formatWeighQty(o.qtyBase, integer: integer),
       ),
       MasterColumnDef(
@@ -688,18 +729,28 @@ class _GoodsWeightLearningViewState
         label: '重量',
         width: 110,
         type: 'weight',
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '按千克检索称重记录。',
         value: (o) => formatWeight(o.weightKg, display: display),
       ),
       MasterColumnDef(
         key: 'unitWeight',
         label: '单重',
         width: 110,
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '可输入 2.312 g、>0.002 kg 或范围；不写单位时按千克/基本单位。',
         value: (o) => formatUnitWeight(o.unitWeightKg),
       ),
       MasterColumnDef(
         key: 'deviation',
         label: '偏差',
         width: 90,
+        type: 'number',
+        columnSearchEnabled: true,
+        sortable: true,
+        info: '按百分比数值检索，例如 >5 表示偏差大于 5%。',
         value: (o) =>
             o.deviationPct == null ? '' : formatSignedPct(o.deviationPct!),
         cellBuilder: (_, o) {
@@ -763,6 +814,8 @@ class _GoodsWeightLearningViewState
           key: 'unitWeight',
           label: '单重',
           width: 120,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (r) =>
               formatUnitWeight(r.unitWeightKg, unitName: widget.unitName),
         ),
@@ -770,6 +823,8 @@ class _GoodsWeightLearningViewState
           key: 'diff',
           label: '与总体差异',
           width: 110,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (r) => r.diffPct == null ? '' : formatSignedPct(r.diffPct!),
         ),
         MasterColumnDef(
@@ -777,18 +832,26 @@ class _GoodsWeightLearningViewState
           label: '抽样次数',
           width: 90,
           type: 'number',
+          sortable: true,
           value: (r) => r.nRef == null ? '' : '${r.nRef}',
+          exactValueOf: (r) => r.nRef?.toString(),
         ),
         MasterColumnDef(
           key: 'last',
           label: '最近',
           width: 100,
-          value: (r) => _monthDay(r.lastObservedAt) ?? '',
+          type: 'date',
+          sortable: true,
+          value: (r) => r.lastObservedAt == null
+              ? null
+              : ChinaDateTime.formatInstant(r.lastObservedAt!),
         ),
         MasterColumnDef(
           key: 'tier',
           label: '可靠度',
           width: 90,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (r) => r.tier?.label ?? '',
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
           cellColor: (context, r) => r.tier == null

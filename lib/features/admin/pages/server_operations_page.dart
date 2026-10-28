@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -556,12 +557,9 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
                                 UtenSpacing.s16,
                               ),
                               leading: const Icon(Icons.storage_outlined),
-                              title: Text(
-                                l.serverUpdateStorage,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              subtitle: Text(
-                                status?.platformUnsupported == true
+                              title: UtenSectionHeader(
+                                title: l.serverUpdateStorage,
+                                info: status?.platformUnsupported == true
                                     ? '查看数据库、附件登记与后端内存'
                                     : '查看空间占用、恢复点与可清理资源',
                               ),

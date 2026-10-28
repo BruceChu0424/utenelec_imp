@@ -458,7 +458,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     ], bottomPadding);
   }
 
-  // Tab 2：组织与合同（组织信息 + 合同摘要 + 范围脚注）
+  // Tab 2：组织与合同（组织信息 + 合同摘要 + 标题旁范围说明）
   Widget _orgContractTab(
     ThemeData theme,
     AppLocalizations l10n,
@@ -510,65 +510,44 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         ),
       ]),
       const SizedBox(height: UtenSpacing.s16),
-      _section(l10n.profileContractSummaryTitle, [
-        UtenInfoRow(
-          label: l10n.employeeFieldContractType,
-          value: _display(l10n, _contractTypeText(l10n, p.contractType)),
-          showDivider: false,
-        ),
-        UtenInfoRow(
-          label: l10n.employeeFieldContractPeriod,
-          value: p.contractStart == null && p.contractEnd == null
-              ? l10n.profileValueNotProvided
-              : l10n.employeeContractPeriodValue(
-                  _display(l10n, p.contractEnd),
-                  _display(l10n, p.contractStart),
-                ),
-        ),
-        UtenInfoRow(
-          label: l10n.employeeFieldProbation,
-          value: p.probationMonths == null
-              ? l10n.profileValueNotProvided
-              : l10n.employeeProbationValue(
-                  _display(l10n, p.probationEndDate),
-                  p.probationMonths!,
-                ),
-        ),
-        UtenInfoRow(
-          label: l10n.employeeFieldRenewCount,
-          value: p.renewCount == null
-              ? l10n.profileValueNotProvided
-              : l10n.employeeRenewCountValue(p.renewCount!),
-          showDivider: false,
-        ),
-      ], policy: FieldPolicyKind.hrOnly),
-      const SizedBox(height: UtenSpacing.s16),
-      _scopeFootnote(theme, l10n),
-    ], bottomPadding);
-  }
-
-  /// 隐私边界脚注（原独立提示卡降级为小字，不再占整卡）。
-  Widget _scopeFootnote(ThemeData theme, AppLocalizations l10n) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.privacy_tip_outlined,
-          size: 16,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(
-            l10n.profileCompensationBoundaryDescription,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+      _section(
+        l10n.profileContractSummaryTitle,
+        [
+          UtenInfoRow(
+            label: l10n.employeeFieldContractType,
+            value: _display(l10n, _contractTypeText(l10n, p.contractType)),
+            showDivider: false,
           ),
-        ),
-      ],
-    );
+          UtenInfoRow(
+            label: l10n.employeeFieldContractPeriod,
+            value: p.contractStart == null && p.contractEnd == null
+                ? l10n.profileValueNotProvided
+                : l10n.employeeContractPeriodValue(
+                    _display(l10n, p.contractEnd),
+                    _display(l10n, p.contractStart),
+                  ),
+          ),
+          UtenInfoRow(
+            label: l10n.employeeFieldProbation,
+            value: p.probationMonths == null
+                ? l10n.profileValueNotProvided
+                : l10n.employeeProbationValue(
+                    _display(l10n, p.probationEndDate),
+                    p.probationMonths!,
+                  ),
+          ),
+          UtenInfoRow(
+            label: l10n.employeeFieldRenewCount,
+            value: p.renewCount == null
+                ? l10n.profileValueNotProvided
+                : l10n.employeeRenewCountValue(p.renewCount!),
+            showDivider: false,
+          ),
+        ],
+        policy: FieldPolicyKind.hrOnly,
+        info: l10n.profileCompensationBoundaryDescription,
+      ),
+    ], bottomPadding);
   }
 
   // Tab 3：联系与车辆（联系方式 + 车辆/备用号自助管理）
@@ -749,12 +728,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         : event;
   }
 
-  Widget _section(String title, List<Widget> rows, {FieldPolicyKind? policy}) {
+  Widget _section(
+    String title,
+    List<Widget> rows, {
+    FieldPolicyKind? policy,
+    String? info,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         UtenSectionHeader(
           title: title,
+          info: info,
           subdued: true,
           trailing: policy == null ? null : _PolicyBadge(kind: policy),
         ),

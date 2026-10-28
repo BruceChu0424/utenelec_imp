@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -266,6 +267,11 @@ class _MaterialForecastRuntimeStatusCardState
                   ),
                 ),
               ),
+              const UtenFieldHintIcon(
+                key: Key('material-forecast-portable-policy'),
+                info: '设置和货品关联随数据库保留，标准服务器部署会自动准备采集环境。',
+                dense: true,
+              ),
               UtenRefreshButton(
                 key: const Key('material-forecast-runtime-refresh'),
                 busy: _loading,
@@ -274,11 +280,6 @@ class _MaterialForecastRuntimeStatusCardState
                 tooltip: '刷新采集状态',
               ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          const Text(
-            '设置和货品关联随数据库保留，标准服务器部署会自动准备采集环境。',
-            key: Key('material-forecast-portable-policy'),
           ),
           if (status != null) ...[
             const SizedBox(height: UtenSpacing.s8),

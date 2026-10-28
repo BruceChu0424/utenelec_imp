@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'support/table_cell_geometry.dart';
 
 class _Row {
   const _Row(this.id, this.savedValue, this.controller);
@@ -57,20 +58,8 @@ Widget _table(
   ),
 );
 
-double _columnWidth(WidgetTester tester) {
-  final containers = tester.widgetList<Container>(
-    find.ancestor(of: find.text('Name'), matching: find.byType(Container)),
-  );
-  for (final container in containers) {
-    final constraints = container.constraints;
-    if (constraints != null &&
-        constraints.maxWidth.isFinite &&
-        constraints.minWidth == constraints.maxWidth) {
-      return constraints.maxWidth;
-    }
-  }
-  fail('No fixed-width Name header found');
-}
+double _columnWidth(WidgetTester tester) =>
+    tableCellWidth(tester, find.text('Name'));
 
 void main() {
   testWidgets(

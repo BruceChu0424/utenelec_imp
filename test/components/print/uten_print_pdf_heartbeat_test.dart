@@ -7,8 +7,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/print/print_pdf_document.dart';
+import '../../support/print_test_font.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late pw.Font font;
+  setUpAll(() async => font = await loadPrintTestFont());
   test(
     'large landscape PDF records allocation layout and balanced-save heartbeat separately',
     () async {
@@ -31,7 +35,6 @@ void main() {
         if (gap > (maxGapMs[phase] ?? 0)) maxGapMs[phase] = gap;
       });
       addTearDown(heartbeat.cancel);
-      final font = pw.Font.helvetica();
       final rows = await buildPrintPdfRows(
         PrintPdfRequest(
           title: 'Large table',

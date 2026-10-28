@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -317,37 +318,41 @@ class _CompactFinanceSnapshot extends StatelessWidget {
             ),
           ),
         ],
-        if (card.expanded &&
-            (card.limitLabel != null || card.trailing.isNotEmpty)) ...[
-          const SizedBox(height: UtenSpacing.s12),
-          UtenSummaryFacts(
-            inline: true,
-            children: [
-              if (card.limitLabel != null) ...[
-                UtenSummaryField(
-                  label: '全部币种${customer ? '应收' : '应付'}(折本币)',
-                  value: money(b?.openBookLocal, base: true),
-                  danger: b?.overCredit == true,
-                ),
-                UtenSummaryField(
-                  label: card.limitLabel!,
-                  value: b == null
-                      ? null
-                      : b.creditLimitLocal == null
-                      ? '未设置'
-                      : money(b.creditLimitLocal, base: true),
-                ),
-                if (b?.creditLimitLocal != null)
-                  UtenSummaryField(
-                    label: '超出${card.limitLabel}',
-                    value: money(b?.overLimitLocal, base: true),
-                    danger: b?.overCredit == true,
-                  ),
-              ],
-              ...card.trailing.map(metric),
-            ],
+        if (card.limitLabel != null || card.trailing.isNotEmpty)
+          UtenCollapsibleContent(
+            expanded: card.expanded,
+            maintainState: false,
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s12),
+              child: UtenSummaryFacts(
+                inline: true,
+                children: [
+                  if (card.limitLabel != null) ...[
+                    UtenSummaryField(
+                      label: '全部币种${customer ? '应收' : '应付'}(折本币)',
+                      value: money(b?.openBookLocal, base: true),
+                      danger: b?.overCredit == true,
+                    ),
+                    UtenSummaryField(
+                      label: card.limitLabel!,
+                      value: b == null
+                          ? null
+                          : b.creditLimitLocal == null
+                          ? '未设置'
+                          : money(b.creditLimitLocal, base: true),
+                    ),
+                    if (b?.creditLimitLocal != null)
+                      UtenSummaryField(
+                        label: '超出${card.limitLabel}',
+                        value: money(b?.overLimitLocal, base: true),
+                        danger: b?.overCredit == true,
+                      ),
+                  ],
+                  ...card.trailing.map(metric),
+                ],
+              ),
+            ),
           ),
-        ],
         ...card.footer,
         if (card.note case final note?) ...[
           const SizedBox(height: UtenSpacing.s8),

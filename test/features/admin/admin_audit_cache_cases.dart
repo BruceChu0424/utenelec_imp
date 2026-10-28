@@ -109,6 +109,11 @@ void auditCacheCases() {
           final calls = sessions
               ? repository.sessionCalls
               : repository.listCalls;
+          // A compact query header can expose the next one-row page while the
+          // fixture scrolls the table into view. Retry must keep that page.
+          final visiblePage = tester
+              .widget<MasterDataTableView<dynamic>>(finder)
+              .currentPage;
           final before = calls.length;
           final error = ApiException('FORBIDDEN', '审计读取权限已撤销', httpStatus: 403);
           if (sessions) {
@@ -143,7 +148,14 @@ void auditCacheCases() {
           await tester.tap(find.text('重试').first);
           await tester.pumpAndSettle();
           expect(finder, findsOneWidget);
-          final retryPages = silent ? [1, 2, 3] : [90, 91, 92, 89, 88];
+          final retryPage = silent ? visiblePage : 90;
+          final retryPages = [
+            retryPage,
+            retryPage + 1,
+            retryPage + 2,
+            if (retryPage > 1) retryPage - 1,
+            if (retryPage > 2) retryPage - 2,
+          ];
           final snapshotKey = sessions ? 'snapshotAuditId' : 'snapshotId';
           final originalQuery = Map<String, Object?>.of(calls.first)
             ..remove('page')
@@ -158,7 +170,7 @@ void auditCacheCases() {
           ]);
           expect(
             tester.widget<MasterDataTableView<dynamic>>(finder).currentPage,
-            silent ? 1 : 90,
+            retryPage,
           );
           expect(find.textContaining('审计读取权限已撤销'), findsNothing);
           expect(tester.takeException(), isNull);

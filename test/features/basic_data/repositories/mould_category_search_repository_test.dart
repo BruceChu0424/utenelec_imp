@@ -37,7 +37,13 @@ void main() {
       'root-category',
       page: 2,
       size: 1,
-      filters: const {'search.name': '开关', 'search.categoryName': 'Q7'},
+      filters: const {
+        'search.name': '开关',
+        'search.categoryName': 'Q7',
+        'search.tqty': '>=2',
+      },
+      sort: 'tqty',
+      order: 'desc',
     );
     expect(sent!.queryParameters, {
       'categoryId': 'root-category',
@@ -45,6 +51,9 @@ void main() {
       'size': 1,
       'search.name': '开关',
       'search.categoryName': 'Q7',
+      'search.tqty': '>=2',
+      'sort': 'tqty',
+      'order': 'desc',
     });
     expect(result.items.single.categoryName, 'Q7开关子系列');
     expect(result.items.single.categoryId, 'child-category');

@@ -1511,7 +1511,7 @@ void main() {
         'WS_ASSEMBLY',
       );
       expect(scope.productionDepartmentId, 'production');
-      expect(scope.initiallyExpandedIds, containsAll(['center', 'production']));
+      expect(scope.initiallyExpandedIds, isEmpty);
     },
   );
 

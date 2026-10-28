@@ -47,13 +47,18 @@ class _Snapshots extends SessionSnapshotNotifier {
 
 class _History implements GoodsQuoteHistoryRepository {
   final requests = <String>[];
+  final columnCalls = <Map<String, String?>>[];
   final pending = <String, Completer<PagedResult<GoodsQuoteHistoryRow>>>{};
   @override
   Future<PagedResult<GoodsQuoteHistoryRow>> list(
     String goodsId, {
     int page = 1,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) {
     requests.add(goodsId);
+    columnCalls.add({...columns, 'sort': ?sort});
     return (pending[goodsId] ??= Completer()).future;
   }
 }
@@ -186,6 +191,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('历史客户'), findsWidgets);
     expect(find.text('12.3456'), findsWidgets);
+    await tester.tap(find.text('单价'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '>=12',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(history.columnCalls.last['search.price'], '>=12');
     final table = tester.widget<MasterDataTableView<GoodsQuoteHistoryRow>>(
       find.byType(MasterDataTableView<GoodsQuoteHistoryRow>),
     );

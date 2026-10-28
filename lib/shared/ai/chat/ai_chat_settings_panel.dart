@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../page_context/ai_page_context.dart';
@@ -268,21 +269,33 @@ class AiChatSettingsPanel extends StatelessWidget {
             enabled: !busy,
             onChanged: (value) => onChange('operationMemory', value),
           ),
-          ListTile(
+          Row(
             key: const ValueKey('ai-settings-confirm-always'),
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(
-              Icons.verified_user_outlined,
-              color: theme.colorScheme.primary,
-            ),
-            title: Text(l10n.aiChatSettingsConfirm),
-            subtitle: Text(l10n.aiChatSettingsConfirmHint, style: muted),
-            trailing: Text(
-              l10n.aiChatSettingsConfirmAlways,
-              style: theme.textTheme.labelMedium?.copyWith(
+            children: [
+              Icon(
+                Icons.verified_user_outlined,
                 color: theme.colorScheme.primary,
               ),
-            ),
+              const SizedBox(width: UtenSpacing.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Title(
+                      text: l10n.aiChatSettingsConfirm,
+                      saving: false,
+                      info: l10n.aiChatSettingsConfirmHint,
+                    ),
+                    Text(
+                      l10n.aiChatSettingsConfirmAlways,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const Divider(height: UtenSpacing.s24),
           Text(l10n.aiChatSettingsClearHint, style: muted),
@@ -343,14 +356,17 @@ class _Choice<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
       key: ValueKey('ai-settings-$field'),
       padding: const EdgeInsets.only(top: UtenSpacing.s16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Title(text: title, saving: saving),
+          _Title(
+            text: title,
+            saving: saving,
+            info: hintKey == null ? hint : null,
+          ),
           const SizedBox(height: UtenSpacing.s6),
           Opacity(
             opacity: enabled || saving ? 1 : 0.5,
@@ -365,17 +381,7 @@ class _Choice<T> extends StatelessWidget {
               ),
             ),
           ),
-          if (hint != null) ...[
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              hint!,
-              key: hintKey,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.4,
-              ),
-            ),
-          ],
+          if (hintKey != null && hint != null) Text(hint!, key: hintKey),
         ],
       ),
     );
@@ -403,28 +409,21 @@ class _Toggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return SwitchListTile(
       key: ValueKey('ai-settings-$field'),
       value: value,
       onChanged: enabled ? onChanged : null,
       contentPadding: EdgeInsets.zero,
-      title: _Title(text: title, saving: saving),
-      subtitle: Text(
-        hint,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          height: 1.4,
-        ),
-      ),
+      title: _Title(text: title, saving: saving, info: hint),
     );
   }
 }
 
 class _Title extends StatelessWidget {
-  const _Title({required this.text, required this.saving});
+  const _Title({required this.text, required this.saving, this.info});
   final String text;
   final bool saving;
+  final String? info;
 
   @override
   Widget build(BuildContext context) {
@@ -434,6 +433,8 @@ class _Title extends StatelessWidget {
         Flexible(
           child: Text(text, style: Theme.of(context).textTheme.titleSmall),
         ),
+        if (info?.trim().isNotEmpty == true)
+          UtenFieldHintIcon(info: info, dense: true),
         if (saving) ...[
           const SizedBox(width: UtenSpacing.s8),
           SizedBox(

@@ -53,6 +53,9 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
     List<String> orderItemIds = const [],
     List<String> applicationItemIds = const [],
     String? applicationId,
+    Map<String, String?> columnFilters = const {},
+    String? sort,
+    String? order,
   }) async {
     final query = <String, Object?>{
       'page': page,
@@ -63,6 +66,9 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
       'orderItemIds': orderItemIds,
       'applicationItemIds': applicationItemIds,
       'applicationId': applicationId,
+      'columnFilters': Map<String, String?>.of(columnFilters),
+      'sort': sort,
+      'order': order,
     };
     listQueries.add(query);
     if (onList != null) return onList!(query);

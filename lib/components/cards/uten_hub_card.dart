@@ -28,6 +28,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../../shared/badges/badge_scope.dart';
 import '../feedback/uten_notification_badge.dart' show UtenBadgeScale;
 import '../feedback/uten_scoped_badges.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 class UtenHubCard extends StatelessWidget {
   static const _iconExtent = 40.0;
@@ -94,7 +95,7 @@ class UtenHubCard extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  /// 副标题；为 null 则只显图标 + 标题（仓库出入库/库存/报表 tile 无描述）。
+  /// 入口说明，收于标题旁的提示图标，不另占一行。
   final String? description;
 
   final VoidCallback onTap;
@@ -210,8 +211,6 @@ class UtenHubCard extends StatelessWidget {
               // 读屏的整段朗读一起失效），Flexible 保证字号放大/窄屏时照常换行。
               Row(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
                 children: [
                   Flexible(
                     child: Text(
@@ -225,23 +224,14 @@ class UtenHubCard extends StatelessWidget {
                           ),
                     ),
                   ),
+                  if (description?.trim().isNotEmpty == true)
+                    UtenFieldHintIcon(info: description, dense: true),
                   if (labelSuffix != null) ...[
                     const SizedBox(width: UtenSpacing.s4),
                     labelSuffix!,
                   ],
                 ],
               ),
-              if (description != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  description!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
             ],
           ),
         ),

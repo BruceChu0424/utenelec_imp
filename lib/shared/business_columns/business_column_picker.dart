@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_dropdown_field.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
+import '../../components/layout/uten_section_header.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/network/api_exception.dart';
@@ -347,8 +349,12 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
                   for (final c in columns)
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(c.label),
-                      subtitle: Text(_description(c)),
+                      title: Row(
+                        children: [
+                          Flexible(child: Text(c.label)),
+                          UtenFieldHintIcon(info: _description(c), dense: true),
+                        ],
+                      ),
                       leading: Icon(
                         c.affectsAmount
                             ? Icons.calculate_outlined
@@ -582,17 +588,21 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
   Widget _manage() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      ColumnEditorNotice(
-        icon: Icons.info_outline,
-        text: _text.businessColumnOrderHint,
+      UtenSectionHeader(
+        title: _text.businessColumnManage,
+        info: _text.businessColumnOrderHint,
       ),
       const SizedBox(height: UtenSpacing.s12),
       if (widget.existingColumns.isEmpty) Text(_text.businessColumnNoAdded),
       for (final c in widget.existingColumns)
         ListTile(
           contentPadding: EdgeInsets.zero,
-          title: Text(c.label),
-          subtitle: Text(_description(c)),
+          title: Row(
+            children: [
+              Flexible(child: Text(c.label)),
+              UtenFieldHintIcon(info: _description(c), dense: true),
+            ],
+          ),
           leading: Icon(
             c.affectsAmount ? Icons.calculate_outlined : Icons.notes_rounded,
           ),

@@ -2,6 +2,7 @@ import '../../../shared/search/keyword_search.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -631,6 +632,7 @@ class _AccountBalanceReconciliationDialogState
             // 提交余额核对网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
             if (_submitting)
               const UtenBusyOverlay(
+                showDoNotLeaveHint: false,
                 title: '正在提交余额核对',
                 description: '正在保存账户余额调整记录，请勿重复提交或关闭窗口。',
               ),
@@ -886,14 +888,15 @@ class _AccountBalanceReconciliationDialogState
           const SizedBox(height: UtenSpacing.s8),
           count,
           const SizedBox(height: UtenSpacing.s8),
-          _desktopHeader(),
+          UtenTableRowRightEdge(child: _desktopHeader()),
           Expanded(
             child: visible.isEmpty
                 ? const Center(child: Text('没有匹配的活动账户'))
                 : ListView.builder(
                     itemCount: visible.length,
-                    itemBuilder: (_, index) =>
-                        _accountRow(visible[index], false),
+                    itemBuilder: (_, index) => UtenTableRowRightEdge(
+                      child: _accountRow(visible[index], false),
+                    ),
                   ),
           ),
           const SizedBox(height: UtenSpacing.s12),

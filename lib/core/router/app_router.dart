@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../components/buttons/uten_back_button.dart';
+import '../../components/layout/uten_app_bar.dart';
 import 'editor_resource_key.dart';
 import '../../features/client_update/client_update_navigation.dart';
 import '../../features/client_update/software_downloads_page.dart';
@@ -2394,8 +2396,17 @@ class _ErrorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final route = ModalRoute.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('页面不存在')),
+      appBar: UtenAppBar(
+        title: '页面不存在',
+        showPagePermissionAction: false,
+        leading: route?.impliesAppBarDismissal == true
+            ? route!.fullscreenDialog
+                  ? const CloseButton()
+                  : UtenBackButton(onPressed: () => Navigator.maybePop(context))
+            : null,
+      ),
       body: Center(child: Text(l10n.commonError)),
     );
   }
@@ -2407,8 +2418,17 @@ class _AccessDeniedPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final route = ModalRoute.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('无权访问')),
+      appBar: UtenAppBar(
+        title: '无权访问',
+        showPagePermissionAction: false,
+        leading: route?.impliesAppBarDismissal == true
+            ? route!.fullscreenDialog
+                  ? const CloseButton()
+                  : UtenBackButton(onPressed: () => Navigator.maybePop(context))
+            : null,
+      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),

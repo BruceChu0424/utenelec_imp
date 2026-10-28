@@ -1129,6 +1129,7 @@ class _FinanceSalesOrderConfirmationPageState
     MasterColumnDef(
       key: 'billNo',
       label: '销售单号',
+      info: '单击选择 · 双击查看详情',
       width: 172,
       sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.billNo,
@@ -1249,12 +1250,6 @@ class _FinanceSalesOrderConfirmationPageState
       initialSearchValue: _keyword,
       onSearchInputChanged: _invalidateSearchRequest,
       onSearchChanged: _applyKeyword,
-      trailing: Text(
-        '单击选择 · 双击查看详情',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
     );
   }
 

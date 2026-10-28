@@ -150,6 +150,9 @@ void main() {
       matching: find.text('决策层'),
     );
 
+    expect(centerText, findsNothing);
+    await tester.tap(find.byTooltip('展开决策层'));
+    await tester.pumpAndSettle();
     expect(centerText, findsOneWidget);
     await tester.tap(decisionText);
     await tester.pump();

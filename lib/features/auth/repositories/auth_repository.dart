@@ -1,6 +1,7 @@
 // 鉴权仓库只负责网络交换；SessionNotifier 仅串行提交最新用户意图的令牌与状态。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/audit/device_audit_store.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/server_config.dart';
@@ -56,6 +57,8 @@ class DioAuthRepository
       body: <String, String>{
         'loginAccount': loginAccount,
         'password': password,
+        // 单设备顶号提示：服务端把设备名随会话落库，被顶设备据此知道「在哪台设备登录」。
+        'deviceName': await loginDeviceLabel(),
       },
     );
     return AuthResult.fromJson(json);
@@ -73,6 +76,7 @@ class DioAuthRepository
         'loginAccount': loginAccount,
         'password': password,
         'otpCode': otpCode,
+        'deviceName': await loginDeviceLabel(),
       },
     );
     return AuthResult.fromJson(json);

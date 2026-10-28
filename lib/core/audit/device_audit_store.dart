@@ -1008,3 +1008,63 @@ String _browserLabel(String name) => switch (name) {
   'samsungInternet' => 'Samsung Internet',
   _ => 'Web',
 };
+
+/// 登录时自报的设备标签，服务端列宽 64 字符（AuthSessionService.normalizeDevice 截断）。
+const _loginLabelMaxLength = 64;
+
+String? _cachedLoginDeviceLabel;
+
+/// 登录请求随 body 上报的单行设备标签（如「Windows 客户端（BRUCE-PC）」「网页端 · Chrome」）。
+///
+/// 只用于单设备顶号时向被顶设备说明「账号在哪台设备登录」，不是安全边界；与设备
+/// 审计画像同源（device_info_plus / 浏览器名映射），进程内只解析一次。取不到时回退
+/// 「本设备」，登录流程绝不因设备名失败。
+Future<String> loginDeviceLabel() async {
+  final cached = _cachedLoginDeviceLabel;
+  if (cached != null) return cached;
+  String label;
+  try {
+    label = await _resolveLoginDeviceLabel();
+  } catch (_) {
+    label = '本设备';
+  }
+  return _cachedLoginDeviceLabel = label;
+}
+
+Future<String> _resolveLoginDeviceLabel() async {
+  final deviceInfo = DeviceInfoPlugin();
+  if (kIsWeb) {
+    final info = await deviceInfo.webBrowserInfo;
+    return _clipLoginLabel('网页端 · ${_browserLabel(info.browserName.name)}');
+  }
+  if (Platform.isWindows) {
+    final name = _clean((await deviceInfo.windowsInfo).computerName, 32);
+    return _clipLoginLabel(
+      name == null || name.isEmpty ? 'Windows 客户端' : 'Windows 客户端（$name）',
+    );
+  }
+  if (Platform.isMacOS) {
+    final name = _clean((await deviceInfo.macOsInfo).computerName, 32);
+    return _clipLoginLabel(
+      name == null || name.isEmpty ? 'macOS 客户端' : 'macOS 客户端（$name）',
+    );
+  }
+  if (Platform.isAndroid) {
+    final info = await deviceInfo.androidInfo;
+    final name = _firstNonBlank([info.name, info.model]);
+    return _clipLoginLabel(
+      name == null || name.isEmpty ? 'Android 客户端' : 'Android 客户端（$name）',
+    );
+  }
+  if (Platform.isIOS) {
+    final name = _clean((await deviceInfo.iosInfo).name, 32);
+    return _clipLoginLabel(
+      name == null || name.isEmpty ? 'iPhone/iPad' : 'iOS 客户端（$name）',
+    );
+  }
+  return '桌面客户端';
+}
+
+String _clipLoginLabel(String label) => label.length <= _loginLabelMaxLength
+    ? label
+    : label.substring(0, _loginLabelMaxLength);

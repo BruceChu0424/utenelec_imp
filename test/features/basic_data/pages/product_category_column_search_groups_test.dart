@@ -81,6 +81,28 @@ void main() {
       expect(unknownCall.sort, 'code');
       expect(disabledCall.filters, {'search.name': '开关'});
       expect(unknownCall.filters, {'search.name': '开关'});
+      await tester.ensureVisible(find.text('库存量').first);
+      await tester.tap(find.text('库存量').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=12',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      table().onSortChange!('stockQty', false);
+      await tester.pumpAndSettle();
+      final numericCalls = repository.calls.where(
+        (call) =>
+            call.filters['search.stockQty'] == '>=12' &&
+            call.sort == 'stockQty',
+      );
+      expect(numericCalls.any((call) => call.disabled), isTrue);
+      expect(numericCalls.any((call) => call.stub), isTrue);
+      expect(
+        numericCalls.every((call) => call.filters['search.name'] == '开关'),
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
     },
   );

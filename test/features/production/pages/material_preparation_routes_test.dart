@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -673,6 +674,7 @@ Future<List<RequestOptions>> _pump(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  await expandMaterialAnalysisTree(tester, ifPresent: true);
   return requests;
 }
 

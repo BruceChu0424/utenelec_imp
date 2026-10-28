@@ -324,7 +324,13 @@ class Notice {
       myBlessing: myBlessing ?? this.myBlessing,
       recentAckers: recentAckers ?? this.recentAckers,
       recentBlessings: recentBlessings ?? this.recentBlessings,
+      blessingTemplates: blessingTemplates,
       subjects: subjects,
+      interactive: interactive,
+      aggregateKind: aggregateKind,
+      aggregateId: aggregateId,
+      resolvedAt: resolvedAt,
+      resolvedReason: resolvedReason,
     );
   }
 }

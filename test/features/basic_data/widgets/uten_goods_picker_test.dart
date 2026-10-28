@@ -33,10 +33,10 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pump(const Duration(milliseconds: 60));
     expect(selected, isNull);
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pumpAndSettle();
     expect(selected?.id, 'goods-a');
     expect(_widePickerSheet(), findsNothing);
@@ -51,7 +51,7 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pump();
     expect(find.text('确定(1)'), findsOneWidget);
     await tester.tapAt(const Offset(10, 450));
@@ -77,27 +77,27 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pump();
     final list = find.byKey(const Key('goods-picker-paged-list'));
     final originalElement = tester.element(list);
 
     await _wheelOnGoods(tester, '连接器甲', 100);
     expect(repository.searchPages, [1, 2]);
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
     expect(tester.element(list), same(originalElement));
 
     repository.completeDelayedPage();
     await tester.pumpAndSettle();
-    expect(find.text('连接器甲'), findsOneWidget);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器乙'), findsOneWidget);
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
     expect(tree.selectedIds, isEmpty);
     expect(repository.searchPolicies, everyElement((true, true)));
 
-    await tester.tap(find.text('连接器乙'));
+    await tester.tap(_goodsName('连接器乙'));
     await tester.pump();
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
     await tester.pumpAndSettle();
@@ -120,29 +120,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.searchPages, [1, 2]);
     repository.failNextPage = 2;
-    await tester.tap(find.text('下一页'));
+    await _wheelOnGoods(tester, '连接器甲', 100);
     await tester.pumpAndSettle();
     expect(repository.searchPages, [1, 2, 2]);
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
     await tester.tap(find.text('重试').last);
     await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 2, 2, 1]);
-    expect(find.text('连接器乙'), findsOneWidget);
-    final oldRowTop = tester.getTopLeft(find.text('连接器乙')).dy;
+    // Continuous paging retains the already loaded previous page; retrying
+    // page two must not fetch page one again.
+    expect(repository.searchPages, [1, 2, 2, 2]);
+    expect(_goodsName('连接器乙'), findsOneWidget);
+    final oldRowTop = tester.getTopLeft(_goodsName('连接器乙')).dy;
     await _wheelOnGoods(tester, '连接器乙', -100);
     await tester.pumpAndSettle();
     // Prepending keeps the old row anchored. The preceding row is above the
     // viewport and may remain unbuilt until the user continues scrolling up.
-    expect(find.text('连接器乙'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('连接器乙')).dy, closeTo(oldRowTop, 0.5));
+    expect(_goodsName('连接器乙'), findsOneWidget);
+    expect(tester.getTopLeft(_goodsName('连接器乙')).dy, closeTo(oldRowTop, 0.5));
     await _wheelOnGoods(tester, '连接器乙', -100);
     await tester.pumpAndSettle();
-    expect(repository.searchPages, [1, 2, 2, 2, 1]);
+    expect(repository.searchPages, [1, 2, 2, 2]);
 
-    expect(find.text('连接器甲'), findsOneWidget);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器乙'), findsOneWidget);
     expect(repository.searchCategoryIdQueries, ['G-']);
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pumpAndSettle();
     expect(selected, isNull, reason: '单击仅选中，仍须底部确认');
     expect(_widePickerSheet(), findsOneWidget);
@@ -212,9 +214,9 @@ void main() {
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
     // 展示提升不改变真实范围，根自身直接归属的货品也仍在授权查询范围内。
     expect(goodsRepository.searchRootScopes.single, {'finished-root'});
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
     expect(find.textContaining('G-001'), findsOneWidget);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(_goodsName('连接器乙'), findsOneWidget);
     final goodsTable = tester.widget<MasterDataTableView<GoodsListItem>>(
       find.byKey(const Key('goods-picker-paged-list')),
     );
@@ -256,8 +258,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.length, listCallsBeforeTap);
     expect(goodsRepository.searchCategoryScopes.last, 'section-b');
-    expect(find.text('连接器甲'), findsNothing);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsNothing);
+    expect(_goodsName('连接器乙'), findsOneWidget);
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, 'G-');
 
     // 清除只退出搜索，保留当前位置并恢复分类列表（UtenSearchBar 内置清除按钮）。
@@ -323,7 +325,7 @@ void main() {
     expect(goodsRepository.searchQueries, ['分区']);
     expect(goodsRepository.searchCategoryIdQueries, ['分区']);
     expect(goodsRepository.listCalls, isEmpty);
-    expect(find.text('连接器甲'), findsNothing);
+    expect(_goodsName('连接器甲'), findsNothing);
 
     await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
@@ -353,7 +355,7 @@ void main() {
     expect(goodsRepository.searchPages, [1, 2]);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
 
-    await tester.tap(find.text('下一页'));
+    await _wheelOnGoods(tester, '连接器甲', 100);
     await tester.pumpAndSettle();
 
     final pageTwoTree = tester
@@ -380,13 +382,13 @@ void main() {
     await tester.enterText(_searchEditable(), 'G-');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
     expect(find.textContaining('G-001'), findsOneWidget);
 
     goodsRepository.completeDelayedSearch(const [_outOfScopeGoods]);
     await tester.pumpAndSettle();
 
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsOneWidget);
     expect(find.textContaining('G-001'), findsOneWidget);
     expect(find.text('范围外原料(RAW-001)'), findsNothing);
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
@@ -423,8 +425,8 @@ void main() {
     expect(repository.listCalls, isEmpty);
     expect(repository.searchQueries, ['分区']);
     expect(repository.searchCategoryScopes, ['section-b']);
-    expect(find.text('连接器甲'), findsNothing);
-    expect(find.text('连接器乙'), findsOneWidget);
+    expect(_goodsName('连接器甲'), findsNothing);
+    expect(_goodsName('连接器乙'), findsOneWidget);
   });
 
   testWidgets('单根提升 + 无缩进层级色 + 可拖分割线', (tester) async {
@@ -497,7 +499,7 @@ void main() {
     // 懒载：先点根分类（提升后 = 分区甲）加载货品列表，再点货品行勾选。
     await tester.tap(find.text('分区甲'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器甲'));
+    await tester.tap(_goodsName('连接器甲'));
     await tester.pumpAndSettle();
     final selectedTable = tester.widget<MasterDataTableView<GoodsListItem>>(
       find.byKey(const Key('goods-picker-paged-list')),
@@ -506,7 +508,7 @@ void main() {
     // 切到分区乙再勾一条。
     await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('连接器乙'));
+    await tester.tap(_goodsName('连接器乙'));
     await tester.pumpAndSettle();
 
     expect(find.text('已选 2 项'), findsOneWidget);
@@ -548,7 +550,7 @@ Future<void> _wheelOnGoods(
 ) async {
   final pointer = TestPointer(1, PointerDeviceKind.mouse);
   await tester.sendEventToBinding(
-    pointer.hover(tester.getCenter(find.text(name))),
+    pointer.hover(tester.getCenter(_goodsName(name))),
   );
   await tester.sendEventToBinding(pointer.scroll(Offset(0, delta)));
   await tester.pump();
@@ -935,3 +937,12 @@ final _tree = <ProductCategoryNode>[
     children: const [],
   ),
 ];
+
+Finder _goodsName(String name) => find.descendant(
+  of: find.byKey(const Key('goods-picker-paged-list')),
+  // Tooltip OverlayPortal text is a logical descendant too. Target the
+  // actual cell's direct text, rather than its rich floating disclosure.
+  matching: find.byWidgetPredicate(
+    (widget) => widget is Text && widget.data == name,
+  ),
+);

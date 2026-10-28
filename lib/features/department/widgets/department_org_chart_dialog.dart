@@ -2,7 +2,7 @@
 // - 节点卡片化：部门名 + 人数 + 负责人 chip 一体；层级用引导线 + 色彩区分；
 // - 领导归入班组：负责人即使档案挂在总经办等上级组织，也在其负责的节点内
 //   以「负责人」首行呈现（非直属时标注「挂职」）；成员行带领导/班组管理徽章；
-// - 节点可展开/收起（默认展开，点节点头切换）；
+// - 节点默认收起，点节点头查看直属人员及下级；刷新保留手动展开状态；
 // - 打印架构图按 employee:export 权限点门控（无权限隐藏按钮）。
 // 入口：部门管理 → 部门概览卡「部门架构图」按钮。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -20,6 +20,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
@@ -52,7 +53,8 @@ class _DepartmentOrgChartDialogState
     extends ConsumerState<DepartmentOrgChartDialog> {
   DepartmentNode? _root;
   Map<String, List<EmployeeSummary>> _byDept = const {};
-  final Set<String> _collapsed = {};
+  final _expansion = UtenDefaultCollapsedTreeState();
+  Set<String> get _collapsed => _expansion.collapsedIds;
   bool _loading = true;
   bool _printing = false;
   String? _error;
@@ -105,6 +107,16 @@ class _DepartmentOrgChartDialogState
       if (!_current(version)) return;
       setState(() {
         _root = tree.isEmpty ? widget.node : tree.first;
+        final ids = <String>[];
+        void collect(DepartmentNode node) {
+          ids.add(node.id);
+          for (final child in node.children) {
+            collect(child);
+          }
+        }
+
+        collect(_root!);
+        _expansion.reconcile(ids);
         _byDept = snapshot.byDepartment;
         _loading = false;
       });
@@ -197,6 +209,11 @@ class _DepartmentOrgChartDialogState
                       ),
                     ),
                     IconButton(
+                      tooltip: '刷新',
+                      onPressed: _loading || _retired ? null : _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
+                    IconButton(
                       tooltip: '关闭',
                       onPressed: () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
@@ -267,6 +284,8 @@ class _DepartmentOrgChartDialogState
     final isRoot = depth == 0;
     final collapsed = _collapsed.contains(node.id);
     final hasChildren = node.children.isNotEmpty;
+    final canExpand =
+        hasChildren || members.isNotEmpty || node.managerId != null;
     final headcount = node.headcount ?? members.length;
 
     final card = Container(
@@ -295,7 +314,7 @@ class _DepartmentOrgChartDialogState
         children: [
           // 节点头：名称 + 人数 + 负责人 chip + 折叠钮
           InkWell(
-            onTap: hasChildren
+            onTap: canExpand
                 ? () => setState(() {
                     collapsed
                         ? _collapsed.remove(node.id)
@@ -315,7 +334,7 @@ class _DepartmentOrgChartDialogState
                     ),
               child: Row(
                 children: [
-                  if (hasChildren)
+                  if (canExpand)
                     Icon(
                       collapsed
                           ? Icons.chevron_right_rounded
@@ -348,7 +367,7 @@ class _DepartmentOrgChartDialogState
             ),
           ),
           // 负责人归入班组：以首行呈现（非直属标注挂职）
-          if (node.managerId != null && node.managerName != null)
+          if (!collapsed && node.managerId != null && node.managerName != null)
             _memberRow(
               theme,
               name: node.managerName!,
@@ -358,18 +377,19 @@ class _DepartmentOrgChartDialogState
               highlight: true,
             ),
           // 成员行（含领导/班组管理徽章）
-          for (final e in members)
-            _memberRow(
-              theme,
-              name: e.fullName,
-              position: e.positionName,
-              badgeLabel: employeeLeadershipLabel(
-                departmentManager: e.departmentManager,
-                positionLevel: e.positionLevel,
-                leaderRank: e.leaderRank,
+          if (!collapsed)
+            for (final e in members)
+              _memberRow(
+                theme,
+                name: e.fullName,
+                position: e.positionName,
+                badgeLabel: employeeLeadershipLabel(
+                  departmentManager: e.departmentManager,
+                  positionLevel: e.positionLevel,
+                  leaderRank: e.leaderRank,
+                ),
+                icon: Icons.person_outline_rounded,
               ),
-              icon: Icons.person_outline_rounded,
-            ),
           if (node.managerId == null && members.isEmpty && !hasChildren)
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),

@@ -11,6 +11,7 @@ import 'dart:async';
 
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -435,7 +436,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
         builder: (ctx) {
           return owner.ownDialog(
             ctx,
-            const Center(child: CircularProgressIndicator()),
+            const UtenTaskProgressDialog(title: '正在读取单位资料'),
           );
         },
       );
@@ -984,7 +985,8 @@ class _UnitPageState extends ConsumerState<UnitPage>
                 ),
               ),
             ),
-            if (_rowOpBusy) const UtenBusyOverlay(title: '正在处理单位'),
+            if (_rowOpBusy)
+              const UtenBusyOverlay(showDoNotLeaveHint: false, title: '正在处理单位'),
           ],
         ),
       ),

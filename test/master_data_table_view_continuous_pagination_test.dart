@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 String _value(String row) => row;
@@ -182,9 +183,9 @@ void main() {
     expect(host.requests, [2, 2]);
     host.responses.last.complete(['A-20']);
     await tester.pumpAndSettle();
-    // The response advances the loaded boundary; the viewport still starts
-    // within page 1, so its displayed page must not advance prematurely.
-    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+    // 2026-10-27 用户口径：滑到已加载内容末尾时页码报到最后一页——即使视口
+    // 顶部仍停在第 1 页，末行（第 2 页的 A-20）已在视口底部可见。
+    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
     expect(host.rows.items.length, 21);
   });
 
@@ -225,7 +226,8 @@ void main() {
     host.responses.last.complete(['A-20']);
     await tester.pumpAndSettle();
     expect(host.rows.items.length, 21);
-    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+    // 同上：已加载末尾的短页在视口底部可见，页码如实报到第 2 页。
+    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -297,17 +299,39 @@ void main() {
       expect(host.rows.items.length, 20);
       expect(host.page, 1);
       await _bottom(tester);
-      expect(find.text('连接失败'), findsOneWidget);
+      expect(find.text('连接失败'), findsNothing);
+      expect(find.text('下一页加载失败'), findsOneWidget);
       await _wheel(tester);
       expect(host.requests, [2], reason: 'failed requests do not loop');
-      await tester.tap(find.text('重试'));
+      await tester.tap(
+        find.byKey(const ValueKey('master-table-page-read-details')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is SelectableText && widget.data == '连接失败',
+        ),
+        findsOneWidget,
+      );
+      expect(host.rows.items.length, 20);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenAlertDialog),
+          matching: find.text('重试'),
+        ),
+      );
       await tester.pump();
+      expect(host.requests, [
+        2,
+        2,
+      ], reason: 'retry repeats only the failed page');
       host.responses.last.complete(['A-19', 'A-20']);
       await tester.pumpAndSettle();
       expect(host.requests, [2, 2]);
       expect(host.rows.items.length, 21);
       expect(host.rows.items.where((row) => row == 'A-19').length, 1);
       expect(host.page, 2);
+      expect(tester.takeException(), isNull);
     },
   );
 

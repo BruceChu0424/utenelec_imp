@@ -1,43 +1,151 @@
-// 敏感操作再认证协调器 (ADR-110)。
-//
-// 服务端对设/撤超管、授权、重置密码、系统设置、改手机号/姓名等操作要求
-// 「5 分钟内、本人本会话、一次性」的再认证凭证；缺了就回 403 REAUTH_REQUIRED。
-// 网络层的 StepUpInterceptor 收到这个错误后向这里要一张凭证：由应用根部登记的
-// 统一弹窗 (showReauthDialog) 让用户重新输入登录密码换取，换到后原请求带上凭证重发。
-//
-// 凭证一次性、不能共用：同一时刻只弹一个密码框，并发的第二个请求等前一个弹窗结束后
-// 再弹自己的一次 (敏感写操作几乎不会并发，按顺序来最不容易出错)。
+// 会话内的敏感操作再认证：连续操作复用凭证，空闲五分钟后重新验证。
+// 仅保存随机凭证于内存；密码、凭证均不写持久存储。服务端负责最终过期判断。
+import 'user_activity.dart';
 
 typedef StepUpPrompter = Future<String?> Function();
 
 class StepUpCoordinator {
-  StepUpCoordinator._();
+  StepUpCoordinator({DateTime Function()? clock})
+    : _clock = clock ?? (() => UserActivity.clock());
 
-  static final StepUpCoordinator instance = StepUpCoordinator._();
+  static final StepUpCoordinator instance = StepUpCoordinator();
+  static const idleTimeout = Duration(minutes: 5);
+  static const activityInterval = Duration(seconds: 30);
 
+  final DateTime Function() _clock;
   StepUpPrompter? _prompter;
+  Future<String?>? _pending;
+  String? _token;
+  Object? _identity;
+  DateTime? _expiresAt;
+  DateTime? _lastActivityAt;
+  DateTime? _syncedActivityAt;
+  DateTime? _lastActivityRequestAt;
+  bool _activityRequestInFlight = false;
+  int _generation = 0;
 
-  /// 延迟到首次 obtain 时在调用方 zone 里创建：字段初始化器会钉死在实例构造
-  /// 所在的 zone（widget 测试里可能是 runAsync 的真实事件循环），完成微任务
-  /// 永远排不上假时钟的队，之后所有 obtain 都挂死。
-  Future<void>? _queue;
+  /// 网络请求的服务器与登录身份变化时，旧凭证和迟到弹框结果立即失效。
+  void bindIdentity(Object identity) {
+    if (_identity == identity) return;
+    clear();
+    _identity = identity;
+  }
 
-  /// 应用根部登记弹窗; 返回解除登记的函数。
+  void clear() {
+    _generation++;
+    _token = null;
+    _expiresAt = null;
+    _lastActivityAt = null;
+    _syncedActivityAt = null;
+    _lastActivityRequestAt = null;
+    _pending = null;
+  }
+
+  void invalidate(String? token) {
+    if (token != null && token == _token) clear();
+  }
+
+  /// 每次真实输入同步检测间隔，避免离开五分钟后首次输入复活旧凭证。
+  void recordActivity() {
+    final now = _clock();
+    final previous = _lastActivityAt;
+    if (_token != null &&
+        previous != null &&
+        now.difference(previous) >= idleTimeout) {
+      clear();
+    }
+    _lastActivityAt = now;
+  }
+
+  String? get cachedToken {
+    if (_token == null) return null;
+    final now = _clock();
+    if (_expiresAt == null ||
+        !now.isBefore(_expiresAt!) ||
+        _lastActivityAt == null ||
+        now.difference(_lastActivityAt!) >= idleTimeout) {
+      clear();
+    }
+    return _token;
+  }
+
+  /// 普通成功请求不续期，只有服务端明确确认续期后才更新有效期。
+  void confirm(String token, {DateTime? requestStartedAt}) {
+    if (_token != token) return;
+    _expiresAt = (requestStartedAt ?? _clock()).add(idleTimeout);
+  }
+
   void Function() register(StepUpPrompter prompter) {
+    clear();
     _prompter = prompter;
     return () {
-      if (identical(_prompter, prompter)) _prompter = null;
+      if (identical(_prompter, prompter)) {
+        _prompter = null;
+        clear();
+      }
     };
   }
 
-  /// 取一张新凭证; 用户取消或没有可用的弹窗时返回 null。
+  /// 同一身份的并发写操作共用一次验证；取消不会留下授权。
   Future<String?> obtain() {
-    final previous = _queue ??= Future.value();
-    final next = previous.then((_) async {
-      final prompter = _prompter;
-      return prompter == null ? null : await prompter();
-    });
-    _queue = next.then((_) {}, onError: (_) {});
+    final cached = cachedToken;
+    if (cached != null) return Future.value(cached);
+    final pending = _pending;
+    if (pending != null) return pending;
+    final prompter = _prompter;
+    if (prompter == null) return Future.value();
+    final generation = _generation;
+    late final Future<String?> next;
+    next = Future<String?>.sync(prompter)
+        .then((value) {
+          if (generation != _generation ||
+              !identical(_prompter, prompter) ||
+              value == null ||
+              value.isEmpty) {
+            return null;
+          }
+          _token = value;
+          _lastActivityAt = _clock();
+          _syncedActivityAt = _lastActivityAt;
+          _expiresAt = _lastActivityAt!.add(idleTimeout);
+          return value;
+        })
+        .whenComplete(() {
+          if (identical(_pending, next)) _pending = null;
+        });
+    _pending = next;
     return next;
+  }
+
+  /// 只在新增输入后发送有界活动请求；定时器、后台轮询本身不续期。
+  Future<void> keepAliveIfActive(
+    Future<void> Function(String token) renew,
+  ) async {
+    final token = cachedToken;
+    final activity = _lastActivityAt;
+    final now = _clock();
+    if (token == null ||
+        activity == null ||
+        _activityRequestInFlight ||
+        now.difference(activity) >= UserActivity.idleAfter ||
+        (_syncedActivityAt != null && !activity.isAfter(_syncedActivityAt!)) ||
+        (_lastActivityRequestAt != null &&
+            now.difference(_lastActivityRequestAt!) < activityInterval)) {
+      return;
+    }
+    _activityRequestInFlight = true;
+    _lastActivityRequestAt = now;
+    final generation = _generation;
+    try {
+      await renew(token);
+      if (generation == _generation && _token == token) {
+        confirm(token, requestStartedAt: now);
+        _syncedActivityAt = activity;
+      }
+    } catch (_) {
+      // 网络故障不假装续期，仍以此前服务端确认的截止时间为准。
+    } finally {
+      _activityRequestInFlight = false;
+    }
   }
 }

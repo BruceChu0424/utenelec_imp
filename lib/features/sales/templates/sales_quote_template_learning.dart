@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -277,7 +278,10 @@ class _SalesQuoteTemplateReviewState extends State<SalesQuoteTemplateReview> {
         .whereType<Map<dynamic, dynamic>>();
     return UtenAlertDialog(
       scrollable: false,
-      title: Text(l10n.quoteTemplateReviewTitle),
+      title: UtenSectionHeader(
+        title: l10n.quoteTemplateReviewTitle,
+        info: l10n.quoteTemplateReviewHint,
+      ),
       content: SizedBox(
         width: 560,
         child: ConstrainedBox(
@@ -294,8 +298,6 @@ class _SalesQuoteTemplateReviewState extends State<SalesQuoteTemplateReview> {
                 Text(
                   '${l10n.quoteTemplateSheet}: ${widget.result['sheetName'] ?? ''}',
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(l10n.quoteTemplateReviewHint),
                 for (final notice in (widget.result['notices'] as List? ?? []))
                   Padding(
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),

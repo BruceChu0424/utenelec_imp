@@ -15,6 +15,7 @@ abstract interface class GoodsImportRepository {
     Map<int, String> codeCorrections = const {},
     GoodsImportCorrections cellCorrections = const {},
     Set<int> excludedRowNums = const {},
+    GoodsImportMode? mode,
   });
   Future<GoodsImportResult> commit(
     Uint8List bytes, {
@@ -24,6 +25,7 @@ abstract interface class GoodsImportRepository {
     Map<int, String> codeCorrections = const {},
     GoodsImportCorrections cellCorrections = const {},
     Set<int> excludedRowNums = const {},
+    GoodsImportMode? mode,
   });
   Future<GoodsImportBatchInfo?> latest();
   Future<void> undo(String batchId);
@@ -39,12 +41,17 @@ class DioGoodsImportRepository implements GoodsImportRepository {
     Map<int, String> codeCorrections = const {},
     GoodsImportCorrections cellCorrections = const {},
     Set<int> excludedRowNums = const {},
+    GoodsImportMode? mode,
   }) async {
     final json =
         codeCorrections.isEmpty &&
             cellCorrections.isEmpty &&
             excludedRowNums.isEmpty
-        ? await api.postBytes(ApiEndpoints.goodsImportDetect, bytes)
+        ? await api.postBytes(
+            ApiEndpoints.goodsImportDetect,
+            bytes,
+            query: mode == null ? null : {'mode': mode.wireName},
+          )
         : await api.post(
             ApiEndpoints.goodsImportDetect,
             body: {
@@ -59,6 +66,7 @@ class DioGoodsImportRepository implements GoodsImportRepository {
                   for (final entry in cellCorrections.entries)
                     '${entry.key}': entry.value,
                 },
+              if (mode != null) 'mode': mode.wireName,
             },
           );
     return GoodsImportReport.fromJson(json);
@@ -73,6 +81,7 @@ class DioGoodsImportRepository implements GoodsImportRepository {
     Map<int, String> codeCorrections = const {},
     GoodsImportCorrections cellCorrections = const {},
     Set<int> excludedRowNums = const {},
+    GoodsImportMode? mode,
   }) async {
     final normalizedPlanId = planId.trim();
     if (normalizedPlanId.isEmpty) {
@@ -97,6 +106,7 @@ class DioGoodsImportRepository implements GoodsImportRepository {
             for (final entry in cellCorrections.entries)
               '${entry.key}': entry.value,
           },
+        if (mode != null) 'mode': mode.wireName,
       },
     );
     return GoodsImportResult.fromJson(json);

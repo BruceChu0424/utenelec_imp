@@ -311,6 +311,8 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           label: '放行重量',
           width: 120,
           numeric: true,
+          columnSearchEnabled: false,
+          filterValueOf: (row) => _releasedWeightText(row),
           headerInfo:
               '本次实收按到货实称分摊的重量(只读)，入库时按它记库存重量；'
               '到货没称显示「未称」，入库后由库存账推算；辅助计算统一使用千克(kg)。',

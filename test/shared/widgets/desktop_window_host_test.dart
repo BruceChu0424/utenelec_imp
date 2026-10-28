@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +12,7 @@ import 'package:uten_imp/shared/widgets/desktop_window_host.dart';
 const _channel = MethodChannel('com.uten.imp/desktop_window');
 const _closeKey = Key('desktop-window-close');
 const _minimizeKey = Key('desktop-window-minimize');
+const _maximizeKey = Key('desktop-window-maximize');
 const _dragKey = Key('desktop-window-drag');
 
 void main() {
@@ -18,12 +21,18 @@ void main() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late DesktopWindowController controller;
   late List<MethodCall> calls;
+  late bool nativeMaximized;
 
   setUp(() {
     calls = [];
+    nativeMaximized = false;
     controller = DesktopWindowController(enabled: true);
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
+      if (call.method == 'toggleMaximize') nativeMaximized = !nativeMaximized;
+      if (call.method == 'getWindowState') {
+        return {'maximized': nativeMaximized};
+      }
       return null;
     });
   });
@@ -57,6 +66,51 @@ void main() {
       },
       platform: platform,
     );
+
+    _desktopTestWidgets(
+      '${platform.name}: main controls keep native ordering and content clear',
+      (tester) async {
+        await _pump(
+          tester,
+          controller,
+          mode: DesktopWindowMode.main,
+          overlayControls: true,
+        );
+        final close = tester.getRect(find.byKey(_closeKey));
+        final minimize = tester.getRect(find.byKey(_minimizeKey));
+        final maximize = tester.getRect(find.byKey(_maximizeKey));
+        final drag = tester.getRect(find.byKey(_dragKey));
+        if (platform == TargetPlatform.macOS) {
+          expect(close.right, lessThanOrEqualTo(minimize.left));
+          expect(minimize.right, lessThanOrEqualTo(maximize.left));
+          expect(maximize.right, lessThanOrEqualTo(drag.left));
+        } else {
+          expect(drag.right, lessThanOrEqualTo(minimize.left));
+          expect(minimize.right, lessThanOrEqualTo(maximize.left));
+          expect(maximize.right, lessThanOrEqualTo(close.left));
+          expect(
+            close.right,
+            tester.view.physicalSize.width / tester.view.devicePixelRatio - 8,
+          );
+        }
+        expect(find.byTooltip('Maximize'), findsOneWidget);
+        expect(
+          tester.getTopLeft(find.byType(_DraftEditor)),
+          const Offset(0, DesktopWindowHost.controlsHeight),
+        );
+        final stripMaterial = tester.widget<Material>(
+          find
+              .ancestor(
+                of: find.byKey(_dragKey),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(stripMaterial.color, Colors.transparent);
+        expect(tester.takeException(), isNull);
+      },
+      platform: platform,
+    );
   }
 
   _desktopTestWidgets('login controls invoke only their own native action', (
@@ -84,14 +138,15 @@ void main() {
       calls.clear();
 
       await tester.tap(find.byKey(_dragKey), buttons: kSecondaryButton);
-      await tester.tap(
+      await tester.drag(
         find.byKey(_dragKey),
-        buttons: kPrimaryButton | kSecondaryButton,
+        const Offset(60, 0),
+        buttons: kSecondaryButton,
       );
       await tester.pumpAndSettle();
       expect(calls, isEmpty);
 
-      await tester.tap(find.byKey(_dragKey));
+      await tester.drag(find.byKey(_dragKey), const Offset(60, 0));
       await tester.pumpAndSettle();
       expect(calls.map((call) => call.method), ['beginDrag']);
     },
@@ -137,16 +192,27 @@ void main() {
   );
 
   _desktopTestWidgets(
-    'main presentation leaves all content space to the application',
+    'main controls invoke their native actions without initiating a drag',
     (tester) async {
       await _pump(tester, controller, mode: DesktopWindowMode.main);
 
-      expect(find.byKey(_closeKey), findsNothing);
-      expect(find.byKey(_minimizeKey), findsNothing);
-      expect(find.byKey(_dragKey), findsNothing);
-      expect(tester.getTopLeft(find.byType(_DraftEditor)), Offset.zero);
-      expect(calls.map((call) => (call.method, call.arguments)), [
-        ('setMode', 'main'),
+      calls.clear();
+      await tester.tap(find.byKey(_minimizeKey));
+      await tester.tap(find.byKey(_maximizeKey));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Restore'), findsOneWidget);
+      await tester.tap(find.byKey(_maximizeKey));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Maximize'), findsOneWidget);
+      await tester.tap(find.byKey(_closeKey));
+      await tester.pumpAndSettle();
+      expect(calls.map((call) => call.method), [
+        'minimize',
+        'toggleMaximize',
+        'getWindowState',
+        'toggleMaximize',
+        'getWindowState',
+        'close',
       ]);
     },
   );
@@ -164,19 +230,67 @@ void main() {
       expect(tester.state(find.byType(_DraftEditor)), same(editor));
       expect(editor.text.text, '保留输入的账号');
       expect(editor.focus.hasFocus, isTrue);
-      expect(find.byKey(_closeKey), findsNothing);
+      expect(find.byKey(_closeKey), findsOneWidget);
+      expect(find.byKey(_maximizeKey), findsOneWidget);
 
       await _pump(tester, controller);
       expect(tester.state(find.byType(_DraftEditor)), same(editor));
       expect(editor.text.text, '保留输入的账号');
       expect(editor.focus.hasFocus, isTrue);
       expect(find.byKey(_closeKey), findsOneWidget);
+      expect(find.byKey(_maximizeKey), findsNothing);
       await _pump(tester, controller);
-      expect(calls.map((call) => (call.method, call.arguments)), [
-        ('setMode', 'login'),
-        ('setMode', 'main'),
-        ('setMode', 'login'),
+      expect(
+        calls
+            .where((call) => call.method == 'setMode')
+            .map((call) => (call.method, call.arguments)),
+        [('setMode', 'login'), ('setMode', 'main'), ('setMode', 'login')],
+      );
+    },
+  );
+
+  _desktopTestWidgets(
+    'double clicking the main drag area toggles expansion while a drag only moves',
+    (tester) async {
+      await _pump(tester, controller, mode: DesktopWindowMode.main);
+      calls.clear();
+      await tester.tap(find.byKey(_dragKey));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.byKey(_dragKey));
+      await tester.pumpAndSettle();
+      expect(calls.map((call) => call.method), [
+        'toggleMaximize',
+        'getWindowState',
       ]);
+      calls.clear();
+      await tester.drag(find.byKey(_dragKey), const Offset(60, 0));
+      await tester.pumpAndSettle();
+      expect(calls.map((call) => call.method), ['beginDrag']);
+    },
+  );
+
+  _desktopTestWidgets(
+    'native maximize events update the main control without remounting content',
+    (tester) async {
+      await _pump(tester, controller, mode: DesktopWindowMode.main);
+      final editor = tester.state<_DraftEditorState>(find.byType(_DraftEditor));
+      await tester.enterText(find.byType(TextField), '保留未提交内容');
+      await tester.runAsync(() async {
+        final delivered = Completer<void>();
+        ServicesBinding.instance.channelBuffers.push(
+          _channel.name,
+          _channel.codec.encodeMethodCall(
+            const MethodCall('windowStateChanged', {'maximized': true}),
+          ),
+          (_) => delivered.complete(),
+        );
+        await delivered.future;
+      });
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Restore'), findsOneWidget);
+      expect(tester.state(find.byType(_DraftEditor)), same(editor));
+      expect(editor.text.text, '保留未提交内容');
+      expect(editor.focus.hasFocus, isTrue);
     },
   );
 
@@ -200,13 +314,15 @@ void main() {
   _desktopTestWidgets(
     'personal display zoom does not shrink or enlarge window controls',
     (tester) async {
-      await _pump(tester, controller);
+      await _pump(tester, controller, mode: DesktopWindowMode.main);
       final originalClose = tester.getRect(find.byKey(_closeKey));
       final originalMinimize = tester.getRect(find.byKey(_minimizeKey));
-      await _pump(tester, controller, zoom: 1.8);
+      final originalMaximize = tester.getRect(find.byKey(_maximizeKey));
+      await _pump(tester, controller, mode: DesktopWindowMode.main, zoom: 2);
 
       expect(tester.getRect(find.byKey(_closeKey)), originalClose);
       expect(tester.getRect(find.byKey(_minimizeKey)), originalMinimize);
+      expect(tester.getRect(find.byKey(_maximizeKey)), originalMaximize);
       expect(tester.takeException(), isNull);
     },
     platform: TargetPlatform.macOS,

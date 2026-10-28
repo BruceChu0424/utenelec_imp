@@ -31,6 +31,8 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/employee_api_models.dart';
 import '../providers/employee_picker_department_tree_provider.dart';
 import '../repositories/employee_repository.dart';
+import '../../basic_data/models/master_facet.dart';
+import '../../../shared/search/table_column_query.dart';
 
 export '../providers/employee_picker_department_tree_provider.dart';
 
@@ -114,6 +116,7 @@ class _DeptEmployeePickerSheetState
   String? _error;
   String? _searchLocationError;
   List<UtenEmployeePickerItem> _items = const [];
+  TableColumnQuery _headers = const TableColumnQuery();
 
   /// 已点选（高亮）的员工；底部「确定」才 pop 返回（二次操作契约）。
   UtenEmployeePickerItem? _picked;
@@ -157,6 +160,7 @@ class _DeptEmployeePickerSheetState
     _selectedDeptId = null;
     _selectedDeptName = null;
     _globalQuery = '';
+    _headers = const TableColumnQuery();
     _visibleFilterIds = null;
     _categoryMatchDepartmentIds = {};
     _contentMatchDepartmentIds = {};
@@ -259,6 +263,7 @@ class _DeptEmployeePickerSheetState
     if (!_acceptPendingSearch || query != _globalQuery) return;
     _acceptPendingSearch = false;
     final request = ++_requestVersion;
+    final headers = _headers;
     if (query.isEmpty) {
       setState(() {
         _globalQuery = '';
@@ -328,12 +333,17 @@ class _DeptEmployeePickerSheetState
                       prepare: false,
                     ),
                   )
-                : repository.list(
+                : repository.listWithColumnQuery(
                     page: page,
                     size: _pageSize,
                     search: query,
                     statuses: widget.statuses,
                     includeSubtree: true,
+                    columnQuery: headers.searches,
+                    sort: headers.sort,
+                    order: headers.sort == null
+                        ? null
+                        : (headers.ascending ? 'asc' : 'desc'),
                   ),
             categoryIdOf: (item) => item.departmentId,
             isCurrent: () => _isCurrent(request),
@@ -392,7 +402,10 @@ class _DeptEmployeePickerSheetState
   Future<void> _loadEmployees({String? departmentId, String? keyword}) async {
     if (!_canUseCandidates) return;
     final request = ++_requestVersion;
-    if (departmentId == null && (keyword == null || keyword.isEmpty)) {
+    if (departmentId == null &&
+        (keyword == null || keyword.isEmpty) &&
+        _headers.searches.isEmpty &&
+        _headers.sort == null) {
       setState(() {
         _items = const [];
         _resetPageState();
@@ -436,13 +449,14 @@ class _DeptEmployeePickerSheetState
   }) {
     final repository = ref.read(employeeRepositoryProvider);
     final statuses = Set<String>.unmodifiable(widget.statuses);
+    final headers = _headers;
     bool current() =>
         _isCurrent(request) &&
         identical(repository, ref.read(employeeRepositoryProvider)) &&
         setEquals(statuses, widget.statuses);
     return _candidatePages.read(
       page,
-      scope: [repository, request, departmentId, keyword, statuses],
+      scope: [repository, request, departmentId, keyword, statuses, headers],
       isCurrent: current,
       useCache: useCache,
       canPrefetch: () =>
@@ -455,13 +469,18 @@ class _DeptEmployeePickerSheetState
           onPickerAccessInvalidated();
         }
       },
-      fetchPage: (target) => repository.list(
+      fetchPage: (target) => repository.listWithColumnQuery(
         page: target,
         size: _pageSize,
         departmentId: departmentId,
         search: keyword,
         statuses: statuses,
         includeSubtree: true,
+        columnQuery: headers.searches,
+        sort: headers.sort,
+        order: headers.sort == null
+            ? null
+            : (headers.ascending ? 'asc' : 'desc'),
       ),
     );
   }
@@ -492,6 +511,21 @@ class _DeptEmployeePickerSheetState
     _pageKeyword = null;
     _loadingMore = false;
     _loadMoreError = null;
+  }
+
+  Future<void> _changeHeaders(TableColumnQuery headers) async {
+    if (!_canUseCandidates) return;
+    setState(() {
+      _headers = headers;
+      _picked = null;
+      _items = const [];
+    });
+    if (_globalQuery.isNotEmpty) {
+      _acceptPendingSearch = true;
+      await _applyGlobalSearch(_globalQuery);
+    } else {
+      await _loadEmployees(departmentId: _selectedDeptId);
+    }
   }
 
   UtenEmployeePickerItem _toPickerItem(EmployeeSummary employee) =>
@@ -582,7 +616,6 @@ class _DeptEmployeePickerSheetState
       externalSearchError: _globalQuery.isEmpty
           ? null
           : (_searchLocationError ?? _error),
-      initiallyExpandDepth: 0,
       selectedIds: _selectedDeptId == null ? const {} : {_selectedDeptId!},
       nodeEnabledPredicate: (_) => true,
       onToggleSelect: _onDeptTap,
@@ -694,7 +727,7 @@ class _DeptEmployeePickerSheetState
         ),
       );
     }
-    if (_items.isEmpty) {
+    if (_items.isEmpty && _headers.searches.isEmpty && _headers.sort == null) {
       final hasQuery =
           _keywordCtl.text.trim().isNotEmpty || _selectedDeptId != null;
       return Center(
@@ -719,21 +752,24 @@ class _DeptEmployeePickerSheetState
                 label: '姓名',
                 width: 140,
                 value: (employee) => employee.name,
-                columnSearchEnabled: false,
+                columnSearchEnabled: true,
+                sortable: true,
               ),
               MasterColumnDef(
                 key: 'employeeCode',
                 label: '工号',
                 width: 120,
                 value: (employee) => employee.employeeCode,
-                columnSearchEnabled: false,
+                columnSearchEnabled: true,
+                sortable: true,
               ),
               MasterColumnDef(
                 key: 'department',
                 label: '部门',
                 width: 200,
                 value: (employee) => employee.departmentName,
-                columnSearchEnabled: false,
+                columnSearchEnabled: true,
+                sortable: true,
               ),
               MasterColumnDef(
                 key: 'accountStatus',
@@ -742,6 +778,7 @@ class _DeptEmployeePickerSheetState
                 value: (employee) =>
                     employeeAccountStatusLabel(employee.accountStatus),
                 columnSearchEnabled: false,
+                facetSearchEnabled: true,
               ),
               MasterColumnDef(
                 key: 'employmentStatus',
@@ -750,6 +787,7 @@ class _DeptEmployeePickerSheetState
                 value: (employee) =>
                     employeeEmploymentStatusLabel(employee.employmentStatus),
                 columnSearchEnabled: false,
+                facetSearchEnabled: true,
               ),
             ],
             items: _items,
@@ -760,11 +798,52 @@ class _DeptEmployeePickerSheetState
               if (_loading || !_isCurrent(requestVersion)) return;
               setState(() => _picked = employee);
             },
-            facets: const {},
+            serverColumnSearchKeys: const {
+              'name',
+              'employeeCode',
+              'department',
+            },
+            headerFilterScopeDescription: '检索当前部门和可选状态范围的全部候选；只收敛候选，不扩大选择资格',
+            facets: {
+              'accountStatus': [
+                for (final status in const [
+                  'notProvisioned',
+                  'active',
+                  'locked',
+                  'disabled',
+                ])
+                  MasterFacetBucket(
+                    value: status,
+                    label: employeeAccountStatusLabel(status),
+                    count: 0,
+                  ),
+              ],
+              'employmentStatus': [
+                for (final status
+                    in widget.statuses.isEmpty
+                        ? const {'active', 'probation', 'onLeave', 'resigned'}
+                        : widget.statuses)
+                  MasterFacetBucket(
+                    value: status,
+                    label: employeeEmploymentStatusLabel(status),
+                    count: 0,
+                  ),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            paginationScope: (_pageDepartmentId, _pageKeyword, _requestVersion),
+            filters: _headers.searches,
+            onFilterChanged: (key, value) =>
+                _changeHeaders(_headers.search(key, value)),
+            sortColumn: _headers.sort,
+            sortAscending: _headers.ascending,
+            onSortChange: (key, ascending) =>
+                _changeHeaders(_headers.sorted(key, ascending)),
+            paginationScope: (
+              _pageDepartmentId,
+              _pageKeyword,
+              _requestVersion,
+              _headers,
+            ),
             loadingMore: _loadingMore,
             onLoadMore:
                 !_loadingMore &&

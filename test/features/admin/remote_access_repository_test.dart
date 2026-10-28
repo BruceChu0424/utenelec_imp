@@ -128,12 +128,17 @@ void main() {
         };
       final repo = DioAuthRepository(api);
       await repo.login('worker', 'password');
-      expect(api.body, {'loginAccount': 'worker', 'password': 'password'});
+      expect(api.body, {
+        'loginAccount': 'worker',
+        'password': 'password',
+        'deviceName': '本设备',
+      });
       await repo.loginWithOtp('worker', 'password', '001234');
       expect(api.body, {
         'loginAccount': 'worker',
         'password': 'password',
         'otpCode': '001234',
+        'deviceName': '本设备',
       });
     },
   );

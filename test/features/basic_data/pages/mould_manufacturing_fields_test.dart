@@ -77,7 +77,7 @@ void main() {
       await tester.tap(find.text('全部模具'));
       await tester.pumpAndSettle();
     }
-    await tester.tap(find.text('历史模具'));
+    await _selectHistoricalMould(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('修改历史'));
     await tester.pumpAndSettle();
@@ -114,7 +114,7 @@ void main() {
         await SharedPreferences.getInstance(),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('历史模具'));
+      await _selectHistoricalMould(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('旧模具名称'));
       await tester.pump(const Duration(milliseconds: 80));
@@ -193,7 +193,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史模具'));
+    await _selectHistoricalMould(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('旧模具名称'));
     await tester.pump(const Duration(milliseconds: 80));
@@ -316,7 +316,7 @@ void main() {
     await _pumpPage(tester, repository, preferences);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('历史模具'));
+    await _selectHistoricalMould(tester);
     await tester.pumpAndSettle();
     expect(find.text('1+1'), findsOneWidget, reason: '模数列取 qty');
     expect(find.text('12'), findsOneWidget, reason: '套数列取 tqty（整数不带小数位）');
@@ -329,7 +329,7 @@ void main() {
     final repository = _Moulds();
     await _pumpPage(tester, repository, await SharedPreferences.getInstance());
     await tester.pumpAndSettle();
-    await tester.tap(find.text('历史模具'));
+    await _selectHistoricalMould(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Edit table'));
     await tester.pumpAndSettle();
@@ -372,6 +372,14 @@ void main() {
   });
 }
 
+Future<void> _selectHistoricalMould(WidgetTester tester) async {
+  if (find.text('历史模具').evaluate().isEmpty) {
+    await tester.tap(find.byTooltip('展开全部模具'));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text('历史模具'));
+}
+
 Future<void> _pumpPage(
   WidgetTester tester,
   MouldRepository repository,
@@ -400,6 +408,12 @@ Future<void> _pumpPage(
       ),
     ),
   );
+  await tester.pumpAndSettle();
+  final expand = find.byTooltip('展开全部模具');
+  if (expand.evaluate().isNotEmpty) {
+    await tester.tap(expand);
+    await tester.pumpAndSettle();
+  }
 }
 
 class _Categories implements MouldCategoryRepository {

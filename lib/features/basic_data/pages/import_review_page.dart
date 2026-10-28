@@ -1,14 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_scroll_gutter.dart';
-import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/responsive/scale.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../widgets/basic_data_l10n.dart';
@@ -142,11 +144,20 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
     if (cell == null) {
       return Tooltip(
         message: l10n.importReviewUnchanged,
-        child: Text('—', semanticsLabel: l10n.importReviewUnchanged),
+        child: Text(
+          '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          semanticsLabel: l10n.importReviewUnchanged,
+        ),
       );
     }
     if (!cell.changed) {
-      return Text(_displayValue(cell.after ?? cell.before, l10n));
+      final value = _displayValue(cell.after ?? cell.before, l10n);
+      return Tooltip(
+        message: value,
+        child: Text(value, maxLines: 1, overflow: TextOverflow.ellipsis),
+      );
     }
     final before = _displayValue(cell.before, l10n);
     final after = _displayValue(cell.after, l10n);
@@ -156,6 +167,68 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
       oldValueLabel: l10n.importReviewOldValue,
       newValueLabel: l10n.importReviewNewValue,
     );
+  }
+
+  double _fieldContentWidth(
+    BuildContext context,
+    ImportReviewCell? cell,
+    TextScaler textScaler,
+    AppLocalizations l10n,
+  ) {
+    final style = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+    double width(String value, TextStyle valueStyle) => utenTableCellTextWidth(
+      value,
+      style: valueStyle,
+      textScaler: textScaler,
+      textDirection: Directionality.of(context),
+    );
+    if (cell == null) return width('—', style);
+    if (!cell.changed) {
+      return width(_displayValue(cell.after ?? cell.before, l10n), style);
+    }
+    return math.max(
+              width(_displayValue(cell.before, l10n), style),
+              width(
+                _displayValue(cell.after, l10n),
+                style.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ) *
+            2 +
+        UtenSpacing.s8;
+  }
+
+  double _actionMinimumWidth(BuildContext context, AppLocalizations l10n) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final style = (Theme.of(context).textTheme.labelLarge ?? const TextStyle())
+        .copyWith(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2);
+    final text = math.max(
+      utenTableCellTextWidth(
+        l10n.importReviewIgnoreRow,
+        style: style,
+        textScaler: scaler,
+      ),
+      utenTableCellTextWidth(
+        l10n.importReviewRestoreRow,
+        style: style,
+        textScaler: scaler,
+      ),
+    );
+    // Small-button padding, icon and gap, followed by the table's cell padding.
+    return text + 24 + context.scaled(16) + UtenSpacing.s6 + 24 + 2;
+  }
+
+  String? get _sourceFilename {
+    final firstLine = widget.description
+        ?.split(RegExp(r'[\r\n]+'))
+        .first
+        .trim();
+    return firstLine != null &&
+            RegExp(
+              r'\.(xlsx?|csv|json)$',
+              caseSensitive: false,
+            ).hasMatch(firstLine)
+        ? firstLine
+        : null;
   }
 
   List<MasterColumnDef<ImportReviewRow>> _columns(AppLocalizations l10n) {
@@ -184,6 +257,7 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
         key: 'reviewAction',
         label: l10n.importReviewAction,
         width: 164,
+        minimumWidthOf: (context) => _actionMinimumWidth(context, l10n),
         columnSearchEnabled: false,
         value: (row) => !row.selectable
             ? l10n.importReviewAutomaticFill
@@ -194,7 +268,16 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
             : l10n.importReviewPending,
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) {
-          if (!row.selectable) return Text(l10n.importReviewAutomaticFill);
+          if (!row.selectable) {
+            return Tooltip(
+              message: l10n.importReviewAutomaticFill,
+              child: Text(
+                l10n.importReviewAutomaticFill,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            );
+          }
           final ignored = _ignored.contains(row.rowKey);
           return UtenButton(
             key: ValueKey('import-review-ignore-${row.rowKey}'),
@@ -215,6 +298,14 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
           key: 'field:${field.key}',
           label: field.value,
           width: 280,
+          minimumWidthOf: (_) => 48,
+          measureWidthScope: ('import.review.side-by-side.v1', field.key),
+          measureWidthOf: (context, row, scaler) => _fieldContentWidth(
+            context,
+            _cellFor(row, field.key),
+            scaler,
+            l10n,
+          ),
           value: (row) {
             final cell = _cellFor(row, field.key);
             if (cell == null) return '';
@@ -261,48 +352,46 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Bound explanatory copy so 200% text still leaves the full-page
-                  // table usable. Its contents remain scrollable and selectable.
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.sizeOf(context).height * 0.24,
-                    ),
-                    child: SingleChildScrollView(
-                      child: SelectionArea(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (widget.description?.isNotEmpty == true) ...[
-                              Text(
-                                widget.description!,
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: UtenSpacing.s8),
-                            ],
-                            Text(
-                              _hasConflicts
-                                  ? l10n.importReviewLegend
-                                  : l10n.importReviewFillLegend,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                  Padding(
+                    key: const ValueKey('import-review-summary'),
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: Wrap(
+                      spacing: UtenSpacing.s16,
+                      runSpacing: UtenSpacing.s4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (_sourceFilename case final filename?)
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.sizeOf(context).width * .5,
+                            ),
+                            child: Tooltip(
+                              message: filename,
+                              child: Text(
+                                filename,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
                               ),
                             ),
-                            if (_hasConflicts) ...[
-                              const SizedBox(height: UtenSpacing.s8),
-                              Text(
-                                widget.ignoreDescription ??
-                                    l10n.importReviewIgnoreExplanation,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ],
+                          ),
+                        Text(
+                          '共 ${widget.rows.length} 行',
+                          style: theme.textTheme.bodySmall,
                         ),
-                      ),
+                        if (_hasConflicts)
+                          Text(
+                            '需核对 ${widget.rows.where((row) => row.selectable).length} 行',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        if (widget.rows.any((row) => !row.selectable))
+                          Text(
+                            '自动补齐 ${widget.rows.where((row) => !row.selectable).length} 行',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: UtenSpacing.s16),
                   Expanded(
                     child: MasterDataTableView<ImportReviewRow>(
                       expensiveRowMounts: false,
@@ -359,13 +448,18 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
                       // its bounded-height handling and final-row clearance.
                       batchActionsBuilder: (context, selected) => [
                         if (_hasConflicts)
-                          UtenButton(
-                            key: const ValueKey('import-review-ignore-all'),
-                            size: UtenButtonSize.large,
-                            type: UtenButtonType.secondary,
-                            icon: Icons.skip_next_outlined,
-                            onPressed: () => _finish({}),
-                            child: Text(l10n.importReviewIgnoreAll),
+                          Tooltip(
+                            message:
+                                widget.ignoreDescription ??
+                                l10n.importReviewIgnoreExplanation,
+                            child: UtenButton(
+                              key: const ValueKey('import-review-ignore-all'),
+                              size: UtenButtonSize.large,
+                              type: UtenButtonType.secondary,
+                              icon: Icons.skip_next_outlined,
+                              onPressed: () => _finish({}),
+                              child: Text(l10n.importReviewIgnoreAll),
+                            ),
                           ),
                         UtenButton(
                           key: const ValueKey('import-review-confirm'),
@@ -395,10 +489,9 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
   }
 }
 
-/// Each complete value stays independently readable and selectable. A very
-/// long value scrolls inside its half-cell instead of pushing the row identity
-/// and checkbox below the viewport through the table's vertical alignment.
-class _ImportReviewValue extends StatefulWidget {
+/// Differences remain one line; full original values are available through
+/// tooltips and semantics without introducing nested scrolling into each row.
+class _ImportReviewValue extends StatelessWidget {
   const _ImportReviewValue({
     required this.before,
     required this.after,
@@ -411,40 +504,19 @@ class _ImportReviewValue extends StatefulWidget {
   final String oldValueLabel;
   final String newValueLabel;
 
-  @override
-  State<_ImportReviewValue> createState() => _ImportReviewValueState();
-}
-
-class _ImportReviewValueState extends State<_ImportReviewValue> {
-  final _beforeScroll = ScrollController();
-  final _afterScroll = ScrollController();
-
-  @override
-  void dispose() {
-    _beforeScroll.dispose();
-    _afterScroll.dispose();
-    super.dispose();
-  }
-
   Widget _value({
     required String text,
     required String label,
-    required ScrollController controller,
     required TextStyle? style,
   }) => Expanded(
-    child: ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.2,
-      ),
-      child: UtenVerticalScrollbar(
-        controller: controller,
-        child: UtenScrollGutter(
-          child: SingleChildScrollView(
-            controller: controller,
-            primary: false,
-            child: Text(text, style: style, semanticsLabel: '$label: $text'),
-          ),
-        ),
+    child: Tooltip(
+      message: '$label: $text',
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: style,
+        semanticsLabel: '$label: $text',
       ),
     ),
   );
@@ -456,12 +528,10 @@ class _ImportReviewValueState extends State<_ImportReviewValue> {
     final oldColor = dark ? UtenColors.errorOnDark : UtenColors.errorText;
     final newColor = dark ? UtenColors.successOnDark : UtenColors.successText;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _value(
-          text: widget.before,
-          label: widget.oldValueLabel,
-          controller: _beforeScroll,
+          text: before,
+          label: oldValueLabel,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: oldColor,
             decoration: TextDecoration.lineThrough,
@@ -470,9 +540,8 @@ class _ImportReviewValueState extends State<_ImportReviewValue> {
         ),
         const SizedBox(width: UtenSpacing.s8),
         _value(
-          text: widget.after,
-          label: widget.newValueLabel,
-          controller: _afterScroll,
+          text: after,
+          label: newValueLabel,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: newColor,
             fontWeight: FontWeight.w600,

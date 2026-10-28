@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
@@ -519,8 +521,19 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
   @override
   Widget build(BuildContext context) {
     if (_readRetired) {
+      final route = ModalRoute.of(context);
       return Scaffold(
-        appBar: AppBar(title: const Text('读取范围已变化')),
+        appBar: UtenAppBar(
+          title: '读取范围已变化',
+          showPagePermissionAction: false,
+          leading: route?.impliesAppBarDismissal == true
+              ? route!.fullscreenDialog
+                    ? const CloseButton()
+                    : UtenBackButton(
+                        onPressed: () => Navigator.maybePop(context),
+                      )
+              : null,
+        ),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -692,6 +705,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       onLoadMore: () => _load(reset: false),
       child: SingleChildScrollView(
         child: UtenEditableGrid<_LedgerRow>(
+          headerFilterScopeDescription: '筛选已加载台账；查找全部台账请使用上方搜索',
           tableKey:
               'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
           platformBinding: PlatformTableBinding<_LedgerRow>(
@@ -859,32 +873,16 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
     EditableGridColumn<_LedgerRow>(
       key: 'salesOrders',
       label: _isAr ? '销售订单号' : '关联单号',
+      headerInfo: _isAr ? '多订单应收：审核后按不可变来源顺序分配并留痕' : null,
       width: 230,
       // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽，不再折两行撑高整行。
       textOf: (row) => row.item.salesOrderNos.isEmpty
           ? '—'
           : row.item.salesOrderNos.join('、'),
-      cellBuilder: (context, row) => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            row.item.salesOrderNos.isEmpty
-                ? '—'
-                : row.item.salesOrderNos.join('、'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (_isAr && row.item.salesOrderIds.length > 1)
-            Text(
-              '多订单应收：审核后按不可变来源顺序分配并留痕',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-        ],
+      cellBuilder: (context, row) => Text(
+        row.item.salesOrderNos.isEmpty ? '—' : row.item.salesOrderNos.join('、'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     ),
     EditableGridColumn<_LedgerRow>(
@@ -929,6 +927,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       label: _isAr ? '应收总额' : '应付金额',
       width: 140,
       numeric: true,
+      columnSearchEnabled: false,
       exactValueOf: (row) =>
           row.item.amountOriginalText ?? row.item.amountOriginalLocalText,
       cellBuilder: (context, row) => Text(
@@ -943,6 +942,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       label: _isAr ? '累计已收' : '已付金额',
       width: 140,
       numeric: true,
+      columnSearchEnabled: false,
       exactValueOf: (row) =>
           row.item.amountReceivedOriginalText ??
           (_isAr ? null : row.item.amountSettledText),
@@ -963,6 +963,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         label: '累计冲销',
         width: 140,
         numeric: true,
+        columnSearchEnabled: false,
         exactValueOf: (row) => row.item.amountWriteOffOriginalText,
         cellBuilder: (context, row) => Text(
           _moneyWithRowCurrency(row, _fmt(row.item.amountWriteOffOriginal)),
@@ -974,6 +975,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         label: '预收已抵',
         width: 140,
         numeric: true,
+        columnSearchEnabled: false,
         exactValueOf: (row) => row.item.prepaymentAppliedOriginal,
         cellBuilder: (context, row) => Text(
           _moneyWithRowCurrency(
@@ -987,6 +989,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       label: _isAr ? '本次可收' : '未付金额',
       width: 140,
       numeric: true,
+      columnSearchEnabled: false,
       exactValueOf: (row) => row.item.amountBalanceOriginalText,
       cellBuilder: (context, row) => Text(
         row.item.amountBalanceOriginal == null
@@ -1000,6 +1003,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       label: '本次$_actionNoun金额',
       width: 160,
       numeric: true,
+      columnSearchEnabled: false,
       exactValueOf: (row) => _amtCtrls[row.item.id]?.text,
       exactListenableOf: (row) => _amtCtrls[row.item.id],
       cellBuilder: (context, row) => TextField(

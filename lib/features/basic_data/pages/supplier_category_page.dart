@@ -423,8 +423,9 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     MasterEntityPaneController<SupplierListItem, SupplierDetail>? pane, {
     String? draftCategoryId,
   }) async {
+    final current = shellCaptureActionOwner();
     final settlementMethods = await loadSupplierSettlementMethods(context, ref);
-    if (!mounted || settlementMethods == null) return;
+    if (!mounted || !current() || settlementMethods == null) return;
     const iv = <String, String>{};
     await showMasterEditDialog(
       context: context,
@@ -441,8 +442,9 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
           ? null
           : const {'status'},
       onSubmit: (body) async {
+        if (!current()) return false;
         await ref.read(supplierRepositoryProvider).create(body);
-        if (mounted) {
+        if (mounted && current()) {
           context.appSuccess('供应商已创建');
           await pane?.reload();
         }
@@ -456,13 +458,14 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     MasterEntityPaneController<SupplierListItem, SupplierDetail> pane,
     String id,
   ) async {
+    final current = shellCaptureActionOwner();
     await context.push(RoutePath.basicinfoSupplierDetail(id));
-    if (mounted) await pane.reload();
+    if (mounted && current()) await pane.reload();
   }
 
   // ---- 供应商列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 
-  /// 供应商表格 21 列（严格按用户指定顺序与列宽）：
+  /// 供应商表格 21 列（保留用户顺序与手调列宽，默认按内容量宽）：
   /// [MasterColumnDef.key]=筛选键（与后端 query 参数名一一对齐，autofilter）；
   /// [MasterColumnDef.value]=单元格取值。
   ///
@@ -493,6 +496,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       label: '信用天数',
       width: 80,
       type: 'number',
+      columnSearchEnabled: true,
       sortable: true,
       value: (s) => s.tday?.toString(),
     ),
@@ -502,7 +506,11 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       width: 90,
       type: 'number',
       // ADR-098：已结清委外订货行的加权损耗率（服务端汇总视图）；没有结清行显示「—」。
-      // 仍不可筛（不是 suppliers 物理列，不进 facets）。
+      // 搜索/排序复用同一加权读模型，在完整供应商范围分页前应用；比例不求和。
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (s) => s.lossRate?.toStringAsFixed(2),
+      info: '已结清委外行的加权损耗百分比，可输入精确值、比较或范围；没有结清记录不是零。',
       value: (s) => s.lossRate?.toStringAsFixed(2),
     ),
     MasterColumnDef(

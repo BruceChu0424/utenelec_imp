@@ -89,6 +89,7 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.securityTitle,
+        info: l10n.securityScanHint,
         showBackButton: true,
         actions: [
           // 黑名单管理入口（visitor:blacklist 显隐；路由另有守卫兜底）。
@@ -136,31 +137,6 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                 decoration: BoxDecoration(
                   border: Border.all(color: Colors.white70, width: 2),
                   borderRadius: UtenRadius.xlAll,
-                ),
-              ),
-            ),
-            Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s24),
-                // 深色胶囊底：提示文字在任意取景画面上都可读
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    borderRadius: UtenRadius.pillAll,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
-                      vertical: UtenSpacing.s4,
-                    ),
-                    child: Text(
-                      l10n.securityScanHint,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
                 ),
               ),
             ),

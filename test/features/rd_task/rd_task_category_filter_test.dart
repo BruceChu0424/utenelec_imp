@@ -97,7 +97,10 @@ void main() {
     MasterDataTableView<RdTaskRow> table() =>
         tester.widget(find.byType(MasterDataTableView<RdTaskRow>));
     expect(api.queries.last['status'], 'done');
-    expect(table().facets.containsKey('status'), isFalse);
+    expect(table().facets['status']!.map((bucket) => bucket.value), [
+      'DONE',
+      'CANCELED',
+    ]);
     expect(table().items.map((row) => row.status), ['DONE', 'CANCELED']);
     expect(table().totalPages, 2);
     expect(table().items.map((row) => table().columns.first.value(row)), [
@@ -110,7 +113,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.queries, hasLength(before));
     expect(table().items.map((row) => row.status), ['DONE', 'CANCELED']);
-    expect(table().filters.containsKey('status'), isFalse);
+    expect(table().filters['status'], isNull);
     expect(table().totalPages, 2);
     expect(tester.takeException(), isNull);
   });

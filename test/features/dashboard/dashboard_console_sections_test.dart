@@ -12,11 +12,14 @@
 //    待办最多一行，末尾剩余任务数按 count 求和，点击独立面板查看；
 // 6. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对。
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/widgets/dashboard_console_sections.dart';
@@ -163,9 +166,142 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('当前可见范围内暂无概览指标'), findsOneWidget);
+    expect(find.text('按已授权功能和数据范围展示'), findsNothing);
+    final scopeHint = find.byWidgetPredicate(
+      (widget) => widget is UtenFieldHintIcon && widget.info == '按已授权功能和数据范围展示',
+    );
+    expect(scopeHint, findsOneWidget);
+    await tester.tap(scopeHint);
+    await tester.pumpAndSettle();
     expect(find.text('按已授权功能和数据范围展示'), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     expect(find.textContaining('按本部门范围'), findsNothing);
     expect(find.text('财税部暂无概览指标'), findsNothing);
+  });
+
+  for (final width in [375.0, 1200.0]) {
+    for (final interaction in ['hover', 'tap']) {
+      testWidgets('指标静态口径以标题同行图标通过 $interaction 展示 ($width)', (tester) async {
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          host(
+            panel(
+              metrics: [
+                metric(title: '待排产产品', subtitle: '按销售订单需求实时汇总'),
+                metric(
+                  id: 'sales-active',
+                  title: '执行中订单',
+                  value: '7',
+                  subtitle: '已审核且尚未结案',
+                ),
+              ],
+            ),
+            size: Size(width, 900),
+            textScaler: const TextScaler.linear(1.5),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('12'), findsOneWidget);
+        expect(find.text('7'), findsOneWidget);
+        expect(find.textContaining('采样'), findsOneWidget);
+        for (final item in const [
+          ('待排产产品', '按销售订单需求实时汇总'),
+          ('执行中订单', '已审核且尚未结案'),
+        ]) {
+          expect(find.text(item.$2), findsNothing);
+          final hint = find.byWidgetPredicate(
+            (widget) => widget is UtenFieldHintIcon && widget.info == item.$2,
+          );
+          final headingRect = tester.getRect(find.text(item.$1));
+          final hintRect = tester.getRect(hint);
+          expect(hintRect.left, greaterThanOrEqualTo(headingRect.right));
+          expect(
+            (hintRect.center.dy - headingRect.center.dy).abs(),
+            lessThan(16),
+          );
+          if (interaction == 'hover') {
+            final mouse = await tester.createGesture(
+              kind: PointerDeviceKind.mouse,
+            );
+            await mouse.addPointer(location: const Offset(1, 1));
+            await mouse.moveTo(hintRect.center);
+            await tester.pump(const Duration(milliseconds: 251));
+            await tester.pumpAndSettle();
+            expect(find.text(item.$2), findsOneWidget);
+            await mouse.removePointer();
+          } else {
+            await tester.tap(hint);
+            await tester.pumpAndSettle();
+            expect(find.text(item.$2), findsOneWidget);
+          }
+          Tooltip.dismissAllToolTips();
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: '提示图标不触发父级指标导航');
+        }
+      });
+    }
+  }
+
+  testWidgets('逾期副标题、未读状态和未知副标题保持直接显示', (tester) async {
+    await tester.pumpWidget(
+      host(
+        panel(
+          metrics: [
+            metric(
+              title: '待排产产品',
+              value: '5',
+              subtitle: '3 个已逾期',
+              tone: 'danger',
+            ),
+            metric(
+              id: 'notice-unread',
+              title: '未读通知',
+              value: '0',
+              subtitle: '今天没有未读消息',
+            ),
+            metric(
+              id: 'new-metric',
+              title: '新指标',
+              value: '2',
+              subtitle: '当前需要核对',
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final text in ['5', '0', '2', '3 个已逾期', '今天没有未读消息', '当前需要核对']) {
+      expect(find.text(text), findsOneWidget);
+    }
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is UtenFieldHintIcon && widget.info == '3 个已逾期',
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('今日概览范围图标同行且可由键盘展开', (tester) async {
+    await tester.pumpWidget(host(panel()));
+    await tester.pumpAndSettle();
+    const message = '按已授权功能和数据范围展示';
+    final hint = find.byWidgetPredicate(
+      (widget) => widget is UtenFieldHintIcon && widget.info == message,
+    );
+    final titleRect = tester.getRect(find.text('今日概览'));
+    final hintRect = tester.getRect(hint);
+    expect(hintRect.left, greaterThanOrEqualTo(titleRect.right));
+    expect((hintRect.center.dy - titleRect.center.dy).abs(), lessThan(16));
+    expect(find.text(message), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.text(message), findsOneWidget);
+    expect(find.text('当前可见范围内没有待办'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('待办区渲染标题与计数徽章', (tester) async {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/connection_recovery.dart';
 
@@ -60,5 +61,86 @@ void main() {
 
     expect(controller.state.phase, ConnectionRecoveryPhase.connected);
     expect(controller.state.recoveryEpoch, 0);
+  });
+
+  test(
+    'automatic recovery keeps one bounded backoff timer and stops on success',
+    () {
+      fakeAsync((clock) {
+        var probes = 0;
+        var reachable = false;
+        final scheduledDelays = <Duration>[];
+        final controller = ConnectionRecoveryController(
+          probe: () async {
+            probes++;
+            return reachable;
+          },
+          probeDelayJitter: (delay) {
+            scheduledDelays.add(delay);
+            return delay;
+          },
+        );
+        for (var notice = 0; notice < 5; notice++) {
+          controller.markDisconnected();
+        }
+        expect(clock.nonPeriodicTimerCount, 1);
+        const delays = [
+          Duration(seconds: 2),
+          Duration(seconds: 5),
+          Duration(seconds: 10),
+          Duration(seconds: 15),
+          Duration(seconds: 15),
+        ];
+        for (var attempt = 0; attempt < delays.length; attempt++) {
+          reachable = attempt == delays.length - 1;
+          clock.elapse(delays[attempt] - const Duration(milliseconds: 1));
+          expect(probes, attempt);
+          clock.elapse(const Duration(milliseconds: 1));
+          clock.flushMicrotasks();
+          expect(probes, attempt + 1);
+          expect(clock.nonPeriodicTimerCount, 1);
+        }
+        expect(scheduledDelays, delays);
+        expect(controller.state.phase, ConnectionRecoveryPhase.restored);
+        expect(controller.state.recoveryEpoch, 1);
+        clock.elapse(const Duration(seconds: 3));
+        expect(controller.state.phase, ConnectionRecoveryPhase.connected);
+        expect(clock.nonPeriodicTimerCount, 0);
+        clock.elapse(const Duration(minutes: 1));
+        expect(probes, delays.length);
+        controller.dispose();
+        expect(clock.nonPeriodicTimerCount, 0);
+      });
+    },
+  );
+
+  test('repeated disconnects cannot overlap an automatic probe in flight', () {
+    fakeAsync((clock) {
+      final gate = Completer<bool>();
+      var probes = 0;
+      final controller = ConnectionRecoveryController(
+        probe: () {
+          probes++;
+          return gate.future;
+        },
+        probeDelays: const [Duration(seconds: 1)],
+        probeDelayJitter: (delay) => delay,
+      );
+      controller.markDisconnected();
+      clock.elapse(const Duration(seconds: 1));
+      expect(probes, 1);
+      for (var notice = 0; notice < 5; notice++) {
+        controller.markDisconnected();
+      }
+      clock.elapse(const Duration(minutes: 1));
+      expect(probes, 1);
+      expect(clock.nonPeriodicTimerCount, 0);
+      gate.complete(true);
+      clock.flushMicrotasks();
+      expect(controller.state.phase, ConnectionRecoveryPhase.restored);
+      expect(controller.state.recoveryEpoch, 1);
+      controller.dispose();
+      expect(clock.nonPeriodicTimerCount, 0);
+    });
   });
 }

@@ -25,6 +25,7 @@ void main() {
         'totalPages': 99,
         'total': 9876,
         'meta': {'currency': 'CNY', 'asOf': 'fixture-watermark'},
+        'columnSearchKeys': ['amount'],
       };
       var inputRan = false;
       Timer.run(() => inputRan = true);
@@ -33,6 +34,8 @@ void main() {
       expect(inputRan, isTrue);
       expect(actual.rows, original.rows);
       expect(actual.meta, original.meta);
+      expect(actual.columnSearchKeys, {'amount'});
+      expect(actual.columnSearchKeys, original.columnSearchKeys);
       expect(actual.total, 9876);
       expect(actual.page, 2);
       expect(actual.totalPages, 99);

@@ -29,6 +29,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_field_suffix_icons.dart';
+import '../../../components/inputs/uten_picker_icon_button.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_detail_action_layout.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -42,6 +44,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_navigation.dart';
@@ -72,6 +75,7 @@ import 'goods_purchase_receipt_policy_field.dart';
 import 'goods_quote_history_tab.dart';
 import 'master_detail_sheet.dart';
 import 'master_edit_dialog.dart';
+import 'master_reference_options_loader.dart';
 import 'mould_picker_field.dart';
 import 'number_unit_field.dart';
 import 'packaging_picker_field.dart';
@@ -703,16 +707,28 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   Future<WarehousePickerResult?> _pickOwningWarehouse(
     String? currentWarehouseId,
   ) async {
+    final current = captureReadOwner(ref);
     final names = ref.read(masterNameServiceProvider);
-    await names.ensureWarehousesLoaded();
-    if (!mounted) return null;
-    return showUtenWarehousePickerPanel(
+    final warehouses = await loadMasterReferenceOptions(
+      context: context,
+      ref: ref,
+      resourceKey: 'master.warehouses',
+      title: '正在加载仓库…',
+      load: () async {
+        await names.ensureWarehousesLoaded();
+        return names.warehouseHierarchy;
+      },
+      errorFallback: '仓库加载失败，请重试',
+    );
+    if (!mounted || !current() || warehouses == null) return null;
+    final result = await showUtenWarehousePickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
+      hierarchy: warehouses,
       initialWarehouseId: currentWarehouseId,
       title: AppLocalizations.of(context).warehouseOwningPickerTitle,
       use: WarehouseUse.goodIn,
     );
+    return current() ? result : null;
   }
 
   /// BOM 里整批领料的料的单个重量 (克)，逐条一句话；没有期间边时为 null。
@@ -1060,6 +1076,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             // 创建/保存货品主档网络段的全屏加载遮罩（root Overlay 传送门）。
             if (_savingBasic)
               const UtenBusyOverlay(
+                showDoNotLeaveHint: false,
                 title: '正在保存货品资料',
                 description: '正在写入货品主档，请勿重复提交或离开本页。',
               ),
@@ -1862,6 +1879,7 @@ class _OwningWarehousePickerFieldState
     extends State<_OwningWarehousePickerField> {
   late final TextEditingController _ctl;
   String? _warehouseId;
+  bool _opening = false;
 
   @override
   void initState() {
@@ -1886,10 +1904,16 @@ class _OwningWarehousePickerFieldState
   }
 
   Future<void> _pick() async {
-    final picked = await widget.onPick(_warehouseId);
-    if (picked == null || !mounted) return;
-    // 「全部」哨兵只在查询口径 (includeAll) 出现，这里没开；真出现按清空处理。
-    _set(picked.isAll ? null : picked.id, picked.isAll ? '' : picked.label);
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      final picked = await widget.onPick(_warehouseId);
+      if (picked == null || !mounted) return;
+      // 「全部」哨兵只在查询口径 (includeAll) 出现，这里没开；真出现按清空处理。
+      _set(picked.isAll ? null : picked.id, picked.isAll ? '' : picked.label);
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
   }
 
   @override
@@ -1902,17 +1926,26 @@ class _OwningWarehousePickerFieldState
       decoration: UtenInputDecoration(
         InputDecoration(
           labelText: '所属仓库',
-          hintText: '这批货平时归哪个仓管',
-          suffixIcon: hasValue
-              ? IconButton(
+          suffixIcon: UtenFieldSuffixIcons(
+            children: [
+              if (hasValue)
+                IconButton(
                   icon: const Icon(Icons.close_rounded, size: 18),
                   tooltip: '清除',
-                  onPressed: () => _set(null, ''),
-                )
-              : const Icon(Icons.chevron_right_rounded),
+                  onPressed: _opening ? null : () => _set(null, ''),
+                ),
+              UtenFieldSuffixIcon(
+                child: UtenPickerIconButton(
+                  tooltip: '选择仓库',
+                  onPressed: _pick,
+                  isLoading: _opening,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      onTap: _pick,
+      onTap: _opening ? null : _pick,
     );
   }
 }

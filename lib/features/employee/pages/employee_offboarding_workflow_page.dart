@@ -7,7 +7,6 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
@@ -25,6 +24,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -346,14 +346,7 @@ class _EmployeeOffboardingWorkflowPageState
       await completeFormDraft();
       if (!mounted) return;
       context.appSuccess('离职办理及数据交接已完成');
-      // pop 回员工详情（入口就是详情页 push 进来的，返回后它自己重拉）；
-      // 深链无栈才 go 兜底——原来 go 会整替栈，详情返回键落到 default。
-      final navigator = Navigator.of(context);
-      if (navigator.canPop()) {
-        navigator.pop();
-      } else {
-        context.go('/employee/${widget.employeeId}');
-      }
+      backTo(context, defaultPath: '/employee/${widget.employeeId}');
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'CONFLICT') {
@@ -375,12 +368,13 @@ class _EmployeeOffboardingWorkflowPageState
   }
 
   Future<void> _backOrClose() async {
+    if (_submitting) return;
     if (_step > 0) {
       setState(() => _step--);
       return;
     }
     if (!await confirmFormDraftExit() || !mounted) return;
-    context.pop();
+    backTo(context, defaultPath: '/employee/${widget.employeeId}');
   }
 
   @override

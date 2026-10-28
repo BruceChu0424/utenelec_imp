@@ -1,5 +1,17 @@
 // 货品批量导入模型（对应后端 importing 包 records）。
 
+/// 货品导入模式（2026-10-28）：入口三选一，贯穿检测与提交，服务端校验一致。
+/// [wireName] 与后端 GoodsImportMode 的请求值一致。
+enum GoodsImportMode {
+  createOnly('CREATE_ONLY', '新建货品'),
+  updateOnly('UPDATE_ONLY', '修改货品'),
+  mixed('MIXED', '混合导入');
+
+  const GoodsImportMode(this.wireName, this.label);
+  final String wireName;
+  final String label;
+}
+
 /// 导入检测/提交中的单条错误。
 class GoodsImportError {
   const GoodsImportError({
@@ -18,7 +30,8 @@ class GoodsImportError {
   );
 }
 
-/// A source row that needs correction. Values come only from the uploaded file.
+/// A source row for preview or correction. Values come only from the file and
+/// its explicit corrections; existing master values are in [GoodsImportChange].
 class GoodsImportProblemRow {
   const GoodsImportProblemRow({
     required this.rowNum,
@@ -26,12 +39,16 @@ class GoodsImportProblemRow {
     required this.name,
     required this.categoryPath,
     this.cells = const {},
+    this.categorySegments = const [],
   });
   final int rowNum;
   final String code;
   final String name;
   final String categoryPath;
   final Map<String, String> cells;
+
+  /// Server-resolved hierarchy, including category names containing separators.
+  final List<String> categorySegments;
 
   factory GoodsImportProblemRow.fromJson(Map<String, dynamic> json) =>
       GoodsImportProblemRow(
@@ -43,6 +60,8 @@ class GoodsImportProblemRow {
           for (final entry in (json['cells'] as Map? ?? const {}).entries)
             entry.key.toString(): entry.value?.toString() ?? '',
         },
+        categorySegments: (json['categorySegments'] as List? ?? const [])
+            .cast<String>(),
       );
 }
 
@@ -140,6 +159,7 @@ class GoodsImportReport {
     this.conflictRows = 0,
     this.problemRows = const [],
     this.readyRowNums = const [],
+    this.previewRows = const [],
   });
   final int totalRows;
   final int dataRows;
@@ -149,7 +169,8 @@ class GoodsImportReport {
   final List<String> willCreateUnits;
   final int readyToImport;
 
-  /// 将恢复的已删除货品行数（同编号命中软删行，导入时原 UUID 原编号复活）。
+  /// 将恢复的已删除货品行数（2026-10-28 起恢复只认系统标识：文件 UUID 指向
+  /// 软删货品时按原 UUID 原编号复活；编号本身不再触发恢复）。
   final int restorableRows;
 
   /// 短期、单次使用的 detect -> commit 计划。服务重启或过期后须重新检测。
@@ -161,6 +182,9 @@ class GoodsImportReport {
   final int conflictRows;
   final List<GoodsImportProblemRow> problemRows;
   final List<int> readyRowNums;
+
+  /// All remaining source rows, including valid and unchanged goods.
+  final List<GoodsImportProblemRow> previewRows;
 
   bool get hasErrors => errors.isNotEmpty;
 
@@ -195,6 +219,10 @@ class GoodsImportReport {
         readyRowNums: [
           for (final row in j['readyRowNums'] as List? ?? const [])
             (row as num).toInt(),
+        ],
+        previewRows: [
+          for (final row in j['previewRows'] as List? ?? const [])
+            GoodsImportProblemRow.fromJson(row as Map<String, dynamic>),
         ],
       );
 }

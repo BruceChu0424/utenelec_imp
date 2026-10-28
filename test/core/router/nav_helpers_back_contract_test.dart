@@ -55,6 +55,26 @@ GoRouter _router(String initial) => GoRouter(
 );
 
 void main() {
+  testWidgets('backTo returns a typed result and retains the pushed source', (
+    tester,
+  ) async {
+    final router = _router('/a');
+    addTearDown(router.dispose);
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    final result = router.push<bool>('/b?returnTo=/hub');
+    await tester.pumpAndSettle();
+    backTo(
+      tester.element(find.text('page:b')),
+      defaultPath: '/hub',
+      result: true,
+    );
+    await tester.pumpAndSettle();
+    expect(await result, isTrue);
+    expect(find.text('page:a'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('source-aware navigation retains the ordinary source route', (
     tester,
   ) async {
@@ -145,7 +165,12 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('push-b-from-a')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(UtenBackButton).last);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenBackButton).last,
+        matching: find.byType(IconButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('page:a'), findsOneWidget);
   });

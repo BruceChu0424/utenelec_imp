@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'admin_account_lifecycle_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,7 +11,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
-import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
@@ -21,14 +21,39 @@ import '../../../shared/auth/permissions.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 import 'admin_data_handover_panel.dart';
+import 'permission_draft_session.dart';
+import 'admin_permission_editor_surface.dart';
+
+/// 宿主持有的分区句柄： ValueKey 重建分区时新 State 自动重新挂接，
+/// 宿主不必用 GlobalKey（与「按 (user, revision) 重建」的既有口径共存）。
+class AdminDataScopeSectionHandle {
+  AdminDataScopeSectionState? _state;
+
+  bool get hasDrafts => _state?.hasDrafts ?? false;
+  Future<bool> saveDrafts() => _state?.saveDrafts() ?? Future.value(true);
+  void discardDrafts() => _state?.discardDrafts();
+  void pauseAutoSave() => _state?.pauseAutoSave();
+  void resumeAutoSave() => _state?.resumeAutoSave();
+
+  void _attach(AdminDataScopeSectionState state) => _state = state;
+  void _detach(AdminDataScopeSectionState state) {
+    if (identical(_state, state)) _state = null;
+  }
+}
 
 /// 服务端 catalog 驱动的“可查看数据”配置。
+///
+/// 编辑一律先落本地草稿（[_drafts]），停止操作一段时间后自动保存、
+/// 离开前由宿主统一询问；保存走批量端点，一次再认证（一次密码）覆盖
+/// 本次全部范围的修改（ADR-110 凭证一次性，逐范围保存会反复要密码）。
 class AdminDataScopeSection extends ConsumerStatefulWidget {
   const AdminDataScopeSection({
     super.key,
     required this.user,
     required this.effectiveAsync,
     this.onAccountChanged,
+    this.onDirtyChanged,
+    this.handle,
     this.viewAllPermissions,
     this.showHandover = true,
   });
@@ -37,6 +62,12 @@ class AdminDataScopeSection extends ConsumerStatefulWidget {
   final AsyncValue<EffectivePermissions> effectiveAsync;
   final VoidCallback? onAccountChanged;
 
+  /// 草稿状态变化时上报（含保存中）；宿主据此守卫分区/员工切换与页面离开。
+  final ValueChanged<bool>? onDirtyChanged;
+
+  /// 宿主持有的句柄；不传则宿主自行用 onDirtyChanged 管理。
+  final AdminDataScopeSectionHandle? handle;
+
   /// Restrict an in-page editor to scopes advertised by that page's permissions.
   /// Scope definitions and all authorization checks remain server-authoritative.
   final Set<String>? viewAllPermissions;
@@ -44,21 +75,35 @@ class AdminDataScopeSection extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<AdminDataScopeSection> createState() =>
-      _AdminDataScopeSectionState();
+      AdminDataScopeSectionState();
 }
 
-class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
+class AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
   List<DataScopeCatalogItem> _catalog = const [];
   bool _requested = false;
   bool _catalogLoading = false;
   String? _catalogError;
   final Set<String> _loading = {};
-  final Set<String> _saving = {};
   final Map<String, String> _errors = {};
+  bool _saving = false;
+
+  /// 服务端当前授权（加载/保存成功后更新）；同时是批量保存的 CAS 基线。
   final Map<String, Set<String>> _grants = {};
+
+  /// 本地待保存草稿：scope → 期望集合；与 [_grants] 相同的条目自动移除。
+  final Map<String, Set<String>> _drafts = {};
   final Map<String, List<DataScopeOwner>> _candidates = {};
   final Map<String, int> _revisions = {};
   int _generation = 0;
+  bool? _lastReportedDirty;
+  late final PermissionDraftSession _idleSave;
+
+  @override
+  void initState() {
+    super.initState();
+    _idleSave = PermissionDraftSession(onIdleSave: () => saveDrafts());
+    widget.handle?._attach(this);
+  }
 
   bool _active(String userId, int generation) =>
       mounted && widget.user.id == userId && generation == _generation;
@@ -74,6 +119,13 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     }
   }
 
+  @override
+  void dispose() {
+    widget.handle?._detach(this);
+    _idleSave.dispose();
+    super.dispose();
+  }
+
   void _reset() {
     _generation++;
     _requested = false;
@@ -81,12 +133,31 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     _catalogLoading = false;
     _catalogError = null;
     _loading.clear();
-    _saving.clear();
     _errors.clear();
+    _saving = false;
     _grants.clear();
+    _drafts.clear();
     _candidates.clear();
     _revisions.clear();
+    _idleSave.clear();
+    _reportDirty(false);
   }
+
+  void _reportDirty(bool dirty) {
+    if (_lastReportedDirty == dirty) return;
+    _lastReportedDirty = dirty;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onDirtyChanged?.call(dirty);
+    });
+  }
+
+  /// 有待保存的数据范围草稿。
+  bool get hasDrafts => _drafts.isNotEmpty;
+
+  /// 宿主在离开确认等弹框期间暂停闲置自动保存。
+  void pauseAutoSave() => _idleSave.pause();
+
+  void resumeAutoSave() => _idleSave.resume();
 
   Future<void> _loadAll(EffectivePermissions permissions) async {
     if (_requested) return;
@@ -158,10 +229,20 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       setState(() {
         _grants[scope] = (results[0] as List<String>).toSet();
         _candidates[scope] = results[1] as List<DataScopeOwner>;
+        // 重新加载后若草稿与服务器一致（别处已保存），顺手清掉。
+        final draft = _drafts[scope];
+        if (draft != null && setEquals(draft, _grants[scope])) {
+          _drafts.remove(scope);
+        }
       });
     } catch (_) {
       if (!mounted || !_active(userId, generation)) return;
-      setState(() => _errors[scope] = '加载失败，请重试');
+      setState(() {
+        // 加载失败的范围不显示选择器：拿不到服务器基线就不能安全改草稿。
+        _grants.remove(scope);
+        _drafts.remove(scope);
+        _errors[scope] = '加载失败，请重试';
+      });
     } finally {
       if (mounted && widget.user.id == userId && generation == _generation) {
         setState(() => _loading.remove(scope));
@@ -169,18 +250,16 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     }
   }
 
-  Future<void> _saveSelection(
+  /// 选择器改动：只写本地草稿，不立即保存。
+  void _draftSelection(
     DataScopeCatalogItem definition,
     List<UtenEmployeePickerItem> selection,
-  ) async {
+  ) {
     final scope = definition.scope;
-    if (_saving.contains(scope)) return;
-    final generation = _generation;
-    final userId = widget.user.id;
-    final previous = {...?_grants[scope]};
     final selected = selection.map((item) => item.id).toSet();
-    if (_sameIds(previous, selected)) return;
-    if (!widget.user.authorizationGrantAllowed && selected.isNotEmpty) {
+    final blocked =
+        !widget.user.authorizationGrantAllowed && selected.isNotEmpty;
+    if (blocked) {
       UtenToast.info(
         context,
         adminAuthorizationRestrictionText(context, widget.user),
@@ -188,69 +267,98 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       setState(() => _bumpRevision(scope));
       return;
     }
-
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '确认修改可查看数据？',
-      content: Text(
-        '员工：${widget.user.employeeName ?? widget.user.loginAccount}\n'
-        '范围：${definition.displayLabel}\n'
-        '额外查看：${selected.length} 人\n\n'
-        '额外查看不会改变数据负责人，默认只读；其他操作仍由独立操作权限控制。',
-      ),
-      confirmLabel: '确认保存',
-    );
-    if (!mounted || !_active(userId, generation)) return;
-    if (confirmed != true) {
-      setState(() => _bumpRevision(scope));
-      return;
-    }
-
     setState(() {
-      _saving.add(scope);
-      _grants[scope] = selected;
+      final server = _grants[scope];
+      if (server != null && setEquals(selected, server)) {
+        _drafts.remove(scope);
+      } else {
+        _drafts[scope] = selected;
+      }
     });
+    if (_drafts.isNotEmpty) {
+      _idleSave.noteEdit();
+    } else {
+      _idleSave.clear();
+    }
+    _reportDirty(_drafts.isNotEmpty || _saving);
+  }
+
+  /// 撤销全部草稿。
+  void discardDrafts() {
+    if (_drafts.isEmpty) return;
+    setState(() => _drafts.clear());
+    _idleSave.clear();
+    _reportDirty(false);
+  }
+
+  /// 批量保存全部草稿（一次请求、一次再认证）。true=草稿已清（或本就没有）。
+  Future<bool> saveDrafts() async {
+    if (_saving || _drafts.isEmpty) return _drafts.isEmpty;
+    final generation = _generation;
+    final userId = widget.user.id;
+    setState(() => _saving = true);
+    _reportDirty(true);
     try {
-      final ids = selected.toList()..sort();
-      final expectedIds = previous.toList()..sort();
-      await ref
+      final result = await ref
           .read(adminRepositoryProvider)
-          .updateUserDataScopes(
-            userId,
-            scope,
-            ids,
-            expectedOwnerEmployeeIds: expectedIds,
-          );
-      if (!mounted || !_active(userId, generation)) return;
-      UtenToast.success(context, '${definition.displayLabel}已保存，即时生效');
+          .updateUserDataScopesBatch(userId, {
+            for (final entry in _drafts.entries)
+              entry.key: (
+                entry.value.toList()..sort(),
+                _sortedIdsOf(entry.key),
+              ),
+          });
+      if (!mounted || !_active(userId, generation)) return false;
+      setState(() => _drafts.clear());
+      _idleSave.clear();
+      final changedScopes = result.$1;
+      // 保存后按服务器真相刷新各范围（候选数量/状态可能随之变化）。
+      await Future.wait(
+        _catalog.where((item) => item.scope.isNotEmpty).map(_loadScope),
+      );
+      if (!mounted || !_active(userId, generation)) return true;
+      UtenToast.success(
+        context,
+        changedScopes == 0 ? '可查看数据没有变化' : '已保存 $changedScopes 个范围的额外查看，即时生效',
+      );
+      widget.onAccountChanged?.call();
+      return true;
     } on ApiException catch (error) {
-      if (!mounted || !_active(userId, generation)) return;
-      setState(() {
-        _grants[scope] = previous;
-        _bumpRevision(scope);
-      });
+      if (!mounted || !_active(userId, generation)) return false;
       if (error.code == 'CONFLICT') {
-        widget.onAccountChanged?.call();
+        // 服务器端已被他人修改：按个人覆盖的既有口径丢弃草稿并刷新真相。
+        setState(() => _drafts.clear());
+        _idleSave.clear();
         UtenToast.error(
           context,
-          '${error.message.isEmpty ? '账号或数据范围已变化' : error.message}；正在刷新最新设置',
+          '${error.message.isEmpty ? '账号或数据范围已变化' : error.message}；已恢复最新设置',
         );
-        await _loadScope(definition);
+        await Future.wait(
+          _catalog.where((item) => item.scope.isNotEmpty).map(_loadScope),
+        );
+        widget.onAccountChanged?.call();
       } else {
-        UtenToast.error(context, error.message);
+        UtenToast.error(
+          context,
+          error.message.isNotEmpty ? error.message : '保存失败，本地修改已保留，请稍后重试',
+        );
       }
+      return false;
     } catch (_) {
-      if (!mounted || !_active(userId, generation)) return;
-      setState(() {
-        _grants[scope] = previous;
-        _bumpRevision(scope);
-      });
-      UtenToast.error(context, '保存失败，已恢复原设置');
+      if (!mounted || !_active(userId, generation)) return false;
+      UtenToast.error(context, '保存失败，本地修改已保留，请稍后重试');
+      return false;
     } finally {
-      if (mounted && generation == _generation && widget.user.id == userId) {
-        setState(() => _saving.remove(scope));
+      if (mounted && widget.user.id == userId && generation == _generation) {
+        setState(() => _saving = false);
+        _reportDirty(_drafts.isNotEmpty);
       }
     }
+  }
+
+  List<String> _sortedIdsOf(String scope) {
+    final ids = _grants[scope] ?? const <String>{};
+    return ids.toList()..sort();
   }
 
   void _bumpRevision(String scope) {
@@ -276,7 +384,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
   List<UtenEmployeePickerItem> _selection(String scope) {
     final items = {for (final item in _scopeItems(scope)) item.id: item};
     return [
-      for (final id in _grants[scope] ?? const <String>{})
+      for (final id in _drafts[scope] ?? _grants[scope] ?? const <String>{})
         items[id] ??
             UtenEmployeePickerItem(
               id: id,
@@ -321,15 +429,20 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       );
       return;
     }
-    final result = await showAdminDataHandoverPanel(
-      context: context,
-      ref: ref,
-      targetEmployeeId: employeeId,
-      targetName: widget.user.employeeName ?? widget.user.loginAccount,
-    );
-    if (!mounted || result == null) return;
-    setState(_reset);
-    await _loadAll(permissions);
+    _idleSave.pause();
+    try {
+      final result = await showAdminDataHandoverPanel(
+        context: context,
+        ref: ref,
+        targetEmployeeId: employeeId,
+        targetName: widget.user.employeeName ?? widget.user.loginAccount,
+      );
+      if (!mounted || result == null) return;
+      setState(_reset);
+      await _loadAll(permissions);
+    } finally {
+      _idleSave.resume();
+    }
   }
 
   @override
@@ -351,6 +464,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         if (mounted && !_requested) unawaited(_loadAll(permissions));
       });
     }
+    _reportDirty(_drafts.isNotEmpty || _saving);
 
     final theme = Theme.of(context);
     final canHandover =
@@ -361,31 +475,23 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
                 .contains(Perm.employeeHandover));
     final canReceiveHandover = widget.user.authorizationGrantAllowed;
     final authorizationBlocked = !widget.user.authorizationGrantAllowed;
-    return UtenCard(
+    return AdminPermissionEditorSurface(
+      key: const ValueKey('admin-data-scope-editor'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 保存数据范围网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
-          if (_saving.isNotEmpty)
+          if (_saving)
             const UtenBusyOverlay(
               title: '正在保存可查看数据',
               description: '正在写入额外查看范围，请勿重复提交或离开本页。',
             ),
-          Text(
-            '可查看数据',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '默认只查看本人负责的数据。可按模块额外查看指定负责人的数据；'
-            '额外查看不改变负责人，默认只读。离职原负责人会标记“历史只读”，'
-            '只增加其原历史数据，不会随当前接手人的新增数据扩大。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
+          const UtenSectionHeader(
+            title: '可查看数据',
+            info:
+                '默认只查看本人负责的数据。可按模块额外查看指定负责人的数据；'
+                '额外查看不改变负责人，默认只读。离职原负责人会标记“历史只读”，'
+                '只增加其原历史数据，不会随当前接手人的新增数据扩大。',
           ),
           if (authorizationBlocked && !permissions.superAdmin) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -443,9 +549,52 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
               icon: Icons.visibility_off_outlined,
               message: '当前没有可配置的数据范围',
             )
-          else
+          else ...[
             ..._groupedSections(permissions),
+            _saveBar(theme),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// 底部保存条：有草稿才出现（与按员工/按部门/基础包同一口径）。
+  Widget _saveBar(ThemeData theme) {
+    if (_drafts.isEmpty && !_saving) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s12,
+          vertical: UtenSpacing.s8,
+        ),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest,
+          borderRadius: UtenRadius.mdAll,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _saving ? '正在保存…' : '已修改 ${_drafts.length} 个范围的额外查看',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: _saving ? null : discardDrafts,
+              child: const Text('撤销'),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            UtenButton(
+              size: UtenButtonSize.small,
+              isLoading: _saving,
+              onPressed: _saving ? null : () => saveDrafts(),
+              child: const Text('保存更改'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -488,7 +637,8 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     if (definition.enabled && !viewAll) {
       _ensureScopeLoaded(definition);
     }
-    final count = _grants[scope]?.length ?? 0;
+    final pending = _drafts.containsKey(scope);
+    final count = (_drafts[scope] ?? _grants[scope])?.length ?? 0;
     // 档位（ADR-169 锚定）：仅本人=绿（最小权限常态）/ 额外查看=蓝（信息性
     // 扩展）/ 查看全部=橙（数据面最大的常驻注意点——不是等待外部，原黄档
     // 语义不符）/ 功能未启用=灰。
@@ -497,13 +647,17 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         : viewAll
         ? ('可查看全部', UtenStatusBadgeType.orange)
         : count > 0
-        ? ('额外查看 $count 人', UtenStatusBadgeType.info)
-        : ('仅本人', UtenStatusBadgeType.success);
+        ? (pending ? '待保存 $count 人' : '额外查看 $count 人', UtenStatusBadgeType.info)
+        : (pending ? '待保存 仅本人' : '仅本人', UtenStatusBadgeType.success);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        border: Border.all(
+          color: pending
+              ? theme.colorScheme.primary.withValues(alpha: 0.5)
+              : theme.colorScheme.outlineVariant,
+        ),
         borderRadius: UtenRadius.mdAll,
       ),
       child: Column(
@@ -613,8 +767,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
           emptyMessage: '暂无匹配且拥有归属数据的负责人',
           selectedCountLabel: (count) => '额外查看 $count 人',
           initialSelection: selected,
-          enabled:
-              widget.user.authorizationGrantAllowed && !_saving.contains(scope),
+          enabled: widget.user.authorizationGrantAllowed && !_saving,
           loader: (keyword) async {
             final query = keyword?.trim().toLowerCase() ?? '';
             if (query.isEmpty) return items;
@@ -649,7 +802,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
             });
             return result;
           },
-          onChanged: (next) => unawaited(_saveSelection(definition, next)),
+          onChanged: (next) => _draftSelection(definition, next),
         ),
         if (!widget.user.authorizationGrantAllowed && granted.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),
@@ -660,14 +813,11 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
               type: UtenButtonType.ghost,
               size: UtenButtonSize.small,
               icon: Icons.delete_sweep_outlined,
-              isLoading: _saving.contains(scope),
-              onPressed: _saving.contains(scope)
+              onPressed: _saving
                   ? null
-                  : () => unawaited(
-                      _saveSelection(
-                        definition,
-                        const <UtenEmployeePickerItem>[],
-                      ),
+                  : () => _draftSelection(
+                      definition,
+                      const <UtenEmployeePickerItem>[],
                     ),
               child: const Text('清空额外查看'),
             ),
@@ -701,6 +851,3 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
     );
   }
 }
-
-bool _sameIds(Set<String> left, Set<String> right) =>
-    left.length == right.length && left.every(right.contains);

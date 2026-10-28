@@ -3196,8 +3196,29 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exportDialogTitle => 'Excel 내보내기';
 
   @override
+  String get exportFileNameLabel => '파일 이름';
+
+  @override
+  String get exportFileNameRequired => '파일 이름을 입력하세요(최대 150자)';
+
+  @override
+  String get exportSaveLocationLabel => '저장 위치';
+
+  @override
+  String get exportBrowse => '찾아보기…';
+
+  @override
   String get exportPasswordOptionalHint =>
       '비밀번호는 선택 사항입니다. 비워 두면 일반 Excel 파일로, 1–128자를 입력하면 암호화하여 다운로드합니다.';
+
+  @override
+  String get exportSetPassword => '비밀번호 설정';
+
+  @override
+  String get exportRemovePassword => '비밀번호 해제';
+
+  @override
+  String get exportPreparingFile => '표 내보내는 중…';
 
   @override
   String get exportPasswordOptionalLabel => '열기 비밀번호(선택, 1–128자)';
@@ -3504,6 +3525,14 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get orderChangeQtyTitle => '주문 수량 변경';
+
+  @override
+  String get orderPendingChangeQtyHint =>
+      '수량을 변경해도 재무 검토를 계속 기다립니다. 재무 담당자는 변경된 수량과 변경 이력을 확인합니다.';
+
+  @override
+  String get orderPendingChangeQtySuccess =>
+      '수량이 변경되었으며 대기 중인 재무 검토가 업데이트되었습니다';
 
   @override
   String get orderChangeQtyWarning =>
@@ -12962,6 +12991,13 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get companyFilesWhoCanRead => '열람 가능한 대상';
+
+  @override
+  String get companyFilesEveryoneCanRead => '모두가 볼 수 있음';
+
+  @override
+  String get companyFilesEveryoneReadHint =>
+      '자료실은 기본적으로 모두에게 공개됩니다. 이 자료는 모두가 열람하고 다운로드할 수 있으며 거부 예외를 추가할 수 있습니다. 상위 폴더가 접근을 제한한 경우에는 상위 폴더 진입 권한이 여전히 필요합니다.';
 
   @override
   String get companyFilesInheritEntryAccess => '상위 폴더의 접근 범위 상속';

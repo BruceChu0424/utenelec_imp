@@ -42,6 +42,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../basic_data/widgets/goods_issue_method_dialog.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -95,7 +97,25 @@ class _WorkshopMaterialReportsPageState
   List<WmMissingWeightRow>? _missing;
   PagedResult<WmLedgerRow>? _ledger;
   final _ledgerRows = MasterDataTableRowsController<WmLedgerRow>();
+  TableColumnQuery _ledgerQuery = const TableColumnQuery();
   Object? _acceptedLedgerQuery;
+  final _acceptedLocalScopes = <WmReportView, Object>{};
+  Object get _dataIdentity {
+    final ranged = const {
+      WmReportView.usage,
+      WmReportView.product,
+      WmReportView.ledger,
+    }.contains(_view);
+    return (
+      _repo,
+      _binId,
+      ranged ? _selectedPeriod?.startDate : null,
+      ranged ? _selectedPeriod?.endDate : null,
+      _view,
+      _view == WmReportView.ledger ? _ledgerQuery : null,
+    );
+  }
+
   bool _loadingData = false;
   String? _dataError;
   int _dataRequest = 0;
@@ -108,6 +128,8 @@ class _WorkshopMaterialReportsPageState
       _metadataEpoch++;
       _ledgerRows.update(const []);
       _acceptedLedgerQuery = null;
+      _acceptedLocalScopes.clear();
+      _ledgerQuery = const TableColumnQuery();
       _dataRequest++;
       _closeRequest++;
       _bins = const [];
@@ -259,7 +281,8 @@ class _WorkshopMaterialReportsPageState
     final from = period?.startDate;
     final to = period?.endDate;
     final view = _view;
-    final readQuery = (_repo, binId, from, to, view);
+    final headers = _ledgerQuery;
+    final readQuery = _dataIdentity;
     page ??= _acceptedLedgerQuery == readQuery
         ? _ledgerRows.visiblePage ?? _ledger?.page ?? 1
         : 1;
@@ -272,7 +295,10 @@ class _WorkshopMaterialReportsPageState
         case WmReportView.usage:
           final usageRows = await _repo.binUsage(binId, from: from, to: to);
           if (mounted && request == _dataRequest) {
-            setState(() => _usage = usageRows);
+            setState(() {
+              _usage = usageRows;
+              _acceptedLocalScopes[view] = readQuery;
+            });
           }
         case WmReportView.product:
           final productRows = await _repo.productUsage(
@@ -281,13 +307,17 @@ class _WorkshopMaterialReportsPageState
             to: to,
           );
           if (mounted && request == _dataRequest) {
-            setState(() => _product = productRows);
+            setState(() {
+              _product = productRows;
+              _acceptedLocalScopes[view] = readQuery;
+            });
           }
         case WmReportView.trend:
           final trendRows = await _repo.wasteTrend(binId);
           if (mounted && request == _dataRequest) {
             setState(() {
               _trend = trendRows;
+              _acceptedLocalScopes[view] = readQuery;
               final keys = trendRows.map((p) => p.materialKey).toSet();
               if (!keys.contains(_trendMaterialKey)) {
                 _trendMaterialKey = keys.isEmpty ? null : keys.first;
@@ -297,23 +327,25 @@ class _WorkshopMaterialReportsPageState
         case WmReportView.missing:
           final missingRows = await _repo.missingWeights(binId);
           if (mounted && request == _dataRequest) {
-            setState(() => _missing = missingRows);
+            setState(() {
+              _missing = missingRows;
+              _acceptedLocalScopes[view] = readQuery;
+            });
           }
         case WmReportView.ledger:
           final repository = _repo;
           final result = await readScopedPage<WmLedgerRow>(
             page,
-            query: (repository, binId, from, to, view),
-            currentQuery: () => (
-              _repo,
-              _binId,
-              _selectedPeriod?.startDate,
-              _selectedPeriod?.endDate,
-              _view,
-            ),
+            query: readQuery,
+            currentQuery: () => _dataIdentity,
             useCache: useCache,
-            fetchPage: (page) =>
-                repository.ledger(binId, from: from, to: to, page: page),
+            fetchPage: (page) => repository.ledger(
+              binId,
+              from: from,
+              to: to,
+              page: page,
+              columnQuery: headers,
+            ),
           );
           if (mounted && request == _dataRequest) {
             setState(() {
@@ -501,6 +533,8 @@ class _WorkshopMaterialReportsPageState
     _stopPolling();
     setState(() {
       _binId = binId;
+      _acceptedLocalScopes.clear();
+      _ledgerQuery = const TableColumnQuery();
       _periodId = null;
       _periods = const [];
       _usage = null;
@@ -699,7 +733,10 @@ class _WorkshopMaterialReportsPageState
   // ---- 用量表 --------------------------------------------------------------
 
   Widget _usageTable(AppLocalizations l10n) {
-    final rows = _usage ?? const <WmBinUsageRow>[];
+    final matches = _acceptedLocalScopes[WmReportView.usage] == _dataIdentity;
+    final rows = matches
+        ? (_usage ?? const <WmBinUsageRow>[])
+        : const <WmBinUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmBinUsageRow>(
       expensiveRowMounts: false,
@@ -713,6 +750,7 @@ class _WorkshopMaterialReportsPageState
           width: 190,
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
+          columnSearchEnabled: true,
         ),
         // 2026-09-29 用户口径：名称列只放名称，原「名称 颜色」拼接拆独立颜色列。
         MasterColumnDef(
@@ -721,6 +759,7 @@ class _WorkshopMaterialReportsPageState
           width: 180,
           filterFromRows: true,
           value: (r) => r.goodsName,
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'materialColor',
@@ -729,12 +768,14 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => UtenGoodsAttributeCell.text(r.colorName),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'costBasis',
           label: l10n.wmCostBasis,
           width: 96,
           value: (r) => goodsCostBasisLabel(context, r.costBasis) ?? '',
+          filterFromRows: true,
         ),
         _qtyCol('opening', '期初', (r) => r.openingQty),
         _qtyCol('in', '领入', (r) => r.transferInQty),
@@ -749,12 +790,15 @@ class _WorkshopMaterialReportsPageState
           width: 300,
           info: '期初沿用上期已提交盘点；满、半、空都属于估盘。称重和袋数也不代表逐产品实测。',
           value: (r) => r.countEvidenceLabel,
+          columnSearchEnabled: true,
         ),
         MasterColumnDef(
           key: 'theory',
           label: '理论',
           width: 100,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           info: '按报工量 × BOM 单个重量算出的用量；辅料显示分摊基数 (当期主料理论合计)。',
           value: (r) => r.costBasis == 'SHARED'
               ? _qty(r.allocationBasisQty)
@@ -766,7 +810,10 @@ class _WorkshopMaterialReportsPageState
           label: l10n.wmWasteRate,
           width: 125,
           type: 'number',
-          info: '(盘点推算耗用 − 理论) ÷ 理论；含估盘、漏录和单重误差，不能直接当作报废率。超出 -30% 到 +50% 标红。',
+          sortable: true,
+          columnSearchEnabled: true,
+          info:
+              '(盘点推算耗用 − 理论) ÷ 理论；含估盘、漏录和单重误差，不能直接当作报废率。超出 -30% 到 +50% 标红。检索按显示百分数，例如输入 >=12.5 查 12.5% 及以上。',
           value: (r) => _rate(r.wasteRate),
           cellColor: (context, r) => r.flags.contains('WASTE_OUT_OF_RANGE')
               ? Theme.of(context).colorScheme.errorContainer
@@ -777,12 +824,14 @@ class _WorkshopMaterialReportsPageState
           label: '处理方式',
           width: 150,
           value: (r) => _outcomeText(r.outcome),
+          filterFromRows: true,
         ),
         MasterColumnDef(
           key: 'flags',
           label: '标红原因',
           width: 220,
           value: (r) => r.flags.map(_flagText).join('；'),
+          columnSearchEnabled: true,
           cellColor: (context, r) => r.flags.isNotEmpty
               ? Theme.of(context).colorScheme.errorContainer
               : null,
@@ -803,7 +852,7 @@ class _WorkshopMaterialReportsPageState
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      isLoading: _loadingData && _usage == null,
+      isLoading: _loadingData && (!matches || _usage == null),
       error: rows.isEmpty ? _dataError : null,
       onRetry: _loadData,
       emptyMessage: '这段时间没有内料仓用量',
@@ -818,7 +867,10 @@ class _WorkshopMaterialReportsPageState
   // ---- 产品用料 ------------------------------------------------------------
 
   Widget _productTable(AppLocalizations l10n) {
-    final rows = _product ?? const <WmProductUsageRow>[];
+    final matches = _acceptedLocalScopes[WmReportView.product] == _dataIdentity;
+    final rows = matches
+        ? (_product ?? const <WmProductUsageRow>[])
+        : const <WmProductUsageRow>[];
     final showCost = rows.any((r) => r.hasCost);
     return MasterDataTableView<WmProductUsageRow>(
       expensiveRowMounts: false,
@@ -832,6 +884,7 @@ class _WorkshopMaterialReportsPageState
           width: 190,
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
+          columnSearchEnabled: true,
         ),
         // 2026-09-29 用户口径：名称列只放名称，编号/颜色各占一列。
         MasterColumnDef(
@@ -840,6 +893,7 @@ class _WorkshopMaterialReportsPageState
           width: 180,
           filterFromRows: true,
           value: (r) => r.productName,
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'productCode',
@@ -848,6 +902,7 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => UtenGoodsAttributeCell.text(r.productCode),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.productCode),
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'material',
@@ -855,6 +910,7 @@ class _WorkshopMaterialReportsPageState
           width: 170,
           filterFromRows: true,
           value: (r) => r.materialName,
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'materialColor',
@@ -863,6 +919,7 @@ class _WorkshopMaterialReportsPageState
           filterFromRows: true,
           value: (r) => UtenGoodsAttributeCell.text(r.materialColorName),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.materialColorName),
+          sortable: true,
         ),
         _productQtyCol('output', '完工', (r) => r.outputQty),
         MasterColumnDef(
@@ -870,6 +927,8 @@ class _WorkshopMaterialReportsPageState
           label: l10n.wmUnitWeightGrams,
           width: 110,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => r.unitWeightGrams == null && r.unitWeightBase != null
               ? '未设置重量换算'
               : _grams(r.unitWeightGrams),
@@ -881,6 +940,7 @@ class _WorkshopMaterialReportsPageState
           width: 100,
           info: '理论和分摊耗用使用此材料基本单位；单个重量与独占期平均换算成克显示。',
           value: (r) => r.materialUnitName ?? '未提供',
+          filterFromRows: true,
         ),
         _productQtyCol('theory', '理论', (r) => r.theoryQty),
         _productQtyCol('allocated', '分摊耗用', (r) => r.allocatedQty),
@@ -888,6 +948,7 @@ class _WorkshopMaterialReportsPageState
           key: 'basis',
           label: '口径',
           width: 150,
+          filterFromRows: true,
           info: '本期这种料只有一个产品用时给独占期平均耗用，仍受盘点与报工误差影响；多产品按理论比例分摊。',
           value: (r) => r.exclusivePeriod
               ? l10n.wmTrueUnitUsage
@@ -901,12 +962,15 @@ class _WorkshopMaterialReportsPageState
           label: '盘点来源',
           width: 300,
           value: (r) => r.countEvidenceLabel,
+          columnSearchEnabled: true,
         ),
         MasterColumnDef(
           key: 'actualPerUnit',
           label: '独占期平均 (克/件)',
           width: 155,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           info: '独占期分摊耗用 ÷ 完工量；含估盘时也是估算值，不是逐件称量的单耗。',
           value: (r) => !r.exclusivePeriod
               ? ''
@@ -920,6 +984,8 @@ class _WorkshopMaterialReportsPageState
             label: '材料金额',
             width: 120,
             type: 'money',
+            sortable: true,
+            columnSearchEnabled: true,
             aiSensitive: true,
             value: (r) => _money(r.materialAmount),
           ),
@@ -928,6 +994,8 @@ class _WorkshopMaterialReportsPageState
             label: '结算时金额',
             width: 120,
             type: 'money',
+            sortable: true,
+            columnSearchEnabled: true,
             aiSensitive: true,
             value: (r) => _money(r.valueAtClose),
           ),
@@ -936,6 +1004,8 @@ class _WorkshopMaterialReportsPageState
             label: '单件材料成本',
             width: 120,
             type: 'money',
+            sortable: true,
+            columnSearchEnabled: true,
             aiSensitive: true,
             value: (r) => _money(r.unitMaterialCost, digits: 4),
           ),
@@ -946,7 +1016,7 @@ class _WorkshopMaterialReportsPageState
       nullCounts: const {},
       filters: const {},
       onFilterChanged: (_, _) {},
-      isLoading: _loadingData && _product == null,
+      isLoading: _loadingData && (!matches || _product == null),
       error: rows.isEmpty ? _dataError : null,
       onRetry: _loadData,
       emptyMessage: '这段时间没有已结算的产品用料',
@@ -957,8 +1027,11 @@ class _WorkshopMaterialReportsPageState
 
   Widget _trendView(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
-    final all = _trend ?? const <WmWasteTrendPoint>[];
-    if (_loadingData && _trend == null) {
+    final matches = _acceptedLocalScopes[WmReportView.trend] == _dataIdentity;
+    final all = matches
+        ? (_trend ?? const <WmWasteTrendPoint>[])
+        : const <WmWasteTrendPoint>[];
+    if (_loadingData && (!matches || _trend == null)) {
       return const Center(child: CircularProgressIndicator());
     }
     if (all.isEmpty) {
@@ -1044,7 +1117,10 @@ class _WorkshopMaterialReportsPageState
   // ---- 缺单重清单 ----------------------------------------------------------
 
   Widget _missingTable(AppLocalizations l10n) {
-    final rows = _missing ?? const <WmMissingWeightRow>[];
+    final matches = _acceptedLocalScopes[WmReportView.missing] == _dataIdentity;
+    final rows = matches
+        ? (_missing ?? const <WmMissingWeightRow>[])
+        : const <WmMissingWeightRow>[];
     return MasterDataTableView<WmMissingWeightRow>(
       expensiveRowMounts: false,
       tableKey:
@@ -1057,6 +1133,7 @@ class _WorkshopMaterialReportsPageState
           width: 190,
           filterFromRows: true,
           value: (r) => _periodText(r.periodNo, r.startDate, r.endDate),
+          columnSearchEnabled: true,
         ),
         // 2026-09-29 用户口径：名称列只放名称，编号/颜色各占一列。
         MasterColumnDef(
@@ -1064,6 +1141,7 @@ class _WorkshopMaterialReportsPageState
           label: '产品',
           width: 180,
           value: (r) => r.productName,
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'productCode',
@@ -1071,12 +1149,14 @@ class _WorkshopMaterialReportsPageState
           width: 110,
           value: (r) => UtenGoodsAttributeCell.text(r.productCode),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.productCode),
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 180,
           value: (r) => r.materialName,
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'materialColor',
@@ -1084,18 +1164,22 @@ class _WorkshopMaterialReportsPageState
           width: 84,
           value: (r) => UtenGoodsAttributeCell.text(r.materialColorName),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.materialColorName),
+          sortable: true,
         ),
         MasterColumnDef(
           key: 'output',
           label: '产量',
           width: 110,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => _qty(r.outputQty),
         ),
         MasterColumnDef(
           key: 'action',
           label: '去填单重',
           width: 120,
+          columnSearchEnabled: false,
           value: (r) => l10n.wmOpenBom,
           cellBuilder: (context, r) => Text(
             l10n.wmOpenBom,
@@ -1115,7 +1199,7 @@ class _WorkshopMaterialReportsPageState
         context.push(RoutePath.basicinfoGoodsDetail(id, tab: 'bom'));
       },
       canOpenRow: (r) => r.productGoodsId != null,
-      isLoading: _loadingData && _missing == null,
+      isLoading: _loadingData && (!matches || _missing == null),
       error: rows.isEmpty ? _dataError : null,
       onRetry: _loadData,
       emptyMessage: '没有缺单个重量的产品',
@@ -1125,7 +1209,7 @@ class _WorkshopMaterialReportsPageState
   // ---- 收发明细 ------------------------------------------------------------
 
   Widget _ledgerTable(AppLocalizations l10n) {
-    final page = _ledger;
+    final page = _acceptedLedgerQuery == _dataIdentity ? _ledger : null;
     final rows = page?.items ?? const <WmLedgerRow>[];
     return MasterDataTableView<WmLedgerRow>(
       rowsController: _ledgerRows,
@@ -1139,13 +1223,16 @@ class _WorkshopMaterialReportsPageState
           label: '业务日期',
           width: 120,
           type: 'date',
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => r.businessDate,
         ),
         MasterColumnDef(
           key: 'kind',
           label: '类型',
           width: 130,
-          filterFromRows: true,
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) =>
               _ledgerKindText(r.sourceKind) + (r.isSupplement ? ' (补录)' : ''),
         ),
@@ -1154,14 +1241,16 @@ class _WorkshopMaterialReportsPageState
           key: 'material',
           label: l10n.wmReportMaterial,
           width: 180,
-          filterFromRows: true,
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => r.goodsName,
         ),
         MasterColumnDef(
           key: 'materialColor',
           label: '颜色',
           width: 84,
-          filterFromRows: true,
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => UtenGoodsAttributeCell.text(r.colorName),
           cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
         ),
@@ -1170,36 +1259,83 @@ class _WorkshopMaterialReportsPageState
           label: '数量',
           width: 110,
           type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
+          info: '按该行材料基本单位检索带符号数量；不同材料单位不混合求和。',
           value: (r) {
             final q = r.signedQty;
             if (q == null) return '';
-            return '${q > 0 ? '+' : ''}${_qty(q)}${r.unitName ?? ''}';
+            return '${q > 0 ? '+' : ''}${r.signedQtyText ?? _qty(q)}${r.unitName ?? ''}';
           },
         ),
         MasterColumnDef(
           key: 'docNo',
           label: '来源单据',
           width: 170,
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => r.sourceLabel,
         ),
         MasterColumnDef(
           key: 'operator',
           label: '操作人',
           width: 100,
+          sortable: true,
+          columnSearchEnabled: true,
           value: (r) => r.operatorName,
         ),
         MasterColumnDef(
           key: 'period',
           label: '所属期',
           width: 80,
+          type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
+          info: '输入期数检索，支持精确值和数值范围。',
           value: (r) => r.periodNo == null ? '' : '第 ${r.periodNo} 期',
         ),
       ],
       items: rows,
-      facets: const {},
+      facets: {
+        'kind': masterDictionaryFacets({
+          for (final kind in [
+            'OPENING',
+            'ADJUSTMENT',
+            'ISSUE',
+            'RETURN',
+            'OTHER_ISSUE',
+            'CONSUME',
+            'CONSUME_REVERSE',
+            'GAIN',
+            'GAIN_REVERSE',
+          ])
+            _ledgerKindText(kind): _ledgerKindText(kind),
+          for (final kind in ['ISSUE', 'RETURN'])
+            '${_ledgerKindText(kind)} (补录)': '${_ledgerKindText(kind)} (补录)',
+        }),
+      },
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: _ledgerQuery.searches,
+      serverColumnSearchKeys: const {
+        'date',
+        'kind',
+        'material',
+        'materialColor',
+        'qty',
+        'docNo',
+        'operator',
+        'period',
+      },
+      onFilterChanged: (key, value) {
+        setState(() => _ledgerQuery = _ledgerQuery.search(key, value));
+        _loadData(1);
+      },
+      sortColumn: _ledgerQuery.sort,
+      sortAscending: _ledgerQuery.ascending,
+      onSortChange: (key, ascending) {
+        setState(() => _ledgerQuery = _ledgerQuery.sorted(key, ascending));
+        _loadData(1);
+      },
       isLoading: _loadingData && page == null,
       loadingMore: _loadingData && page != null,
       error: rows.isEmpty ? _dataError : null,
@@ -1213,6 +1349,7 @@ class _WorkshopMaterialReportsPageState
         _view,
         _selectedPeriod?.startDate,
         _selectedPeriod?.endDate,
+        _ledgerQuery,
       ),
       onPageChange: (page) => _loadData(page, true),
     );
@@ -1229,6 +1366,8 @@ class _WorkshopMaterialReportsPageState
     label: label,
     width: 96,
     type: 'number',
+    sortable: true,
+    columnSearchEnabled: true,
     value: (r) => _qty(read(r)),
   );
 
@@ -1241,6 +1380,8 @@ class _WorkshopMaterialReportsPageState
     label: label,
     width: 100,
     type: 'number',
+    sortable: true,
+    columnSearchEnabled: true,
     value: (r) => _qty(read(r)),
   );
 
@@ -1254,6 +1395,8 @@ class _WorkshopMaterialReportsPageState
     label: label,
     width: 110,
     type: 'money',
+    sortable: true,
+    columnSearchEnabled: true,
     info: info,
     // Material cost (cost permission): never sent to the AI assistant.
     aiSensitive: true,

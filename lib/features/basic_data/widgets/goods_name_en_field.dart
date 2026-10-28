@@ -242,17 +242,10 @@ class _GoodsNameEnDialogState extends ConsumerState<_GoodsNameEnDialog> {
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                 ],
-                Text(
-                  l10n.goodsNameEnEditDescription,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
                 UtenInput(
                   key: const ValueKey('goods-name-en-input'),
                   label: l10n.goodsNameEnLabel,
+                  info: l10n.goodsNameEnEditDescription,
                   hint: l10n.goodsNameEnHint,
                   controller: _controller,
                   errorMessage: _error,

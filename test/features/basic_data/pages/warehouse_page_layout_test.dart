@@ -198,6 +198,11 @@ Future<List<Uri>> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  final expandRoot = find.byTooltip('展开总仓');
+  if (expandRoot.evaluate().isNotEmpty) {
+    await tester.tap(expandRoot);
+    await tester.pumpAndSettle();
+  }
   return opened;
 }
 
@@ -206,6 +211,11 @@ Future<void> _select(
   String name, {
   bool settle = true,
 }) async {
+  final expandRoot = find.byTooltip('展开总仓');
+  if (expandRoot.evaluate().isNotEmpty) {
+    await tester.tap(expandRoot);
+    await tester.pumpAndSettle();
+  }
   await tester.tap(
     find.descendant(
       of: find.byKey(const Key('warehouse-directory-tree')),

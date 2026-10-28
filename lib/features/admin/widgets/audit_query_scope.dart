@@ -1,5 +1,7 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
@@ -136,23 +138,11 @@ class AuditQueryScopeComposer extends StatelessWidget {
                 ),
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                  child: UtenSectionHeader(title: title, info: helper),
                 ),
               ],
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              helper,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
+
             const SizedBox(height: UtenSpacing.s12),
             child,
           ],
@@ -172,23 +162,10 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   child: Icon(Icons.warning_amber_rounded, size: 20),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '系统异常',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        '仅调查失败的系统异常，不包含日常成功自动任务',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '系统异常',
+                    info: '仅调查失败的系统异常，不包含日常成功自动任务',
                   ),
                 ),
                 TextButton(onPressed: onPickActor, child: const Text('改选人员')),
@@ -201,23 +178,10 @@ class AuditQueryScopeComposer extends StatelessWidget {
                   child: Icon(Icons.person_off_outlined, size: 20),
                 ),
                 const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '未识别访问',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        '仅查看匿名、认证失败或无法归属人员的访问',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: UtenSectionHeader(
+                    title: '未识别访问',
+                    info: '仅查看匿名、认证失败或无法归属人员的访问',
                   ),
                 ),
                 TextButton(onPressed: onPickActor, child: const Text('改选人员')),
@@ -395,35 +359,21 @@ class AuditQueryScopeComposer extends StatelessWidget {
                     : '查看操作记录',
               ),
             );
-            // 人员模式不挂提示文案（会话说明行按 2026-09-28 用户口径删除）；
-            // 仅匿名/系统范围保留每页与导出上限提示。
-            final hint = actor == null
-                ? Text(
-                    '页面每页 20 条；单次导出最多 10,000 条。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      height: 1.45,
-                    ),
-                  )
-                : null;
-            if (constraints.maxWidth < 560) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+            return Align(
+              alignment: constraints.maxWidth < 560
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  runButton,
-                  if (hint != null) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    hint,
-                  ],
+                  Flexible(child: runButton),
+                  if (actor == null)
+                    const UtenFieldHintIcon(
+                      info: '页面每页 20 条；单次导出最多 10,000 条。',
+                      dense: true,
+                    ),
                 ],
-              );
-            }
-            return Row(
-              children: [
-                Expanded(child: hint ?? const SizedBox.shrink()),
-                const SizedBox(width: UtenSpacing.s16),
-                runButton,
-              ],
+              ),
             );
           },
         ),
@@ -481,26 +431,39 @@ class AuditQueryScopeComposer extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  requestInvestigation
-                      ? '关联操作排查'
-                      : scopeApplied
-                      ? '调查范围已应用'
-                      : '建立审计调查范围',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        requestInvestigation
+                            ? '关联操作排查'
+                            : scopeApplied
+                            ? '调查范围已应用'
+                            : '建立审计调查范围',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    UtenFieldHintIcon(
+                      info: AppLocalizations.of(
+                        context,
+                      ).auditWorkspaceDescription,
+                      dense: true,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  scopeApplied
-                      ? '$actorLabel · $rangeLabel · 全部为北京时间'
-                      : AppLocalizations.of(context).auditWorkspaceDescription,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.45,
+                if (scopeApplied) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    '$actorLabel · $rangeLabel · 全部为北京时间',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: UtenSpacing.s12),
                 Wrap(
                   spacing: UtenSpacing.s12,
@@ -705,21 +668,17 @@ class _AuditRequestIdDialog extends StatelessWidget {
         children: [
           Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),
           const SizedBox(width: UtenSpacing.s8),
-          const Text('高级排查 · 按操作关联编号'),
+          const Flexible(child: Text('高级排查 · 按操作关联编号')),
+          const UtenFieldHintIcon(
+            info: '仅调查某一次操作及其关联证据时使用；请输入完整的操作关联编号。',
+            dense: true,
+          ),
         ],
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '仅调查某一次操作及其关联证据时使用；请输入完整的操作关联编号。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
           Semantics(
             key: const ValueKey('audit-request-id-field'),
             textField: true,

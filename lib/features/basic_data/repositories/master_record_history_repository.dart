@@ -127,6 +127,8 @@ class MasterRecordHistoryRepository {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? sourceType,
+    String? summaryKeyword,
     int size = 50,
   }) async => MasterRecordHistoryPage.fromJson(
     await api.get(
@@ -142,6 +144,8 @@ class MasterRecordHistoryRepository {
         'keyword': ?keyword,
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        'sourceType': ?sourceType,
+        'summaryKeyword': ?summaryKeyword,
         'size': size,
       },
     ),

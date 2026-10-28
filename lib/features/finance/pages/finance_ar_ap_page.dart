@@ -6,6 +6,7 @@ import '../../../shared/providers/master_party_options.dart';
 // 列表展示：单据号/来源单号/方向/往来方/到期日/结账方式/金额/备注/状态。
 // 名称解析：AR→客户 / AP→供应商（FinanceNameService）。往来方显示用 partyId + direction。
 import 'dart:async';
+import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +29,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
@@ -50,6 +52,13 @@ const Map<int, String> financeArApSettlementStyleLabels = {
 
 String financeArApSettlementStyleLabel(int? code) =>
     financeArApSettlementStyleLabels[code] ?? '未设置';
+
+String _arApRateText(String? value) {
+  final exact = financeExactDecimal(value);
+  if (exact == null) return '—';
+  final parts = exact.split('.');
+  return '${parts.first}.${(parts.length == 1 ? '' : parts[1]).padRight(6, '0')}';
+}
 
 class FinanceArApPage extends ConsumerStatefulWidget {
   const FinanceArApPage({super.key});
@@ -78,6 +87,15 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
   // 服务端桶 + 防串台代数）：共享状态见 MasterServerColumnFilters；
   // 排序 null = 不排序（走后端默认 billDate DESC）。
   final _columnFilters = MasterServerColumnFilters();
+  Map<String, dynamic>? _activeQuery;
+  int _criteriaRevision = 0;
+  static const _originalAmountColumns = {
+    'amountOriginal',
+    'amountReceivedOriginal',
+    'amountWriteOffOriginal',
+    'amountBalanceOriginal',
+    'prepaymentAppliedOriginal',
+  };
 
   @override
   void initState() {
@@ -85,6 +103,9 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
     listenReadOwner(ref, () {
       _loadRequests.begin();
       _columnFilters.reset();
+      _activeQuery = null;
+      _criteriaRevision++;
+      _tableRows.update(const []);
       setState(() {
         _page = null;
         _loading = false;
@@ -111,11 +132,16 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
     billNo: withDocNoFilters ? _columnFilters['billNo'] : null,
     sourceDocNo: withDocNoFilters ? _columnFilters['sourceDocNo'] : null,
     salesOrderNos: withDocNoFilters ? _columnFilters['salesOrderNos'] : null,
+    columnQuery: Map.unmodifiable(_columnFilters.values),
   );
 
   @override
   void scopedPagedReadOwnerChanged() {
     _loadRequests.begin();
+    _columnFilters.reset();
+    _activeQuery = null;
+    _criteriaRevision++;
+    _tableRows.update(const []);
     if (!mounted) return;
     setState(() {
       _page = null;
@@ -150,6 +176,12 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
 
     final generation = _loadRequests.begin();
     setState(() {
+      if (!const DeepCollectionEquality().equals(_activeQuery, cacheQuery)) {
+        _activeQuery = cacheQuery;
+        _criteriaRevision++;
+        _page = null;
+        _tableRows.update(const []);
+      }
       _loading = true;
       _error = null;
       _pageNum = page;
@@ -201,12 +233,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
 
   /// 单号桶（单据号/来源单号）随过滤上下文重取（失败静默保持旧桶）。
   Future<void> _loadDocNoFacets() => _columnFilters.loadFacets(
-    () => ref
-        .read(arApLedgerRepositoryProvider)
-        .facets(filter: _arApFilter(withDocNoFilters: false)),
+    () => ref.read(arApLedgerRepositoryProvider).facets(filter: _arApFilter()),
     onLoaded: () {
       if (mounted) setState(() {});
     },
+    isCurrent: captureReadOwner(ref),
   );
 
   List<MasterColumnDef<ArApLedgerItem>> _columns(FinanceNameService names) {
@@ -246,6 +277,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       ),
       MasterColumnDef(
         key: 'direction',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '方向',
         width: 80,
         value: (it) =>
@@ -253,18 +286,24 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       ),
       MasterColumnDef(
         key: 'sourceDocType',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '来源类型',
         width: 120,
         value: (it) => financeArApSourceTypeLabel(it.sourceDocType),
       ),
       MasterColumnDef(
         key: 'openItemKind',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '往来项目',
         width: 110,
         value: (it) => financeArApOpenItemKindLabel(it.openItemKind),
       ),
       MasterColumnDef(
         key: 'legacySourceResolution',
+        columnSearchEnabled: true,
+        facetSearchEnabled: true,
         label: '历史原单匹配',
         width: 190,
         value: (it) =>
@@ -274,6 +313,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
         MasterColumnDef(
           // 2026-09-25 单号列统一：关联销售单号表头值筛选（聚合列，服务端 EXISTS 精确匹配）。
           key: 'salesOrderNos',
+          columnSearchEnabled: true,
+          info: '查找完整销售单来源组；命中后保留该台账全部来源，不截成单个匹配项',
           label: '销售订单号',
           width: 190,
           value: (it) =>
@@ -289,6 +330,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       ),
       MasterColumnDef(
         key: 'party',
+        columnSearchEnabled: true,
+        facetSearchEnabled: true,
         label: directionLabel(ar: '客户', ap: '供应商', mixed: '往来方'),
         width: 200,
         value: partyLabel,
@@ -299,10 +342,13 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
         width: 120,
         type: 'date',
         sortable: true,
+        columnSearchEnabled: true,
         value: (it) => dateLabel(it.billDate),
       ),
       MasterColumnDef(
         key: 'dueDate',
+        columnSearchEnabled: true,
+        sortable: true,
         label: '到期日',
         width: 120,
         type: 'date',
@@ -310,13 +356,18 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       ),
       MasterColumnDef(
         key: 'settlementStyleLegacy',
+        columnSearchEnabled: true,
+        facetSearchEnabled: true,
         label: '结账方式',
         width: 100,
         value: (it) =>
+            it.settlementStyleLabel ??
             financeArApSettlementStyleLabel(it.settlementStyleLegacy),
       ),
       MasterColumnDef(
         key: 'currency',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '币别',
         width: 90,
         value: (it) =>
@@ -328,42 +379,68 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       ),
       MasterColumnDef(
         key: 'exchangeRate',
+        columnSearchEnabled: true,
+        sortable: true,
+        exactValueOf: (it) =>
+            it.exchangeRateText ?? financeDecimalText(it.exchangeRate),
+        info: '按该笔立账时保存的原始汇率检索；汇率不合计',
         label: '立账汇率',
         width: 100,
         type: 'number',
-        value: (it) => it.exchangeRate?.toStringAsFixed(6),
+        value: (it) => _arApRateText(
+          it.exchangeRateText ?? financeDecimalText(it.exchangeRate),
+        ),
       ),
       // 金额「数值 币种」后缀（2026-10-10 口径）：原币列随行 currencyName/Code，
       // 人民币列恒「元」；行缺币种或金额非数字（—/***)时不拼单位。
       MasterColumnDef(
         key: 'amountOriginal',
+        columnSearchEnabled: _currencyId != null,
+        sortable: _currencyId != null,
+        exactValueOf: (it) =>
+            it.amountOriginalText ?? financeDecimalText(it.amountOriginal),
+        info: '先选择币种，再按原币原始金额检索或排序；未知金额不作零',
         label: directionLabel(ar: '应收款金额', ap: '应付款金额', mixed: '立账金额'),
         width: 160,
         type: 'money',
         value: (it) => financeMoneyWithUnitSuffix(
-          it.amountOriginal?.toStringAsFixed(2),
+          it.amountOriginalText ?? financeDecimalText(it.amountOriginal),
           currencyName: it.currencyName,
           currencyCode: it.currencyCode,
         ),
       ),
       MasterColumnDef(
         key: 'amountReceivedOriginal',
+        columnSearchEnabled: _currencyId != null,
+        sortable: _currencyId != null,
+        exactValueOf: (it) =>
+            it.amountReceivedOriginalText ??
+            financeDecimalText(it.amountReceivedOriginal),
+        info: '原币金额检索及排序需先选择币种',
         label: directionLabel(ar: '已收款金额', ap: '已付款金额', mixed: '已结算金额'),
         width: 160,
         type: 'money',
         value: (it) => financeMoneyWithUnitSuffix(
-          it.amountReceivedOriginal?.toStringAsFixed(2),
+          it.amountReceivedOriginalText ??
+              financeDecimalText(it.amountReceivedOriginal),
           currencyName: it.currencyName,
           currencyCode: it.currencyCode,
         ),
       ),
       MasterColumnDef(
         key: 'amountWriteOffOriginal',
+        columnSearchEnabled: _currencyId != null,
+        sortable: _currencyId != null,
+        exactValueOf: (it) =>
+            it.amountWriteOffOriginalText ??
+            financeDecimalText(it.amountWriteOffOriginal),
+        info: '原币金额检索及排序需先选择币种',
         label: '冲销金额',
         width: 150,
         type: 'money',
         value: (it) => financeMoneyWithUnitSuffix(
-          it.amountWriteOffOriginal?.toStringAsFixed(2),
+          it.amountWriteOffOriginalText ??
+              financeDecimalText(it.amountWriteOffOriginal),
           currencyName: it.currencyName,
           currencyCode: it.currencyCode,
         ),
@@ -371,38 +448,58 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
       if (_direction != 'AP')
         MasterColumnDef(
           key: 'prepaymentAppliedOriginal',
+          columnSearchEnabled: _currencyId != null,
+          sortable: _currencyId != null && _direction == 'AR',
+          exactValueOf: (it) =>
+              it.direction == 'AR' ? it.prepaymentAppliedOriginal : null,
+          info: '应收台账的已抵原币金额；需先选择币种，不将供应商抵销当成客户预收',
           label: '预收已抵',
           width: 150,
           type: 'money',
-          value: (it) => financeMoneyWithUnitSuffix(
-            it.prepaymentAppliedOriginal,
-            currencyName: it.currencyName,
-            currencyCode: it.currencyCode,
-          ),
+          value: (it) => it.direction != 'AR'
+              ? '—'
+              : financeMoneyWithUnitSuffix(
+                  it.prepaymentAppliedOriginal,
+                  currencyName: it.currencyName,
+                  currencyCode: it.currencyCode,
+                ),
         ),
       MasterColumnDef(
         key: 'amountBalanceOriginal',
+        columnSearchEnabled: _currencyId != null,
+        sortable: _currencyId != null,
+        exactValueOf: (it) =>
+            it.amountBalanceOriginalText ??
+            financeDecimalText(it.amountBalanceOriginal),
+        info: '按原币当前未结金额检索，先选择币种；不按可见页重新累计余额',
         label: directionLabel(ar: '未收金额', ap: '未付金额', mixed: '未结金额'),
         width: 160,
         type: 'money',
         value: (it) => financeMoneyWithUnitSuffix(
-          it.amountBalanceOriginal?.toStringAsFixed(2),
+          it.amountBalanceOriginalText ??
+              financeDecimalText(it.amountBalanceOriginal),
           currencyName: it.currencyName,
           currencyCode: it.currencyCode,
         ),
       ),
       MasterColumnDef(
         key: 'amountBalance',
+        columnSearchEnabled: true,
+        exactValueOf: (it) =>
+            it.amountBalanceText ?? financeDecimalText(it.amountBalance),
+        info: '本币未结金额，保留账面原始精度，不按可见页求和',
         label: directionLabel(ar: '未收人民币', ap: '未付人民币', mixed: '未结人民币'),
         width: 160,
         type: 'money',
         sortable: true,
         value: (it) => financeLocalMoneyWithUnitSuffix(
-          it.amountBalance?.toStringAsFixed(2),
+          it.amountBalanceText ?? financeDecimalText(it.amountBalance),
         ),
       ),
       MasterColumnDef(
         key: 'settled',
+        columnSearchEnabled: false,
+        facetSearchEnabled: true,
         label: '状态',
         width: 120,
         value: (it) {
@@ -435,7 +532,15 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
 
   void _onColumnFilterChanged(String key, String? value) {
     // 2026-09-25 单号列统一：单号类表头值筛选（清空回 null=不过滤）走共享状态。
-    if (key == 'billNo' || key == 'sourceDocNo' || key == 'salesOrderNos') {
+    if (key == 'billNo' ||
+        key == 'sourceDocNo' ||
+        key == 'salesOrderNos' ||
+        key.startsWith('search.') ||
+        const {
+          'openItemKind',
+          'legacySourceResolution',
+          'settlementStyleLegacy',
+        }.contains(key)) {
       _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
       return;
     }
@@ -445,6 +550,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
           _direction = value;
           _directionSelected = true;
           _partyId = null;
+          _clearInapplicableColumns();
           break;
         case 'sourceDocType':
           _sourceDocType = value;
@@ -454,6 +560,15 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
           break;
         case 'currency':
           _currencyId = value;
+          if (value == null) {
+            for (final column in _originalAmountColumns) {
+              _columnFilters.setValue('search.$column', null);
+            }
+            if (_originalAmountColumns.contains(_columnFilters.sortColumn)) {
+              _columnFilters.sortColumn = null;
+              _columnFilters.sortAscending = true;
+            }
+          }
           break;
         case 'settled':
           _settled = value == null ? null : value == 'true';
@@ -467,6 +582,22 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
   void _refilter() {
     if (mounted) setState(() {});
     _load(1);
+  }
+
+  void _clearInapplicableColumns() {
+    if (_direction == 'AP') {
+      for (final key in const [
+        'salesOrderNos',
+        'search.salesOrderNos',
+        'search.prepaymentAppliedOriginal',
+      ]) {
+        _columnFilters.setValue(key, null);
+      }
+      if (_columnFilters.sortColumn == 'prepaymentAppliedOriginal') {
+        _columnFilters.sortColumn = null;
+        _columnFilters.sortAscending = true;
+      }
+    }
   }
 
   @override
@@ -512,6 +643,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                       _direction = value;
                       _directionSelected = true;
                       _partyId = null;
+                      _clearInapplicableColumns();
                     });
                     _load(1);
                   },
@@ -534,6 +666,26 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                 tableKey:
                     'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
                 columns: _columns(names),
+                serverColumnSearchKeys: const {
+                  'billNo',
+                  'sourceDocNo',
+                  'salesOrderNos',
+                  'party',
+                  'billDate',
+                  'dueDate',
+                  'settlementStyleLegacy',
+                  'exchangeRate',
+                  'amountOriginal',
+                  'amountReceivedOriginal',
+                  'amountWriteOffOriginal',
+                  'prepaymentAppliedOriginal',
+                  'amountBalanceOriginal',
+                  'amountBalance',
+                  'remark',
+                  'legacySourceResolution',
+                },
+                headerFilterScopeDescription:
+                    '检索当前台账范围的完整结果；原币金额需先选择币种，本币金额单独保留',
                 items: _page?.items ?? const [],
                 facets: {
                   // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
@@ -541,6 +693,54 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                   'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
                   'direction': financeArApDirectionFacets,
                   'sourceDocType': financeArApSourceTypeFacets,
+                  'openItemKind': [
+                    for (final kind in const [
+                      'RECEIVABLE',
+                      'PAYABLE',
+                      'CREDIT',
+                      'CLAIM_CREDIT',
+                      'PREPAYMENT',
+                      'CUSTOMER_PREPAYMENT',
+                      'LEGACY_UNVERIFIED',
+                    ])
+                      MasterFacetBucket(
+                        value: kind,
+                        label: financeArApOpenItemKindLabel(kind),
+                        count: 0,
+                      ),
+                  ],
+                  'legacySourceResolution': [
+                    for (final status in const [
+                      'EXACT_SOURCE',
+                      'AMBIGUOUS_SOURCE',
+                      'MISSING_OR_CONFLICTING_SOURCE',
+                      'UNVERIFIED_SOURCE_KIND',
+                    ])
+                      MasterFacetBucket(
+                        value: status,
+                        label: financeLegacySourceResolutionLabel(status),
+                        count: 0,
+                      ),
+                    const MasterFacetBucket(
+                      value: 'UNSET',
+                      label: '—（未提供匹配状态）',
+                      count: 0,
+                    ),
+                  ],
+                  'settlementStyleLegacy': [
+                    for (final style
+                        in financeArApSettlementStyleLabels.entries)
+                      MasterFacetBucket(
+                        value: style.key.toString(),
+                        label: style.value,
+                        count: 0,
+                      ),
+                    const MasterFacetBucket(
+                      value: 'UNSET',
+                      label: '未设置',
+                      count: 0,
+                    ),
+                  ],
                   'party': selectedPartyFacet(
                     _partyId,
                     (id) => _direction == 'AP'
@@ -550,7 +750,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                         : names.clientEntries[id] ?? names.supplierEntries[id],
                   ),
                   'settled': financeArApSettledFacets,
-                  'currency': masterDictionaryFacets(names.currencyEntries),
+                  'currency': masterDictionaryFacets({
+                    ...names.currencyEntries,
+                    for (final currency in _columnFilters.bucketOf('currency'))
+                      currency.value: currency.display,
+                  }),
                 },
                 facetPageLoaders: {
                   'party': _direction == 'AP'
@@ -562,12 +766,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                 facetSearchScope: partyFacetSearchScope(ref, (
                   'finance-ar-ap-party',
                   _direction,
+                  _criteriaRevision,
                 )),
                 nullCounts: const {},
                 filters: {
-                  'billNo': _columnFilters['billNo'],
-                  'sourceDocNo': _columnFilters['sourceDocNo'],
-                  'salesOrderNos': _columnFilters['salesOrderNos'],
+                  ..._columnFilters.values,
                   'direction': _direction,
                   'sourceDocType': _sourceDocType,
                   'party': _partyId,
@@ -585,7 +788,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
                 emptyMessage: '暂无台账记录',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
-                paginationScope: _keyword,
+                paginationScope: _criteriaRevision,
                 onPageChange: _navigatePage,
               ),
             ),

@@ -90,6 +90,9 @@ class _Suggestions extends Fake implements SuggestionRepository {
     SuggestionStatus? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagedResult(
     items: [row],
     page: page,

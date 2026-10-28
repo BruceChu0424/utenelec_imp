@@ -1,3 +1,7 @@
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
+import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/hierarchy/category_sibling_names.dart';
 // 收付款类别管理页（基础资料 · 邻接树 + 物化路径）。
 //
 // 大屏采用目录树 + 属性检查器，编辑模式复用共享表格批量维护；手机保留分类抽屉。
@@ -14,7 +18,6 @@ import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
-import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
@@ -108,6 +111,8 @@ class PaymentStylePage extends ConsumerStatefulWidget {
 class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
     with MasterInlinePageMixin<PaymentStylePage, _PaymentStyleWorkspaceRow> {
   final _treeRequest = LatestRequestGuard();
+  final _taskInvalidation = ValueNotifier<int>(0);
+  bool _disposed = false;
   final _categorySearch = TextEditingController();
 
   PaymentStyleCategory _category = PaymentStyleCategory.expense;
@@ -137,6 +142,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   Future<void> inlineReload() => _load();
   @override
   void inlineClearView() {
+    _taskInvalidation.value++;
     _treeRequest.begin();
     _tree = const [];
     _selectedId = null;
@@ -315,11 +321,15 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () => _taskInvalidation.value++);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
+    _disposed = true;
+    _taskInvalidation.value++;
+    _taskInvalidation.dispose();
     _categorySearch.dispose();
     _workspaceSearch.dispose();
     super.dispose();
@@ -452,7 +462,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   Future<void> _showCreate({PaymentStyleNode? parent}) async {
     if (!_canCreate || _batchBusy) return;
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
-    await showDialog<void>(
+    await showReadOwnedDialog<void>(
+      ref: ref,
       context: context,
       barrierDismissible: false,
       builder: (_) => _PaymentStyleEditDialog(
@@ -477,6 +488,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       context.appInfo('当前没有新增类别权限');
       return false;
     }
+    final current = captureReadOwner(ref);
     final created = await ref
         .read(paymentStyleRepositoryProvider)
         .create(
@@ -492,7 +504,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             status: result.status,
           ),
         );
-    if (mounted) {
+    if (mounted && current()) {
       _categorySearch.clear();
       setState(() => _selectedId = created.id);
       context.appSuccess('类别已创建');
@@ -503,7 +515,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   }
 
   void _showEdit(PaymentStyleDetail detail) {
-    showDialog<void>(
+    showReadOwnedDialog<void>(
+      ref: ref,
       context: context,
       barrierDismissible: false,
       builder: (_) => _PaymentStyleEditDialog(
@@ -520,6 +533,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   }
 
   Future<bool> _doUpdate(String id, _EditResult result) async {
+    final current = captureReadOwner(ref);
     if (!result.hasChanges) return true;
     if (result.statusChanged &&
         (!await confirmMasterStatusChange(
@@ -530,6 +544,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             !mounted)) {
       return false;
     }
+    if (!mounted || !current()) return false;
     final ok = await context.guardRun(
       () async {
         await ref
@@ -552,8 +567,9 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       },
       success: '类别已更新',
       errorFallback: '更新失败，请稍后重试',
+      isCurrent: current,
     );
-    if (!ok) return false;
+    if (!ok || !current()) return ok;
     _invalidatePaymentStyleCaches();
     await _load(preferredSelectionId: id);
     return true;
@@ -563,16 +579,21 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   /// 统一错误提示、返回 null 不再继续。
   Future<PaymentStyleDetail?> _loadDetailForMenu(PaymentStyleNode node) async {
     final boundary = captureInlineRead();
+    final current = captureReadOwner(ref);
     try {
-      final detail = await ref
-          .read(paymentStyleRepositoryProvider)
-          .detail(node.id);
-      return inlineAcceptsRead(boundary) ? detail : null;
+      final detail = await runUtenBlockingTask<PaymentStyleDetail>(
+        context: context,
+        title: '正在读取类别…',
+        isCurrent: () => !_disposed && current() && inlineAcceptsRead(boundary),
+        invalidation: _taskInvalidation,
+        task: () => ref.read(paymentStyleRepositoryProvider).detail(node.id),
+      );
+      return current() && inlineAcceptsRead(boundary) ? detail : null;
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && current()) context.appError(e.message);
       return null;
     } catch (_) {
-      if (mounted) {
+      if (mounted && current()) {
         context.appError('加载类别详情失败，请稍后重试'); // TODO(l10n): 补 arb
       }
       return null;
@@ -580,6 +601,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   }
 
   Future<void> _toggleStatus(PaymentStyleDetail detail) async {
+    final current = captureReadOwner(ref);
     final disabling = detail.status != '禁用';
     if (!await confirmMasterStatusChange(
           context,
@@ -590,15 +612,24 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
       return;
     }
 
+    if (!mounted || !current()) return;
     final nextStatus = disabling ? '禁用' : '使用';
+    final boundary = captureInlineRead();
     final ok = await context.guardRun(
-      () => ref
-          .read(paymentStyleRepositoryProvider)
-          .update(detail.id, PaymentStyleUpdateInput(status: nextStatus)),
+      () => runUtenBlockingTask<void>(
+        context: context,
+        title: disabling ? '正在停用类别…' : '正在启用类别…',
+        isCurrent: () => !_disposed && current() && inlineAcceptsRead(boundary),
+        invalidation: _taskInvalidation,
+        task: () => ref
+            .read(paymentStyleRepositoryProvider)
+            .update(detail.id, PaymentStyleUpdateInput(status: nextStatus)),
+      ),
       success: disabling ? '类别已停用' : '类别已启用',
       errorFallback: disabling ? '停用失败，请稍后重试' : '启用失败，请稍后重试',
+      isCurrent: current,
     );
-    if (ok && mounted) {
+    if (ok && mounted && current()) {
       _invalidatePaymentStyleCaches();
       await _load(preferredSelectionId: detail.id);
     }
@@ -1124,13 +1155,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             ],
           ),
         ),
-        const UtenPageEdgePadding(
-          padding: EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s4,
-          ),
-          child: Text('系统编号与层级保持只读；财务类别保留历史，不支持删除，请使用批量停用。'),
-        ),
         Expanded(
           child: MasterDataTableView<_PaymentStyleWorkspaceRow>(
             expensiveRowMounts: inlineEdit.active,
@@ -1319,7 +1343,11 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
             child: Stack(
               children: [
                 SafeArea(child: body),
-                if (_batchBusy) const UtenBusyOverlay(title: '正在批量更新类别'),
+                if (_batchBusy)
+                  const UtenBusyOverlay(
+                    showDoNotLeaveHint: false,
+                    title: '正在批量更新类别',
+                  ),
               ],
             ),
           ),
@@ -1467,8 +1495,6 @@ class _PaymentStyleInspectorState
                   const SizedBox(height: UtenSpacing.s16),
                   _MigrationSection(detail: detail),
                 ],
-                const SizedBox(height: UtenSpacing.s24),
-                const _RetentionSection(),
               ],
             ),
           ),
@@ -1498,8 +1524,7 @@ class _InspectorHeader extends StatelessWidget {
     final systemLocked = _isProtectedSystemDetail(detail);
     return MasterDetailCard(
       title: detail.name,
-      subtitle:
-          '${PaymentStyleCategory.labelOf(detail.category)} · 编号 ${detail.code} · 层级 L${detail.level}',
+      subtitle: PaymentStyleCategory.labelOf(detail.category),
       icon: Icons.account_tree_outlined,
       stats: const [],
       canEdit: false,
@@ -1587,7 +1612,13 @@ class _BusinessAttributesSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const UtenSectionHeader(title: '业务属性', icon: Icons.tune_rounded),
+          UtenSectionHeader(
+            title: '业务属性',
+            icon: Icons.tune_rounded,
+            info: category == PaymentStyleCategory.method
+                ? null
+                : '业务可选范围由所属大类、启用状态和末级类别共同决定。',
+          ),
           const SizedBox(height: UtenSpacing.s12),
           UtenFormGrid(
             columns: 4,
@@ -1618,13 +1649,13 @@ class _BusinessAttributesSection extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          _InlineNotice(
-            icon: Icons.info_outline_rounded,
-            text: category == PaymentStyleCategory.method
-                ? '“结算方式”目前是预留分类，不等同于收款单、付款单中的具体结算方式。'
-                : '这些标志用于标记分类用途；业务里能否选这个类别，还要看所属大类、启用状态和是否末级。',
-          ),
+          if (category == PaymentStyleCategory.method) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            const _InlineNotice(
+              icon: Icons.info_outline_rounded,
+              text: '“结算方式”目前是预留分类，不等同于收款单、付款单中的具体结算方式。',
+            ),
+          ],
         ],
       ),
     );
@@ -1754,68 +1785,6 @@ class _MigrationSection extends StatelessWidget {
                   value: detail.initBalance!.toStringAsFixed(2),
                 ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RetentionSection extends StatelessWidget {
-  const _RetentionSection();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Wrap(
-        spacing: UtenSpacing.s16,
-        runSpacing: UtenSpacing.s12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        alignment: WrapAlignment.spaceBetween,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.shield_outlined, color: theme.colorScheme.primary),
-                const SizedBox(width: UtenSpacing.s8),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '主档保留策略',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '财务类别不直接删除，以免破坏历史、审计链或并发业务引用。'
-                        '不再使用的普通类别请在类别目录中选择“停用”。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const UtenStatusBadge(
-            label: '仅可停用',
-            type: UtenStatusBadgeType.warning,
-            icon: Icons.lock_outline_rounded,
           ),
         ],
       ),
@@ -2046,9 +2015,39 @@ class _PaymentStyleEditDialogState
   bool _locationTouched = false;
   String? _formError;
 
+  String? get _nameError {
+    final name = _nameController.text.trim();
+    final editing = widget.editing;
+    if (editing != null &&
+        name == editing.name.trim() &&
+        _parent?.id == editing.parentId) {
+      return null;
+    }
+    return hasDuplicateSiblingName<PaymentStyleNode>(
+          roots: widget.tree,
+          childrenOf: (node) => node.children,
+          idOf: (node) => node.id,
+          parentIdOf: (node) => node.parentId,
+          nameOf: (node) => node.name,
+          name: name,
+          parentId: _parent?.id,
+          excludingId: widget.editing?.id,
+        )
+        ? '同一上级下已有类别“$name”，请更换名称'
+        : null;
+  }
+
+  void _nameChanged() {
+    if (mounted) setState(() => _formError = null);
+  }
+
   bool get _isEdit => widget.editing != null;
 
+  late final bool Function() _ownerIsCurrent;
+
   bool _saving = false;
+  bool _submissionWaiting = false;
+  final _ownerChanges = ValueNotifier<int>(0);
   bool _serverCreated = false;
   @override
   bool get formDraftEnabled => !_isEdit && widget.draftSpec != null;
@@ -2104,8 +2103,14 @@ class _PaymentStyleEditDialogState
   @override
   void initState() {
     super.initState();
+    _ownerIsCurrent = captureReadOwner(ref);
+    listenReadOwner(ref, () {
+      invalidateFormDraftIdentity();
+      _ownerChanges.value++;
+    });
     final editing = widget.editing;
     _nameController = TextEditingController(text: editing?.name ?? '');
+    _nameController.addListener(_nameChanged);
     _sortOrderController = TextEditingController(
       text: '${editing?.sortOrder ?? 0}',
     );
@@ -2128,6 +2133,9 @@ class _PaymentStyleEditDialogState
 
   @override
   void dispose() {
+    _ownerChanges.value++;
+    _ownerChanges.dispose();
+    _nameController.removeListener(_nameChanged);
     _nameController.dispose();
     _sortOrderController.dispose();
     super.dispose();
@@ -2200,7 +2208,6 @@ class _PaymentStyleEditDialogState
               if (pendingSelection?.node != null) pendingSelection!.node!.id,
             },
             sortByCode: false,
-            initiallyExpandDepth: 2,
             searchHint: '搜索类别名称或编号',
             nodeEnabledPredicate: _canUseAsParent,
             onToggleSelect: onSelect,
@@ -2234,14 +2241,20 @@ class _PaymentStyleEditDialogState
 
   Future<void> _submit() async {
     if (_saving) return;
+    if (!_ownerIsCurrent()) return;
+    final current = _ownerIsCurrent;
     if (_serverCreated) {
       await completeFormDraft();
-      if (mounted) Navigator.of(context).pop();
+      if (mounted && current()) Navigator.of(context).pop();
       return;
     }
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       setState(() => _formError = '请输入类别名称');
+      return;
+    }
+    if (_nameError != null) {
+      setState(() => _formError = _nameError);
       return;
     }
     final sortOrder = int.tryParse(_sortOrderController.text.trim());
@@ -2260,42 +2273,64 @@ class _PaymentStyleEditDialogState
     final editing = widget.editing;
     setState(() => _saving = true);
     try {
-      final ok = await runFormDraftSubmission(
-        () => widget.onSubmit(
-          _EditResult(
-            name: name,
-            nameChanged: editing == null || name != editing.name,
-            parentId: _parent?.id,
-            parentChanged: _positionChanged,
-            moveToRoot:
-                _positionChanged &&
-                editing != null &&
-                editing.parentId != null &&
-                _parent == null,
-            sortOrder: sortOrder,
-            sortOrderChanged: editing == null || sortOrder != editing.sortOrder,
-            receipt: _receipt,
-            receiptChanged: editing == null || _receipt != editing.receipt,
-            payment: _payment,
-            paymentChanged: editing == null || _payment != editing.payment,
-            departmental: _departmental,
-            departmentalChanged:
-                editing == null || _departmental != editing.departmental,
-            status: _status,
-            statusChanged: editing == null || _status != editing.status,
-          ),
-        ),
+      setState(() => _submissionWaiting = true);
+      final ok = await runUtenBlockingTask<bool>(
+        context: context,
+        title: _isEdit ? '正在保存类别' : '正在创建类别',
+        isCurrent: current,
+        invalidation: _ownerChanges,
+        task: () async {
+          final accepted = await runFormDraftSubmission(
+            () => !current()
+                ? Future.value(false)
+                : widget.onSubmit(
+                    _EditResult(
+                      name: name,
+                      nameChanged: editing == null || name != editing.name,
+                      parentId: _parent?.id,
+                      parentChanged: _positionChanged,
+                      moveToRoot:
+                          _positionChanged &&
+                          editing != null &&
+                          editing.parentId != null &&
+                          _parent == null,
+                      sortOrder: sortOrder,
+                      sortOrderChanged:
+                          editing == null || sortOrder != editing.sortOrder,
+                      receipt: _receipt,
+                      receiptChanged:
+                          editing == null || _receipt != editing.receipt,
+                      payment: _payment,
+                      paymentChanged:
+                          editing == null || _payment != editing.payment,
+                      departmental: _departmental,
+                      departmentalChanged:
+                          editing == null ||
+                          _departmental != editing.departmental,
+                      status: _status,
+                      statusChanged:
+                          editing == null || _status != editing.status,
+                    ),
+                  ),
+          );
+          if (accepted && mounted && current()) {
+            setState(() => _serverCreated = true);
+            await saveFormDraftNow();
+            await completeFormDraft();
+          }
+          return accepted;
+        },
       );
-      if (ok && mounted) {
-        setState(() => _serverCreated = true);
-        await saveFormDraftNow();
-        await completeFormDraft();
-        if (mounted) Navigator.of(context).pop();
-      }
+      if (ok && mounted && current()) Navigator.of(context).pop();
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted && current()) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _submissionWaiting = false;
+        });
+      }
     }
   }
 
@@ -2374,6 +2409,19 @@ class _PaymentStyleEditDialogState
                     decoration: UtenInputDecoration(
                       InputDecoration(
                         label: fieldLabel('类别名称', theme, required: true),
+                        error: utenFieldError(_nameError),
+                        errorStyle: TextStyle(color: theme.colorScheme.error),
+                        errorBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderSide: BorderSide(
+                            color: theme.colorScheme.error,
+                            width: 2,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -2484,11 +2532,13 @@ class _PaymentStyleEditDialogState
           onPressed: _saving ? null : _close,
           child: const Text('取消'),
         ),
-        UtenActionButton(
+        UtenButton(
           icon: _isEdit ? Icons.save_outlined : Icons.add_rounded,
-          label: Text(_isEdit ? '保存' : '创建'),
-          loadingLabel: const Text('保存中'),
-          onAction: _submit,
+          isLoading: _saving && !_submissionWaiting,
+          onPressed: !_saving && (_serverCreated || _nameError == null)
+              ? _submit
+              : null,
+          child: Text(_isEdit ? '保存' : '创建'),
         ),
       ],
     );

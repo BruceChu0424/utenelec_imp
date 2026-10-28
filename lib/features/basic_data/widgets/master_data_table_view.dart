@@ -1,5 +1,4 @@
 import '../../../shared/paging/paged_read_window_binding.dart';
-import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../../components/layout/uten_scroll_gutter.dart';
 import '../../../components/layout/uten_page_scrollbar_host.dart';
 import '../../../components/layout/uten_page_layout.dart';
@@ -8,6 +7,7 @@ import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/responsive/display_zoom.dart';
 import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../components/data_display/uten_table_surface.dart';
+import '../../../components/data_display/uten_table_read_status.dart';
 import '../../../components/data_display/uten_table_text_selection.dart';
 import '../../../components/data_display/uten_selection_lifecycle.dart';
 import '../../../components/data_display/uten_table_row_drag.dart';
@@ -60,9 +60,12 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
+import '../../../components/layout/uten_pagination.dart';
+import '../../../components/layout/uten_table_header_menu.dart';
 import '../../../components/layout/uten_table_horizontal_scroll_controller.dart';
 import '../../../components/layout/uten_panel_opening_scope.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/l10n/table_read_status_text.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/responsive/scale.dart';
@@ -70,6 +73,8 @@ import '../../../core/performance/ui_work_budget.dart';
 import '../../../components/layout/uten_ancestor_row_window.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/search/numeric_column_query.dart';
+import '../../../shared/search/calendar_column_query.dart';
 import '../models/master_facet.dart';
 import 'basic_data_l10n.dart';
 import '../../../components/data_display/uten_color_name.dart';
@@ -311,9 +316,9 @@ class MasterColumnDef<T> {
   /// 宿主已为该 key 提供服务端 facets 时以服务端为准（本开关不再生效）。
   final bool filterFromRows;
 
-  /// Override only where business meaning differs from the ordinary text-column
-  /// convention. Dates, measures, enums and action columns retain their existing
-  /// range, choice and sort controls instead of a keyword field.
+  /// Explicit business opt-in/out. Complete local date/measure columns accept
+  /// typed conditions; paged tables only expose declared server contracts.
+  /// Enums search candidate choices and actions retain their own controls.
   final bool? columnSearchEnabled;
 
   /// Search the complete supplied candidate list without adding a row keyword
@@ -340,7 +345,13 @@ class MasterColumnDef<T> {
 }
 
 /// 按数值排序的列类型 (与后端 ReportColumn.type 同名; weight 另按千克换算)。
-const Set<String> _numericColumnTypes = {'number', 'money', 'count', 'weight'};
+const Set<String> _numericValueColumnTypes = {
+  'number',
+  'money',
+  'count',
+  'int',
+};
+const Set<String> _numericColumnTypes = {..._numericValueColumnTypes, 'weight'};
 
 /// 重量列显示文本 (如「≈3.52 t」「850 g」) -> 千克; 不是重量 (如「未称」) 返回 null。
 double? _weightSortValue(String text) {
@@ -460,6 +471,9 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.externalFilterKeys = const <String>{},
     required this.onFilterChanged,
     this.serverColumnSearch = false,
+    this.serverColumnSearchKeys = const <String>{},
+    this.filterContextRows,
+    this.headerFilterScopeDescription,
     this.preserveQueryOnReturn = false,
     this.onRowTap,
     this.canOpenRow,
@@ -646,6 +660,14 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// Server lists forward `search.<column key>` through their normal query and
   /// export path. Complete in-memory tables search the displayed column values.
   final bool serverColumnSearch;
+
+  /// Narrow opt-in where only specific columns have a server query contract.
+  final Set<String> serverColumnSearchKeys;
+
+  /// Reintroduce original ancestors/groups after local matching. The owner
+  /// defines the business context; paged sources remain server-owned.
+  final List<T> Function(List<T> all, List<T> matched)? filterContextRows;
+  final String? headerFilterScopeDescription;
 
   /// A revision browser keeps its current filters while opening a child page.
   /// Ordinary workspaces still clear their header query on return by default;
@@ -1407,6 +1429,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
       int? page;
       double? firstTop;
+      int? bottomPage;
+      double? lastBottom;
+      var contentContinuesBelow = false;
       for (final entry in _mountedPaginationRows.entries) {
         if (!entry.value.paged) continue;
         final rowPage = _rowPages[entry.key];
@@ -1424,18 +1449,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             .dy;
         // Kept-alive offscreen cells can remain attached with a singular paint
         // transform. They have no visible position and must not win the anchor.
-        if (!top.isFinite ||
-            !bottom.isFinite ||
-            bottom <= 0.5 ||
-            top >= viewport.size.height) {
+        if (!top.isFinite || !bottom.isFinite || bottom <= 0.5) {
+          continue;
+        }
+        if (top >= viewport.size.height) {
+          contentContinuesBelow = true;
           continue;
         }
         if (firstTop == null || top < firstTop) {
           firstTop = top;
           page = rowPage;
         }
+        if (bottomPage == null || bottom > lastBottom!) {
+          lastBottom = bottom;
+          bottomPage = rowPage;
+        }
       }
       if (page == null) return;
+      // 滑到已加载内容末尾时，末页可能不满一屏：视口顶部仍是上一页的行。
+      // 此时读页取视口内最底一行所属页，页码在底部如实报到最后一页。
+      if (!contentContinuesBelow && bottomPage != null && bottomPage > page) {
+        page = bottomPage;
+      }
       if (page != _currentPage || _visiblePage == null) {
         setState(() => _visiblePage = page);
         _bindPagination();
@@ -2397,42 +2432,49 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 horizontal: UtenSpacing.s12,
                 vertical: UtenSpacing.s6,
               ),
-              child: Row(
-                spacing: UtenSpacing.s8,
-                children: [
-                  if (refreshing)
-                    SizedBox.square(
-                      dimension: UtenSpacing.s16,
-                      child: CircularProgressIndicator(
-                        key: const ValueKey('master-table-refresh-progress'),
-                        strokeWidth: 2,
-                        value: duration == Duration.zero ? 0.5 : null,
-                      ),
+              child: refreshing
+                  ? Row(
+                      spacing: UtenSpacing.s8,
+                      children: [
+                        SizedBox.square(
+                          dimension: UtenSpacing.s16,
+                          child: CircularProgressIndicator(
+                            key: const ValueKey(
+                              'master-table-refresh-progress',
+                            ),
+                            strokeWidth: 2,
+                            value: duration == Duration.zero ? 0.5 : null,
+                          ),
+                        ),
+                        Expanded(
+                          child: Tooltip(
+                            message: '正在核对最新数据，仍可打开下面的记录',
+                            child: Text(
+                              '正在更新数据',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                        ),
+                      ],
                     )
-                  else
-                    Icon(
-                      Icons.sync_problem_outlined,
-                      size: UtenSpacing.s20,
-                      color: theme.colorScheme.error,
-                    ),
-                  Expanded(
-                    child: Tooltip(
-                      message: refreshing
-                          ? '正在核对最新数据，仍可打开下面的记录'
-                          : widget.refreshError!,
-                      child: Text(
-                        refreshing ? '正在更新数据' : '更新失败，显示上次数据',
-                        style: theme.textTheme.bodySmall,
+                  : Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: UtenTableReadStatus(
+                        keyPrefix: 'master-table-refresh-read',
+                        ownerIdentity: (
+                          this,
+                          widget.paginationScope,
+                          widget.paginationRevision,
+                          _platform.authorizationRevision,
+                          _platform.queryLifecycle,
+                        ),
+                        title: tableReadStatusText(context, 'refreshFailed'),
+                        reason: widget.refreshError!,
+                        impact: tableReadStatusText(context, 'refreshImpact'),
+                        guidance: tableReadStatusText(context, 'guidance'),
+                        retry: widget.onRetry,
                       ),
                     ),
-                  ),
-                  if (!refreshing && widget.onRetry != null)
-                    TextButton(
-                      onPressed: widget.onRetry,
-                      child: const Text('重试'),
-                    ),
-                ],
-              ),
             ),
           ),
         ),
@@ -2448,16 +2490,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _appendFailure() => Padding(
     padding: const EdgeInsets.all(UtenSpacing.s8),
-    child: Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(_appendError ?? '下一页加载失败'),
-        TextButton(
-          onPressed: () => _extendPages(prepend: _prepending),
-          child: const Text('重试'),
+    child: Center(
+      child: UtenTableReadStatus(
+        keyPrefix: 'master-table-page-read',
+        ownerIdentity: (
+          this,
+          widget.paginationScope,
+          widget.paginationRevision,
+          _platform.authorizationRevision,
+          _platform.queryLifecycle,
+          _appendGeneration,
         ),
-      ],
+        title: tableReadStatusText(
+          context,
+          _prepending ? 'prependFailed' : 'appendFailed',
+        ),
+        reason: _appendError ?? tableReadStatusText(context, 'appendFailed'),
+        impact: tableReadStatusText(context, 'pageImpact'),
+        guidance: tableReadStatusText(context, 'guidance'),
+        retry: () => _extendPages(prepend: _prepending),
+      ),
     ),
   );
 
@@ -2498,7 +2550,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           label: column.name,
           width: column.numeric ? 140 : 180,
           type: column.numeric ? 'number' : 'text',
-          info: column.calculated ? '计算展示，不改变原单据金额或库存数量' : '业务记录的补充信息',
+          columnSearchEnabled:
+              !_serverPaged &&
+              (!column.priceProtected ||
+                  _platform.capabilities?.priceVisible == true),
+          aiSensitive: column.priceProtected,
+          info: [
+            column.calculated ? '计算展示，不改变原单据金额或库存数量' : '业务记录的补充信息',
+            if (_serverPaged) '此补充列用于显示，请使用原业务字段定位记录。',
+          ].join('\n'),
           exportDefinition: _platform.projectionDefinition(column),
           value: (row) => _platform.value(row, column),
           cellBuilderHandlesSemantics: true,
@@ -2920,10 +2980,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // One selected remote caption per logical column, shared by its ordinary
   // header and the frozen header copy.
   final Map<String, MasterFacetBucket> _selectedFacetBuckets = {};
+  Object? _facetCaptionScope;
   final Map<String, String> _columnSearches = {};
 
   bool _serverSearchFor(String key) =>
-      widget.serverColumnSearch &&
+      (widget.serverColumnSearch ||
+          widget.serverColumnSearchKeys.contains(key)) &&
       widget.columns.any((column) => column.key == key);
 
   String? _columnSearch(String key) => _serverSearchFor(key)
@@ -2962,12 +3024,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.onPageChange != null ||
       widget.onLoadMore != null ||
       widget.totalPages > 1;
+  bool _supportsColumnSearch(MasterColumnDef<T> column) {
+    if (column.columnSearchEnabled == false) return false;
+    // A partial page must never masquerade as a search across all records.
+    if (_serverPaged && !_serverSearchFor(column.key)) return false;
+    return column.supportsKeywordSearch ||
+        (!_serverPaged &&
+            {..._numericValueColumnTypes, 'date'}.contains(column.type));
+  }
+
   bool _ownsHeaderFilter(MasterColumnDef<T> column) =>
       !widget.externalFilterKeys.contains(column.key) &&
       ((!_serverPaged && column.filterFromRows) ||
           widget.facets.containsKey(column.key) ||
-          widget.serverColumnSearch ||
-          column.supportsKeywordSearch ||
+          _serverSearchFor(column.key) ||
+          _supportsColumnSearch(column) ||
           !_serverPaged);
   String _querySignature(
     Map<String, String?> filters,
@@ -2991,6 +3062,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     bool ascending,
     bool present,
   ) {
+    final captionScope = (
+      _platform.tableKey,
+      _platform.authorizationRevision,
+      _platform.queryLifecycle,
+    );
+    if (_facetCaptionScope != captionScope) {
+      _selectedFacetBuckets.clear();
+      _facetCaptionScope = captionScope;
+    }
     final signature = _querySignature(filters, sort, ascending, present);
     if (signature == _queryPreferenceSignature) return;
     final tableKey = _platform.tableKey;
@@ -3022,7 +3102,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       for (final column in _columns) {
         if (!_ownsHeaderFilter(column)) continue;
         final searchKey = 'search.${column.key}';
-        final search = filtersPresent && column.supportsKeywordSearch
+        final search = filtersPresent && _supportsColumnSearch(column)
             ? filters[searchKey]
             : null;
         if (_serverSearchFor(column.key)) {
@@ -3098,7 +3178,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           : filterKey == searchKey
           ? filterValue
           : _columnSearch(column.key);
-      if (column.supportsKeywordSearch && search != null && search.isNotEmpty) {
+      if (_supportsColumnSearch(column) &&
+          search != null &&
+          search.isNotEmpty) {
         filters['search.${column.key}'] = search;
       }
     }
@@ -3838,10 +3920,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   String? _headerInfo(MasterColumnDef<T> column) {
     final messages = [
       if (column.info != null) column.info!,
-      if (_serverPaged &&
-          !_serverSearchFor(column.key) &&
-          column.supportsKeywordSearch)
-        '关键词搜索在当前已加载的数据中匹配；继续加载会加入新的匹配行。',
       if (_serverPaged && widget.onSortChange == null && column.sortable)
         '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
     ];
@@ -3909,9 +3987,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _pendingScrollToEnd = widget.scrollToEndRequest;
     }
     _pageCtrl = TextEditingController(text: '${widget.currentPage}');
-    _pageFocus.addListener(() {
-      if (!_pageFocus.hasFocus && mounted) _pageCtrl.text = '$_currentPage';
-    });
     if (widget.stickyHeaderPinned != null) {
       _sticky = UtenStickyHeaderTracker(
         stackKey: _stickyStackKey,
@@ -4954,15 +5029,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   double _measureText(String text, TextStyle style, TextScaler textScaler) {
     if (text.isEmpty) return 0;
     debugMasterTableMeasureTextCount++;
-    final tp = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: textScaler,
-      maxLines: 1,
-    )..layout();
-    final w = tp.width;
-    tp.dispose();
-    return w;
+    return utenTableCellTextWidth(text, style: style, textScaler: textScaler);
   }
 
   @override
@@ -5270,6 +5337,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   List<T>? _displayRowsSource;
   List<MasterColumnDef<T>>? _displayRowsColumns;
   Map<String, String?> _displayRowsFilters = const {};
+  Object? _displayRowsContextFilter;
   Map<String, String> _displayRowsSearches = const {};
   Object? _displayRowsSort;
   List<T> _displayRowsCache = const [];
@@ -5281,6 +5349,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.onSortChange == null,
     );
     if (identical(_displayRowsSource, _items) &&
+        identical(_displayRowsContextFilter, widget.filterContextRows) &&
         identical(_displayRowsColumns, _columns) &&
         _displayRowsSort == sort &&
         mapEquals(_displayRowsFilters, _rowFilters) &&
@@ -5288,6 +5357,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       return _displayRowsCache;
     }
     _displayRowsSource = _items;
+    _displayRowsContextFilter = widget.filterContextRows;
     _displayRowsColumns = _columns;
     _displayRowsSort = sort;
     _displayRowsFilters = Map.of(_rowFilters);
@@ -5299,15 +5369,32 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     var rows = source;
     if (_columnSearches.isNotEmpty) {
       final defs = _columnByKey;
+      final predicates = <bool Function(T)>[];
+      for (final entry in _columnSearches.entries) {
+        final def = defs[entry.key];
+        if (def == null || !_supportsColumnSearch(def)) continue;
+        if (_numericValueColumnTypes.contains(def.type)) {
+          final query = NumericColumnQuery.tryParse(entry.value);
+          predicates.add(
+            (item) =>
+                query?.matches(
+                  def.exactValueOf != null
+                      ? def.exactValueOf!(item)
+                      : displayedColumnDecimal(def.value(item)),
+                ) ??
+                false,
+          );
+        } else if (def.type == 'date') {
+          final query = CalendarColumnQuery.tryParse(entry.value);
+          predicates.add((item) => query?.matches(def.value(item)) ?? false);
+        } else {
+          predicates.add(
+            (item) => matchesKeywordSearch([def.value(item)], entry.value),
+          );
+        }
+      }
       rows = rows
-          .where(
-            (item) => _columnSearches.entries.every((entry) {
-              final def = defs[entry.key];
-              return def == null ||
-                  !def.supportsKeywordSearch ||
-                  matchesKeywordSearch([def.value(item)], entry.value);
-            }),
-          )
+          .where((item) => predicates.every((predicate) => predicate(item)))
           .toList();
     }
     if (_rowFilters.isNotEmpty) {
@@ -5328,6 +5415,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         return true;
       }).toList();
     }
+    if (!_serverPaged && !identical(rows, source)) {
+      rows = widget.filterContextRows?.call(source, rows) ?? rows;
+    }
     final sortKey = _localSortColumn;
     if (sortKey != null && widget.onSortChange == null) {
       final def = _columnByKey[sortKey];
@@ -5344,11 +5434,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               : numeric
               ? _numericSortValue(text)
               : null;
+          final exact = numeric && !weight
+              ? ColumnDecimal.tryParse(
+                  def.exactValueOf != null
+                      ? def.exactValueOf!(row) ?? ''
+                      : displayedColumnDecimal(text) ?? '',
+                )
+              : null;
           return (
             row: row,
             text: text,
             number: number,
-            blank: text.isEmpty || text == '—' || (weight && number == null),
+            exact: exact,
+            blank:
+                text.isEmpty ||
+                text == '—' ||
+                (weight && number == null) ||
+                (numeric &&
+                    !weight &&
+                    def.exactValueOf != null &&
+                    exact == null),
           );
         }).toList();
         values.sort((a, b) {
@@ -5359,7 +5464,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           if (weight) {
             base = a.number!.compareTo(b.number!);
           } else if (numeric) {
-            base = a.number == null || b.number == null
+            base = a.exact != null && b.exact != null
+                ? a.exact!.compareTo(b.exact!)
+                : a.number == null || b.number == null
                 ? a.text.compareTo(b.text)
                 : a.number!.compareTo(b.number!);
           } else {
@@ -6678,25 +6785,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           horizontal: UtenSpacing.s16,
           vertical: UtenSpacing.s12,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Flexible(
-              child: Text(
-                widget.error ?? '',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
+        child: Center(
+          child: UtenTableReadStatus(
+            keyPrefix: 'master-table-initial-read',
+            ownerIdentity: (
+              this,
+              widget.paginationScope,
+              widget.paginationRevision,
+              _platform.authorizationRevision,
+              _platform.queryLifecycle,
             ),
-            const SizedBox(width: UtenSpacing.s8),
-            TextButton.icon(
-              onPressed: widget.onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('重试'), // TODO(l10n): 补 arb
+            title: tableReadStatusText(
+              context,
+              _items.isEmpty ? 'loadFailed' : 'refreshFailed',
             ),
-          ],
+            reason: widget.error!,
+            impact: tableReadStatusText(
+              context,
+              _items.isEmpty ? 'loadImpact' : 'refreshImpact',
+            ),
+            guidance: tableReadStatusText(context, 'guidance'),
+            retry: widget.onRetry,
+          ),
         ),
       );
     } else if (displayItems.isEmpty && _appendRows.isEmpty) {
@@ -6793,13 +6903,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final toolbarChildren = [
-            if (_platform.error != null)
-              PlatformTableStatus(
-                error: _platform.error,
-                retry: _platform.retryRead,
-                loading: _platform.loading,
-                failure: _platform.readFailure,
-              ),
             if (widget.showColumnChooser)
               UtenColumnChooserButton(
                 entries: [
@@ -6831,6 +6934,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 widget.showSelectionSummary &&
                 !_hasFloatingBatchActions)
               _buildBatchBar(theme),
+            if (_platform.error != null)
+              PlatformTableStatus(
+                key: const ValueKey('platform-table-status'),
+                ownerIdentity: (
+                  _platform,
+                  _platform.authorizationRevision,
+                  _platform.queryLifecycle,
+                  _platform.tableKey,
+                ),
+                error: _platform.error,
+                retry: _platform.retryRead,
+                loading: _platform.loading,
+                failure: _platform.readFailure,
+              ),
           ];
           // 右侧贴边簇：调用方动作 + 分页。分页（上一页/下一页/页码/总页数）
           // 上移工具条右上角、与「表头设置 / 全屏」同一行（2026-10-18 用户口径，
@@ -7896,17 +8013,27 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     ),
                   ] else if (expanded && hasError)
                     Flexible(
-                      child: Tooltip(
-                        message: error,
-                        child: TextButton.icon(
-                          onPressed: group.onRetry ?? group.onExpand,
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
-                          label: const Text(
-                            '加载失败，重试',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                      child: UtenTableReadStatus(
+                        keyPrefix: 'master-table-group-${group.id}-read',
+                        ownerIdentity: (
+                          this,
+                          widget.paginationScope,
+                          widget.paginationRevision,
+                          _platform.authorizationRevision,
+                          _platform.queryLifecycle,
+                          group.id,
                         ),
+                        title:
+                            '${group.title} · ${tableReadStatusText(context, 'groupFailed')}',
+                        reason: error,
+                        impact: tableReadStatusText(
+                          context,
+                          group.items.isEmpty
+                              ? 'groupEmptyImpact'
+                              : 'groupImpact',
+                        ),
+                        guidance: tableReadStatusText(context, 'guidance'),
+                        retry: group.onRetry ?? group.onExpand,
                       ),
                     )
                   else
@@ -7938,24 +8065,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   Widget _buildHeaderRow(ThemeData theme) {
     final row = _buildHeaderRowBody(theme);
-    return !widget.showColumnChooser
-        ? row
-        : UtenFrozenTrailingColumn(
-            horizontal: _headerH,
-            width: 48,
-            // 左线隔开滚过的列头；右线收住末列边缘。
-            cell: DecoratedBox(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHigh,
-                border: Border(
-                  left: BorderSide(color: theme.colorScheme.outline),
-                  right: BorderSide(color: theme.colorScheme.outline),
+    return UtenTableRowRightEdge(
+      child: !widget.showColumnChooser
+          ? row
+          : UtenFrozenTrailingColumn(
+              horizontal: _headerH,
+              width: 48,
+              // 左线隔开滚过的列头；右线收住末列边缘。
+              cell: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHigh,
+                  border: Border(
+                    left: BorderSide(color: theme.colorScheme.outline),
+                    right: BorderSide(color: theme.colorScheme.outline),
+                  ),
                 ),
+                child: _platformAddButton(),
               ),
-              child: _platformAddButton(),
+              row: row,
             ),
-            row: row,
-          );
+    );
   }
 
   Widget _buildHeaderRowBody(ThemeData theme) {
@@ -8079,6 +8208,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final queryRevision = _queryRestoreRevision;
     final filterCell = _FilterCell(
       label: _columns[i].label,
+      scopeDescription: widget.headerFilterScopeDescription,
       filterAction: _columns[i].headerFilterAction,
       facetSearchEnabled: _columns[i].facetSearchEnabled,
       selectedBucket: _selectedFacetBuckets[sortKey],
@@ -8104,10 +8234,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _platform.queryLifecycle,
       ),
       isCurrent: () => mounted && queryRevision == _queryRestoreRevision,
-      search: _columns[i].supportsKeywordSearch
+      search: _supportsColumnSearch(_columns[i])
           ? _columnSearch(_columns[i].key)
           : null,
-      onSearch: _columns[i].supportsKeywordSearch
+      onSearch: _supportsColumnSearch(_columns[i])
           ? (value) => _searchColumn(_columns[i].key, value)
           : null,
       sortKey: sortKey,
@@ -8183,34 +8313,35 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ],
       ),
     );
-    return Container(
+    return SizedBox(
       width: _widths[i],
       // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
-      decoration: BoxDecoration(
+      child: UtenTableCellFrame(
+        insetBorder: true,
         border: Border(
           right: showRightDivider
               ? BorderSide(color: theme.colorScheme.outline)
               : BorderSide.none,
         ),
-      ),
-      child: Stack(
-        children: [
-          content,
-          // 列边界命中区完整留在当前列内；与编辑表共用鼠标/键盘/RTL/恢复交互。
-          // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
-          // 桌面端悬停显示 resize 光标作为可调提示。
-          PositionedDirectional(
-            end: 0,
-            top: 0,
-            bottom: 0,
-            width: _gripHalf * 2,
-            child: UtenColumnResizeHandle(
-              label: _columns[i].label,
-              onResize: (delta) => _resizeColumn(i, delta),
-              onReset: () => _resetColumnWidth(i),
+        child: Stack(
+          children: [
+            content,
+            // 列边界命中区完整留在当前列内；与编辑表共用鼠标/键盘/RTL/恢复交互。
+            // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
+            // 桌面端悬停显示 resize 光标作为可调提示。
+            PositionedDirectional(
+              end: 0,
+              top: 0,
+              bottom: 0,
+              width: _gripHalf * 2,
+              child: UtenColumnResizeHandle(
+                label: _columns[i].label,
+                onResize: (delta) => _resizeColumn(i, delta),
+                onReset: () => _resetColumnWidth(i),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -8300,14 +8431,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   : UtenColors.errorText)
             : null,
       );
-      return Container(
+      return SizedBox(
         width: _widths[columnIndex],
         // 列间竖线：逐格勾勒单元格右边界。
         // 语义底色格补上/下边框（2026-09-27 用户口径「整格背景变色后上下单元格
         // 边框看不清」）：实底会淹没行的横向分隔，描一圈同款细线让行列网格在
         // 任何底色下都保持可读；无底色格维持原有竖线，不加重整表线感。
-        decoration: BoxDecoration(
-          color: cellColor,
+        child: UtenTableCellFrame(
+          insetBorder: true,
+          backgroundColor: cellColor,
           border: cellColor == null
               ? Border(
                   right: showRightDivider
@@ -8324,13 +8456,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       ? BorderSide(color: theme.colorScheme.outline, width: 0.5)
                       : BorderSide.none,
                 ),
-        ),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: _columnHorizontalPadding(context, column),
-            vertical: widget.dataCellVerticalPadding,
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: _columnHorizontalPadding(context, column),
+              vertical: widget.dataCellVerticalPadding,
+            ),
+            child: _dataCell(column, item, cellStyle, selected),
           ),
-          child: _dataCell(column, item, cellStyle, selected),
         ),
       );
     }
@@ -8549,6 +8681,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ),
           );
     final undecoratedRow = DecoratedBox(
+      position: DecorationPosition.foreground,
       // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
       decoration: BoxDecoration(
         border: Border(
@@ -8784,183 +8917,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return interactive;
   }
 
-  /// 工具条右端的紧凑分页（2026-10-18 用户口径：翻页条从表格下方上移到表头
-  /// 上方工具条右上角，与「表头设置 / 全屏」同一行；页码输入框收窄）。窄宽下
-  /// 逐级降级：先收起跳页框改整段「当前页 / 总页数」，再叠成两行——保持完整
-  /// 命中目标，短窗滚动整条表格呈现而不是裁掉控件。
+  /// Toolbar and picker pagination share the goods-table compact controls.
   Widget? _buildToolbarPager(BuildContext context) {
     if (!widget.showPaginationControls || widget.totalPages <= 1) return null;
-    final theme = Theme.of(context);
-    final canPrev = !_busy && _currentPage > 1;
-    final canNext = !_busy && _currentPage < widget.totalPages;
-    // 桌面紧凑款：命中目标 32、页码框 40×28、数字 15px 半粗、翻页 icon 24；
-    // 触控保持完整 48 目标（缩放补偿）。数字与 icon 比正文更重（2026-10-18
-    // 用户口径「数字加粗大一点，特别是翻页 icon」）。
-    final touch = UtenControlMetrics.usesTouchTargets(context);
-    final hitExtent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
-    final inputExtent = touch ? hitExtent : 28.0;
-    final pageInputWidth = touch ? math.max(48.0, hitExtent) : 40.0;
-    final pageTextStyle = theme.textTheme.bodyMedium?.copyWith(
-      fontSize: 15,
-      fontWeight: FontWeight.w600,
-    );
-    double widthOf(String text) {
-      final painter = TextPainter(
-        text: TextSpan(text: text, style: theme.textTheme.bodyMedium),
-        textScaler: MediaQuery.textScalerOf(context),
-        textDirection: Directionality.of(context),
-      )..layout();
-      final width = painter.width;
-      painter.dispose();
-      return width;
-    }
-
-    void goto(int page) => _gotoPage(page);
-    Widget chevron(bool forward) => IconButton(
-      key: ValueKey(
-        forward ? 'master-table-page-next' : 'master-table-page-previous',
-      ),
-      constraints: BoxConstraints.tightFor(width: hitExtent, height: hitExtent),
-      padding: EdgeInsets.zero,
-      onPressed: (forward ? canNext : canPrev) && widget.onPageChange != null
-          ? () => goto(_currentPage + (forward ? 1 : -1))
-          : null,
-      tooltip: forward ? '下一页' : '上一页', // TODO(l10n): 补 arb
-      icon: Icon(
-        forward ? Icons.chevron_right_rounded : Icons.chevron_left_rounded,
-        size: 24,
-      ),
-    );
-    // 页码框宽度随已输入位数自动加宽（2026-10-18 用户口径：数字长框变长）：
-    // 1 位 = 基础宽，每多一位 +9、封顶 +64；右簇贴右锚定，视觉上向左生长。
-    Widget pageField() => ValueListenableBuilder<TextEditingValue>(
-      valueListenable: _pageCtrl,
-      builder: (context, value, _) {
-        final digits = value.text.trim().length;
-        final width = math.min(
-          pageInputWidth + math.max(0, digits - 1) * 9.0,
-          pageInputWidth + 64,
-        );
-        return SizedBox(
-          width: width,
-          child: TextFormField(
-            errorBuilder: utenTextFieldErrorBuilder,
-            controller: _pageCtrl,
-            focusNode: _pageFocus,
-            enabled: !_busy,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            textAlignVertical: TextAlignVertical.center,
-            style: pageTextStyle,
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                constraints: BoxConstraints(
-                  minHeight: inputExtent,
-                  maxHeight: inputExtent,
-                ),
-                isDense: true,
-                hintText: '页码', // TODO(l10n): 补 arb
-                hintStyle: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 3,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(UtenRadius.control),
-                ),
-              ),
-            ),
-            // 填数字回车跳页：非法→回当前页；越界→钳制到 [1,totalPages] 并回填。
-            onFieldSubmitted: (v) {
-              final p = int.tryParse(v.trim());
-              final target = p == null
-                  ? _currentPage
-                  : p.clamp(1, widget.totalPages);
-              if (target != _currentPage) {
-                goto(target);
-              } else {
-                _pageCtrl.text = '$target';
-              }
-              _pageFocus.unfocus();
-            },
-          ),
-        );
-      },
-    );
-
-    final totalText = '/ ${widget.totalPages}'; // TODO(l10n): 补 arb
-    final counterText = '$_currentPage / ${widget.totalPages}';
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        if (!width.isFinite ||
-            width >=
-                2 * hitExtent +
-                    pageInputWidth +
-                    widthOf(totalText) +
-                    3 * UtenSpacing.s4) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              chevron(false),
-              const SizedBox(width: UtenSpacing.s4),
-              pageField(),
-              const SizedBox(width: UtenSpacing.s4),
-              Text(
-                totalText,
-                style: pageTextStyle?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              chevron(true),
-            ],
-          );
-        }
-        if (width >=
-            2 * hitExtent + 2 * UtenSpacing.s8 + widthOf(counterText)) {
-          return Row(
-            children: [
-              chevron(false),
-              Expanded(
-                child: Text(
-                  counterText,
-                  textAlign: TextAlign.center,
-                  style: pageTextStyle,
-                ),
-              ),
-              chevron(true),
-            ],
-          );
-        }
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              counterText,
-              textAlign: TextAlign.center,
-              style: pageTextStyle,
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            if (width >= 2 * hitExtent + UtenSpacing.s8)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [chevron(false), chevron(true)],
-              )
-            else
-              Column(
-                children: [
-                  chevron(false),
-                  const SizedBox(height: UtenSpacing.s4),
-                  chevron(true),
-                ],
-              ),
-          ],
-        );
-      },
+    return UtenPagination(
+      currentPage: _currentPage,
+      totalPages: widget.totalPages,
+      busy: _busy,
+      onPageChanged: widget.onPageChange == null ? null : _gotoPage,
+      controller: _pageCtrl,
+      focusNode: _pageFocus,
     );
   }
 }
@@ -9112,6 +9078,7 @@ class _FilterCell extends StatefulWidget {
     this.leading,
     this.filterAction,
     this.facetSearchEnabled = false,
+    this.scopeDescription,
   });
 
   final String label;
@@ -9129,6 +9096,7 @@ class _FilterCell extends StatefulWidget {
   final String? search;
   final MasterHeaderFilterAction? filterAction;
   final bool facetSearchEnabled;
+  final String? scopeDescription;
 
   /// 列头说明（MasterColumnDef.info 透传）：非空渲染 ⓘ，悬停 Tooltip、
   /// 点击（含手机）弹说明小窗。
@@ -9154,9 +9122,23 @@ class _FilterCellState extends State<_FilterCell> {
   final LayerLink _link = LayerLink();
   OverlayEntry? _overlay;
   UtenOverlayLifecycle? _overlayLifecycle;
+  bool _refreshScheduled = false;
 
   /// 文本列输入同时查询候选；回车或按钮另行提交表格关键词。
   TextEditingController? _searchCtl;
+  String? _searchError;
+  String? get _searchHelp {
+    final parts = [
+      if (widget.scopeDescription != null) widget.scopeDescription!,
+      if (_numericSearch) NumericColumnQuery.help,
+      if (_dateSearch) CalendarColumnQuery.help,
+    ];
+    return parts.isEmpty ? null : parts.join('\n');
+  }
+
+  bool get _numericSearch =>
+      widget.onSearch != null && _numericValueColumnTypes.contains(widget.type);
+  bool get _dateSearch => widget.onSearch != null && widget.type == 'date';
   Timer? _searchDebounce;
   int _searchRevision = 0;
   int? _fetchingRevision;
@@ -9169,22 +9151,15 @@ class _FilterCellState extends State<_FilterCell> {
   bool _remoteComposing = false;
   TextEditingValue? _lastSearchValue;
 
-  /// 切换分类后旧选中值可能不在新 facet：sanitize 退回"所有"。
-  String? get _sanitized {
-    final validValues = <String>{for (final b in widget.buckets) b.value};
-    return (widget.selected == null ||
-            widget.loadFacetPage != null ||
-            widget.selectedBucket?.value == widget.selected ||
-            widget.selected == kMasterFilterNullValue ||
-            validValues.contains(widget.selected))
-        ? widget.selected
-        : null;
-  }
+  /// An active condition can be absent from the current candidate intersection
+  /// or finite response. Only the owner can invalidate it against the full scope.
+  String? get _sanitized => widget.selected;
 
   void _open() {
     if (!(widget.isCurrent?.call() ?? true)) return;
     if (_overlay != null) return;
     _searchCtl = TextEditingController(text: widget.search ?? '');
+    _searchError = null;
     _remoteComposing = false;
     _lastSearchValue = _searchCtl!.value;
     if (widget.loadFacetPage != null) {
@@ -9222,6 +9197,17 @@ class _FilterCellState extends State<_FilterCell> {
         (oldWidget.onSearch == null) != (widget.onSearch == null) ||
         (oldWidget.loadFacetPage == null) != (widget.loadFacetPage == null)) {
       _close();
+    } else if (_overlay != null && !_refreshScheduled) {
+      _refreshScheduled = true;
+      final overlay = _overlay;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _refreshScheduled = false;
+        if (mounted &&
+            identical(_overlay, overlay) &&
+            (widget.isCurrent?.call() ?? true)) {
+          overlay?.markNeedsBuild();
+        }
+      });
     }
   }
 
@@ -9312,7 +9298,7 @@ class _FilterCellState extends State<_FilterCell> {
     if (!mounted || _overlay == null || !(widget.isCurrent?.call() ?? true)) {
       return;
     }
-    widget.onBucketSelected?.call(widget.loadFacetPage == null ? null : bucket);
+    widget.onBucketSelected?.call(bucket);
     widget.onChanged(value);
     _close();
   }
@@ -9329,6 +9315,20 @@ class _FilterCellState extends State<_FilterCell> {
       return;
     }
     final text = value.text.trim();
+    if (_numericSearch &&
+        text.isNotEmpty &&
+        NumericColumnQuery.tryParse(text) == null) {
+      _searchError = NumericColumnQuery.error;
+      _overlay?.markNeedsBuild();
+      return;
+    }
+    if (_dateSearch &&
+        text.isNotEmpty &&
+        CalendarColumnQuery.tryParse(text) == null) {
+      _searchError = CalendarColumnQuery.error;
+      _overlay?.markNeedsBuild();
+      return;
+    }
     widget.onBucketSelected?.call(null);
     _close();
     submit(text.isEmpty ? null : text);
@@ -9495,8 +9495,6 @@ class _FilterCellState extends State<_FilterCell> {
   /// 菜单：锚定列头下方（CompositedTransformFollower）、限高 360、ListView 竖向滚动。
   /// TapRegion 捕获菜单外的点击 → 关闭。
   /// 排序菜单文案：日期=从远到近/从近到远；数值(金额/数量)=从小到大/从大到小。
-  String get _sortAscLabel => widget.type == 'date' ? '从远到近' : '从小到大';
-  String get _sortDescLabel => widget.type == 'date' ? '从近到远' : '从大到小';
 
   void _sortSelect(String? column, bool ascending) {
     if (!(widget.isCurrent?.call() ?? true)) return;
@@ -9511,270 +9509,208 @@ class _FilterCellState extends State<_FilterCell> {
         widget.loadFacetPage != null ||
         widget.buckets.isNotEmpty ||
         widget.nullCount > 0;
-    final viewport = MediaQuery.sizeOf(ctx);
-    final target = context.findRenderObject()! as RenderBox;
-    final position = target.localToGlobal(Offset.zero);
-    final menuWidth = math.min(320.0, math.max(160.0, viewport.width - 16));
-    final menuLeft = position.dx.clamp(
-      8.0,
-      math.max(8.0, viewport.width - menuWidth - 8),
-    );
-    final below =
-        viewport.height -
-        MediaQuery.viewInsetsOf(ctx).bottom -
-        position.dy -
-        target.size.height -
-        8;
-    final above = position.dy - 8;
-    final openAbove = below < 200 && above > below;
-    final menuHeight = math.min(
-      400.0,
-      math.max(96.0, openAbove ? above : below),
-    );
-
-    return Stack(
-      children: [
-        // 点菜单外空白关闭（兜底；TapRegion 是主机制）。
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _close,
-          ),
-        ),
-        CompositedTransformFollower(
-          link: _link,
-          targetAnchor: openAbove ? Alignment.topLeft : Alignment.bottomLeft,
-          followerAnchor: openAbove ? Alignment.bottomLeft : Alignment.topLeft,
-          offset: Offset(menuLeft - position.dx, openAbove ? -2 : 2),
-          child: TapRegion(
-            onTapOutside: (_) => _close(),
-            child: Material(
-              color: theme.colorScheme.surfaceContainerHigh,
-              elevation: 8,
-              borderRadius: BorderRadius.circular(UtenRadius.md),
-              clipBehavior: Clip.antiAlias,
-              child: Container(
-                constraints: BoxConstraints(
-                  maxHeight: menuHeight,
-                  minWidth: menuWidth,
-                  maxWidth: menuWidth,
-                ),
-                child: StatefulBuilder(
-                  builder: (ctx, setOverlayState) {
-                    final q = _searchCtl?.text.trim().toLowerCase() ?? '';
-                    final buckets = widget.loadFacetPage != null
-                        ? _remoteBuckets
-                        : rankedKeywordMatches(
-                            widget.buckets,
-                            q,
-                            fields: (bucket) => [bucket.display],
-                          );
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
+    return UtenTableHeaderMenu(
+      anchorContext: context,
+      onClose: _close,
+      child: StatefulBuilder(
+        builder: (ctx, setOverlayState) {
+          final q = _searchCtl?.text.trim().toLowerCase() ?? '';
+          final numeric = _numericSearch
+              ? NumericColumnQuery.tryParse(q)
+              : null;
+          final calendar = _dateSearch ? CalendarColumnQuery.tryParse(q) : null;
+          final buckets = widget.loadFacetPage != null
+              ? _remoteBuckets
+              : numeric != null
+              ? widget.buckets
+                    .where(
+                      (bucket) => numeric.matches(
+                        displayedColumnDecimal(bucket.display),
+                      ),
+                    )
+                    .toList()
+              : calendar != null
+              ? widget.buckets
+                    .where((bucket) => calendar.matches(bucket.display))
+                    .toList()
+              : rankedKeywordMatches(
+                  widget.buckets,
+                  q,
+                  fields: (bucket) => [bucket.display],
+                );
+          return UtenTableHeaderMenuList(
+            search:
+                widget.onSearch != null ||
+                    hasFacets ||
+                    sanitized != null ||
+                    widget.facetSearchEnabled
+                ? Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s8),
+                    child: Row(
+                      crossAxisAlignment: _searchError == null
+                          ? CrossAxisAlignment.center
+                          : CrossAxisAlignment.start,
                       children: [
-                        if (widget.onSearch != null ||
-                            widget.facetSearchEnabled)
-                          Padding(
-                            padding: const EdgeInsets.all(UtenSpacing.s8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    key: const Key('uten-column-keyword-input'),
-                                    controller: _searchCtl,
-                                    autofocus: true,
-                                    textInputAction: TextInputAction.search,
-                                    style: theme.textTheme.bodyMedium,
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      hintText: widget.label,
-                                      prefixIcon: const Icon(
-                                        Icons.search_rounded,
-                                        size: 18,
-                                      ),
-                                      prefixIconConstraints:
-                                          const BoxConstraints(
-                                            minWidth: 32,
-                                            minHeight: 32,
-                                          ),
-                                      suffixIcon: q.isEmpty
-                                          ? null
-                                          : IconButton(
-                                              tooltip: '清空关键词',
-                                              icon: const Icon(
-                                                Icons.close_rounded,
-                                                size: 16,
-                                              ),
-                                              onPressed: () {
-                                                _searchCtl!.clear();
+                        Expanded(
+                          child: TextField(
+                            key: const Key('uten-column-keyword-input'),
+                            controller: _searchCtl,
+                            autofocus: true,
+                            textInputAction: TextInputAction.search,
+                            style: theme.textTheme.bodyMedium,
+                            decoration: UtenInputDecoration(
+                              InputDecoration(
+                                isDense: true,
+                                visualDensity: VisualDensity.standard,
+                                constraints: BoxConstraints(
+                                  minHeight: utenColumnSearchControlHeight(ctx),
+                                  maxHeight: utenColumnSearchControlHeight(ctx),
+                                ),
+                                hintText: widget.onSearch == null
+                                    ? '查找选项'
+                                    : widget.label,
+                                error: _searchError == null
+                                    ? null
+                                    : UtenFieldMessage.error(_searchError!),
+
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 32,
+                                  minHeight: 32,
+                                ),
+                                suffixIcon: q.isEmpty && _searchHelp == null
+                                    ? null
+                                    : UtenColumnSearchSuffix(
+                                        message: _searchHelp,
+                                        onClear: q.isEmpty
+                                            ? null
+                                            : () {
+                                                _searchCtl?.clear();
+                                                _searchError = null;
                                                 setOverlayState(() {});
                                               },
-                                            ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: UtenSpacing.s8,
-                                            vertical: UtenSpacing.s8,
-                                          ),
-                                    ),
-                                    onChanged: (_) => setOverlayState(() {}),
-                                    onSubmitted: widget.onSearch == null
-                                        ? null
-                                        : (_) => _submitSearch(),
-                                  ),
+                                      ),
+                                contentPadding: utenColumnSearchContentPadding(
+                                  ctx,
                                 ),
-                                if (widget.onSearch != null) ...[
-                                  const SizedBox(width: UtenSpacing.s4),
-                                  TextButton(
-                                    onPressed: _submitSearch,
-                                    child: const Text('搜索'),
-                                  ),
-                                ],
-                              ],
+                              ),
                             ),
-                          ),
-                        Flexible(
-                          child: UtenDropdownScrollScope(
-                            child: ListView(
-                              shrinkWrap: true,
-                              padding: EdgeInsets.zero,
-                              children: <Widget>[
-                                // 2026-09-25 用户口径：「取消排序」放最上面（重置类
-                                // 选项先见），升降序跟后；值筛选段「所有」仍居首。
-                                if (widget.sortable) ...[
-                                  _menuItem(
-                                    ctx,
-                                    label: '取消排序', // TODO(l10n): 补 arb
-                                    isSelected: !widget.sortActive,
-                                    onTap: () => _sortSelect(null, true),
-                                    theme: theme,
-                                  ),
-                                  _menuItem(
-                                    ctx,
-                                    label: _sortAscLabel,
-                                    isSelected:
-                                        widget.sortActive &&
-                                        widget.sortAscending,
-                                    onTap: () =>
-                                        _sortSelect(widget.sortKey, true),
-                                    theme: theme,
-                                  ),
-                                  _menuItem(
-                                    ctx,
-                                    label: _sortDescLabel,
-                                    isSelected:
-                                        widget.sortActive &&
-                                        !widget.sortAscending,
-                                    onTap: () =>
-                                        _sortSelect(widget.sortKey, false),
-                                    theme: theme,
-                                  ),
-                                  if (hasFacets)
-                                    const Divider(height: 1, thickness: 1),
-                                ],
-                                if (hasFacets || widget.onSearch != null) ...[
-                                  _menuItem(
-                                    ctx,
-                                    label: '所有', // TODO(l10n): 补 arb
-                                    isSelected:
-                                        sanitized == null &&
-                                        widget.search == null,
-                                    onTap: () => _select(null),
-                                    theme: theme,
-                                  ),
-                                  const Divider(height: 1, thickness: 1),
-                                  for (final b in buckets)
-                                    _menuItem(
-                                      ctx,
-                                      label: b.count > 0
-                                          ? '${b.display} (${b.count})'
-                                          : b.display,
-                                      isSelected: sanitized == b.value,
-                                      onTap: () => _select(b.value, bucket: b),
-                                      theme: theme,
-                                    ),
-                                  // 「其他」兜底桶固定放最后（2026-09-16 用户口径）：
-                                  // 该列为空/未归类的行都落这里（如货品未分类、
-                                  // 单据未指定仓库）；选它即只看这些"匹配不到
-                                  // 任何已列出选项"的行。
-                                  if (widget.nullCount > 0)
-                                    _menuItem(
-                                      ctx,
-                                      label:
-                                          '其他 (${widget.nullCount})', // TODO(l10n): 补 arb
-                                      isSelected:
-                                          sanitized == kMasterFilterNullValue,
-                                      onTap: () =>
-                                          _select(kMasterFilterNullValue),
-                                      theme: theme,
-                                    ),
-                                  if (_remoteLoading)
-                                    const Padding(
-                                      padding: EdgeInsets.all(UtenSpacing.s12),
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  if (_remoteFailed)
-                                    TextButton(
-                                      onPressed: () => _fetchRemote(
-                                        _searchRevision,
-                                        _remotePage + 1,
-                                      ),
-                                      child: Text(
-                                        basicDataL10n(ctx).tableFacetLoadFailed,
-                                      ),
-                                    ),
-                                  if (_remoteHasMore &&
-                                      !_remoteLoading &&
-                                      !_remoteFailed)
-                                    TextButton(
-                                      onPressed: () => _fetchRemote(
-                                        _searchRevision,
-                                        _remotePage + 1,
-                                      ),
-                                      child: Text(
-                                        basicDataL10n(ctx).tableFacetLoadMore,
-                                      ),
-                                    ),
-                                  if (buckets.isEmpty &&
-                                      !_remoteLoading &&
-                                      !_remoteFailed &&
-                                      !_remoteComposing)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: UtenSpacing.s12,
-                                        vertical: UtenSpacing.s12,
-                                      ),
-                                      child: Text(
-                                        '无匹配项',
-                                        style: theme.textTheme.bodyMedium
-                                            ?.copyWith(
-                                              color: theme
-                                                  .colorScheme
-                                                  .onSurfaceVariant,
-                                            ),
-                                      ),
-                                    ),
-                                ],
-                              ],
-                            ),
+                            onChanged: (_) => setOverlayState(() {
+                              _searchError = null;
+                            }),
+                            onSubmitted: widget.onSearch == null
+                                ? null
+                                : (_) => _submitSearch(),
                           ),
                         ),
+                        if (widget.onSearch != null) ...[
+                          const SizedBox(width: UtenSpacing.s4),
+                          UtenColumnSearchButton(
+                            key: const Key('uten-column-keyword-search'),
+                            onPressed: _submitSearch,
+                          ),
+                        ],
                       ],
-                    );
-                  },
+                    ),
+                  )
+                : null,
+            entries: <Widget>[
+              // 2026-09-25 用户口径：「取消排序」放最上面（重置类
+              // 选项先见），升降序跟后；值筛选段「所有」仍居首。
+              if (widget.sortable) ...[
+                for (final choice in utenColumnSortChoices(
+                  type: widget.type,
+                  active: widget.sortActive,
+                  ascending: widget.sortAscending,
+                ))
+                  _menuItem(
+                    ctx,
+                    label: choice.label,
+                    isSelected: choice.selected,
+                    onTap: () => _sortSelect(
+                      choice.ascending == null ? null : widget.sortKey,
+                      choice.ascending ?? true,
+                    ),
+                    theme: theme,
+                  ),
+                if (hasFacets) const Divider(height: 1, thickness: 1),
+              ],
+              if (hasFacets ||
+                  sanitized != null ||
+                  widget.onSearch != null) ...[
+                _menuItem(
+                  ctx,
+                  label: '所有', // TODO(l10n): 补 arb
+                  isSelected: sanitized == null && widget.search == null,
+                  onTap: () => _select(null),
+                  theme: theme,
                 ),
-              ),
-            ),
-          ),
-        ),
-      ],
+                const Divider(height: 1, thickness: 1),
+                for (final b in buckets)
+                  _menuItem(
+                    ctx,
+                    label: b.count > 0
+                        ? '${b.display} (${b.count})'
+                        : b.display,
+                    isSelected: sanitized == b.value,
+                    onTap: () => _select(b.value, bucket: b),
+                    theme: theme,
+                  ),
+                // 「其他」兜底桶固定放最后（2026-09-16 用户口径）：
+                // 该列为空/未归类的行都落这里（如货品未分类、
+                // 单据未指定仓库）；选它即只看这些"匹配不到
+                // 任何已列出选项"的行。
+                if (widget.nullCount > 0)
+                  _menuItem(
+                    ctx,
+                    label: '其他 (${widget.nullCount})', // TODO(l10n): 补 arb
+                    isSelected: sanitized == kMasterFilterNullValue,
+                    onTap: () => _select(kMasterFilterNullValue),
+                    theme: theme,
+                  ),
+                if (_remoteLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(UtenSpacing.s12),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+                if (_remoteFailed)
+                  TextButton(
+                    onPressed: () =>
+                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    child: Text(basicDataL10n(ctx).tableFacetLoadFailed),
+                  ),
+                if (_remoteHasMore && !_remoteLoading && !_remoteFailed)
+                  TextButton(
+                    onPressed: () =>
+                        _fetchRemote(_searchRevision, _remotePage + 1),
+                    child: Text(basicDataL10n(ctx).tableFacetLoadMore),
+                  ),
+                if (buckets.isEmpty &&
+                    !_remoteLoading &&
+                    !_remoteFailed &&
+                    !_remoteComposing)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s12,
+                      vertical: UtenSpacing.s12,
+                    ),
+                    child: Text(
+                      '无匹配项',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          );
+        },
+      ),
     );
   }
 

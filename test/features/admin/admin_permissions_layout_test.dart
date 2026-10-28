@@ -12,6 +12,7 @@ import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/models/permission_template.dart';
@@ -22,6 +23,7 @@ import 'package:uten_imp/features/admin/widgets/admin_permission_export_button.d
 import 'package:uten_imp/features/admin/widgets/admin_permission_templates.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/admin/widgets/admin_permission_transfer_actions.dart';
+import 'package:uten_imp/features/admin/widgets/permission_batch_dialog.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
@@ -32,6 +34,16 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/components/cards/uten_card.dart';
+import 'package:uten_imp/components/layout/uten_page_layout.dart';
+import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
+import 'package:uten_imp/features/admin/widgets/admin_permission_editor_surface.dart';
+import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
+import 'package:uten_imp/features/admin/widgets/permission_catalog_browser.dart';
+import 'package:uten_imp/features/admin/widgets/perm_catalog_group_section.dart';
+
+part 'admin_permissions_real_alignment_cases.dart';
 
 final _role = StateProvider<bool>((ref) => true);
 final _captureKey = GlobalKey();
@@ -40,6 +52,200 @@ const _captureScreenshots = bool.fromEnvironment(
 );
 
 void main() {
+  permissionRealAlignmentCases();
+  testWidgets(
+    'saving baseline refreshes an already loaded department dependency warning',
+    (tester) async {
+      final repository = _BaselineDependencyRepository();
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+        initialDepartmentId: 'department-target',
+      );
+      expect(find.text('部门权限 · 制造部'), findsOneWidget);
+      expect(find.text('有 1 项动作缺少所需查看权限'), findsOneWidget);
+      expect(find.text('补齐所需查看权限'), findsOneWidget);
+      final originalReads = repository.departmentReads;
+      expect(originalReads, greaterThan(0));
+
+      await _selectMode(tester, '全员基础包');
+      final baseline = find.byKey(
+        const ValueKey('admin-baseline-permission-card'),
+      );
+      await tester.tap(
+        find.descendant(
+          of: baseline,
+          matching: find.byKey(const ValueKey('permission-toggle-all-groups')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final read = find.byKey(const ValueKey('baseline-switch-goods:view'));
+      await tester.ensureVisible(read);
+      await tester.tap(read);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(repository.baselineWrites, [
+        ['goods:view'],
+      ]);
+
+      await _selectMode(tester, '按部门');
+      expect(
+        repository.departmentReads,
+        greaterThan(originalReads),
+        reason:
+            'Inherited permissions and diagnostics must be read again after a baseline change',
+      );
+      expect(find.text('部门权限 · 制造部'), findsOneWidget);
+      expect(find.text('有 1 项动作缺少所需查看权限'), findsNothing);
+      expect(find.text('补齐所需查看权限'), findsNothing);
+      expect(
+        repository.departmentWrites,
+        0,
+        reason:
+            'The inherited baseline resolves the warning without duplicating a department grant',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'employee multiselect retains targets across loading and search',
+    (tester) async {
+      if (_captureScreenshots) await loadAuditScreenshotFonts(tester);
+      final repository = _SelectionPagingRepository();
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+        templates: _TemplateRepository(),
+      );
+      await _selectMode(tester, '按员工');
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      final first = find.byKey(
+        const ValueKey('permission-select-user-prefetch-account-1-0'),
+      );
+      await tester.tap(first);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      final list = find.byKey(const ValueKey('admin-account-list-scroll'));
+      final scrollable = find
+          .descendant(of: list, matching: find.byType(Scrollable))
+          .first;
+      final position = tester.state<ScrollableState>(scrollable).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(repository.pages, contains(2));
+      final second = find.byKey(
+        const ValueKey('permission-select-user-prefetch-account-2-0'),
+      );
+      await tester.scrollUntilVisible(second, 250, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      await tester.tap(second);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 2 人'), findsOneWidget);
+      final search = find.widgetWithText(TextField, '搜索姓名 / 工号 / 登录账号');
+      await tester.enterText(search, '仅第一页');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(repository.searches, contains('仅第一页'));
+      expect(find.text('已选 2 人'), findsOneWidget);
+      expect(tester.widget<Checkbox>(first).value, isTrue);
+      expect(second, findsNothing);
+      if (_captureScreenshots) {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'permission-workspace-employee-multiselect',
+        );
+      }
+      await tester.tap(find.text('应用模板'));
+      await tester.pumpAndSettle();
+      final dialog = tester.widget<PermissionBatchDialog>(
+        find.byType(PermissionBatchDialog),
+      );
+      expect(dialog.userIds, ['prefetch-account-1-0', 'prefetch-account-2-0']);
+      expect(dialog.departmentIds, isEmpty);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选 2 人'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('department multiselect keeps hidden targets and starts folded', (
+    tester,
+  ) async {
+    if (_captureScreenshots) await loadAuditScreenshotFonts(tester);
+    await _mount(
+      tester,
+      _SelectionDepartmentRepository(),
+      _AiRepository(),
+      width: 1440,
+      initialEmployeeId: null,
+      templates: _TemplateRepository(),
+    );
+    await _selectMode(tester, '按部门');
+    expect(
+      find.byKey(const ValueKey('hierarchy-row:department-child')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('permission-department-multi-select')),
+    );
+    await tester.pumpAndSettle();
+    Future<void> select(String id) async {
+      final row = find.byKey(ValueKey('hierarchy-row:$id'));
+      await tester.tap(
+        find.descendant(of: row, matching: find.byType(Checkbox)),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await select('department-a');
+    final search = find.descendant(
+      of: find.byKey(const ValueKey('admin-permission-department-search')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(search, '班组甲');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await select('department-child');
+    await tester.enterText(search, '部门乙');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await select('department-b');
+    expect(find.text('已选 3 部门'), findsOneWidget);
+    expect(find.text('已选 3 个部门'), findsOneWidget);
+    if (_captureScreenshots) {
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'permission-workspace-department-multiselect',
+      );
+    }
+    await tester.tap(find.text('应用模板'));
+    await tester.pumpAndSettle();
+    final dialog = tester.widget<PermissionBatchDialog>(
+      find.byType(PermissionBatchDialog),
+    );
+    expect(dialog.userIds, isEmpty);
+    expect(dialog.departmentIds, [
+      'department-a',
+      'department-child',
+      'department-b',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'account list prefetches before the end once and preserves the viewport',
     (tester) async {
@@ -310,7 +516,12 @@ void main() {
         same(workspace),
       );
       _expectGlobalImportEnabled(tester, false);
+      // 不再逐键即存（每次保存都要输一次密码）：短暂停顿不触发保存。
       await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump();
+      expect(templates.savedCodes, isEmpty);
+      // 停止操作满一分钟：闲置自动保存接管，草稿一次落库。
+      await tester.pump(const Duration(minutes: 1));
       await tester.pump();
       expect(templates.savedCodes, [
         <String>{'goods:view'},
@@ -337,7 +548,7 @@ void main() {
         isTrue,
       );
       expect(templates.savedCodes, hasLength(1));
-      expect(find.textContaining('已自动保存'), findsOneWidget);
+      expect(find.textContaining('已保存'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -766,11 +977,13 @@ Future<void> _mount(
   _AiRepository ai, {
   required double width,
   double scale = 1,
+  double height = 1000,
+  bool pageFrame = false,
   String? initialEmployeeId = 'employee-target',
   String? initialDepartmentId,
   _TemplateRepository? templates,
 }) async {
-  tester.view.physicalSize = Size(width, 1000);
+  tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -811,10 +1024,26 @@ Future<void> _mount(
             ).copyWith(textScaler: TextScaler.linear(scale)),
             child: child!,
           ),
-          home: AdminPermissionsPage(
-            initialEmployeeId: initialEmployeeId,
-            initialDepartmentId: initialDepartmentId,
-          ),
+          home: pageFrame
+              ? Row(
+                  children: [
+                    if (width >= 600) const SizedBox(width: 80),
+                    Expanded(
+                      child: UtenContentContainer(
+                        selectable: false,
+                        child: AdminPermissionsPage(
+                          key: const ValueKey('permission-real-page-frame'),
+                          initialEmployeeId: initialEmployeeId,
+                          initialDepartmentId: initialDepartmentId,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : AdminPermissionsPage(
+                  initialEmployeeId: initialEmployeeId,
+                  initialDepartmentId: initialDepartmentId,
+                ),
         ),
       ),
     ),
@@ -1064,5 +1293,133 @@ class _TemplateRepository extends PermissionTemplateRepository {
       version: (template?.version ?? 0) + 1,
     );
     return this.template;
+  }
+}
+
+class _SelectionPagingRepository extends _PrefetchRepository {
+  final searches = <String?>[];
+  @override
+  Future<PagedResult<AdminUserSummary>> listUsers({
+    int page = 1,
+    int size = 20,
+    String? search,
+    String? status,
+  }) async {
+    pages.add(page);
+    searches.add(search);
+    if (search?.isNotEmpty == true) {
+      return PagedResult(
+        items: [this.page(1).items.first],
+        page: 1,
+        size: size,
+        total: 1,
+        totalPages: 1,
+      );
+    }
+    return this.page(page);
+  }
+}
+
+class _SelectionDepartmentRepository extends _Repository {
+  @override
+  Future<List<DepartmentNode>> departmentTree() async => [
+    DepartmentNode(
+      id: 'department-a',
+      code: 'A',
+      name: '部门甲',
+      level: '一级部门',
+      children: [
+        DepartmentNode(
+          id: 'department-child',
+          code: 'A1',
+          name: '班组甲',
+          level: '二级班组',
+          children: [],
+        ),
+      ],
+    ),
+    DepartmentNode(
+      id: 'department-b',
+      code: 'B',
+      name: '部门乙',
+      level: '一级部门',
+      children: [],
+    ),
+  ];
+}
+
+class _BaselineDependencyRepository extends _Repository {
+  bool _hasBaselineRead = false;
+  int departmentReads = 0;
+  int departmentWrites = 0;
+  final baselineWrites = <List<String>>[];
+
+  @override
+  Future<List<PermissionCatalogGroup>> permissionCatalog() async => const [
+    PermissionCatalogGroup(
+      module: '基础资料',
+      category: '货品资料',
+      permissions: [
+        AdminPermission(
+          id: 'goods-view',
+          code: 'goods:view',
+          name: '查看货品',
+          category: '货品资料',
+          module: '基础资料',
+          actionType: PermissionActionType.view,
+        ),
+        AdminPermission(
+          id: 'goods-edit',
+          code: 'goods:edit',
+          name: '编辑货品',
+          category: '货品资料',
+          module: '基础资料',
+          actionType: PermissionActionType.edit,
+          requiredPermissions: ['goods:view'],
+        ),
+      ],
+    ),
+  ];
+
+  @override
+  Future<List<String>> departmentPermissions(String departmentId) async {
+    expect(departmentId, 'department-target');
+    departmentReads++;
+    return DepartmentPermissionCodes(
+      ['goods:edit'],
+      inheritedPermissions: _hasBaselineRead ? ['goods:view'] : const [],
+      requiredPermissions: const {
+        'goods:edit': ['goods:view'],
+      },
+      missingDependencies: _hasBaselineRead
+          ? const {}
+          : const {
+              'goods:edit': ['goods:view'],
+            },
+    );
+  }
+
+  @override
+  Future<List<String>> permissionBaseline() async =>
+      _hasBaselineRead ? ['goods:view'] : [];
+
+  @override
+  Future<PermissionChange> updatePermissionBaseline(List<String> codes) async {
+    baselineWrites.add(List.of(codes)..sort());
+    final previouslyHeld = _hasBaselineRead;
+    _hasBaselineRead = codes.contains('goods:view');
+    return PermissionChange(
+      added: _hasBaselineRead && !previouslyHeld ? ['goods:view'] : [],
+      removed: !_hasBaselineRead && previouslyHeld ? ['goods:view'] : [],
+    );
+  }
+
+  @override
+  Future<PermissionChange> updateDepartmentPermissions(
+    String departmentId,
+    List<String> permissionCodes,
+  ) async {
+    departmentWrites++;
+    return PermissionChange.none;
   }
 }

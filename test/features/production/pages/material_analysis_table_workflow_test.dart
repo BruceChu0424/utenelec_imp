@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../../support/material_analysis_tree.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -104,6 +105,7 @@ void main() {
       final harness = await _pump(
         tester,
         count: 250,
+        expandTree: false,
         route: 'BUY',
         permissions: {..._permissions, Perm.productionMaterialAnalysisNotify},
       );
@@ -349,6 +351,7 @@ class _Harness {
 Future<_Harness> _pump(
   WidgetTester tester, {
   int count = 2,
+  bool expandTree = true,
   Set<String> permissions = _permissions,
   bool allowRefresh = false,
   Future<void> Function()? beforeRouteWrite,
@@ -487,6 +490,7 @@ Future<_Harness> _pump(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  if (expandTree) await expandMaterialAnalysisTree(tester);
   return harness;
 }
 

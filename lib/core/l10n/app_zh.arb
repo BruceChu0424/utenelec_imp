@@ -1312,7 +1312,14 @@
   "impersonationNoTargets": "暂无可切换的员工",
   "impersonationStartFailed": "切换失败",
   "exportDialogTitle": "导出 Excel",
+  "exportFileNameLabel": "文件名",
+  "exportFileNameRequired": "请填写文件名（不超过 150 个字符）",
+  "exportSaveLocationLabel": "保存位置",
+  "exportBrowse": "浏览…",
   "exportPasswordOptionalHint": "密码可不填。不填将下载普通 Excel；填写 1–128 位密码则加密文件。",
+  "exportSetPassword": "设置密码",
+  "exportRemovePassword": "取消密码",
+  "exportPreparingFile": "正在导出表格…",
   "exportPasswordOptionalLabel": "打开密码(可选，1–128 位)",
   "exportPasswordConfirmLabel": "确认密码",
   "exportPasswordTooLong": "密码不能超过 128 位",
@@ -1449,6 +1456,8 @@
   "@orderChangeQtyTitle": {
     "description": "改量弹窗标题"
   },
+  "orderPendingChangeQtyHint": "数量修改后继续等待财务审核，财务将看到更新后的数量和修改记录。",
+  "orderPendingChangeQtySuccess": "已改量，待财务审核内容已更新",
   "orderChangeQtyWarning": "批准后改量立即生效，并自动重回财务复核；财务将看到修改清单（以前→现在）。驳回不会自动还原数量。",
   "@orderChangeQtyWarning": {
     "description": "改量弹窗顶部红色警示"
@@ -6703,6 +6712,8 @@
   "companyFilesEntryAccessTitle": "资料访问权限",
   "companyFilesEntryAccessHint": "仅影响这份文件或文件夹，不会修改系统总权限。",
   "companyFilesWhoCanRead": "谁可以查看",
+  "companyFilesEveryoneCanRead": "所有人可以看",
+  "companyFilesEveryoneReadHint": "资料库默认全员可见。这份资料对所有人开放查看和下载，可添加拒绝例外；上层文件夹已限制访问时，仍需先能进入上层文件夹。",
   "companyFilesInheritEntryAccess": "继承所在文件夹的访问范围",
   "companyFilesSpecificReaders": "指定人员或部门",
   "companyFilesSpecificReadersHint": "向指定人员及部门开放阅读，所选部门包含下级。上级拒绝仍有效，创建者保留原本已有的操作权限。",

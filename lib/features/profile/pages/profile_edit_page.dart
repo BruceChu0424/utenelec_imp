@@ -302,6 +302,7 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.profileChangeEditTitle,
+        info: l10n.profileEditPolicyHint,
         // go 进入（非 push），栈被替换；返回显式回"我的"页
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.profile),
@@ -377,7 +378,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _policyHint(l10n, theme),
               _pendingHint(l10n, theme),
               const SizedBox(height: UtenSpacing.s16),
               ..._groupSection(l10n.employeeDetailBasic, 'basic'),
@@ -401,31 +401,6 @@ class _ProfileEditPageState extends ConsumerState<ProfileEditPage> {
           ),
         ),
       ),
-    );
-  }
-
-  /// 顶部策略图例：代替原先散在表单里的 hrOnly 锁定行（查看页灰徽章已说明，
-  /// 编辑页不再重复列只读字段）。
-  Widget _policyHint(AppLocalizations l10n, ThemeData theme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.info_outline_rounded,
-          size: 18,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(
-            l10n.profileEditPolicyHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-        ),
-      ],
     );
   }
 

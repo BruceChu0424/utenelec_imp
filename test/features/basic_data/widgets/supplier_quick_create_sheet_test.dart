@@ -80,6 +80,11 @@ void main() {
         find.byType(UtenCategoryTreeView<ProductCategoryNode>),
         findsOneWidget,
       );
+      // The shared hierarchy may begin collapsed; expansion is an explicit user action.
+      if (find.byTooltip('展开供应商父分类').evaluate().isNotEmpty) {
+        await tester.tap(find.byTooltip('展开供应商父分类'));
+        await tester.pumpAndSettle();
+      }
       await tester.tap(find.byTooltip('收起供应商父分类'));
       await tester.pumpAndSettle();
       expect(_categoryRow('child'), findsNothing);

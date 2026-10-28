@@ -69,11 +69,11 @@ class ProcurementIqcRejectionRepository
   ) async {
     final json = await api.get(
       '$_base/counts',
-      query: {
-        if (filter.receiptType != null)
-          'receiptType': filter.receiptType!.apiValue,
-        if (filter.keyword.trim().isNotEmpty) 'keyword': filter.keyword.trim(),
-      },
+      query: filter.toQuery(
+        includePaging: false,
+        includeStatus: false,
+        includeOrdering: false,
+      ),
     );
     return ProcurementIqcRejectionCounts.fromJson(json);
   }

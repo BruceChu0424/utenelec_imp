@@ -13,8 +13,10 @@ import '../../core/router/page_search_lifecycle.dart';
 import '../../core/performance/ui_work_budget.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
 import '../../shared/search/column_keyword_policy.dart';
+import '../../shared/search/numeric_column_query.dart';
 import '../../shared/search/keyword_search.dart';
 import '../../shared/widgets/column_editor_dialog.dart';
+import '../inputs/uten_field_hint_icon.dart';
 // UtenEditableGrid - 编辑页明细可编辑 Excel 表（采购/销售/委外/仓库/钱流 共用）
 //
 // 设计目标（plans/witty-imagining-reef.md Workstream B1）：
@@ -247,21 +249,28 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 未声明专用取值时，合理文本列采用真实文本（textOf/frozenTextOf）生成精确桶。
   final String? Function(T row)? filterValueOf;
 
-  /// Optional business override for text-column keyword search. A real text
-  /// source is always required; numeric columns never get a keyword input.
+  /// A real source is required. Numeric conditions compare exact decimals and
+  /// only filter the view; they never reorder editable source rows or sum units.
   final bool? columnSearchEnabled;
 
   bool get supportsKeywordSearch =>
-      !numeric &&
-      (textOf != null || frozenTextOf != null || filterValueOf != null) &&
-      supportsColumnKeywordSearch(
-        key: key,
-        label: label,
-        override: columnSearchEnabled,
-      );
+      (textOf != null ||
+          frozenTextOf != null ||
+          filterValueOf != null ||
+          (numeric && exactValueOf != null)) &&
+      (numeric
+          ? columnSearchEnabled != false
+          : supportsColumnKeywordSearch(
+              key: key,
+              label: label,
+              override: columnSearchEnabled,
+            ));
 
   String? searchText(T row) =>
-      textOf?.call(row) ?? frozenTextOf?.call(row) ?? filterValueOf?.call(row);
+      textOf?.call(row) ??
+      frozenTextOf?.call(row) ??
+      filterValueOf?.call(row) ??
+      (numeric ? exactValueOf?.call(row) : null);
 
   /// 「固定到左侧」列在横滚冻结副本里的只读快照文本（2026-09-25）。
   ///
@@ -868,6 +877,8 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.selectionEnabled = true,
     this.canSelectRow,
     this.onRowsHiddenByFilter,
+    this.headerFilterScopeDescription,
+    this.filterContextRows,
     this.showRowSelection,
     this.selectedOf,
     this.onRowSelect,
@@ -1006,6 +1017,13 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 表头筛选藏起来的行变化时回调(见 [_UtenEditableGridState._publishHiddenByFilter])。
   /// 只给「勾选即提交」的任务表用：宿主据此拦住「提交了看不见的行」。
   final void Function(Set<T> hiddenRows)? onRowsHiddenByFilter;
+
+  /// Explicitly describe local candidate scope for a paged selection workspace.
+  final String? headerFilterScopeDescription;
+
+  /// Restore business-owned parent/group context after matching visible values.
+  /// Both inputs contain original row identities; this only changes the view.
+  final List<T> Function(List<T> all, List<T> matched)? filterContextRows;
 
   /// 行级「连方框都不要」门控：返回 false 的行**整格不渲染复选框**，只留同宽空位
   /// 保持列对齐。与 [canSelectRow] 的区别是后者画一个灰掉的方框——对「这行本来就
@@ -1266,6 +1284,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
           label: column.name,
           width: column.numeric ? 140 : 180,
           numeric: column.numeric,
+          // User-defined TEXT/NUMBER is the authority for these private columns,
+          // even if a user names a text column "状态" or "金额".
+          columnSearchEnabled:
+              !column.priceProtected ||
+              _platform.capabilities?.priceVisible == true,
+          aiSensitive: column.priceProtected,
           exportDefinition: _platform.projectionDefinition(column),
           headerInfo: column.calculated ? '仅供参考，不改单子的金额和数量' : '跟着单子一起保存的说明',
           textOf: (row) => _platform.value(row, column) ?? '',
@@ -1521,15 +1545,29 @@ class _UtenEditableGridState<T extends EditableGridRow>
             children: [
               ListTile(
                 leading: const Icon(Icons.receipt_long_outlined),
-                title: const Text('加费用或写说明'),
-                subtitle: const Text('这列跟单子走：可写说明、记数字，或填运费、优惠等，会计入金额'),
+                title: const Row(
+                  children: [
+                    Flexible(child: Text('加费用或写说明')),
+                    UtenFieldHintIcon(
+                      info: '这列跟单子走：可写说明、记数字，或填运费、优惠等，会计入金额',
+                      dense: true,
+                    ),
+                  ],
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.pop(dialogContext, 'business'),
               ),
               ListTile(
                 leading: const Icon(Icons.view_column_outlined),
-                title: const Text('记备注或自动算数'),
-                subtitle: const Text('这列自己看：写备注，或按表里已有的数字自动算个参考值，不改金额'),
+                title: const Row(
+                  children: [
+                    Flexible(child: Text('记备注或自动算数')),
+                    UtenFieldHintIcon(
+                      info: '这列自己看：写备注，或按表里已有的数字自动算个参考值，不改金额',
+                      dense: true,
+                    ),
+                  ],
+                ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.pop(dialogContext, 'platform'),
               ),
@@ -2879,7 +2917,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   // 表头筛选结果缓存：行集修订号 + 列集合 + 筛选值都没变就复用上次结果
   // (勾选、表头全选格、操作条都要读可见行，不再每次重跑整表筛选)。
   int? _visibleRowsRevision;
-  String? _visibleRowsFilterKey;
+  Object? _visibleRowsFilterKey;
   List<EditableGridColumn<T>>? _visibleRowsColumns;
   List<T>? _visibleRowsAll;
   List<T> _visibleRowsCache = const [];
@@ -2899,7 +2937,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 表头筛选后的可见行(按行集修订号 + 列集合 + 筛选值缓存)。
   List<T> _visibleRows() {
     final all = _allRows();
-    final filterKey = jsonEncode([_columnFilters, _columnSearches]);
+    final filterKey = (
+      jsonEncode([_columnFilters, _columnSearches]),
+      widget.filterContextRows,
+    );
     if (_visibleRowsFilterKey == filterKey &&
         identical(_visibleRowsColumns, _columns)) {
       return _visibleRowsCache;
@@ -2958,7 +2999,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
         return true;
       }
       final read = column.filterValueOf ?? column.searchText;
-      return !rows.any((row) => read(row) == value);
+      return !rows.any(
+        (row) => value == kGridHeaderFilterNullValue
+            ? (read(row)?.trim().isEmpty ?? true)
+            : read(row) == value,
+      );
     });
     _columnSearches.removeWhere(
       (key, _) => !(columnsByKey[key]?.supportsKeywordSearch ?? false),
@@ -2999,28 +3044,49 @@ class _UtenEditableGridState<T extends EditableGridRow>
             _columnFilters[column.key] != null)
           (column, _columnFilters[column.key]!),
     ];
-    final searches = <(EditableGridColumn<T>, String)>[
+    final searches = <(EditableGridColumn<T>, String, NumericColumnQuery?)>[
       for (final column in _columns)
         if (column.supportsKeywordSearch &&
             column.key != exceptColumn &&
             _columnSearches.containsKey(column.key))
-          (column, _columnSearches[column.key]!),
+          (
+            column,
+            _columnSearches[column.key]!,
+            column.numeric
+                ? NumericColumnQuery.tryParse(_columnSearches[column.key]!)
+                : null,
+          ),
     ];
     if (active.isEmpty && searches.isEmpty) return rows;
-    return rows
+    final matched = rows
         .where(
           (row) =>
               active.every(
-                (entry) =>
-                    (entry.$1.filterValueOf ?? entry.$1.searchText)(row) ==
-                    entry.$2,
+                (entry) => entry.$2 == kGridHeaderFilterNullValue
+                    ? ((entry.$1.filterValueOf ?? entry.$1.searchText)(
+                            row,
+                          )?.trim().isEmpty ??
+                          true)
+                    : (entry.$1.filterValueOf ?? entry.$1.searchText)(row) ==
+                          entry.$2,
               ) &&
               searches.every(
-                (entry) =>
-                    matchesKeywordSearch([entry.$1.searchText(row)], entry.$2),
+                (entry) => entry.$1.numeric
+                    ? entry.$3?.matches(
+                            entry.$1.exactValueOf != null
+                                ? entry.$1.exactValueOf!(row)
+                                : displayedColumnDecimal(
+                                    entry.$1.searchText(row),
+                                  ),
+                          ) ??
+                          false
+                    : matchesKeywordSearch([
+                        entry.$1.searchText(row),
+                      ], entry.$2),
               ),
         )
         .toList(growable: false);
+    return widget.filterContextRows?.call(rows, matched) ?? matched;
   }
 
   /// 某筛选列的去重取值与计数（按值稳定排序；空值不计入桶，走 nullCount）。
@@ -3672,13 +3738,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
               // 默认的 start 会让矮按钮顶在上沿，看起来像没对齐。
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (_platform.error != null)
-                  PlatformTableStatus(
-                    error: _platform.error,
-                    retry: _platform.retryRead,
-                    loading: _platform.loading,
-                    failure: _platform.readFailure,
-                  ),
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
                     entries: [
@@ -3742,6 +3801,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
                         : null,
                   ),
                 ],
+                if (_platform.error != null)
+                  PlatformTableStatus(
+                    key: const ValueKey('platform-table-status'),
+                    ownerIdentity: (
+                      _platform,
+                      _platform.authorizationRevision,
+                      _platform.queryLifecycle,
+                      _platform.tableKey,
+                    ),
+                    error: _platform.error,
+                    retry: _platform.retryRead,
+                    loading: _platform.loading,
+                    failure: _platform.readFailure,
+                  ),
               ],
             ),
           );
@@ -3896,39 +3969,42 @@ class _UtenEditableGridState<T extends EditableGridRow>
               child: SizedBox(
                 width: total,
                 // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
-                child: columnHeaderIndicatorOverlay(
-                  leadingInset: widget._showSelect ? _selectColWidth : 0,
-                  child: _withFrozenTrailingAction(
-                    theme,
-                    _withFrozenLeadingRegion(
+                child: UtenTableRowRightEdge(
+                  child: columnHeaderIndicatorOverlay(
+                    leadingInset: widget._showSelect ? _selectColWidth : 0,
+                    child: _withFrozenTrailingAction(
                       theme,
-                      pinnedIndices: pinnedIndices,
-                      cell: frozenHeaderRegion,
-                      row: Row(
-                        children: [
-                          if (widget._showSelect)
-                            SizedBox(
-                              width: _selectColWidth,
-                              child: _selectAllHeaderCell(theme),
-                            ),
-                          for (final i in visibleColumnIndices)
-                            _headerColumnCell(
-                              theme,
-                              i,
-                              frozen: false,
-                              showRightDivider: showRightDivider(i),
-                            ),
-                          if (widget._showRowActionColumn)
-                            SizedBox(
-                              width: _deleteColWidth,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.surfaceContainerHigh,
-                                ),
-                                child: _addColumnHeader(),
+                      _withFrozenLeadingRegion(
+                        theme,
+                        pinnedIndices: pinnedIndices,
+                        cell: frozenHeaderRegion,
+                        row: Row(
+                          children: [
+                            if (widget._showSelect)
+                              SizedBox(
+                                width: _selectColWidth,
+                                child: _selectAllHeaderCell(theme),
                               ),
-                            ),
-                        ],
+                            for (final i in visibleColumnIndices)
+                              _headerColumnCell(
+                                theme,
+                                i,
+                                frozen: false,
+                                showRightDivider: showRightDivider(i),
+                              ),
+                            if (widget._showRowActionColumn)
+                              SizedBox(
+                                width: _deleteColWidth,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        theme.colorScheme.surfaceContainerHigh,
+                                  ),
+                                  child: _addColumnHeader(),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -3969,14 +4045,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
     return SizedBox(
       width: _widths[i],
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHigh,
-          border: Border(
-            right: showRightDivider
-                ? BorderSide(color: theme.colorScheme.outline)
-                : BorderSide.none,
-          ),
+      child: UtenTableCellFrame(
+        backgroundColor: theme.colorScheme.surfaceContainerHigh,
+        border: Border(
+          right: showRightDivider
+              ? BorderSide(color: theme.colorScheme.outline)
+              : BorderSide.none,
         ),
         child: Stack(
           children: [
@@ -4063,12 +4137,15 @@ class _UtenEditableGridState<T extends EditableGridRow>
         nullCount: _filterNullCount(column),
         selected: _columnFilters[column.key],
         search: _columnSearches[column.key] ?? '',
+        numericSearch: column.numeric,
+        scopeDescription: widget.headerFilterScopeDescription,
         scope: scope,
         isCurrent: () => scope == _columnQueryScope,
         onSearch: column.supportsKeywordSearch
             ? (value) => setState(() {
                 _headerQueryScope++;
                 final query = value.trim();
+                if (column.numeric) _columnFilters.remove(column.key);
                 if (query.isEmpty) {
                   _columnSearches.remove(column.key);
                 } else {
@@ -4080,6 +4157,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             : null,
         onChanged: (value) => setState(() {
           _headerQueryScope++;
+          if (column.numeric) _columnSearches.remove(column.key);
           if (value == null) {
             _columnFilters.remove(column.key);
             _columnSearches.remove(column.key);
@@ -4448,31 +4526,33 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       return wrapped;
     }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: rowBg,
-        border: Border(bottom: divider),
-      ),
-      // 单元格统一规格（UtenEditableGridCellSpec）：一行只包一层共享紧凑输入主题，
-      // 让不自带装饰的输入格/下拉格/选择格自动等高、同圆角、同内边距。
-      child: UtenTableCellInputTheme(
-        child: wrapFrozen(
-          _boundStretchRow(
-            stretch: stretchCells,
-            row: Row(
-              // 有列要求吃满行高（层级树列画跨行连线）时整行拉伸；否则沿用默认
-              // center，既有表格零开销、零观感变化。stretch 在无界高度下会给子级
-              // tight h=Infinity，必须由外层 IntrinsicHeight 先收紧（同
-              // MasterDataTableView 的 _selectableCross / _boundStretchRow）。
-              crossAxisAlignment: stretchCells
-                  ? CrossAxisAlignment.stretch
-                  : CrossAxisAlignment.center,
-              children: [
-                if (showSelect)
-                  SizedBox(width: selectColWidth, child: selectionCell),
-                for (final i in columnIndices) _dataCell(context, theme, i),
-                if (showDelete) deleteCell,
-              ],
+    return UtenTableRowRightEdge(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: rowBg,
+          border: Border(bottom: divider),
+        ),
+        // 单元格统一规格（UtenEditableGridCellSpec）：一行只包一层共享紧凑输入主题，
+        // 让不自带装饰的输入格/下拉格/选择格自动等高、同圆角、同内边距。
+        child: UtenTableCellInputTheme(
+          child: wrapFrozen(
+            _boundStretchRow(
+              stretch: stretchCells,
+              row: Row(
+                // 有列要求吃满行高（层级树列画跨行连线）时整行拉伸；否则沿用默认
+                // center，既有表格零开销、零观感变化。stretch 在无界高度下会给子级
+                // tight h=Infinity，必须由外层 IntrinsicHeight 先收紧（同
+                // MasterDataTableView 的 _selectableCross / _boundStretchRow）。
+                crossAxisAlignment: stretchCells
+                    ? CrossAxisAlignment.stretch
+                    : CrossAxisAlignment.center,
+                children: [
+                  if (showSelect)
+                    SizedBox(width: selectColWidth, child: selectionCell),
+                  for (final i in columnIndices) _dataCell(context, theme, i),
+                  if (showDelete) deleteCell,
+                ],
+              ),
             ),
           ),
         ),
@@ -4508,13 +4588,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       final Color? onCellColor = cellColor == null
           ? null
           : utenSemanticCellForeground(context, cellColor);
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: cellColor,
-          border: cellColor == null
-              ? Border(right: _columnDivider(i))
-              : Border(top: divider, bottom: divider, right: _columnDivider(i)),
-        ),
+      return UtenTableCellFrame(
+        backgroundColor: cellColor,
+        border: cellColor == null
+            ? Border(right: _columnDivider(i))
+            : Border(top: divider, bottom: divider, right: _columnDivider(i)),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s8,

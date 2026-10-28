@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -395,6 +396,12 @@ class _AdminDataHandoverPanelState
                   ),
                 ),
               ),
+              if (_step == 0)
+                const UtenFieldHintIcon(
+                  info:
+                      '选择交出数据的员工；已离职员工也可用于补做历史交接。\n\n全选业务模块时，系统还会检查并转移直属下级关系、释放临时任务认领；这两类系统责任不能单独选择。',
+                  dense: true,
+                ),
               Text('${((_step + 1) * 25)}%'),
             ],
           ),
@@ -408,8 +415,6 @@ class _AdminDataHandoverPanelState
   Widget _selectionStep() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text('选择交出数据的员工；已离职员工也可用于补做历史交接。'),
-      const SizedBox(height: UtenSpacing.s12),
       UtenEmployeePicker(
         key: ValueKey('handover-source-${_source?.id ?? 'none'}'),
         label: '交出人',
@@ -463,14 +468,6 @@ class _AdminDataHandoverPanelState
               _invalidatePreview();
             }),
           ),
-      Text(
-        '全选业务模块时，系统还会检查并转移直属下级关系、释放临时任务认领；'
-        '这两类系统责任不能单独选择。',
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          height: 1.5,
-        ),
-      ),
       if (_previewError != null)
         UtenEmpty.error(
           message: _previewError,
@@ -582,15 +579,16 @@ class _AdminDataHandoverPanelState
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text('交接批次：${result.sequenceNo}'),
-        Text('执行回执项次(分类合计)：${result.processedTotal}'),
-        if (result.replayed) const Text('本次为幂等重放，系统未重复执行交接。'),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '同一业务记录可能因“责任转移”和“历史查阅”分别计入不同项次。',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+        Row(
+          children: [
+            Flexible(child: Text('执行回执项次(分类合计)：${result.processedTotal}')),
+            const UtenFieldHintIcon(
+              info: '同一业务记录可能因“责任转移”和“历史查阅”分别计入不同项次。',
+              dense: true,
+            ),
+          ],
         ),
+        if (result.replayed) const Text('本次为幂等重放，系统未重复执行交接。'),
         if (details.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s12),
           for (final entry in details)

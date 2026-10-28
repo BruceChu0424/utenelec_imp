@@ -9,10 +9,45 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/ui/connection_recovery_banner.dart';
 import 'package:uten_imp/core/ui/uten_top_banner_card.dart';
 
+void _expectCenteredStatus(
+  WidgetTester tester,
+  AppLocalizations l10n,
+  String message,
+) {
+  final banner = find.byType(ConnectionRecoveryBanner);
+  final group = find.byKey(const ValueKey('connection-recovery-message-group'));
+  final text = find.byKey(const ValueKey('connection-recovery-message'));
+  expect(find.text(message), findsOneWidget);
+  expect(tester.widget<Text>(text).textAlign, TextAlign.center);
+  final bounds = tester.getRect(banner);
+  final groupBounds = tester.getRect(group);
+  expect(
+    bounds.height,
+    lessThanOrEqualTo(
+      tester.view.physicalSize.height / tester.view.devicePixelRatio,
+    ),
+  );
+  expect(groupBounds.center.dx, closeTo(bounds.center.dx, 0.5));
+  expect(groupBounds.left, greaterThanOrEqualTo(bounds.left));
+  expect(groupBounds.right, lessThanOrEqualTo(bounds.right));
+  expect(find.byKey(const ValueKey('connection-recovery-retry')), findsNothing);
+  expect(find.text(l10n.connectionRetryNow), findsNothing);
+  expect(
+    find.descendant(
+      of: banner,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is ButtonStyleButton || widget is IconButton,
+      ),
+    ),
+    findsNothing,
+  );
+  expect(tester.takeException(), isNull);
+}
+
 void main() {
   for (final locale in const [Locale('zh'), Locale('en'), Locale('ko')]) {
     testWidgets(
-      '${locale.languageCode}: shows an inline retry action and announces recovery',
+      '${locale.languageCode}: centers status without a retry button and recovers automatically',
       (tester) async {
         tester.view.physicalSize = const Size(1400, 700);
         tester.view.devicePixelRatio = 1;
@@ -21,10 +56,14 @@ void main() {
         final displayZoom = ValueNotifier(1.0);
         addTearDown(displayZoom.dispose);
         var reachable = false;
+        var probes = 0;
         final controller = ConnectionRecoveryController(
-          probe: () async => reachable,
-          probeDelays: const [Duration(hours: 1)],
-          restoredDisplayDuration: const Duration(hours: 1),
+          probe: () async {
+            probes++;
+            return reachable;
+          },
+          probeDelays: const [Duration(seconds: 1)],
+          probeDelayJitter: (delay) => delay,
         );
 
         await tester.pumpWidget(
@@ -57,43 +96,33 @@ void main() {
           ),
         );
 
-        controller.markDisconnected();
-        await tester.pump();
-
         final l10n = AppLocalizations.of(
           tester.element(find.byType(ConnectionRecoveryBanner)),
         );
-        final message = find.text(l10n.connectionDisconnected);
-        expect(message, findsOneWidget);
+        controller.markRetrying(1);
+        await tester.pump();
+        _expectCenteredStatus(tester, l10n, l10n.connectionReconnecting);
+
+        controller.markDisconnected();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        _expectCenteredStatus(tester, l10n, l10n.connectionDisconnected);
         expect(find.text('运行与灾备'), findsNothing);
-        final retry = find.byKey(const ValueKey('connection-recovery-retry'));
-        expect(retry, findsOneWidget);
-        expect(
-          tester.getRect(retry).left,
-          closeTo(tester.getRect(message).right + 8, 0.01),
-        );
-        // 视觉 40dp 紧凑按钮；OutlinedButton 默认 MaterialTapTargetSize.padded
-        // 保证命中区仍为 48dp。
-        expect(tester.getSize(retry).height, greaterThanOrEqualTo(40));
 
         tester.platformDispatcher.textScaleFactorTestValue = 2;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         for (final width in [800.0, 320.0]) {
           tester.view.physicalSize = Size(width, 540);
           await tester.pump();
-          expect(tester.takeException(), isNull);
-          expect(retry.hitTestable(), findsOneWidget);
-          expect(tester.getRect(retry).right, lessThanOrEqualTo(width));
+          _expectCenteredStatus(tester, l10n, l10n.connectionDisconnected);
         }
 
         tester.platformDispatcher.textScaleFactorTestValue = 1;
         displayZoom.value = 2;
-        for (final width in [800.0, 460.0]) {
+        for (final width in [800.0, 460.0, 320.0]) {
           tester.view.physicalSize = Size(width, 720);
           await tester.pump();
-          expect(tester.takeException(), isNull);
-          expect(retry.hitTestable(), findsOneWidget);
-          expect(tester.getRect(retry).right, lessThanOrEqualTo(width));
+          _expectCenteredStatus(tester, l10n, l10n.connectionDisconnected);
           expect(
             tester.getSize(find.byType(ConnectionRecoveryBanner)).height,
             lessThan(360),
@@ -101,13 +130,27 @@ void main() {
           );
         }
 
+        expect(probes, 0, reason: 'Layout changes do not start extra probes.');
         reachable = true;
-        await tester.tap(retry);
+        await tester.pump(const Duration(seconds: 1));
         await tester.pump();
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
 
-        expect(find.text(l10n.connectionRestored), findsOneWidget);
+        _expectCenteredStatus(tester, l10n, l10n.connectionRestored);
+        expect(
+          probes,
+          1,
+          reason: 'The existing timer reconnects automatically.',
+        );
         expect(controller.state.recoveryEpoch, 1);
+        await tester.pump(const Duration(seconds: 3));
+        expect(
+          find.byKey(const ValueKey('connection-recovery-message-group')),
+          findsNothing,
+        );
+        expect(controller.state.phase, ConnectionRecoveryPhase.connected);
+        await tester.pump(const Duration(seconds: 30));
+        expect(probes, 1, reason: 'Recovery cancels background probes.');
       },
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
@@ -17,6 +18,7 @@ class UtenFieldHintIcon extends StatefulWidget {
     this.autofillMessage,
     this.autofilled = false,
     this.dense = false,
+    this.compact = false,
   });
 
   final String? info;
@@ -28,6 +30,10 @@ class UtenFieldHintIcon extends StatefulWidget {
   /// 稠密表头里会把列头 Row 顶出 1~2px 溢出（2026-09-11 实测 material_analysis
   /// 等 26 个用例），而列头本身已是 44 高的可点区域，图标只需落在其中。
   final bool dense;
+
+  /// Paired suffix actions share the field height with a narrower inline slot.
+  /// This does not change dense table hint registration or the icon itself.
+  final bool compact;
 
   @override
   State<UtenFieldHintIcon> createState() => _UtenFieldHintIconState();
@@ -119,43 +125,103 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
               : UtenColors.warningText)
         : theme.colorScheme.onSurfaceVariant;
 
+    // Help can contain several paragraphs. Keep long disclosures inside the
+    // visible viewport at large text sizes, and let touch users scroll them.
+    final media = MediaQuery.of(context);
+    final helpWidth = math.min(440.0, math.max(40.0, media.size.width - 64));
+    final helpHeight = math.max(
+      48.0,
+      math.min(
+        420.0,
+        (media.size.height - media.viewInsets.vertical - 64) * .65,
+      ),
+    );
+    final helpStyle =
+        theme.tooltipTheme.textStyle ??
+        theme.textTheme.bodyMedium!.copyWith(
+          color: theme.brightness == Brightness.dark
+              ? Colors.black
+              : Colors.white,
+        );
+    var scrollHelp = false;
+    if (message.length > 100 || '\n'.allMatches(message).length > 4) {
+      final painter = TextPainter(
+        text: TextSpan(text: message, style: helpStyle),
+        textDirection: Directionality.of(context),
+        textScaler: media.textScaler,
+      )..layout(maxWidth: helpWidth);
+      scrollHelp = painter.height > helpHeight;
+      painter.dispose();
+    }
+
     return TextFieldTapRegion(
-      child: Tooltip(
-        key: _tooltipKey,
-        message: message,
-        triggerMode: TooltipTriggerMode.tap,
-        waitDuration: const Duration(milliseconds: 250),
-        showDuration: const Duration(seconds: 10),
-        constraints: const BoxConstraints(maxWidth: 480),
-        margin: const EdgeInsets.all(UtenSpacing.s12),
-        excludeFromSemantics: true,
-        child: Semantics(
-          button: true,
-          liveRegion: isError || isWarning,
-          label: message,
-          child: ExcludeSemantics(
-            child: IconButton(
-              focusNode: _focusNode,
-              onPressed: _show,
-              padding: EdgeInsets.all(
-                widget.dense ? UtenSpacing.s4 : UtenSpacing.s8,
-              ),
-              constraints: BoxConstraints.tightFor(
-                width: extent,
-                height: extent,
-              ),
-              style: const ButtonStyle(
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.standard,
-              ),
-              icon: Icon(
-                isError
-                    ? Icons.error_outline
-                    : isWarning
-                    ? Icons.warning_amber_rounded
-                    : Icons.info_outline,
-                size: widget.dense ? 16 : 18,
-                color: color,
+      // WidgetSpan scales its whole child. Apply accessibility scaling to the
+      // actual text once, keeping the scroll viewport in logical pixels.
+      child: MediaQuery(
+        data: scrollHelp
+            ? media.copyWith(textScaler: TextScaler.noScaling)
+            : media,
+        child: Tooltip(
+          key: _tooltipKey,
+          message: scrollHelp ? null : message,
+          richMessage: scrollHelp
+              ? WidgetSpan(
+                  child: SizedBox(
+                    width: helpWidth,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: helpHeight),
+                      child: SingleChildScrollView(
+                        primary: false,
+                        child: Text(
+                          message,
+                          style: helpStyle,
+                          textScaler: media.textScaler,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+          enableTapToDismiss: !scrollHelp,
+          triggerMode: TooltipTriggerMode.tap,
+          waitDuration: const Duration(milliseconds: 250),
+          showDuration: const Duration(seconds: 10),
+          constraints: const BoxConstraints(maxWidth: 480),
+          margin: const EdgeInsets.all(UtenSpacing.s12),
+          excludeFromSemantics: true,
+          child: Semantics(
+            // InputDecorator already gives suffixIcon its own semantics group.
+            // An extra boundary can retain a clipped child outside a viewport.
+            button: true,
+            onTap: _show,
+            liveRegion: isError || isWarning,
+            label: message,
+            child: ExcludeSemantics(
+              child: IconButton(
+                focusNode: _focusNode,
+                onPressed: _show,
+                padding: EdgeInsets.all(
+                  widget.dense || widget.compact
+                      ? UtenSpacing.s4
+                      : UtenSpacing.s8,
+                ),
+                constraints: BoxConstraints.tightFor(
+                  width: widget.compact ? 28 : extent,
+                  height: extent,
+                ),
+                style: const ButtonStyle(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.standard,
+                ),
+                icon: Icon(
+                  isError
+                      ? Icons.error_outline
+                      : isWarning
+                      ? Icons.warning_amber_rounded
+                      : Icons.info_outline,
+                  size: widget.dense ? 16 : 18,
+                  color: color,
+                ),
               ),
             ),
           ),

@@ -1,3 +1,6 @@
+import '../../../components/feedback/uten_task_progress_dialog.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/hierarchy/category_sibling_names.dart';
 // CategoryEditDialog - 货品/模具/客户/供应商 分类 新增/编辑 对话框。
 //
 // 仿 department_page._showCreateDialog 的 AlertDialog 范式，但抽成独立组件：
@@ -109,6 +112,34 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
   late final TextEditingController _sortCtl;
   ProductCategoryNode? _parent;
   String? _formError;
+
+  String? get _nameError {
+    final name = _nameCtl.text.trim();
+    final editing = widget.editing;
+    if (editing != null &&
+        name == editing.name.trim() &&
+        _parent?.id == editing.parentId) {
+      return null;
+    }
+    if (name.isEmpty) return null;
+    return hasDuplicateSiblingName<ProductCategoryNode>(
+          roots: widget.tree,
+          childrenOf: (node) => node.children,
+          idOf: (node) => node.id,
+          parentIdOf: (node) => node.parentId,
+          nameOf: (node) => node.name,
+          name: name,
+          parentId: _parent?.id,
+          excludingId: widget.editing?.id,
+        )
+        ? '同一上级下已有分类“$name”，请更换名称'
+        : null;
+  }
+
+  void _nameChanged() {
+    if (mounted) setState(() => _formError = null);
+  }
+
   Timer? _prefixDebounce;
   int _prefixRevision = 0;
   String? _observedPrefix;
@@ -181,7 +212,11 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
 
   bool get _isEdit => widget.editing != null;
 
+  late final bool Function() _ownerIsCurrent;
+
   bool _saving = false;
+  bool _submissionWaiting = false;
+  final _ownerChanges = ValueNotifier<int>(0);
   bool _serverCreated = false;
   @override
   bool get formDraftEnabled => !_isEdit && widget.draftSpec != null;
@@ -233,6 +268,11 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
   @override
   void initState() {
     super.initState();
+    _ownerIsCurrent = captureReadOwner(ref);
+    listenReadOwner(ref, () {
+      invalidateFormDraftIdentity();
+      _ownerChanges.value++;
+    });
     final e = widget.editing;
     _prefixCtl = TextEditingController(text: e?.codePrefix ?? '');
     _nameCtl = TextEditingController(text: e?.name ?? '');
@@ -246,6 +286,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     } else {
       _parent = widget.initialParent;
     }
+    _nameCtl.addListener(_nameChanged);
     _prefixCtl.addListener(_onPrefixChanged);
     _onPrefixChanged();
     WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
@@ -253,10 +294,13 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
 
   @override
   void dispose() {
+    _ownerChanges.value++;
+    _ownerChanges.dispose();
     _prefixDebounce?.cancel();
     _prefixRevision++;
     _prefixCtl.removeListener(_onPrefixChanged);
     _prefixCtl.dispose();
+    _nameCtl.removeListener(_nameChanged);
     _nameCtl.dispose();
     _remarkCtl.dispose();
     _sortCtl.dispose();
@@ -293,6 +337,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
     }
+    if (_nameError != null) return _nameError;
     // 编辑态：新父级不能是自身或自身的后代（否则成环）。
     // 注意：要在「自身的子树」里找新父级 id —— 旧代码写成在父级子树里找自身，
     // 而自身本就是父级的子节点 → 恒为 true，导致只改名字也误报。仅改名字时父级未变，
@@ -337,20 +382,15 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded),
-            SizedBox(width: UtenSpacing.s8),
-            Text('确认批量改号'),
-          ],
+        title: const UtenDialogHeading(
+          title: Text('确认批量改号'),
+          icon: Icons.drive_file_rename_outline,
         ),
         content: Text(
-          '生效前缀将变为 ${preview.resultingEffectivePrefix}，'
-          '该分类下 ${preview.affectedRecords} 条主档编号将全部重新来过：'
-          '统一按「${preview.resultingEffectivePrefix} + 序号（01、02…）」从头排。'
-          '${preview.customOrLegacyRecords > 0 ? ' 其中 ${preview.customOrLegacyRecords} 条手工或历史编号也会纳入。' : ''}'
-          '${preview.descendantOverrides > 0 ? ' ${preview.descendantOverrides} 个下级分类有自己的前缀，不受影响。' : ''}\n\n'
-          '订单等关联不受影响，仍按系统内部编号对应；已审核单据继续显示当时的编号。',
+          '${preview.affectedRecords} 条主档编号将按「${preview.resultingEffectivePrefix} + 序号」从 01 重排。'
+          '${preview.customOrLegacyRecords > 0 ? '\n包含 ${preview.customOrLegacyRecords} 条手工或历史编号。' : ''}'
+          '${preview.descendantOverrides > 0 ? '\n${preview.descendantOverrides} 个下级分类保留自己的前缀。' : ''}\n\n'
+          '订单关联和已审核单据的历史编号保持不变。',
         ),
         actions: [
           UtenButton(
@@ -370,13 +410,15 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
 
   Future<void> _submit() async {
     if (_saving || (!_serverCreated && _prefixChecking)) return;
+    if (!_ownerIsCurrent()) return;
+    final current = _ownerIsCurrent;
     if (_serverCreated) {
       setState(() => _saving = true);
       try {
         await completeFormDraft();
-        if (mounted) Navigator.of(context).pop();
+        if (mounted && current()) Navigator.of(context).pop();
       } catch (e) {
-        if (mounted) context.appApiError(e);
+        if (mounted && current()) context.appApiError(e);
       } finally {
         if (mounted) setState(() => _saving = false);
       }
@@ -402,7 +444,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
         setState(() => _prefixChecking = true);
         if (!await _checkPrefix(prefix, revision)) return;
       }
-      if (!await _confirmPrefixImpact(prefix) || !mounted) return;
+      if (!await _confirmPrefixImpact(prefix) || !mounted || !current()) return;
       final result = CategoryEditResult(
         name: _nameCtl.text.trim(),
         codePrefix: prefix,
@@ -415,23 +457,41 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
             ? null
             : _parent?.id,
       );
-      await saveFormDraftNow();
-      ok = await runFormDraftSubmission(() => widget.onSubmit(result));
-      if (!ok && mounted) _queuePrefixCheck(immediately: true);
-      if (ok && mounted) {
-        setState(() => _serverCreated = true);
-        await saveFormDraftNow();
-        await completeFormDraft();
-      }
+      setState(() => _submissionWaiting = true);
+      ok = await runUtenBlockingTask<bool>(
+        context: context,
+        title: _isEdit ? '正在保存分类' : '正在创建分类',
+        isCurrent: current,
+        invalidation: _ownerChanges,
+        task: () async {
+          await saveFormDraftNow();
+          final accepted = await runFormDraftSubmission(
+            () => current() ? widget.onSubmit(result) : Future.value(false),
+          );
+          if (accepted && mounted && current()) {
+            setState(() => _serverCreated = true);
+            await saveFormDraftNow();
+            await completeFormDraft();
+          }
+          return accepted;
+        },
+      );
+      if (!mounted || !current()) return;
+      if (!ok) _queuePrefixCheck(immediately: true);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       _queuePrefixCheck(immediately: true);
       context.appApiError(e);
       return;
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _submissionWaiting = false;
+        });
+      }
     }
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     if (ok) Navigator.of(context).pop();
   }
 
@@ -458,7 +518,6 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
               return !_isSelfOrDescendant(selfNode, n.id);
             },
             onToggleSelect: onSelect,
-            initiallyExpandDepth: 2,
           ),
     );
     if (!mounted || result == null) return;
@@ -472,8 +531,11 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     final theme = Theme.of(context);
     return UtenAlertDialog(
       scrollable: false,
-      title: Text(
-        _isEdit ? '编辑分类' : '新增分类', // TODO(l10n): 补 arb
+      title: UtenDialogHeading(
+        title: Text(_isEdit ? '编辑分类' : '新增分类'),
+        icon: _isEdit
+            ? Icons.drive_file_rename_outline
+            : Icons.create_new_folder_outlined,
       ),
       // 显式三档宽度（compact 近全屏 / medium 收窄 / expanded 560）：
       // 前缀 helper 文案较长，Material 默认窄弹窗换行严重。
@@ -584,10 +646,32 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                     _saving ||
                     _serverCreated ||
                     (_isEdit && !widget.canEditFields),
-                decoration: const UtenInputDecoration(
-                  InputDecoration(labelText: '名称'), // TODO(l10n): 补 arb
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '名称',
+                    error: utenFieldError(_nameError),
+                    errorStyle: TextStyle(color: theme.colorScheme.error),
+                    errorBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: theme.colorScheme.error),
+                    ),
+                    focusedErrorBorder: OutlineInputBorder(
+                      borderSide: BorderSide(
+                        color: theme.colorScheme.error,
+                        width: 2,
+                      ),
+                    ),
+                  ),
                 ),
               ),
+              if (_nameError != null) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                Text(
+                  _nameError!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _remarkCtl,
@@ -628,10 +712,13 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),
         UtenButton(
-          isLoading: _saving,
+          isLoading: _saving && !_submissionWaiting,
           onPressed:
               _saving ||
-                  (!_serverCreated && (_prefixChecking || _prefixError != null))
+                  (!_serverCreated &&
+                      (_prefixChecking ||
+                          _prefixError != null ||
+                          _nameError != null))
               ? null
               : _submit,
           child: Text(_isEdit ? '保存' : '创建'), // TODO(l10n): 补 arb

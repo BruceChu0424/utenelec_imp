@@ -83,7 +83,11 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: const UtenAppBar(title: '提建议', showBackButton: true),
+      appBar: const UtenAppBar(
+        title: '提建议',
+        info: '提交后建议会进入"建议广场"，所有同事可见并可点赞。人事/管理层会尽快回复处理。',
+        showBackButton: true,
+      ),
       body: Column(
         children: [
           Expanded(
@@ -156,6 +160,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
                         children: [
                           UtenSectionHeader(
                             title: '匿名提交',
+                            info: '开启后，其他同事看不到你的姓名',
                             icon: _isAnonymous
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined,
@@ -166,38 +171,8 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
                               activeTrackColor: theme.colorScheme.primary,
                             ),
                           ),
-                          const Text('开启后，其他同事看不到你的姓名'),
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s16),
-                  // 提示
-                  Container(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerLow,
-                      borderRadius: UtenRadius.lgAll,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(
-                          Icons.info_outline_rounded,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(
-                          child: Text(
-                            '提交后建议会进入"建议广场"，所有同事可见并可点赞。人事/管理层会尽快回复处理。',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],

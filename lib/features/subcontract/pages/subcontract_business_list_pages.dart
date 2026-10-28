@@ -582,7 +582,11 @@ class _SubcontractBusinessListPageState
             billNo: _columnFilters['billNo'],
             columnSearch: _columnFilters.values,
           ),
-          sort: _controller.sortKey,
+          sort: switch (_controller.sortKey) {
+            'amount' => 'total',
+            'weight' => 'totalWeight',
+            final key => key,
+          },
           order: _controller.sortOrder,
         );
     if (!current()) throw StateError('读取作用域已变化');
@@ -1261,6 +1265,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     width: 120,
     type: 'date',
     sortable: true,
+    columnSearchEnabled: true,
     value: (row) => row.billDate,
   ),
   if (supplier)
@@ -1282,6 +1287,9 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     MasterColumnDef(
       key: 'amount',
       label: '商业金额',
+      sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (row) => row.priceMasked ? null : row.totalLocalText,
       width: 170,
       type: 'money',
       // 商业金额恒本币（折合人民币）：金额带「元」后缀；脱敏 '***' 原样。
@@ -1297,9 +1305,14 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     MasterColumnDef(
       key: 'weight',
       label: '实物总重',
+      sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (row) =>
+          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
       width: 130,
       type: 'number',
-      value: (row) => row.totalWeight?.toStringAsFixed(3),
+      value: (row) =>
+          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
     ),
   if (closed)
     MasterColumnDef(

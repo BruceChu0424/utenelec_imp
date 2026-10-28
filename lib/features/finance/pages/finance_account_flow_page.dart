@@ -14,6 +14,8 @@ import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import '../../report/shared/account_statement_column_query.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
@@ -41,6 +43,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -66,6 +69,7 @@ class _FinanceAccountFlowPageState
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
   String? _billNoFilter;
+  final _columnQuery = <String, String?>{};
   int _page = 1;
   final int _size = 50;
 
@@ -98,6 +102,8 @@ class _FinanceAccountFlowPageState
         _page = 1;
         _keyword = '';
         _accountId = null;
+        _billNoFilter = null;
+        _columnQuery.clear();
       });
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -201,9 +207,10 @@ class _FinanceAccountFlowPageState
       'dateTo': _fmt(_to),
       if (_keyword.isNotEmpty) 'keyword': _keyword,
       if (_billNoFilter != null) 'billNo': _billNoFilter,
+      ...accountStatementColumnParameters(_columnQuery),
     },
     'size': _size,
-    ...sortQueryParams(_sortKey, _sortAsc),
+    if (_view != _FlowView.statement) ...sortQueryParams(_sortKey, _sortAsc),
   };
 
   Future<void> _load({int? page, bool reuseMetadata = false}) async {
@@ -305,35 +312,26 @@ class _FinanceAccountFlowPageState
     'dateTo': _fmt(_to),
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     if (_billNoFilter != null) 'billNo': _billNoFilter,
-    ...sortQueryParams(_sortKey, _sortAsc),
+    ...accountStatementColumnParameters(_columnQuery),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保留余额原有入账顺序。
   /// 仅 S 帐户进出流水（与导出口径一致）。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      '/finance/reports/account/statement',
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration, view = _view;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/finance/reports/account/statement',
+      queryOf: () => _exportQuery,
+      cellTextOf: formatAccountStatementReportCell,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          view == _view &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -436,6 +434,7 @@ class _FinanceAccountFlowPageState
                         setState(() {
                           _accountId = value;
                           _billNoFilter = null;
+                          _columnQuery.clear();
                         });
                         _persistAndReload();
                       },
@@ -473,6 +472,8 @@ class _FinanceAccountFlowPageState
       _view = v;
       _page = 1;
       _data = null;
+      _billNoFilter = null;
+      _columnQuery.clear();
     });
     _persistPrefs();
     _load();
@@ -493,8 +494,20 @@ class _FinanceAccountFlowPageState
             label: c.label,
             width: (c.width ?? 120).toDouble(),
             type: c.type,
-            sortable: isSortableReportType(c.type),
-            value: (row) => formatReportCell(c, row),
+            sortable:
+                _view != _FlowView.statement && isSortableReportType(c.type),
+            columnSearchEnabled: _view == _FlowView.statement
+                ? accountStatementSearchKeys.contains(c.key)
+                : null,
+            exactValueOf:
+                const {'inAmount', 'outAmount', 'balance'}.contains(c.key)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
+            value: (row) => _view == _FlowView.statement
+                ? formatAccountStatementReportCell(c, row)
+                : formatReportCell(c, row),
           ),
         )
         .toList();
@@ -505,6 +518,12 @@ class _FinanceAccountFlowPageState
       tableKey:
           'features.finance.pages.finance_account_flow_page.FinanceAccountFlowPageState._buildTable.1',
       columns: columns,
+      headerFilterScopeDescription: _view == _FlowView.statement
+          ? '余额按日期和入账顺序完整累计后筛选；收支合计按筛选结果，余额不合计'
+          : null,
+      serverColumnSearchKeys: _view == _FlowView.statement
+          ? accountStatementSearchKeys
+          : const {},
       items: data.rows,
       // 仅 S 帐户进出流水支持预览打印/导出；Q/R 银行存取款为空表（M_Bank 0 行），不显示。
       toolbarActions: [
@@ -532,7 +551,9 @@ class _FinanceAccountFlowPageState
           ),
         ],
       ],
-      facets: const {},
+      facets: _view == _FlowView.statement
+          ? const {'entryKind': accountStatementEntryKinds}
+          : const {},
       facetPageLoaders: _view == _FlowView.statement
           ? nativeFacetLoaders(
               ref,
@@ -557,18 +578,29 @@ class _FinanceAccountFlowPageState
         },
       ),
       nullCounts: const {},
-      filters: {'billNo': _billNoFilter},
+      filters: {'billNo': _billNoFilter, ..._columnQuery},
       onFilterChanged: (key, value) {
-        if (key != 'billNo') return;
+        if (key != 'billNo' &&
+            !key.startsWith('search.') &&
+            !accountStatementChoiceKeys.contains(key)) {
+          return;
+        }
         setState(() {
-          _billNoFilter = value;
+          _dirty = true;
+          if (key == 'billNo') {
+            _billNoFilter = value;
+          } else if (value == null) {
+            _columnQuery.remove(key);
+          } else {
+            _columnQuery[key] = value;
+          }
           _page = 1;
         });
         _load();
       },
-      sortColumn: _sortKey,
+      sortColumn: _view == _FlowView.statement ? null : _sortKey,
       sortAscending: _sortAsc,
-      onSortChange: _onSortChange,
+      onSortChange: _view == _FlowView.statement ? null : _onSortChange,
       isLoading: _loading,
       onRetry: _load,
       emptyMessage: _view == _FlowView.statement ? '暂无流水数据' : '银行存取款未启用(空表)',
@@ -587,6 +619,8 @@ class _FinanceAccountFlowPageState
         _from,
         _to,
         _keyword,
+        _billNoFilter,
+        jsonEncode(accountStatementColumnParameters(_columnQuery)),
       ),
       onPageChange: (p) {
         _page = p;

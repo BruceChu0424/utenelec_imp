@@ -1,3 +1,5 @@
+import '../../../components/inputs/uten_table_cell_auto_width.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
 // 模具资料分类树管理页（基础资料）
 //
 // 顶层壳层（树加载/统一搜索/分类 CRUD/build 骨架）复用 CategoryPageShell，
@@ -110,10 +112,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// （categoryId=null → listGlobal/globalFacets/导出全部），后端零改动。
   static const _allMouldsNodeId = '__all_moulds__';
 
-  /// 真实分类整体下沉一层（总根之下），初始展开深度同步 +1 保持原有视野。
-  @override
-  int get shellInitiallyExpandDepth => 2;
-
   @override
   Future<List<ProductCategoryNode>> shellLoadTree() async {
     final tree = await ref.read(mouldCategoryRepositoryProvider).tree();
@@ -218,6 +216,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
 
   @override
   Future<void> shellDeleteNode(ProductCategoryNode node) async {
+    final current = shellCaptureActionOwner();
     if (isSystemUncategorizedCategory(systemManaged: node.systemManaged)) {
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
@@ -225,26 +224,26 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     // 先拉子树规模预览（后代分类数 + 模具数），用于红色确认框提示级联影响（问题 #7）。
     MouldCategoryDeletePreview? preview;
     try {
-      preview = await ref
-          .read(mouldCategoryRepositoryProvider)
-          .deletePreview(node.id);
+      preview = await shellRunCategoryTask(
+        '正在检查删除范围…',
+        () => ref.read(mouldCategoryRepositoryProvider).deletePreview(node.id),
+      );
     } catch (_) {
       preview = null; // 预览失败不阻塞：退回无计数的通用确认。
     }
-    if (!mounted) return;
+    if (!mounted || !current()) return;
 
     final hasCascade =
         preview != null &&
         (preview.descendantCount > 0 || preview.mouldCount > 0);
-    final ok = await showDialog<bool>(
+    final ok = await showReadOwnedDialog<bool>(
+      ref: ref,
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: UtenColors.error),
-            SizedBox(width: UtenSpacing.s8),
-            Text('删除分类'), // TODO(l10n): 补 arb
-          ],
+        title: const UtenDialogHeading(
+          title: Text('删除分类'),
+          icon: Icons.delete_outline,
+          danger: true,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -298,15 +297,19 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       ),
     );
     if (ok != true) return;
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     final deleted = await guardShellAction(
       () async {
-        await ref.read(mouldCategoryRepositoryProvider).delete(node.id);
+        await shellRunCategoryTask(
+          '正在删除分类…',
+          () => ref.read(mouldCategoryRepositoryProvider).delete(node.id),
+        );
       },
       success: '分类已删除', // TODO(l10n): 补 arb
       errorFallback: '删除失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
-    if (!deleted || !mounted) return;
+    if (!deleted || !mounted || !current()) return;
     shellAfterCategoryDeleted(node.id);
     await shellReload();
   }
@@ -615,7 +618,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
           onChanged: ctx.onChanged,
         ),
       ),
-      // 车间：部门选择滑窗（仅制造与研发管理中心子树，默认只展开生产部，需点确定才生效，
+      // 车间：部门选择滑窗（仅制造与研发管理中心子树，默认收起，需点确定才生效，
       // 问题 #5）；落 departmentId，后端按 id 解析 place 文本。
       MasterFieldDef(
         key: 'departmentId',
@@ -631,9 +634,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             selectablePredicate: isBusinessDepartmentNode,
             treeOverride: workshop.tree.isEmpty ? null : workshop.tree,
             expandOnRowTap: true,
-            initiallyExpandedIds: workshop.prodDeptId == null
-                ? const {}
-                : {workshop.prodDeptId!},
             initialSelection: (id == null || id.isEmpty)
                 ? const []
                 : [
@@ -709,7 +709,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// 见 [_buildMouldFields] 上的注释），失败兜底空树（picker 退回全公司组织树，不阻断填表）。
   Future<MouldWorkshopTree> _loadWorkshopTree() async {
     try {
-      return await ref.read(mouldWorkshopTreeProvider.future);
+      return await shellRunCategoryTask(
+        '正在读取车间…',
+        () => ref.read(mouldWorkshopTreeProvider.future),
+      );
     } catch (_) {
       return const MouldWorkshopTree(tree: [], prodDeptId: null);
     }
@@ -719,8 +722,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterEntityPaneController<MouldListItem, MouldDetail>? pane, {
     String? draftCategoryId,
   }) async {
+    final current = shellCaptureActionOwner();
     final workshop = await _loadWorkshopTree();
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     final iv = {'status': '使用', 'categoryName': pane?.category?.name ?? ''};
     await showMasterEditDialog(
       context: context,
@@ -741,8 +745,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterEntityPaneController<MouldListItem, MouldDetail> pane,
     MouldDetail d,
   ) async {
+    final current = shellCaptureActionOwner();
     final workshop = await _loadWorkshopTree();
-    if (!mounted) return;
+    if (!mounted || !current()) return;
     final iv = {
       '_entityId': d.id,
       'name': d.name ?? '',
@@ -779,10 +784,11 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     String? id,
     Map<String, dynamic> body,
   ) async {
+    final current = shellCaptureActionOwner();
     final repository = ref.read(mouldRepositoryProvider);
     if (id == null) {
       await repository.create(body);
-      if (mounted) {
+      if (mounted && current()) {
         context.appSuccess('模具已创建');
         await pane?.reload();
       }
@@ -792,8 +798,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       () => repository.update(id, body),
       success: '模具已更新', // TODO(l10n): 补 arb
       errorFallback: '更新失败，请稍后重试', // TODO(l10n): 补 arb
+      isCurrent: current,
     );
-    if (ok) await pane?.reload();
+    if (ok && current()) await pane?.reload();
     return ok;
   }
 
@@ -808,22 +815,23 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   ) async {
     if (_detailLoading) return;
     _detailLoading = true;
-    final nav = Navigator.of(context, rootNavigator: true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    final current = shellCaptureActionOwner();
     MouldDetail? d;
     try {
-      d = await ref.read(mouldRepositoryProvider).detail(id);
+      d = await shellRunCategoryTask(
+        '正在读取模具…',
+        () => ref.read(mouldRepositoryProvider).detail(id),
+      );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && current()) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('加载模具详情失败'); // TODO(l10n): 补 arb
+      if (mounted && current()) {
+        context.appError('加载模具详情失败');
+      } // TODO(l10n): 补 arb
     }
-    nav.pop(); // 关 loading
-    if (!mounted || d == null) {
+    if (!mounted || !current() || d == null) {
       _detailLoading = false;
       return;
     }
@@ -837,6 +845,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       rows: _mouldDetailRows(detail),
       historyEntityType: 'moulds',
       historyRecordId: detail.id,
+      isCurrent: current,
       onHistoryChanged: pane.reload,
       canEdit: perms.contains(Perm.mouldEdit),
       canDelete: perms.contains(Perm.mouldDelete),
@@ -851,6 +860,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                   !mounted) {
                 return;
               }
+              if (!current()) return;
               final ok = await context.guardRun(
                 () => ref
                     .read(masterStatusRepositoryProvider)
@@ -859,13 +869,18 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                       status: next,
                     ),
                 success: next == '禁用' ? '已停用' : '已启用',
+                isCurrent: current,
               );
-              if (ok && mounted) await pane.reload();
+              if (ok && mounted && current()) await pane.reload();
             }
           : null,
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',
-      onEdit: () => _showMouldEdit(pane, detail),
-      onDelete: () => pane.batchDelete({detail.id}),
+      onEdit: () {
+        if (current()) _showMouldEdit(pane, detail);
+      },
+      onDelete: () {
+        if (current()) pane.batchDelete({detail.id});
+      },
     );
     if (mounted) _detailLoading = false;
   }
@@ -900,7 +915,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
 
   // ---- 模具列定义（表格列头 + 单元格取值 + 筛选键） ---------------------
 
-  /// 模具表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=固定列宽、
+  /// 模具表格列：[MasterColumnDef.label]=列头、[MasterColumnDef.width]=初始参考宽度，实际沿用公共内容量宽、
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   ///
   /// 模数/套数 = 老库 QTY/TQTY（2026-10-19 用户确认口径：QTY "1+1" 为模数、TQTY
@@ -930,7 +945,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       key: 'tqty',
       label: '套数',
       width: 80,
-      columnSearchEnabled: false,
+      type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (m) => goodsQtyText(m.tqty),
     ),
     MasterColumnDef(
@@ -951,6 +968,17 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       label: '制造商',
       width: 140,
       value: (m) => m.manufacturer,
+      minimumWidthOf: (_) => 48,
+      measureWidthScope: 'mould.manufacturer.v1',
+      measureWidthOf: (context, row, scaler) => utenTableCellTextWidth(
+        mouldManufacturerDisplayText(
+          row.manufacturer,
+          missingLabel: AppLocalizations.of(context).mouldManufacturerMissing,
+        ),
+        style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      ),
       cellBuilder: (_, m) => MouldManufacturerValue(value: m.manufacturer),
     ),
     MasterColumnDef(
@@ -964,11 +992,26 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       label: '备注',
       width: 200,
       value: (m) => m.remark,
-      cellBuilder: (context, m) => Text(
-        masterLegacyRemarkText(context, m.remark) ?? '—',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      minimumWidthOf: (_) => 48,
+      measureWidthScope: 'mould.legacyRemark.v1',
+      measureWidthOf: (context, row, scaler) => utenTableCellTextWidth(
+        masterLegacyRemarkText(context, row.remark) ?? '—',
+        style: Theme.of(context).textTheme.bodyMedium ?? const TextStyle(),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
       ),
+      cellBuilder: (context, m) {
+        final text = masterLegacyRemarkText(context, m.remark) ?? '—';
+        return Tooltip(
+          message: text,
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      },
     ),
   ];
 }

@@ -37,6 +37,7 @@ import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -56,6 +57,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -1883,34 +1885,14 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
         },
       ),
     );
-    final pageControls = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.chevron_left_rounded),
-          tooltip: '上一页',
-          onPressed: _pageNo > 1 && !_loading
-              ? () {
-                  _pageNo--;
-                  _load(useCache: true);
-                }
-              : null,
-        ),
-        Text(
-          pages == 0 ? '0 / 0' : '$_pageNo / $pages',
-          style: theme.textTheme.bodyMedium,
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right_rounded),
-          tooltip: '下一页',
-          onPressed: _pageNo < pages && !_loading
-              ? () {
-                  _pageNo++;
-                  _load(useCache: true);
-                }
-              : null,
-        ),
-      ],
+    final pageControls = UtenPagination(
+      currentPage: _pageNo,
+      totalPages: pages,
+      busy: _loading,
+      onPageChanged: (target) {
+        _pageNo = target;
+        _load(useCache: true);
+      },
     );
     return LayoutBuilder(
       builder: (_, constraints) => Padding(
@@ -2245,8 +2227,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
                   ),
                 ),
               ),
-              if (expanded)
-                for (final s in r.subplans) _subplanRow(theme, s),
+              UtenCollapsibleContent(
+                expanded: expanded,
+                maintainState: false,
+                child: Column(
+                  children: [for (final s in r.subplans) _subplanRow(theme, s)],
+                ),
+              ),
             ],
           ],
         ),

@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/business_columns/business_column.dart';
 import 'package:uten_imp/shared/business_columns/business_columns_row.dart';
+import 'package:uten_imp/shared/business_columns/business_columns_table.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
@@ -25,7 +27,51 @@ BusinessColumn fee(
 String? amount(String base, List<BusinessColumn> columns) =>
     financeExactTrimmed(businessColumnAmount(base, columns));
 
+class _HeaderRow extends EditableGridRow with BusinessColumnsRow {}
+
 void main() {
+  test(
+    'snapshot and editable headers retain exact decimal and masked financial contracts',
+    () {
+      final column = fee('special', 'ADD', '+.000000000000000000000000000001');
+      final visible = businessReadOnlyColumns<List<BusinessColumn>>([
+        [column],
+      ], columnsOf: (row) => row).single;
+      expect(
+        visible.exactValueOf!([column]),
+        '0.000000000000000000000000000001',
+      );
+      expect(visible.sortable, isTrue);
+      expect(visible.filterFromRows, isTrue);
+      expect(visible.aiSensitive, isTrue);
+      final masked = businessReadOnlyColumns<List<BusinessColumn>>(
+        [
+          [column],
+        ],
+        columnsOf: (row) => row,
+        priceMasked: true,
+      ).single;
+      expect(masked.value([column]), '***');
+      expect(masked.exactValueOf, isNull);
+      expect(masked.sortable, isFalse);
+      expect(masked.filterFromRows, isFalse);
+      expect(masked.columnSearchEnabled, isFalse);
+      final row = _HeaderRow()..addExtraColumn(column);
+      addTearDown(row.dispose);
+      final editor = businessEditableColumns<_HeaderRow>([
+        column,
+      ], rowOf: (row) => row).single;
+      expect(editor.exactValueOf!(row), '0.000000000000000000000000000001');
+      expect(editor.aiSensitive, isTrue);
+      final maskedEditor = businessEditableColumns<_HeaderRow>(
+        [column],
+        rowOf: (row) => row,
+        priceMasked: true,
+      ).single;
+      expect(maskedEditor.supportsKeywordSearch, isFalse);
+      expect(maskedEditor.exactValueOf, isNull);
+    },
+  );
   test('ordered operations use finite decimal values without rounding', () {
     final columns = [
       fee('a', 'ADD', '0.1'),

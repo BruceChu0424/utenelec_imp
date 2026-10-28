@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import '../support/table_cell_geometry.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -32,17 +33,7 @@ List<String> _renderedOrder(WidgetTester tester, List<String> labels) =>
           .compareTo(tester.getCenter(_grip(b)).dx),
     );
 
-Finder _headerCell(String label) => find
-    .ancestor(
-      of: find.text(label),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is SizedBox &&
-            widget.width != null &&
-            widget.child is DecoratedBox,
-      ),
-    )
-    .first;
+Finder _headerCell(String label) => tableCellFrame(find.text(label));
 
 Future<void> _pumpAnchoredGrid(
   WidgetTester tester, {

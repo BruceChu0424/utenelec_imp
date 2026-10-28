@@ -42,7 +42,7 @@ final productionWorkforceTreeProvider =
         return ProductionWorkforceTree(
           tree: production == null ? const [] : [production],
           productionDepartmentId: production?.id,
-          initiallyExpandedIds: production == null ? const {} : {production.id},
+          initiallyExpandedIds: const {},
         );
       }
       final scopedCenter = DepartmentNode(
@@ -60,6 +60,6 @@ final productionWorkforceTreeProvider =
       return ProductionWorkforceTree(
         tree: [scopedCenter],
         productionDepartmentId: production.id,
-        initiallyExpandedIds: {center.id, production.id},
+        initiallyExpandedIds: const {},
       );
     });

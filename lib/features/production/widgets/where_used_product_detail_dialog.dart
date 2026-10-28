@@ -195,7 +195,6 @@ class _WhereUsedProductDetailBodyState
       _closeStaleRoute();
       return const SizedBox.shrink();
     }
-    final theme = Theme.of(context);
     final productName = _display(widget.row['goodsName']);
     final productCode = _display(widget.row['goodsCode']);
 
@@ -213,11 +212,10 @@ class _WhereUsedProductDetailBodyState
           _SectionTitle(
             icon: Icons.manage_search_rounded,
             title: '本次反查',
+            info: '不同来源分别展示，数量不能相加；名称、编号、规格和分类按查询时主档显示。',
             subtitle:
                 '${widget.historyRangeLabel} · ${_materialLabel(widget.material)}',
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          _HistoryNotice(theme: theme),
           const SizedBox(height: UtenSpacing.s20),
           WhereUsedSourceBreakdown(row: widget.row),
           const Padding(
@@ -356,40 +354,6 @@ class _DialogHeader extends StatelessWidget {
             tooltip: '关闭',
             onPressed: onClose,
             icon: const Icon(Icons.close_rounded),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HistoryNotice extends StatelessWidget {
-  const _HistoryNotice({required this.theme});
-
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      label: '数据口径说明',
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.info_outline_rounded,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '不同来源分别展示，数量不能相加；名称、编号、规格和分类按查询时主档显示。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.45,
-              ),
-            ),
           ),
         ],
       ),

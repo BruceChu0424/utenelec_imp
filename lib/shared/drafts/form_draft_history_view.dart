@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/data_display/uten_status_badge.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
+import '../../components/layout/uten_pagination.dart';
 import '../../core/network/server_config.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
@@ -196,26 +197,21 @@ class _HistoryPageState extends ConsumerState<_FormDraftHistoryPage> {
                   ),
                   UtenPageEdgePadding(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Wrap(
-                      spacing: UtenSpacing.s12,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        TextButton(
-                          onPressed: _cursors.length == 1
-                              ? null
-                              : () => setState(() => _cursors.removeLast()),
-                          child: const Text('上一页'),
-                        ),
-                        Text('第 ${_cursors.length} 页'),
-                        TextButton(
-                          onPressed: value.nextCursor == null
-                              ? null
-                              : () => setState(
-                                  () => _cursors.add(value.nextCursor),
-                                ),
-                          child: const Text('下一页'),
-                        ),
-                      ],
+                    child: UtenPagination(
+                      currentPage: _cursors.length,
+                      totalPages: value.nextCursor == null
+                          ? _cursors.length
+                          : null,
+                      maxPage:
+                          _cursors.length + (value.nextCursor == null ? 0 : 1),
+                      onPageChanged: (target) => setState(() {
+                        if (target < _cursors.length) {
+                          _cursors.removeRange(target, _cursors.length);
+                        } else if (target > _cursors.length &&
+                            value.nextCursor != null) {
+                          _cursors.add(value.nextCursor);
+                        }
+                      }),
                     ),
                   ),
                 ],

@@ -58,7 +58,9 @@ void main() {
     await tester.pumpAndSettle();
     final card = tester.widget<MasterDetailCard>(find.byType(MasterDetailCard));
     expect(card.title, '测试费用');
-    expect(card.subtitle, contains('EXP-TEST'));
+    expect(card.subtitle, '费用');
+    expect(find.text('EXP-TEST'), findsOneWidget);
+    expect(find.text('主档保留策略'), findsNothing);
     final tree = tester.widget<UtenCategoryTreeView<PaymentStyleNode>>(
       find.byType(UtenCategoryTreeView<PaymentStyleNode>),
     );

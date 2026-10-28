@@ -10,6 +10,27 @@ class PermissionTemplateRepository {
   static const path = '/admin/permission-templates';
   Future<List<PermissionTemplate>> list() async =>
       (await api.getList(path)).map(PermissionTemplate.fromJson).toList();
+  Future<List<PermissionTemplateBinding>> bindings() async =>
+      (await api.getList(
+        '$path/bindings',
+      )).map(PermissionTemplateBinding.fromJson).toList();
+  Future<void> unbind({
+    List<String> userIds = const [],
+    List<String> departmentIds = const [],
+    required List<PermissionTemplateBinding> expectedBindings,
+  }) async {
+    await api.post(
+      '$path/unbind',
+      body: {
+        'userIds': userIds,
+        'departmentIds': departmentIds,
+        'expectedBindings': expectedBindings
+            .map((binding) => binding.toExpectedJson())
+            .toList(),
+      },
+    );
+  }
+
   Future<PermissionTemplate> save({
     PermissionTemplate? template,
     required String name,
@@ -21,6 +42,34 @@ class PermissionTemplateRepository {
       'description': description.trim(),
       'permissions': permissions.toList()..sort(),
       'expectedVersion': template?.version ?? 0,
+    };
+    final saved = template == null
+        ? await api.post(path, body: body)
+        : await api.put('$path/${template.id}', body: body);
+    return PermissionTemplate.fromJson(saved);
+  }
+
+  Future<PermissionTemplate> saveReviewed({
+    PermissionTemplate? template,
+    required String name,
+    required String description,
+    required Set<String> permissions,
+    Set<String> sensitiveConfirmations = const {},
+  }) async {
+    if (sensitiveConfirmations.isEmpty) {
+      return save(
+        template: template,
+        name: name,
+        description: description,
+        permissions: permissions,
+      );
+    }
+    final body = <String, dynamic>{
+      'name': name.trim(),
+      'description': description.trim(),
+      'permissions': permissions.toList()..sort(),
+      'expectedVersion': template?.version ?? 0,
+      'sensitiveConfirmations': sensitiveConfirmations.toList()..sort(),
     };
     final saved = template == null
         ? await api.post(path, body: body)
@@ -77,3 +126,9 @@ final permissionTemplatesProvider = FutureProvider<List<PermissionTemplate>>((
   ref.watch(sensitiveReadBoundaryProvider);
   return ref.watch(permissionTemplateRepositoryProvider).list();
 });
+
+final permissionTemplateBindingsProvider =
+    FutureProvider<List<PermissionTemplateBinding>>((ref) {
+      ref.watch(sensitiveReadBoundaryProvider);
+      return ref.watch(permissionTemplateRepositoryProvider).bindings();
+    });

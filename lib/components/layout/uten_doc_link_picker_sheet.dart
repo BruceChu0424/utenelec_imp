@@ -195,7 +195,9 @@ class UtenDocLinkPickerConfig<D, I, N> {
     required this.partyName,
     required this.initNames,
     required this.loadGoodsNames,
-    required this.listDocs,
+    this.listDocs,
+    this.listDocsWithFilters,
+    this.serverColumnSearchKeys = const <String>{},
     required this.loadDetail,
     required this.itemFields,
     required this.docColumns,
@@ -210,7 +212,7 @@ class UtenDocLinkPickerConfig<D, I, N> {
     this.remainGiftQtyText,
     this.allowOverRemaining = false,
     this.allowGiftOverRemaining = false,
-  });
+  }) : assert(listDocs != null || listDocsWithFilters != null);
 
   /// Step1 标题，如「从订货引入」。
   final String step1Title;
@@ -256,8 +258,21 @@ class UtenDocLinkPickerConfig<D, I, N> {
     String? partyId,
     String? sort,
     String? order,
-  )
+  )?
   listDocs;
+
+  /// Explicit opt-in to an existing full-range per-column server query.
+  final Future<PagedResult<D>> Function(
+    WidgetRef ref,
+    int page,
+    String? keyword,
+    String? partyId,
+    String? sort,
+    String? order,
+    Map<String, String?> filters,
+  )?
+  listDocsWithFilters;
+  final Set<String> serverColumnSearchKeys;
 
   /// 拉单据详情并归一化（异步上下文，实现内部用 ref.read）。
   final Future<UtenDocLinkDetail<I>> Function(WidgetRef ref, String docId)
@@ -372,6 +387,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
   String? _docsError;
   final _keywordCtl = TextEditingController();
   String _keyword = '';
+  Map<String, String?> _docColumnFilters = const {};
   String? _partyId;
   String? _sortKey;
   bool _sortAsc = true;
@@ -442,15 +458,32 @@ class _UtenDocLinkPickerSheetState<D, I, N>
     final keyword = _keyword.trim().isEmpty ? null : _keyword;
     final partyId = _partyId, sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
-    Object pagingQuery() => [_cfg, _keyword, _partyId, _sortKey, _sortAsc];
+    final columnFilters = _docColumnFilters;
+    Object pagingQuery() => [
+      _cfg,
+      _keyword,
+      _partyId,
+      _sortKey,
+      _sortAsc,
+      _docColumnFilters,
+    ];
     try {
       final r = await readScopedPage<D>(
         page,
         query: pagingQuery(),
         currentQuery: pagingQuery,
         useCache: useCache,
-        fetchPage: (target) =>
-            config.listDocs(ref, target, keyword, partyId, sort, order),
+        fetchPage: (target) => config.listDocsWithFilters != null
+            ? config.listDocsWithFilters!(
+                ref,
+                target,
+                keyword,
+                partyId,
+                sort,
+                order,
+                columnFilters,
+              )
+            : config.listDocs!(ref, target, keyword, partyId, sort, order),
       );
       if (!mounted || !_docsRequests.isCurrent(requestVersion)) return;
       await _cfg.loadPartyNames(
@@ -805,8 +838,30 @@ class _UtenDocLinkPickerSheetState<D, I, N>
             items: _docPage?.items ?? const [],
             facets: const {},
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: _docColumnFilters,
+            serverColumnSearchKeys: _cfg.listDocsWithFilters != null
+                ? _cfg.serverColumnSearchKeys
+                : const {},
+            onFilterChanged: (key, value) {
+              if (!key.startsWith('search.') ||
+                  !_cfg.serverColumnSearchKeys.contains(key.substring(7)) ||
+                  _cfg.listDocsWithFilters == null ||
+                  _readerInvalidated) {
+                return;
+              }
+              setState(() {
+                _docColumnFilters = Map.unmodifiable(
+                  {
+                    ..._docColumnFilters,
+                    if (value != null && value.isNotEmpty) key: value,
+                  }..removeWhere(
+                    (filterKey, _) =>
+                        filterKey == key && (value == null || value.isEmpty),
+                  ),
+                );
+              });
+              _loadDocs(1);
+            },
             sortColumn: _sortKey,
             sortAscending: _sortAsc,
             onSortChange: _onSortChange,
@@ -818,7 +873,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
             emptyMessage: _cfg.step1EmptyMessage,
             currentPage: _docPage?.page ?? 1,
             totalPages: _docPage?.totalPages ?? 1,
-            paginationScope: (_keyword, _partyId),
+            paginationScope: (_keyword, _partyId, _docColumnFilters),
             onPageChange: (p) => _loadDocs(p, useCache: true),
           ),
         ),

@@ -226,19 +226,22 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
               .read(mn.masterNameServiceProvider)
               .loadGoodsDetails(goodsIds);
         },
-        listDocs: (ref, page, keyword, supplierId, sort, order) => ref
-            .read(subcontractRepositoryProvider(upstream))
-            .list(
-              page: page,
-              // 拉已审单据（草稿单据的明细不该被引入）。
-              filter: SubcontractDocFilter(
-                keyword: keyword,
-                supplierId: supplierId,
-                status: kSubcontractStatusApproved,
-              ),
-              sort: sort,
-              order: order,
-            ),
+        serverColumnSearchKeys: const {'billNo', 'supplier'},
+        listDocsWithFilters:
+            (ref, page, keyword, supplierId, sort, order, filters) => ref
+                .read(subcontractRepositoryProvider(upstream))
+                .list(
+                  page: page,
+                  // 拉已审单据（草稿单据的明细不该被引入）。
+                  filter: SubcontractDocFilter(
+                    keyword: keyword,
+                    supplierId: supplierId,
+                    status: kSubcontractStatusApproved,
+                    columnSearch: filters,
+                  ),
+                  sort: sort,
+                  order: order,
+                ),
         loadDetail: (ref, docId) async {
           final detail = await ref
               .read(subcontractRepositoryProvider(upstream))
@@ -312,8 +315,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   );
 }
 
-/// Step1 单据表列。面板服务端分页且无 facets 端点：文本列关闭列头搜索，
-/// 漏斗不再出空下拉（顶部关键字搜索走服务端）。
+/// Step1 单据表列。单号、供应商列搜索传给完整服务端查询，保留已审范围。
 List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
   mn.MasterNameService names,
 ) => [
@@ -327,7 +329,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
     key: 'billNo',
     label: '单据号',
     width: 140,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => d.billNo,
   ),
   MasterColumnDef(
@@ -342,7 +344,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
     key: 'supplier',
     label: '委外商',
     width: 200,
-    columnSearchEnabled: false,
+    columnSearchEnabled: true,
     value: (d) => names.supplier(d.supplierId),
   ),
   MasterColumnDef(

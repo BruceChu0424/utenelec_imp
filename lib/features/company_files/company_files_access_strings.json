@@ -14,6 +14,16 @@
     "Who can read",
     "열람 가능한 대상"
   ],
+  "companyFilesEveryoneCanRead": [
+    "所有人可以看",
+    "Everyone can view",
+    "모두가 볼 수 있음"
+  ],
+  "companyFilesEveryoneReadHint": [
+    "资料库默认全员可见。这份资料对所有人开放查看和下载，可添加拒绝例外；上层文件夹已限制访问时，仍需先能进入上层文件夹。",
+    "The library is visible to everyone by default. Everyone can view and download this item; deny rules can carve out exceptions. When a parent folder restricts access, that folder must still be entered first.",
+    "자료실은 기본적으로 모두에게 공개됩니다. 이 자료는 모두가 열람하고 다운로드할 수 있으며 거부 예외를 추가할 수 있습니다. 상위 폴더가 접근을 제한한 경우에는 상위 폴더 진입 권한이 여전히 필요합니다."
+  ],
   "companyFilesInheritEntryAccess": [
     "继承所在文件夹的访问范围",
     "Inherit the parent folder's access",

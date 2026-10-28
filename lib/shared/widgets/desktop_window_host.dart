@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -61,19 +60,21 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
         child: Stack(
           children: [
             Positioned.fill(
-              top: login && !widget.overlayControls
-                  ? DesktopWindowHost.controlsHeight
-                  : 0,
+              top: login && widget.overlayControls
+                  ? 0
+                  : DesktopWindowHost.controlsHeight,
               child: widget.child,
             ),
-            if (login)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: DesktopWindowHost.controlsHeight,
-                child: _LoginWindowControls(controller: _controller),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: DesktopWindowHost.controlsHeight,
+              child: _DesktopWindowControls(
+                controller: _controller,
+                canMaximize: !login,
               ),
+            ),
           ],
         ),
       ),
@@ -81,10 +82,14 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
   }
 }
 
-class _LoginWindowControls extends StatelessWidget {
-  const _LoginWindowControls({required this.controller});
+class _DesktopWindowControls extends StatelessWidget {
+  const _DesktopWindowControls({
+    required this.controller,
+    required this.canMaximize,
+  });
 
   final DesktopWindowController controller;
+  final bool canMaximize;
 
   @override
   Widget build(BuildContext context) {
@@ -109,15 +114,30 @@ class _LoginWindowControls extends StatelessWidget {
       backgroundColor: UtenColors.warning,
       onPressed: controller.minimize,
     );
+    final maximize = ValueListenableBuilder<bool>(
+      valueListenable: controller.maximized,
+      builder: (context, maximized, _) => _WindowButton(
+        key: const Key('desktop-window-maximize'),
+        tooltip: switch (language) {
+          'zh' => maximized ? '还原' : '最大化',
+          'ko' => maximized ? '복원' : '최대화',
+          _ => maximized ? 'Restore' : 'Maximize',
+        },
+        icon: maximized
+            ? Icons.filter_none_rounded
+            : Icons.open_in_full_rounded,
+        backgroundColor: UtenColors.success,
+        onPressed: controller.toggleMaximize,
+      ),
+    );
     final dragArea = Expanded(
-      child: Listener(
+      child: GestureDetector(
         key: const Key('desktop-window-drag'),
         behavior: HitTestBehavior.opaque,
-        onPointerDown: (event) {
-          if (event.buttons == kPrimaryButton) {
-            unawaited(controller.beginDrag());
-          }
-        },
+        onPanStart: (_) => unawaited(controller.beginDrag()),
+        onDoubleTap: canMaximize
+            ? () => unawaited(controller.toggleMaximize())
+            : null,
         child: const SizedBox.expand(),
       ),
     );
@@ -128,8 +148,8 @@ class _LoginWindowControls extends StatelessWidget {
         child: Row(
           textDirection: TextDirection.ltr,
           children: isMac
-              ? [close, minimize, dragArea]
-              : [dragArea, minimize, close],
+              ? [close, minimize, if (canMaximize) maximize, dragArea]
+              : [dragArea, minimize, if (canMaximize) maximize, close],
         ),
       ),
     );

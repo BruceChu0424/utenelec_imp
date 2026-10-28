@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_error.dart';
@@ -401,60 +402,19 @@ class _BatchMaintenanceDialogState
               if (_components.isEmpty)
                 Text(_l10n.goodsBomBatchSelectFirst)
               else ...[
-                for (final component
-                    in (_expanded || _components.length <= 4
-                        ? _components
-                        : _components.take(1)))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            [
-                                  component.goods.code,
-                                  component.goods.name,
-                                  component.goods.colorName,
-                                ]
-                                .whereType<String>()
-                                .where((value) => value.isNotEmpty)
-                                .join(' / '),
-                          ),
-                        ),
-                        if (!_remove) ...[
-                          const SizedBox(width: UtenSpacing.s8),
-                          SizedBox(
-                            width: 128,
-                            child: BomComponentQuantityField(
-                              goods: component.goods,
-                              controller: component.quantity,
-                              enabled: enabled,
-                              fieldKey: ValueKey(
-                                'goods-bom-batch-qty-${component.goods.id}',
-                              ),
-                              onChanged: (_) => setState(_invalidate),
-                            ),
-                          ),
-                        ],
-                        IconButton(
-                          key: ValueKey(
-                            'goods-bom-batch-remove-${component.goods.id}',
-                          ),
-                          tooltip: _l10n.goodsBomBatchUnselectComponent,
-                          onPressed: enabled && !_overwrite
-                              ? () => setState(() {
-                                  _components.remove(component);
-                                  component.quantity.dispose();
-                                  _invalidate();
-                                })
-                              : null,
-                          icon: const Icon(Icons.close_rounded, size: 18),
-                        ),
-                      ],
-                    ),
+                _componentRow(_components.first, enabled),
+                UtenCollapsibleContent(
+                  expanded: _expanded || _components.length <= 4,
+                  maintainState: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final component in _components.skip(1))
+                        _componentRow(component, enabled),
+                    ],
                   ),
+                ),
                 if (_components.length > 4)
                   TextButton(
                     onPressed: () => setState(() => _expanded = !_expanded),
@@ -553,6 +513,51 @@ class _BatchMaintenanceDialogState
       ),
     );
   }
+
+  Widget _componentRow(_ComponentInput component, bool enabled) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            [
+                  component.goods.code,
+                  component.goods.name,
+                  component.goods.colorName,
+                ]
+                .whereType<String>()
+                .where((value) => value.isNotEmpty)
+                .join(' / '),
+          ),
+        ),
+        if (!_remove) ...[
+          const SizedBox(width: UtenSpacing.s8),
+          SizedBox(
+            width: 128,
+            child: BomComponentQuantityField(
+              goods: component.goods,
+              controller: component.quantity,
+              enabled: enabled,
+              fieldKey: ValueKey('goods-bom-batch-qty-${component.goods.id}'),
+              onChanged: (_) => setState(_invalidate),
+            ),
+          ),
+        ],
+        IconButton(
+          key: ValueKey('goods-bom-batch-remove-${component.goods.id}'),
+          tooltip: _l10n.goodsBomBatchUnselectComponent,
+          onPressed: enabled && !_overwrite
+              ? () => setState(() {
+                  _components.remove(component);
+                  component.quantity.dispose();
+                  _invalidate();
+                })
+              : null,
+          icon: const Icon(Icons.close_rounded, size: 18),
+        ),
+      ],
+    ),
+  );
 
   Widget _readList(List<String> lines) => ConstrainedBox(
     constraints: const BoxConstraints(maxHeight: 180),

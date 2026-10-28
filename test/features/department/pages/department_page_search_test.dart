@@ -21,6 +21,24 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  for (final width in [375.0, 1440.0]) {
+    testWidgets('未选部门时空态不依赖左右方向 ($width)', (tester) async {
+      final employees = _RecordingEmployeeRepository();
+      await _pumpPage(tester, employees, {Perm.departmentView});
+      final returnToContent = find.byTooltip('返回内容');
+      if (returnToContent.evaluate().isNotEmpty) {
+        await tester.tap(returnToContent);
+        await tester.pumpAndSettle();
+      }
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      await tester.pumpAndSettle();
+      expect(find.text('请选择部门'), findsOneWidget);
+      expect(find.text('请选择左侧部门'), findsNothing);
+      expect(employees.calls, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('无 employee:view 时统一搜索只查部门且不触发员工接口', (tester) async {
     final employees = _RecordingEmployeeRepository();
     await _pumpPage(tester, employees, {Perm.departmentView});
@@ -119,6 +137,7 @@ Future<void> _pumpPage(
         employeeRepositoryProvider.overrideWithValue(employees),
       ],
       child: const MaterialApp(
+        locale: Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         home: DepartmentPage(),

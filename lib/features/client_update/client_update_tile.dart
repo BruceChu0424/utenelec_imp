@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
@@ -47,8 +48,10 @@ class ClientReleasePublishTile extends ConsumerWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.publish_rounded),
-      title: Text(l10n.clientUpdatePublishTitle),
-      subtitle: Text(l10n.clientUpdatePublishHint),
+      title: UtenSectionHeader(
+        title: l10n.clientUpdatePublishTitle,
+        info: l10n.clientUpdatePublishHint,
+      ),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () {
         if (ref.read(clientReleasePublisherProvider) == null) return;

@@ -21,6 +21,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/feedback/uten_task_progress_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_batch.dart';
@@ -78,6 +79,35 @@ const _defective = WarehouseListItem(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('单条仓库删除在读取与写入期间分别显示共享等待弹窗', (tester) async {
+    final warehouses = _FakeWarehouseRepository()
+      ..pendingDelete = Completer<void>();
+    final details = Completer<WarehouseDetail>();
+    await _pump(tester, warehouses, permissions: _allPermissions);
+    await _rightClickWarehouse(tester, _hardware.name!);
+    warehouses.pendingDetails['c01'] = details;
+    await tester.tap(find.text('删除仓库'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
+    expect(find.text('正在读取仓库资料'), findsOneWidget);
+    expect(warehouses.deletedIds, isEmpty);
+    details.complete(_warehouseDetail(_hardware));
+    await tester.pumpAndSettle();
+    expect(find.text('确定删除「五金仓库」吗？'), findsOneWidget);
+    await tester.tap(find.text('删除').last);
+    for (var frame = 0; frame < 8 && warehouses.deletedIds.isEmpty; frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byType(UtenTaskProgressDialog), findsOneWidget);
+    expect(find.text('正在删除仓库'), findsOneWidget);
+    expect(warehouses.deletedIds, ['c01']);
+    warehouses.pendingDelete!.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenTaskProgressDialog), findsNothing);
+    expect(warehouses.deletedIds, ['c01']);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('仓库表格全选只选择普通仓，批量删除取消零写入', (tester) async {
     final batch = _WarehouseBatch();
@@ -910,6 +940,11 @@ Future<void> _openWarehouseAction(
 }
 
 Future<void> _rightClickWarehouse(WidgetTester tester, String name) async {
+  final expandRoot = find.byTooltip('展开${_main.name}');
+  if (name != _main.name && expandRoot.evaluate().isNotEmpty) {
+    await tester.tap(expandRoot);
+    await tester.pumpAndSettle();
+  }
   final row = find.descendant(
     of: find.byKey(const Key('warehouse-directory-tree')),
     matching: find.text(name),
@@ -976,6 +1011,11 @@ Future<ProviderContainer> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  final expandRoot = find.byTooltip('展开${_main.name}');
+  if (expandRoot.evaluate().isNotEmpty) {
+    await tester.tap(expandRoot);
+    await tester.pumpAndSettle();
+  }
   return ProviderScope.containerOf(tester.element(find.byType(WarehousePage)));
 }
 
@@ -1080,6 +1120,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
   final creates = <Map<String, dynamic>>[];
   final deletedIds = <String>[];
   final pendingDetails = <String, Completer<WarehouseDetail>>{};
+  Completer<void>? pendingDelete;
 
   @override
   Future<PagedResult<WarehouseListItem>> list({
@@ -1140,6 +1181,7 @@ class _FakeWarehouseRepository implements WarehouseRepository {
   @override
   Future<void> delete(String id) async {
     deletedIds.add(id);
+    await pendingDelete?.future;
   }
 
   @override

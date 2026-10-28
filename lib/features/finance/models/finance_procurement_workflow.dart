@@ -92,8 +92,7 @@ class FinanceProcurementApprovalTask {
   final int? version;
   final Set<String> allowedActions;
 
-  /// 批准后改量次数（末字段；旧后端未推时容错为 0）：>0 表示该单在财务批准
-  /// 后被改过数量，正在等待财务按修改清单复核。
+  /// 当前审批关联的改量次数；包括待审数量修订和批准后的数量复核。
   final int changeCount;
   final String requestType;
   final String? executionMode;
@@ -344,7 +343,7 @@ class FinanceProcurementApprovalReview {
   final PartyOpenBalance? supplierBalance;
   final int sourceApplicationCount;
 
-  /// 批准后改量清单（服务端字段位于 items 之前）：为空表示本单未被改过数量。
+  /// 当前审批关联的改量清单，保留每次修改前后的数量。
   final List<FinanceProcurementQtyChange> qtyChanges;
   final List<FinanceProcurementReviewLine> items;
 
@@ -569,7 +568,7 @@ class FinanceProcurementReviewLine {
   }
 }
 
-/// 修改清单行（批准后改量）：货品 + 以前数量 → 现在数量 + 修改人/时间。
+/// 修改清单行：货品 + 以前数量 → 现在数量 + 修改人/时间。
 /// 数量保留服务端字符串口径，避免小数转换丢精度。
 class FinanceProcurementQtyChange {
   const FinanceProcurementQtyChange({
@@ -629,6 +628,7 @@ class FinanceProcurementReviewHistoryEntry {
 
   String get eventLabel => switch (eventType.toUpperCase()) {
     'FINANCE_EDIT' => '财务修改',
+    'QUANTITY_CHANGED' => '待审改量',
     'SUBMITTED' => '提交财务审核',
     'APPROVED' => '财务通过',
     'CLOSED' => '取消剩余并结束',

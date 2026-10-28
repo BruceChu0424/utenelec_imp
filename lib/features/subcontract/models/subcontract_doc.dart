@@ -64,6 +64,8 @@ class SubcontractDocListItem {
     this.totalLocalText,
     this.priceMasked = false,
     this.totalWeight,
+    this.totalWeightText,
+    this.totalWeightDisplayText,
     this.status,
     this.closed = false,
     this.apPosted = false,
@@ -87,6 +89,8 @@ class SubcontractDocListItem {
   /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
   final double? totalWeight;
+  final String? totalWeightText;
+  final String? totalWeightDisplayText;
   final int? status;
   final bool closed;
   final bool apPosted;
@@ -115,6 +119,12 @@ class SubcontractDocListItem {
             : receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
+        totalWeightText: json['totalWeight'] == null
+            ? null
+            : json['totalWeightText'] as String?,
+        totalWeightDisplayText: json['totalWeight'] == null
+            ? null
+            : json['totalWeightDisplayText'] as String?,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
         apPosted: (json['apPosted'] as bool?) ?? false,

@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -407,15 +408,22 @@ class _WarehouseInventoryPanelState
               runSpacing: UtenSpacing.s8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
-                  l10n.warehouseHubInventoryLive,
-                  style: theme.textTheme.titleSmall,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        l10n.warehouseHubInventoryLive,
+                        style: theme.textTheme.titleSmall,
+                      ),
+                    ),
+                    if (widget.warehouse.isMain)
+                      UtenFieldHintIcon(
+                        info: l10n.warehouseMasterInventorySummaryHint,
+                        dense: true,
+                      ),
+                  ],
                 ),
-                if (widget.warehouse.isMain)
-                  Text(
-                    l10n.warehouseMasterInventorySummaryHint,
-                    style: theme.textTheme.bodySmall,
-                  ),
                 SizedBox(
                   width: constraints.maxWidth.clamp(0.0, 300.0),
                   child: KeyedSubtree(

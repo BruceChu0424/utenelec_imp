@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_party_options.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
@@ -929,11 +930,19 @@ class _WarehouseInboundExpectationsViewState
           initialSearchValue: _keyword,
           onSearchInputChanged: (_) => _requestVersion++,
           onSearchChanged: _applyKeyword,
-          trailing: Text(
-            '共 ${result.total} 张 · 双击直达下一步办理',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  '共 ${result.total} 张',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              const UtenFieldHintIcon(info: '双击直达下一步办理。', dense: true),
+            ],
           ),
         ),
       ),

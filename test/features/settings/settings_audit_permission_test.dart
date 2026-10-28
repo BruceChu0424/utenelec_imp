@@ -23,7 +23,11 @@ void main() {
     await _pumpSettings(tester, const {Perm.auditLogView});
 
     expect(find.text('本机信息与操作回执'), findsOneWidget);
-    expect(find.text('按本地操作 ID 核查这台设备保存的回执'), findsOneWidget);
+    const hint = '按本地操作 ID 核查这台设备保存的回执';
+    expect(find.text(hint), findsNothing);
+    await tester.tap(find.byTooltip(hint));
+    await tester.pumpAndSettle();
+    expect(find.text(hint), findsOneWidget);
   });
 }
 

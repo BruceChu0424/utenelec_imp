@@ -1,3 +1,4 @@
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -522,20 +523,19 @@ class _FinanceAssetPolicySurfaceState
                   child: Row(
                     children: [
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
                           children: [
-                            Text(
-                              '资产类别与会计政策',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
+                            Flexible(
+                              child: Text(
+                                '资产类别与会计政策',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                            Text(
-                              '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
+                            const UtenFieldHintIcon(
+                              info: '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
+                              dense: true,
                             ),
                           ],
                         ),

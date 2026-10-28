@@ -27,6 +27,7 @@ class SubcontractShortDeliveryRepository {
     String? sort,
     String? order,
     String? orderBillNo,
+    Map<String, String?> columnFilters = const {},
   }) async {
     final json = await api.get(
       base,
@@ -46,6 +47,11 @@ class SubcontractShortDeliveryRepository {
         if (order != null && order.isNotEmpty) 'order': order,
         if (orderBillNo != null && orderBillNo.trim().isNotEmpty)
           'orderBillNo': orderBillNo.trim(),
+        for (final entry in columnFilters.entries)
+          if (entry.value?.trim().isNotEmpty == true &&
+              entry.key != 'orderBillNo')
+            (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+                entry.value!.trim(),
       },
     );
     return PagedResult.fromJsonResponsive(

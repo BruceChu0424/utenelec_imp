@@ -1,3 +1,4 @@
+import '../../support/table_read_status.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -157,7 +158,11 @@ void main() {
         find.byType(UtenEditableGrid<UtenDocLinkItemRow<PurchaseDocItem>>),
         findsNothing,
       );
-      expect(find.textContaining('来源订货单已结束'), findsOneWidget);
+      final reason = lookupAppLocalizations(
+        const Locale('zh'),
+      ).docLinkSourceEnded;
+      expect(reason, contains('来源订货单已结束'));
+      await expectTableReadFailureDetails(tester, reason);
     },
   );
   testWidgets(

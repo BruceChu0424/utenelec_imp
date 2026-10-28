@@ -98,6 +98,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
 
   String? _sortKey;
   bool _sortAsc = true;
+  final Map<String, String?> _columnSearches = {};
 
   /// 已点选（高亮）的订单；底部「确定」才 pop 返回（二次操作契约）。
   SalesDocListItem? _picked;
@@ -143,6 +144,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
       keyword: _keyword.trim().isEmpty ? null : _keyword,
       status: kSalesStatusApproved,
       sellerId: _selectedSellerId,
+      columnSearch: Map.of(_columnSearches),
     );
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
@@ -152,6 +154,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
       _selectedSellerId,
       _sortKey,
       _sortAsc,
+      Map.of(_columnSearches),
       kSalesStatusApproved,
     ];
     try {
@@ -196,6 +199,19 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
     setState(() {
       _sortKey = col;
       _sortAsc = asc;
+    });
+    _load(1);
+  }
+
+  void _onColumnSearch(String key, String? value) {
+    if (key != 'search.billNo') return;
+    setState(() {
+      if (value == null || value.trim().isEmpty) {
+        _columnSearches.remove(key);
+      } else {
+        _columnSearches[key] = value.trim();
+      }
+      _picked = null;
     });
     _load(1);
   }
@@ -280,8 +296,9 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                 items: _page?.items ?? const [],
                 facets: const {},
                 nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
+                serverColumnSearch: true,
+                filters: _columnSearches,
+                onFilterChanged: _onColumnSearch,
                 sortColumn: _sortKey,
                 sortAscending: _sortAsc,
                 onSortChange: _onSort,
@@ -295,7 +312,11 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                 emptyMessage: '暂无已审销售订单',
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
-                paginationScope: (_keyword, _selectedSellerId),
+                paginationScope: (
+                  _keyword,
+                  _selectedSellerId,
+                  _columnSearches['search.billNo'],
+                ),
                 onPageChange: (p) => _load(p, useCache: true),
               ),
             ),
@@ -313,7 +334,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
 
   /// 生产视角列：单据号 / 日期 / 交货日期 / 销售员 / 状态。
   /// 不含客户、不含金额。销售员姓名由后端按 seller_id 解析下发。
-  /// 服务端分页且无 facets 端点：文本列关闭列头搜索，漏斗不再出空下拉。
+  /// 单号列复用服务端 search.billNo；销售员保留上方可清除的人员范围选择。
   List<MasterColumnDef<SalesDocListItem>> _columns() => [
     MasterColumnDef(
       key: 'status',
@@ -325,7 +346,8 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
       key: 'billNo',
       label: '单据号',
       width: 150,
-      columnSearchEnabled: false,
+      columnSearchEnabled: true,
+      sortable: true,
       value: (d) => d.billNo,
     ),
     MasterColumnDef(

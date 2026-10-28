@@ -32,6 +32,9 @@ class GoodsListItem {
     this.model,
     this.price,
     this.discount,
+    this.priceDisplayText,
+    this.discountDisplayText,
+    this.stockQtyDisplayText,
     this.status,
     this.legacyId,
     this.series,
@@ -88,6 +91,9 @@ class GoodsListItem {
   final String? model;
   final double? price;
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
+  final String? priceDisplayText;
+  final String? discountDisplayText;
+  final String? stockQtyDisplayText;
   final String? status;
   final int? legacyId;
   final String? series;
@@ -163,6 +169,9 @@ class GoodsListItem {
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
     discount: (json['discount'] as num?)?.toDouble(),
+    priceDisplayText: json['priceDisplayText'] as String?,
+    discountDisplayText: json['discountDisplayText'] as String?,
+    stockQtyDisplayText: json['stockQtyDisplayText'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     series: json['series'] as String?,

@@ -125,6 +125,10 @@ class _ProductionFinishedBatchStockInPageState
           'goodsSummary': task.goodsSummary,
           'lineCount': task.lineCount,
           'pendingQty': task.pendingQty,
+          'pendingQtyText': task.pendingQtyText,
+          'documentDateKnown': task.documentDateKnown,
+          'createdAtKnown': task.createdAtKnown,
+          'pendingQtyKnown': task.pendingQtyKnown,
           'createdAt': task.createdAt.toIso8601String(),
           'residualTask': task.residualTask,
           'publicQty': task.publicQty,
@@ -436,6 +440,9 @@ class _ProductionFinishedBatchStockInPageState
         child: Scaffold(
           appBar: UtenAppBar(
             title: '批量点收 · ${rows.length} 张',
+            info: widget.selectedItemIds == null
+                ? '默认全选。取消勾选的单据继续保留待点收。'
+                : '只办理任务中心所选明细，未选明细继续保留待点收。',
             leading: UtenBackButton(
               color: _busy ? theme.disabledColor : null,
               enabled: !_busy,
@@ -491,18 +498,7 @@ class _ProductionFinishedBatchStockInPageState
       ),
       // 上滑先把提示文案收完、表格顶到屏顶再滚表内（全站联动口径）。
       child: UtenCollapsingHeaderScrollView(
-        collapsingHeader: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              widget.selectedItemIds == null
-                  ? '默认全选。取消勾选的单据继续保留待点收。'
-                  : '只办理任务中心所选明细，未选明细继续保留待点收。',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-          ],
-        ),
+        collapsingHeader: const SizedBox.shrink(),
         body: MasterDataTableView<ProductionFinishedInboundTask>(
           expensiveRowMounts: false,
           tableKey:
@@ -607,18 +603,19 @@ class _ProductionFinishedBatchStockInPageState
       key: 'pendingQty',
       label: '待点收数量',
       width: 200,
-      type: 'number',
-      value: (task) => _quantity(task.pendingQty),
+      info: '各单位分别展示；过滤仅用于查看，提交仍包含本次选择的全部任务。',
+      value: (task) =>
+          '${task.pendingQuantityLabel}${task.actualSurplusNote == null ? '' : ' (${task.actualSurplusNote})'}',
       // ADR-148：服务端拼好的「其中实际超产 N」跟在数量后(没有实际超产不显示)。
       cellBuilder: (context, task) {
         final note = task.actualSurplusNote;
         if (note == null || note.isEmpty) {
-          return Text(_quantity(task.pendingQty));
+          return Text(task.pendingQuantityLabel);
         }
         final theme = Theme.of(context);
         return Text.rich(
           TextSpan(
-            text: _quantity(task.pendingQty),
+            text: task.pendingQuantityLabel,
             children: [
               TextSpan(
                 text: ' ($note)',
@@ -647,12 +644,9 @@ class _ProductionFinishedBatchStockInPageState
       label: '单据日期',
       width: 120,
       type: 'date',
-      value: (task) => ChinaDateTime.formatDate(task.documentDate),
+      value: (task) => task.documentDateKnown
+          ? ChinaDateTime.formatDate(task.documentDate)
+          : '—',
     ),
   ];
-
-  static String _quantity(double value) => value
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
 }

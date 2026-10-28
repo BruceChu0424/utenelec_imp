@@ -10,6 +10,7 @@
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
 import 'package:flutter/material.dart';
+import '../../../shared/search/retain_hierarchy_filter_context.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_store.dart';
@@ -3929,6 +3930,12 @@ class _ProductionDailyReportEditPageState
       (column) => column.key == 'destination',
     );
     return UtenEditableGrid<DailyGridRow>(
+      headerFilterScopeDescription: '筛选当前展开的产品组，保留关联物料与去向；按子项查找前请先展开子项',
+      filterContextRows: (all, matched) => retainMatchedPreorderGroups(
+        all,
+        matched,
+        isGroupStart: (row) => !row.isSubRow,
+      ),
       columnEditingEnabled: editable && (_isCreate || _detailLoaded),
       tableKey: 'production.daily.items',
       controller: _grid,

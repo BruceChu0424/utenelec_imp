@@ -8,6 +8,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/stock_inventory/instant_inventory_repository.dart';
 import '../models/stock_query.dart';
 import '../models/instant_inventory_scope.dart';
+import '../../../shared/search/table_column_query.dart';
 
 class StockQueryRepository {
   StockQueryRepository(this.api, {InstantInventoryRepository? instantInventory})
@@ -24,6 +25,7 @@ class StockQueryRepository {
     InstantInventoryScope? scope,
     String? sort,
     String? order,
+    Map<String, String?> columns = const {},
   }) async {
     final json = await api.get(
       ApiEndpoints.stockBalances,
@@ -35,6 +37,7 @@ class StockQueryRepository {
         ...?scope?.toQueryParameters(),
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
+        ...tableColumnParameters(columns, null, true),
       },
     );
     return PagedResult.fromJsonResponsive(json, BalanceRow.fromJson);

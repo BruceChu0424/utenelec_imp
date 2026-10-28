@@ -17,7 +17,7 @@ void main() {
   ]) {
     for (final width in [375.0, 1200.0]) {
       testWidgets(
-        '${platform.name} $width back padding is clickable and left aligned',
+        '${platform.name} $width back circle has an independent non-clickable title gap',
         (tester) async {
           tester.view.physicalSize = Size(width, 800);
           tester.view.devicePixelRatio = 1;
@@ -39,18 +39,19 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          final back = tester.getRect(find.byType(UtenBackButton));
-          final icon = tester.getRect(
-            find.byIcon(Icons.arrow_back_ios_new_rounded),
+          final back = tester.getRect(
+            find.descendant(
+              of: find.byType(UtenBackButton),
+              matching: find.byType(IconButton),
+            ),
           );
+          final icon = tester.getRect(find.byIcon(Icons.arrow_back_rounded));
           final title = tester.getRect(find.text('Page title'));
-          final touch = platform == TargetPlatform.android || width < 600;
-          expect(back.width, touch ? 48 : 40);
-          expect(back.height, greaterThanOrEqualTo(touch ? 48 : 40));
-          expect(icon.left, 0);
-          expect(icon.width, 24);
-          expect(title.left, back.right);
-          // Click all four edges, including the old dead space beside the arrow.
+          expect(back.size, const Size.square(UtenBackButton.buttonExtent));
+          expect(icon.center, back.center);
+          expect(icon.width, UtenBackButton.iconExtent);
+          expect(title.left - back.right, UtenBackButton.titleGap);
+          // The four cardinal edges of the visible circle remain clickable.
           for (final point in [
             Offset(back.right - 1, back.center.dy),
             Offset(back.left + 1, back.center.dy),
@@ -61,6 +62,14 @@ void main() {
             await tester.pumpAndSettle();
           }
           expect(taps, 4);
+          await tester.tapAt(
+            Offset(back.right + UtenBackButton.titleGap / 2, back.center.dy),
+          );
+          expect(
+            taps,
+            4,
+            reason: 'Title spacing must not become part of the back button.',
+          );
           await tester.tapAt(Offset(title.left + 2, title.center.dy));
           expect(taps, 4, reason: 'The title is outside the back action.');
           expect(tester.takeException(), isNull);
@@ -69,7 +78,7 @@ void main() {
     }
   }
 
-  testWidgets('touch back width survives a smaller display preference', (
+  testWidgets('back circle follows display zoom without added hit padding', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(375, 800);
@@ -95,8 +104,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final back = tester.getRect(find.byType(UtenBackButton));
-    expect(back.width, greaterThanOrEqualTo(48));
+    final back = tester.getRect(
+      find.descendant(
+        of: find.byType(UtenBackButton),
+        matching: find.byType(IconButton),
+      ),
+    );
+    expect(back.width, closeTo(UtenBackButton.buttonExtent * 0.8, 0.01));
+    expect(back.height, closeTo(back.width, 0.01));
     await tester.tapAt(Offset(back.right - 1, back.center.dy));
     expect(taps, 1);
     expect(tester.takeException(), isNull);
@@ -139,13 +154,23 @@ void main() {
       await tester.pumpAndSettle();
       router.push<void>('/detail');
       await tester.pumpAndSettle();
-      final back = tester.getRect(find.byType(UtenBackButton));
+      final back = tester.getRect(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.tapAt(Offset(back.right - 1, back.center.dy));
       await tester.pumpAndSettle();
       expect(find.text('source'), findsOneWidget);
       router.push<void>('/blocked');
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();

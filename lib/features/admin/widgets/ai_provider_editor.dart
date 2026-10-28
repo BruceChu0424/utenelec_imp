@@ -8,6 +8,7 @@
 // - 境外服务商: 服务器没开放时不能选; 开放了也要勾选数据出境确认才能保存。
 // - 保存与「用已存密钥测试」由服务端要求再认证, 网络层弹统一密码框, 本面板不挂整页遮罩。
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -1282,18 +1283,11 @@ class _SwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return SwitchListTile(
       value: value,
       onChanged: onChanged,
       contentPadding: EdgeInsets.zero,
-      title: Text(title, style: theme.textTheme.bodyLarge),
-      subtitle: Text(
-        subtitle,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
+      title: UtenSectionHeader(title: title, info: subtitle),
     );
   }
 }

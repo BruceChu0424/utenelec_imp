@@ -350,6 +350,7 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                     decimal: true,
                   ),
                   label: l10n.aiAuditInputPrice,
+                  info: l10n.aiAuditPriceHint,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(
@@ -359,13 +360,7 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                     decimal: true,
                   ),
                   label: l10n.aiAuditOutputPrice,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  l10n.aiAuditPriceHint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  info: l10n.aiAuditPriceHint,
                 ),
               ],
               if (_mode == 'SUBSCRIPTION') ...[
@@ -379,6 +374,7 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   label: l10n.aiAuditFiveHourQuota,
+                  info: l10n.aiAuditQuotaHint,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 UtenInput(
@@ -387,13 +383,7 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   label: l10n.aiAuditWeeklyQuota,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  l10n.aiAuditQuotaHint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  info: l10n.aiAuditQuotaHint,
                 ),
               ],
             ],

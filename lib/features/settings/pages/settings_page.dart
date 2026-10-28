@@ -7,6 +7,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -179,8 +180,10 @@ class SettingsPage extends ConsumerWidget {
                   ListTile(
                     key: const Key('personal-remote-mfa-entry'),
                     leading: const Icon(Icons.security_outlined, size: 20),
-                    title: Text(remoteAccessText(context, 'personal')),
-                    subtitle: Text(remoteAccessText(context, 'personalHint')),
+                    title: UtenSectionHeader(
+                      title: remoteAccessText(context, 'personal'),
+                      info: remoteAccessText(context, 'personalHint'),
+                    ),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: () => context.push(RouteName.remoteMfa),
                     contentPadding: const EdgeInsets.symmetric(
@@ -218,8 +221,10 @@ class SettingsPage extends ConsumerWidget {
                           Icons.devices_other_outlined,
                           size: 20,
                         ),
-                        title: const Text('本机信息与操作回执'),
-                        subtitle: const Text('按本地操作 ID 核查这台设备保存的回执'),
+                        title: const UtenSectionHeader(
+                          title: '本机信息与操作回执',
+                          info: '按本地操作 ID 核查这台设备保存的回执',
+                        ),
                         trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () =>
                             context.push(RouteName.deviceAuditReceipts),
@@ -235,7 +240,6 @@ class SettingsPage extends ConsumerWidget {
                     child: ListTile(
                       leading: const Icon(Icons.lock_outline_rounded, size: 20),
                       title: const Text('修改密码'),
-                      subtitle: const Text('修改登录密码'),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => context.go(RouteName.changePassword),
                       contentPadding: const EdgeInsets.symmetric(

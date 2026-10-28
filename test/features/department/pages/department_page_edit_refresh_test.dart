@@ -111,6 +111,12 @@ Future<void> _pumpPage(
     await tester.tap(find.byIcon(Icons.account_tree_rounded));
     await tester.pumpAndSettle();
   }
+  // 全站树默认折叠；编辑回归需要先真实展开公司，再选择子部门。
+  final expandCompany = find.byTooltip('展开公司');
+  if (expandCompany.evaluate().isNotEmpty) {
+    await tester.tap(expandCompany);
+    await tester.pumpAndSettle();
+  }
 }
 
 /// 记录 detail 调用次数的假部门仓储：update 会真实改名，模拟服务端已生效。

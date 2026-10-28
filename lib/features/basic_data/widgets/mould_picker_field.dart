@@ -664,6 +664,7 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
                             key: 'manufacturer',
                             label: '制造商',
                             width: 110,
+                            minimumWidthOf: (_) => 48,
                             value: (m) => m.manufacturer,
                             cellBuilder: (_, m) =>
                                 MouldManufacturerValue(value: m.manufacturer),

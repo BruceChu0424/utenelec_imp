@@ -23,7 +23,8 @@ Map<String, dynamic> masterExportJobParameters(
   Map<String, dynamic> query,
   Map<String, dynamic> body,
 ) {
-  final contact = report == 'client' || report == 'supplier';
+  final contact =
+      report == 'client' || report == 'supplier' || report == 'account';
   const controls = {
     'password',
     'report',
@@ -37,7 +38,13 @@ Map<String, dynamic> masterExportJobParameters(
     'includeTotals',
   };
   const sensitiveKeys = {'keyword', 'mobile', 'phone', 'phone2', 'bankAccount'};
-  const sensitiveColumns = {'mobile', 'phone', 'phone2', 'bankAccount'};
+  const sensitiveColumns = {
+    'mobile',
+    'phone',
+    'phone2',
+    'bankAccount',
+    'bankAccountNo',
+  };
   const booleanKeys = {
     'excludeDisabled',
     'excludeStub',

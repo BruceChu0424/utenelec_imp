@@ -645,6 +645,7 @@ class WmLedgerRow {
     this.colorName,
     this.unitName,
     this.signedQty,
+    this.signedQtyText,
     this.docNo,
     this.requestNo,
     this.operatorName,
@@ -665,6 +666,7 @@ class WmLedgerRow {
 
   /// 带符号数量 (进 +、出 −)。
   final double? signedQty;
+  final String? signedQtyText;
 
   /// 库存单据号 (调拨单号 / 其它出库单号)；盘点过账没有单据号。
   final String? docNo;
@@ -702,6 +704,7 @@ class WmLedgerRow {
     colorName: _s(json['colorName']),
     unitName: _s(json['unitName']),
     signedQty: _d(json['signedQty']),
+    signedQtyText: _s(json['signedQtyExact'] ?? json['signedQty']),
     docNo: _s(json['docNo']),
     requestNo: _s(json['requestNo']),
     operatorName: _s(json['operatorName']),

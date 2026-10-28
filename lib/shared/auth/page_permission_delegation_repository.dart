@@ -33,6 +33,9 @@ class PagePermissionDelegationRepository {
     String? search,
     int page = 1,
     int size = 40,
+    Map<String, String?> columnQuery = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final normalized = search?.trim();
     final normalizedDepartmentId = departmentId?.trim();
@@ -45,6 +48,16 @@ class PagePermissionDelegationRepository {
         if (normalized != null && normalized.isNotEmpty) 'search': normalized,
         'page': page,
         'size': size,
+        for (final entry in columnQuery.entries)
+          if ((entry.key.startsWith('search.') ||
+                  const {
+                    'accountStatus',
+                    'employmentStatus',
+                  }.contains(entry.key)) &&
+              entry.value?.trim().isNotEmpty == true)
+            entry.key: entry.value!.trim(),
+        'sort': ?sort,
+        if (sort != null) 'order': ascending ? 'asc' : 'desc',
       },
     );
     return PagePermissionStaffPage.fromJson(json);

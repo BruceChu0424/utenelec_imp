@@ -9,6 +9,7 @@ import '../../core/network/api_endpoints.dart';
 import 'stock_ledger_models.dart';
 import '../models/paged_result.dart';
 import 'production_trace_models.dart';
+import '../search/table_column_query.dart';
 
 class GoodsStockLedgerRepository {
   GoodsStockLedgerRepository(this.api);
@@ -19,10 +20,18 @@ class GoodsStockLedgerRepository {
     String goodsId, {
     required String direction,
     int page = 1,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async => PagedResult.fromJson(
     await api.get(
       ApiEndpoints.stockGoodsProductionTrace(goodsId),
-      query: {'direction': direction, 'page': page, 'size': 50},
+      query: {
+        'direction': direction,
+        'page': page,
+        'size': 50,
+        ...tableColumnParameters(columns, sort, ascending),
+      },
     ),
     GoodsProductionTraceRow.fromJson,
   );

@@ -60,6 +60,7 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -554,11 +555,7 @@ class _OperationsWorkbenchPageState
               : ChinaDateTime.formatDate(range.start),
           dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
           // 排序键走服务端白名单名(本页列 key 与 facet key 不同名, 见 _serverKeyByColumn)。
-          sort: sort == 'differenceQty'
-              ? 'differenceQty'
-              : sort == null
-              ? null
-              : _serverKeyByColumn[sort],
+          sort: sort == null ? null : _sortKeyByColumn[sort],
           order: ascending ? 'asc' : 'desc',
           columnFilters: filters,
         );
@@ -755,6 +752,22 @@ class _OperationsWorkbenchPageState
     'goodsCode': 'goodsCode',
     'colorName': 'colorName',
     'warehouseName': 'warehouseName',
+    'differenceQty': 'differenceQty',
+    'requiredQty': 'requiredQty',
+    'allocatedQty': 'allocatedQty',
+    'fulfilledQty': 'fulfilledQty',
+    'openQty': 'openQty',
+    'needDate': 'needDate',
+    'expectedDate': 'expectedDate',
+  };
+  static const Map<String, String> _sortKeyByColumn = {
+    ..._serverKeyByColumn,
+    'differenceQty': 'differenceQty',
+    'requiredQty': 'requiredQty',
+    'allocatedQty': 'allocatedQty',
+    'fulfilledQty': 'fulfilledQty',
+    'openQty': 'openQty',
+    'expectedDate': 'expectedDate',
   };
 
   void _onColumnFilterChanged(String column, String? value) {
@@ -864,9 +877,7 @@ class _OperationsWorkbenchPageState
         'dateTo': ChinaDateTime.formatDate(range.end),
       },
       if (_sortColumn != null) ...{
-        'sort': _sortColumn == 'differenceQty'
-            ? 'differenceQty'
-            : _serverKeyByColumn[_sortColumn],
+        'sort': _sortKeyByColumn[_sortColumn],
         'order': _sortAscending ? 'asc' : 'desc',
       },
       for (final entry in _columnFilters.entries)
@@ -1656,28 +1667,58 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '需求数量',
           width: 110,
           type: 'number',
+          columnSearchEnabled: true,
+          sortable: true,
+          exactValueOf: (item) =>
+              item.isDocumentGrouped || item.isMaterialDiscovery
+              ? null
+              : item.requiredQtyText ?? item.requiredQty.toString(),
           // 归组行不同单位不能加总：数量列让位给「未完成」的行级摘要。
           value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
-              : _quantity(item.requiredQty, item.unitName),
+              : _quantity(
+                  item.requiredQty,
+                  item.unitName,
+                  exact: item.requiredQtyText,
+                ),
         ),
         MasterColumnDef(
           key: 'allocatedQty',
           label: '已分配',
           width: 100,
           type: 'number',
+          columnSearchEnabled: true,
+          sortable: true,
+          exactValueOf: (item) =>
+              item.isDocumentGrouped || item.isMaterialDiscovery
+              ? null
+              : item.allocatedQtyText ?? item.allocatedQty.toString(),
           value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
-              : _quantity(item.allocatedQty, item.unitName),
+              : _quantity(
+                  item.allocatedQty,
+                  item.unitName,
+                  exact: item.allocatedQtyText,
+                ),
         ),
         MasterColumnDef(
           key: 'fulfilledQty',
           label: '已履约',
           width: 100,
           type: 'number',
+          columnSearchEnabled: true,
+          sortable: true,
+          exactValueOf: (item) =>
+              item.isDocumentGrouped || item.isMaterialDiscovery
+              ? null
+              : item.fulfilledQtyText ?? item.fulfilledQty.toString(),
           value: (item) => item.isDocumentGrouped || item.isMaterialDiscovery
               ? '—'
-              : _quantity(item.fulfilledQty, item.unitName),
+              : _quantity(
+                  item.fulfilledQty,
+                  item.unitName,
+                  exact: item.fulfilledQtyText,
+                ),
         ),
         if (mergedStageColumn)
           procurementDifferenceColumn<OperationsWorkbenchTask>(
@@ -1689,23 +1730,35 @@ class _DesktopTaskTable extends StatelessWidget {
             unitOf: (item) => item.unitName,
             scope: ProcurementDifferenceScope.workbench,
             filterFromRows: false,
+            serverSearchEnabled: true,
           ),
         MasterColumnDef(
           key: 'openQty',
           label: '未完成',
           width: 110,
           type: 'number',
+          columnSearchEnabled: true,
+          sortable: true,
+          exactValueOf: (item) =>
+              item.isDocumentGrouped || item.isMaterialDiscovery
+              ? null
+              : item.openQtyText ?? item.openQty.toString(),
+          info: '数值条件只比较单物料未完成数量；归组显示的“n行”是行数，不作为数量比较。待定义物料保持未知。',
           value: (item) => item.isMaterialDiscovery
               ? '—'
               : item.isDocumentGrouped
               ? '${item.openLineCount} 行'
-              : _quantity(item.openQty, item.unitName),
+              : _quantity(item.openQty, item.unitName, exact: item.openQtyText),
           cellBuilder: (context, item) => Text(
             item.isMaterialDiscovery
                 ? '—'
                 : item.isDocumentGrouped
                 ? '${item.openLineCount} 行'
-                : _quantity(item.openQty, item.unitName),
+                : _quantity(
+                    item.openQty,
+                    item.unitName,
+                    exact: item.openQtyText,
+                  ),
             style:
                 (item.isDocumentGrouped ? item.openLineCount : item.openQty) > 0
                 ? TextStyle(
@@ -1745,6 +1798,8 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '需求日期',
           width: 130,
           type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
           value: (item) => item.needDate ?? '—',
         ),
         MasterColumnDef(
@@ -1752,6 +1807,8 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '预计日期',
           width: 130,
           type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
           value: (item) => item.expectedDate ?? '—',
         ),
         // 「执行入口」列 2026-10-10 删除：状态文案+单据号与「单据号」「状态」两列
@@ -1848,7 +1905,8 @@ UtenStatusBadgeType _warehouseStatusType(String taskStatus) {
   };
 }
 
-String _quantity(num value, String unitName) {
+String _quantity(num value, String unitName, {String? exact}) {
+  if (exact != null) return formatExactQtyWithUnit(exact, unitName);
   final number = value == value.roundToDouble()
       ? value.toInt().toString()
       : value.toString();

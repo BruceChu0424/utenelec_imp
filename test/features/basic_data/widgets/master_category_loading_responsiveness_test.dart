@@ -1,3 +1,4 @@
+import '../../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -105,7 +106,7 @@ void main() {
           ApiException('FORBIDDEN', '分类访问已撤销', httpStatus: 403),
         );
         await tester.pump(const Duration(milliseconds: 16));
-        expect(find.text('分类访问已撤销'), findsOneWidget);
+        await expectTableReadFailureDetails(tester, '分类访问已撤销');
         rows['b']!.complete(
           const PagedResult(
             items: ['DENIED-ROW'],
@@ -136,7 +137,9 @@ void main() {
           tester.widget<MasterDataTableView<String>>(finder).items,
           isEmpty,
         );
-        await tester.tap(find.text('重试'));
+        await tester.tap(
+          find.byKey(const ValueKey('master-table-initial-read-retry')),
+        );
         await tester.pump();
         details['b']!.complete(
           const ProductCategoryDetail(

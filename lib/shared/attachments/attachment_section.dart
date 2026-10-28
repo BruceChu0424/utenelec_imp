@@ -41,6 +41,7 @@ class AttachmentSection extends ConsumerStatefulWidget {
     required this.ownerCanDelete,
     required this.onChanged,
     this.title,
+    this.info,
     this.emptyHint,
     this.categories,
     this.onSetAvatar,
@@ -56,6 +57,7 @@ class AttachmentSection extends ConsumerStatefulWidget {
 
   /// 区段标题（默认「附件 / 发票」；员工档案传「档案文件」）。
   final String? title;
+  final String? info;
 
   /// 空态提示文案（默认「暂无附件」）。
   final String? emptyHint;
@@ -144,13 +146,13 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               Expanded(
                 child: UtenSectionHeader(
                   title: widget.title ?? '附件 / 发票',
-                  info: canUpload
-                      ? AppLocalizations.of(
-                          context,
-                        ).attachmentUploadFormatsHint(
-                          formatAttachmentLimit(AttachmentLimits.maxFileBytes),
-                        )
-                      : null,
+                  info: [
+                    if (widget.info?.trim().isNotEmpty == true) widget.info!,
+                    if (canUpload)
+                      AppLocalizations.of(context).attachmentUploadFormatsHint(
+                        formatAttachmentLimit(AttachmentLimits.maxFileBytes),
+                      ),
+                  ].join('\n\n'),
                   icon: Icons.folder_outlined,
                   trailing: widget.attachments.isEmpty
                       ? null

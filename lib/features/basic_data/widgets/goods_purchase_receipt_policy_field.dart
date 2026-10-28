@@ -224,20 +224,14 @@ class _GoodsPurchaseReceiptPolicyDialogState
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                 ],
-                Text(
-                  '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
-                  '在这以内照常入库、立应付；超过的部分才转财务审批。'
-                  '这里是货品记忆：新开采购订货单时按它预填(黄框提醒核对)，'
-                  '每次保存订货单会自动记住最后填写的值。留空 = 清除记忆。',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s16),
                 UtenInput(
                   key: const ValueKey('goods-purchase-over-receipt-input'),
                   label: '采购允许超收%',
+                  info:
+                      '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
+                      '在这以内照常入库、立应付；超过的部分才转财务审批。'
+                      '这里是货品记忆：新开采购订货单时按它预填(黄框提醒核对)，'
+                      '每次保存订货单会自动记住最后填写的值。留空 = 清除记忆。',
                   hint: '0 到 100，最多两位小数',
                   controller: _controller,
                   errorMessage: _error,

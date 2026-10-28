@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../components/buttons/uten_button.dart';
-import '../../components/feedback/uten_inline_notice.dart';
+import '../../components/data_display/uten_table_read_status.dart';
 import '../../core/l10n/platform_table_recovery_text.dart';
 import 'platform_table_controller.dart';
 import 'platform_table_models.dart';
@@ -35,6 +34,37 @@ class PlatformColumnValue<T> extends StatelessWidget {
 
   Widget _buildValue(BuildContext context) {
     final value = controller.value(row, column);
+    final needsAvailability =
+        value == null && (controller.loading || controller.error != null);
+    final draft = needsAvailability ? controller.draftOf?.call(row) : null;
+    final awaitingRead =
+        needsAvailability &&
+        !controller.historical &&
+        controller.capabilities?.supportsValues != false &&
+        controller.binding?.recordIdOf(row)?.isNotEmpty == true &&
+        (controller.rowValues(row) == null ||
+            (draft != null &&
+                !draft.loaded &&
+                controller.cell(row, column.id) == null));
+    if (awaitingRead) {
+      // An unread value is not an empty business value or a formula failure.
+      // Do not build extra draft snapshots on successful table reads.
+      // Keep valid snapshots, staged cells and permission masks unchanged.
+      return Tooltip(
+        message: platformTableRecoveryText(context, 'cellHelp'),
+        child: Text(
+          platformTableRecoveryText(
+            context,
+            controller.loading ? 'cellLoading' : 'cellUnavailable',
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
     final editable = controller.canEdit(row, column);
     final text = Text(
       value?.isNotEmpty == true ? value! : '—',
@@ -81,6 +111,7 @@ class PlatformColumnValue<T> extends StatelessWidget {
   }
 }
 
+/// Read-only recovery shared by every display and editable platform table.
 class PlatformTableStatus extends StatelessWidget {
   const PlatformTableStatus({
     super.key,
@@ -88,35 +119,33 @@ class PlatformTableStatus extends StatelessWidget {
     required this.retry,
     this.loading = false,
     this.failure,
+    this.ownerIdentity,
   });
   final String? error;
   final VoidCallback retry;
   final bool loading;
   final PlatformTableReadFailure? failure;
+  final Object? ownerIdentity;
+
   @override
-  Widget build(BuildContext context) => error == null
-      ? const SizedBox.shrink()
-      : ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: UtenInlineNotice(
-            key: const ValueKey('platform-table-read-error'),
-            level: loading
-                ? UtenInlineNoticeLevel.info
-                : UtenInlineNoticeLevel.error,
-            title: platformTableRecoveryText(
-              context,
-              loading ? 'loading' : 'title',
-            ),
-            message:
-                '${platformTableRecoveryReason(context, error!)}\n${platformTableRecoveryText(context, failure?.name ?? 'unavailable')}',
-            trailing: UtenButton(
-              key: const ValueKey('platform-table-read-retry'),
-              type: UtenButtonType.secondary,
-              icon: Icons.refresh_rounded,
-              isLoading: loading,
-              onPressed: loading ? null : retry,
-              child: Text(platformTableRecoveryText(context, 'retry')),
-            ),
-          ),
-        );
+  Widget build(BuildContext context) {
+    if (error == null) return const SizedBox.shrink();
+    return UtenTableReadStatus(
+      keyPrefix: 'platform-table-read',
+      ownerIdentity: ownerIdentity,
+      title: platformTableRecoveryText(context, 'title'),
+      loadingTitle: platformTableRecoveryText(context, 'loading'),
+      reason: platformTableRecoveryReason(context, error!),
+      guidance: platformTableRecoveryText(
+        context,
+        failure?.name ?? 'unavailable',
+      ),
+      impact: platformTableRecoveryText(context, 'impact'),
+      detailsLabel: platformTableRecoveryText(context, 'details'),
+      retryLabel: platformTableRecoveryText(context, 'retry'),
+      closeLabel: platformTableRecoveryText(context, 'close'),
+      retry: retry,
+      loading: loading,
+    );
+  }
 }

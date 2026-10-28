@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/performance/performance_tier.dart';
 import '../../shared/providers/performance_provider.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 /// Uten 性能档切换器（设置页用）
 class UtenPerformanceTierSwitcher extends ConsumerWidget {
@@ -43,10 +44,10 @@ class UtenPerformanceTierSwitcher extends ConsumerWidget {
                     children: [
                       Icon(icon, size: 20),
                       const SizedBox(width: 12),
-                      Text(label),
+                      Flexible(child: Text(label)),
+                      UtenFieldHintIcon(info: desc, dense: true),
                     ],
                   ),
-                  subtitle: Text(desc),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                   dense: true,
                 ),

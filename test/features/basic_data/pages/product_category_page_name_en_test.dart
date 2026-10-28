@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -39,6 +40,7 @@ void main() {
       find.byType(MasterDataTableView<GoodsListItem>),
     );
     final keys = table.columns.map((c) => c.key).toList();
+    expect(keys.first, 'code');
     expect(keys.indexOf('clientGoodsName'), keys.indexOf('name') + 1);
     expect(keys.indexOf('nameEn'), keys.indexOf('clientGoodsName') + 1);
     expect(
@@ -54,6 +56,47 @@ void main() {
     expect(keys, isNot(contains('price')));
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'goods table keeps print, import, export order in normal and fullscreen',
+    (tester) async {
+      await _pumpPage(
+        tester,
+        _FakeGoodsRepository(),
+        extraPermissions: {Perm.goodsImport, Perm.goodsExport},
+      );
+      await tester.tap(find.text('成品类'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('goods-import-app-bar')),
+        findsOneWidget,
+      );
+      void verifyOrder() {
+        final print = find.byType(UtenPrintPreviewButton).last;
+        final importButton = find.byKey(const ValueKey('goods-import'));
+        final exportButton = find.byType(UtenExportButton).last;
+        expect(
+          tester.getTopLeft(print).dx,
+          lessThan(tester.getTopLeft(importButton).dx),
+        );
+        expect(
+          tester.getTopLeft(importButton).dx,
+          lessThan(tester.getTopLeft(exportButton).dx),
+        );
+      }
+
+      verifyOrder();
+      await tester.tap(find.text('全屏'));
+      await tester.pumpAndSettle();
+      verifyOrder();
+      await tester.tap(find.text('退出全屏'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('goods-import-app-bar')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('搜索展示全部匹配分类的扁平结果并保留服务端相关度，清空恢复原浏览分类', (tester) async {
     final goods = _FakeGoodsRepository(rankedSearch: true);
     await _pumpPage(tester, goods, rankedSearch: true);
@@ -346,6 +389,7 @@ Future<void> _pumpPage(
   _FakeGoodsRepository goods, {
   bool rankedSearch = false,
   bool emptyTree = false,
+  Set<String> extraPermissions = const {},
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -359,6 +403,7 @@ Future<void> _pumpPage(
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
           Perm.materialCategoryView,
+          ...extraPermissions,
         }),
         isSuperAdminProvider.overrideWithValue(false),
         productCategoryRepositoryProvider.overrideWithValue(

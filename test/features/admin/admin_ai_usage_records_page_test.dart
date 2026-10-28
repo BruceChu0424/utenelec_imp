@@ -34,6 +34,75 @@ import '../ai_visual/ai_visual_support.dart';
 
 void main() {
   testWidgets(
+    'record headers send full-range combined conditions and reset page without filtering the accepted rows locally',
+    (tester) async {
+      final repository = _HeaderRepository()..data = _data(total: 41);
+      await _pump(tester, repository);
+      MasterDataTableView<AiUsageAuditRecord> table() =>
+          tester.widget(find.byKey(const Key('ai-records-table')));
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .byKey(const ValueKey('master-column-filter-question'))
+            .hitTestable()
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '库存',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      final queried = repository.headerReads
+          .where((q) => (q['filters'] as Map)['search.question'] == '库存')
+          .toList();
+      expect(queried, isNotEmpty);
+      expect(queried.first['page'], 0);
+      expect(
+        table().items,
+        isNotEmpty,
+        reason:
+            'The server response owns the complete result, not a local page predicate',
+      );
+      await tester.tap(
+        find
+            .byKey(const ValueKey('master-column-filter-status'))
+            .hitTestable()
+            .first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .text(
+              AppLocalizations.of(
+                tester.element(find.byKey(const Key('ai-records-table'))),
+              ).aiAuditFailed,
+            )
+            .last,
+      );
+      await tester.pumpAndSettle();
+      expect(repository.headerReads.last['filters'], {
+        'search.question': '库存',
+        'status': 'FAILED',
+      });
+      expect(table().currentPage, 1);
+      expect(tester.takeException(), isNull);
+      final l10n = AppLocalizations.of(
+        tester.element(find.byKey(const Key('ai-records-table'))),
+      );
+      await tester.tap(find.text(l10n.aiRecordsViewByPerson).first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('ai-records-clear-columns')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('ai-records-clear-columns')));
+      await tester.pumpAndSettle();
+      expect(repository.headerReads.last['filters'], isEmpty);
+      expect(find.byKey(const Key('ai-records-clear-columns')), findsNothing);
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+  testWidgets(
     'record pages prepare ahead, reuse both directions and preserve exact event fields',
     (tester) async {
       final repository = _Repository()
@@ -1051,6 +1120,36 @@ Map<String, dynamic> _data({
   ],
   'total': total,
 };
+
+class _HeaderRepository extends _Repository
+    implements AiUsageAuditHeaderRepository {
+  final headerReads = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> readWithHeaders({
+    int days = 30,
+    int page = 0,
+    int size = 20,
+    String? userId,
+    String? providerId,
+    Map<String, String?> filters = const {},
+    String? sort,
+    bool ascending = true,
+  }) {
+    headerReads.add({
+      'page': page,
+      'filters': Map.of(filters),
+      'sort': sort,
+      'ascending': ascending,
+    });
+    return super.read(
+      days: days,
+      page: page,
+      size: size,
+      userId: userId,
+      providerId: providerId,
+    );
+  }
+}
 
 class _Repository implements AiUsageAuditRepository {
   Map<String, dynamic> data = _data();

@@ -97,7 +97,7 @@ void main() {
 
   test('other tables retain the same order and layout version', () {
     final restored = PlatformTableLayoutNotifier(
-      'master.goods',
+      'master.supplier',
     ).decode({'order': _oldDefaultOrder})!;
     expect(restored.order, _oldDefaultOrder);
     expect(restored.layoutVersion, 0);

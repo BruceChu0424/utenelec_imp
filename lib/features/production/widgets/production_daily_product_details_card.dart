@@ -1,3 +1,5 @@
+import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -5,6 +7,7 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
+import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -133,6 +136,7 @@ class _ProductionDailyProductDetailsCardState
               'daily-product-allocation-toggle-${product.localRowId}',
             ),
             title: '产出去向',
+            info: '填写完工申报量后，系统按可接收的工单分配，其余送入仓库；自行添加去向后，未分配余量自动送仓库。',
             icon: Icons.alt_route_outlined,
             count: '${allocationRows.length} 笔',
             status: _allocationStatus(allocationIssues),
@@ -145,51 +149,37 @@ class _ProductionDailyProductDetailsCardState
                 _toggleGroup(DailyRowGroup.allocations, allocationsExpanded),
           ),
           [
-            if (allocationsExpanded) ...[
-              if (allocationRows.isNotEmpty)
-                _allocationTable(context)
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: UtenSpacing.s12,
-                  ),
-                  child: Text(
-                    product.directTransferLoadFailed
-                        ? '原去向保留，重新读取候选后再核对分配。'
-                        : '填写完工申报量后，系统按可接收的工单分配，其余送入仓库。',
-                  ),
-                ),
-              if (allocationIssues.isNotEmpty) _issues(allocationIssues),
-              if (enabled && onAddAllocation != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                  child: Wrap(
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      UtenButton(
-                        key: ValueKey(
-                          'daily-product-add-allocation-${product.localRowId}',
-                        ),
-                        type: UtenButtonType.secondary,
-                        size: UtenButtonSize.small,
-                        height: 36,
-                        icon: Icons.add,
-                        onPressed: onAddAllocation,
-                        child: const Text('添加去向'),
+            if (allocationRows.isNotEmpty)
+              _allocationTable(context)
+            else if (product.directTransferLoadFailed)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: UtenSpacing.s12),
+                child: Text('原去向保留，重新读取候选后再核对分配。'),
+              ),
+            if (allocationIssues.isNotEmpty) _issues(allocationIssues),
+            if (enabled && onAddAllocation != null)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                child: Wrap(
+                  spacing: UtenSpacing.s12,
+                  runSpacing: UtenSpacing.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    UtenButton(
+                      key: ValueKey(
+                        'daily-product-add-allocation-${product.localRowId}',
                       ),
-                      Text(
-                        '余量自动送仓库',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      height: 36,
+                      icon: Icons.add,
+                      onPressed: onAddAllocation,
+                      child: const Text('添加去向'),
+                    ),
+                  ],
                 ),
-              const SizedBox(height: UtenSpacing.s4),
-            ],
+              ),
+            const SizedBox(height: UtenSpacing.s4),
           ],
         ),
       if (materialRows.isNotEmpty)
@@ -215,11 +205,9 @@ class _ProductionDailyProductDetailsCardState
                 _toggleGroup(DailyRowGroup.materials, materialsExpanded),
           ),
           [
-            if (materialsExpanded) ...[
-              _materialTable(context),
-              if (materialIssues.isNotEmpty) _issues(materialIssues),
-              const SizedBox(height: UtenSpacing.s4),
-            ],
+            _materialTable(context),
+            if (materialIssues.isNotEmpty) _issues(materialIssues),
+            const SizedBox(height: UtenSpacing.s4),
           ],
         ),
     ];
@@ -278,7 +266,19 @@ class _ProductionDailyProductDetailsCardState
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [header, ...body],
+          children: [
+            header,
+            UtenCollapsibleContent(
+              expanded: group == DailyRowGroup.allocations
+                  ? allocationsExpanded
+                  : materialsExpanded,
+              maintainState: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: body,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -523,7 +523,7 @@ class _ProductionDailyProductDetailsCardState
     if (product.directTransferUnavailable && row.allocationDemandId == null) {
       return _singleLine('送入仓库', extra: product.directTransferBlockedText);
     }
-    return Tooltip(
+    return UtenEditorTooltip(
       message: tooltip,
       child: UtenDropdownField(
         key: ValueKey('daily-allocation-destination-${identityHashCode(row)}'),
@@ -736,10 +736,11 @@ class _DetailGroupHeader extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     this.detail,
+    this.info,
   });
   final Key toggleKey;
   final String title, count, status;
-  final String? detail;
+  final String? detail, info;
   final IconData icon;
   final bool issue, expanded;
   final VoidCallback onToggle;
@@ -752,10 +753,19 @@ class _DetailGroupHeader extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final symbol = Icon(icon, size: 18, color: colors.primary);
-          final heading = Text(
-            title,
-            maxLines: 1,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          final heading = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (info != null) UtenFieldHintIcon(info: info, dense: true),
+            ],
           );
           final countLabel = DecoratedBox(
             decoration: BoxDecoration(

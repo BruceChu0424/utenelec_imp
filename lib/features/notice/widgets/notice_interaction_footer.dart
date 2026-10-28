@@ -2,11 +2,16 @@
 // - acknowledge 模式：「X 人已收到」+ 收到/已收到 chip（点 chip 直接回执）。
 // - bless 模式：「X 条祝福」+ 送上祝福/已送祝福 chip（点 chip 进详情写祝福）。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/click_guard.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
 
 class NoticeInteractionFooter extends StatelessWidget {
@@ -23,7 +28,7 @@ class NoticeInteractionFooter extends StatelessWidget {
   final VoidCallback onOpenDetail;
 
   /// 回执模式：直接「点击收到」（列表内一键）。
-  final VoidCallback? onAcknowledge;
+  final FutureOr<void> Function()? onAcknowledge;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +46,7 @@ class _AckRow extends StatelessWidget {
   const _AckRow({required this.notice, required this.onAcknowledge});
 
   final Notice notice;
-  final VoidCallback? onAcknowledge;
+  final FutureOr<void> Function()? onAcknowledge;
 
   @override
   Widget build(BuildContext context) {
@@ -72,15 +77,23 @@ class _AckRow extends StatelessWidget {
             ),
           ],
         ),
-        if (notice.myAcked || onAcknowledge == null)
+        if (notice.myAcked)
           _DoneChip(label: l10n.noticeInteractionReceived)
-        else
-          UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.small,
+        else if (onAcknowledge != null)
+          UtenActionButton(
+            type: UtenActionButtonType.secondary,
+            size: UtenActionButtonSize.small,
             icon: Icons.check_rounded,
-            onPressed: onAcknowledge,
-            child: Text(l10n.noticeInteractionReceive),
+            onAction: () async {
+              try {
+                await onAcknowledge!();
+              } catch (error) {
+                if (context.mounted) {
+                  context.appError(humanErrorMessage(error) ?? '回执发送失败，请重试');
+                }
+              }
+            },
+            label: Text(l10n.noticeInteractionReceive),
           ),
       ],
     );

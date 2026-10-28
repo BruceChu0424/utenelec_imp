@@ -1,3 +1,4 @@
+import '../../../support/table_read_status.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -286,7 +287,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_queryBlocked(tester), isFalse);
-    expect(find.textContaining('测试网络中断'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '测试网络中断');
 
     harness.search(keyword: '螺丝', pending: true);
     await tester.pump();
@@ -377,7 +378,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(_queryBlocked(tester), isFalse);
-      expect(find.textContaining('加载货品列表失败'), findsOneWidget);
+      await expectTableReadFailureDetails(tester, '加载货品列表失败');
 
       harness.search(keyword: '螺丝', pending: true);
       await tester.pump();

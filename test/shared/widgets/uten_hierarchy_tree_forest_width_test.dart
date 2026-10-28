@@ -34,7 +34,6 @@ void main() {
           child: UtenCategoryTreeView<_CountedCategory>(
             nodes: nodes,
             showSearch: false,
-            initiallyExpandDepth: 0,
             selectedIds: selected,
           ),
         ),
@@ -75,7 +74,6 @@ void main() {
                   selectedIds: const {'row-99'},
                   flatLevelColors: true,
                   showSearch: false,
-                  initiallyExpandDepth: 0,
                 ),
               ),
               trailing: const Text('详情'),
@@ -258,7 +256,6 @@ Widget _scope(
             mode: UtenTreeSelectMode.single,
             selectedIds: selected,
             showSearch: false,
-            initiallyExpandDepth: 0,
             flatLevelColors: true,
             labelOf: label ?? _label,
             passThrough: passThrough,

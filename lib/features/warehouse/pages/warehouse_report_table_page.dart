@@ -55,6 +55,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
 import '../../report/shared/report_sort.dart';
@@ -221,7 +222,8 @@ class _WarehouseReportTablePageState
     if (_docType == WarehouseReportDocType.draw && _departmentId != null)
       'departmentId': _departmentId,
     'size': _size,
-    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    for (final e in _filters.entries)
+      e.key.startsWith('search.') ? e.key : 'f.${e.key}': e.value,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
@@ -359,39 +361,28 @@ class _WarehouseReportTablePageState
     if (_keyword.isNotEmpty) 'keyword': _keyword,
     if (_docType == WarehouseReportDocType.draw && _departmentId != null)
       'departmentId': _departmentId,
-    for (final e in _filters.entries) 'f.${e.key}': e.value,
+    for (final e in _filters.entries)
+      e.key.startsWith('search.') ? e.key : 'f.${e.key}': e.value,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前筛选口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按真实服务器分页读取当前条件的前2000行，保留所选重量单位。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      '/stock/reports/${_docType.code}/${_kind.endpoint}',
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
     final display = ref.read(warehouseWeightUnitsPrefsProvider).display;
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [
-            for (final c in data.columns)
-              formatReportCell(c, r, weightDisplay: display) ?? '',
-          ],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => '/stock/reports/${_docType.code}/${_kind.endpoint}',
+      queryOf: () => _exportQuery,
+      weightDisplay: display,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)) &&
+          display == ref.read(warehouseWeightUnitsPrefsProvider).display,
     );
   }
 
@@ -585,6 +576,15 @@ class _WarehouseReportTablePageState
                 : (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
+            columnSearchEnabled: data.columnSearchKeys.contains(c.key),
+            facetSearchEnabled: data.facets.containsKey(c.key),
+            info: c.type == 'weight' ? '重量条件按千克（kg）比较；显示单位由工具条控制。' : null,
+            exactValueOf:
+                const {'number', 'money', 'count', 'weight'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
             value: (row) =>
                 formatReportCell(c, row, weightDisplay: weightDisplay),
           ),
@@ -595,6 +595,9 @@ class _WarehouseReportTablePageState
       tableKey:
           'features.warehouse.pages.warehouse_report_table_page.WarehouseReportTablePageState._buildTable.1',
       columns: columns,
+      serverColumnSearch: true,
+      serverColumnSearchKeys: data.columnSearchKeys,
+      headerFilterScopeDescription: '查询覆盖当前完整报表；重量按千克（kg）比较。',
       items: data.rows,
       toolbarActions: [
         if (hasWeight) const WeightDisplayUnitButton(),

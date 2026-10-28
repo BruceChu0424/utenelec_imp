@@ -27,7 +27,9 @@ import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../../shared/search/keyword_search.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../models/production_fqc_inspection.dart';
 import '../providers/production_fqc_capability_provider.dart';
 import '../models/quality_task_form_drafts.dart';
@@ -55,6 +57,7 @@ class _ProductionFqcInspectionsPageState
 
   @override
   void scopedPagedReadOwnerChanged() {
+    _columnQuery = const TableColumnQuery();
     ++_requestVersion;
     if (!mounted) return;
     setState(() {
@@ -71,6 +74,9 @@ class _ProductionFqcInspectionsPageState
   bool _loading = false;
   String? _error;
   String _status = 'ACTIVE';
+  String? _statusFilter;
+  TableColumnQuery _columnQuery = const TableColumnQuery();
+  String get _effectiveStatus => _statusFilter ?? _status;
   String _keyword = '';
   int _requestVersion = 0;
   final _tableRows = MasterDataTableRowsController<ProductionFqcInspection>();
@@ -91,10 +97,12 @@ class _ProductionFqcInspectionsPageState
     bool current() =>
         mounted && requestVersion == _requestVersion && ownerCurrent();
     final requestedPage = page ?? _refreshPage;
-    final requestedStatus = _status;
+    final requestedStatus = _effectiveStatus;
     final requestedKeyword = _keyword;
+    final requestedColumns = _columnQuery;
     setState(() {
-      if (_acceptedQuery != (requestedStatus, requestedKeyword)) {
+      if (_acceptedQuery !=
+          (requestedStatus, requestedKeyword, requestedColumns)) {
         _result = null;
         _selectedIds.clear();
       }
@@ -110,19 +118,27 @@ class _ProductionFqcInspectionsPageState
       final result = await readScopedPage(
         requestedPage,
         slot: '_load',
-        query: [pageRepository, pageStatus, pageKeyword],
-        currentQuery: () => [repository, requestedStatus, requestedKeyword],
+        query: [pageRepository, pageStatus, pageKeyword, requestedColumns],
+        currentQuery: () => [
+          ref.read(productionFqcRepositoryProvider),
+          _effectiveStatus,
+          _keyword,
+          _columnQuery,
+        ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.list(
           status: pageStatus,
           keyword: pageKeyword,
           page: target,
+          columns: requestedColumns.searches,
+          sort: requestedColumns.sort,
+          ascending: requestedColumns.ascending,
         ),
       );
       if (!current()) return;
       setState(() {
         _result = result;
-        _acceptedQuery = (requestedStatus, requestedKeyword);
+        _acceptedQuery = (requestedStatus, requestedKeyword, requestedColumns);
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -160,10 +176,29 @@ class _ProductionFqcInspectionsPageState
     if (_status == status) return;
     setState(() {
       _status = status;
+      _statusFilter = null;
       _result = null;
       _selectedIds.clear();
     });
     await _load(page: 1);
+  }
+
+  void _filterStatus(String key, String? value) {
+    if (key.startsWith('search.')) {
+      setState(() {
+        _columnQuery = _columnQuery.search(key, value);
+        _selectedIds.clear();
+      });
+      _load(page: 1);
+      return;
+    }
+    if (key != 'status') return;
+    final allowed = _status == 'ACTIVE'
+        ? const ['PENDING', 'PARTIAL']
+        : const ['RESOLVED', 'CANCELLED'];
+    if (value != null && !allowed.contains(value)) return;
+    setState(() => _statusFilter = value);
+    _load(page: 1);
   }
 
   void _onSearchInput(String value) {
@@ -213,6 +248,10 @@ class _ProductionFqcInspectionsPageState
 
   /// 决定成功先本地落位（决定行保留为 PARTIAL 或移除 RESOLVED），刷新失败也不回滚。
   void _applyDecisionResult(ProductionFqcInspection updated) {
+    if (_columnQuery.searches.isNotEmpty) {
+      _load(page: 1);
+      return;
+    }
     final current = _result;
     if (current == null) return;
     final items = [...current.items];
@@ -238,11 +277,11 @@ class _ProductionFqcInspectionsPageState
   }
 
   bool _matchesCurrentFilter(ProductionFqcInspection item) {
-    final statusMatch = switch (_status) {
+    final statusMatch = switch (_effectiveStatus) {
       'ACTIVE' => item.active,
       'HISTORY' => !item.active,
       'ALL' => true,
-      _ => item.status == _status,
+      _ => item.status == _effectiveStatus,
     };
     if (!statusMatch) return false;
     return matchesKeywordSearch([
@@ -372,16 +411,42 @@ class _ProductionFqcInspectionsPageState
                 expensiveRowMounts: false,
                 rowsController: _tableRows,
                 paginationRevision: _result,
-                paginationScope: (_keyword, _status),
+                paginationScope: (
+                  _keyword,
+                  _status,
+                  _statusFilter,
+                  _columnQuery,
+                ),
                 tableKey:
                     'features.quality.pages.production_fqc_inspections_page.ProductionFqcInspectionsPageState._buildTable.1',
                 key: const Key('production-fqc-inspection-table'),
                 columns: _columns,
+                serverColumnSearch: true,
+                sortColumn: _columnQuery.sort,
+                sortAscending: _columnQuery.ascending,
+                onSortChange: (key, ascending) {
+                  setState(
+                    () => _columnQuery = _columnQuery.sorted(key, ascending),
+                  );
+                  _load(page: 1);
+                },
                 items: result.items,
-                facets: const {},
+                facets: {
+                  'status': [
+                    for (final status
+                        in _status == 'ACTIVE'
+                            ? const ['PENDING', 'PARTIAL']
+                            : const ['RESOLVED', 'CANCELLED'])
+                      MasterFacetBucket(
+                        value: status,
+                        label: fqcStatusCodeLabel(status),
+                        count: 0,
+                      ),
+                  ],
+                },
                 nullCounts: const {},
-                filters: const {},
-                onFilterChanged: (_, _) {},
+                filters: {'status': _statusFilter, ..._columnQuery.searches},
+                onFilterChanged: _filterStatus,
                 selectable: canBatchPass,
                 idOf: (inspection) => inspection.active ? inspection.id : null,
                 selectedIds: _selectedIds,
@@ -550,6 +615,8 @@ class _ProductionFqcInspectionsPageState
       label: '报工数量',
       width: 145,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => formatQtyWithUnit(
         inspection.reportedQty,
         inspection.unitName,
@@ -561,6 +628,8 @@ class _ProductionFqcInspectionsPageState
       label: '合格数量',
       width: 145,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => formatQtyWithUnit(
         inspection.passedQty,
         inspection.unitName,
@@ -572,6 +641,8 @@ class _ProductionFqcInspectionsPageState
       label: '不合格数量',
       width: 150,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => formatQtyWithUnit(
         inspection.failedQty,
         inspection.unitName,
@@ -583,6 +654,8 @@ class _ProductionFqcInspectionsPageState
       label: '待检数量',
       width: 145,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => formatQtyWithUnit(
         inspection.remainingQty,
         inspection.unitName,
@@ -594,6 +667,8 @@ class _ProductionFqcInspectionsPageState
       label: '已生成待点收',
       width: 150,
       type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => formatQtyWithUnit(
         inspection.authorizedInboundQty,
         inspection.unitName,
@@ -604,12 +679,18 @@ class _ProductionFqcInspectionsPageState
       key: 'createdAt',
       label: '进入质检时间',
       width: 170,
+      type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => ChinaDateTime.formatInstant(inspection.createdAt),
     ),
     MasterColumnDef(
       key: 'updatedAt',
       label: '更新时间',
       width: 170,
+      type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
       value: (inspection) => ChinaDateTime.formatInstant(inspection.updatedAt),
     ),
   ];

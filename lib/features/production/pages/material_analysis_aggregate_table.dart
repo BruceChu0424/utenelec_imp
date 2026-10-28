@@ -1801,7 +1801,7 @@ final class _MaterialAggregateTableController {
         controller.text != initial) {
       controller.text = initial;
     }
-    return Tooltip(
+    return UtenEditorTooltip(
       message: uniform != null ? '本次汇总生产统一使用此比例' : '各来源比例不同，请明确填写本次汇总比例',
       child: ProductionOverproductionRateField(
         key: ValueKey('material-aggregate-rate-${aggregate.key}'),

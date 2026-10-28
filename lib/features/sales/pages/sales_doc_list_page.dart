@@ -175,6 +175,17 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   bool get _isOrder => widget.docType == SalesDocType.order;
 
+  bool get _canSearchAmount => switch (widget.docType) {
+    SalesDocType.order => _hasPermission(Perm.salesOrderPriceView),
+    SalesDocType.quote =>
+      _hasPermission(Perm.salesOrderPriceView) ||
+          _hasPermission(Perm.salesQuoteFinanceView),
+    SalesDocType.shipment || SalesDocType.customerShipment =>
+      _hasPermission(Perm.salesOrderPriceView) ||
+          _hasPermission(Perm.salesShipmentFinanceView),
+    SalesDocType.otherShipment || SalesDocType.returnDoc => true,
+  };
+
   /// 出货单（表头 dict/枚举桶只在出货段开放，与后端参数对齐）。
   bool get _isShipment => widget.docType == SalesDocType.shipment;
 
@@ -874,6 +885,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         label: '日期',
         width: 120,
         type: 'date',
+        columnSearchEnabled: true,
         sortable: true,
         value: (it) => (it.billDate ?? '').substring(0, 10),
       ),
@@ -909,8 +921,18 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         label: _isOrder ? '订单金额' : '合计',
         width: 170,
         type: 'money',
-        // 不同币种的原币金额不可直接横向比较；订单金额列不做跨币种排序。
-        sortable: !_isOrder,
+        // 订单先选币种，只在同币种范围内比较或排序原币金额。
+        sortable: _canSearchAmount && (!_isOrder || _currencyIdFilter != null),
+        columnSearchEnabled:
+            _canSearchAmount && (!_isOrder || _currencyIdFilter != null),
+        exactValueOf: (it) => it.priceMasked
+            ? null
+            : _isOrder
+            ? it.totalOriginalText
+            : it.totalLocalText,
+        info: _isOrder
+            ? '订单金额按原币检索和排序，先在币种列选定币种；不同币种不相加。'
+            : '按本币金额的原始十进制值检索和排序，隐藏金额不参与查询。',
         // 订单列表显示所选币种的原币合计，不把人民币换算暴露给销售端。
         // 其它销售单据仍沿用各自既有的本币列表口径。
         // 金额带币种后缀（2026-10-10 口径）：订单=原币+行币种名，其余=本币「元」。
@@ -931,6 +953,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           key: 'deliver',
           label: '交货',
           width: 130,
+          type: 'date',
+          columnSearchEnabled: true,
+          sortable: true,
           value: (it) => it.deliverDate == null
               ? null
               : '${it.delayWarning ? '⚠ ' : ''}${it.deliverDate!.substring(0, 10)}',
@@ -1451,6 +1476,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           _warehouseWorkStatusFilter = value;
         case 'currency':
           _currencyIdFilter = value;
+          if (_isOrder && value == null) {
+            _columnFilters.setValue('search.total', null);
+            if (_list.sortKey == 'total') _list.onSortChange(null, true);
+          }
         case 'warehouse':
           _warehouseIdFilter = value;
       }
@@ -1460,6 +1489,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   /// 服务端列筛选落地后：setState 刷新表头 + 重拉回第 1 页。
   void _afterServerColumnChanged() {
+    clearDraftSelection();
     setState(() {});
     _reload(1);
   }

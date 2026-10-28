@@ -17,6 +17,7 @@ import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../components/layout/uten_pagination.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -25,6 +26,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../shared/auth/page_permission_action.dart';
+import '../../../shared/auth/page_permission_scope.dart';
 import '../../../shared/auth/permissions.dart';
 import '../repositories/master_record_history_repository.dart'
     show MasterRecordRevision, masterRecordHistoryRepositoryProvider;
@@ -66,6 +69,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   String? _action;
   String _keyword = '';
   String _keywordColumn = 'recordLabel';
+  String _summaryKeyword = '';
+  String? _sourceType;
   String _actor = '';
 
   /// 修改日期门控；默认近三个月（2026-10-24 用户口径，与全站历史段一致）。
@@ -97,6 +102,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   List<MasterRecordRevision> _rows = const [];
   String? _nextCursor;
   int _page = 1;
+  int _knownPages = 1;
+  int? _totalPages;
   int _epoch = 0;
   bool _loading = false;
   bool _pickingCategory = false;
@@ -104,8 +111,17 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
   String? _error;
   String t(String zh, String en, String ko) =>
       masterEditText(context, zh, en, ko);
-  String get _query =>
-      '$_entity:$_record:$_category:$_action:$_keyword:$_actor:${_time.hashCode}';
+  Object get _query => (
+    _entity,
+    _record,
+    _category,
+    _action,
+    _keyword,
+    _actor,
+    _summaryKeyword,
+    _sourceType,
+    _time,
+  );
 
   @override
   void initState() {
@@ -165,6 +181,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       _keyword = '';
       _keywordColumn = 'recordLabel';
       _actor = '';
+      _summaryKeyword = '';
+      _sourceType = null;
       _time = UtenHistoryTimeValue.lastThreeMonths();
       invalidateNativeReadAccess();
       _clear();
@@ -186,6 +204,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       _requestedPage = 1;
       _nextCursor = null;
       _page = 1;
+      _knownPages = 1;
+      _totalPages = null;
     });
   }
 
@@ -204,6 +224,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
     if (reset) {
       page = 1;
       _cursorPages.invalidate();
+      _knownPages = 1;
+      _totalPages = null;
     }
     final target = page ?? _page;
     _requestedPage = target;
@@ -224,6 +246,10 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
         action = _action;
     final actor = _actor.trim().isEmpty ? null : _actor.trim(),
         keyword = _keyword.trim().isEmpty ? null : _keyword.trim();
+    final summary = _summaryKeyword.trim().isEmpty
+            ? null
+            : _summaryKeyword.trim(),
+        source = _sourceType;
     final from = range == null ? null : ChinaDateTime.formatDate(range.start),
         to = range == null ? null : ChinaDateTime.formatDate(range.end);
     final owner = captureNativeOwnership(),
@@ -251,6 +277,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
             action: action,
             actorKeyword: actor,
             keyword: keyword,
+            summaryKeyword: summary,
+            sourceType: source,
             dateFrom: from,
             dateTo: to,
             cursor: cursor,
@@ -275,6 +303,9 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
         _rows = response.entries;
         _page = target;
         _nextCursor = response.nextCursor;
+        final horizon = target + (_nextCursor == null ? 0 : 1);
+        if (horizon > _knownPages) _knownPages = horizon;
+        if (_nextCursor == null) _totalPages = target;
         _loading = false;
       });
     } catch (error) {
@@ -297,6 +328,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
     if (_action != null) 'action': _action,
     if (_keyword.isNotEmpty) 'search.$_keywordColumn': _keyword,
     if (_actor.isNotEmpty) 'search.actorName': _actor,
+    if (_summaryKeyword.isNotEmpty) 'search.summary': _summaryKeyword,
+    if (_sourceType != null) 'sourceType': _sourceType,
   };
 
   void _filterChanged(String key, String? value) {
@@ -307,6 +340,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       'search.recordLabel',
       'search.recordCode',
       'search.actorName',
+      'search.summary',
+      'sourceType',
     }.contains(key)) {
       return;
     }
@@ -334,6 +369,10 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
           _keyword = value?.trim() ?? '';
         case 'search.actorName':
           _actor = value?.trim() ?? '';
+        case 'search.summary':
+          _summaryKeyword = value?.trim() ?? '';
+        case 'sourceType':
+          _sourceType = value;
       }
     });
     _load(reset: true);
@@ -443,6 +482,8 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       _keyword = '';
       _keywordColumn = 'recordLabel';
       _actor = '';
+      _summaryKeyword = '';
+      _sourceType = null;
       _time = UtenHistoryTimeValue.lastThreeMonths();
     });
     _load(reset: true);
@@ -462,6 +503,7 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
     key: key,
     label: label,
     width: width,
+    minimumWidthOf: (_) => 48,
     value: value,
     columnSearchEnabled: columnSearchEnabled,
     facetSearchEnabled: facetSearchEnabled,
@@ -570,12 +612,14 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       label: t('修改范围', 'Changed area', '변경 범위'),
       width: 120,
       value: (row) => masterHistorySourceLabel(context, row.sourceType),
+      facetSearchEnabled: true,
     ),
     _historyColumn(
       key: 'summary',
       label: t('修改摘要', 'Change summary', '변경 요약'),
       width: 320,
       value: (row) => row.summary,
+      columnSearchEnabled: true,
     ),
   ];
 
@@ -591,11 +635,13 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
       appBar: UtenAppBar(
         title: t('修改历史', 'Change history', '변경 기록'),
         leading: UtenBackButton(onPressed: _back),
+        showPagePermissionAction: false,
         actions: [
           UtenRefreshButton(
             busy: _loading,
             onRefresh: () => _load(reset: true),
           ),
+          PagePermissionAction(scope: masterHistoryPermissionScopeFor(_entity)),
         ],
       ),
       body: SafeArea(
@@ -638,6 +684,19 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                           value: action,
                           count: 0,
                           label: masterHistoryActionLabel(context, action),
+                        ),
+                    ],
+                    'sourceType': [
+                      for (final source in const [
+                        'CATEGORY',
+                        'BOM',
+                        'EXTENSION',
+                        'RECORD',
+                      ])
+                        MasterFacetBucket(
+                          value: source,
+                          count: 0,
+                          label: masterHistorySourceLabel(context, source),
                         ),
                     ],
                   },
@@ -703,20 +762,13 @@ class _HistoryPageState extends ConsumerState<MasterRecordHistoryPage>
                       ),
                   ],
                   toolbarActions: [
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _loading || _page <= 1
-                          ? null
-                          : () => _load(page: _page - 1, useCache: true),
-                      child: Text(t('上一页', 'Previous', '이전')),
-                    ),
-                    Text(t('第 $_page 页', 'Page $_page', '$_page 페이지')),
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _loading || _nextCursor == null
-                          ? null
-                          : () => _load(page: _page + 1, useCache: true),
-                      child: Text(t('下一页', 'Next', '다음')),
+                    UtenPagination(
+                      currentPage: _page,
+                      totalPages: _totalPages,
+                      maxPage: _knownPages,
+                      busy: _loading,
+                      onPageChanged: (page) =>
+                          _load(page: page, useCache: true),
                     ),
                   ],
                   rowColor: (row) => row.action == 'DELETE'

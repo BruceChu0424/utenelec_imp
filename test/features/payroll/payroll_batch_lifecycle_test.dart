@@ -93,6 +93,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.requests.last, ('ACTIVE', 1));
       expect(find.text('发布工资条'), findsOneWidget);
+      await tester.enterText(find.byType(TextFormField), '2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(repo.requests.last, ('ACTIVE', 2));
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
       expect(repo.requests.last, ('HISTORY', 1));

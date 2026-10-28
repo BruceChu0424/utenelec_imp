@@ -232,6 +232,7 @@ abstract final class AuditFieldLabels {
     'social_insurance_base_enc': '社保基数',
     'housing_fund_base_enc': '公积金基数',
     'allowance_standard_enc': '补贴标准',
+    'snapshot_enc': '加密快照',
     'old_value_enc': '修改前内容',
     'new_value_enc': '修改后内容',
     // 证件核对计划的候选新值(ADR-160/V810)，密文保存、只说改了。

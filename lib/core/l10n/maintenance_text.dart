@@ -31,9 +31,10 @@ const _text = <String, List<String>>{
   '目标版本': ['Target version', '대상 버전'],
   '我知道了，继续保存工作': ['Got it, continue saving work', '확인, 작업 계속 저장'],
   '查看更新提醒': ['View update notice', '업데이트 알림 보기'],
-  '更新时连接会暂时中断': [
-    'The connection will pause during the update',
-    '업데이트 중 연결이 일시 중단됩니다',
+  '服务器更新倒计时': ['Server update countdown', '서버 업데이트 카운트다운'],
+  '拖动调整位置，点击查看更新提醒': [
+    'Drag to move; select to view the update notice',
+    '드래그하여 이동하고 클릭하여 업데이트 알림 보기',
   ],
   '正在更新服务并检查运行状态。请保留当前窗口，恢复后会自动返回。': [
     'The service is being updated and checked. Keep this window open; your screen will return when it is ready.',

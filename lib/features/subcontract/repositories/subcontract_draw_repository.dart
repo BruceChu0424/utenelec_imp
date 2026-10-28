@@ -18,6 +18,9 @@ abstract interface class SubcontractDrawGateway {
     List<String> orderItemIds = const [],
     List<String> applicationItemIds = const [],
     String? applicationId,
+    Map<String, String?> columnFilters = const {},
+    String? sort,
+    String? order,
   });
 
   /// 领料计数(ADR-171 修订二): 红 = 调用者可动手的可领行数; 黄 = 已提交领料、
@@ -65,6 +68,9 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
     List<String> orderItemIds = const [],
     List<String> applicationItemIds = const [],
     String? applicationId,
+    Map<String, String?> columnFilters = const {},
+    String? sort,
+    String? order,
   }) async {
     final ids = orderItemIds
         .map((id) => id.trim())
@@ -84,6 +90,12 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
           'applicationItemIds': applicationItemIds.join(','),
         if (applicationId != null && applicationId.isNotEmpty)
           'applicationId': applicationId,
+        'sort': ?sort,
+        'order': ?order,
+        for (final entry in columnFilters.entries)
+          if (entry.value?.trim().isNotEmpty == true)
+            (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+                entry.value!.trim(),
       },
     );
     return SubcontractDrawTaskList.fromJson(json);

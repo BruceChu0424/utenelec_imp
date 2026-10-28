@@ -400,13 +400,21 @@ void main() {
       await tester.tap(find.text('下载表格'));
       await tester.pumpAndSettle();
 
+      // 2026-10-28 起弹窗先收文件名（必填）与保存位置，密码区在其后。
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == '文件名',
+        ),
+        findsOneWidget,
+      );
       expect(
         find.byWidgetPredicate(
           (w) =>
               w is TextField && w.decoration?.labelText == '打开密码(可选，1–128 位)',
         ),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.text('设置密码'), findsOneWidget);
       expect(find.text('直接下载'), findsOneWidget);
       expect(
         find.byWidgetPredicate(
@@ -415,7 +423,15 @@ void main() {
         findsNothing,
       );
 
-      await tester.enterText(find.byType(TextField), '1');
+      await tester.tap(find.text('设置密码'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.labelText == '打开密码(可选，1–128 位)',
+        ),
+        '1',
+      );
       await tester.pump();
 
       expect(
@@ -425,8 +441,47 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('加密下载'), findsOneWidget);
+      await tester.tap(find.text('取消密码'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认密码'), findsNothing);
+      expect(find.text('直接下载'), findsOneWidget);
     },
   );
+
+  testWidgets('export dialog requires a file name before download can start', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _app(
+        permissions: const {Perm.salesReportExport},
+        child: const UtenExportButton(
+          endpoint: '/reports/export',
+          report: 'detail',
+          queryParams: {},
+          requiredPermission: Perm.salesReportExport,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('下载表格'));
+    await tester.pumpAndSettle();
+
+    // 2026-10-28 起弹窗先收文件名（必填，预填默认名）；清空后不能直接下载。
+    final nameField = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == '文件名',
+    );
+    expect(nameField, findsOneWidget);
+    await tester.enterText(nameField, '');
+    await tester.tap(find.text('直接下载'));
+    await tester.pump();
+
+    expect(find.text('请填写文件名（不超过 150 个字符）'), findsOneWidget);
+    expect(find.text('直接下载'), findsOneWidget);
+
+    await tester.enterText(nameField, '销售明细');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+  });
 
   testWidgets('print preview applies permission to its nested Excel action', (
     tester,
@@ -472,11 +527,11 @@ void main() {
     expect(columns.map((c) => (c as Map<String, dynamic>)['key']), ['code']);
   });
 
-  testWidgets('all columns non-exportable means no projection payload', (
+  testWidgets('all columns non-exportable cannot fall back to every column', (
     tester,
   ) async {
     final api = _CapturingApi();
-    final exported = await _runExportWithProjection(tester, api, const [
+    await _runExportWithProjection(tester, api, const [
       TableProjectedColumn(
         key: 'treeIdentity',
         label: '层级 / 组件',
@@ -484,8 +539,70 @@ void main() {
         type: 'text',
         exportable: false,
       ),
+    ], expectRequest: false);
+    expect(api.bodies, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('export retains the displayed header order', (tester) async {
+    final api = _CapturingApi();
+    final exported = await _runExportWithProjection(tester, api, const [
+      TableProjectedColumn(key: 'spec', label: '规格', width: 110, type: 'text'),
+      TableProjectedColumn(key: 'code', label: '编号', width: 110, type: 'text'),
+      TableProjectedColumn(
+        key: 'name',
+        label: '货品名称',
+        width: 200,
+        type: 'text',
+      ),
     ]);
-    expect(exported.containsKey('columnProjection'), isFalse);
+    final columns = (exported['columnProjection'] as Map)['columns'] as List;
+    expect(columns.map((column) => (column as Map)['key']), [
+      'spec',
+      'code',
+      'name',
+    ]);
+  });
+
+  testWidgets('pending export shows a blocking progress dialog until failure', (
+    tester,
+  ) async {
+    final api = _DeferredDownloadApi();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'a'),
+          ),
+          apiBaseUrlProvider.overrideWithValue('https://a.invalid'),
+          currentPermissionsProvider.overrideWithValue({}),
+        ],
+        child: const MaterialApp(
+          locale: Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: UtenExportButton(
+              endpoint: '/export',
+              report: '',
+              queryParams: {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('下载表格'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('直接下载'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.text('正在导出表格…'), findsOneWidget);
+    expect(api.downloads, 1);
+    api.result.completeError(StateError('expected failure'));
+    await tester.pumpAndSettle();
+    expect(find.text('正在导出表格…'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -493,8 +610,9 @@ void main() {
 Future<Map<String, dynamic>> _runExportWithProjection(
   WidgetTester tester,
   _CapturingApi api,
-  List<TableProjectedColumn> columns,
-) async {
+  List<TableProjectedColumn> columns, {
+  bool expectRequest = true,
+}) async {
   final controller = TableColumnProjectionController();
   addTearDown(controller.dispose);
   final owner = Object();
@@ -544,8 +662,8 @@ Future<Map<String, dynamic>> _runExportWithProjection(
   await tester.pumpAndSettle();
   await tester.tap(find.text('直接下载'));
   await tester.pumpAndSettle();
-  expect(api.bodies, hasLength(1));
-  return api.bodies.single;
+  expect(api.bodies, hasLength(expectRequest ? 1 : 0));
+  return expectRequest ? api.bodies.single : const {};
 }
 
 class _CapturingApi extends ApiClient {

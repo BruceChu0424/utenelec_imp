@@ -1447,6 +1447,13 @@ abstract class _MaterialAnalysisMaterialTableState
     final table = KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
+        headerFilterScopeDescription:
+            '关键词和数值筛选当前展开层级，保留所属产品或物料组；选项筛选按完整 BOM 投影',
+        filterContextRows: (all, matched) => retainMatchedPreorderGroups(
+          all,
+          matched,
+          isGroupStart: (row) => row.depth == 0,
+        ),
         expensiveRowMounts: _canRoute || _canNotify || _canGenerate,
         // 表头列序按 tableKey 记在每用户偏好里；2026-10-08「进度列放最前」
         // 只改了默认序，老账号保存过的旧列序（物料办理在前）会一直压住它
@@ -1863,10 +1870,9 @@ abstract class _MaterialAnalysisMaterialTableState
   /// (路线要放行改过下拉的脏行、进度要带中文标签、仓库列有「未登记」沉底
   /// 规则)仍单独处理，不进这张表。
   ///
-  /// 没有筛选的列有六个：树形的「物料名称」——它已经有关键词搜索框，再挂一个
-  /// 几百个值的下拉没有意义；以及 2026-09-22 用户口径「表头就只要那几个字」的
-  /// 「物料办理 / 编号 / 需要数量 / 还缺数量 / 下单数量」——这五列不进这张表，
-  /// 列头就没有桶、没有下拉(它们的 ⓘ 也一并撤了，见 [_materialTableColumns])。
+  /// 名称优先使用上方全树搜索；这里不为它及原先要求简洁的五列构造全树等值桶。
+  /// 2026-10-28 列菜单检索按实际展开投影收敛并保留所属组，五列仍不增加 ⓘ。
+  /// 「物料办理」是业务操作入口，继续不提供按按钮文字搜索。
   late final Map<String, String? Function(_MaterialTableRow)>
   _materialTableGenericFacetExtractors = {
     'colorName': (row) => _blankFacet(_materialTableColorText(row)),
@@ -2093,6 +2099,7 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'handle',
       label: _l10n.materialHandle,
+      columnSearchEnabled: false,
       width: UtenControlMetrics.usesTouchTargets(context)
           ? math.max(
               88,
@@ -2337,6 +2344,8 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'allowedOverproductionRate',
       label: '允许超产比例',
+      filterFromRows: true,
+      facetSearchEnabled: true,
       width: 152,
       minimumWidthOf: (_) => 96,
       info:
@@ -2872,7 +2881,7 @@ abstract class _MaterialAnalysisMaterialTableState
       (group) => group.representative.confirmedRoute == null,
     );
     if (!pending) return dropdown;
-    return Tooltip(
+    return UtenEditorTooltip(
       message: '这一行还没选供应方式，选好后立即保存并确认，它才能下单。',
       child: DecoratedBox(
         key: ValueKey(
@@ -5905,7 +5914,7 @@ abstract class _MaterialAnalysisMaterialTableState
         '填多少下多少。超出需求的部分归公共备货；下层按实际新增制造量重算，缺料时自动预填并勾选。',
       if (_draftRoute(group) case final route?) ?_orderPolicyHint(group, route),
     ].join('\n');
-    return Tooltip(message: hint, child: field);
+    return UtenEditorTooltip(message: hint, child: field);
   }
 
   String? _materialTableAppendQtyText(_MaterialTableRow row) {
@@ -9018,7 +9027,7 @@ class _MaterialAnalysisIssuedRateFieldState
       final text = _controller.text.isEmpty ? '多个比例' : '${_controller.text}%';
       return Tooltip(message: reason ?? '当前任务不能修改允许超产比例', child: Text(text));
     }
-    return Tooltip(
+    return UtenEditorTooltip(
       message: reason ?? '首次报工前可修改，修改后车间任务立即生效',
       child: TextField(
         controller: _controller,

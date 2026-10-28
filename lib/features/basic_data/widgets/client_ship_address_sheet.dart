@@ -5,6 +5,7 @@
 //  - 「新增地址」展开内联表单，提交即入库并自动选中回填；
 //  - 删除按钮仅持 client_address:delete 者可见，删除前二次确认（后端仍独立鉴权）；
 //  - 空态说明学习规则：保存出货单后会自动记住本次填写的地址。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -317,16 +318,27 @@ class _ClientShipAddressSheetState
                   // 删除的确认弹窗在置位之前，不会被遮）。
                   if (_busy)
                     const UtenBusyOverlay(
+                      showDoNotLeaveHint: false,
                       title: '正在保存收货地址',
                       description: '正在写入地址资料，请稍候。',
                     ),
                   Row(
                     children: [
                       Expanded(
-                        child: Text(
-                          '收货地址 · ${widget.clientName}',
-                          style: theme.textTheme.titleMedium,
-                          overflow: TextOverflow.ellipsis,
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '收货地址 · ${widget.clientName}',
+                                style: theme.textTheme.titleMedium,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const UtenFieldHintIcon(
+                              info: '保存出货单后会自动记住本次填写的地址与电话，下次开单默认带出最近使用的一条。',
+                              dense: true,
+                            ),
+                          ],
                         ),
                       ),
                       IconButton(
@@ -335,13 +347,6 @@ class _ClientShipAddressSheetState
                         icon: const Icon(Icons.close),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '保存出货单后会自动记住本次填写的地址与电话，下次开单默认带出最近使用的一条。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   if (!_accessLoading && !_objectWritable) ...[

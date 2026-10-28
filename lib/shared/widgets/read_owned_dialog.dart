@@ -10,6 +10,7 @@ Future<R?> showReadOwnedDialog<R>({
   required WidgetRef ref,
   required BuildContext context,
   required WidgetBuilder builder,
+  bool barrierDismissible = true,
 }) async {
   final current = captureReadOwner(ref);
   ModalRoute<dynamic>? owned;
@@ -24,6 +25,7 @@ Future<R?> showReadOwnedDialog<R>({
     if (!current()) return null;
     final result = await UtenDialog.showAndWaitForExit<R>(
       context,
+      barrierDismissible: barrierDismissible,
       builder: (dialog) {
         owned = ModalRoute.of(dialog);
         if (!current()) {

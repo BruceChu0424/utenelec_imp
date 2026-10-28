@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -61,7 +62,6 @@ class SystemUpdaterStatusCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
                 confirmed ? Icons.check_circle_outline : Icons.info_outline,
@@ -76,6 +76,10 @@ class SystemUpdaterStatusCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+              ),
+              const UtenFieldHintIcon(
+                info: '保存后需等待服务器确认。这里仅查看服务器状态，不会触发云端检查或下载。',
+                dense: true,
               ),
               UtenRefreshButton(
                 key: const ValueKey('system-updater-status-refresh'),
@@ -103,13 +107,6 @@ class SystemUpdaterStatusCard extends StatelessWidget {
                 style: TextStyle(color: theme.colorScheme.error),
               ),
           ],
-          const SizedBox(height: 8),
-          Text(
-            '保存后需等待服务器确认。这里仅查看服务器状态，不会触发云端检查或下载。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );

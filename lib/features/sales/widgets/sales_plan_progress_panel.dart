@@ -424,6 +424,9 @@ class _ProgressList extends ConsumerWidget {
         key: 'progress',
         label: '生产入库进度',
         width: 160,
+        // 此格是「已入库 / 订货」文本，不把分子当成百分比排序或汇总。
+        filterFromRows: true,
+        facetSearchEnabled: true,
         value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
         cellBuilder: (context, line) => Row(
           children: [
@@ -488,6 +491,8 @@ class _ProgressList extends ConsumerWidget {
         label: '订货',
         width: 126,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.qty?.toString(),
         value: (line) => _qtyWithUnit(line.qty, line.unitName),
       ),
       MasterColumnDef(
@@ -495,6 +500,8 @@ class _ProgressList extends ConsumerWidget {
         label: '已排',
         width: 126,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.plannedQty?.toString(),
         value: (line) => _qtyWithUnit(line.plannedQty, line.unitName),
       ),
       MasterColumnDef(
@@ -502,6 +509,8 @@ class _ProgressList extends ConsumerWidget {
         label: '已生产入库',
         width: 150,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.producedQty?.toString(),
         info: '只统计已实际合格入库的产品，待品质判定和待仓库点收不算入库。',
         value: (line) => _qtyWithUnit(line.producedQty, line.unitName),
       ),
@@ -510,6 +519,8 @@ class _ProgressList extends ConsumerWidget {
         label: '已发',
         width: 126,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.shippedQty?.toString(),
         value: (line) => _qtyWithUnit(line.shippedQty, line.unitName),
       ),
       MasterColumnDef(
@@ -517,6 +528,8 @@ class _ProgressList extends ConsumerWidget {
         label: '本次可发',
         width: 140,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.shippableQty?.toString(),
         info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
         value: (line) => _qtyWithUnit(line.shippableQty, line.unitName),
         cellBuilder: (context, line) => Text(
@@ -532,6 +545,8 @@ class _ProgressList extends ConsumerWidget {
         label: '办理中',
         width: 130,
         type: 'number',
+        sortable: true,
+        exactValueOf: (line) => line.pendingShipmentQty?.toString(),
         value: (line) => _qtyWithUnit(line.pendingShipmentQty, line.unitName),
       ),
       MasterColumnDef(

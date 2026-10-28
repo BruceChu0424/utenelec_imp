@@ -700,6 +700,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 900));
       await tester.pumpAndSettle();
       final saved = container.read(formDraftsProvider).single;
+      final savedRows = ((saved.data['input'] as Map)['rows'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(savedRows.single['weightKg'], 1.25);
       api.salesAllowed = false;
       await tester.tap(
         find.byKey(const Key('warehouse-sales-outbound-detail-refresh')),

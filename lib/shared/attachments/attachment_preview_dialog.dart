@@ -73,6 +73,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   String? _downloadStatus;
   bool _downloading = false;
   bool _downloadFailed = false;
+  bool _fullscreen = false;
   late final bool _converted;
 
   @override
@@ -138,65 +139,74 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final kindIcon = AttachmentFileKind.of(widget.name, widget.contentType);
-    return PopScope(
-      canPop: !_downloading,
-      child: UtenDialogFrame(
-        insetPadding: const EdgeInsets.all(UtenSpacing.s16),
-        backgroundColor: theme.colorScheme.surface,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(UtenRadius.xl),
-        ),
-        child: Semantics(
-          container: true,
-          label: '附件预览 ${widget.name}',
-          child: CallbackShortcuts(
-            bindings: {
-              const SingleActivator(LogicalKeyboardKey.escape): _close,
-              if (_kind == AttachmentPreviewKind.pdf) ...{
-                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                    _turnPage(-1),
-                const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-                    _turnPage(-1),
-                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                    _turnPage(1),
-                const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
-                    _turnPage(1),
-              },
+    final content = Semantics(
+      container: true,
+      label: '附件预览 ${widget.name}',
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): _close,
+          if (_kind == AttachmentPreviewKind.pdf) ...{
+            const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                _turnPage(-1),
+            const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+                _turnPage(-1),
+            const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                _turnPage(1),
+            const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+                _turnPage(1),
+          },
+        },
+        child: Focus(
+          autofocus: true,
+          child: FutureBuilder<AttachmentPreviewPayload>(
+            future: _payload,
+            builder: (context, snapshot) {
+              final payload = snapshot.data;
+              return Column(
+                children: [
+                  _header(theme, kindIcon, payload),
+                  if (_downloadStatus != null)
+                    _statusLine(theme, _downloadStatus!),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: payload == null
+                        ? const _PreviewLoading()
+                        : payload.error != null
+                        ? _PreviewMessage(
+                            icon: Icons.error_outline,
+                            title: payload.error!,
+                            hint: '可用「下载」保存原件后用本机应用打开',
+                          )
+                        : _body(theme, payload),
+                  ),
+                  if (_kind == AttachmentPreviewKind.pdf && _pageCount > 1)
+                    _pageBar(theme),
+                ],
+              );
             },
-            child: Focus(
-              autofocus: true,
-              child: FutureBuilder<AttachmentPreviewPayload>(
-                future: _payload,
-                builder: (context, snapshot) {
-                  final payload = snapshot.data;
-                  return Column(
-                    children: [
-                      _header(theme, kindIcon, payload),
-                      if (_downloadStatus != null)
-                        _statusLine(theme, _downloadStatus!),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: payload == null
-                            ? const _PreviewLoading()
-                            : payload.error != null
-                            ? _PreviewMessage(
-                                icon: Icons.error_outline,
-                                title: payload.error!,
-                                hint: '可用「下载」保存原件后用本机应用打开',
-                              )
-                            : _body(theme, payload),
-                      ),
-                      if (_kind == AttachmentPreviewKind.pdf && _pageCount > 1)
-                        _pageBar(theme),
-                    ],
-                  );
-                },
-              ),
-            ),
           ),
         ),
       ),
+    );
+    return PopScope(
+      canPop: !_downloading,
+      // 全屏档位绕过弹窗 85% 高度钳制，铺满当前画布；Esc 仍可关闭。
+      child: _fullscreen
+          ? Dialog.fullscreen(
+              key: const ValueKey('attachment-preview-fullscreen'),
+              backgroundColor: theme.colorScheme.surface,
+              child: ClipRect(child: SizedBox.expand(child: content)),
+            )
+          : UtenDialogFrame(
+              key: const ValueKey('attachment-preview-windowed'),
+              insetPadding: const EdgeInsets.all(UtenSpacing.s16),
+              backgroundColor: theme.colorScheme.surface,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(UtenRadius.xl),
+              ),
+              child: content,
+            ),
     );
   }
 
@@ -244,6 +254,16 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
           _TypeChip(
             label: attachmentTypeLabel(widget.name, widget.contentType),
             color: kind.color,
+          ),
+          IconButton(
+            tooltip: _fullscreen ? '退出全屏' : '全屏',
+            icon: Icon(
+              _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+              size: 20,
+            ),
+            onPressed: _downloading
+                ? null
+                : () => setState(() => _fullscreen = !_fullscreen),
           ),
           IconButton(
             tooltip: '下载原件',
@@ -731,7 +751,7 @@ class _CsvBodyState extends State<_CsvBody> {
   }
 }
 
-/// 压缩包清单：按层级缩进，只读，不提供解压。
+/// 压缩包清单：只读，不解压；行样式与公司资料库列表同口径（类型图标瓦片 + 名称/大小）。
 class _ArchiveBody extends StatelessWidget {
   const _ArchiveBody({required this.listing});
 
@@ -757,33 +777,46 @@ class _ArchiveBody extends StatelessWidget {
           );
         }
         final entry = listing.entries[index];
+        final kind = entry.isDirectory
+            ? null
+            : AttachmentFileKind.of(entry.name, null);
+        final icon = entry.isDirectory
+            ? Icons.folder_rounded
+            : (kind?.icon ?? Icons.insert_drive_file_outlined);
+        final color = entry.isDirectory
+            ? theme.colorScheme.primary
+            : (kind?.color ?? theme.colorScheme.onSurfaceVariant);
         return Semantics(
           label:
               '${entry.isDirectory ? '目录' : '文件'} ${entry.name}'
               '${entry.isDirectory ? '' : '，${formatAttachmentSize(entry.sizeBytes)}'}',
           child: Padding(
             padding: EdgeInsets.fromLTRB(
-              UtenSpacing.s16 + entry.depth * 14,
-              UtenSpacing.s8,
+              UtenSpacing.s12 + entry.depth * 14,
+              UtenSpacing.s6,
               UtenSpacing.s16,
-              UtenSpacing.s8,
+              UtenSpacing.s6,
             ),
             child: Row(
               children: [
-                Icon(
-                  entry.isDirectory
-                      ? Icons.folder_outlined
-                      : Icons.insert_drive_file_outlined,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .12),
+                    borderRadius: UtenRadius.controlAll,
+                  ),
+                  child: Icon(icon, size: 18, color: color),
                 ),
-                const SizedBox(width: UtenSpacing.s8),
+                const SizedBox(width: UtenSpacing.s12),
                 Expanded(
                   child: Text(
                     entry.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: entry.isDirectory ? FontWeight.w600 : null,
+                    ),
                   ),
                 ),
                 if (!entry.isDirectory) ...[
@@ -792,6 +825,7 @@ class _ArchiveBody extends StatelessWidget {
                     formatAttachmentSize(entry.sizeBytes),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],

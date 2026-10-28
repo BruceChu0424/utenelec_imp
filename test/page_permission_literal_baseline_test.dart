@@ -352,10 +352,49 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.salesQuoteView': 1,
     },
   ),
+  // Create rechecks the existing warehouse:create grant and binds MasterEditOwner to the current actor/route.
+  'lib/features/basic_data/pages/warehouse_page.dart': (
+    legacyCount: 6,
+    tokens: {
+      'Perm.warehouseCreate': 2,
+      'Perm.warehouseDelete': 1,
+      'Perm.warehouseEdit': 1,
+      'Perm.warehouseExport': 2,
+      'Perm.warehouseStatus': 1,
+    },
+  ),
+  // Amount query UI mirrors the trusted principal grant; the server independently rejects unauthorized amount search/sort and masks values.
+  'lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart':
+      (legacyCount: 0, tokens: {'Perm.procurementIqcRejectionAmountView': 1}),
+  // Commercial query/column visibility mirrors the order, quote and shipment server price masks; original-currency access remains separately gated.
+  'lib/features/sales/pages/sales_doc_list_page.dart': (
+    legacyCount: 3,
+    tokens: {
+      'Perm.salesOrderCreate': 1,
+      'Perm.salesOrderPriceView': 3,
+      'Perm.salesQuoteConvert': 1,
+      'Perm.salesQuoteFinanceView': 1,
+      'Perm.salesShipmentCreate': 1,
+      'Perm.salesShipmentFinanceView': 1,
+    },
+  ),
+  // Bulk permission work keeps authorization:manage AND superadmin, matching the controller/service and step-up write contract.
+  'lib/features/admin/widgets/permission_batch_dialog.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
+  // Template bindings keep authorization:manage AND superadmin; server locking and actor-state rechecks remain authoritative.
+  'lib/features/admin/widgets/permission_template_binding_strip.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.authorizationManage': 1},
+  ),
   'lib/features/basic_data/pages/client_category_page.dart': (
     legacyCount: 13,
     tokens: {
-      'Perm.clientAssign': 5,
+      // The shared owner cell measures its edit affordance with the same grant
+      // already required by accessManageable and the live owner-action guard.
+      // These two reads only size/retire presentation; they grant no action.
+      'Perm.clientAssign': 7,
       'Perm.clientCategoryCreate': 1,
       'Perm.clientCategoryDelete': 1,
       'Perm.clientCategoryEdit': 1,
@@ -418,7 +457,8 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsCostView': 1,
       'Perm.goodsEdit': 1,
       'Perm.goodsExport': 1,
-      'Perm.goodsImport': 1,
+      // 2026-10-28：AppBar 右上角新增不依赖分类选中的导入入口（工具条入口保留）。
+      'Perm.goodsImport': 2,
     },
   ),
   'lib/features/basic_data/widgets/goods_operation_history_panel.dart': (
@@ -863,7 +903,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      269, // Exact reviewed guards only; the global cap stays 677.
+      281, // Exact reviewed guards only; the global cap stays 677.
     );
   });
 

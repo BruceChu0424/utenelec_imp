@@ -1,3 +1,4 @@
+import '../support/table_read_status.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -308,7 +309,7 @@ void main() {
             expect(find.byType(CircularProgressIndicator), findsWidgets);
           }
           if (phase == _Phase.error) {
-            expect(find.text('矩阵读取失败'), findsOneWidget);
+            await expectTableReadFailureDetails(tester, '矩阵读取失败');
           }
           expect(tester.takeException(), isNull);
         }

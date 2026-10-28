@@ -3,6 +3,7 @@
 // plain empty state, keyword search, paging, delete with confirmation and
 // the fail-closed delete capability.
 import 'dart:async';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -230,14 +231,22 @@ void main() {
     await tester.scrollUntilVisible(pager, 400, scrollable: list);
     await tester.pumpAndSettle();
     expect(find.text('共 45 条'), findsOneWidget);
-    expect(find.text('第 1 / 3 页'), findsOneWidget);
+    expect(find.text('/ 3'), findsOneWidget);
+    expect(
+      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+      1,
+    );
 
     await tester.tap(find.byKey(const ValueKey('client-goods-alias-next')));
     await tester.pumpAndSettle();
 
     expect(repo.listCalls.last.page, 2);
     await tester.scrollUntilVisible(pager, 400, scrollable: list);
-    expect(find.text('第 2 / 3 页'), findsOneWidget);
+    expect(find.text('/ 3'), findsOneWidget);
+    expect(
+      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+      2,
+    );
     await tester.scrollUntilVisible(
       find.text('PART-21'),
       -400,

@@ -20,6 +20,8 @@ import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../basic_data/models/master_facet.dart';
@@ -79,6 +81,15 @@ class _ProcurementIqcRejectionListPageState
   bool _hasAcceptedList = false;
   bool _statusSelected = false; // 进页面不预选（不选=不过滤）
   String _keyword = '';
+  TableColumnQuery _headers = const TableColumnQuery();
+  Object get _query =>
+      (_receiptType, _status, _statusSelected, _keyword, _headers);
+  bool get _canQueryAmount =>
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(Perm.procurementIqcRejectionAmountView)) &&
+      !(_result?.items.any((item) => item.priceMasked) ?? false);
   bool _loading = true;
   String? _error;
   int _requestId = 0;
@@ -89,6 +100,7 @@ class _ProcurementIqcRejectionListPageState
     _tableRows.update(const []);
     _result = null;
     _acceptedQuery = null;
+    _headers = const TableColumnQuery();
     _counts = null;
     _selectedIds.clear();
     _hasAcceptedList = false;
@@ -149,7 +161,8 @@ class _ProcurementIqcRejectionListPageState
     final requestId = ++_requestId;
     final repository = _repository;
     final ownerCurrent = captureReadOwner(ref);
-    final query = (_receiptType, _status, _statusSelected, _keyword);
+    final query = _query;
+    final headers = _headers;
     bool current() => mounted && requestId == _requestId && ownerCurrent();
     setState(() {
       if (_acceptedQuery != query) {
@@ -165,20 +178,21 @@ class _ProcurementIqcRejectionListPageState
         status: _status,
         keyword: _keyword,
         page: page,
+        columnSearch: headers.searches,
+        sort: headers.sort,
+        ascending: headers.ascending,
       );
       final countFilter = ProcurementIqcRejectionFilter(
         receiptType: _receiptType,
         keyword: _keyword,
+        columnSearch: headers.searches,
       );
       unawaited(_loadCounts(countFilter, current));
       final result = _statusSelected
           ? await readScopedPage<ProcurementIqcRejectionCase>(
               page,
               query: (repository, query),
-              currentQuery: () => (
-                _repository,
-                (_receiptType, _status, _statusSelected, _keyword),
-              ),
+              currentQuery: () => (_repository, _query),
               useCache: useCache,
               fetchPage: (page) => repository.list(
                 ProcurementIqcRejectionFilter(
@@ -186,6 +200,9 @@ class _ProcurementIqcRejectionListPageState
                   status: filter.status,
                   keyword: filter.keyword,
                   page: page,
+                  columnSearch: filter.columnSearch,
+                  sort: filter.sort,
+                  ascending: filter.ascending,
                 ),
               ),
             )
@@ -277,6 +294,12 @@ class _ProcurementIqcRejectionListPageState
       );
     } else if (key == 'status') {
       _changeStatus(value);
+    } else if (key.startsWith('search.')) {
+      setState(() {
+        _headers = _headers.search(key, value);
+        _statusSelected = true;
+      });
+      _load(1);
     }
   }
 
@@ -293,6 +316,8 @@ class _ProcurementIqcRejectionListPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     // 独立路由形态注册「返回即刷新」（2026-09-24）：从本页 push 进详情办结/反审/
     // 登记退回后返回，重拉当前页——此前只靠嵌入宿主的 refreshTick，独立入口
     // （通知深链/收藏直达）返回后行状态停留在旧值，要手动刷新。
@@ -486,6 +511,17 @@ class _ProcurementIqcRejectionListPageState
           ? 0
           : UtenCapsuleNavScope.occlusionOf(context),
       columns: _columns,
+      serverColumnSearchKeys: {
+        'receiptBillNo',
+        'orderBillNo',
+        'supplierName',
+        'goodsName',
+        'goodsCode',
+        'colorName',
+        'failedQty',
+        'holdReason',
+        if (_canQueryAmount) 'amount',
+      },
       items: result.items,
       // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端
       // 固定枚举桶；count=0 表示不强调计数。状态仍与主工作阶段同源。
@@ -517,8 +553,18 @@ class _ProcurementIqcRejectionListPageState
       filters: {
         'receiptType': _receiptType?.apiValue,
         'status': _statusSelected ? _status : null,
+        ..._headers.searches,
       },
       onFilterChanged: _onColumnFilterChanged,
+      sortColumn: _headers.sort,
+      sortAscending: _headers.ascending,
+      onSortChange: (column, ascending) {
+        setState(() {
+          _headers = _headers.sorted(column, ascending);
+          _statusSelected = true;
+        });
+        _load(1);
+      },
       // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助——单选互斥（点
       // 其他行自动换选、再点取消），双击进详情；办理仍逐条进入。选中态由行
       // 高亮表达，不画勾选框列也不驻「已选」胶囊。
@@ -549,7 +595,7 @@ class _ProcurementIqcRejectionListPageState
       emptyMessage: _emptyMessage,
       currentPage: result.page,
       totalPages: result.totalPages,
-      paginationScope: (_receiptType, _status, _keyword),
+      paginationScope: _query,
       onPageChange: (page) => _load(page, useCache: true),
     );
   }
@@ -574,18 +620,21 @@ class _ProcurementIqcRejectionListPageState
     ),
     MasterColumnDef(
       key: 'receiptBillNo',
+      sortable: true,
       label: '收货 / 回厂单',
       width: 170,
       value: (item) => item.receiptBillNo,
     ),
     MasterColumnDef(
       key: 'orderBillNo',
+      sortable: true,
       label: '订货单',
       width: 160,
       value: (item) => item.orderBillNo,
     ),
     MasterColumnDef(
       key: 'supplierName',
+      sortable: true,
       label: '供应商 / 委外商',
       width: 200,
       value: (item) => item.supplierName,
@@ -593,18 +642,21 @@ class _ProcurementIqcRejectionListPageState
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     MasterColumnDef(
       key: 'goodsName',
+      sortable: true,
       label: '不合格货品名称',
       width: 200,
       value: (item) => item.goodsName ?? '—',
     ),
     MasterColumnDef(
       key: 'goodsCode',
+      sortable: true,
       label: '编号',
       width: 130,
       value: (item) => item.goodsCode ?? '—',
     ),
     MasterColumnDef(
       key: 'colorName',
+      sortable: true,
       label: '颜色',
       width: 96,
       value: (item) => item.colorName ?? '—',
@@ -614,23 +666,29 @@ class _ProcurementIqcRejectionListPageState
       label: '不合格数量',
       width: 130,
       type: 'number',
+      sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (item) => item.failedQty,
       value: (item) => '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim(),
     ),
     MasterColumnDef(
       key: 'amount',
       label: '不合格金额(本币)',
+      info: '按本币原始金额筛选；未知金额不当零，脱敏金额不支持筛选或排序。',
       width: 150,
       type: 'money',
+      sortable: _canQueryAmount,
+      columnSearchEnabled: _canQueryAmount,
+      exactValueOf: (item) => item.priceMasked ? null : item.failedAmountLocal,
       value: (item) => item.localAmountLabel(item.failedAmountLocal),
     ),
     MasterColumnDef(
       key: 'holdReason',
+      sortable: true,
+      columnSearchEnabled: true,
       label: '异常原因 / 下一步',
       width: 280,
-      value: (item) =>
-          item.financeExceptionMessage ??
-          item.holdReason ??
-          _nextStep(item.status),
+      value: (item) => item.reasonLabel,
     ),
   ];
 
@@ -643,13 +701,3 @@ class _ProcurementIqcRejectionListPageState
     return '当前没有 IQC 不合格退回与贷项任务';
   }
 }
-
-String _nextStep(ProcurementIqcRejectionStatus status) => switch (status) {
-  ProcurementIqcRejectionStatus.pendingReturn => '下一步：登记真实退回凭证',
-  ProcurementIqcRejectionStatus.returnRecorded => '下一步：财务确认贷项或零金额结案',
-  ProcurementIqcRejectionStatus.financeException => '下一步：修复后重试财务投影',
-  ProcurementIqcRejectionStatus.creditConfirmed => '供应商贷项已闭环',
-  ProcurementIqcRejectionStatus.closedNoCredit => '零金额无需贷项，已结案',
-  ProcurementIqcRejectionStatus.reversed => '下游已反向',
-  ProcurementIqcRejectionStatus.unknown => '状态未知，请刷新或联系管理员',
-};

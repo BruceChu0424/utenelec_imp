@@ -49,6 +49,8 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
           key: '_revision',
           label: '变更',
           width: 96,
+          filterFromRows: true,
+          columnSearchEnabled: false,
           value: (row) => row.label,
         ),
         for (final column in columns)
@@ -57,6 +59,18 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
             label: column.label,
             width: column.width,
             type: column.type,
+            sortable: column.sortable,
+            filterFromRows: column.filterFromRows,
+            columnSearchEnabled: column.columnSearchEnabled,
+            info: column.info,
+            aiSensitive: column.aiSensitive,
+            exportable: column.exportable,
+            exactValueOf: column.exactValueOf == null
+                ? null
+                : (row) => column.exactValueOf!(row.value),
+            exactListenableOf: column.exactListenableOf == null
+                ? null
+                : (row) => column.exactListenableOf!(row.value),
             value: (row) => column.value(row.value),
             cellBuilder: (context, row) => Text(
               column.value(row.value) ?? '—',
@@ -78,6 +92,26 @@ class UtenCellRevisionTable<T> extends StatelessWidget {
               label: '新${column.label}',
               width: column.width,
               type: column.type,
+              sortable: column.sortable,
+              filterFromRows: column.filterFromRows,
+              columnSearchEnabled: column.columnSearchEnabled,
+              info: column.info,
+              aiSensitive: column.aiSensitive,
+              exportable: column.exportable,
+              exactValueOf: column.exactValueOf == null
+                  ? null
+                  : (row) =>
+                        row.after != null &&
+                            row.changedKeys.contains(column.key)
+                        ? column.exactValueOf!(row.after as T)
+                        : null,
+              exactListenableOf: column.exactListenableOf == null
+                  ? null
+                  : (row) =>
+                        row.after != null &&
+                            row.changedKeys.contains(column.key)
+                        ? column.exactListenableOf!(row.after as T)
+                        : null,
               value: (row) =>
                   row.after != null && row.changedKeys.contains(column.key)
                   ? column.value(row.after as T) ?? '未填写'

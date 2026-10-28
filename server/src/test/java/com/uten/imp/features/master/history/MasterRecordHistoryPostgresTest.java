@@ -808,6 +808,122 @@ class MasterRecordHistoryPostgresTest {
   }
 
   @Test
+  void indexedCategoryCandidatesRetainDescendantsMovedOutFactsAndExactCursorPagesWithoutDuplicates() {
+    UUID root = queryCategory(null, "root"), child = queryCategory(root, "child");
+    UUID outside = queryCategory(null, "outside");
+    UUID inside = goods("category candidate inside"), moved = goods("category candidate moved");
+    UUID unrelated = goods("category candidate unrelated");
+    inTx(() -> {
+      provenance();
+      for (UUID id : List.of(inside, moved)) {
+        em.createNativeQuery("UPDATE goods SET category_id=:category WHERE id=:id")
+            .setParameter("category", child).setParameter("id", id).executeUpdate();
+      }
+      em.createNativeQuery("UPDATE goods SET category_id=:category WHERE id=:id")
+          .setParameter("category", outside).setParameter("id", unrelated).executeUpdate();
+      return null;
+    });
+    inTx(() -> {
+      provenance();
+      em.createNativeQuery("UPDATE goods SET name='category candidate inside edited' WHERE id=:id")
+          .setParameter("id", inside).executeUpdate();
+      return null;
+    });
+    long overlappingVersion = ((Number) em.createNativeQuery(
+        "SELECT max(id) FROM master_record_versions WHERE entity_type='goods' AND record_id=:id")
+        .setParameter("id", inside).getSingleResult()).longValue();
+    inTx(() -> {
+      provenance();
+      em.createNativeQuery("UPDATE goods SET category_id=:category WHERE id=:id")
+          .setParameter("category", outside).setParameter("id", moved).executeUpdate();
+      return null;
+    });
+    long movedVersion = ((Number) em.createNativeQuery("""
+        SELECT id FROM master_record_versions WHERE entity_type='goods' AND record_id=:id
+          AND before_row->>'category_id'=:before AND after_row->>'category_id'=:after
+        ORDER BY id DESC LIMIT 1
+        """).setParameter("id", moved).setParameter("before", child.toString())
+        .setParameter("after", outside.toString()).getSingleResult()).longValue();
+
+    // Independent reference: the original OR predicate and transaction collapse,
+    // with no candidate CTE or new planner strategy copied into the expectation.
+    List<?> original = em.createNativeQuery("""
+        SELECT h.id FROM master_record_versions h WHERE h.entity_type='goods'
+          AND (h.record_id IN(:categories) OR h.category_id IN(:categories)
+            OR NULLIF(h.before_row->>'category_id','')::uuid IN(:categories))
+          AND NOT EXISTS(SELECT 1 FROM master_record_versions newer
+            WHERE newer.transaction_id=h.transaction_id AND newer.record_id=h.record_id
+              AND newer.entity_type=h.entity_type AND newer.id>h.id)
+        ORDER BY h.id DESC
+        """).setParameter("categories", Set.of(root, child)).getResultList();
+    List<Long> expected = original.stream().map(value -> ((Number) value).longValue()).toList();
+    assertTrue(expected.size() >= 6, "Root/child and both eras of object history must be retained");
+    login(Set.of("goods:view", "material_category:view"), false);
+    var whole = service.search("goods", null, root, null,
+        new MasterRecordHistoryService.Filters(null, null, null, null, null, null, 100));
+    assertEquals(expected, whole.entries().stream().map(entry -> historyNumber(entry.id())).toList());
+    assertTrue(whole.entries().stream().anyMatch(entry -> entry.recordId().equals(root)));
+    assertTrue(whole.entries().stream().anyMatch(entry -> entry.recordId().equals(child)));
+    assertFalse(whole.entries().stream().anyMatch(entry -> entry.recordId().equals(unrelated)));
+    assertEquals(1, whole.entries().stream().filter(entry -> historyNumber(entry.id()) == overlappingVersion).count(),
+        "A fact matching current and previous category branches must occur once");
+    assertTrue(whole.entries().stream().anyMatch(entry -> historyNumber(entry.id()) == movedVersion),
+        "Moving outside the selected subtree must not hide the before-category history");
+
+    List<Long> visited = new ArrayList<>();
+    Long cursor = null;
+    boolean terminal = false;
+    for (int page = 0; page <= expected.size(); page++) {
+      var next = service.search("goods", null, root, cursor,
+          new MasterRecordHistoryService.Filters(null, null, null, null, null, null, 2));
+      visited.addAll(next.entries().stream().map(entry -> historyNumber(entry.id())).toList());
+      if (next.nextCursor() == null) { terminal = true; break; }
+      assertFalse(next.entries().isEmpty());
+      assertEquals(next.entries().getLast().id(), next.nextCursor());
+      cursor = historyNumber(next.nextCursor());
+    }
+    assertTrue(terminal, "Cursor traversal must finish");
+    assertEquals(expected, visited, "Category cursor pages must keep exactly the original identities and order");
+    assertEquals(visited.size(), new HashSet<>(visited).size());
+    login(Set.of("goods:view"), false);
+    var withoutCategoryAuthority = service.search("goods", null, root, null,
+        new MasterRecordHistoryService.Filters(null, null, null, null, null, null, 100));
+    assertTrue(withoutCategoryAuthority.entries().stream().noneMatch(entry -> entry.sourceType().equals("CATEGORY")));
+    assertTrue(withoutCategoryAuthority.entries().stream().anyMatch(entry -> entry.recordId().equals(moved)));
+  }
+
+  @Test
+  void forwardPreviousCategoryIndexIsReadyAndMatchesTheTypedCandidateExpression() {
+    Object[] index = (Object[]) em.createNativeQuery("""
+        SELECT i.indisvalid,i.indisready,pg_get_indexdef(i.indexrelid),
+          pg_get_expr(i.indexprs,i.indrelid),i.indnkeyatts,(i.indoption[2] & 1)
+        FROM pg_index i WHERE i.indexrelid=to_regclass('public.ix_master_versions_before_category')
+        """).getSingleResult();
+    assertEquals(Boolean.TRUE, index[0]);
+    assertEquals(Boolean.TRUE, index[1]);
+    String definition = index[2].toString().toLowerCase(Locale.ROOT);
+    String expression = index[3].toString().toLowerCase(Locale.ROOT);
+    assertTrue(definition.contains("master_record_versions"));
+    assertTrue(definition.indexOf("entity_type") < definition.indexOf("before_row"));
+    assertTrue(expression.contains("nullif") && expression.contains("before_row")
+        && expression.contains("category_id") && expression.contains("::uuid"));
+    assertEquals(3, ((Number) index[4]).intValue());
+    assertEquals(1, ((Number) index[5]).intValue(), "The final index key must keep descending history identity");
+  }
+
+  private UUID queryCategory(UUID parent, String label) {
+    UUID id = UUID.randomUUID();
+    return inTx(() -> {
+      provenance();
+      em.createNativeQuery("INSERT INTO material_categories(id,code,name,parent_id) VALUES(:id,:code,:name,:parent)")
+          .setParameter("id", id).setParameter("code", "C-" + id)
+          .setParameter("name", "history candidate " + label + " " + id)
+          .setParameter("parent", parent).executeUpdate();
+      return id;
+    });
+  }
+
+  @Test
   void historyCategoryTreeIncludesDeletedNodesAndRequiresItsOwnViewPermission() {
     UUID root = UUID.randomUUID(), child = UUID.randomUUID();
     inTx(

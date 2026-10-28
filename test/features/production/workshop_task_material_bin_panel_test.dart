@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -191,6 +192,14 @@ void main() {
     await _mount(tester, status: 'ESTIMATED_SHORT');
     expect(find.text('预计不足 20 千克'), findsOneWidget);
     expect(find.text('新建补料申请'), findsOneWidget);
+    expect(find.textContaining('不要求每张工单先去仓库领料'), findsNothing);
+    final hint = find.byType(UtenFieldHintIcon).first;
+    expect(
+      tester.getRect(hint).center.dy,
+      closeTo(tester.getRect(find.text('车间内料仓')).center.dy, 16),
+    );
+    await tester.tap(hint);
+    await tester.pumpAndSettle();
     expect(find.textContaining('不要求每张工单先去仓库领料'), findsOneWidget);
   });
 

@@ -1,4 +1,6 @@
 import '../../basic_data/models/master_facet.dart';
+import '../../../shared/report/account_statement_column_query.dart'
+    show accountStatementSources;
 
 List<MasterFacetBucket> financeDictionaryFacets(Map<String, String> entries) {
   final sorted = entries.entries.toList(growable: false)
@@ -49,14 +51,7 @@ const financeArApSourceTypeFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'MANUAL_AP', label: '手工应付', count: 0),
 ];
 
-const financeReconciliationSourceFacets = <MasterFacetBucket>[
-  MasterFacetBucket(value: 'RECEIPT', label: '销售收款', count: 0),
-  MasterFacetBucket(value: 'PAYMENT', label: '采购付款', count: 0),
-  MasterFacetBucket(value: 'EXPENSE', label: '一般费用', count: 0),
-  MasterFacetBucket(value: 'INCOME', label: '其它收入', count: 0),
-  MasterFacetBucket(value: 'BANK_TRANSFER', label: '银行存取', count: 0),
-  MasterFacetBucket(value: 'BALANCE_ADJUSTMENT', label: '余额调整', count: 0),
-];
+const financeReconciliationSourceFacets = accountStatementSources;
 
 const financePayablesBusinessTypeFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: 'PURCHASE', label: '采购', count: 0),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uten_imp/components/layout/uten_pagination.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -48,20 +49,22 @@ class _Api extends ApiClient {
     calls.add((path: path, query: {...?query}));
     if (pending != null) return pending!.future;
     final page = query?['linePage'] as int? ?? 1;
+    final empty = query?['search.goodsName'] == '不匹配';
     return {
       'page': page,
       'size': 100,
-      'total': 101,
-      'totalPages': 2,
+      'total': empty ? 0 : 101,
+      'totalPages': empty ? 0 : 2,
       'lines': [
-        {
-          'goodsCode': 'PHYSICAL-$page',
-          'goodsName': '物料$page',
-          'quantity': page == 1 ? 7 : 3,
-          'unitName': '个',
-          'price': 'PRIVATE-PRICE',
-          'amount': 'PRIVATE-AMOUNT',
-        },
+        if (!empty)
+          {
+            'goodsCode': 'PHYSICAL-$page',
+            'goodsName': '物料$page',
+            'quantity': page == 1 ? 7 : 3,
+            'unitName': '个',
+            'price': 'PRIVATE-PRICE',
+            'amount': 'PRIVATE-AMOUNT',
+          },
       ],
     };
   }
@@ -86,6 +89,53 @@ Widget _app(_Api api) => ProviderScope(
 );
 
 void main() {
+  testWidgets(
+    'physical detail headers query all authorized lines and empty results retain a clearable schema',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1440, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _Api();
+      await tester.pumpWidget(_app(api));
+      await tester.pumpAndSettle();
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
+      expect(table().totalPages, 2);
+      expect(table().showPaginationControls, isFalse);
+      await tester.tap(find.text('数量'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=90071992547409.0001',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(api.calls.last.query['search.quantity'], '>=90071992547409.0001');
+      expect(api.calls.last.query['scopeWarehouseId'], 'warehouse-a');
+      table().onSortChange!('quantity', false);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
+      await tester.pumpAndSettle();
+      expect(api.calls.last.query['linePage'], 2);
+      expect(api.calls.last.query['sort'], 'quantity');
+      expect(api.calls.last.query['order'], 'desc');
+      expect(api.calls.last.query['search.quantity'], '>=90071992547409.0001');
+      table().onFilterChanged('search.goodsName', '不匹配');
+      await tester.pumpAndSettle();
+      expect(api.calls.last.query['linePage'], 1);
+      expect(table().items, isEmpty);
+      expect(
+        table().columns.map((column) => column.key),
+        containsAll(['goodsName', 'goodsCode', 'quantity', 'unitName']),
+      );
+      expect(table().serverColumnSearchKeys, contains('quantity'));
+      table().onFilterChanged('search.goodsName', null);
+      await tester.pumpAndSettle();
+      expect(api.calls.last.query.containsKey('search.goodsName'), isFalse);
+      expect(find.text('PHYSICAL-1'), findsOneWidget);
+      expect(find.textContaining('PRIVATE'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('其它出库撤回详情保留实物行身份，分页沿用精确范围且只显示物理字段', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -104,8 +154,12 @@ void main() {
     );
     expect(find.byType(DataTable), findsNothing);
     expect(find.textContaining('PRIVATE'), findsNothing);
-    expect(find.text('1 / 2'), findsOneWidget);
-    await tester.tap(find.text('下一页'));
+    expect(find.text('/ 2'), findsOneWidget);
+    expect(
+      tester.widget<UtenPagination>(find.byType(UtenPagination)).currentPage,
+      1,
+    );
+    await tester.tap(find.byKey(const ValueKey('master-table-page-next')));
     await tester.pumpAndSettle();
     expect(api.calls.last.query['linePage'], 2);
     expect(find.text('PHYSICAL-1'), findsNothing);

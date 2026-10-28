@@ -11,6 +11,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../models/workshop_material_report_models.dart';
 
 abstract interface class WorkshopMaterialReportRepository {
@@ -55,6 +56,7 @@ abstract interface class WorkshopMaterialReportRepository {
     String? to,
     int page = 1,
     int size = 50,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
   });
 }
 
@@ -188,10 +190,21 @@ class DioWorkshopMaterialReportRepository
     String? to,
     int page = 1,
     int size = 50,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
   }) async {
     final json = await api.get(
       ApiEndpoints.workshopMaterialReport('ledger'),
-      query: {..._range(binId, from, to), 'page': page, 'size': size},
+      query: {
+        ..._range(binId, from, to),
+        'page': page,
+        'size': size,
+        ...tableColumnParameters(
+          columnQuery.searches,
+          columnQuery.sort,
+          columnQuery.ascending,
+        ),
+        'kind': ?columnQuery.searches['kind'],
+      },
     );
     return PagedResult.fromJsonResponsive(json, WmLedgerRow.fromJson);
   }

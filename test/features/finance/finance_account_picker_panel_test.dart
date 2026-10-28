@@ -7,6 +7,41 @@ import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_account_picker_panel.dart';
 
 void main() {
+  testWidgets('account headers search the complete usable dictionary', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _open(tester, const [
+      FinanceAccountReference(
+        id: 'cny',
+        code: 'CNY-1',
+        name: '本地收款',
+        currencyCode: 'CNY',
+        status: '使用',
+        baseCurrency: true,
+      ),
+      FinanceAccountReference(
+        id: 'usd',
+        code: 'USD-1',
+        name: '外贸收款',
+        currencyCode: 'USD',
+        status: '使用',
+      ),
+    ], (_) {});
+    await tester.tap(find.text('账户名称'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '外贸',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.text('外贸收款'), findsOneWidget);
+    expect(find.text('本地收款'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'account picker requires all words across the displayed name and currency and keeps disabled rows out',
     (tester) async {

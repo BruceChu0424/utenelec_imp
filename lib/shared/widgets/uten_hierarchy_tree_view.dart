@@ -74,7 +74,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.onNodeTap,
     this.nodeEnabledPredicate,
     this.showSearch = true,
-    this.initiallyExpandDepth = 1,
+    this.initiallyExpandDepth = 0,
     this.initiallyExpandedIds = const {},
     this.initiallyCollapsedNames = const {},
     this.trailingBuilder,
@@ -207,6 +207,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   final _scrollController = ScrollController();
   bool _ownsSearchController = false;
   late Set<String> _expanded;
+  final Set<String> _manuallyCollapsed = {};
   String _query = '';
   UtenHierarchyContentWidthController? _widthController;
   Object? _forestWidthKey;
@@ -297,8 +298,19 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     if (widget.nodes != oldWidget.nodes ||
         widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth ||
         widget.initiallyExpandedIds != oldWidget.initiallyExpandedIds) {
-      // 保留已展开节点，补上默认可展开的新节点。
-      _expanded.addAll(_defaultExpanded());
+      // 刷新不能重新展开用户刚收起的节点；清掉已删除身份，保留其余手动状态。
+      final ids = <String>{};
+      void collect(List<T> nodes) {
+        for (final node in nodes) {
+          ids.add(node.id);
+          collect(node.children);
+        }
+      }
+
+      collect(widget.nodes);
+      _expanded.retainAll(ids);
+      _manuallyCollapsed.retainAll(ids);
+      _expanded.addAll(_defaultExpanded().difference(_manuallyCollapsed));
     }
   }
 
@@ -603,8 +615,10 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     setState(() {
       if (expanding) {
         _expanded.add(node.id);
+        _manuallyCollapsed.remove(node.id);
       } else {
         _expanded.remove(node.id);
+        _manuallyCollapsed.add(node.id);
       }
       if (duration == Duration.zero ||
           widget.visibleFilterIds != null ||

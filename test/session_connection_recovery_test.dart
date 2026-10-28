@@ -34,9 +34,13 @@ void main() {
         issuer: _fixtureIssuer,
       );
       final repository = _RecoveringAuthRepository();
+      var healthProbes = 0;
       final recovery = ConnectionRecoveryController(
-        probe: () async => true,
-        probeDelays: const <Duration>[Duration(hours: 1)],
+        probe: () async {
+          healthProbes++;
+          return true;
+        },
+        probeDelays: const <Duration>[Duration.zero],
         restoredDisplayDuration: const Duration(hours: 1),
       );
       final container = ProviderContainer(
@@ -64,9 +68,10 @@ void main() {
       expect(await storage.getRefreshToken(), 'valid-refresh');
 
       recovery.markDisconnected();
-      await recovery.retryNow();
       await pumpEventQueue();
 
+      expect(healthProbes, 1);
+      expect(recovery.state.recoveryEpoch, 1);
       expect(repository.meCalls, 2);
       expect(container.read(sessionProvider).status, AuthStatus.authenticated);
       expect(container.read(sessionProvider).user?.name, '恢复用户');

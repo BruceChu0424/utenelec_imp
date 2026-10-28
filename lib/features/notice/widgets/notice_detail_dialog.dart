@@ -11,6 +11,7 @@ import '../pages/notice_detail_page.dart';
 Future<void> showNoticeDetailDialog(
   BuildContext context, {
   required String noticeId,
+  VoidCallback? onBeforeActionNavigate,
 }) {
   // 弹窗外捕获 router：调用方（通知列表）context 在 go_router 栈内，GoRouter.of
   // 可达；弹窗内 context 取不到 GoRouterState，故「查看详情」跳转所需的 router 在
@@ -19,6 +20,7 @@ Future<void> showNoticeDetailDialog(
   if (context.breakpoint.isCompact) {
     return showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
@@ -29,6 +31,7 @@ Future<void> showNoticeDetailDialog(
           onBack: () => Navigator.of(sheetContext).pop(),
           onActionNavigate: (target) {
             Navigator.of(sheetContext).pop();
+            onBeforeActionNavigate?.call();
             router.go(target);
           },
         ),
@@ -50,6 +53,7 @@ Future<void> showNoticeDetailDialog(
             onBack: () => Navigator.of(dialogContext).pop(),
             onActionNavigate: (target) {
               Navigator.of(dialogContext).pop();
+              onBeforeActionNavigate?.call();
               router.go(target);
             },
           ),

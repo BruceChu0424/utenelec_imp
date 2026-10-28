@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -50,13 +51,7 @@ void main() {
           final header = find
               .ancestor(
                 of: find.text('号'),
-                matching: find.byWidgetPredicate((widget) {
-                  if (widget is! Container) return false;
-                  final box = widget.constraints;
-                  return box != null &&
-                      box.maxWidth.isFinite &&
-                      box.minWidth == box.maxWidth;
-                }),
+                matching: find.byType(UtenTableCellFrame),
               )
               .first;
           final grip = find.descendant(

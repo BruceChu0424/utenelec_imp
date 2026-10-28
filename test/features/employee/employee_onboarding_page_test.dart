@@ -115,14 +115,19 @@ Future<ProviderContainer> _pump(
   _OnboardingRepository repo, {
   bool accountSupport = false,
   bool authenticated = false,
+  String initialLocation = '/employee-list',
 }) async {
   tester.view.physicalSize = const Size(800, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final router = GoRouter(
-    initialLocation: '/employee-list',
+    initialLocation: initialLocation,
     routes: [
+      GoRoute(
+        path: '/employee',
+        builder: (_, _) => const Scaffold(body: Text('员工档案列表')),
+      ),
       GoRoute(
         path: '/employee-list',
         builder: (_, _) => Scaffold(
@@ -203,12 +208,59 @@ Future<ProviderContainer> _pump(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('员工列表'));
-  await tester.pumpAndSettle();
+  if (initialLocation == '/employee-list') {
+    await tester.tap(find.text('员工列表'));
+    await tester.pumpAndSettle();
+  }
   return container;
 }
 
 void main() {
+  for (final source in [null, '/employee-list']) {
+    testWidgets('无路由栈入职页返回恢复来源或员工列表 $source', (tester) async {
+      await _pump(
+        tester,
+        _OnboardingRepository(),
+        initialLocation: Uri(
+          path: '/employee/onboarding',
+          queryParameters: source == null ? null : {'returnTo': source},
+        ).toString(),
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(source == null ? '员工档案列表' : '员工列表'), findsOneWidget);
+      expect(find.byType(EmployeeOnboardingPage), findsNothing);
+      expect(tester.takeException(), isNull);
+      await _disposePage(tester);
+    });
+  }
+
+  testWidgets('深链入职创建成功返回员工列表且不报提交失败', (tester) async {
+    final repo = _OnboardingRepository();
+    final container = await _pump(
+      tester,
+      repo,
+      initialLocation: '/employee/onboarding',
+    );
+    await _fillRequiredAndGoLast(tester);
+    await _tapNext(tester);
+    expect(repo.created, isNotNull);
+    expect(find.text('员工档案列表'), findsOneWidget);
+    expect(
+      container
+          .read(appNotificationProvider)
+          .any((notice) => notice.message.contains('失败')),
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+    await _disposePage(tester);
+  });
+
   testWidgets('没有账号支持权限也可明确只建员工档案，不造登录账号', (tester) async {
     final repo = _OnboardingRepository();
     await _pump(tester, repo, authenticated: true);
@@ -252,6 +304,9 @@ void main() {
           .onPressed,
       isNull,
     );
+    await Navigator.of(tester.element(back)).maybePop();
+    await tester.pump();
+    expect(_currentStep(tester), 4, reason: '提交中的系统返回不能悄悄退回上一步');
     (container.read(sessionProvider.notifier) as _OnboardingActor).change();
     pending.complete(_issuedResult);
     await tester.pumpAndSettle();

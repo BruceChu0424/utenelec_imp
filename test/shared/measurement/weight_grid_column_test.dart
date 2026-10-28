@@ -196,6 +196,23 @@ void _expectSuggestedDecoration(WidgetTester tester) {
 }
 
 void main() {
+  test(
+    'header candidates retain entry units while formula facts remain kg',
+    () {
+      final row = _Row(kg: 0.85);
+      addTearDown(row.dispose);
+      row.weight.switchUnit(WeightUnit.g);
+      final column = weightGridColumn<_Row>(
+        controllerOf: (row) => row.weight,
+        entryUnit: WeightUnit.g,
+      );
+      expect(column.supportsKeywordSearch, isFalse);
+      expect(column.filterValueOf!(row), '850 g');
+      expect(column.exactValueOf!(row), '0.85');
+      row.weight.text.clear();
+      expect(column.filterValueOf!(row), isNull);
+    },
+  );
   test('建议值切换单位和规范文本不变实称，人工接管后不再覆盖', () {
     final c = WeightEntryController();
     addTearDown(c.dispose);
@@ -450,6 +467,54 @@ void main() {
     expect(b.weight.kg, isNull);
     expect(b.weight.text.text, isEmpty);
   });
+
+  testWidgets(
+    'focusing a selected weight cell retains its editor and native input client',
+    (tester) async {
+      final row = _Row();
+      final other = _Row();
+      final controller = await _pump(tester, [row, other]);
+      controller.setSelected([row, other], true);
+      await tester.pump();
+      final field = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, row.weight.text),
+      );
+      final editable = find.descendant(
+        of: field,
+        matching: find.byType(EditableText),
+      );
+      final fieldElement = tester.element(field);
+      final editableState = tester.state<EditableTextState>(editable);
+      int calls(String method) => tester.testTextInput.log
+          .where((call) => call.method == method)
+          .length;
+      final clearedClients = calls('TextInput.clearClient');
+
+      await tester.showKeyboard(field);
+      expect(tester.element(field), same(fieldElement));
+      expect(tester.state<EditableTextState>(editable), same(editableState));
+      expect(tester.widget<TextField>(field).focusNode!.hasFocus, isTrue);
+      expect(tester.testTextInput.hasAnyClients, isTrue);
+      expect(calls('TextInput.clearClient'), clearedClients);
+      final openedClients = calls('TextInput.setClient');
+
+      // Send through the existing native client, without finding/refocusing
+      // the field a second time to conceal a lost connection.
+      tester.testTextInput.enterText('1.2500');
+      await tester.pump();
+      expect(row.weight.kg, 1.25);
+      expect(row.weight.userEdited, isTrue);
+      expect(row.weight.text.text, '1.2500');
+      expect(other.weight.kg, isNull);
+      expect(tester.element(field), same(fieldElement));
+      expect(tester.state<EditableTextState>(editable), same(editableState));
+      expect(tester.testTextInput.hasAnyClients, isTrue);
+      expect(calls('TextInput.setClient'), openedClients);
+      expect(calls('TextInput.clearClient'), clearedClients);
+    },
+  );
 
   testWidgets('输入首字符后焦点保持：说明出现不重建输入框（不再要点第二次）', (tester) async {
     // 2026-10-10 根因修复回归锁：外层 Tooltip 曾按「有/无说明」切换包裹结构，

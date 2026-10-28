@@ -9,6 +9,44 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import '../../support/filter_segment_tap.dart';
 
 void main() {
+  testWidgets(
+    'monthly headers combine server status and exact amount filters',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _Api();
+      await _pump(
+        tester,
+        const SupplierSettlementPanel(),
+        api: api,
+        permissions: const {Perm.supplierSettlementView},
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('master-column-filter-status')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('已冻结').last);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['status'], 'FROZEN');
+      await tester.ensureVisible(find.text('期末(原币)'));
+      await tester.tap(find.text('期末(原币)'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=100.0001',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(
+        api.listQueries.last['search.closingBalanceOriginal'],
+        '>=100.0001',
+      );
+      expect(api.listQueries.last['status'], 'FROZEN');
+      expect(api.listQueries.last['page'], 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('375px monthly list remains usable', (tester) async {
     tester.view.physicalSize = const Size(375, 900);
     tester.view.devicePixelRatio = 1;

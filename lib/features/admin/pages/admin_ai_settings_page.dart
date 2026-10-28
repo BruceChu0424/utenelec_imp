@@ -377,6 +377,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.aiSettingsTitle,
+        info: l10n.aiSettingsSecurityNote,
         leading: const UtenBackButton(),
         actions: [
           UtenRefreshButton(
@@ -519,8 +520,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
                 );
               },
             ),
-          const SizedBox(height: UtenSpacing.s16),
-          _SecurityNote(text: l10n.aiSettingsSecurityNote),
+
           const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
         ],
       ),
@@ -808,36 +808,6 @@ class _EmptyProviders extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _SecurityNote extends StatelessWidget {
-  const _SecurityNote({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(
-          Icons.shield_outlined,
-          size: 16,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

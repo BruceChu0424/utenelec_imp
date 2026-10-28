@@ -1,3 +1,11 @@
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:flutter_riverpod/legacy.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -31,7 +39,260 @@ const _rootId = '00000000-0000-0000-0000-000000000001';
 const _childId = '00000000-0000-0000-0000-000000000002';
 const _createdId = '00000000-0000-0000-0000-000000000003';
 
+final _fixtureServer = StateProvider<String>(
+  (ref) => 'http://localhost:8080/api',
+);
+
 void main() {
+  for (final kind in [
+    'goods',
+    'mould',
+    'client',
+    'supplier',
+    'payment-style',
+  ]) {
+    for (final editing in [false, true]) {
+      testWidgets('$kind 分类${editing ? '保存' : '创建'}发送期间显示唯一公共等待且保留表单禁用态', (
+        tester,
+      ) async {
+        final fixture = _CategoryApi(kind)
+          ..holdCreate = true
+          ..holdUpdate = true;
+        await _pump(tester, fixture, canEdit: true);
+        if (editing) {
+          final List<UtenContextMenuEntry> entries;
+          if (kind == 'payment-style') {
+            final tree = tester.widget<UtenCategoryTreeView<PaymentStyleNode>>(
+              find.byType(UtenCategoryTreeView<PaymentStyleNode>),
+            );
+            entries = tree.rowMenuBuilder!(tree.nodes.first);
+          } else {
+            final tree = tester
+                .widget<UtenCategoryTreeView<ProductCategoryNode>>(
+                  find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+                );
+            final node = kind == 'mould'
+                ? tree.nodes.first.children.first
+                : tree.nodes.first;
+            entries = tree.rowMenuBuilder!(node);
+          }
+          final opening = Future<void>.sync(
+            entries
+                .whereType<UtenMenuItem>()
+                .firstWhere((entry) => entry.label.contains('编辑'))
+                .onTap,
+          );
+          await tester.pumpAndSettle();
+          await opening;
+        } else {
+          await tester.tap(
+            find.byTooltip(kind == 'payment-style' ? '新增最外层类别' : '新增最外层分类'),
+          );
+          await tester.pumpAndSettle();
+        }
+        await tester.enterText(
+          _nameField(payment: kind == 'payment-style'),
+          editing ? '保存后的分类' : '新分类等待核对',
+        );
+        await tester.tap(find.text(editing ? '保存' : '创建').last);
+        for (
+          var attempt = 0;
+          attempt < 30 &&
+              (editing ? fixture.heldUpdates : fixture.heldCreates).isEmpty;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        final noun = kind == 'payment-style' ? '类别' : '分类';
+        expect(find.text('正在${editing ? '保存' : '创建'}$noun'), findsOneWidget);
+        final button = tester.widget<UtenButton>(
+          find.widgetWithText(UtenButton, editing ? '保存' : '创建').last,
+        );
+        expect(button.onPressed, isNull);
+        expect(button.isLoading, isFalse, reason: '等待弹窗是主进度，不在底层按钮重复转圈');
+        expect(editing ? fixture.updates.length : fixture.creates.length, 1);
+        if (editing) {
+          fixture.releaseUpdate();
+        } else {
+          fixture.releaseCreate();
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('正在${editing ? '保存' : '创建'}$noun'), findsNothing);
+        expect(find.byType(CategoryEditDialog), findsNothing);
+        expect(editing ? fixture.updates.length : fixture.creates.length, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final kind in [
+    'goods',
+    'mould',
+    'client',
+    'supplier',
+    'payment-style',
+  ]) {
+    testWidgets('$kind 在途创建的旧回执不能覆盖返回原地址后的新查询或清除未知草稿', (tester) async {
+      final fixture = _CategoryApi(kind)..holdCreate = true;
+      await _pump(tester, fixture, enableDraftOwner: true);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(UtenSearchBar).first),
+      );
+      await tester.tap(
+        find.byTooltip(kind == 'payment-style' ? '新增最外层类别' : '新增最外层分类'),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        _nameField(payment: kind == 'payment-style'),
+        '保留原提交',
+      );
+      await tester.tap(find.text('创建').last);
+      for (
+        var attempt = 0;
+        attempt < 20 && fixture.heldCreates.isEmpty;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(fixture.heldCreates, hasLength(1));
+      expect(
+        container.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      container.read(_fixtureServer.notifier).state =
+          'http://other.fixture/api';
+      await tester.pump();
+      container.read(_fixtureServer.notifier).state =
+          'http://localhost:8080/api';
+      await tester.pumpAndSettle();
+      expect(find.text('新增分类'), findsNothing);
+      await _query(tester, '保留新范围查询');
+      container.read(appNotificationProvider.notifier).clear();
+      final reads = fixture.reads.length;
+      fixture.releaseCreate();
+      await tester.pumpAndSettle();
+      expect(_searchText(tester), '保留新范围查询');
+      expect(fixture.reads.length, reads);
+      expect(fixture.creates, hasLength(1));
+      expect(container.read(appNotificationProvider), isEmpty);
+      await container.read(formDraftsProvider.notifier).ready;
+      expect(
+        container.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final kind in ['goods', 'mould', 'client', 'supplier']) {
+    for (final fail in [false, true]) {
+      testWidgets('$kind 旧范围删除${fail ? '失败' : '成功'}回执不能通知或覆盖新查询', (
+        tester,
+      ) async {
+        final fixture = _CategoryApi(kind)..holdDelete = true;
+        await _pump(tester, fixture, canDelete: true);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(UtenSearchBar).first),
+        );
+        final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+          find.byWidgetPredicate((widget) => widget is UtenCategoryTreeView),
+        );
+        final node = kind == 'mould'
+            ? tree.nodes.first.children.first
+            : tree.nodes.first;
+        final action = (tree.trailingBuilder!(node) as UtenHierarchyNodeActions)
+            .operations
+            .delete!;
+        final pending = Future<void>.sync(action.onInvoke);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        if (kind == 'goods' || kind == 'mould') {
+          for (
+            var attempt = 0;
+            attempt < 10 && fixture.heldDeletes.isEmpty;
+            attempt++
+          ) {
+            await tester.pump(const Duration(milliseconds: 10));
+          }
+          fixture.releaseDelete(preview: true);
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('删除').last);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+        for (
+          var attempt = 0;
+          attempt < 10 && fixture.heldDeletes.isEmpty;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        container.read(readScopeRevisionProvider.notifier).state++;
+        await tester.pumpAndSettle();
+        expect(find.text('正在删除分类…'), findsNothing);
+        await _query(tester, '新范围查询');
+        container.read(appNotificationProvider.notifier).clear();
+        final reads = fixture.reads.length;
+        fixture.releaseDelete(fail: fail);
+        await tester.pumpAndSettle();
+        await pending;
+        expect(_searchText(tester), '新范围查询');
+        expect(fixture.reads.length, reads);
+        expect(container.read(appNotificationProvider), isEmpty);
+        expect(find.text('删除失败'), findsNothing);
+        expect(fixture.deleteCount, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final kind in ['goods', 'mould', 'client', 'supplier']) {
+    testWidgets('$kind 分类删除在预检与提交期间显示等待', (tester) async {
+      final fixture = _CategoryApi(kind)..holdDelete = true;
+      await _pump(tester, fixture, canDelete: true);
+      final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
+        find.byWidgetPredicate((widget) => widget is UtenCategoryTreeView),
+      );
+      final node = kind == 'mould'
+          ? tree.nodes.first.children.first
+          : tree.nodes.first;
+      final actions = tree.trailingBuilder!(node) as UtenHierarchyNodeActions;
+      final pending = Future<void>.sync(actions.operations.delete!.onInvoke);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      if (kind == 'goods' || kind == 'mould') {
+        expect(find.text('正在检查删除范围…'), findsOneWidget);
+        for (
+          var attempt = 0;
+          attempt < 10 && fixture.heldDeletes.isEmpty;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(fixture.heldDeletes.length, 1);
+        fixture.releaseDelete(preview: true);
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('删除分类'), findsOneWidget);
+      await tester.tap(find.text('删除').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      for (
+        var attempt = 0;
+        attempt < 20 && fixture.heldDeletes.isEmpty;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(find.text('正在删除分类…'), findsOneWidget);
+      fixture.releaseDelete();
+      await tester.pumpAndSettle();
+      await pending;
+      expect(find.text('正在删除分类…'), findsNothing);
+      expect(fixture.deleteCount, 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final scenario in [
     (width: 390.0, scale: 1.0, dark: false),
     (width: 900.0, scale: 1.3, dark: true),
@@ -114,6 +375,7 @@ void main() {
       );
       expect(search.left, closeTo(tree.left, 0.1));
       expect(find.text('真实业务根'), findsOneWidget);
+      await _revealExistingChild(tester);
       final beforeChild = tester.getTopLeft(find.text('既有子分类'));
       await tester.tap(find.text('既有子分类'));
       await tester.pumpAndSettle();
@@ -147,6 +409,7 @@ void main() {
       expect(_searchText(tester), isEmpty);
       expect(fixture.reads, contains('${fixture.categories}/$_createdId'));
       expect(find.text('新最外层分类'), findsWidgets);
+      await _revealExistingChild(tester);
       expect(find.text('真实业务根'), findsOneWidget);
       expect(
         tester.getTopLeft(find.text('既有子分类')).dx,
@@ -348,6 +611,7 @@ void main() {
       await _pump(tester, fixture);
       await selectFilterSegment(tester, category.label);
       await tester.pumpAndSettle();
+      await _revealExistingChild(tester);
       await tester.tap(
         find.descendant(
           of: find.byType(UtenCategoryTreeView<PaymentStyleNode>),
@@ -471,6 +735,9 @@ Future<void> _pump(
   WidgetTester tester,
   _CategoryApi fixture, {
   bool canCreate = true,
+  bool canDelete = false,
+  bool canEdit = false,
+  bool enableDraftOwner = false,
   Size size = const Size(1600, 1000),
   double textScale = 1,
   GoRouter? router,
@@ -483,11 +750,17 @@ Future<void> _pump(
   final preferences = await SharedPreferences.getInstance();
   final kind = fixture.kind;
   final permissions = kind == 'payment-style'
-      ? {Perm.paymentStyleView, if (canCreate) Perm.paymentStyleCreate}
+      ? {
+          Perm.paymentStyleView,
+          if (canCreate) Perm.paymentStyleCreate,
+          if (canEdit) Perm.paymentStyleEdit,
+        }
       : {
           '$kind:view',
           '${fixture.categoryKind}_category:view',
           if (canCreate) '${fixture.categoryKind}_category:create',
+          if (canDelete) '${fixture.categoryKind}_category:delete',
+          if (canEdit) '${fixture.categoryKind}_category:edit',
         };
   Widget builder(BuildContext context, Widget? child) => MediaQuery(
     data: MediaQuery.of(
@@ -524,6 +797,13 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
+        if (enableDraftOwner) ...[
+          apiBaseUrlProvider.overrideWith((ref) => ref.watch(_fixtureServer)),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'category-owner'),
+          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        ],
         apiClientProvider.overrideWithValue(ApiClient(fixture.dio)),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -534,6 +814,24 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  final virtualRoot = find.byTooltip('展开全部模具');
+  if (virtualRoot.evaluate().isNotEmpty) {
+    await tester.tap(virtualRoot);
+    await tester.pumpAndSettle();
+  }
+}
+
+Future<void> _revealExistingChild(WidgetTester tester) async {
+  final virtualRoot = find.byTooltip('展开全部模具');
+  if (virtualRoot.evaluate().isNotEmpty) {
+    await tester.tap(virtualRoot);
+    await tester.pumpAndSettle();
+  }
+  final businessRoot = find.byTooltip('展开真实业务根');
+  if (businessRoot.evaluate().isNotEmpty) {
+    await tester.tap(businessRoot);
+    await tester.pumpAndSettle();
+  }
 }
 
 class _CategoryApi {
@@ -546,6 +844,14 @@ class _CategoryApi {
   final creates = <Map<String, dynamic>>[];
   final reads = <String>[];
   final heldSearch = <(RequestOptions, RequestInterceptorHandler)>[];
+  final heldDeletes = <(RequestOptions, RequestInterceptorHandler)>[];
+  final heldCreates = <(RequestOptions, RequestInterceptorHandler)>[];
+  final heldUpdates = <(RequestOptions, RequestInterceptorHandler)>[];
+  final updates = <Map<String, dynamic>>[];
+  bool holdUpdate = false;
+  bool holdCreate = false;
+  bool holdDelete = false;
+  int deleteCount = 0;
   bool failCreate = false, holdSearch = false, created = false;
   String activeCategory = 'EXPENSE';
   String get categoryKind => kind == 'goods' ? 'material' : kind;
@@ -578,8 +884,25 @@ class _CategoryApi {
 
   void _request(RequestOptions request, RequestInterceptorHandler handler) {
     final path = request.path;
+    if (holdDelete &&
+        (request.method == 'DELETE' || path.endsWith('/delete-preview'))) {
+      if (request.method == 'DELETE') deleteCount++;
+      heldDeletes.add((request, handler));
+      return;
+    }
+    if (holdUpdate &&
+        request.method == 'PUT' &&
+        path.startsWith('$categories/')) {
+      updates.add(Map<String, dynamic>.from(request.data as Map));
+      heldUpdates.add((request, handler));
+      return;
+    }
     if (request.method == 'POST' && path == categories) {
       creates.add(Map<String, dynamic>.from(request.data as Map));
+      if (holdCreate) {
+        heldCreates.add((request, handler));
+        return;
+      }
       if (failCreate) {
         handler.reject(
           DioException(
@@ -645,6 +968,61 @@ class _CategoryApi {
     }
     handler.resolve(
       Response(requestOptions: request, statusCode: 200, data: data),
+    );
+  }
+
+  void releaseUpdate() {
+    final (request, handler) = heldUpdates.removeAt(0);
+    handler.resolve(
+      Response(
+        requestOptions: request,
+        statusCode: 200,
+        data: node(_rootId, '保存后的分类'),
+      ),
+    );
+  }
+
+  void releaseCreate() {
+    final (request, handler) = heldCreates.removeAt(0);
+    created = true;
+    handler.resolve(
+      Response(
+        requestOptions: request,
+        statusCode: 200,
+        data: node(_createdId, '保留原提交'),
+      ),
+    );
+  }
+
+  void releaseDelete({bool preview = false, bool fail = false}) {
+    final (request, handler) = heldDeletes.removeAt(0);
+    if (fail) {
+      handler.reject(
+        DioException(
+          requestOptions: request,
+          type: DioExceptionType.badResponse,
+          response: Response(
+            requestOptions: request,
+            statusCode: 409,
+            data: {'code': 'CONFLICT', 'message': '旧范围删除失败'},
+          ),
+        ),
+      );
+      return;
+    }
+    handler.resolve(
+      Response(
+        requestOptions: request,
+        statusCode: 200,
+        data: preview
+            ? {
+                'id': _rootId,
+                'descendantCount': 0,
+                'goodsCount': 0,
+                'mouldCount': 0,
+              }
+            : null,
+      ),
     );
   }
 

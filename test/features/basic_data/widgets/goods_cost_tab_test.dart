@@ -46,6 +46,9 @@ import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/search/table_column_query.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
 Map<String, dynamic> _input() => {
   'goodsId': 'product',
@@ -111,6 +114,56 @@ Map<String, dynamic> _calculation({String total = '6337.3207'}) => {
 };
 
 class _Costs extends Fake implements GoodsCostRepository {
+  final versionQueries = <({int page, TableColumnQuery query})>[];
+  Completer<void>? versionGate;
+  bool failVersionHeaders = false;
+  int? versionTotal;
+  ApiException? versionReadError;
+  @override
+  Future<PagedResult<Map<String, dynamic>>> versions(
+    String goodsId, {
+    int page = 1,
+    int size = 50,
+    TableColumnQuery columnQuery = const TableColumnQuery(),
+  }) async {
+    versionQueries.add((page: page, query: columnQuery));
+    if (versionReadError != null) {
+      throw versionReadError!;
+    }
+    if (columnQuery.searches['search.name'] != null) {
+      await versionGate?.future;
+      if (failVersionHeaders) {
+        throw StateError('version query failed');
+      }
+    }
+    final items = [
+      for (final row in await list(goodsId))
+        {
+          ...row,
+          'currencyId': 'cny',
+          'currencyName': 'CNY',
+          'batchQty': '1000',
+          'knownTotal': '6337.3207',
+          'unitId': 'piece',
+          'unitName': '件',
+          'updatedAt': '2026-01-01T00:00:00Z',
+        },
+    ];
+    final total = versionTotal ?? items.length;
+    return PagedResult(
+      items: items,
+      page: page,
+      size: size,
+      total: total,
+      totalPages: total == 0 ? 0 : (total + size - 1) ~/ size,
+      facets: {
+        'currencyName': [
+          MasterFacetBucket(value: 'cny', label: 'CNY', count: total),
+        ],
+      },
+    );
+  }
+
   int bootstrapCalls = 0;
   int productionCalls = 0;
   Map<String, dynamic>? actualFilters;
@@ -219,6 +272,24 @@ class _Costs extends Fake implements GoodsCostRepository {
       'contentDigest': 'actual-1',
     };
   }
+}
+
+class _SnapshotHeaderCosts extends _Costs {
+  @override
+  Future<List<Map<String, dynamic>>> snapshots(String id) async => [
+    {
+      'id': 'snapshot-older',
+      'kind': 'DRAFT_EXPORT',
+      'sheetVersion': 2,
+      'createdAt': '2025-12-31T16:30:00Z',
+    },
+    {
+      'id': 'snapshot-newer',
+      'kind': 'CONFIRMED',
+      'sheetVersion': 12,
+      'createdAt': '2026-01-01T00:00:00Z',
+    },
+  ];
 }
 
 class _CostFilesPicker extends FilePicker {
@@ -1200,6 +1271,7 @@ Future<void> _pump(
   StateProvider<Set<String>>? livePermissions,
   double textScale = 1,
   TargetPlatform? platform,
+  bool expandTree = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -1267,6 +1339,13 @@ Future<void> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  // Calculation/editor tests explicitly open their fixture; the product itself
+  // starts collapsed. Default-state regressions opt out below.
+  if (expandTree &&
+      find.byKey(const Key('cost-tree-expansion')).evaluate().isNotEmpty) {
+    await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _settings(WidgetTester tester) async {
@@ -1334,6 +1413,227 @@ TextField _costInput(WidgetTester tester, Finder formField) =>
     );
 
 void main() {
+  testWidgets(
+    'cost snapshots have real kind facets, numeric versions and Beijing date headers',
+    (tester) async {
+      final repo = _SnapshotHeaderCosts();
+      await _pump(tester, repo);
+      await _more(tester, '历史快照');
+      final tableFinder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<Map<String, dynamic>> &&
+            widget.tableKey == 'master.goods.cost.snapshots',
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        tableFinder,
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'kind')
+            .filterFromRows,
+        isTrue,
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'sheetVersion')
+            .type,
+        'number',
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'sheetVersion')
+            .sortable,
+        isTrue,
+      );
+      expect(
+        table.columns.singleWhere((column) => column.key == 'createdAt').type,
+        'date',
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'createdAt')
+            .value(table.items.first),
+        '2026-01-01 00:30:00(北京)',
+      );
+      final header = find.descendant(
+        of: tableFinder,
+        matching: find.text(
+          table.columns
+              .singleWhere((column) => column.key == 'sheetVersion')
+              .label,
+        ),
+      );
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=10',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: tableFinder, matching: find.text('12')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: tableFinder, matching: find.text('2')),
+        findsNothing,
+      );
+      expect(repo.saved, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cost version pane queries complete server scope and keeps unaccepted filters separate from saved rows',
+    (tester) async {
+      final repo = _Costs()..versionTotal = 501;
+      await _pump(tester, repo);
+      await _more(tester, '历史成本记录');
+      final finder = find.byWidgetPredicate(
+        (widget) =>
+            widget is MasterDataTableView<Map<String, dynamic>> &&
+            widget.tableKey == 'master.goods.cost.versions',
+      );
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(finder);
+      expect(table().totalPages, 11);
+      final versionColumn = table().columns.singleWhere(
+        (column) => column.key == 'version',
+      );
+      expect(
+        versionColumn.value({
+          'version': 9007199254740992,
+          'versionExact': '9007199254740993',
+        }),
+        '9007199254740993',
+      );
+      expect(
+        versionColumn.exactValueOf!({
+          'version': 9007199254740992,
+          'versionExact': '9007199254740993',
+        }),
+        '9007199254740993',
+      );
+      expect(
+        table().columns
+            .singleWhere((column) => column.key == 'knownTotal')
+            .columnSearchEnabled,
+        isFalse,
+      );
+      table().onFilterChanged('currencyName', 'cny');
+      await tester.pumpAndSettle();
+      expect(
+        table().columns
+            .singleWhere((column) => column.key == 'knownTotal')
+            .columnSearchEnabled,
+        isTrue,
+      );
+      final amount = find.descendant(
+        of: finder,
+        matching: find.text(
+          table().columns
+              .singleWhere((column) => column.key == 'knownTotal')
+              .label,
+        ),
+      );
+      await tester.tap(amount);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '>=90071992547409.0001',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(
+        repo.versionQueries.last.query.searches,
+        containsPair('search.knownTotal', '>=90071992547409.0001'),
+      );
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(
+        repo.versionQueries
+            .lastWhere((query) => query.page == 2)
+            .query
+            .searches,
+        containsPair('currencyName', 'cny'),
+      );
+      final gate = Completer<void>();
+      repo.versionGate = gate;
+      table().onFilterChanged('search.name', 'unaccepted');
+      await tester.pump();
+      await tester.pump();
+      expect(table().items, isEmpty);
+      repo.failVersionHeaders = true;
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      table().onFilterChanged('search.name', null);
+      await tester.pumpAndSettle();
+      expect(table().items, isNotEmpty);
+      final currencyHeader = find
+          .descendant(of: finder, matching: find.text('CNY'))
+          .first;
+      await tester.tap(currencyHeader);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('所有').last);
+      await tester.pumpAndSettle();
+      expect(
+        repo.versionQueries.last.query.searches.containsKey(
+          'search.knownTotal',
+        ),
+        isFalse,
+      );
+      expect(repo.versionQueries.last.query.sort, isNull);
+      repo.versionReadError = ApiException(
+        'FORBIDDEN',
+        'version scope revoked',
+        httpStatus: 403,
+      );
+      table().onRetry!();
+      await tester.pumpAndSettle();
+      expect(table().items, isEmpty);
+      expect(repo.saved, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'cost column search retains visible ancestor chain and leaves the complete input model intact',
+    (tester) async {
+      final repo = _PeerHierarchyCosts();
+      await _pump(tester, repo);
+      final table = find.byKey(const ValueKey('cost-material-product'));
+      final original = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        table,
+      );
+      expect(original.items, hasLength(8));
+      expect(original.columns.where((column) => column.sortable), isEmpty);
+      final previews = repo.previewCalls;
+      final name = original.columns.singleWhere(
+        (column) => column.key == 'goodsName',
+      );
+      await tester.tap(find.text(name.label));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        'opaque-leaf-a',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(find.text('root-a'), findsOneWidget);
+      expect(find.text('opaque-shared-a'), findsOneWidget);
+      expect(find.text('opaque-leaf-a'), findsOneWidget);
+      expect(find.text('opaque-other-a'), findsNothing);
+      expect(find.text('root-b'), findsNothing);
+      expect(
+        tester.widget<MasterDataTableView<Map<String, dynamic>>>(table).items,
+        hasLength(8),
+      );
+      expect(repo.previewCalls, previews);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'import mapping empty fields name their business facts and retain exact reviewed values',
     (tester) async {
@@ -1539,6 +1839,41 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'cost hierarchy defaults closed and refresh preserves manual expansion and collapse',
+    (tester) async {
+      final repo = _HierarchyCosts();
+      await _pump(
+        tester,
+        repo,
+        platform: TargetPlatform.windows,
+        expandTree: false,
+      );
+      final root = find.byKey(
+        const ValueKey('goods-cost-tree-toggle-assembly-a'),
+      );
+      final child = find.byKey(
+        const ValueKey('goods-cost-tree-cell-assembly-a/shared'),
+      );
+      final grandchild = find.byKey(
+        const ValueKey('goods-cost-tree-cell-assembly-a/shared/leaf'),
+      );
+      expect(child, findsNothing);
+      await tester.tap(root);
+      await tester.pumpAndSettle();
+      expect(child, findsOneWidget);
+      expect(grandchild, findsNothing);
+      await _more(tester, '刷新来源价格与用量');
+      expect(child, findsOneWidget);
+      expect(grandchild, findsNothing);
+      await tester.tap(root);
+      await tester.pumpAndSettle();
+      await _more(tester, '刷新来源价格与用量');
+      expect(child, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('cost tree toggles retain settled column width on every frame', (
     tester,
   ) async {

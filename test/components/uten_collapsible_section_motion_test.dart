@@ -54,11 +54,10 @@ void main() {
       );
       expect(
         tester
-            .widget<TweenAnimationBuilder<double>>(
-              find.byType(TweenAnimationBuilder<double>),
-            )
-            .duration,
-        Duration.zero,
+            .widget<SizeTransition>(find.byType(SizeTransition))
+            .sizeFactor
+            .value,
+        0,
       );
       await tester.tap(find.text('产品明细'));
       await tester.pump();
@@ -90,11 +89,10 @@ void main() {
       );
       expect(
         tester
-            .widget<TweenAnimationBuilder<double>>(
-              find.byType(TweenAnimationBuilder<double>),
-            )
-            .duration,
-        Duration.zero,
+            .widget<SizeTransition>(find.byType(SizeTransition))
+            .sizeFactor
+            .value,
+        1,
       );
       await tester.tap(find.text('明细'));
       await tester.pumpAndSettle();

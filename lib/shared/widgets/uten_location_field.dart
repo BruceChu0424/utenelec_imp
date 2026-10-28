@@ -8,6 +8,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/layout/uten_adaptive_panel.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../core/theme/uten_tokens.dart';
 
@@ -279,8 +280,13 @@ class _UtenLocationPickerSheetState<T>
               Icons.account_tree_outlined,
               color: theme.colorScheme.primary,
             ),
-            title: Text(widget.rootLabel),
-            subtitle: widget.rootHint == null ? null : Text(widget.rootHint!),
+            title: Row(
+              children: [
+                Flexible(child: Text(widget.rootLabel)),
+                if (widget.rootHint?.trim().isNotEmpty == true)
+                  UtenFieldHintIcon(info: widget.rootHint, dense: true),
+              ],
+            ),
             trailing: rootSelected
                 ? Icon(
                     Icons.check_circle_rounded,

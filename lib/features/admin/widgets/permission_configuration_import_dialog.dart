@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_section_header.dart';
 import 'admin_account_lifecycle_text.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -441,7 +442,10 @@ class _ImportState extends ConsumerState<PermissionConfigurationImportDialog> {
       },
       child: UtenAlertDialog(
         maxWidth: 860,
-        title: const Text('导入权限设置'),
+        title: const UtenSectionHeader(
+          title: '导入权限设置',
+          info: '核对本次接收权限的部门和人员。编号、工号相同的项目已预选；未建立的部门或账号需先创建，也可以手动选择目标。',
+        ),
         content: SizedBox(
           width: 800,
           child: Column(
@@ -450,10 +454,7 @@ class _ImportState extends ConsumerState<PermissionConfigurationImportDialog> {
               Text(
                 '备份包含 ${_departments.length} 个部门、${_users.length} 位员工和 ${widget.configuration.baseline.length} 项全员基础权限。',
               ),
-              const SizedBox(height: UtenSpacing.s8),
-              const Text(
-                '核对本次接收权限的部门和人员。编号、工号相同的项目已预选；未建立的部门或账号需先创建，也可以手动选择目标。',
-              ),
+
               const SizedBox(height: UtenSpacing.s8),
               if (_users.any((target) => !target.restorable))
                 Text(

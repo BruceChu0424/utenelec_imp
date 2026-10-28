@@ -1,3 +1,5 @@
+import '../../../support/table_cell_geometry.dart';
+import '../../../support/table_read_status.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -189,20 +191,8 @@ Future<void> _activateName(WidgetTester tester, [String id = 'g1']) async {
   await tester.pumpAndSettle();
 }
 
-double _nameColumnWidth(WidgetTester tester) {
-  final containers = tester.widgetList<Container>(
-    find.ancestor(of: find.text('名称'), matching: find.byType(Container)),
-  );
-  for (final container in containers) {
-    final constraints = container.constraints;
-    if (constraints != null &&
-        constraints.maxWidth.isFinite &&
-        constraints.minWidth == constraints.maxWidth) {
-      return constraints.maxWidth;
-    }
-  }
-  fail('No fixed-width name header found');
-}
+double _nameColumnWidth(WidgetTester tester) =>
+    tableCellWidth(tester, find.text('名称'));
 
 Future<void> _capturePreview(WidgetTester tester, String name) async {
   if (Platform.environment['MASTER_INLINE_PREVIEW'] != '1') return;
@@ -405,7 +395,20 @@ void main() {
         lessThan(tester.getTopLeft(find.text('编号').first).dx),
       );
       final previewWidth = _nameColumnWidth(tester);
-      expect(previewWidth, greaterThanOrEqualTo(140));
+      expect(
+        previewWidth,
+        greaterThanOrEqualTo(
+          nameHeader.minimumWidthOf!(
+            tester.element(find.byType(MasterDataTableView<_Row>)),
+          ),
+        ),
+      );
+      final previewText = tester.renderObject<RenderParagraph>(
+        find
+            .descendant(of: find.text('原名称'), matching: find.byType(RichText))
+            .first,
+      );
+      expect(previewText.didExceedMaxLines, isFalse);
       await _activateName(tester);
       expect(_nameColumnWidth(tester), previewWidth);
       await tester.tap(find.text('取消编辑'));
@@ -628,7 +631,10 @@ void main() {
             .every((field) => field.readOnly),
         isTrue,
       );
-      expect(find.textContaining('修改已保存，但列表刷新失败'), findsWidgets);
+      await expectTableReadFailureDetails(
+        tester,
+        '修改已保存，但列表刷新失败。请重新加载后继续编辑，不要重复保存。\n刷新连接失败',
+      );
       expect(
         tester
             .widget<UtenButton>(find.widgetWithText(UtenButton, '保存 1 行修改'))

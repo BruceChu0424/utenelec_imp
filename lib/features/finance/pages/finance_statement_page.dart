@@ -1,3 +1,4 @@
+import '../../../shared/paging/paged_query_identity.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 import '../../../shared/providers/master_party_options.dart';
@@ -36,6 +37,7 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_supplier_picker.dart';
 import '../providers/finance_name_provider.dart';
@@ -43,6 +45,7 @@ import '../../report/shared/report_cell.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_metadata_reuse.dart';
 import '../../report/shared/report_paged_read.dart';
+import '../../report/shared/report_print_preview.dart';
 import '../../report/shared/report_date_range.dart';
 import '../widgets/finance_date_range_filter.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -67,6 +70,15 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   String _keyword = '';
+  final Map<String, String?> _filters = {};
+  static const _originalAmounts = {
+    'salesOriginal',
+    'receiptOriginal',
+    'balanceOriginal',
+  };
+  bool get _hasCurrency =>
+      _filters['currencyCode'] != null &&
+      _filters['currencyCode'] != kMasterFilterNullValue;
   int _page = 1;
   final int _size = 50;
 
@@ -80,6 +92,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   Object? _acceptedReadQuery;
   late final _reportRead = ReportPagedRead(_reportMetadata);
   bool _loading = false;
+  String? _reportError;
   int _loadGeneration = 0;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
@@ -98,6 +111,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         _loading = false;
         _page = 1;
         _keyword = '';
+        _filters.clear();
         _partyId = null;
       });
     });
@@ -171,7 +185,11 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
   }
 
   void _onPartyChanged(String? value) {
-    setState(() => _partyId = value);
+    setState(() {
+      _partyId = value;
+      _filters.clear();
+      _sortKey = null;
+    });
     _persistAndReload();
   }
 
@@ -190,6 +208,8 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       'dateTo': _fmt(_to),
     },
     if (_view == _StmtView.annual) 'year': _year,
+    if (_view != _StmtView.annual && _keyword.isNotEmpty) 'keyword': _keyword,
+    for (final entry in _filters.entries) 'f.${entry.key}': entry.value,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
@@ -201,7 +221,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         mounted &&
         generation == _loadGeneration &&
         readEpoch == ref.read(exportContextEpochProvider);
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _reportError = null;
+    });
     final api = ref.read(apiClientProvider);
     try {
       final query = _readQuery;
@@ -264,18 +287,50 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         });
       }
       context.appError(humanErrorMessage(e) ?? '对账单没有加载出来，请稍后重试');
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _reportError = humanErrorMessage(e) ?? '对账单没有加载出来，请稍后重试';
+      });
     }
   }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  bool get _acceptedQueryCurrent =>
+      _data != null &&
+      const DeepCollectionEquality().equals(_acceptedReadQuery, [
+        ref.read(exportContextEpochProvider),
+        ref.read(apiClientProvider),
+        _endpoint,
+        _readQuery,
+      ]);
+
   /// 表头排序回调：column=null 取消排序回到默认；否则按该列升/降序重新请求后端。
   void _onSortChange(String? column, bool ascending) {
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
+      _page = 1;
+    });
+    _persistPrefs();
+    _load();
+  }
+
+  void _onFilterChanged(String key, String? value) {
+    setState(() {
+      if (value == null) {
+        _filters.remove(key);
+        if (!key.startsWith('search.')) _filters.remove('search.$key');
+      } else {
+        _filters[key] = value;
+      }
+      if (key == 'currencyCode') {
+        for (final amount in _originalAmounts) {
+          _filters.remove('search.$amount');
+        }
+        if (_originalAmounts.contains(_sortKey)) _sortKey = null;
+      }
       _page = 1;
     });
     _persistPrefs();
@@ -298,34 +353,25 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       'dateTo': _fmt(_to),
     },
     if (_view == _StmtView.annual) 'year': _year,
+    if (_view != _StmtView.annual && _keyword.isNotEmpty) 'keyword': _keyword,
+    for (final entry in _filters.entries) 'f.${entry.key}': entry.value,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
-  /// 打印预览数据：按当前视图/往来单位口径拉全量（上限 2000 行），列/格式化与页面表格一致。
+  /// 按当前视图和往来范围分页读取前2000行，保持原预览上限及列格式。
   Future<UtenPrintTable> _printLoader() async {
     final api = ref.read(apiClientProvider);
-    final json = await api.get(
-      _endpoint,
-      query: <String, dynamic>{
-        ..._exportQuery,
-        'page': 1,
-        'size': 2000,
-        ...reportRowsOnlyQuery,
-      },
-    );
-    final data = await parseReportResponseResponsive(json, 1);
-    return UtenPrintTable(
-      columnKeys: [for (final c in data.columns) c.key],
-      rowIds: [for (final r in data.rows) r['id']?.toString()],
-      factValues: [
-        for (final r in data.rows)
-          {for (final entry in r.entries) entry.key: entry.value?.toString()},
-      ],
-      headers: [for (final c in data.columns) c.label],
-      rows: [
-        for (final r in data.rows)
-          [for (final c in data.columns) formatReportCell(c, r) ?? ''],
-      ],
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    return loadBoundedReportPrintPreview(
+      api: api,
+      endpointOf: () => _endpoint,
+      queryOf: () => _exportQuery,
+      isCurrent: () =>
+          mounted &&
+          generation == _loadGeneration &&
+          epoch == ref.read(exportContextEpochProvider) &&
+          identical(api, ref.read(apiClientProvider)),
     );
   }
 
@@ -499,6 +545,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     if (v == _view) return;
     setState(() {
       _view = v;
+      _filters.clear();
+      _keyword = '';
+      _sortKey = null;
       _page = 1;
       _data = null;
     });
@@ -512,6 +561,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     if (_side == side) return;
     setState(() {
       _side = side;
+      _filters.clear();
+      _keyword = '';
+      _sortKey = null;
       _partyId = null;
       _page = 1;
       _data = null;
@@ -525,10 +577,9 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     if (_partyId == null) {
       return const Center(child: Text('请先选择往来单位'));
     }
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
-    if (data == null) {
-      return const Center(child: Text('点击「查询」加载'));
-    }
+    final data = _acceptedQueryCurrent
+        ? _data!
+        : (_data?.pendingQuery() ?? _reportMetadata.loadingData);
     // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
     // 排到最前，其余列保持服务端顺序；两个分区各自保持原有相对顺序。
     final orderedColumns = [
@@ -544,8 +595,27 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
             width: _isStatusColumnLabel(c.label)
                 ? 72
                 : (c.width ?? 120).toDouble(),
-            type: c.type,
-            sortable: isSortableReportType(c.type),
+            type: c.key == 'ym' ? 'date' : c.type,
+            columnSearchEnabled:
+                data.columnSearchKeys.contains(c.key) &&
+                (!_originalAmounts.contains(c.key) || _hasCurrency),
+            sortable:
+                c.key != 'returned' &&
+                isSortableReportType(c.type) &&
+                (!_originalAmounts.contains(c.key) || _hasCurrency),
+            exactValueOf:
+                const {'number', 'money', 'count', 'int'}.contains(c.type)
+                ? (row) => row[c.key] == null
+                      ? null
+                      : (row['${c.key}Exact'] ?? row[c.key]).toString()
+                : null,
+            info: c.key == 'returned'
+                ? '退货已计入立账发生额；此列为原模板占位，不单独比较或合计'
+                : _originalAmounts.contains(c.key) && !_hasCurrency
+                ? '请先在币别列选择一个币种，再比较或排序原币金额'
+                : c.key.startsWith('balance')
+                ? '余额按原始日期和入账顺序完整累计，再筛选或排序；不对余额求和'
+                : null,
             value: (row) => formatReportCell(c, row),
           ),
         )
@@ -557,6 +627,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       tableKey:
           'features.finance.pages.finance_statement_page.FinanceStatementPageState._buildTable.1',
       columns: columns,
+      serverColumnSearchKeys: data.columnSearchKeys,
+      headerFilterScopeDescription: _view == _StmtView.annual
+          ? '按完整月份汇总后筛选；发生额合计覆盖筛选月份，期初期末不相加'
+          : '先按原始入账顺序计算完整余额，再筛选和排序；原币发生额按币种分别合计',
       items: data.rows,
       toolbarActions: [
         // 对帐单需先选往来单位；未选时按钮仍显，点击后后端返回空表（partyStatement* 空结构）。
@@ -584,14 +658,15 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           size: UtenButtonSize.large,
         ),
       ],
-      facets: const {},
+      facets: data.facets,
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: _filters,
+      onFilterChanged: _onFilterChanged,
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
       isLoading: _loading,
+      error: _acceptedQueryCurrent ? null : _reportError,
       onRetry: _load,
       emptyMessage: '暂无对帐数据',
       // 服务端分页表格：合计由后端在整个结果集上算（reportTotalsBar），
@@ -611,6 +686,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
         _from,
         _to,
         _keyword,
+        PagedReadQueryKey(_filters),
       ),
       onPageChange: (p) {
         _page = p;

@@ -11,34 +11,27 @@
 import 'package:flutter/material.dart';
 
 import '../cards/uten_card.dart';
+import '../inputs/uten_field_hint_icon.dart';
+import '../layout/uten_section_header.dart';
 
 class SettingsSection extends StatelessWidget {
   const SettingsSection({
     super.key,
     required this.title,
     required this.children,
+    this.info,
   });
 
   final String title;
   final List<Widget> children;
+  final String? info;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ),
+        UtenSectionHeader(title: title, info: info, subdued: true),
         const SizedBox(height: 8),
         UtenCard(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -72,10 +65,13 @@ class SettingsItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ExpansionTile(
-      title: Text(title, style: theme.textTheme.bodyLarge),
-      subtitle: subtitle != null
-          ? Text(subtitle!, style: theme.textTheme.bodySmall)
-          : null,
+      title: Row(
+        children: [
+          Flexible(child: Text(title, style: theme.textTheme.bodyLarge)),
+          if (subtitle?.trim().isNotEmpty == true)
+            UtenFieldHintIcon(info: subtitle, dense: true),
+        ],
+      ),
       shape: const Border(),
       collapsedShape: const Border(),
       tilePadding: EdgeInsets.zero,

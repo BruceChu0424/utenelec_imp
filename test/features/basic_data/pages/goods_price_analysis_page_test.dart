@@ -2007,6 +2007,96 @@ void main() {
     expect(repository.tableQueries.last['sort'], 'unitPrice');
   });
 
+  testWidgets(
+    'full price history headers use typed server queries and search remote candidates inside the same criteria',
+    (tester) async {
+      final repository = _Repository();
+      await pump(tester, repository);
+      await tester.pumpAndSettle();
+      await scrollToRows(tester);
+      await tester.ensureVisible(find.text('查看全部历史'));
+      await tester.tap(find.text('查看全部历史'));
+      await tester.pumpAndSettle();
+      final finder = find.byKey(const Key('goods-price-history-table'));
+      MasterDataTableView<PriceObservation> table() => tester.widget(finder);
+      expect(
+        table().serverColumnSearchKeys,
+        containsAll([
+          'sourceNo',
+          'businessDate',
+          'unitPrice',
+          'quantity',
+          'amount',
+          'partnerName',
+          'colorName',
+        ]),
+      );
+      expect(
+        table().columns
+            .singleWhere((column) => column.key == 'comparable')
+            .columnSearchEnabled,
+        isFalse,
+      );
+      for (final field in [
+        ('businessDate', '2026-10-01..2026-10-31'),
+        ('unitPrice', '>=0.3333333333333333333333333333333333'),
+      ]) {
+        final header = find.descendant(
+          of: finder,
+          matching: find.text(
+            table().columns
+                .singleWhere((column) => column.key == field.$1)
+                .label,
+          ),
+        );
+        await tester.ensureVisible(header);
+        await tester.tap(header);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          field.$2,
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(
+          jsonDecode(repository.tableQueries.last['filters'] as String),
+          containsPair('search.${field.$1}', field.$2),
+        );
+      }
+      final header = find.descendant(
+        of: finder,
+        matching: find.text(
+          table().columns
+              .singleWhere((column) => column.key == 'sourceNo')
+              .label,
+        ),
+      );
+      await tester.ensureVisible(header);
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '201',
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(repository.facetQueries.last, containsPair('column', 'sourceNo'));
+      expect(repository.facetQueries.last, containsPair('search', '201'));
+      expect(
+        jsonDecode(repository.facetQueries.last['filters'] as String),
+        containsPair('search.businessDate', '2026-10-01..2026-10-31'),
+      );
+      expect(
+        jsonDecode(repository.facetQueries.last['filters'] as String),
+        containsPair(
+          'search.unitPrice',
+          '>=0.3333333333333333333333333333333333',
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   Future<void> revealPricePanel(
     WidgetTester tester,
     Finder target, {

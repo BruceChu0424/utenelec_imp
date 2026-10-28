@@ -77,7 +77,10 @@ class _Repository extends PlatformTableRepository {
     List<String>? ids,
   }) async {
     searches.add(query);
-    return [_note];
+    final catalog = [_note, _hidden, _calculation, ...creates];
+    return ids == null
+        ? [_note]
+        : catalog.where((column) => ids.contains(column.id)).toList();
   }
 
   @override
@@ -243,6 +246,90 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final editable in [false, true]) {
+    testWidgets(
+      '${editable ? 'editable' : 'master'} custom TEXT columns use their declared type even when named status',
+      (tester) async {
+        const definition = PlatformColumnDefinition(
+          id: 'custom-text',
+          scope: 'resource',
+          name: '状态',
+        );
+        final rows = [_Row('a'), _Row('b')];
+        final controller = UtenEditableGridController<_Row>(initial: rows);
+        addTearDown(controller.dispose);
+        final binding = PlatformTableBinding<_Row>(
+          tableKey: 'test.items',
+          scope: 'resource',
+          recordIdOf: (row) => row.id,
+          snapshotOf: (row) => PlatformRowValues(
+            recordId: row.id!,
+            version: 1,
+            cells: [
+              PlatformColumnCell(
+                columnId: definition.id,
+                definition: definition,
+                value: row.id == 'a' ? '甲记录' : '乙记录',
+              ),
+            ],
+          ),
+        );
+        await _pump(
+          tester,
+          _Repository(),
+          editable
+              ? UtenEditableGrid<_Row>(
+                  controller: controller,
+                  tableKey: 'test.items',
+                  platformBinding: binding,
+                  showAddRow: false,
+                  showRowDelete: false,
+                  showColumnSettings: false,
+                  columns: [
+                    EditableGridColumn(
+                      key: 'code',
+                      label: '编号',
+                      width: 100,
+                      textOf: (row) => row.id!,
+                      cellBuilder: (_, row) => Text(row.id!),
+                    ),
+                  ],
+                )
+              : MasterDataTableView<_Row>(
+                  embedded: true,
+                  tableKey: 'test.items',
+                  platformBinding: binding,
+                  columns: [
+                    MasterColumnDef(
+                      key: 'code',
+                      label: '编号',
+                      width: 100,
+                      value: (row) => row.id,
+                    ),
+                  ],
+                  items: rows,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                ),
+        );
+        await tester.tap(find.text('状态').hitTestable().first);
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('uten-column-keyword-input')),
+          '甲',
+        );
+        await tester.testTextInput.receiveAction(TextInputAction.search);
+        await tester.pumpAndSettle();
+        expect(find.text('a'), findsOneWidget);
+        expect(find.text('b'), findsNothing);
+        expect(controller.rows.length, 2);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final editable in [false, true]) {
     testWidgets(
       '${editable ? "editable grid" : "master table"} deletes an owned custom header with confirmation and preserves system columns',

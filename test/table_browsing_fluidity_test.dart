@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 
 double _headerWidth(WidgetTester tester) => tester
-    .widgetList<Container>(
-      find.ancestor(of: find.text('名称'), matching: find.byType(Container)),
+    .getSize(
+      find
+          .ancestor(
+            of: find.text('名称'),
+            matching: find.byType(UtenTableCellFrame),
+          )
+          .first,
     )
-    .firstWhere(
-      (widget) =>
-          widget.constraints?.hasBoundedWidth == true &&
-          widget.constraints!.minWidth == widget.constraints!.maxWidth,
-    )
-    .constraints!
-    .maxWidth;
+    .width;
 
 void main() {
   testWidgets('lightweight sliver rows share a bounded four-row batch', (

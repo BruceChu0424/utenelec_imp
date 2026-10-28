@@ -69,6 +69,7 @@ class UtenActionButton extends StatefulWidget {
     this.size = UtenActionButtonSize.medium,
     this.isExpanded = false,
     this.loadingLabel,
+    this.enabled = true,
   });
 
   /// 点击后要执行的异步动作。Future resolve（无论成功还是抛错）后按钮恢复可点。
@@ -79,6 +80,7 @@ class UtenActionButton extends StatefulWidget {
 
   /// loading 时显示在 label 旁的可选文字（默认与 label 同；提供简短词如"提交中..."）。
   final Widget? loadingLabel;
+  final bool enabled;
 
   /// 主/次/危险/幽灵。
   final UtenActionButtonType type;
@@ -100,6 +102,7 @@ class _UtenActionButtonState extends State<UtenActionButton> {
   final _guard = ClickGuard();
 
   Future<void> _runAction() async {
+    if (!widget.enabled) return;
     final action = _guard.run(widget.onAction);
     if (action == null) return;
     setState(() {});
@@ -112,7 +115,7 @@ class _UtenActionButtonState extends State<UtenActionButton> {
 
   @override
   Widget build(BuildContext context) => UtenButton(
-    onPressed: _guard.isBusy ? null : _runAction,
+    onPressed: _guard.isBusy || !widget.enabled ? null : _runAction,
     isLoading: _guard.isBusy,
     isExpanded: widget.isExpanded,
     icon: widget.icon,

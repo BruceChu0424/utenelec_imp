@@ -39,6 +39,7 @@ import '../../../../shared/drafts/form_draft_mixin.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
 import '../../../../shared/formatters/quantity_display.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/search/table_column_query.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../basic_data/widgets/product_category_picker_panel.dart';
@@ -84,6 +85,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     ++_loadGeneration;
     setState(() {
       _page = null;
+      _columnsQuery = const TableColumnQuery();
       _loading = false;
       _error = scopedPagedReadRejection?.message;
       _readingRows.update(const []);
@@ -102,6 +104,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   /// 「有库存」只是可选筛段（只看账上有数的）。
   bool _stockedOnly = false;
   String _keyword = '';
+  TableColumnQuery _columnsQuery = const TableColumnQuery();
   bool _includeRelated = false;
   bool _acceptPendingSearch = false;
   PagedResult<CountStockRow>? _page;
@@ -323,6 +326,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       _warehouse = next;
       _page = null;
       _keyword = '';
+      _columnsQuery = const TableColumnQuery();
       _includeRelated = false;
       _acceptPendingSearch = false;
       _categoryId = null;
@@ -390,6 +394,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       final pageIncludeRelated = _includeRelated;
       final pageCategoryId = _categoryId;
       final pageStockedOnly = _stockedOnly;
+      final pageColumns = _columnsQuery;
       const pageSheet = true;
 
       final result = await readScopedPage(
@@ -403,6 +408,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           pageCategoryId,
           pageStockedOnly,
           pageSheet,
+          pageColumns,
         ],
         currentQuery: () => [
           _repo,
@@ -412,6 +418,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           _categoryId,
           _stockedOnly,
           true,
+          _columnsQuery,
         ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.candidates(
@@ -422,6 +429,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           stockedOnly: pageStockedOnly,
           sheet: pageSheet,
           page: target,
+          columns: pageColumns.searches,
+          sort: pageColumns.sort,
+          ascending: pageColumns.ascending,
         ),
       );
       if (!isCurrent()) return;
@@ -736,6 +746,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       key: 'goodsCode',
       label: '编号',
       width: 130,
+      sortable: true,
       value: (row) => row.goodsCode,
     ),
     MasterColumnDef<CountStockRow>(
@@ -775,16 +786,20 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       label: '账面数量',
       width: 145,
       type: 'number',
-      value: (row) => formatQtyWithUnit(
-        double.tryParse(row.qty),
-        row.unitName,
-        maxDecimals: 4,
-      ),
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (row) => row.qty,
+      value: (row) => formatExactQtyWithUnit(row.qty, row.unitName),
     ),
     MasterColumnDef<CountStockRow>(
       key: 'weight',
       label: '账面重量 (kg)',
       width: 110,
+      type: 'number',
+      columnSearchEnabled: true,
+      sortable: true,
+      exactValueOf: (row) => row.weightKg,
+      info: '检索已知账面千克重量；未称和未知重量不当作零。估算标记不改变原数值。',
       value: (row) => _weightText(row),
     ),
     ..._count.columns<CountStockRow>((row) => row.key),
@@ -793,14 +808,12 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       label: '数量差额',
       width: 135,
       type: 'number',
+      columnSearchEnabled: false,
+      info: '当前未提交实盘与账面的差额，随输入更新；不作为服务器账面候选条件。',
       value: (row) {
         final delta = _deltaText(row);
         if (delta == null) return '';
-        return formatQtyWithUnit(
-          double.tryParse(delta),
-          row.unitName,
-          maxDecimals: 4,
-        );
+        return formatExactQtyWithUnit(delta, row.unitName);
       },
       // 差额随本行实盘输入变化：行级监听只重建本格，不再靠整页 setState 刷新。
       exactValueOf: (row) {
@@ -997,12 +1010,39 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       columns: _columns(),
       items: _items,
       rowKeyOf: (row) => row.key,
-      // 本页筛选在工具条（仓库/分类/分段/搜索），表头不带筛选列；
-      // 盘点说明不在工具条，送审确认弹窗里选填。
+      // 完整服务器账面候选先筛选再分页；实盘/差额仍是本地未提交输入。
       facets: const {},
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: _columnsQuery.searches,
+      serverColumnSearchKeys: const {
+        'name',
+        'goodsCode',
+        'color',
+        'model',
+        'spec',
+        'stockPlace',
+        'category',
+        'qty',
+        'weight',
+      },
+      headerFilterScopeDescription: '筛选本仓全部账面候选；另行添加或恢复的暂存行继续保留，未提交实盘输入不参与条件。',
+      onFilterChanged: (key, value) {
+        if (!key.startsWith('search.')) return;
+        setState(() {
+          _columnsQuery = _columnsQuery.search(key, value);
+          _page = null;
+        });
+        _load(1);
+      },
+      sortColumn: _columnsQuery.sort,
+      sortAscending: _columnsQuery.ascending,
+      onSortChange: (key, ascending) {
+        setState(() {
+          _columnsQuery = _columnsQuery.sorted(key, ascending);
+          _page = null;
+        });
+        _load(1);
+      },
       isLoading: _loading && _page == null,
       loadingMore: _loading && _page != null,
       error: _error,
@@ -1021,6 +1061,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
         _categoryId,
         _keyword,
         _includeRelated,
+        _columnsQuery,
       ),
       onPageChange: (page) => _load(page, useCache: true),
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,

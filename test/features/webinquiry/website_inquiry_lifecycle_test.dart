@@ -149,7 +149,8 @@ void main() {
       container.read(websiteInquiryStatusFilterProvider.notifier).state = null;
       await tester.pumpAndSettle();
       expect(repository.requests.last, ('HISTORY', 1));
-      await container.read(websiteInquiryListProvider.notifier).nextPage();
+      await tester.enterText(find.byType(TextFormField), '2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
       expect(repository.requests.last, ('HISTORY', 2));
       expect(find.text('history-2'), findsOneWidget);

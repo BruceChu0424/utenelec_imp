@@ -23,6 +23,40 @@ import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.da
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('ledger headers send independent name and state queries', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _FakeAssetRepository();
+    await _pumpWorkbench(tester, repository: repository);
+    await tester.tap(find.byKey(const ValueKey('master-column-filter-name')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-column-keyword-input')),
+      '设备_%',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(
+      repository.listQueries
+          .where((q) => q.size != 1)
+          .last
+          .toQuery()['search.name'],
+      '设备_%',
+    );
+    expect(repository.listQueries.where((q) => q.size != 1).last.q, isNull);
+    await tester.tap(find.byKey(const ValueKey('master-column-filter-status')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('已审批').last);
+    await tester.pumpAndSettle();
+    final query = repository.listQueries.where((q) => q.size != 1).last;
+    expect(query.status, 'APPROVED');
+    expect(query.columnSearch['name'], '设备_%');
+    expect(query.page, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'header refresh waits for both visited ledgers and skips unopened tabs',
     (tester) async {

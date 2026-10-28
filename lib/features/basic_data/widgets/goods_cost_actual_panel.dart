@@ -163,7 +163,15 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     key: key,
     label: label,
     width: width,
-    type: numeric ? 'number' : 'text',
+    minimumWidthOf: (_) => 48,
+    type: numeric
+        ? 'number'
+        : key == 'businessDate'
+        ? 'date'
+        : 'text',
+    sortable: numeric || key == 'businessDate' || key == 'revisionVersion',
+    filterFromRows: key == 'unitName' || key == 'sourceDocType',
+    facetSearchEnabled: key == 'unitName' || key == 'sourceDocType',
     defaultVisible: visible,
     value: (r) => costText(r[key]),
     cellBuilder: (_, r) => Text(
@@ -283,6 +291,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     key: 'sourceDocId',
     label: _l.costSourceDocument,
     width: 125,
+    minimumWidthOf: (_) => 48,
     value: (_) => _l.costViewSource,
     cellBuilder: (_, row) {
       final path = _sourceRoute(row);
@@ -322,6 +331,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 key: 'nextStep',
                 label: _l.costEvidenceNextStep,
                 width: 470,
+                minimumWidthOf: (_) => 48,
                 value: (r) => costText(r['nextStep']),
                 cellBuilder: (_, r) => Tooltip(
                   message: costText(r['nextStep']) ?? '',
@@ -332,6 +342,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 key: 'evidence',
                 label: _l.costViewEvidence,
                 width: 110,
+                minimumWidthOf: (_) => 48,
                 value: (_) => _l.costViewEvidence,
                 cellBuilder: (_, r) => UtenTableCellAction(
                   label: _l.costOpen,
@@ -450,6 +461,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                       key: 'value',
                       label: _l.costEvidenceValue,
                       width: 620,
+                      minimumWidthOf: (_) => 48,
                       value: (r) => costText(r['value']),
                       cellBuilder: (_, r) => Tooltip(
                         message: costText(r['value']) ?? '',
@@ -460,6 +472,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                       key: 'copy',
                       label: _l.costCopyValue,
                       width: 100,
+                      minimumWidthOf: (_) => 48,
                       value: (_) => _l.costCopyValue,
                       cellBuilder: (_, r) => IconButton(
                         key: ValueKey('cost-actual-copy-${r['key']}'),
@@ -637,6 +650,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           key: 'pending',
           label: _l.costStatus,
           width: 72,
+          minimumWidthOf: (_) => 48,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (r) => r['pending'] == true ? _l.costPending : _l.costComplete,
           cellBuilder: (_, r) => InkWell(
             onTap: () => _showEvidence(r),
@@ -674,6 +690,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           key: 'state',
           label: _l.costStatus,
           width: 72,
+          minimumWidthOf: (_) => 48,
+          filterFromRows: true,
+          facetSearchEnabled: true,
           value: (r) => _state(r['state']),
           cellBuilder: (_, r) => InkWell(
             onTap: () => _showEvidence(r),

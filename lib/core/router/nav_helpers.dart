@@ -72,15 +72,20 @@ Future<T?> pushFrom<T extends Object?>(BuildContext context, String path) {
 ///    返回到上一页，栈下页面保留业务分类与未保存状态，搜索按页面生命周期清空；
 /// 2. 栈空（深链、context.go 直达）读 ?returnTo 回来源页；
 /// 3. 再没有则回 [defaultPath]（模块 hub / 工作台）。
+/// 压栈页面可用 [result] 将处理结果交回来源；无栈时仍按同一来源规则返回。
 ///
 /// 此前 backTo 永远 context.go（整栈替换），约 70 个页面的返回键因此从三四层
 /// 深处直接跳回 hub/工作台——这是用户反馈「点返回直接回到最外面」的统一根因。
 /// 主 Tab（dashboard 等）由 ShellRoute PageView KeepAlive 保活，pop 回主 Tab
 /// 路径只是取消 Offstage；context.go 回主 Tab 也复用原实例，滚动位置保留。
-void backTo(BuildContext context, {required String defaultPath}) {
+void backTo<T extends Object?>(
+  BuildContext context, {
+  required String defaultPath,
+  T? result,
+}) {
   if (context.canPop()) {
     try {
-      context.pop();
+      context.pop<T>(result);
       return;
     } catch (_) {
       // canPop 为真但当前 navigator 取不到（过渡/加载未就绪、嵌套 navigator 场景）

@@ -178,6 +178,9 @@ class _FakeSuggestionRepository implements SuggestionRepository {
     SuggestionStatus? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     calls.add((mine: mine, page: page, size: size));
     final suggestion = Suggestion(

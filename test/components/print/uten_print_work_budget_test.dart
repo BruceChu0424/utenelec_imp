@@ -9,6 +9,7 @@ import 'package:uten_imp/core/print/print_pdf_document.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
+import '../../support/print_test_font.dart';
 
 UtenPrintTable _table(int count) => UtenPrintTable(
   headers: const ['货品', '金额'],
@@ -19,6 +20,9 @@ UtenPrintTable _table(int count) => UtenPrintTable(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late pw.Font font;
+  setUpAll(() async => font = await loadPrintTestFont());
   test(
     'large projections yield to timer work and preserve exact ordered cells',
     () async {
@@ -94,7 +98,7 @@ void main() {
           headers: table.headers,
           rows: table.rows,
         ),
-        pw.Font.helvetica(),
+        font,
         budget: UiWorkBudget(maxItems: 32),
       );
       expect(yielded, isTrue);
@@ -131,7 +135,7 @@ void main() {
                   headers: _table(2000).headers,
                   rows: _table(2000).rows,
                 ),
-                pw.Font.helvetica(),
+                font,
                 budget: budget,
               );
         await expectLater(work, throwsA(isA<UiWorkCancelled>()));

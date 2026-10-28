@@ -16,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -30,15 +29,13 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/human_error_message.dart';
-import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
 import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
-import '../widgets/celebration_subjects.dart';
+import '../widgets/notice_card.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/notice_group_dialog.dart';
-import '../widgets/notice_interaction_footer.dart';
 import '../widgets/notice_popup_settings_dialog.dart';
 
 class NoticeListPage extends ConsumerStatefulWidget {
@@ -55,6 +52,7 @@ class NoticeListPage extends ConsumerStatefulWidget {
 class _NoticeListPageState extends ConsumerState<NoticeListPage> {
   /// 是否处于多选管理模式
   bool _selecting = false;
+  bool _opening = false;
 
   /// 已勾选的通知 id
   final Set<String> _selected = {};
@@ -73,6 +71,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
   }
 
   void _enterSelection([String? initialId]) {
+    if (_opening) return;
     setState(() {
       _selecting = true;
       _selected.clear();
@@ -82,6 +81,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
 
   /// 长按分组卡进入选择模式：整组默认勾选（选择按组粒度操作）。
   void _enterSelectionWithIds(Set<String> ids) {
+    if (_opening) return;
     setState(() {
       _selecting = true;
       _selected.clear();
@@ -264,7 +264,8 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     final group = groups[i];
                     if (group.isSingle) {
                       final notice = group.notices.first;
-                      return _NoticeCard(
+                      return NoticeCard(
+                        key: ValueKey(notice.id),
                         notice: notice,
                         selecting: _selecting,
                         checked: _selected.contains(notice.id),
@@ -277,43 +278,82 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                             _toggle(notice.id);
                             return;
                           }
-                          if (!notice.isRead) {
-                            markNoticeRead(ref, notice.id);
+                          if (_opening) return;
+                          _opening = true;
+                          try {
+                            if (!notice.isRead) {
+                              await markNoticeRead(ref, notice.id);
+                            }
+                            if (!mounted) return;
+                            await showNoticeDetailDialog(
+                              this.context,
+                              noticeId: notice.id,
+                            );
+                          } catch (error) {
+                            if (mounted) {
+                              this.context.appError(
+                                humanErrorMessage(error) ?? '通知打开失败，请重试',
+                              );
+                            }
+                          } finally {
+                            _opening = false;
                           }
-                          await showNoticeDetailDialog(
-                            context,
-                            noticeId: notice.id,
-                          );
                           // 详情弹窗关闭后刷新列表：用户可能在详情里标记完成/已读，
                           // 列表与未读角标需同步，避免停留在旧状态。
-                          ref.invalidate(noticeListProvider);
+                          if (mounted) ref.invalidate(noticeListProvider);
                         },
                       );
                     }
-                    return _NoticeGroupCard(
-                      group: group,
-                      selecting: _selecting,
-                      checked: group.ids.every(_selected.contains),
-                      onLongPress: () {
-                        if (!_selecting) _enterSelectionWithIds(group.ids);
-                      },
-                      onTap: () async {
-                        if (_selecting) {
-                          // 组粒度切换：全选过则整组取消，否则整组勾上。
-                          setState(() {
-                            final allSelected = group.ids.every(
-                              _selected.contains,
+                    return Builder(
+                      builder: (cardContext) => NoticeStackCard(
+                        key: ValueKey(group.key),
+                        group: group,
+                        selecting: _selecting,
+                        checked: group.ids.every(_selected.contains),
+                        onLongPress: () {
+                          if (!_selecting) _enterSelectionWithIds(group.ids);
+                        },
+                        onTap: () async {
+                          if (_selecting) {
+                            // 组粒度切换：全选过则整组取消，否则整组勾上。
+                            setState(() {
+                              final allSelected = group.ids.every(
+                                _selected.contains,
+                              );
+                              allSelected
+                                  ? _selected.removeAll(group.ids)
+                                  : _selected.addAll(group.ids);
+                            });
+                            return;
+                          }
+                          if (_opening) return;
+                          _opening = true;
+                          final box = cardContext.findRenderObject();
+                          final overlay = Navigator.of(
+                            this.context,
+                            rootNavigator: true,
+                          ).overlay?.context.findRenderObject();
+                          final originRect =
+                              box is RenderBox && overlay is RenderBox
+                              ? box.localToGlobal(
+                                      Offset.zero,
+                                      ancestor: overlay,
+                                    ) &
+                                    box.size
+                              : null;
+                          try {
+                            await showNoticeGroupDialog(
+                              this.context,
+                              group: group,
+                              originRect: originRect,
                             );
-                            allSelected
-                                ? _selected.removeAll(group.ids)
-                                : _selected.addAll(group.ids);
-                          });
-                          return;
-                        }
-                        await showNoticeGroupDialog(context, group: group);
-                        // 组弹窗内可能已置读/全部已读，回到列表同步刷新。
-                        ref.invalidate(noticeListProvider);
-                      },
+                          } finally {
+                            _opening = false;
+                          }
+                          // 组弹窗内可能已置读/全部已读，回到列表同步刷新。
+                          if (mounted) ref.invalidate(noticeListProvider);
+                        },
+                      ),
                     );
                   },
                 );
@@ -357,586 +397,6 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
               ],
             )
           : null,
-    );
-  }
-}
-
-/// 通知卡片（竖版；选择模式下显示勾选框）。
-///
-/// 作为组卡面时（[groupCount] > 1）：未读红点按整组口径（[unreadDot] 由
-/// 调用方传入），底部行尾追加「N 条相关 · M 未读」计数胶囊。
-class _NoticeCard extends StatelessWidget {
-  const _NoticeCard({
-    required this.notice,
-    required this.onTap,
-    this.selecting = false,
-    this.checked = false,
-    this.onLongPress,
-    this.onAcknowledge,
-    this.unreadDot,
-    this.groupCount,
-    this.groupUnread = 0,
-  });
-
-  final Notice notice;
-  final VoidCallback onTap;
-
-  /// 是否处于多选管理模式（点击 = 切换勾选）
-  final bool selecting;
-
-  /// 当前是否已勾选
-  final bool checked;
-
-  /// 长按进入选择模式
-  final VoidCallback? onLongPress;
-
-  /// 回执模式「点击收到」（列表内一键）。
-  final VoidCallback? onAcknowledge;
-
-  /// 覆盖未读红点判定（组卡面：组内有任一未读即显示）；null = 按本条 isRead。
-  final bool? unreadDot;
-
-  /// 组内通知总数（null = 单条卡，不渲染组胶囊）。
-  final int? groupCount;
-
-  /// 组内未读数（与 [groupCount] 配套）。
-  final int groupUnread;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final priority = notice.priority;
-    // 庆典类用类型色做强调条；其余按重要度。
-    final showStrip = priority.showBadge || notice.type.isCelebratory;
-    final stripColor = notice.type.isCelebratory
-        ? notice.type.color
-        : priority.color;
-
-    return Stack(
-      children: [
-        // V459 已办结的待审通知整体灰显（保留审计价值，弱化视觉权重）。
-        Opacity(
-          opacity: notice.isResolved ? 0.55 : 1.0,
-          child: UtenCard(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            padding: EdgeInsets.zero,
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 强调条：庆典=类型色 / 重要=橙 / 紧急=红（一般无）
-                  if (showStrip)
-                    Container(
-                      width: 4,
-                      decoration: BoxDecoration(
-                        color: stripColor,
-                        borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(UtenRadius.card),
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 第一行：类型徽章 + 工作标识 + 重要度 / 置顶 / 未读
-                          Row(
-                            children: [
-                              _TypeBadge(notice: notice),
-                              // 工作类通知（任务/审批/流程）附加「工作」标识——
-                              // 这是工作平台，工作消息与公告广播要一眼可辨
-                              if (notice.kind == NoticeKind.todo) ...[
-                                const SizedBox(width: UtenSpacing.s8),
-                                _TodoTag(completed: notice.taskCompleted),
-                              ] else if (notice.type.isWork) ...[
-                                const SizedBox(width: UtenSpacing.s8),
-                                const _WorkTag(),
-                              ],
-                              const Spacer(),
-                              // V459 已办结徽章：审核完成被撤回的待审通知灰显标记。
-                              if (notice.isResolved)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: UtenSpacing.s4,
-                                  ),
-                                  child: Container(
-                                    height: 20,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                    ),
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      color: theme
-                                          .colorScheme
-                                          .surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(
-                                        UtenRadius.pill,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      '已办结',
-                                      style: theme.textTheme.labelSmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ),
-                                ),
-                              if (priority.showBadge)
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    right: UtenSpacing.s4,
-                                  ),
-                                  child: _PriorityChip(priority: priority),
-                                ),
-                              if (notice.topPriority)
-                                const Padding(
-                                  padding: EdgeInsets.only(
-                                    right: UtenSpacing.s4,
-                                  ),
-                                  child: Icon(
-                                    Icons.push_pin_rounded,
-                                    size: 14,
-                                    color: UtenColors.warning,
-                                  ),
-                                ),
-                              if ((unreadDot ?? !notice.isRead))
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: UtenColors.error,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 标题
-                          Text(
-                            notice.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          // 多主角聚合卡：主角徽章行（超员折叠 +N）
-                          if (notice.isGroupCelebration) ...[
-                            const SizedBox(height: UtenSpacing.s8),
-                            CelebrationSubjectChips(
-                              subjects: notice.subjects,
-                              showEventLabel:
-                                  notice.type == NoticeType.anniversary,
-                              accent: notice.type.color,
-                            ),
-                          ],
-                          const SizedBox(height: UtenSpacing.s8),
-                          // 摘要
-                          Text(
-                            notice.content,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                              height: 1.5,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          const Divider(),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 日期满七天后会变成长日期；空间不足时完整换行，保留组入口。
-                          Wrap(
-                            spacing: UtenSpacing.s8,
-                            runSpacing: UtenSpacing.s8,
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    notice.type.isWork
-                                        ? Icons.work_outline_rounded
-                                        : Icons.account_circle_rounded,
-                                    size: 16,
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: UtenSpacing.s4),
-                                  Flexible(
-                                    child: Text(
-                                      notice.publisher,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Text(
-                                _fmt(notice.publishedAt),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                              if (groupCount != null && groupCount! > 1) ...[
-                                _GroupCountPill(
-                                  count: groupCount!,
-                                  groupUnread: groupUnread,
-                                ),
-                              ],
-                            ],
-                          ),
-                          if (notice.interactionMode !=
-                              NoticeInteractionMode.none) ...[
-                            const SizedBox(height: UtenSpacing.s12),
-                            NoticeInteractionFooter(
-                              notice: notice,
-                              onOpenDetail: onTap,
-                              onAcknowledge: onAcknowledge,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        // 选择模式：右上角勾选框 + 选中高亮描边
-        if (selecting)
-          Positioned(
-            top: 10,
-            right: 10,
-            child: IgnorePointer(
-              child: Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: checked
-                      ? UtenColors.teal600
-                      : theme.colorScheme.surface,
-                  border: Border.all(
-                    color: checked
-                        ? UtenColors.teal600
-                        : theme.colorScheme.outlineVariant,
-                    width: 2,
-                  ),
-                ),
-                child: checked
-                    ? const Icon(
-                        Icons.check_rounded,
-                        size: 14,
-                        color: Colors.white,
-                      )
-                    : null,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  String _fmt(DateTime d) {
-    final now = ChinaDateTime.now();
-    final diff = now.difference(d);
-    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
-    if (diff.inHours < 24) return '${diff.inHours} 小时前';
-    if (diff.inDays < 7) return '${diff.inDays} 天前';
-    return '${ChinaDateTime.formatDate(d)}(北京)';
-  }
-}
-
-/// 类型徽章（公告/制度/福利/系统/紧急/任务/审批/流程）
-class _TypeBadge extends StatelessWidget {
-  const _TypeBadge({required this.notice});
-  final Notice notice;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: notice.type.color.withValues(alpha: 0.12),
-        borderRadius: UtenRadius.smAll,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(notice.type.icon, size: 12, color: notice.type.color),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            notice.type.label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: notice.type.color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TodoTag extends StatelessWidget {
-  const _TodoTag({required this.completed});
-
-  final bool completed;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = completed ? UtenColors.success : UtenColors.warning;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            completed ? Icons.task_alt_rounded : Icons.pending_actions_rounded,
-            size: 12,
-            color: color,
-          ),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            completed ? '已完成' : '待办',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 工作标识：工作类通知（任务/审批/流程）专属，与公告广播一眼可辨
-class _WorkTag extends StatelessWidget {
-  const _WorkTag();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(color: UtenColors.teal600.withValues(alpha: 0.45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.work_outline_rounded,
-            size: 12,
-            color: UtenColors.teal700,
-          ),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            '工作',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: UtenColors.teal700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 重要度徽章：重要=橙 / 紧急=红
-class _PriorityChip extends StatelessWidget {
-  const _PriorityChip({required this.priority});
-  final NoticePriority priority;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: priority.color.withValues(alpha: 0.12),
-        borderRadius: UtenRadius.smAll,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            priority == NoticePriority.urgent
-                ? Icons.priority_high_rounded
-                : Icons.error_rounded,
-            size: 12,
-            color: priority.color,
-          ),
-          const SizedBox(width: 2),
-          Text(
-            priority.label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: priority.color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 「共 N 条 · M 未读」组计数胶囊：有未读用错误色淡底提示待处理，否则中性。
-class _GroupCountPill extends StatelessWidget {
-  const _GroupCountPill({required this.count, required this.groupUnread});
-
-  /// 组内通知总数
-  final int count;
-
-  /// 组内未读数
-  final int groupUnread;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final unread = groupUnread > 0;
-    final color = unread
-        ? UtenColors.error
-        : theme.colorScheme.onSurfaceVariant;
-    return Tooltip(
-      message: unread
-          ? '共 $count 条相关通知，其中 $groupUnread 条未读，点击查看全部'
-          : '共 $count 条相关通知，点击查看全部',
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s6,
-          vertical: 3,
-        ),
-        decoration: BoxDecoration(
-          color: unread
-              ? UtenColors.error.withValues(alpha: 0.12)
-              : theme.colorScheme.surfaceContainerHighest,
-          borderRadius: UtenRadius.smAll,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.layers_rounded, size: 12, color: color),
-            const SizedBox(width: 2),
-            Flexible(
-              child: Text(
-                '共 $count 条${unread ? ' · $groupUnread 未读' : ''}',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: color,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 分组叠放卡：组内最新一条完整展示为卡面，背后 1-2 层 6px 露边示意「还有
-/// 更多」，点按打开组详情弹窗；选择模式下按组粒度整组勾选/取消。
-class _NoticeGroupCard extends StatelessWidget {
-  const _NoticeGroupCard({
-    required this.group,
-    required this.checked,
-    required this.onTap,
-    this.selecting = false,
-    this.onLongPress,
-  });
-
-  final NoticeGroup group;
-
-  /// 是否处于多选管理模式
-  final bool selecting;
-
-  /// 整组是否已全部勾选
-  final bool checked;
-
-  final VoidCallback onTap;
-
-  /// 长按进入选择模式（整组默认勾选）
-  final VoidCallback? onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final peekCount = math.min(2, group.notices.length - 1);
-    return Padding(
-      padding: EdgeInsets.only(bottom: peekCount * 6.0),
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
-        children: [
-          // 「后面还有通知」的深度提示：卡片下缘露出的 6px 细边条（画在卡片
-          // 足迹之外），与顶部到达叠放层 UtenNotificationStack 同一视觉语言。
-          for (var depth = 1; depth <= peekCount; depth++)
-            Positioned(
-              left: depth * 8.0,
-              right: depth * 8.0,
-              bottom: -depth * 6.0,
-              height: 6.0,
-              child: ExcludeSemantics(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: ShapeDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(UtenRadius.xs),
-                        side: BorderSide(
-                          color: theme.colorScheme.outlineVariant.withValues(
-                            alpha: 0.72,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          _NoticeCard(
-            notice: group.face,
-            selecting: selecting,
-            checked: checked,
-            onLongPress: onLongPress,
-            onTap: onTap,
-            // 组卡面红点 = 组内有任一未读；胶囊同步给出未读数。
-            unreadDot: group.unreadCount > 0,
-            groupCount: group.notices.length,
-            groupUnread: group.unreadCount,
-          ),
-        ],
-      ),
     );
   }
 }

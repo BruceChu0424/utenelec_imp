@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
@@ -288,11 +289,9 @@ class _ProductionExecutionCardPrintDialogState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'A4 生产计划单 · 流水线执行工卡',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
+                UtenSectionHeader(
+                  title: 'A4 生产计划单 · 流水线执行工卡',
+                  info: _sourceInfo,
                 ),
                 Text(
                   _views.isEmpty
@@ -356,10 +355,9 @@ class _ProductionExecutionCardPrintDialogState
     ];
     return ListView.builder(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      itemCount: entries.length + 1,
+      itemCount: entries.length,
       itemBuilder: (context, index) {
-        if (index == 0) return _sourceNotice(theme);
-        final entry = entries[index - 1];
+        final entry = entries[index];
         return Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s12),
           child: _workCardPreview(
@@ -373,43 +371,15 @@ class _ProductionExecutionCardPrintDialogState
     );
   }
 
-  Widget _sourceNotice(ThemeData theme) {
+  String get _sourceInfo {
     final versions = {
       for (final view in _views)
         'V${view.executionModelVersion}.${view.packageLockVersion}',
     }.join('、');
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.07),
-        borderRadius: UtenRadius.smAll,
-        border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.28),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.verified_outlined,
-              color: theme.colorScheme.primary,
-              size: 20,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                '本次共 ${_views.length} 张生产计划、$_cardCount 张执行工卡。'
-                '工卡内容只是查看用，不会改动计划。'
-                '打印或补打不会锁料、开单或改变状态；货品、颜色、单位和人员名称按打印时的最新档案显示。'
-                '计划包版本 $versions。',
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return '本次共 ${_views.length} 张生产计划、$_cardCount 张执行工卡。'
+        '工卡内容只是查看用，不会改动计划。'
+        '打印或补打不会锁料、开单或改变状态；货品、颜色、单位和人员名称按打印时的最新档案显示。'
+        '计划包版本 $versions。';
   }
 
   Widget _workCardPreview(

@@ -5,9 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/core/print/isolated_print_pdf.dart';
+import '../../support/print_test_font.dart';
+
+late Uint8List _fontBytes;
 
 PrintPdfRequest _request() => PrintPdfRequest.orgChart(
   title: 'Organization chart',
+  fontBytes: _fontBytes,
   subtitle: 'Synthetic authorized snapshot',
   lines: [
     const OrgChartPrintLine(
@@ -32,6 +36,8 @@ PrintPdfRequest _request() => PrintPdfRequest.orgChart(
 );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async => _fontBytes = await loadPrintTestFontBytes());
   test(
     'organization chart uses the shared worker and complete A4 portrait pages',
     () async {

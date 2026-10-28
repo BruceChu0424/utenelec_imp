@@ -12,6 +12,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_list_page.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_stock_doc_segment.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
@@ -76,6 +77,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+    expect(tableWidget().serverColumnSearch, isTrue);
+    expect(
+      tableWidget().columns
+          .singleWhere((column) => column.key == 'billDate')
+          .columnSearchEnabled,
+      isTrue,
+    );
+    tableWidget().onFilterChanged('search.warehouse', '原料%_');
+    await tester.pumpAndSettle();
+    tableWidget().onFilterChanged('search.department', '一车间');
+    await tester.pumpAndSettle();
+    tableWidget().onFilterChanged('search.billDate', '2026-08-01..2026-08-31');
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['search.warehouse'], '原料%_');
+    expect(api.lastListQuery?['search.department'], '一车间');
+    expect(api.lastListQuery?['search.billDate'], '2026-08-01..2026-08-31');
+    expect(api.lastListQuery?['warehouseId'], 'warehouse-1');
+    expect(api.lastListQuery?['departmentId'], 'dept-1');
 
     await tester.tap(find.text('进行中'));
     await tester.pumpAndSettle();
@@ -159,8 +178,94 @@ void main() {
       find.byWidgetPredicate((widget) => widget is MasterDataTableView<Object>),
     );
     expect(refreshed.filters['toWarehouse'], 'warehouse-1');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    MasterDataTableView<Object> current() => tester.widget(
+      find.byWidgetPredicate((widget) => widget is MasterDataTableView<Object>),
+    );
+    final dateFrom = api.lastListQuery?['dateFrom'];
+    current().onFilterChanged('status', '-1');
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['status'], -1);
+    expect(api.lastListQuery?['originScope'], 'CURRENT');
+    expect(api.lastListQuery?['dateFrom'], dateFrom);
+    current().onFilterChanged('status', 'LEGACY');
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['originScope'], 'LEGACY');
+    expect(api.lastListQuery?.containsKey('status'), isFalse);
+    current().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['originScope'], 'ALL');
+    expect(api.lastListQuery?['dateFrom'], dateFrom);
+    expect(
+      StockDocListItem.fromJson({
+        'id': 'provenance-only',
+        'legacyImported': true,
+        'status': 0,
+      }).legacyImported,
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'task segment reference choices and typed searches share the full server query',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance(),
+          api = _StockFilterApi();
+      final router = GoRouter(
+        initialLocation: '/warehouse/task-test',
+        routes: [
+          GoRoute(
+            path: '/warehouse/task-test',
+            builder: (_, _) => const Scaffold(
+              body: WarehouseStockDocSegment(docType: StockDocType.draw),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('草稿'));
+      await tester.pumpAndSettle();
+      MasterDataTableView<Object> table() => tester.widget(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<Object>,
+        ),
+      );
+      expect(
+        table().facets.keys,
+        containsAll(['warehouse', 'department', 'status']),
+      );
+      table().onFilterChanged('warehouse', 'warehouse-1');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('department', 'dept-1');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('search.billNo', 'LL%_');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('search.billDate', '2026-08');
+      await tester.pumpAndSettle();
+      expect(api.lastListQuery?['page'], 1);
+      expect(api.lastListQuery?['warehouseId'], 'warehouse-1');
+      expect(api.lastListQuery?['departmentId'], 'dept-1');
+      expect(api.lastListQuery?['search.billNo'], 'LL%_');
+      expect(api.lastListQuery?['search.billDate'], '2026-08');
+      expect(api.lastListQuery?['status'], 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _StockFilterApi extends ApiClient {

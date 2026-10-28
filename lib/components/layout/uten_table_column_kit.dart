@@ -42,6 +42,25 @@ import '../feedback/uten_context_menu_policy.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import 'uten_drag_reorder_list.dart';
 
+/// Shared ordering choices; the owner applies them to its complete data scope.
+List<({String label, bool? ascending, bool selected})> utenColumnSortChoices({
+  required String type,
+  required bool active,
+  required bool ascending,
+}) => [
+  (label: '取消排序', ascending: null, selected: !active),
+  (
+    label: type == 'date' ? '从远到近' : '从小到大',
+    ascending: true,
+    selected: active && ascending,
+  ),
+  (
+    label: type == 'date' ? '从近到远' : '从大到小',
+    ascending: false,
+    selected: active && !ascending,
+  ),
+];
+
 /// Shared column-edge control. It changes presentation widths only; the host
 /// owns its minimum width, automatic sizing and persistence.
 class UtenColumnResizeHandle extends StatelessWidget {
@@ -160,6 +179,77 @@ class UtenColumnHintIcon extends StatelessWidget {
       // 列头走紧凑态（28×28 命中区）：表单的 44×44 会把稠密列头 Row 顶出溢出
       //（2026-09-11 实测物料分析等 26 个用例报 1px 溢出）。
       child: UtenFieldHintIcon(info: message, dense: true),
+    );
+  }
+}
+
+/// Search controls stay inside the input's trailing slot; guidance is disclosed
+/// on hover/tap/focus and never reserves a paragraph in a header menu.
+class UtenColumnSearchSuffix extends StatelessWidget {
+  const UtenColumnSearchSuffix({super.key, this.message, this.onClear});
+  final String? message;
+  final VoidCallback? onClear;
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (onClear != null)
+        IconButton(
+          tooltip: '清空关键词',
+          onPressed: onClear,
+          padding: const EdgeInsets.all(UtenSpacing.s4),
+          constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          icon: const Icon(Icons.close_rounded, size: 16),
+        ),
+      if (message case final text?)
+        UtenColumnHintIcon(
+          key: const Key('uten-column-search-help'),
+          message: text,
+        ),
+    ],
+  );
+}
+
+double utenColumnSearchControlHeight(BuildContext context) {
+  final style = Theme.of(context).textTheme.bodyMedium;
+  final scaler = MediaQuery.textScalerOf(context);
+  final input =
+      scaler.scale(style?.fontSize ?? 14) * (style?.height ?? 1.4) +
+      UtenFilterRow.cellVerticalPadding * 2;
+  final button = scaler.scale(14) * 1.2 + UtenSpacing.s8 * 2;
+  final minimum = UtenFilterRow.heightOf(context);
+  return [
+    minimum,
+    input,
+    button,
+  ].reduce((a, b) => a > b ? a : b).ceilToDouble();
+}
+
+EdgeInsets utenColumnSearchContentPadding(BuildContext context) {
+  final style = Theme.of(context).textTheme.bodyMedium;
+  final line =
+      MediaQuery.textScalerOf(context).scale(style?.fontSize ?? 14) *
+      (style?.height ?? 1.4);
+  return EdgeInsets.symmetric(
+    horizontal: UtenSpacing.s8,
+    vertical: (utenColumnSearchControlHeight(context) - line) / 2,
+  );
+}
+
+class UtenColumnSearchButton extends StatelessWidget {
+  const UtenColumnSearchButton({super.key, required this.onPressed});
+  final VoidCallback onPressed;
+  @override
+  Widget build(BuildContext context) {
+    final height = utenColumnSearchControlHeight(context);
+    return SizedBox(
+      height: height,
+      child: UtenButton(
+        height: height,
+        size: UtenButtonSize.small,
+        onPressed: onPressed,
+        child: const Text('搜索'),
+      ),
     );
   }
 }

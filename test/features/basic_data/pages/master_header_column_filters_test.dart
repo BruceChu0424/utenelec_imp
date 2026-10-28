@@ -231,6 +231,9 @@ void main() {
 
     testWidgets('详情显示全部登记仓管员，未登记显示破折号', (tester) async {
       await _pumpWarehouse(tester, _FakeWarehouseRepository());
+      expect(find.text('成品仓库'), findsNothing);
+      await tester.tap(find.byTooltip('展开总仓库'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('成品仓库'));
       await tester.pumpAndSettle();
       MasterDetailCard summary() => tester.widget<MasterDetailCard>(

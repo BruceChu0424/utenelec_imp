@@ -115,6 +115,45 @@ void main() {
       expect(expirations, 1);
     });
 
+    test('被顶号(SESSION_REPLACED)时结束事件携带服务端的设备说明', () async {
+      await storage.saveTokens(
+        issuer: _issuer,
+        accessToken: 'old-access',
+        refreshToken: 'kicked-refresh',
+      );
+      const notice = '账号已在「Windows 客户端（BRUCE-PC）」登录，本设备已自动下线';
+      Object? received;
+      final subscription = SessionEventBus.instance.onSessionExpired.listen(
+        (event) => received = event,
+      );
+      addTearDown(subscription.cancel);
+
+      final dio = _staffDio(storage, (request) {
+        if (request.path == '/auth/refresh') {
+          // 单设备顶号：会话被新登录撤销，刷新被明确拒绝并说明来源设备。
+          return _jsonResponse(request, 401, {
+            'code': 'SESSION_REPLACED',
+            'message': notice,
+          });
+        }
+        return _jsonResponse(request, 401, {'code': 'UNAUTHORIZED'});
+      });
+
+      await expectLater(
+        dio.get<dynamic>('/protected'),
+        throwsA(isA<DioException>()),
+      );
+      await pumpEventQueue();
+
+      expect(await storage.getAccessToken(), isNull);
+      expect(
+        received,
+        isA<SessionExpiryNotice>()
+            .having((n) => n.replacedByOtherDevice, 'replaced', true)
+            .having((n) => n.message, 'message', notice),
+      );
+    });
+
     test('本地缺少 refresh token 时直接失效且不调用刷新接口', () async {
       await storage.saveTokens(issuer: _issuer, accessToken: 'old-access');
       var refreshAttempts = 0;

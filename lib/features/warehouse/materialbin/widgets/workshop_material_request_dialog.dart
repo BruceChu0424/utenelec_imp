@@ -246,6 +246,9 @@ class _WorkshopMaterialRequestPanelState
         appBar: UtenAppBar(
           showPagePermissionAction: false,
           title: '$title · ${widget.workshopName}',
+          info: _isReturn
+              ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
+              : '选择要申请的物料。数量填几袋，重量按每袋净重自动算出；也可以直接改重量。提交后通知仓库发到本车间内料仓。',
           actions: [
             IconButton(
               tooltip: '关闭',
@@ -269,13 +272,6 @@ class _WorkshopMaterialRequestPanelState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          _isReturn
-                              ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
-                              : '选择要申请的物料。数量填几袋，重量按每袋净重自动算出；也可以直接改重量。提交后通知仓库发到本车间内料仓。',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: UtenSpacing.s8),
                         if (_isReturn && _materials.isEmpty)
                           const UtenEmpty(message: '内料仓里现在没有可退的料')
                         else

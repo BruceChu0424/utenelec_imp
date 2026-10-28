@@ -430,12 +430,24 @@ void main() {
     await _openEditForPc(tester);
 
     final field = find.byKey(const Key('goods-bom-edit-qty'));
-    expect(find.widgetWithText(TextField, '单个重量 (克)'), findsOneWidget);
+    expect(tester.widget<TextField>(field).decoration!.labelText, '单个重量 (克)');
     expect(tester.widget<TextField>(field).controller!.text, '12.5');
-    expect(
-      find.byKey(const Key('goods-bom-periodic-readonly-note')),
-      findsOneWidget,
+    const guidance =
+        '整批领到车间内料仓的料：只填单个重量 (克，不含水口)；'
+        '管控阶段固定为开工前、按每件计量、不设齐套门槛。';
+    expect(find.text(guidance), findsNothing);
+    final hint = find.descendant(
+      of: field,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Tooltip && widget.message == guidance,
+      ),
     );
+    expect(hint, findsOneWidget);
+    await tester.tap(hint);
+    await tester.pumpAndSettle();
+    expect(find.text(guidance), findsOneWidget);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
     // 12.5 克与货品资料单重 10 克相差 25%：标黄提醒核对 (不拦截)。
     expect(find.byKey(const Key('goods-bom-weight-deviation')), findsOneWidget);
 
@@ -612,7 +624,13 @@ void main() {
     expect(inline.decoration!.suffixText, '吨');
     await _openEditForRow(tester, 'row-ton');
 
-    expect(find.widgetWithText(TextField, '单个重量 (吨)'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('goods-bom-edit-qty')))
+          .decoration!
+          .labelText,
+      '单个重量 (吨)',
+    );
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('goods-bom-edit-qty')))

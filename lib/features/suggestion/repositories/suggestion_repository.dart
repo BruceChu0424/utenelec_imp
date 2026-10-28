@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../models/suggestion.dart';
 
 abstract interface class SuggestionRepository {
@@ -16,6 +17,9 @@ abstract interface class SuggestionRepository {
     SuggestionStatus? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   });
 
   Future<Suggestion?> getById(String id);
@@ -51,6 +55,9 @@ class DioSuggestionRepository implements SuggestionRepository {
     SuggestionStatus? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final json = await _api.get(
       ApiEndpoints.suggestions,
@@ -60,6 +67,7 @@ class DioSuggestionRepository implements SuggestionRepository {
         if (status != null) 'status': status.name,
         'page': page,
         'size': size,
+        ...tableColumnParameters(columns, sort, ascending),
       },
     );
     return PagedResult.fromJsonResponsive(json, _fromJson);

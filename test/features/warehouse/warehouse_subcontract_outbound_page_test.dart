@@ -2,6 +2,7 @@
 // 「出库任务中心 · 委外出库」分段): 一行 = 一张委外人员已提交、仓库未发出的
 // 领料单; 单击选中、双击打开(有本机填写快照先按同一领料 UUID 续填);
 // ADR-184 起勾选批量核对出库的动作权由服务端逐行 canHandle 下发。
+import '../../support/table_read_status.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -280,7 +281,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(api.listRequests, listRequests + 1);
-    expect(find.text('仓库单据加载失败，请重试'), findsOneWidget);
+    await expectTableReadFailureDetails(tester, '仓库单据加载失败，请重试');
     expect(tester.takeException(), isNull);
   });
 }

@@ -10,6 +10,8 @@ import 'package:uuid/uuid.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
+import '../../components/layout/uten_section_header.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -421,7 +423,6 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     final intent = _packages[kind]!;
     final active = _busy && _activeKind == kind;
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
     return UtenCard(
       key: ValueKey('client-release-area-$kind'),
       child: Padding(
@@ -429,14 +430,11 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              installer ? 'Windows 安装程序（Setup.exe）' : 'Windows 更新包（ZIP）',
-              style: theme.textTheme.titleSmall,
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              installer ? '放在“软件下载”页面，供员工首次下载安装。' : '已安装的客户端自动获取，沿用原安装位置更新。',
-              style: theme.textTheme.bodySmall,
+            UtenSectionHeader(
+              title: installer ? 'Windows 安装程序（Setup.exe）' : 'Windows 更新包（ZIP）',
+              info: installer
+                  ? '放在“软件下载”页面，供员工首次下载安装。'
+                  : '已安装的客户端自动获取，沿用原安装位置更新。',
             ),
             const SizedBox(height: UtenSpacing.s12),
             UtenButton(
@@ -558,17 +556,16 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     return PopScope(
       canPop: !_busy,
       child: _publishDialog(
-        title: Text(l10n.clientUpdatePublishTitle),
+        title: UtenSectionHeader(
+          title: l10n.clientUpdatePublishTitle,
+          info: _platform == 'windows'
+              ? '填写版本信息并选择要发布的文件，再点击下方“上传并发布”。每个文件分别显示进度和结果，重试会继续未确认的文件。'
+              : l10n.clientUpdatePublishHint,
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              _platform == 'windows'
-                  ? '填写版本信息并选择要发布的文件，再点击下方“上传并发布”。每个文件分别显示进度和结果，重试会继续未确认的文件。'
-                  : l10n.clientUpdatePublishHint,
-            ),
-            const SizedBox(height: UtenSpacing.s16),
             UtenDropdownScrollScope(
               nativeDropdown: true,
               child: DropdownButtonFormField<String>(
@@ -654,20 +651,25 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                   labelText: l10n.clientUpdateStoreUrl,
                 ),
               )
-            else ...[
-              Text(
-                l10n.clientUpdatePackageHint,
-                style: Theme.of(context).textTheme.bodySmall,
+            else
+              Row(
+                children: [
+                  Flexible(
+                    child: UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: _busy ? null : () => _choose(),
+                      child: Text(
+                        _packages['update']!.fileName ??
+                            l10n.clientUpdateChooseFile,
+                      ),
+                    ),
+                  ),
+                  UtenFieldHintIcon(
+                    info: l10n.clientUpdatePackageHint,
+                    dense: true,
+                  ),
+                ],
               ),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenButton(
-                type: UtenButtonType.secondary,
-                onPressed: _busy ? null : () => _choose(),
-                child: Text(
-                  _packages['update']!.fileName ?? l10n.clientUpdateChooseFile,
-                ),
-              ),
-            ],
             if (_busy && (_platform != 'windows' || _withdrawing)) ...[
               const SizedBox(height: UtenSpacing.s16),
               Text(

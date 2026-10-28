@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -392,11 +393,21 @@ class _CustomerPrepaymentApplyPanelState
         Row(
           children: [
             Expanded(
-              child: Text(
-                '2. 选择应收目标',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      '2. 选择应收目标',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const UtenFieldHintIcon(
+                    info: '先选择要抵扣的应收单，只能选择同一客户、同一币种且能对应到销售订单的欠款。',
+                    dense: true,
+                  ),
+                ],
               ),
             ),
             UtenButton(
@@ -411,12 +422,7 @@ class _CustomerPrepaymentApplyPanelState
         ),
         const SizedBox(height: UtenSpacing.s8),
         if (_targets.isEmpty)
-          Text(
-            '先选择要抵扣的应收单，只能选择同一客户、同一币种且能对应到销售订单的欠款。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          )
+          const Text('尚未选择应收单')
         else
           for (final target in _targets)
             ListTile(

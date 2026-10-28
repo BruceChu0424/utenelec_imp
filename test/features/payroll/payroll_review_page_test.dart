@@ -18,6 +18,9 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakePayrollRepository extends Fake implements PayrollRepository {
+  _FakePayrollRepository({this.batch});
+
+  final PayrollBatch? batch;
   int approveCalls = 0;
 
   @override
@@ -29,7 +32,7 @@ class _FakePayrollRepository extends Fake implements PayrollRepository {
     String? status,
     String? departmentId,
   }) async => PagedResult(
-    items: [_batch()],
+    items: [batch ?? _batch()],
     page: page,
     size: size,
     total: 1,
@@ -37,7 +40,7 @@ class _FakePayrollRepository extends Fake implements PayrollRepository {
   );
 
   @override
-  Future<PayrollBatch> getBatch(String id) async => _batch();
+  Future<PayrollBatch> getBatch(String id) async => batch ?? _batch();
 
   @override
   Future<PayrollBatch?> approveBatch(String id) async {
@@ -58,22 +61,75 @@ PayrollBatch _batch() => PayrollBatch(
   slips: [_slip('s-1', '张三'), _slip('s-2', '李四')],
 );
 
-PayrollSlip _slip(String id, String name) => PayrollSlip(
-  id: id,
-  employeeId: 'emp-$id',
-  employeeName: name,
-  employeeCode: 'UT$id',
-  year: 2026,
-  month: 8,
-  items: const [],
-  grossIncome: 10000,
-  totalDeduction: 2000,
-  netIncome: 8000,
-  status: PayrollSlipStatus.pending,
-  publishedAt: null,
-);
+PayrollSlip _slip(String id, String name, {double netIncome = 8000}) =>
+    PayrollSlip(
+      id: id,
+      employeeId: 'emp-$id',
+      employeeName: name,
+      employeeCode: 'UT$id',
+      year: 2026,
+      month: 8,
+      items: const [],
+      grossIncome: 10000,
+      totalDeduction: 2000,
+      netIncome: netIncome,
+      status: PayrollSlipStatus.pending,
+      publishedAt: null,
+    );
 
 void main() {
+  testWidgets(
+    'reviewer can order the complete batch by pay without submitting',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 950));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakePayrollRepository(
+        batch: PayrollBatch(
+          id: 'batch-1',
+          year: 2026,
+          month: 8,
+          status: PayrollBatchStatus.submitted,
+          headcount: 2,
+          grossIncome: 20000,
+          totalDeduction: 4000,
+          netIncome: 1011.75,
+          slips: [
+            _slip('s-1', '低金额员工', netIncome: 12.5),
+            _slip('s-2', '高金额员工', netIncome: 999.25),
+          ],
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            payrollRepositoryProvider.overrideWithValue(repo),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({Perm.payrollReview}),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: PayrollReviewPage(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('实发').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('从大到小'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('高金额员工')).dy,
+        lessThan(tester.getTopLeft(find.text('低金额员工')).dy),
+      );
+      expect(repo.approveCalls, 0);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('slip detail table has no misleading per-row batch approve', (
     tester,
   ) async {

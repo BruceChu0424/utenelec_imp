@@ -12,6 +12,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_field_suffix_icons.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -1209,12 +1210,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
       key: 'code',
       label: '编号',
       width: 125,
+      sortable: true,
       value: (account) => account.code,
     ),
     MasterColumnDef(
       key: 'name',
       label: '账户名称',
       width: 210,
+      sortable: true,
       value: (account) => account.name,
     ),
     MasterColumnDef(
@@ -1233,6 +1236,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
       key: 'bankAccountNo',
       label: '银行账号',
       width: 190,
+      sortable: true,
       value: (account) => account.bankAccountNo,
     ),
     if (_canViewBalance)
@@ -1242,6 +1246,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
         width: 150,
         type: 'money',
         sortable: true,
+        columnSearchEnabled: true,
+        exactValueOf: (account) => account.balanceCurrentText,
+        info: '按账户原币余额的原始精度检索；不同币种不合计',
         value: (account) =>
             financeExactMoneyDisplay(account.balanceCurrentText),
       ),
@@ -1259,7 +1266,6 @@ class _AccountPageState extends ConsumerState<AccountPage>
       MasterDataGroup<AccountListItem>(
         id: 'disabled',
         title: total == null ? '禁用账户' : '禁用账户($total)',
-        subtitle: '已停用账户，保留历史流水与财务引用',
         icon: Icons.block_rounded,
         // 停用分组=灰档淡底（ADR-169：停用归中性终态，原浅红把「已停用」
         // 当异常——保留历史引用是正常业务形态）。
@@ -1295,10 +1301,16 @@ class _AccountPageState extends ConsumerState<AccountPage>
   }
 
   Map<String, dynamic> get _exportQuery => {
-    if (_keyword.trim().isNotEmpty) 'keyword': _keyword.trim(),
     ...masterFilterQueryParams(_mainListFilters),
     if (_sortKey != null) 'sort': _sortKey,
     if (_sortKey != null) 'order': _sortAsc ? 'asc' : 'desc',
+  };
+
+  Map<String, dynamic> get _exportBody => {
+    'sensitiveFilter': contactSensitiveFilterBody(
+      _mainListFilters,
+      keyword: _keyword,
+    ),
   };
 
   Future<UtenPrintTable> _printLoader() async {
@@ -1457,6 +1469,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
                             showColumnChooser:
                                 MediaQuery.sizeOf(context).width >= 600,
                             columns: inlineColumns(_columns),
+                            serverColumnSearchKeys: {
+                              'code',
+                              'name',
+                              'bankAccountNo',
+                              if (_canViewBalance) 'balanceCurrent',
+                            },
+                            headerFilterScopeDescription:
+                                '检索当前账户范围的完整结果；余额按各账户原币检索',
                             items: _page?.items ?? const [],
                             selectable: true,
                             idOf: (account) => account.id,
@@ -1478,6 +1498,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                       exportPermission: Perm.accountExport,
                                       exportReport: '',
                                       exportQuery: _exportQuery,
+                                      exportBody: _exportBody,
                                       exportFilename: '账户资料',
                                       type: UtenButtonType.primary,
                                       size: UtenButtonSize.large,
@@ -1488,6 +1509,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                       requiredPermission: Perm.accountExport,
                                       report: '',
                                       queryParams: _exportQuery,
+                                      bodyParams: _exportBody,
                                       filename: '账户资料',
                                       label: '导出账户',
                                       type: UtenButtonType.primary,
@@ -1550,6 +1572,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         ),
         if (_batchWriting)
           UtenBusyOverlay(
+            showDoNotLeaveHint: false,
             title: '正在$_batchAction账户',
             description: '逐项校验并处理选中的账户',
             semanticsKey: const Key('account-batch-writing'),
@@ -1602,21 +1625,27 @@ class _AccountPageState extends ConsumerState<AccountPage>
               children: [
                 Expanded(child: search),
                 const SizedBox(width: UtenSpacing.s4),
-                IconButton(
-                  tooltip: '打开选中账户',
-                  onPressed: _selectedAccount == null
-                      ? null
-                      : () => _openAccount(_selectedAccount!.id),
-                  icon: const Icon(Icons.open_in_new_rounded),
+                UtenFieldSuffixIcons(
+                  children: [
+                    IconButton(
+                      tooltip: '打开选中账户',
+                      onPressed: _selectedAccount == null
+                          ? null
+                          : () => _openAccount(_selectedAccount!.id),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                    ),
+                    if (_canAdjustBalance)
+                      IconButton(
+                        key: const ValueKey(
+                          'account-balance-reconcile-compact',
+                        ),
+                        tooltip: '余额核对',
+                        onPressed: () =>
+                            _openBalanceReconciliation(compactOverride: true),
+                        icon: const Icon(Icons.fact_check_outlined),
+                      ),
+                  ],
                 ),
-                if (_canAdjustBalance)
-                  IconButton(
-                    key: const ValueKey('account-balance-reconcile-compact'),
-                    tooltip: '余额核对',
-                    onPressed: () =>
-                        _openBalanceReconciliation(compactOverride: true),
-                    icon: const Icon(Icons.fact_check_outlined),
-                  ),
               ],
             );
           }

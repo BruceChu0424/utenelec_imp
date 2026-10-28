@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_page_layout.dart';
 import '../../../core/theme/uten_tokens.dart';
 
 /// 页面三个模式共享拖动宽度；仅重建布局，不重挂载各模式的草稿。
@@ -44,7 +45,7 @@ class AdminPermissionWorkspace extends StatelessWidget {
             leadingNoun: '权限资源',
             selectedLeadingLabel: '查看权限资源',
             persistenceKey: 'admin.permissions',
-            initialLeadingWidth: 320,
+            initialLeadingWidth: 280,
             controlledLeadingWidth: sharedWidth?.value,
             onWidthChanged: sharedWidth == null
                 ? null
@@ -59,13 +60,16 @@ class AdminPermissionWorkspace extends StatelessWidget {
             trailing: trailing,
           );
         }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            navigation,
-            const SizedBox(height: UtenSpacing.s4),
-            Expanded(child: compact),
-          ],
+        return UtenPagePaneScope(
+          split: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              navigation,
+              const SizedBox(height: UtenSpacing.s4),
+              Expanded(child: compact),
+            ],
+          ),
         );
       },
     );

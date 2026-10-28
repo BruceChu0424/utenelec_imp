@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/models/goods_import.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_import_repository.dart';
 
 void main() {
@@ -112,5 +113,67 @@ void main() {
       () => repository.commit(Uint8List(0), planId: '   '),
       throwsArgumentError,
     );
+  });
+
+  // 2026-10-28 导入模式：原始字节流检测把模式放 query，JSON 提交放 body；
+  // 不传模式时两侧都不携带（服务端按混合处理）。
+  test('import mode rides the raw detect query and the commit body', () async {
+    final requests = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          requests.add(request);
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: <String, dynamic>{},
+            ),
+          );
+        },
+      ),
+    );
+    final repository = DioGoodsImportRepository(ApiClient(dio));
+    final bytes = Uint8List.fromList([1, 2, 3]);
+
+    await repository.detect(bytes, mode: GoodsImportMode.createOnly);
+    await repository.commit(
+      bytes,
+      planId: 'plan-1',
+      mode: GoodsImportMode.updateOnly,
+    );
+
+    expect(requests.first.queryParameters, {'mode': 'CREATE_ONLY'});
+    final body = requests.last.data as Map;
+    expect(body['mode'], 'UPDATE_ONLY');
+    expect(requests.last.queryParameters, isEmpty);
+  });
+
+  test('omitting the mode sends no mode key on either path', () async {
+    final requests = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          requests.add(request);
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: <String, dynamic>{},
+            ),
+          );
+        },
+      ),
+    );
+    final repository = DioGoodsImportRepository(ApiClient(dio));
+    final bytes = Uint8List.fromList([1, 2, 3]);
+
+    await repository.detect(bytes);
+    await repository.commit(bytes, planId: 'plan-1');
+
+    expect(requests.first.queryParameters, isEmpty);
+    expect((requests.last.data as Map).containsKey('mode'), isFalse);
   });
 }

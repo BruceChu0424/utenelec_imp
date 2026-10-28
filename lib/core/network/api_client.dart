@@ -678,7 +678,13 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   dio.interceptors.add(authInterceptor);
   dio.interceptors.add(readScope);
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
-  dio.interceptors.add(StepUpInterceptor(dio));
+  dio.interceptors.add(
+    StepUpInterceptor(
+      dio,
+      identity: AuthInterceptor.retainedIdentity,
+      isCurrent: authInterceptor.requestBelongsToCurrentIdentity,
+    ),
+  );
   dio.interceptors.add(RemoteMfaInterceptor());
   dio.interceptors.add(SafeRequestRetryInterceptor(dio, recovery: recovery));
   // 写请求成功推进本端写修订号: 「返回即刷新」据此判断数据变没变(ADR-108)。

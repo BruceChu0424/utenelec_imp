@@ -2,6 +2,7 @@
 //
 // 先检测再核对：新货品新增，已有货品补齐空值；非空冲突在全页中选择替换或忽略。
 // 文件内重复、必填缺失和身份歧义阻止提交；服务端按检测计划在事务中复核并写入。
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
@@ -15,18 +16,21 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/auth/account_action_owner.dart';
 import '../models/goods_import.dart';
-import '../pages/goods_import_problems_page.dart';
+import '../pages/goods_import_preview_page.dart';
 import '../repositories/goods_import_repository.dart';
 import 'basic_data_l10n.dart';
 import 'goods_import_file_reader.dart';
-import 'goods_import_review.dart';
 import 'import_file_queue.dart';
+import 'goods_import_reference_picker.dart';
 
 /// 弹出导入流程。[onImported] 在导入成功后回调（调用方刷新货品列表）。
+/// [mode] 为导入模式（2026-10-28 起入口先三选一；缺省混合=现有行为）。
 Future<void> showGoodsImportDialog(
   BuildContext context,
   WidgetRef ref, {
+  GoodsImportMode mode = GoodsImportMode.mixed,
   VoidCallback? onImported,
 }) {
   return showDialog<void>(
@@ -41,7 +45,7 @@ Future<void> showGoodsImportDialog(
             maxWidth: 580,
             maxHeight: MediaQuery.sizeOf(ctx).height * 0.85,
           ),
-          child: _GoodsImportDialog(onImported: onImported),
+          child: _GoodsImportDialog(mode: mode, onImported: onImported),
         ),
       ),
     ),
@@ -49,7 +53,11 @@ Future<void> showGoodsImportDialog(
 }
 
 class _GoodsImportDialog extends ConsumerStatefulWidget {
-  const _GoodsImportDialog({this.onImported});
+  const _GoodsImportDialog({
+    this.mode = GoodsImportMode.mixed,
+    this.onImported,
+  });
+  final GoodsImportMode mode;
   final VoidCallback? onImported;
 
   @override
@@ -57,6 +65,9 @@ class _GoodsImportDialog extends ConsumerStatefulWidget {
 }
 
 class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
+  late final AccountActionOwner _owner;
+  Route<GoodsImportPreviewDecision>? _previewRoute;
+  Route<dynamic>? _dialogRoute;
   bool _detecting = false;
   bool _committing = false;
   String? _pickedName;
@@ -74,7 +85,40 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   GoodsImportCorrections? _submittedCorrections;
   Set<int>? _submittedExclusions;
   final _fileResults = <GoodsImportResult>[];
+  final _allResults = <GoodsImportResult>[];
   bool _correctionsNeedDetection = false;
+  Set<int>? _reviewExclusions;
+  bool _previewHasRemaining = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _owner = AccountActionOwner(
+      ref,
+      onInvalidated: () {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final navigator = Navigator.of(context);
+          final preview = _previewRoute;
+          if (preview?.isActive == true) navigator.removeRoute(preview!);
+          final dialog = _dialogRoute;
+          if (dialog?.isActive == true) navigator.removeRoute(dialog!);
+        });
+      },
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dialogRoute = ModalRoute.of(context);
+  }
+
+  @override
+  void dispose() {
+    _owner.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +127,8 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return PopScope(
       canPop: !_detecting && !_committing && !_reviewing,
       child: UtenDropTarget(
-        enabled: !_detecting && !_committing && !_reviewing,
+        enabled:
+            !_detecting && !_committing && !_reviewing && !_commitUncertain,
         hint: '松开鼠标检测 Excel',
         onFiles: _replaceQueueAndDetect,
         child: SafeArea(
@@ -100,11 +145,51 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '导入货品',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '导入货品',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          UtenFieldHintIcon(
+                            info:
+                                '${basicDataL10n(context).importFilesTransactionNote}\n\n'
+                                '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
+                                '${basicDataL10n(context).goodsImportTemplateHint}\n'
+                                '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
+                                '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
+                                '${basicDataL10n(context).goodsNameEnImportHint}\n'
+                                '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
+                                '${basicDataL10n(context).goodsImportMergeHint}\n'
+                                '缺失的分类/颜色/单位会自动新建。\n'
+                                '如从「导出货品」取得文件，导出时请不要设置密码。',
+                            dense: true,
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          // 标题旁标注本次导入模式（入口三选一带进来的口径）。
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: UtenSpacing.s8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.sm,
+                              ),
+                            ),
+                            child: Text(
+                              widget.mode.label,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -123,11 +208,13 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
                   child: _body(theme),
                 ),
               ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: _actions(theme),
-              ),
+              if (!_detecting && !_committing) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: _actions(theme),
+                ),
+              ],
             ],
           ),
         ),
@@ -139,7 +226,8 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ImportFileQueueSummary(queue: _queue),
+        if (_result == null)
+          ImportFileQueueSummary(queue: _queue, compact: true),
         _currentBody(theme),
       ],
     );
@@ -147,19 +235,13 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
 
   Widget _currentBody(ThemeData theme) {
     if (_committing) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s32),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return _progress('正在导入货品');
     }
     if (_result != null) {
-      return _resultView(theme, _result!);
+      return _resultView(theme, _sumResults(_result!, _allResults));
     }
     if (_detecting) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: UtenSpacing.s32),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return _progress('正在检查文件');
     }
     if (_report != null) {
       return _reportView(theme, _report!);
@@ -183,21 +265,6 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('选择未加密的 .xlsx 文件，系统会先检测再导入。', style: theme.textTheme.bodyMedium),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '${basicDataL10n(context).goodsImportTemplateHint}\n'
-          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
-          '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
-          '${basicDataL10n(context).goodsNameEnImportHint}\n'
-          '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
-          '${basicDataL10n(context).goodsImportMergeHint}\n'
-          '缺失的分类/颜色/单位会自动新建。\n'
-          '如从「导出货品」取得文件，导出时请不要设置密码。',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         if (_pickedName != null) ...[
           const SizedBox(height: UtenSpacing.s12),
           Text(
@@ -211,54 +278,61 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     );
   }
 
+  Widget _progress(String label) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s32),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: UtenSpacing.s16),
+          Text(label),
+        ],
+      ),
+    ),
+  );
+
   Widget _reportView(ThemeData theme, GoodsImportReport r) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '共 ${r.totalRows} 行，有效数据 ${r.dataRows} 行'
-          '${r.hasErrors ? "，发现 ${r.errors.length} 个问题" : "，可导入 ${r.readyToImport} 条"}',
-        ),
+        Text('共 ${r.dataRows} 条货品，可导入 ${r.readyToImport} 条'),
         const SizedBox(height: UtenSpacing.s12),
         if (_detectionMessage != null)
           Text(
             _detectionMessage!,
             style: TextStyle(color: theme.colorScheme.error),
           ),
-        if (!r.hasErrors && r.reviewRows.isNotEmpty) ...[
-          Text(
-            basicDataL10n(context).importReviewSummary(
-              r.addedRows,
-              r.fillRows,
-              r.conflictRows,
-              r.unchangedRows,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(basicDataL10n(context).importReviewIgnoreExplanation),
-        ],
         if (r.hasErrors) ...[
-          Text(basicDataL10n(context).goodsImportProblemsHint),
+          Text(
+            '${r.errors.length} 处待修正',
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+          if (r.previewRows.isEmpty)
+            for (final error in r.errors)
+              Text(
+                '${error.column}：${error.message}',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
         ] else ...[
-          _willCreate(theme, '将自动新建分类', r.willCreateCategories),
-          _willCreate(theme, '将自动新建颜色', r.willCreateColors),
-          _willCreate(theme, '将自动新建单位', r.willCreateUnits),
+          Wrap(
+            spacing: UtenSpacing.s16,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              _willCreate(theme, '新增分类', r.willCreateCategories),
+              _willCreate(theme, '新增颜色', r.willCreateColors),
+              _willCreate(theme, '新增单位', r.willCreateUnits),
+            ],
+          ),
           if (r.restorableRows > 0) ...[
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              '其中 ${r.restorableRows} 条编号与已删除货品相同，导入时将按清单内容恢复这些货品。',
+              '将恢复 ${r.restorableRows} 条已删除货品',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.tertiary,
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '检测通过，可确认导入 ${r.readyToImport} 条。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
-          ),
         ],
       ],
     );
@@ -268,16 +342,14 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     if (items.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$title(${items.length})：${items.take(20).join("、")}${items.length > 20 ? " …" : ""}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+      child: Tooltip(
+        message: items.join('\n'),
+        child: Text(
+          '$title ${items.length}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -295,14 +367,17 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         ),
         const SizedBox(height: UtenSpacing.s12),
         Text('已导入 ${r.importedCount} 条货品', style: theme.textTheme.bodyMedium),
-        Text(
-          basicDataL10n(context).importResultSummary(
-            r.createdCount,
-            r.filledCount,
-            r.updatedCount,
-            r.ignoredCount,
-            r.unchangedCount,
-          ),
+        const SizedBox(height: UtenSpacing.s8),
+        Wrap(
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            if (r.createdCount > 0) Text('新增 ${r.createdCount}'),
+            if (r.filledCount > 0) Text('补齐 ${r.filledCount}'),
+            if (r.updatedCount > 0) Text('替换 ${r.updatedCount}'),
+            if (r.ignoredCount > 0) Text('保留 ${r.ignoredCount}'),
+            if (r.unchangedCount > 0) Text('相同 ${r.unchangedCount}'),
+          ],
         ),
         if (r.createdCategories > 0 ||
             r.createdColors > 0 ||
@@ -310,29 +385,29 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),
             child: Text(
-              '新建分类 ${r.createdCategories} / 颜色 ${r.createdColors} / 单位 ${r.createdUnits}',
+              [
+                if (r.createdCategories > 0) '新建分类 ${r.createdCategories}',
+                if (r.createdColors > 0) '新建颜色 ${r.createdColors}',
+                if (r.createdUnits > 0) '新建单位 ${r.createdUnits}',
+              ].join('，'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
           ),
-        const SizedBox(height: UtenSpacing.s8),
-        if (r.batchId.isNotEmpty &&
-            r.importedCount > 0 &&
-            _fileResults.length <= 1 &&
-            _queue.completed.length <= 1)
+        if (_queue.completed.length > 1) ...[
+          const SizedBox(height: UtenSpacing.s8),
           Text(
-            basicDataL10n(context).goodsImportUndoHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            '已完成 ${_queue.completed.length} 个文件',
+            style: theme.textTheme.bodySmall,
           ),
+        ],
       ],
     );
   }
 
   Widget _actions(ThemeData theme) {
-    if (_committing) {
+    if (_committing || _detecting) {
       return const SizedBox.shrink();
     }
     if (_result != null) {
@@ -342,11 +417,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       );
     }
     // 初始 / 检测后
-    final canConfirm =
-        _report != null &&
-        !_correctionsNeedDetection &&
-        _report!.planId?.isNotEmpty == true &&
-        _bytes != null;
+    final canReview = _report?.previewRows.isNotEmpty == true && _bytes != null;
     return Wrap(
       alignment: WrapAlignment.center,
       spacing: UtenSpacing.s12,
@@ -356,38 +427,28 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           type: UtenButtonType.secondary,
           icon: Icons.file_upload_outlined,
           isLoading: _detecting,
-          onPressed: _pickAndDetect,
+          onPressed: _commitUncertain ? null : _pickAndDetect,
           child: Text(_report == null ? '选择 Excel 文件' : '重新选择'),
         ),
         if (_queue.hasPending && _report == null && _bytes == null)
           UtenButton(
-            onPressed: _detecting || _reviewing ? null : _detectCurrentFile,
-            child: Text(basicDataL10n(context).importFilesContinue),
-          ),
-        if (_report?.hasErrors == true)
-          UtenButton(
-            type: UtenButtonType.secondary,
             onPressed: _detecting || _reviewing || _commitUncertain
                 ? null
-                : _openProblems,
-            child: Text(basicDataL10n(context).goodsImportProblemsTitle),
+                : _detectCurrentFile,
+            child: Text(basicDataL10n(context).importFilesContinue),
           ),
-        if (canConfirm)
+        if (canReview || _commitUncertain)
           UtenButton(
             icon: Icons.check_rounded,
             onPressed: _reviewing || _detecting
                 ? null
                 : _commitUncertain
                 ? () => _commit(_submittedSelection ?? {})
-                : _reviewAndCommit,
+                : _openPreview,
             child: Text(
               _commitUncertain
                   ? basicDataL10n(context).importRetryPrevious
-                  : _report!.reviewRows.isNotEmpty
-                  ? basicDataL10n(context).importReviewOpen
-                  : _report!.hasErrors
-                  ? basicDataL10n(context).goodsImportImportReady
-                  : '确认导入',
+                  : '查看导入预览',
             ),
           ),
       ],
@@ -395,13 +456,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   }
 
   Future<void> _pickAndDetect() async {
-    if (_detecting || _committing || _reviewing) return;
-    final uncertain = _commitUncertain;
+    if (_detecting || _committing || _reviewing || _commitUncertain) return;
     final previousReport = _report;
     final previousBytes = _bytes;
-    final previousSelection = _submittedSelection;
-    final previousCorrections = _submittedCorrections;
-    final previousExclusions = _submittedExclusions;
     final previousMessage = _detectionMessage;
     _beginDetection();
     try {
@@ -421,14 +478,6 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             _report = previousReport;
             _bytes = previousBytes;
             _detectionMessage = previousMessage;
-            if (uncertain) {
-              _report = previousReport;
-              _bytes = previousBytes;
-              _submittedSelection = previousSelection;
-              _submittedCorrections = previousCorrections;
-              _submittedExclusions = previousExclusions;
-              _commitUncertain = true;
-            }
           });
         }
         return;
@@ -442,21 +491,19 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         _report = previousReport;
         _bytes = previousBytes;
         _detectionMessage = previousMessage;
-        if (uncertain) {
-          _report = previousReport;
-          _bytes = previousBytes;
-          _submittedSelection = previousSelection;
-          _submittedCorrections = previousCorrections;
-          _submittedExclusions = previousExclusions;
-          _commitUncertain = true;
-        }
       });
       context.appError('选择文件时出了问题，请重试');
     }
   }
 
   Future<void> _replaceQueueAndDetect(List<PlatformFile> files) async {
-    if (!mounted || files.isEmpty || _committing || _reviewing) return;
+    if (!mounted ||
+        files.isEmpty ||
+        _committing ||
+        _reviewing ||
+        _commitUncertain) {
+      return;
+    }
     setState(() {
       _queue.replacePending(files);
       _resetCurrentFileProgress();
@@ -467,7 +514,13 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   /// Never detect later files before the current file has committed.
   Future<void> _detectCurrentFile() async {
     final file = _queue.current;
-    if (!mounted || file == null || _committing || _reviewing) return;
+    if (!mounted ||
+        file == null ||
+        _committing ||
+        _reviewing ||
+        _commitUncertain) {
+      return;
+    }
     final previousProblems = _correctionsNeedDetection ? _report : null;
     _beginDetection();
     try {
@@ -481,8 +534,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             bytes,
             cellCorrections: freezeGoodsImportCorrections(_cellCorrections),
             excludedRowNums: Set.unmodifiable(_excludedRowNums),
+            mode: widget.mode,
           );
-      if (!mounted) return;
+      if (!mounted || !_owner.isCurrent) return;
       setState(() {
         _bytes = bytes;
         _pickedName = file.name;
@@ -496,16 +550,10 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _queue.phase = ImportFileQueuePhase.waiting;
         }
       });
-      if (report.hasErrors) {
-        await _openProblems();
-      } else if (!report.hasErrors &&
-          report.restorableRows == 0 &&
-          report.reviewRows.isNotEmpty) {
-        await _reviewAndCommit();
-      } else if (!report.hasErrors &&
-          report.restorableRows == 0 &&
-          _queue.approved) {
-        await _commit({});
+      if (report.previewRows.isNotEmpty) {
+        await _openPreview();
+      } else if (!report.hasErrors) {
+        setState(() => _detectionMessage = '未取得完整货品预览，请重新检查文件');
       }
     } on GoodsImportFileException catch (e) {
       if (!mounted) return;
@@ -527,7 +575,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
         _queue.pause(failed: true);
       });
       context.appApiError(e, fallback: message);
-      if (previousProblems != null) await _openProblems();
+      if (previousProblems != null && previousProblems.previewRows.isNotEmpty) {
+        await _openPreview();
+      }
     }
   }
 
@@ -547,55 +597,14 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   }
 
   Future<void> _redetectCurrentFile() async {
-    if (_detecting || _committing || _reviewing) return;
+    if (_detecting || _committing || _reviewing || _commitUncertain) return;
     _queue.approved = false;
     await _detectCurrentFile();
   }
 
-  Future<void> _reviewAndCommit() async {
-    final report = _report;
-    if (_detecting ||
-        _committing ||
-        _reviewing ||
-        report == null ||
-        report.planId?.isNotEmpty != true) {
-      return;
-    }
-    Set<String> selected = {};
-    if (report.reviewRows.isNotEmpty) {
-      setState(() {
-        _reviewing = true;
-        _queue.phase = ImportFileQueuePhase.reviewing;
-      });
-      final result = await reviewGoodsImport(
-        context,
-        title: basicDataL10n(context).goodsImportReviewTitle,
-        filename: _queue.current == null
-            ? null
-            : basicDataL10n(context).importFilesCurrent(
-                _queue.position,
-                _queue.total,
-                _queue.current!.name,
-              ),
-        rows: report.reviewRows,
-        added: report.addedRows,
-        filled: report.fillRows,
-        conflicts: report.conflictRows,
-        unchanged: report.unchangedRows,
-      );
-      if (!mounted) return;
-      setState(() => _reviewing = false);
-      if (result == null) {
-        setState(() => _queue.pause());
-        return;
-      }
-      selected = result;
-    }
-    await _commit(selected);
-  }
-
   Future<void> _commit(Set<String> selected) async {
-    if (_committing ||
+    if (!_owner.isCurrent ||
+        _committing ||
         _detecting ||
         _report == null ||
         _correctionsNeedDetection) {
@@ -608,15 +617,21 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       return;
     }
     final report = _report!;
-    final corrections = _commitUncertain && _submittedCorrections != null
+    final wasUncertain = _commitUncertain;
+    final replacements = Set<String>.unmodifiable(
+      wasUncertain && _submittedSelection != null
+          ? _submittedSelection!
+          : selected,
+    );
+    final corrections = wasUncertain && _submittedCorrections != null
         ? _submittedCorrections!
         : freezeGoodsImportCorrections(_cellCorrections);
-    final exclusions = _commitUncertain && _submittedExclusions != null
+    final exclusions = wasUncertain && _submittedExclusions != null
         ? _submittedExclusions!
-        : Set<int>.unmodifiable(_excludedRowNums);
+        : _reviewExclusions ?? Set<int>.unmodifiable(_excludedRowNums);
     setState(() {
       _committing = true;
-      _submittedSelection = Set.of(selected);
+      _submittedSelection = replacements;
       _submittedCorrections = corrections;
       _submittedExclusions = exclusions;
       _queue.phase = ImportFileQueuePhase.committing;
@@ -628,13 +643,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             bytes,
             planId: planId,
             filename: _pickedName,
-            replaceRowKeys: selected,
+            replaceRowKeys: replacements,
             cellCorrections: corrections,
             excludedRowNums: exclusions,
+            mode: widget.mode,
           );
-      if (!mounted) return;
+      if (!mounted || !_owner.isCurrent) return;
       setState(() {
         _fileResults.add(res);
+        _allResults.add(res);
         _excludedRowNums.addAll(report.readyRowNums);
         _cellCorrections.removeWhere(
           (row, _) => _excludedRowNums.contains(row),
@@ -652,7 +669,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           res.ignoredCount,
           res.unchangedCount,
         );
-        if (report.hasErrors) {
+        if (report.hasErrors || _previewHasRemaining) {
           _result = null;
           _queue.recordPartial(summary);
           _queue.pause();
@@ -664,18 +681,24 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       });
       context.appSuccess('已导入 ${res.importedCount} 条货品');
       widget.onImported?.call();
-      if (report.hasErrors) {
+      if (report.hasErrors || _previewHasRemaining) {
+        _reviewExclusions = null;
+        _previewHasRemaining = false;
         await _detectCurrentFile();
       } else if (_queue.hasPending) {
         _resetCurrentFileProgress();
         await _detectCurrentFile();
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_owner.isCurrent) return;
       setState(() {
         _committing = false;
         _queue.pause(failed: true);
-        if (e is ApiException &&
+        // A consumed-plan 4xx describes this retry only. It cannot prove that
+        // an earlier request whose response was lost rolled back.
+        if (wasUncertain) {
+          _commitUncertain = true;
+        } else if (e is ApiException &&
             e.code != 'NETWORK' &&
             e.code != 'NETWORK_TIMEOUT' &&
             (e.httpStatus ?? 0) < 500) {
@@ -689,6 +712,9 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
               e.code == 'NETWORK_TIMEOUT' ||
               (e.httpStatus ?? 0) >= 500;
         }
+        if (_commitUncertain) {
+          _detectionMessage = '提交结果待核对，请查看修改历史确认结果。';
+        }
       });
       if (_commitUncertain) widget.onImported?.call();
       context.appApiError(e);
@@ -696,6 +722,8 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   }
 
   void _resetCurrentFileProgress() {
+    _reviewExclusions = null;
+    _previewHasRemaining = false;
     _cellCorrections = {};
     _problemDraft = {};
     _excludedRowNums.clear();
@@ -715,63 +743,117 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       );
 
   GoodsImportResult _combinedResult(GoodsImportResult latest) =>
-      GoodsImportResult(
-        batchId: latest.batchId,
-        importedCount: _fileResults.fold(0, (n, r) => n + r.importedCount),
-        createdCategories: _fileResults.fold(
-          0,
-          (n, r) => n + r.createdCategories,
-        ),
-        createdColors: _fileResults.fold(0, (n, r) => n + r.createdColors),
-        createdUnits: _fileResults.fold(0, (n, r) => n + r.createdUnits),
-        createdCategoryPaths: [
-          for (final r in _fileResults) ...r.createdCategoryPaths,
-        ],
-        createdCount: _fileResults.fold(0, (n, r) => n + r.createdCount),
-        filledCount: _fileResults.fold(0, (n, r) => n + r.filledCount),
-        updatedCount: _fileResults.fold(0, (n, r) => n + r.updatedCount),
-        ignoredCount: _fileResults.fold(0, (n, r) => n + r.ignoredCount),
-        unchangedCount: _fileResults.fold(0, (n, r) => n + r.unchangedCount),
-        restoredCount: _fileResults.fold(0, (n, r) => n + r.restoredCount),
-      );
+      _sumResults(latest, _fileResults);
 
-  Future<void> _openProblems() async {
+  GoodsImportResult _sumResults(
+    GoodsImportResult latest,
+    List<GoodsImportResult> results,
+  ) => GoodsImportResult(
+    batchId: latest.batchId,
+    importedCount: results.fold(0, (n, r) => n + r.importedCount),
+    createdCategories: results.fold(0, (n, r) => n + r.createdCategories),
+    createdColors: results.fold(0, (n, r) => n + r.createdColors),
+    createdUnits: results.fold(0, (n, r) => n + r.createdUnits),
+    createdCategoryPaths: [for (final r in results) ...r.createdCategoryPaths],
+    createdCount: results.fold(0, (n, r) => n + r.createdCount),
+    filledCount: results.fold(0, (n, r) => n + r.filledCount),
+    updatedCount: results.fold(0, (n, r) => n + r.updatedCount),
+    ignoredCount: results.fold(0, (n, r) => n + r.ignoredCount),
+    unchangedCount: results.fold(0, (n, r) => n + r.unchangedCount),
+    restoredCount: results.fold(0, (n, r) => n + r.restoredCount),
+  );
+
+  Future<void> _openPreview() async {
     final report = _report;
-    if (report == null ||
-        !report.hasErrors ||
+    final bytes = _bytes;
+    if (!_owner.isCurrent ||
+        report == null ||
+        bytes == null ||
         _reviewing ||
         _committing ||
         _detecting ||
         _commitUncertain) {
       return;
     }
-    setState(() => _reviewing = true);
-    final decision = await Navigator.of(context)
-        .push<GoodsImportProblemDecision>(
-          MaterialPageRoute(
-            builder: (_) => GoodsImportProblemsPage(
-              report: report,
-              filename: _queue.current?.name ?? '',
-              cellCorrections: _problemDraft,
-              canImportReady: !_correctionsNeedDetection,
-              detectionMessage: _detectionMessage,
-              onDraftChanged: (draft) => _problemDraft = draft,
+    setState(() {
+      _reviewing = true;
+      _queue.phase = ImportFileQueuePhase.reviewing;
+    });
+    final route = MaterialPageRoute<GoodsImportPreviewDecision>(
+      builder: (_) => GoodsImportPreviewPage(
+        report: report,
+        filename: _queue.current?.name ?? _pickedName ?? '',
+        mode: widget.mode,
+        cellCorrections: _problemDraft.isNotEmpty
+            ? _problemDraft
+            : _cellCorrections,
+        excludedRowNums: Set.of(_excludedRowNums),
+        needsValidation: _correctionsNeedDetection,
+        pickReference:
+            (
+              pickerContext, {
+              required field,
+              required currentValue,
+              required currentCategorySegments,
+              required draftValues,
+            }) => pickGoodsImportReference(
+              pickerContext,
+              ref,
+              field: field,
+              currentValue: currentValue,
+              currentCategorySegments: currentCategorySegments,
+              draftValues: draftValues,
+              isCurrent: () => mounted && _owner.isCurrent,
             ),
-          ),
-        );
-    if (!mounted) return;
-    setState(() => _reviewing = false);
+        detect: (corrections, exclusions) async {
+          if (!_owner.isCurrent) throw StateError('操作身份已改变');
+          final next = await ref
+              .read(goodsImportRepositoryProvider)
+              .detect(
+                bytes,
+                cellCorrections: corrections,
+                excludedRowNums: exclusions,
+                mode: widget.mode,
+              );
+          if (!_owner.isCurrent) throw StateError('操作身份已改变');
+          return next;
+        },
+        onDraftChanged: (corrections, removed) {
+          _problemDraft = corrections;
+          _cellCorrections = {
+            for (final entry in corrections.entries)
+              entry.key: Map.of(entry.value),
+          };
+          _excludedRowNums
+            ..clear()
+            ..addAll(removed);
+          _correctionsNeedDetection = true;
+        },
+      ),
+    );
+    _previewRoute = route;
+    final decision = await Navigator.of(context).push(route);
+    _previewRoute = null;
+    if (!mounted || !_owner.isCurrent) return;
+    setState(() {
+      _reviewing = false;
+      if (decision == null) _queue.pause();
+    });
     if (decision == null) return;
-    if (decision.action == GoodsImportProblemAction.importReady) {
-      await _reviewAndCommit();
-    } else {
+    setState(() {
+      _report = decision.report;
       _cellCorrections = {
         for (final entry in decision.cellCorrections.entries)
-          entry.key: Map<String, String>.of(entry.value),
+          entry.key: Map.of(entry.value),
       };
-      _queue.approved = false;
-      _correctionsNeedDetection = true;
-      await _detectCurrentFile();
-    }
+      _problemDraft = decision.cellCorrections;
+      _excludedRowNums
+        ..clear()
+        ..addAll(decision.removedRowNums);
+      _reviewExclusions = decision.excludedRowNums;
+      _previewHasRemaining = decision.hasRemaining;
+      _correctionsNeedDetection = false;
+    });
+    await _commit(decision.replaceRowKeys);
   }
 }

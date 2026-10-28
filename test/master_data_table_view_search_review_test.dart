@@ -622,6 +622,7 @@ void main() {
                   nullCounts: const {},
                   filters: const {'search.remark': '保留'},
                   serverColumnSearch: true,
+                  serverColumnSearchKeys: const {'remark'},
                   onFilterChanged: (_, _) {},
                   onPageChange: (_) async {},
                 ),
@@ -636,6 +637,7 @@ void main() {
             find.byType(MasterDataTableView<FormDraftCategoryRow<String>>),
           );
       expect(wrapped.serverColumnSearch, isTrue);
+      expect(wrapped.serverColumnSearchKeys, {'remark'});
       expect(wrapped.columns[0].columnSearchEnabled, isTrue);
       expect(wrapped.columns[1].columnSearchEnabled, isFalse);
       expect(wrapped.items.single.record, 'server-row');

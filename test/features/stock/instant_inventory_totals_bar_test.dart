@@ -241,7 +241,12 @@ void main() {
       router.go(overviewLocation);
       await tester.pumpAndSettle();
       expect(router.canPop(), isFalse);
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       _expectNavigationScope(
         api.inventoryRequests.last,
@@ -260,7 +265,12 @@ void main() {
         category: browse,
         keyword: null,
       );
-      await tester.tap(find.byType(UtenBackButton));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenBackButton),
+          matching: find.byType(IconButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(router.state.uri.toString(), _upstreamReturnTo);
       expect(tester.takeException(), isNull);

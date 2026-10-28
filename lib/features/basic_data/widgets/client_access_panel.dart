@@ -304,6 +304,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           // 保存可见人设置网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
           if (_saving)
             const UtenBusyOverlay(
+              showDoNotLeaveHint: false,
               title: '正在保存负责人和可见人',
               description: '正在写入客户访问设置，请勿重复提交或关闭面板。',
             ),
@@ -389,25 +390,15 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
       child: ListView(
         padding: const EdgeInsets.all(UtenSpacing.s16),
         children: [
-          Container(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Text(
-              '内销、外贸客户使用同一套规则。可同时设置多位负责人，共同维护客户普通资料；'
-              '历史制单、审批和审计记录不会被改写。变更负责人时，若原负责人仍在职且账号启用，'
-              '系统会暂时保留其单客户只读查看权，以便完成在途单据。',
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
           UtenEmployeeMultiPicker(
             key: const ValueKey('client-access-owners'),
             label: '客户负责人',
             hint: '请选择一位或多位负责人',
-            info: '第一位是主负责人，承接未指定负责人的新业务；所有选中人员均可共同维护客户普通资料。',
+            info:
+                '第一位是主负责人，承接未指定负责人的新业务；所有选中人员均可共同维护客户普通资料。\n\n'
+                '内销、外贸客户使用同一套规则。可同时设置多位负责人，共同维护客户普通资料；'
+                '历史制单、审批和审计记录不会被改写。变更负责人时，若原负责人仍在职且账号启用，'
+                '系统会暂时保留其单客户只读查看权，以便完成在途单据。',
             sheetTitle: '选择客户负责人',
             initialSelection: _owners,
             panelScopeBuilder: widget.submissionOwner?.ownDialog,
@@ -419,20 +410,13 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             onChanged: _changeOwners,
           ),
           const SizedBox(height: UtenSpacing.s16),
-          Text(
-            '额外可见人只获得该客户的只读查看，不改变负责人；是否可执行其他操作仍由独立操作权限决定。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
           UtenEmployeeMultiPicker(
             key: ValueKey(
               'client-access-viewers-${_owners.map((owner) => owner.id).join(',')}-'
               '${_viewers.map((viewer) => viewer.id).join(',')}',
             ),
             label: '额外只读查看人',
+            info: '额外可见人只获得该客户的只读查看，不改变负责人；是否可执行其他操作仍由独立操作权限决定。',
             hint: '没有额外查看人',
             sheetTitle: '选择额外只读查看人',
             emptyMessage: '未找到匹配的在册员工',

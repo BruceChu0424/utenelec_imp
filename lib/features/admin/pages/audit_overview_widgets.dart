@@ -5,56 +5,25 @@ final _auditRetentionHintProvider = Provider.autoDispose<String>((ref) {
   return AuditRetentionPresentation.historyHint(mode);
 });
 
-/// 列表底部的保留策略说明，让"为什么查不到很早的日志"有明确答案。
+/// Keep the current retention capability visible; disclose its full explanation.
 class _AuditRetentionHint extends ConsumerWidget {
   const _AuditRetentionHint();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final mode = ref.watch(auditArchivePurgeModeProvider);
     final hint = ref.watch(_auditRetentionHintProvider);
-    return UtenCard(
-      variant: UtenCardVariant.outlined,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Icon(
-              Icons.auto_delete_outlined,
-              size: 20,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '留存与归档',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  hint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+    return UtenSectionHeader(
+      title: '留存与归档',
+      info: hint,
+      trailing: UtenStatusBadge(
+        label: AuditRetentionPresentation.modeLabel(mode),
+        type:
+            mode == AuditArchivePurgeMode.legacyPurge ||
+                mode == AuditArchivePurgeMode.unknown
+            ? UtenStatusBadgeType.warning
+            : UtenStatusBadgeType.neutral,
+        size: UtenStatusBadgeSize.small,
       ),
     );
   }
@@ -421,18 +390,12 @@ class _AuditFilterPanel extends StatelessWidget {
               const SizedBox(height: UtenSpacing.s16),
               _AuditFilterChoiceGroup(
                 title: '业务对象',
+                info: '查货品或分类记录时，先选业务对象，再选新增、修改或删除。',
                 semanticPrefix: '业务对象',
                 keyPrefix: 'audit-target',
                 value: targetTypeFilter,
                 options: targetTypeChips,
                 onChanged: onTargetTypeChanged,
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '查货品或分类记录时，先选业务对象，再选新增、修改或删除。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
               ),
               const SizedBox(height: UtenSpacing.s16),
               _AuditFilterChoiceGroup(
@@ -464,24 +427,13 @@ class _AuditFilterPanel extends StatelessWidget {
                   _AuditFilterMenu(
                     label: '风险等级',
                     value: riskFilter,
-                    options: const [
-                      ('全部风险', null),
-                      ('有风险', 'risky'),
-                      ('严重', 'critical'),
-                      ('高风险', 'high'),
-                      ('需关注', 'medium'),
-                      ('低风险', 'low'),
-                    ],
+                    options: _auditRiskOptions,
                     onChanged: onRiskChanged,
                   ),
                   _AuditFilterMenu(
                     label: '操作结果',
                     value: outcomeFilter,
-                    options: const [
-                      ('全部结果', null),
-                      ('成功', 'success'),
-                      ('失败', 'failure'),
-                    ],
+                    options: _auditOutcomeOptions,
                     onChanged: onOutcomeChanged,
                   ),
                 ],
@@ -497,6 +449,7 @@ class _AuditFilterPanel extends StatelessWidget {
 class _AuditFilterChoiceGroup extends StatelessWidget {
   const _AuditFilterChoiceGroup({
     required this.title,
+    this.info,
     required this.semanticPrefix,
     required this.keyPrefix,
     required this.value,
@@ -505,6 +458,7 @@ class _AuditFilterChoiceGroup extends StatelessWidget {
   });
 
   final String title;
+  final String? info;
   final String semanticPrefix;
   final String keyPrefix;
   final String? value;
@@ -516,7 +470,7 @@ class _AuditFilterChoiceGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.labelLarge),
+        UtenSectionHeader(title: title, info: info),
         const SizedBox(height: UtenFilterRow.rowGap),
         UtenSegmentRow<String?>(
           showSelectedIcon: false,
@@ -1042,10 +996,34 @@ class _AuditListHeader extends StatelessWidget {
   }
 }
 
+const _auditRiskOptions = <(String, String?)>[
+  ('全部风险', null),
+  ('有风险', 'risky'),
+  ('严重', 'critical'),
+  ('高风险', 'high'),
+  ('需关注', 'medium'),
+  ('低风险', 'low'),
+];
+
+const _auditOutcomeOptions = <(String, String?)>[
+  ('全部结果', null),
+  ('成功', 'success'),
+  ('失败', 'failure'),
+];
+
 class _AuditEventTable extends StatelessWidget {
   const _AuditEventTable({
     required this.items,
     required this.onOpen,
+    required this.headerQueries,
+    required this.headerFilters,
+    required this.operationFilter,
+    required this.targetFilter,
+    required this.onPickDate,
+    required this.onPickActor,
+    required this.riskFilter,
+    required this.outcomeFilter,
+    required this.onFilterChanged,
     this.stickyHeaderPinned,
     required this.rowsController,
     required this.tableAnchorKey,
@@ -1063,6 +1041,15 @@ class _AuditEventTable extends StatelessWidget {
 
   final List<AuditLogEntry> items;
   final ValueChanged<AuditLogEntry> onOpen;
+  final bool headerQueries;
+  final Map<String, String?> headerFilters;
+  final String? operationFilter;
+  final String? targetFilter;
+  final VoidCallback onPickDate;
+  final VoidCallback onPickActor;
+  final String? riskFilter;
+  final String? outcomeFilter;
+  final void Function(String key, String? value) onFilterChanged;
   final MasterDataTableRowsController<AuditLogEntry> rowsController;
   final GlobalKey tableAnchorKey;
   final GlobalKey firstRowKey;
@@ -1149,6 +1136,8 @@ class _AuditEventTable extends StatelessWidget {
           key: 'summary',
           label: '操作内容',
           width: 290,
+          columnSearchEnabled: false,
+          info: '按实际操作类型筛选；完整说明与请求链在详情保留。',
           value: _summary,
           cellBuilderHandlesSemantics: true,
           cellBuilder: (context, row) => Semantics(
@@ -1174,12 +1163,18 @@ class _AuditEventTable extends StatelessWidget {
           key: 'time',
           label: '北京时间',
           width: 190,
+          type: 'date',
+          columnSearchEnabled: false,
+          headerFilterAction: MasterHeaderFilterAction(onTap: onPickDate),
+          info: '按北京时间范围查询；审计事件保持时间倒序，以保留调查顺序。',
           value: (row) => _AdminAuditLogPageState._fmtTime(row.createdAt),
         ),
         MasterColumnDef(
           key: 'actor',
           label: '操作人',
           width: 150,
+          columnSearchEnabled: false,
+          headerFilterAction: MasterHeaderFilterAction(onTap: onPickActor),
           value: (row) => AuditEventPresentation.actorLabel(
             actorDisplay: row.actorDisplay,
             actorName: row.actorName,
@@ -1190,12 +1185,16 @@ class _AuditEventTable extends StatelessWidget {
           key: 'object',
           label: '业务对象',
           width: 230,
+          columnSearchEnabled: false,
+          info: '按对象类别收敛；单号、名称、编码可在上方关键词中检索。',
           value: (row) => auditEventObjectEvidence(row) ?? '—',
         ),
         MasterColumnDef(
           key: 'department',
           label: '部门',
           width: 140,
+          columnSearchEnabled: false,
+          info: '当前选定人员的部门资料；同一请求调查保留关联记录，不能按部门裁断请求链。',
           value: (row) => row.actorDepartment ?? '—',
         ),
         MasterColumnDef(
@@ -1208,14 +1207,75 @@ class _AuditEventTable extends StatelessWidget {
           key: 'change',
           label: '变化摘要',
           width: 300,
+          columnSearchEnabled: false,
+          info: '仅判断是否记录了不同的脱敏前后对象；没有对照不代表业务未发生变化。',
           value: (row) => row.changeSummary ?? '—',
         ),
       ],
       items: items,
-      facets: const {},
+      facets: {
+        'summary': [
+          for (final item in _AdminAuditLogPageState._operationChips)
+            if (item.$2 != null)
+              MasterFacetBucket(value: item.$2!, label: item.$1, count: 0),
+        ],
+        'object': [
+          for (final value in const [
+            'goods',
+            'material_categories',
+            'clients',
+            'suppliers',
+            'purchase_orders',
+            'sales_quotes',
+            'sales_orders',
+            'sales_shipments',
+            'sales_other_shipments',
+            'sales_returns',
+            'subcontract_orders',
+            'production_plans',
+            'production_execution_segments',
+            'employees',
+            'departments',
+            'users',
+            'system_settings',
+          ])
+            MasterFacetBucket(
+              value: value,
+              label: _objectTypeLabel(value),
+              count: 0,
+            ),
+        ],
+        if (headerQueries)
+          'change': const [
+            MasterFacetBucket(value: 'recorded', label: '有不同的前后对照', count: 0),
+            MasterFacetBucket(
+              value: 'unrecorded',
+              label: '未记录不同的前后对照',
+              count: 0,
+            ),
+          ],
+        'risk': [
+          for (final option in _auditRiskOptions)
+            if (option.$2 != null)
+              MasterFacetBucket(value: option.$2!, label: option.$1, count: 0),
+        ],
+        'outcome': [
+          for (final option in _auditOutcomeOptions)
+            if (option.$2 != null)
+              MasterFacetBucket(value: option.$2!, label: option.$1, count: 0),
+        ],
+      },
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: {
+        'risk': riskFilter,
+        'outcome': outcomeFilter,
+        'summary': operationFilter,
+        'object': targetFilter,
+        'change': headerFilters['search.change'],
+        'search.device': headerFilters['search.device'],
+      },
+      serverColumnSearchKeys: headerQueries ? const {'device'} : const {},
+      onFilterChanged: onFilterChanged,
       onRowTap: onOpen,
       rowKeyOf: (row) => row.id.toString(),
       emptyMessage: '当前范围内没有审计事件',
@@ -1227,6 +1287,12 @@ class _AuditSessionTable extends StatelessWidget {
   const _AuditSessionTable({
     required this.sessions,
     required this.onOpen,
+    required this.headerQueries,
+    required this.filters,
+    required this.sortColumn,
+    required this.sortAscending,
+    required this.onFilterChanged,
+    required this.onSortChange,
     this.stickyHeaderPinned,
     required this.rowsController,
     required this.tableAnchorKey,
@@ -1244,6 +1310,12 @@ class _AuditSessionTable extends StatelessWidget {
 
   final List<AuditSessionSummary> sessions;
   final ValueChanged<AuditSessionSummary> onOpen;
+  final bool headerQueries;
+  final Map<String, String?> filters;
+  final String? sortColumn;
+  final bool sortAscending;
+  final void Function(String, String?) onFilterChanged;
+  final void Function(String?, bool) onSortChange;
   final MasterDataTableRowsController<AuditSessionSummary> rowsController;
   final GlobalKey tableAnchorKey;
   final GlobalKey firstRowKey;
@@ -1301,18 +1373,25 @@ class _AuditSessionTable extends StatelessWidget {
           key: 'actor',
           label: '操作人',
           width: 170,
+          columnSearchEnabled: false,
+          info: '当前查询已按所选人员限定；更换人员请使用上方人员选择。',
           value: auditSessionActor,
         ),
         MasterColumnDef(
           key: 'login',
           label: '登录时间 (北京时间)',
           width: 200,
+          type: 'date',
+          sortable: headerQueries,
+          columnSearchEnabled: headerQueries,
+          info: '按北京时间输入 YYYY、YYYY-MM、YYYY-MM-DD 或起止日期（用 .. 连接）。未知开始时间不按零值处理。',
           value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
         ),
         MasterColumnDef(
           key: 'device',
           label: '设备',
           width: 210,
+          sortable: headerQueries,
           value: (row) => row.deviceLabel ?? '未提供设备信息',
         ),
         MasterColumnDef(
@@ -1320,6 +1399,8 @@ class _AuditSessionTable extends StatelessWidget {
           label: '人工操作',
           width: 110,
           type: 'number',
+          sortable: headerQueries,
+          columnSearchEnabled: headerQueries,
           value: (row) => '${row.operationCount}',
           exactValueOf: (row) => row.operationCount.toString(),
         ),
@@ -1328,6 +1409,8 @@ class _AuditSessionTable extends StatelessWidget {
           label: '失败操作',
           width: 110,
           type: 'number',
+          sortable: headerQueries,
+          columnSearchEnabled: headerQueries,
           value: (row) => '${row.failureCount}',
           exactValueOf: (row) => row.failureCount.toString(),
         ),
@@ -1336,6 +1419,8 @@ class _AuditSessionTable extends StatelessWidget {
           label: '退出后操作',
           width: 130,
           type: 'number',
+          sortable: headerQueries,
+          columnSearchEnabled: headerQueries,
           value: (row) => '${row.postLogoutCount}',
           exactValueOf: (row) => row.postLogoutCount.toString(),
         ),
@@ -1343,6 +1428,10 @@ class _AuditSessionTable extends StatelessWidget {
           key: 'logout',
           label: '退出 / 最后活动',
           width: 210,
+          type: 'date',
+          sortable: headerQueries,
+          columnSearchEnabled: headerQueries,
+          info: '优先退出时间，否则最后活动时间；按北京时间日期或闭区间检索。',
           value: (row) => auditBeijingTime(
             row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
             fallback: '暂无活动时间',
@@ -1350,10 +1439,45 @@ class _AuditSessionTable extends StatelessWidget {
         ),
       ],
       items: sessions,
-      facets: const {},
+      facets: headerQueries
+          ? {
+              'status': [
+                for (final item in const <(String, String)>[
+                  ('activity_after_logout', '退出后仍有活动'),
+                  ('security_terminated', '安全终止'),
+                  ('normal_logout', '正常退出'),
+                  ('no_logout_record', '未记录退出'),
+                ])
+                  MasterFacetBucket(value: item.$1, label: item.$2, count: 0),
+              ],
+              'credential': [
+                for (final item in const <(String, String)>[
+                  ('revoked', '刷新凭证已撤销'),
+                  ('expired', '刷新凭证已过期'),
+                  ('not_expired', '刷新凭证尚未到期'),
+                  ('no_record', '未记录刷新凭证'),
+                  ('unknown', '刷新凭证状态未知'),
+                ])
+                  MasterFacetBucket(value: item.$1, label: item.$2, count: 0),
+              ],
+            }
+          : const {},
       nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
+      filters: filters,
+      serverColumnSearchKeys: headerQueries
+          ? const {
+              'login',
+              'logout',
+              'device',
+              'operations',
+              'failures',
+              'postLogout',
+            }
+          : const {},
+      onFilterChanged: onFilterChanged,
+      sortColumn: sortColumn,
+      sortAscending: sortAscending,
+      onSortChange: headerQueries ? onSortChange : null,
       onRowTap: onOpen,
       rowKeyOf: (row) => row.sessionId,
       rowWidgetKeyOf: (row) => ValueKey('audit-session-${row.sessionId}'),

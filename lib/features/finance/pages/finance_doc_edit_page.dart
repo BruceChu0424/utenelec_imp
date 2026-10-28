@@ -9,6 +9,7 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）；
 // 发票号（invoiceNo）仍由用户手工录入（未弃用）。日期统一用 UtenDateField。
 // 保存组装 body 调 create/update，成功后跳详情。
+import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../core/performance/json_value_snapshot.dart';
 import '../../../core/performance/ui_work_budget.dart';
@@ -1655,34 +1656,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           top: UtenSpacing.s12,
           bottom: UtenSpacing.s8,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.primary),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (description != null)
-                    Text(
-                      description,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        height: 1.45,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: UtenSectionHeader(title: title, icon: icon, info: description),
       ),
     );
   }

@@ -3,7 +3,7 @@
 // 所有敏感操作共用这一个弹窗：设/撤超管、授权与数据范围、重置他人密码、进入切换人、
 // 保存系统设置、提交改手机号/姓名。页面不自己问密码——服务端回
 // 403 REAUTH_REQUIRED 时由网络层 (StepUpInterceptor) 经 StepUpCoordinator 弹出本框，
-// 换到一次性凭证后自动重发原请求。
+// 换到会话凭证后自动重发原请求，连续操作复用，空闲五分钟后重新验证。
 //
 // 输错：留在框里提示「密码不正确」，可重试；连续输错到上限：框里提示暂停多久、不再可输
 // (服务端同时让当前登录失效，关掉弹窗后会回到登录页)。
@@ -17,14 +17,17 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/inputs/uten_input.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/api_client.dart';
 import '../../core/network/step_up_coordinator.dart';
+import '../../core/network/user_activity.dart';
 import '../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/auth/repositories/step_up_repository.dart';
+import '../providers/authenticated_scope_provider.dart';
 
-/// 弹出再认证框；成功返回一次性凭证，取消返回 null。
+/// 弹出再认证框；成功返回会话凭证，取消返回 null。
 ///
 /// 触发再认证的请求往往正挂着整页忙碌遮罩 (保存权限、系统设置…)：弹框期间让遮罩让位，
 /// 否则遮罩会被导航器抬到密码框之上，请求等密码、遮罩等请求，整页卡死。
@@ -132,7 +135,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '这是敏感操作，请重新输入你的登录密码。确认后 5 分钟内有效，只能用于这一次操作。',
+              '请输入你的登录密码。确认后可连续操作；停止操作 5 分钟后，需要再次确认。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -194,25 +197,70 @@ class StepUpPromptHost extends ConsumerStatefulWidget {
 
 class _StepUpPromptHostState extends ConsumerState<StepUpPromptHost> {
   void Function()? _unregister;
+  Timer? _activityTimer;
 
   @override
   void initState() {
     super.initState();
     _unregister = StepUpCoordinator.instance.register(_prompt);
+    UserActivity.addListener(_recordActivity);
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) StepUpCoordinator.instance.clear();
+    });
+    ref.listenManual(apiClientProvider, (previous, next) {
+      if (!identical(previous, next)) StepUpCoordinator.instance.clear();
+    });
+    _activityTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_keepAlive()),
+    );
   }
 
   @override
   void dispose() {
+    _activityTimer?.cancel();
+    UserActivity.removeListener(_recordActivity);
     _unregister?.call();
     super.dispose();
+  }
+
+  void _recordActivity() => StepUpCoordinator.instance.recordActivity();
+
+  Future<void> _keepAlive() async {
+    final scope = ref.read(authenticatedScopeProvider);
+    if (scope == null || scope.actorId != null) return;
+    final repository = ref.read(stepUpRepositoryProvider);
+    if (repository is! StepUpActivityRepository) return;
+    final api = ref.read(apiClientProvider);
+    await StepUpCoordinator.instance.keepAliveIfActive((token) async {
+      await (repository as StepUpActivityRepository).recordActivity(token);
+      if (!mounted ||
+          ref.read(authenticatedScopeProvider) != scope ||
+          !identical(ref.read(apiClientProvider), api)) {
+        throw StateError('Reauthentication identity changed');
+      }
+    });
   }
 
   Future<String?> _prompt() async {
     final hostContext =
         (widget.navigatorContext ?? () => appNavigatorKey.currentContext)();
     if (hostContext == null || !hostContext.mounted) return null;
+    final scope = ref.read(authenticatedScopeProvider);
+    final api = ref.read(apiClientProvider);
     final repository = ref.read(stepUpRepositoryProvider);
-    return showReauthDialog(hostContext, verify: repository.verify);
+    return showReauthDialog(
+      hostContext,
+      verify: (password) async {
+        final token = await repository.verify(password);
+        if (!mounted ||
+            ref.read(authenticatedScopeProvider) != scope ||
+            !identical(ref.read(apiClientProvider), api)) {
+          throw ApiException('SESSION_CHANGED', '登录身份或服务器已变化，请重新确认');
+        }
+        return token;
+      },
+    );
   }
 
   @override

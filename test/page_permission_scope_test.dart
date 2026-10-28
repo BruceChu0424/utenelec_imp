@@ -5,6 +5,78 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
   group('PagePermissionScope', () {
+    test('detail and batch routes reuse the owning business surface', () {
+      const expected = {
+        '/basicinfo/client/client-1': 'basic.client',
+        '/basicinfo/supplier/supplier-1': 'basic.supplier',
+        '/finance/assets/new': 'finance.asset',
+        '/sales/customer-shipments': 'sales.other-shipment',
+        '/sales/customer-shipments/shipment-1/edit': 'sales.other-shipment',
+        '/warehouse/material-discovery/request-1': 'warehouse.stock-document',
+        '/warehouse/material-returns/batch-receive': 'warehouse.stock-document',
+        '/warehouse/production-finished-in/tasks': 'warehouse.tasks',
+        '/warehouse/production-finished-in/batch-stock-in': 'warehouse.tasks',
+        '/warehouse/production-finished-in/arrival-registrations':
+            'warehouse.tasks',
+        '/production/material-return/new': 'production.workshop-tasks',
+        '/production/material-discovery-request': 'production.workshop-tasks',
+        '/production/material-increment-requests/new':
+            'production.workshop-tasks',
+        '/production/overproduction-rate-requests/new':
+            'production.workshop-tasks',
+        '/production/overproduction-rate-requests/request-1': 'production.plan',
+        '/production/material-increment-requests/request-1': 'production.plan',
+        '/production/actual-output-supplements/request-1': 'production.plan',
+      };
+      for (final entry in expected.entries) {
+        expect(
+          pagePermissionScopeFor(entry.key)?.surfaceKey,
+          entry.value,
+          reason: entry.key,
+        );
+      }
+    });
+
+    test('master history follows its entity and rejects unknown types', () {
+      const expected = {
+        'goods': 'basic.goods',
+        'clients': 'basic.client',
+        'suppliers': 'basic.supplier',
+        'moulds': 'basic.mould',
+        'colors': 'basic.color',
+        'units': 'basic.unit',
+        'currencies': 'basic.currency',
+        'warehouses': 'basic.warehouse',
+        'accounts': 'basic.account',
+        'reference-methods': 'basic.settlement-method',
+        'payment-styles': 'basic.payment-style',
+      };
+      expect(
+        pagePermissionScopeFor('/basicinfo/history')?.surfaceKey,
+        'basic.hub',
+      );
+      for (final entry in expected.entries) {
+        for (final path in [
+          '/basicinfo/history?entityType=${entry.key}',
+          '/basicinfo/history/${entry.key}/record-1',
+        ]) {
+          expect(
+            pagePermissionScopeFor(path)?.surfaceKey,
+            entry.value,
+            reason: path,
+          );
+        }
+      }
+      expect(
+        pagePermissionScopeFor('/basicinfo/history?entityType=unknown'),
+        isNull,
+      );
+      expect(
+        pagePermissionScopeFor('/basicinfo/history/unknown/record-1'),
+        isNull,
+      );
+    });
+
     test(
       'AI use has a dedicated scope without exposing system configuration',
       () {

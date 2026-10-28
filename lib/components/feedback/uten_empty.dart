@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../inputs/uten_field_hint_icon.dart';
 
 /// Uten 空状态组件
 class UtenEmpty extends StatelessWidget {
@@ -12,6 +13,7 @@ class UtenEmpty extends StatelessWidget {
     this.icon = Icons.inbox_outlined,
     this.message = '暂无数据',
     this.description,
+    this.info,
     this.actionLabel,
     this.onAction,
     this.isError = false,
@@ -39,6 +41,10 @@ class UtenEmpty extends StatelessWidget {
   final IconData icon;
   final String message;
   final String? description;
+
+  /// Optional explanation beside the existing message; errors and dynamic
+  /// recovery instructions remain in [message] / [description].
+  final String? info;
   final String? actionLabel;
   final VoidCallback? onAction;
   final bool isError;
@@ -70,14 +76,16 @@ class UtenEmpty extends StatelessWidget {
                 child: Icon(icon, color: iconColor, size: 32),
               ),
               const SizedBox(height: 20),
-              Text(
-                message,
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-              ),
+              if (info?.trim().isNotEmpty == true)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(child: _message(theme)),
+                    UtenFieldHintIcon(info: info, dense: true),
+                  ],
+                )
+              else
+                _message(theme),
               if (description != null) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -102,4 +110,13 @@ class UtenEmpty extends StatelessWidget {
       ),
     );
   }
+
+  Widget _message(ThemeData theme) => Text(
+    message,
+    style: theme.textTheme.bodyLarge?.copyWith(
+      color: theme.colorScheme.onSurface,
+      fontWeight: FontWeight.w600,
+    ),
+    textAlign: TextAlign.center,
+  );
 }

@@ -90,10 +90,15 @@ MasterColumnDef<R> outboundWeightColumn<R>({
       final chrome = column.chromeWidthOf?.call(context) ?? column.chromeWidth;
       return readableInput * textFactor + chrome + UtenSpacing.s12 * 2 + 1;
     },
-    type: 'number',
+    type: 'weight',
+    columnSearchEnabled: false,
+    filterFromRows: true,
     info: column.headerInfo,
     cellBuilderHandlesSemantics: true,
-    value: (row) => entryOf(row)?.weight.text.text ?? '',
+    value: (row) {
+      final entry = entryOf(row);
+      return entry == null ? null : column.filterValueOf?.call(entry);
+    },
     // Delegate canonical kilograms and EXACT quantity-derived weights to the
     // shared capture column; its listeners include quantity and unit metadata.
     exactValueOf: (row) {

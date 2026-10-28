@@ -130,6 +130,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
             key: const Key('child-shortage-page'),
             appBar: UtenAppBar(
               title: '补下层物料',
+              info: '数量已按缺口填好，核对后点右下角「一键下单」。没下过的是「下单」，下过的是「追加」。',
               // 命令式子页面，没有独立路由 scope；权限入口由物料分析页承载。
               showPagePermissionAction: false,
               // 提交期间按钮常驻但空转（PopScope 已挡返回；传 null 会回落默认
@@ -326,12 +327,6 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '数量已按缺口填好，核对后点右下角「一键下单」。'
-            '没下过的是「下单」，下过的是「追加」。',
-            style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: UtenSpacing.s12),
           Wrap(

@@ -8,6 +8,7 @@ import 'components/layout/uten_page_scrollbar_host.dart';
 import 'core/constants/app_info.dart';
 
 import 'components/feedback/uten_context_menu_policy.dart';
+import 'components/feedback/uten_tooltip_navigation_host.dart';
 import 'core/l10n/gen/app_localizations.dart';
 import 'core/platform/platform_window_title.dart';
 import 'core/platform/desktop_window.dart';
@@ -30,6 +31,8 @@ import 'shared/auth/permissions.dart';
 import 'shared/providers/font_scale_provider.dart';
 import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
+import 'shared/providers/session_keepalive_host.dart';
+import 'shared/providers/session_kick_notice_host.dart';
 import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
 import 'shared/platform_branding/platform_branding_provider.dart';
@@ -117,7 +120,10 @@ class UtenApp extends ConsumerWidget {
             : child!;
         final settingsChild = SettingsAboutExtensions(
           entries: const [ClientUpdateTile(), ClientReleasePublishTile()],
-          child: routedChild,
+          child: UtenTooltipNavigationHost(
+            navigation: router.routerDelegate,
+            child: routedChild,
+          ),
         );
         // 最外层整体缩放：横幅、通知宿主与路由树一起等比放大/缩小（字号档不再只乘
         // textScaler——文字、图标、卡片、间距同步变化；自动档为 100%，
@@ -146,6 +152,11 @@ class UtenApp extends ConsumerWidget {
                       // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，
                       // 不再等 60s 轮询/手动刷新。
                       const SessionRehydrateGate(),
+                      // 登录在线心跳（不渲染）：被顶号/吊销在一个心跳周期内自动退回登录页，
+                      // 不再等用户下一次操作才感知。
+                      const SessionKeepaliveHost(),
+                      // 被顶号下线提示（不渲染）：账号在其他设备登录时，回登录页并弹说明。
+                      const SessionKickNoticeHost(),
                       ClientUpdateHost(
                         key: ValueKey((
                           session.status,

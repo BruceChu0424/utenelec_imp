@@ -8,6 +8,7 @@ import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/account_node.dart';
 import '../models/master_facet.dart';
+import '../../../shared/report/account_statement_column_query.dart';
 
 /// 账户端点（基址 /api，由 ApiClient 注入）。
 abstract final class AccountEndpoints {
@@ -56,6 +57,7 @@ abstract interface class AccountRepository {
     int page = 1,
     int size = 50,
     String? billNo,
+    Map<String, String?> columnQuery = const {},
   });
 
   /// 账户流水单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
@@ -93,13 +95,11 @@ class DioAccountRepository implements AccountRepository {
     final query = <String, dynamic>{
       'page': page,
       'size': size,
-      if (keyword != null && keyword.trim().isNotEmpty)
-        'keyword': keyword.trim(),
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
     final nullFields = <String>[];
-    filters.forEach((k, v) {
+    withoutContactSensitiveValues(filters).forEach((k, v) {
       if (v == kMasterFilterNullValue) {
         nullFields.add(k);
       } else {
@@ -108,7 +108,14 @@ class DioAccountRepository implements AccountRepository {
     });
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
-    final json = await api.get(AccountEndpoints.base, query: query);
+    final sensitive = contactSensitiveFilterBody(filters, keyword: keyword);
+    final json = sensitive.isEmpty
+        ? await api.get(AccountEndpoints.base, query: query)
+        : await api.post(
+            '${AccountEndpoints.base}/search',
+            query: query,
+            body: sensitive,
+          );
     return PagedResult.fromJsonResponsive(json, AccountListItem.fromJson);
   }
 
@@ -165,6 +172,7 @@ class DioAccountRepository implements AccountRepository {
     int page = 1,
     int size = 50,
     String? billNo,
+    Map<String, String?> columnQuery = const {},
   }) async {
     final json = await api.get(
       AccountEndpoints.statement,
@@ -178,6 +186,7 @@ class DioAccountRepository implements AccountRepository {
         'size': size,
         // 2026-09-25 单号列统一：单号表头值筛选（滚动余额顺序固定，不做排序）。
         if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
+        ...accountStatementColumnParameters(columnQuery),
       },
     );
     return AccountStatementPage.fromJson(json);

@@ -612,13 +612,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       _hasPermission(Perm.financeOrderApprovalView) &&
       !_hasPermission(_cfg.listPerm);
 
-  /// 批准后改量（对齐销售 V482）：财务批准后的订货单可逐行改数量；改后
-  /// 服务端自动重回财务复核，财务在审批详情看到修改清单（以前→现在）。
+  bool get _pendingInitialQuantityReview =>
+      _detail?.status == kPurchaseStatusDraft &&
+      _detail?.financeApproval?.isPending == true;
+
+  /// 待审修订沿用原审批；批准后修订进入新的复核，二者均保留改量事实。
   bool get _canChangeQty =>
       _ordinaryWritable &&
       widget.docType == PurchaseDocType.order &&
-      _detail?.status == kPurchaseStatusApproved &&
-      _detail?.financeApproval?.isPending != true &&
+      (_pendingInitialQuantityReview ||
+          (_detail?.status == kPurchaseStatusApproved &&
+              _detail?.financeApproval?.isPending != true)) &&
       _detail?.closureRequest?.isPending != true &&
       _detail?.closureRequest?.isApproved != true &&
       _hasPermission(Perm.purchaseOrderChangeQty);
@@ -815,8 +819,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     busyTitle: '正在反审，请稍候',
   );
 
-  /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
-  /// 重回财务复核；驳回不会自动还原数量。
+  /// 待审时更新原审批的数量；批准后改量进入财务复核。
   Future<void> _changeQty() async {
     if (!_canChangeQty) return;
     final ownsNative = captureNativeOwnership();
@@ -852,10 +855,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 Padding(
                   padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: Text(
-                    l10n.orderChangeQtyWarning,
+                    _pendingInitialQuantityReview
+                        ? l10n.orderPendingChangeQtyHint
+                        : l10n.orderChangeQtyWarning,
                     style: Theme.of(ctx).textTheme.labelMedium?.copyWith(
-                      color: Theme.of(ctx).colorScheme.error,
-                      fontWeight: FontWeight.w700,
+                      color: _pendingInitialQuantityReview
+                          ? Theme.of(ctx).colorScheme.onSurfaceVariant
+                          : Theme.of(ctx).colorScheme.error,
+                      fontWeight: _pendingInitialQuantityReview
+                          ? FontWeight.w400
+                          : FontWeight.w700,
                     ),
                   ),
                 ),
@@ -947,7 +956,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           .read(purchaseRepositoryProvider(widget.docType))
           .changeQty(widget.id, changes);
       if (!mounted || !ownsNative()) return;
-      context.appSuccess(l10n.orderChangeQtySuccess);
+      context.appSuccess(
+        detail.status == kPurchaseStatusDraft
+            ? l10n.orderPendingChangeQtySuccess
+            : l10n.orderChangeQtySuccess,
+      );
       bumpListRefresh(ref, _cfg.refreshKey);
       await _load();
     } on ApiException catch (e) {
@@ -1657,6 +1670,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'goods',
                   label: '货品名称',
+                  sortable: true,
                   // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
                   // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
                   // 一格又不能各自排序筛选。2026-09-19 单位独立成列（数量之后），
@@ -1671,6 +1685,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'goodsCode',
                   label: '编号',
+                  sortable: true,
                   width: 130,
                   value: (it) => UtenGoodsAttributeCell.text(
                     names.goodsInfo(it.goodsId)?.code,
@@ -1681,6 +1696,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'colorName',
                   label: '颜色',
+                  sortable: true,
+                  filterFromRows: true,
                   width: 96,
                   value: (it) => UtenGoodsAttributeCell.text(
                     _dictText(names.color(it.colorId)),
@@ -1695,6 +1712,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'stockPlace',
                     label: '库位号',
+                    sortable: true,
+                    filterFromRows: true,
                     width: 90,
                     value: (it) =>
                         names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
@@ -1704,12 +1723,17 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'orderBillNo',
                     label: '来源订货单',
+                    sortable: true,
+                    filterFromRows: true,
                     width: 150,
                     value: (it) => it.orderBillNo ?? '',
                   ),
                 MasterColumnDef(
                   key: 'giftQty',
                   label: '赠品数量',
+                  sortable: true,
+                  exactValueOf: (it) =>
+                      it.giftQtyText ?? it.giftQty?.toString(),
                   width: 145,
                   type: 'number',
                   value: (it) =>
@@ -1718,6 +1742,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'physicalQty',
                   label: '实物数量',
+                  sortable: true,
+                  exactValueOf: (it) => it.recordedPhysicalQtyText,
                   width: 155,
                   type: 'number',
                   value: (it) =>
@@ -1726,6 +1752,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'qty',
                   label: '数量',
+                  sortable: true,
+                  exactValueOf: (it) => it.qtyText ?? it.qty?.toString(),
                   // 单位内联（2026-10-10 T9）：单位撤独立列，跟在数字后；改量输入
                   // 框同样带单位 suffix。
                   width: _canAdjustRequestQty || _qtyControllers.isNotEmpty
@@ -1766,6 +1794,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'price',
                     label: '单价',
+                    sortable: true,
+                    exactValueOf: (it) => it.priceText,
                     width: hasTotalPricing ? 220 : 120,
                     type: 'money',
                     info: hasTotalPricing
@@ -1787,6 +1817,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   ),
                   MasterColumnDef(
                     key: 'amount',
+                    sortable: true,
+                    exactValueOf: (it) => _historicalReceipt
+                        ? it.amountOriginalText
+                        : it.amountOriginalText ?? it.amountLocalText,
                     label: _historicalReceipt
                         ? '原币金额'
                         : widget.docType == PurchaseDocType.order
@@ -1816,6 +1850,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'recordedLocalAmount',
                       label: '本币金额',
+                      sortable: true,
+                      exactValueOf: (it) => it.amountLocalText,
                       width: 180,
                       type: 'money',
                       // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
@@ -1828,6 +1864,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'recordedUnitRate',
                     label: '单位换算率',
+                    type: 'number',
+                    sortable: true,
+                    exactValueOf: (it) => it.unitRateText,
                     width: 180,
                     value: (it) => historicalReceiptRate(it.unitRateText),
                   ),
@@ -1837,6 +1876,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'approvedOrderQty',
                       label: '已批准订货',
+                      sortable: true,
+                      exactValueOf: (it) =>
+                          it.orderedQtyText ?? it.orderedQty?.toString(),
                       width: 115,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1847,6 +1889,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'pendingOrderQty',
                       label: '在审/退回占用',
+                      sortable: true,
+                      exactValueOf: (it) =>
+                          it.pendingQtyText ?? it.pendingQty?.toString(),
                       info: '已提交财务审核或财务退回待修订的原订货单仍占用这部分来源；取消、删除或修订减量后才释放对应份额。',
                       width: 115,
                       type: 'number',
@@ -1858,6 +1903,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'remainingOrderQty',
                       label: '可继续采购(收费)',
+                      sortable: true,
+                      exactValueOf: _remainingRequestQtyText,
                       width: 115,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1868,6 +1915,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'remainingGiftOrderQty',
                       label: '待补赠品',
+                      sortable: true,
+                      exactValueOf: (it) =>
+                          it.hasExtraGift ? it.remainingGiftQtyText : '0',
                       width: 115,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1878,6 +1928,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'physicalApprovedOrderQty',
                       label: '已批准实物',
+                      sortable: true,
+                      exactValueOf: (it) =>
+                          _physicalRequestCommitmentText(it, pending: false),
                       width: 120,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1888,6 +1941,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'physicalPendingOrderQty',
                       label: '待财审实物',
+                      sortable: true,
+                      exactValueOf: (it) =>
+                          _physicalRequestCommitmentText(it, pending: true),
                       width: 120,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1898,6 +1954,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'physicalRemainingOrderQty',
                       label: '待补实物',
+                      sortable: true,
+                      exactValueOf: _remainingPhysicalRequestText,
                       width: 120,
                       type: 'number',
                       value: (it) {
@@ -1944,6 +2002,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'supplier',
                     label: '供应商',
+                    filterFromRows: true,
                     width: 170,
                     value: (_) => names.supplier(d.supplierId),
                   ),
@@ -1951,18 +2010,23 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     MasterColumnDef(
                       key: 'currency',
                       label: '币种',
+                      filterFromRows: true,
                       width: 110,
                       value: (_) => names.currency(d.currencyId),
                     ),
                     MasterColumnDef(
                       key: 'taxRate',
                       label: '税率(%)',
+                      type: 'number',
+                      sortable: true,
+                      exactValueOf: (_) => d.taxRate?.toString(),
                       width: 100,
                       value: (_) => d.taxRate?.toString(),
                     ),
                     MasterColumnDef(
                       key: 'settlement',
                       label: '结账方式',
+                      filterFromRows: true,
                       width: 150,
                       value: (_) {
                         for (final method
@@ -1987,6 +2051,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'allowedOverReceiptPct',
                     label: '允许超收%',
+                    sortable: true,
+                    exactValueOf: (it) => it.allowedOverReceiptPct?.toString(),
                     width: 100,
                     type: 'number',
                     info:
@@ -1998,6 +2064,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'giftReceivedQty',
                   label: '已收赠品',
+                  sortable: true,
+                  exactValueOf: (it) => it.giftReceivedQtyText,
                   width: 130,
                   type: 'number',
                   value: (it) => it.giftReceivedQtyText ?? '—',
@@ -2005,6 +2073,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'giftReturnedQty',
                   label: '已退赠品',
+                  sortable: true,
+                  exactValueOf: (it) => it.giftReturnedQtyText,
                   width: 130,
                   type: 'number',
                   value: (it) => it.giftReturnedQtyText ?? '—',
@@ -2013,6 +2083,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'received',
                     label: '已收',
+                    sortable: true,
+                    exactValueOf: (it) =>
+                        it.receivedQtyText ?? it.receivedQty?.toString(),
                     width: 100,
                     type: 'number',
                     value: (it) =>
@@ -2022,6 +2095,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   MasterColumnDef(
                     key: 'returned',
                     label: '已退',
+                    sortable: true,
+                    exactValueOf: (it) =>
+                        it.returnedQtyText ?? it.returnedQty?.toString(),
                     width: 100,
                     type: 'number',
                     value: (it) =>
@@ -2052,6 +2128,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 MasterColumnDef(
                   key: 'remark',
                   label: '备注',
+                  sortable: true,
                   width: 220,
                   value: (it) => it.remark,
                 ),
@@ -2405,9 +2482,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           ),
         );
       }
-      // 批准后改量（2026-09-05）：财务批准后的订货单逐行改数量，
-      // 改后自动重回财务复核；无 PENDING 审批任务时可操作。
-      if (s == kPurchaseStatusApproved && _canChangeQty) {
+      // 待审和批准后的数量修订共用同一受控入口，状态规则由服务端分别校验。
+      if (_canChangeQty) {
         addAction(
           UtenButton(
             key: const Key('purchase-order-change-qty'),

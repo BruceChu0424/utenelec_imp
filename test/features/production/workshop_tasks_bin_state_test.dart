@@ -1,3 +1,4 @@
+import '../../support/table_cell_geometry.dart';
 // 车间生产任务页的车间内料仓用料状态 (ADR-131 §5.4、§5.5) widget 测试。
 //
 // 覆盖: 待认料显示「待认料」并在等待物料里; 待认料的行 (needsStartConfirmation)
@@ -428,23 +429,9 @@ Finder _menuEntry(String label) =>
     find.descendant(of: _menuSurface, matching: find.text(label));
 
 /// 2026-09-27 去胶囊口径：状态语义由整格底色承载——取该文本所在格的
-/// 第一个带背景色的 BoxDecoration（即 cellColor 铺的底）。
-Color _cellBackgroundColor(WidgetTester tester, String label) {
-  final start = tester.element(find.text(label).first);
-  Color? found;
-  start.visitAncestorElements((element) {
-    final widget = element.widget;
-    if (widget is Container) {
-      final decoration = widget.decoration;
-      if (decoration is BoxDecoration && decoration.color != null) {
-        found = decoration.color!;
-        return false;
-      }
-    }
-    return true;
-  });
-  return found!;
-}
+/// 公共 UtenTableCellFrame 表面（即 cellColor 铺的底）。
+Color _cellBackgroundColor(WidgetTester tester, String label) =>
+    tableCellBackgroundColor(tester, find.text(label).first);
 
 late SharedPreferences _preferences;
 

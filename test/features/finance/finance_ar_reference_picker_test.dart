@@ -7,10 +7,64 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/components/layout/uten_load_more_boundary.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/finance/models/finance_decimal.dart';
 import 'package:uten_imp/features/finance/widgets/ar_ap_picker_dialog.dart';
 
 void main() {
+  testWidgets(
+    'loaded ledger filters declare scope and do not offer amount searches',
+    (tester) async {
+      final api = _PagedArReferenceApi(multiOrder: true);
+      await _openPagedPicker(tester, api, (_) {});
+      final grid = tester.widget<UtenEditableGrid>(
+        find.byWidgetPredicate((widget) => widget is UtenEditableGrid),
+      );
+      expect(grid.headerFilterScopeDescription, '筛选已加载台账；查找全部台账请使用上方搜索');
+      const allocationHelp = '多订单应收：审核后按不可变来源顺序分配并留痕';
+      expect(
+        grid.columns
+            .singleWhere((column) => column.key == 'salesOrders')
+            .headerInfo,
+        allocationHelp,
+      );
+      expect(find.text(allocationHelp), findsNothing);
+      expect(find.text('XD-001、XD-002'), findsWidgets);
+      final allocationHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenFieldHintIcon && widget.info == allocationHelp,
+      );
+      await tester.ensureVisible(allocationHint);
+      await tester.tap(allocationHint);
+      await tester.pumpAndSettle();
+      expect(find.text(allocationHelp), findsOneWidget);
+      Tooltip.dismissAllToolTips();
+      await tester.pumpAndSettle();
+      final moneyColumns = grid.columns
+          .where((column) => column.numeric)
+          .toList();
+      expect(moneyColumns, hasLength(6));
+      expect(
+        moneyColumns.every((column) => !column.supportsKeywordSearch),
+        isTrue,
+      );
+      await tester.ensureVisible(find.text('来源类型 / 单号'));
+      await tester.tap(find.text('来源类型 / 单号'));
+      await tester.pumpAndSettle();
+      expect(find.text('筛选已加载台账；查找全部台账请使用上方搜索'), findsNothing);
+      final filterScopeHint = find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message?.contains('筛选已加载台账；查找全部台账请使用上方搜索') ?? false),
+      );
+      await tester.tap(filterScopeHint);
+      await tester.pumpAndSettle();
+      expect(find.text('筛选已加载台账；查找全部台账请使用上方搜索'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final scenario in [
     (
       name: 'positive legacy direct receipt is an ordinary settlement target',
@@ -395,11 +449,13 @@ Future<void> _wheelAtLedgerBottom(
 }
 
 class _PagedArReferenceApi extends _ArReferenceApi {
-  _PagedArReferenceApi({this.failPageTwoOnce = false})
+  _PagedArReferenceApi({this.failPageTwoOnce = false, bool multiOrder = false})
     : super(
-        overrides: const {
+        overrides: {
           'amountBalanceOriginal': 65.4321,
           'amountBalanceOriginalExact': '65.4321',
+          if (multiOrder) 'salesOrderIds': ['order-1', 'order-2'],
+          if (multiOrder) 'salesOrderNos': ['XD-001', 'XD-002'],
         },
       );
   final bool failPageTwoOnce;

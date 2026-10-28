@@ -12,6 +12,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -226,6 +227,38 @@ class _Harness {
 }
 
 void main() {
+  testWidgets(
+    'filtering registration lines to none preserves exact batch identity and whole-batch reversal',
+    (tester) async {
+      final harness = _Harness();
+      await harness.open(tester);
+      final api = harness.api;
+      final empty = _detail();
+      empty['items'] = <Map<String, dynamic>>[];
+      empty['total'] = 0;
+      empty['totalPages'] = 0;
+      api.detail = empty;
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      table.onFilterChanged('search.goodsName', '不存在');
+      await tester.pumpAndSettle();
+      expect(api.queries.last['search.goodsName'], '不存在');
+      expect(find.textContaining('已变化'), findsNothing);
+      expect(
+        find.byKey(const Key('finished-registration-detail-reverse')),
+        findsOneWidget,
+      );
+      await harness.confirm(tester);
+      expect(api.posts, hasLength(1));
+      expect(
+        api.posts.single.path,
+        '/warehouse/production-finished-in/arrival-registrations/$_registrationA/reverse',
+      );
+      expect(harness.changed, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'registered A opens only its exact detail and reverses A without pending sibling B',
     (tester) async {

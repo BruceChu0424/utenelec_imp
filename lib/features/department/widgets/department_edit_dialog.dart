@@ -302,7 +302,6 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
                     kSkeletonDepartmentLevels.contains(n.level)) &&
                 (selfNode == null || !_isSelfOrDescendant(selfNode, n.id)),
             onToggleSelect: onSelect,
-            initiallyExpandDepth: 2,
           ),
     );
     if (!mounted || result == null) return;

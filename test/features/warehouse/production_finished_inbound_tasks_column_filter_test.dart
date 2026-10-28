@@ -66,6 +66,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
     expect(api.lastQuery?['taskStage'], 'FINAL_COUNT');
+    MasterDataTableView<ProductionFinishedInboundTask> current() =>
+        tester.widget(
+          find.byKey(const Key('production-finished-inbound-task-table')),
+        );
+    expect(current().serverColumnSearch, isTrue);
+    final quantity = current().columns.singleWhere(
+      (column) => column.key == 'pendingQty',
+    );
+    expect(quantity.type, 'text');
+    expect(quantity.sortable, isFalse);
+    expect(quantity.value(current().items.single), '2 件 · 3 米 (其中实际超产 3 米)');
+    current().onFilterChanged('search.pendingQty', '2 件 · 3 米 (其中实际超产 3 米)');
+    await tester.pumpAndSettle();
+    current().onFilterChanged('search.lineCount', '>=1.5');
+    await tester.pumpAndSettle();
+    current().onFilterChanged('search.documentDate', '2026-09-01..2026-09-30');
+    await tester.pumpAndSettle();
+    current().onFilterChanged('search.createdAt', '2026-09');
+    await tester.pumpAndSettle();
+    current().onSortChange!('lineCount', false);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['search.pendingQty'], '2 件 · 3 米 (其中实际超产 3 米)');
+    expect(api.lastQuery?['search.lineCount'], '>=1.5');
+    expect(api.lastQuery?['search.documentDate'], '2026-09-01..2026-09-30');
+    expect(api.lastQuery?['search.createdAt'], '2026-09');
+    expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+    expect(api.lastQuery?['taskStage'], 'FINAL_COUNT');
+    expect(api.lastQuery?['page'], 1);
+    expect(api.lastQuery?['sort'], 'lineCount');
+    expect(api.lastQuery?['order'], 'desc');
+    final unknown = ProductionFinishedInboundTask.fromJson({
+      'taskId': 'unknown',
+      'taskStage': 'FINAL_COUNT',
+    });
+    expect(unknown.pendingQuantityLabel, '—');
+    expect(
+      current().columns
+          .singleWhere((column) => column.key == 'documentDate')
+          .value(unknown),
+      '—',
+    );
+    expect(
+      current().columns
+          .singleWhere((column) => column.key == 'createdAt')
+          .value(unknown),
+      '—',
+    );
     expect(tester.takeException(), isNull);
   });
 }
@@ -99,7 +146,10 @@ class _FinishedTaskApi extends ApiClient {
             'reportNos': 'RB001',
             'goodsSummary': '面板 (V51 · 白)',
             'lineCount': 2,
-            'pendingQty': 12,
+            'pendingQty': 5,
+            'pendingQtyText': '2 件 · 3 米',
+            'actualSurplusQty': 3,
+            'actualSurplusNote': '其中实际超产 3 米',
             'createdAt': '2026-09-01T02:00:00Z',
             'residualTask': false,
           },

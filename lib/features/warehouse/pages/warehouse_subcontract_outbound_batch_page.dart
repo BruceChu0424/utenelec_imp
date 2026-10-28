@@ -33,6 +33,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -1406,7 +1407,11 @@ class _WarehouseSubcontractOutboundBatchPageState
             title: l10n.warehouseSubcontractOutboundBatchTitle,
             leading: UtenBackButton(
               enabled: !(_saving || _confirming),
-              onPressed: () => Navigator.of(context).pop(_changed),
+              onPressed: () => backTo(
+                context,
+                defaultPath: RouteName.warehouseSubcontractOutbound,
+                result: _changed,
+              ),
             ),
           ),
           body: Stack(
@@ -1563,7 +1568,12 @@ class _WarehouseSubcontractOutboundBatchPageState
                       size: UtenButtonSize.large,
                       onPressed: _saving || _confirming
                           ? null
-                          : () => Navigator.of(context).pop(_changed),
+                          : () => backTo(
+                              context,
+                              defaultPath:
+                                  RouteName.warehouseSubcontractOutbound,
+                              result: _changed,
+                            ),
                       child: Text(l10n.commonBack),
                     ),
                     if (_atomicUnknownIds.isNotEmpty ||

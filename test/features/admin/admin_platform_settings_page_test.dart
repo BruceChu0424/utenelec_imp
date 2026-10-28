@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -765,17 +766,16 @@ void main() {
       }
       expect(upgrade.top, greaterThanOrEqualTo(maintenance.bottom));
 
-      final details = find.text('查看更新与部署说明');
-      final expandedExplanation = find.text(
-        '公司配置随数据库备份与还原，不随安装包替换。切换到另一家公司服务器时，会重新读取该公司的品牌。',
+      final details = find.descendant(
+        of: find.byKey(const ValueKey('platform-upgrade-card')),
+        matching: find.byType(UtenFieldHintIcon),
       );
+      final expandedExplanation = find.textContaining('公司配置随数据库备份与还原，不随安装包替换。');
       expect(expandedExplanation, findsNothing);
       await _revealForTap(tester, details);
       await tester.tap(details.hitTestable());
       await tester.pumpAndSettle();
       expect(expandedExplanation, findsOneWidget);
-      await Scrollable.ensureVisible(tester.element(details), alignment: 0.1);
-      await tester.pumpAndSettle();
       expect(details.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
       await _capture(tester, '$name-details');

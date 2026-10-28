@@ -7,6 +7,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/visitor_application.dart';
+import '../models/visitor_column_query.dart';
 import 'visitor_repository.dart';
 
 /// 保安扫码核验结果。
@@ -105,8 +106,15 @@ class VisitorStaffRepository {
     String? hostDepartmentId,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...visitorColumnParameters(columns, sort, ascending),
+    };
     if (status != null) query['status'] = status;
     if (hostDepartmentId != null && hostDepartmentId.isNotEmpty) {
       query['hostDepartmentId'] = hostDepartmentId;
@@ -184,8 +192,15 @@ class VisitorStaffRepository {
     String? status,
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
-    final query = <String, dynamic>{'page': page, 'size': size};
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      ...visitorColumnParameters(columns, sort, ascending),
+    };
     if (status != null) query['status'] = status;
     final response = await _api.get(
       ApiEndpoints.visitorApprovalAsHost,
@@ -232,11 +247,31 @@ class VisitorStaffRepository {
   Future<PagedResult<VisitorBlacklistItem>> blacklistPage({
     int page = 1,
     int size = 20,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
-    final response = await _api.get(
-      ApiEndpoints.securityBlacklist,
-      query: {'page': page, 'size': size},
-    );
+    final parameters = visitorColumnParameters(columns, sort, ascending);
+    final body = <String, String>{
+      for (final entry in parameters.entries)
+        if (entry.key.startsWith('search.'))
+          entry.key.substring(7): entry.value as String,
+    };
+    final response = body.containsKey('phone')
+        ? await _api.post(
+            '${ApiEndpoints.securityBlacklist}/search',
+            query: {
+              'page': page,
+              'size': size,
+              'sort': ?sort,
+              if (sort != null) 'order': ascending ? 'asc' : 'desc',
+            },
+            body: body,
+          )
+        : await _api.get(
+            ApiEndpoints.securityBlacklist,
+            query: {'page': page, 'size': size, ...parameters},
+          );
     return PagedResult.fromJsonResponsive(
       response,
       VisitorBlacklistItem.fromJson,

@@ -1,4 +1,5 @@
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/search/table_column_query.dart';
 import 'procurement_iqc_credit.dart';
 export 'procurement_iqc_credit.dart';
 
@@ -61,6 +62,9 @@ class ProcurementIqcRejectionFilter {
     this.keyword = '',
     this.page = 1,
     this.size = 50,
+    this.columnSearch = const {},
+    this.sort,
+    this.ascending = true,
   });
 
   final ProcurementIqcReceiptType? receiptType;
@@ -70,13 +74,26 @@ class ProcurementIqcRejectionFilter {
   final String keyword;
   final int page;
   final int size;
+  final Map<String, String?> columnSearch;
+  final String? sort;
+  final bool ascending;
 
-  Map<String, dynamic> toQuery({bool includePaging = true}) => {
+  Map<String, dynamic> toQuery({
+    bool includePaging = true,
+    bool includeStatus = true,
+    bool includeOrdering = true,
+  }) => {
     if (receiptType != null) 'receiptType': receiptType!.apiValue,
-    if (status?.trim().isNotEmpty == true) 'status': status!.trim(),
+    if (includeStatus && status?.trim().isNotEmpty == true)
+      'status': status!.trim(),
     if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
     if (includePaging) 'page': page,
     if (includePaging) 'size': size,
+    ...tableColumnParameters(
+      columnSearch,
+      includeOrdering ? sort : null,
+      ascending,
+    ),
   };
 }
 
@@ -119,6 +136,7 @@ class ProcurementIqcRejectionCase {
     this.financeExceptionCode,
     this.financeExceptionMessage,
     this.holdReason,
+    this.displayReason,
   });
 
   final String id;
@@ -158,6 +176,23 @@ class ProcurementIqcRejectionCase {
   final String? financeExceptionCode;
   final String? financeExceptionMessage;
   final String? holdReason;
+  final String? displayReason;
+
+  /// Current servers own the display/query label. This fallback only supports
+  /// responses from older servers that predate that additive contract.
+  String get reasonLabel =>
+      displayReason ??
+      financeExceptionMessage ??
+      holdReason ??
+      switch (status) {
+        ProcurementIqcRejectionStatus.pendingReturn => '下一步：登记真实退回凭证',
+        ProcurementIqcRejectionStatus.returnRecorded => '下一步：财务确认贷项或零金额结案',
+        ProcurementIqcRejectionStatus.financeException => '下一步：修复后重试财务投影',
+        ProcurementIqcRejectionStatus.creditConfirmed => '供应商贷项已闭环',
+        ProcurementIqcRejectionStatus.closedNoCredit => '零金额无需贷项，已结案',
+        ProcurementIqcRejectionStatus.reversed => '下游已反向',
+        ProcurementIqcRejectionStatus.unknown => '状态未知，请刷新或联系管理员',
+      };
   final Set<String> allowedActions;
   final bool priceMasked;
 
@@ -228,6 +263,7 @@ class ProcurementIqcRejectionCase {
         financeExceptionCode: _text(json['financeExceptionCode']),
         financeExceptionMessage: _text(json['financeExceptionMessage']),
         holdReason: _text(json['holdReason']),
+        displayReason: _text(json['displayReason']),
         allowedActions: {
           for (final action in json['allowedActions'] as List? ?? const [])
             ?_text(action),

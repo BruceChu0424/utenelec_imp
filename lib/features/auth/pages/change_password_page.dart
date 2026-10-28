@@ -151,15 +151,6 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                                 ),
                                 textAlign: TextAlign.center,
                               ),
-                              const SizedBox(height: UtenSpacing.s4),
-                              Text(
-                                '密码不能为空',
-                                key: const Key('change-password-rule'),
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
                               const SizedBox(height: UtenSpacing.s20),
                               UtenInput(
                                 controller: _old,
@@ -173,6 +164,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                               UtenInput(
                                 controller: _new,
                                 label: '新密码',
+                                info: '密码不能为空',
                                 isPassword: true,
                                 textInputAction: TextInputAction.next,
                                 validator: InputValidators.password,

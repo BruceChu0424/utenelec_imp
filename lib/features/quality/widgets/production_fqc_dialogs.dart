@@ -8,13 +8,15 @@ import '../models/production_fqc_inspection.dart';
 
 /// FQC 状态中文口径（列表列、详情头部共用）。
 String fqcStatusLabel(ProductionFqcInspection inspection) =>
-    switch (inspection.status) {
-      'PENDING' => '待检',
-      'PARTIAL' => '部分已决定',
-      'RESOLVED' => '已全部决定',
-      'CANCELLED' => '已取消（来源报工反审或登记撤回）',
-      _ => inspection.status,
-    };
+    fqcStatusCodeLabel(inspection.status);
+
+String fqcStatusCodeLabel(String status) => switch (status) {
+  'PENDING' => '待检',
+  'PARTIAL' => '部分已决定',
+  'RESOLVED' => '已全部决定',
+  'CANCELLED' => '已取消（来源报工反审或登记撤回）',
+  _ => status,
+};
 
 /// 数量展示（去尾零，保留实际精度）。
 String fqcQtyText(double value) => value

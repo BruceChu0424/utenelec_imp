@@ -223,6 +223,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       width: 140,
       required: true,
       frozenTextOf: (r) => r.name.text,
+      listenableOf: (r) => r.name,
       cellBuilder: (_, r) => RequiredCellFrame(
         listenable: r.name,
         isEmpty: () => r.name.text.trim().isEmpty,
@@ -241,6 +242,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       label: '型号',
       width: 120,
       frozenTextOf: (r) => r.model.text,
+      listenableOf: (r) => r.model,
       cellBuilder: (_, r) => _batchField(
         r,
         (x) => x.model,
@@ -271,6 +273,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         label: '$containerName (${l10n.wmKg})',
         width: 130,
         numeric: true,
+        listenableOf: (r) => r.capacityFor(containerName),
         frozenTextOf: (r) => r.capacityFor(containerName).text,
         cellBuilder: (_, r) => _batchField(
           r,
@@ -285,6 +288,8 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       label: '启用',
       width: 80,
       textOf: (r) => r.enabled.value ? '启用' : '停用',
+      filterValueOf: (r) => r.enabled.value ? '启用' : '停用',
+      listenableOf: (r) => r.enabled,
       cellBuilder: (_, r) => ValueListenableBuilder<bool>(
         valueListenable: r.enabled,
         builder: (context, value, _) => Switch(

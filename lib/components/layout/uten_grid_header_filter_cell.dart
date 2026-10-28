@@ -2,13 +2,17 @@
 // typing narrows candidate buckets, Enter/Search applies to rows and closes.
 // The menu's scope/version prevents callbacks from a previous table or source.
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 import 'package:uten_imp/core/theme/uten_tokens.dart';
 import '../../shared/search/keyword_search.dart';
 import 'uten_table_column_kit.dart';
-import '../inputs/uten_dropdown_scroll_scope.dart';
+import '../inputs/uten_input_decoration.dart';
+import '../inputs/uten_field_message.dart';
+import 'uten_table_header_menu.dart';
+import '../../shared/search/numeric_column_query.dart';
 import '../feedback/uten_overlay_lifecycle.dart';
+
+const kGridHeaderFilterNullValue = '\u0000uten.grid.null';
 
 class GridHeaderFilterBucket {
   const GridHeaderFilterBucket({
@@ -34,9 +38,17 @@ class GridHeaderFilterCell extends StatefulWidget {
     this.leading,
     this.search = '',
     this.onSearch,
+    this.numericSearch = false,
+    this.scopeDescription,
     this.scope,
     this.isCurrent,
     this.headerInfo,
+    this.searchHelp,
+    this.searchValidation,
+    this.onSort,
+    this.sortType = 'text',
+    this.sortActive = false,
+    this.sortAscending = true,
   });
 
   final String label;
@@ -47,9 +59,17 @@ class GridHeaderFilterCell extends StatefulWidget {
   final bool requiredStar;
   final String search;
   final ValueChanged<String>? onSearch;
+  final bool numericSearch;
+  final String? scopeDescription;
   final Object? scope;
   final bool Function()? isCurrent;
   final String? headerInfo;
+  final String? searchHelp;
+  final String? Function(String)? searchValidation;
+  final ValueChanged<bool?>? onSort;
+  final String sortType;
+  final bool sortActive;
+  final bool sortAscending;
 
   /// 标签前缀（2026-09-25）：固定列传图钉图标，与标签同行垂直居中。
   final Widget? leading;
@@ -65,10 +85,18 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
   TextEditingController? _searchCtl;
   Object? _openScope;
   int _menuVersion = 0;
-  double _menuWidth = 300;
-  double _menuHeight = 360;
-  double _menuOffsetX = 0;
-  bool _openUp = false;
+  String? _searchError;
+  String? get _searchHelp {
+    final parts = [
+      if (widget.scopeDescription != null) widget.scopeDescription!,
+      if (widget.onSearch != null && widget.searchHelp != null)
+        widget.searchHelp!
+      else if (widget.numericSearch && widget.onSearch != null)
+        NumericColumnQuery.help,
+    ];
+    return parts.isEmpty ? null : parts.join('\n');
+  }
+
   bool _refreshScheduled = false;
 
   bool get _current =>
@@ -86,40 +114,17 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
     if (_overlay != null) return;
     if (!(widget.isCurrent?.call() ?? true)) return;
     if (widget.onSearch == null &&
+        widget.onSort == null &&
         widget.buckets.isEmpty &&
         widget.nullCount == 0 &&
         widget.selected == null) {
       return;
     }
     final overlay = Overlay.of(context, rootOverlay: true);
-    final anchor = context.findRenderObject() as RenderBox?;
-    final surface = overlay.context.findRenderObject() as RenderBox?;
-    if (anchor != null &&
-        surface != null &&
-        anchor.hasSize &&
-        surface.hasSize) {
-      final origin = surface.globalToLocal(anchor.localToGlobal(Offset.zero));
-      final bottom = origin.dy + anchor.size.height;
-      final availableBelow =
-          surface.size.height -
-          MediaQuery.viewInsetsOf(context).bottom -
-          bottom -
-          10;
-      final availableAbove = origin.dy - 10;
-      _openUp = availableBelow < 180 && availableAbove > availableBelow;
-      _menuWidth = math.min(360.0, math.max(0.0, surface.size.width - 16));
-      _menuHeight = math.min(
-        360.0,
-        math.max(0.0, _openUp ? availableAbove : availableBelow),
-      );
-      final left = origin.dx
-          .clamp(8.0, math.max(8.0, surface.size.width - _menuWidth - 8))
-          .toDouble();
-      _menuOffsetX = left - origin.dx;
-    }
     _openScope = widget.scope;
     _menuVersion++;
     _searchCtl = TextEditingController(text: widget.search);
+    _searchError = null;
     _overlay = OverlayEntry(builder: _buildOverlay);
     overlay.insert(_overlay!);
     _overlayLifecycle = UtenOverlayLifecycle(onUnavailable: _close);
@@ -150,7 +155,21 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
         (value.composing.isValid && !value.composing.isCollapsed)) {
       return;
     }
-    widget.onSearch?.call(value.text.trim());
+    final query = value.text.trim();
+    final error =
+        widget.searchValidation?.call(query) ??
+        (widget.searchValidation == null &&
+                widget.numericSearch &&
+                query.isNotEmpty &&
+                NumericColumnQuery.tryParse(query) == null
+            ? NumericColumnQuery.error
+            : null);
+    if (error != null) {
+      _searchError = error;
+      _overlay?.markNeedsBuild();
+      return;
+    }
+    widget.onSearch?.call(query);
     _close();
   }
 
@@ -194,12 +213,15 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
     // 的死箭头。与 MasterDataTableView._FilterCell 的 interactive 口径一致
     // （2026-09-11 表头快速筛选补齐批次统一）。
     if (widget.buckets.isEmpty &&
+        widget.nullCount == 0 &&
         s == null &&
         widget.onSearch == null &&
+        widget.onSort == null &&
         widget.search.isEmpty) {
       return _plainHeader(theme);
     }
-    final highlighted = s != null || widget.search.isNotEmpty;
+    final highlighted =
+        s != null || widget.search.isNotEmpty || widget.sortActive;
     final headerStyle = UtenTableHeader.textStyle(
       theme,
       highlighted: highlighted,
@@ -209,6 +231,8 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
       display = '${widget.label}：${widget.search}';
     } else if (s == null) {
       display = widget.label;
+    } else if (s == kGridHeaderFilterNullValue) {
+      display = '${widget.label}：空';
     } else {
       display = widget.buckets
           .where((b) => b.value == s)
@@ -252,6 +276,14 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
               ),
               if (widget.headerInfo != null)
                 UtenColumnHintIcon(message: widget.headerInfo!),
+              if (widget.sortActive)
+                Icon(
+                  widget.sortAscending
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  size: 14,
+                  color: theme.colorScheme.primary,
+                ),
               Icon(
                 Icons.arrow_drop_down_rounded,
                 size: 18,
@@ -307,155 +339,199 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
 
   Widget _buildOverlay(BuildContext overlayContext) {
     final theme = Theme.of(overlayContext);
-    final searchable = widget.onSearch != null;
     final version = _menuVersion;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: _close,
-          ),
-        ),
-        CompositedTransformFollower(
-          link: _link,
-          targetAnchor: _openUp ? Alignment.topLeft : Alignment.bottomLeft,
-          followerAnchor: _openUp ? Alignment.bottomLeft : Alignment.topLeft,
-          offset: Offset(_menuOffsetX, _openUp ? -2 : 2),
-          child: TapRegion(
-            onTapOutside: (_) => _close(),
-            child: Material(
-              key: const Key('uten-grid-column-filter-menu'),
-              color: theme.colorScheme.surfaceContainerHigh,
-              elevation: 8,
-              borderRadius: BorderRadius.circular(UtenRadius.md),
-              clipBehavior: Clip.antiAlias,
-              child: SizedBox(
-                width: _menuWidth,
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: _menuHeight),
-                  child: StatefulBuilder(
-                    builder: (ctx, setOverlayState) {
-                      final q = _searchCtl?.text.trim() ?? '';
-                      final buckets = rankedKeywordMatches(
-                        widget.buckets,
-                        q,
-                        fields: (b) => [b.display],
-                      );
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
+    return UtenTableHeaderMenu(
+      anchorContext: context,
+      onClose: _close,
+      child: KeyedSubtree(
+        key: const Key('uten-grid-column-filter-menu'),
+        child: StatefulBuilder(
+          builder: (ctx, setOverlayState) {
+            final q = _searchCtl?.text.trim() ?? '';
+            final numeric = widget.numericSearch
+                ? NumericColumnQuery.tryParse(q)
+                : null;
+            final buckets = numeric != null
+                ? widget.buckets
+                      .where(
+                        (b) =>
+                            numeric.matches(displayedColumnDecimal(b.display)),
+                      )
+                      .toList()
+                : rankedKeywordMatches(
+                    widget.buckets,
+                    q,
+                    fields: (b) => [b.display],
+                  );
+            return UtenTableHeaderMenuList(
+              search:
+                  (widget.onSearch != null ||
+                      widget.buckets.isNotEmpty ||
+                      widget.nullCount > 0 ||
+                      widget.selected != null)
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        UtenSpacing.s8,
+                        UtenSpacing.s8,
+                        UtenSpacing.s8,
+                        UtenSpacing.s4,
+                      ),
+                      child: Row(
+                        crossAxisAlignment: _searchError == null
+                            ? CrossAxisAlignment.center
+                            : CrossAxisAlignment.start,
                         children: [
-                          if (searchable)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                UtenSpacing.s8,
-                                UtenSpacing.s8,
-                                UtenSpacing.s8,
-                                UtenSpacing.s4,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      key: const Key(
-                                        'uten-column-keyword-input',
-                                      ),
-                                      controller: _searchCtl,
-                                      autofocus: true,
-                                      textInputAction: TextInputAction.search,
-                                      style: theme.textTheme.bodyMedium,
-                                      decoration: InputDecoration(
-                                        isDense: true,
-                                        hintText: widget.label,
-                                        prefixIcon: const Icon(
-                                          Icons.search_rounded,
-                                          size: 18,
-                                        ),
-                                        prefixIconConstraints:
-                                            const BoxConstraints(
-                                              minWidth: 32,
-                                              minHeight: 32,
-                                            ),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            UtenRadius.control,
-                                          ),
-                                        ),
-                                        contentPadding:
-                                            const EdgeInsets.symmetric(
-                                              horizontal: UtenSpacing.s8,
-                                              vertical: UtenSpacing.s8,
-                                            ),
-                                      ),
-                                      onChanged: (_) {
-                                        if (_current &&
-                                            version == _menuVersion) {
-                                          setOverlayState(() {});
-                                        }
-                                      },
-                                      onSubmitted: (_) {
-                                        if (version == _menuVersion) _submit();
-                                      },
+                          Expanded(
+                            child: TextField(
+                              key: const Key('uten-column-keyword-input'),
+                              controller: _searchCtl,
+                              autofocus: true,
+                              textInputAction: TextInputAction.search,
+                              style: theme.textTheme.bodyMedium,
+                              decoration: UtenInputDecoration(
+                                InputDecoration(
+                                  isDense: true,
+                                  visualDensity: VisualDensity.standard,
+                                  constraints: BoxConstraints(
+                                    minHeight: utenColumnSearchControlHeight(
+                                      ctx,
+                                    ),
+                                    maxHeight: utenColumnSearchControlHeight(
+                                      ctx,
                                     ),
                                   ),
-                                  const SizedBox(width: UtenSpacing.s4),
-                                  TextButton(
-                                    key: const Key(
-                                      'uten-column-keyword-search',
+                                  hintText: widget.onSearch == null
+                                      ? '查找选项'
+                                      : widget.label,
+                                  error: _searchError == null
+                                      ? null
+                                      : UtenFieldMessage.error(_searchError!),
+
+                                  suffixIconConstraints: const BoxConstraints(
+                                    minWidth: 32,
+                                    minHeight: 32,
+                                  ),
+                                  suffixIcon: q.isEmpty && _searchHelp == null
+                                      ? null
+                                      : UtenColumnSearchSuffix(
+                                          message: _searchHelp,
+                                          onClear: q.isEmpty
+                                              ? null
+                                              : () {
+                                                  if (!_current ||
+                                                      version != _menuVersion) {
+                                                    return;
+                                                  }
+                                                  _searchCtl?.clear();
+                                                  setOverlayState(
+                                                    () => _searchError = null,
+                                                  );
+                                                },
+                                        ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(
+                                      UtenRadius.control,
                                     ),
-                                    onPressed: () {
+                                  ),
+                                  contentPadding:
+                                      utenColumnSearchContentPadding(ctx),
+                                ),
+                              ),
+                              onChanged: (_) {
+                                if (_current && version == _menuVersion) {
+                                  setOverlayState(() {
+                                    _searchError = null;
+                                  });
+                                }
+                              },
+                              onSubmitted: widget.onSearch == null
+                                  ? null
+                                  : (_) {
                                       if (version == _menuVersion) _submit();
                                     },
-                                    child: const Text('搜索'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          Flexible(
-                            child: UtenDropdownScrollScope(
-                              child: ListView(
-                                shrinkWrap: true,
-                                padding: EdgeInsets.zero,
-                                children: <Widget>[
-                                  _menuItem(
-                                    ctx,
-                                    label: '所有',
-                                    isSelected:
-                                        _sanitized == null &&
-                                        widget.search.isEmpty,
-                                    onTap: () {
-                                      if (version == _menuVersion) {
-                                        _select(null);
-                                      }
-                                    },
-                                    theme: theme,
-                                  ),
-                                  for (final b in buckets)
-                                    _menuItem(
-                                      ctx,
-                                      label: '${b.display}（${b.count}）',
-                                      isSelected: _sanitized == b.value,
-                                      onTap: () {
-                                        if (version == _menuVersion) {
-                                          _select(b.value);
-                                        }
-                                      },
-                                      theme: theme,
-                                    ),
-                                ],
-                              ),
                             ),
                           ),
+                          if (widget.onSearch != null) ...[
+                            const SizedBox(width: UtenSpacing.s4),
+                            UtenColumnSearchButton(
+                              key: const Key('uten-column-keyword-search'),
+                              onPressed: () {
+                                if (version == _menuVersion) _submit();
+                              },
+                            ),
+                          ],
                         ],
-                      );
-                    },
-                  ),
+                      ),
+                    )
+                  : null,
+              entries: <Widget>[
+                if (widget.onSort != null) ...[
+                  for (final choice in utenColumnSortChoices(
+                    type: widget.sortType,
+                    active: widget.sortActive,
+                    ascending: widget.sortAscending,
+                  ))
+                    _menuItem(
+                      ctx,
+                      label: choice.label,
+                      isSelected: choice.selected,
+                      onTap: () {
+                        if (_current && version == _menuVersion) {
+                          widget.onSort!(choice.ascending);
+                          _close();
+                        }
+                      },
+                      theme: theme,
+                    ),
+                  const Divider(height: 1),
+                ],
+                _menuItem(
+                  ctx,
+                  label: '所有',
+                  isSelected: _sanitized == null && widget.search.isEmpty,
+                  onTap: () {
+                    if (version == _menuVersion) {
+                      _select(null);
+                    }
+                  },
+                  theme: theme,
                 ),
-              ),
-            ),
-          ),
+                for (final b in buckets)
+                  _menuItem(
+                    ctx,
+                    label: b.count > 0 ? '${b.display}（${b.count}）' : b.display,
+                    isSelected: _sanitized == b.value,
+                    onTap: () {
+                      if (version == _menuVersion) {
+                        _select(b.value);
+                      }
+                    },
+                    theme: theme,
+                  ),
+                if (widget.nullCount > 0)
+                  _menuItem(
+                    ctx,
+                    label: '其他（${widget.nullCount}）',
+                    isSelected: _sanitized == kGridHeaderFilterNullValue,
+                    onTap: () {
+                      if (version == _menuVersion) {
+                        _select(kGridHeaderFilterNullValue);
+                      }
+                    },
+                    theme: theme,
+                  ),
+                if (buckets.isEmpty &&
+                    q.isNotEmpty &&
+                    widget.buckets.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(UtenSpacing.s12),
+                    child: Text('无匹配项'),
+                  ),
+              ],
+            );
+          },
         ),
-      ],
+      ),
     );
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/table_column_query.dart';
 import '../models/production_fqc_inspection.dart';
 
 class ProductionFqcRepository {
@@ -17,6 +18,9 @@ class ProductionFqcRepository {
     String? sheet,
     int page = 1,
     int size = 40,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
   }) async {
     final json = await api.get(
       ApiEndpoints.productionQualityInspections,
@@ -24,6 +28,7 @@ class ProductionFqcRepository {
         'status': status,
         'page': page,
         'size': size,
+        ...tableColumnParameters(columns, sort, ascending),
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         if (sheet != null && sheet.isNotEmpty) 'sheet': sheet,
       },

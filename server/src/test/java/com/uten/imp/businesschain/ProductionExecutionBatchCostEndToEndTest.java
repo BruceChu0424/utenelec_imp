@@ -122,7 +122,7 @@ class ProductionExecutionBatchCostEndToEndTest {
         db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=100 WHERE goods_id=?",product);
         UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'",UUID.class);
         db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",workshop,"W-"+tag,"成本分批车间",production);
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"BATCH-EMP-"+tag,"分批负责人",workshop);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"BATCH-EMP-"+tag,com.uten.imp.support.SyntheticEmployeeIdentity.name("分批负责人",employee),workshop);
         UUID order=fixture.createApprovedOrder(w,product,"100","100");UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
         var origin=new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("100"));
         var view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"preview-"+tag,List.of(origin)));

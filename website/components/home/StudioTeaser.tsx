@@ -30,7 +30,7 @@ export function StudioTeaser({
         <Image key={scene.id} src={scene.image} alt={scene.name} fill sizes="(max-width: 1024px) 100vw, 70vw" className="animate-scene-in object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-foreground/20 via-transparent to-transparent" />
         {variant?.image && (
-          <div className="animate-float absolute left-1/2 top-[46%] h-[84px] w-[84px] -translate-x-1/2 -translate-y-1/2 md:h-[112px] md:w-[112px]">
+          <div className="absolute left-1/2 top-[46%] h-[84px] w-[84px] -translate-x-1/2 -translate-y-1/2 md:h-[112px] md:w-[112px]">
             <Image src={variant.image} alt={`${variant.productName} — ${variant.name}`} fill sizes="112px" className="product-cutout rounded-lg object-contain" />
           </div>
         )}
@@ -42,7 +42,7 @@ export function StudioTeaser({
           <legend className="text-xs font-bold uppercase tracking-[.16em] text-muted-foreground">{labels.scene}</legend>
           <div className="mt-3 flex flex-wrap gap-2">
             {scenes.map((item) => (
-              <button key={item.id} type="button" onClick={() => setSceneId(item.id)} className={`min-h-10 rounded-full border px-4 text-sm font-semibold transition ${item.id === sceneId ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-foreground/35'}`}>
+              <button key={item.id} type="button" aria-pressed={item.id === sceneId} onClick={() => setSceneId(item.id)} className={`min-h-11 rounded-full border px-4 text-sm font-semibold transition ${item.id === sceneId ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-foreground/35'}`}>
                 {item.name}
               </button>
             ))}
@@ -53,14 +53,14 @@ export function StudioTeaser({
           <legend className="text-xs font-bold uppercase tracking-[.16em] text-muted-foreground">{labels.product}</legend>
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {variants.slice(0, 7).map((item) => (
-              <button key={item.id} type="button" onClick={() => setVariantId(item.id)} title={`${item.productName} ${item.name}`} className={`relative h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 bg-muted transition ${item.id === variantId ? 'border-accent ring-4 ring-accent/10' : 'border-card hover:border-foreground/30'}`}>
-                {item.swatchHex ? <span className="absolute inset-1 rounded-full" style={{ backgroundColor: item.swatchHex }} /> : <Image src={item.image} alt="" fill sizes="40px" className="object-cover" />}
+              <button key={item.id} type="button" onClick={() => setVariantId(item.id)} title={`${item.productName} ${item.name}`} aria-label={`${item.productName} ${item.name}`} aria-pressed={item.id === variantId} className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-full border-2 bg-muted transition ${item.id === variantId ? 'border-accent ring-4 ring-accent/10' : 'border-card hover:border-foreground/30'}`}>
+                {item.swatchHex ? <span className="absolute inset-1 rounded-full" style={{ backgroundColor: item.swatchHex }} /> : <Image src={item.image} alt="" fill sizes="44px" className="object-contain" />}
               </button>
             ))}
           </div>
         </fieldset>
 
-        <Link href="/studio" className="btn-primary whitespace-nowrap">{labels.openStudio}<ArrowUpRight className="h-4 w-4" /></Link>
+        <Link href={variant ? `/studio?variant=${encodeURIComponent(variant.id)}` : '/studio'} className="btn-primary whitespace-nowrap">{labels.openStudio}<ArrowUpRight className="h-4 w-4" /></Link>
       </div>
     </div>
   );

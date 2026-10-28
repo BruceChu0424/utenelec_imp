@@ -214,7 +214,7 @@ class GoodsClientGoodsNameServiceTest {
         verifyNoInteractions(commands, repository, em);
     }
 
-    @Test void exportPlacesCustomerNameAfterNameAndKeepsCustomerModelAfterOwnModel() {
+    @Test void exportPlacesCategoryAfterNameAndKeepsCustomerNamesAndModelOrder() {
         var exporting = spy(service);
         GoodsListItem item = mock(GoodsListItem.class);
         when(item.getId()).thenReturn(UUID.randomUUID());
@@ -227,13 +227,14 @@ class GoodsClientGoodsNameServiceTest {
                 .when(exporting).list(isNull(), anyInt(), anyInt(), anyString(), anyString());
 
         var result = exporting.export(null, "code", "asc", 100);
-        // 2026-10-28 列序：系统标识、组装信息ID 固定前两列，随后编号、名称组
-        // （与表格默认列序一致），客户型号仍紧跟自有型号之后。
+        // 文件列序：系统标识、组装信息ID、编号、货品名称、类别，随后客户名称组。
+        // 客户型号仍紧跟自有型号之后。
         assertThat(result.columns()).extracting(ExportColumn::key)
-                .startsWith("goodsId", "bomRef", "code", "name", "clientGoodsName", "nameEn");
+                .startsWith("goodsId", "bomRef", "code", "name", "categoryPath", "clientGoodsName", "nameEn");
         var keys = result.columns().stream().map(ExportColumn::key).toList();
         assertThat(keys.indexOf("cNumber")).isEqualTo(keys.indexOf("model") + 1);
-        assertThat(result.columns().get(4).label()).isEqualTo("客户货品名称");
+        assertThat(result.columns().get(4).label()).isEqualTo("类别");
+        assertThat(result.columns().get(5).label()).isEqualTo("客户货品名称");
         assertThat(result.rows()).singleElement().satisfies(row -> {
             assertThat(row).containsEntry("name", "内部货品名称")
                     .containsEntry("clientGoodsName", "客户面板名称")

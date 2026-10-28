@@ -214,9 +214,10 @@ class EmployeeAccountReprovisionPostgresTest extends AuthSessionPostgresTestSupp
         UUID employee=UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'Synthetic unopened phone profile','其他',department_id,CURRENT_DATE,'probation','regular'
+                SELECT ?,?,?,'其他',department_id,CURRENT_DATE,'probation','regular'
                 FROM employees WHERE id=(SELECT employee_id FROM users WHERE login_account=?)
-                """,employee,"PHONE-CLAIM-"+employee.toString().substring(0,8),ADMIN_LOGIN);
+                """,employee,"PHONE-CLAIM-"+employee.toString().substring(0,8),
+                com.uten.imp.support.SyntheticEmployeeIdentity.name("Synthetic unopened phone profile",employee),ADMIN_LOGIN);
         return employee;
     }
 

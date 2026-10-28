@@ -70,15 +70,45 @@ class PiiKeyRotationPostgresTest {
     }
     @AfterEach void close() throws Exception { if(lease!=null)lease.close(); }
 
-    @Test void allPgpFieldsAreCataloguedAndFinancialOrAuditTablesAreExcluded() {
+    @Test void allEncryptedFieldsHaveAnExplicitAppRotationOrImmutablePreservationPolicy() {
         Set<String> expected=new HashSet<>(db.queryForList("""
                 SELECT table_name||'.'||column_name FROM information_schema.columns
                 WHERE table_schema='public' AND right(column_name,4)='_enc'
                 """,String.class));
         Set<String> actual=new HashSet<>();
         for(var target:PiiRotationCatalog.TARGETS)for(var column:target.columns())actual.add(target.table()+"."+column);
-        assertEquals(expected,actual,"a new PGP column needs an explicit rotation and domain policy");
         assertEquals(27,actual.size());
+        Set<String> preserved=PiiRotationCatalog.PRESERVED_CIPHERS.keySet();
+        assertEquals(Set.of("employee_identity_merge_payloads.snapshot_enc"),preserved);
+        assertTrue(java.util.Collections.disjoint(actual,preserved),"immutable preservation must never enter the rewrap targets");
+        Set<String> governed=new HashSet<>(actual);governed.addAll(preserved);
+        assertEquals(expected,governed,"every encrypted column needs an explicit rotation or immutable preservation policy; unknown and missing columns fail");
+        assertEquals(PiiRotationCatalog.PreservationPolicy.IMMUTABLE_EMPLOYEE_MERGE_ENVELOPE,
+                PiiRotationCatalog.PRESERVED_CIPHERS.get("employee_identity_merge_payloads.snapshot_enc"));
+        assertFalse(Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(
+                    SELECT 1 FROM pg_class relation
+                    CROSS JOIN LATERAL aclexplode(COALESCE(relation.relacl,acldefault('r',relation.relowner))) acl
+                    WHERE relation.oid='employee_identity_merge_payloads'::regclass AND acl.grantee=0
+                        AND acl.privilege_type IN ('SELECT','INSERT','UPDATE','DELETE'))
+                OR EXISTS(
+                    SELECT 1 FROM pg_attribute attribute
+                    CROSS JOIN LATERAL aclexplode(COALESCE(attribute.attacl,ARRAY[]::aclitem[])) acl
+                    WHERE attribute.attrelid='employee_identity_merge_payloads'::regclass
+                        AND attribute.attname='snapshot_enc' AND acl.grantee=0
+                        AND acl.privilege_type IN ('SELECT','INSERT','UPDATE'))
+                """,Boolean.class)),"PUBLIC must have no private preservation DML/column access even in a fixture without a runtime role");
+        // The generic owner fixture need not create a cluster-wide runtime role.
+        // If present, check its effective privileges (including inherited/PUBLIC
+        // grants); otherwise the mandatory PUBLIC checks above remain complete.
+        var runtimeRoles=db.queryForList("SELECT oid::bigint FROM pg_roles WHERE rolname='uten'",Long.class);
+        assertTrue(runtimeRoles.size()<=1,"PostgreSQL role names identify at most one runtime role");
+        for(Long role:runtimeRoles) {
+            assertFalse(Boolean.TRUE.equals(db.queryForObject("""
+                    SELECT has_table_privilege(CAST(? AS oid),'employee_identity_merge_payloads'::regclass,'SELECT,INSERT,UPDATE,DELETE')
+                        OR has_column_privilege(CAST(? AS oid),'employee_identity_merge_payloads'::regclass,'snapshot_enc','SELECT,INSERT,UPDATE')
+                    """,Boolean.class,role,role)),"catalog classification cannot grant an existing runtime role private preservation access");
+        }
         assertTrue(PiiRotationCatalog.TARGETS.stream().noneMatch(target->target.table().contains("audit")||target.table().contains("payroll")));
     }
 

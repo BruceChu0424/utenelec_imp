@@ -894,10 +894,10 @@ class MasterIntakeLearningPostgresTest {
         var byEmail = clientService.list(clientFilter("orders@sunas-" + tag.toLowerCase(Locale.ROOT)), 1, 20, null, null);
         assertThat(byEmail.getItems()).extracting(item -> item.getId()).containsExactly(sunas);
 
-        // 导出与表格一致：三种货品名称相邻，客户外文名称紧跟客户全称。
+        // 导出先固定三个导入身份列，其余保持页面投影的顺序，三种货品名称仍相邻。
         var goodsExport = goodsService.export(goodsFilter("double socket " + tag.toLowerCase(Locale.ROOT)), null, null, 100);
         List<String> goodsLabels = goodsExport.columns().stream().map(column -> column.label()).toList();
-        assertThat(goodsLabels).startsWith("货品名称", "客户货品名称", "英文名称");
+        assertThat(goodsLabels).startsWith("系统标识","组装信息ID","编号","货品名称", "客户货品名称", "英文名称");
         assertThat(goodsExport.rows()).singleElement().satisfies(row ->
                 assertThat(row).containsEntry("nameEn", "Double Socket " + tag));
         var clientExport = clientService.export(clientFilter("sunas resource " + tag.toLowerCase(Locale.ROOT)), null, null, 100);

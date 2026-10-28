@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.Goods;
@@ -401,9 +403,9 @@ class GoodsImportModeBomRefTest {
         when(em.createNativeQuery(anyString())).thenReturn(nativeQuery);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
-        GoodsImportService service = new GoodsImportService(
+        GoodsImportService service = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 goodsService == null ? mock(GoodsService.class) : goodsService, goods, null, categories,
-                null, colors, null, units, em, currentUser, null);
+                null, colors, null, units, em, currentUser, null));
         if (bomRepo != null) ReflectionTestUtils.setField(service, "bomRepo", bomRepo);
         MasterObjectAccess access = mock(MasterObjectAccess.class);
         when(access.visibleGoodsOwner()).thenReturn(owner -> true);

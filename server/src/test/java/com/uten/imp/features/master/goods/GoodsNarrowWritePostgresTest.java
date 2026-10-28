@@ -111,8 +111,8 @@ class GoodsNarrowWritePostgresTest {
     }
     private UUID employee() {
         UUID employee=UUID.randomUUID();
-        sql.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,'范围测试','其他',(SELECT id FROM departments WHERE NOT is_deleted ORDER BY id LIMIT 1),current_date,'active','regular')",
-                employee,"NARROW-"+employee);
+        sql.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',(SELECT id FROM departments WHERE NOT is_deleted ORDER BY id LIMIT 1),current_date,'active','regular')",
+                employee,"NARROW-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("范围测试",employee));
         return employee;
     }
 }

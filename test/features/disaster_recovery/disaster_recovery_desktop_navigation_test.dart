@@ -72,7 +72,8 @@ void main() {
               probes++;
               return reachable;
             },
-            probeDelays: const [Duration(hours: 1)],
+            probeDelays: const [Duration(seconds: 1)],
+            probeDelayJitter: (delay) => delay,
           );
           final maintenance = ServerMaintenanceController(
             read: () async => ServerMaintenanceSnapshot(
@@ -144,19 +145,27 @@ void main() {
           connection.markDisconnected();
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 250));
-          final retry = find.byKey(const ValueKey('connection-recovery-retry'));
-          expect(retry, findsOneWidget);
+          expect(
+            find.byKey(const ValueKey('connection-recovery-retry')),
+            findsNothing,
+          );
+          final message = find.byKey(
+            const ValueKey('connection-recovery-message-group'),
+          );
+          expect(message, findsOneWidget);
+          expect(probes, 0);
           await _capture(
             tester,
             captureKey,
             '${platform.name}-${size.width.toInt()}-login-offline',
           );
 
-          // Exercise the same window coordinates as a real pointer. The native
-          // drag strip previously intercepted this action above the banner.
+          // The banner is passive and recovery uses the scheduled probe. A
+          // pointer over its message must not drag or close the native window.
           reachable = true;
-          await tester.tapAt(tester.getCenter(retry));
-          await tester.pump();
+          await tester.tapAt(tester.getCenter(message));
+          expect(probes, 0);
+          await tester.pump(const Duration(seconds: 1));
           await tester.pump(const Duration(milliseconds: 250));
           expect(probes, 1);
           expect(connection.state.phase, ConnectionRecoveryPhase.restored);

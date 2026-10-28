@@ -20,22 +20,25 @@ import static org.mockito.Mockito.mock;
 /** Real V937 guards and the same organization read port used by HR and audit. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class EmployeeIdentityAliasesPostgresTest {
-    static MigratedSchemaBaseline.ScopedDatabase database;
-    static JdbcTemplate db;
-    static TransactionTemplate transaction;
-    static EntityManagerFactory factory;
+    MigratedSchemaBaseline.ScopedDatabase database;
+    JdbcTemplate db;
+    TransactionTemplate transaction;
+    EntityManagerFactory factory;
     EmployeeIdentityDirectory directory;
     UUID canonical,alias,second;
 
-    @BeforeAll static void start() throws Exception {
-        database=MigratedSchemaBaseline.openDatabase("employee_identity_aliases");
+    @BeforeEach void seed() throws Exception {
+        database=com.uten.imp.support.HistoricalEmployeeSchema.openDatabase("employee_identity_aliases");
         var dataSource=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
         db=new JdbcTemplate(dataSource); transaction=new TransactionTemplate(new JdbcTransactionManager(dataSource));
+        canonical=employee(false,"同名测试员工");alias=employee(true,"同名测试员工");second=employee(true,"同名测试员工");
+        com.uten.imp.support.HistoricalEmployeeSchema.upgradeToCurrent(database);
         var bean=new LocalContainerEntityManagerFactoryBean();bean.setDataSource(dataSource);
         bean.setJpaVendorAdapter(new HibernateJpaVendorAdapter());bean.setPackagesToScan("com.uten.imp");
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));bean.afterPropertiesSet();factory=bean.getObject();
+        directory=new EmployeeIdentityDirectory(db);
     }
-    @AfterAll static void stop() throws Exception {
+    @AfterEach void stop() throws Exception {
         if(factory!=null) {
             factory.close();
         }
@@ -43,17 +46,17 @@ class EmployeeIdentityAliasesPostgresTest {
             database.close();
         }
     }
-    @BeforeEach void seed() {
-        directory=new EmployeeIdentityDirectory(db);
-        canonical=employee(false);alias=employee(true);second=employee(true);
-    }
     UUID employee(boolean archived) {
         UUID id=UUID.randomUUID();
+        return employee(id,archived,com.uten.imp.support.SyntheticEmployeeIdentity.name("其他测试员工",id));
+    }
+    UUID employee(boolean archived,String historicalName) { return employee(UUID.randomUUID(),archived,historicalName); }
+    UUID employee(UUID id,boolean archived,String name) {
         int created=db.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted)
-                SELECT ?,?,'同名测试员工','其他',department_id,DATE '2020-01-01','active','regular',?
+                SELECT ?,?,?,'其他',department_id,DATE '2020-01-01','active','regular',?
                 FROM employees WHERE code='ADMIN'
-                """,id,"I"+id.toString().replace("-", "").substring(0,15),archived);
+                """,id,"I"+id.toString().replace("-", "").substring(0,15),name,archived);
         assertEquals(1,created);return id;
     }
     void verified(UUID source,UUID target) {
@@ -66,7 +69,7 @@ class EmployeeIdentityAliasesPostgresTest {
     @Test void verifiedMembersPreserveRawPiiEducationAndHistoryKeys() {
         UUID education=UUID.randomUUID(),event=UUID.randomUUID();
         String retainedHash=alias.toString().replace("-","").repeat(2);
-        db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'archived-private-cipher','archived-phone-cipher','unreadable',?)",alias,retainedHash);
+        db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,phone_hash,id_card_check,id_card_hash) VALUES(?,'archived-private-cipher','archived-phone-cipher',?,'unreadable',?)",alias,phoneHash(alias),retainedHash);
         db.update("INSERT INTO employee_education(id,employee_id,school) VALUES(?,?,'原历史学校')",education,alias);
         db.update("INSERT INTO employment_history(id,employee_id,event_type,event_date) VALUES(?,?,'onboard',DATE '2010-01-01')",event,alias);
         String before=db.queryForObject("SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",String.class,alias);
@@ -78,7 +81,7 @@ class EmployeeIdentityAliasesPostgresTest {
         assertEquals(alias,db.queryForObject("SELECT employee_id FROM employment_history WHERE id=?",UUID.class,event));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id=?",Integer.class,canonical));
         // Re-entering a verified person's archived document no longer steals a new identity claim.
-        db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'new-cipher','new-phone','unchecked',?)",canonical,retainedHash);
+        db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,phone_hash,id_card_check,id_card_hash) VALUES(?,'new-cipher','new-phone',?,'unchecked',?)",canonical,phoneHash(canonical),retainedHash);
         assertEquals(before,db.queryForObject("SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",String.class,alias));
         try(var em=factory.createEntityManager()) {
             var repository=new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(em)
@@ -92,8 +95,13 @@ class EmployeeIdentityAliasesPostgresTest {
                     ()->writer.applyIdentity(new EmployeeSensitive(),anotherPerson,"护照","fixture-document"));
             assertEquals(EmployeePiiWriter.DUPLICATE_IDENTITY_MESSAGE,crossPerson.getMessage());
             org.mockito.Mockito.verify(tx).encrypt("fixture-document");
-            assertThrows(RuntimeException.class,()->db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'other-cipher','other-phone','unchecked',?)",anotherPerson,retainedHash));
+            assertThrows(RuntimeException.class,()->db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,phone_hash,id_card_check,id_card_hash) VALUES(?,'other-cipher','other-phone',?,'unchecked',?)",anotherPerson,phoneHash(anotherPerson),retainedHash));
         }
+    }
+    private static String phoneHash(UUID employee) {
+        var properties=new com.uten.imp.config.props.CryptoProperties();
+        properties.setHmacKey("identity-alias-fixture-test-only-hmac-key");
+        return new com.uten.imp.security.TxSessionVars(properties,null,null).hmac("synthetic-phone-"+employee);
     }
     @Test void displayNameAloneAndAliasChainsNeverCreateIdentityMembership() {
         assertEquals(List.of(alias),directory.employeeIdentityMembers(alias));

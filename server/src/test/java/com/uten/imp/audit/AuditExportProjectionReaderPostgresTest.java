@@ -40,7 +40,10 @@ class AuditExportProjectionReaderPostgresTest {
         admin.getJdbcTemplate().execute("CREATE SCHEMA audit_export_fixture");
         try (var connection = catalogSource.getConnection()) {
             connection.setSchema("audit_export_fixture");
-            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection, "audit_log");
+            com.uten.imp.support.MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,
+                    "audit_log", "audit_log_archive");
+            com.uten.imp.support.MigratedProjectionSchema.copyReadViewFromMigratedCatalog(connection,
+                    "v_audit_log_all", "audit_log", "audit_log_archive");
         }
         String url=lease.getJdbcUrl()+(lease.getJdbcUrl().contains("?")?"&":"?")+"currentSchema=audit_export_fixture,public";
         var source=new DriverManagerDataSource(url,lease.getUsername(),lease.getPassword());jdbc=new NamedParameterJdbcTemplate(source);
@@ -60,17 +63,21 @@ class AuditExportProjectionReaderPostgresTest {
             lease.close();
         }
     }
-    @BeforeEach void reset() {jdbc.getJdbcTemplate().execute("TRUNCATE audit_export_fixture.audit_log");sql.clear();ReflectionTestUtils.setField(reader,"em",shared);}
+    @BeforeEach void reset() {jdbc.getJdbcTemplate().execute("TRUNCATE audit_export_fixture.audit_log, audit_export_fixture.audit_log_archive");sql.clear();ReflectionTestUtils.setField(reader,"em",shared);}
     private void insert(long id,OffsetDateTime time,String after) {
         writer.update("INSERT INTO audit_log(id,created_at,action,target_type,target_id,event_source,result,risk_level,event_category,before,after,user_agent) VALUES(:id,:time,'update','goods','原件-龘','database','success','low','business',CAST('{\"name\":\"旧名称\"}' AS jsonb),CAST(:after AS jsonb),'raw-user-agent-preserved')",
                 Map.of("id",id,"time",time,"after",after));
     }
-    private String digest(){return jdbc.queryForObject("SELECT md5(string_agg(id::text||created_at::text||before::text||after::text||user_agent,'|' ORDER BY created_at,id)) FROM audit_log",Map.of(),String.class);}
+    private String digest(){return jdbc.queryForObject("SELECT md5(string_agg(id::text||created_at::text||before::text||after::text||user_agent,'|' ORDER BY created_at,id)) FROM v_audit_log_all",Map.of(),String.class);}
 
     @Test void tiedTimesAndPartitionIdentityKeepAll201RowsAndOriginalEvidenceBytes() {
         for(int index=1;index<=201;index++)insert(index,AT,"{\"name\":\"新名称\",\"amount\":123.450000000000000001}");
         // A partitioned audit identity is (id,created_at), not id alone.
         insert(201,AT.minusDays(1),"{\"name\":\"历史同号\"}");
+        jdbc.update("INSERT INTO audit_log_archive SELECT * FROM audit_log WHERE created_at=:time", Map.of("time", AT.minusDays(1)));
+        jdbc.update("DELETE FROM audit_log WHERE created_at=:time", Map.of("time", AT.minusDays(1)));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log", Map.of(), Integer.class)).isEqualTo(201);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log_archive", Map.of(), Integer.class)).isEqualTo(1);
         String original=digest();var ids=new ArrayList<String>();var detached=new ArrayList<AuditLog>();var interpreter=new AuditEventInterpreter();
         read.executeWithoutResult(tx->reader.read(ALL,202,rows->{
             assertThat(rows).hasSizeLessThanOrEqualTo(100);

@@ -121,12 +121,9 @@ class _ReauthDialogState extends State<ReauthDialog> {
     final theme = Theme.of(context);
     return UtenAlertDialog(
       key: const Key('reauth-dialog'),
-      title: const Row(
-        children: [
-          Icon(Icons.lock_outline_rounded),
-          SizedBox(width: UtenSpacing.s8),
-          Text('请确认是你本人'),
-        ],
+      title: const UtenDialogHeading(
+        title: Text('请确认是你本人'),
+        icon: Icons.lock_outline_rounded,
       ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),

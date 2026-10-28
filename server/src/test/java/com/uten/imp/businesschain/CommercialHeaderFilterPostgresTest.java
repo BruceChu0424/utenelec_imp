@@ -167,8 +167,16 @@ class CommercialHeaderFilterPostgresTest {
         assertEquals(1,facet.path("billNo").size());assertEquals(first,facet.path("billNo").get(0).path("value").asText());
         assertEquals(0,read("/api/sales/quotes",setup.actor(),Map.of("search.billNo",first,"search.client",first),200).path("total").asInt());
         assertEquals(0,read("/api/sales/quotes",setup.actor(),Map.of("search.client",clientName.replace("M3_20%","M3X20A")),200).path("total").asInt());
-        for (String invalid:List.of("total","status","billDate"))
-            read("/api/sales/quotes",setup.actor(),Map.of("search."+invalid,"1"),422);
+        // Total/date are native typed headers; a valid number is a filter, not an invalid column.
+        BigDecimal firstTotal = db.queryForObject("SELECT total_local FROM sales_quotes WHERE bill_no=?", BigDecimal.class, first);
+        assertNotNull(firstTotal);
+        JsonNode amount = read("/api/sales/quotes",setup.actor(),Map.of("search.client",clientName,"search.total",firstTotal.toPlainString()),200);
+        assertEquals(1,amount.path("total").asInt());
+        assertEquals(first,amount.path("items").get(0).path("billNo").asText());
+        for (var invalid : List.of(Map.of("search.total","not-a-number"),
+                Map.of("search.status","1"), Map.of("search.billDate","2026-02-30"))) {
+            read("/api/sales/quotes",setup.actor(),invalid,422);
+        }
         assertNotEquals(first,second);
     }
 

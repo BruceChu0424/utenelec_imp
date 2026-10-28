@@ -12,23 +12,34 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class EmployeeDuplicateArchivePostgresTest {
-    static MigratedSchemaBaseline.ScopedDatabase database;
-    static JdbcTemplate db;
-    static TransactionTemplate transaction;
+    MigratedSchemaBaseline.ScopedDatabase database;
+    JdbcTemplate db;
+    TransactionTemplate transaction;
     UUID source,retained,actor;
-    @BeforeAll static void start() throws Exception {
-        database=MigratedSchemaBaseline.openDatabase("employee_duplicate_archive");
+    @BeforeEach void seed() throws Exception {
+        database=com.uten.imp.support.HistoricalEmployeeSchema.openDatabase("employee_duplicate_archive");
         var ds=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
         db=new JdbcTemplate(ds);transaction=new TransactionTemplate(new JdbcTransactionManager(ds));
+        source=historicalEmployee();retained=historicalEmployee();actor=UUID.randomUUID();
+        db.update("INSERT INTO users(id,employee_id,login_account,password_hash) VALUES(?,?,?,'test-only')",actor,employee(),"archive-reviewer-"+actor);
+        com.uten.imp.support.HistoricalEmployeeSchema.upgradeToCurrent(database);
     }
-    @AfterAll static void stop() throws Exception {if(database!=null)database.close();}
-    @BeforeEach void seed(){source=employee();retained=employee();actor=UUID.randomUUID();db.update("INSERT INTO users(id,employee_id,login_account,password_hash) VALUES(?,?,?,'test-only')",actor,employee(),"archive-reviewer-"+actor);}
+    @AfterEach void stop() throws Exception {if(database!=null)database.close();}
+    UUID historicalEmployee(){return employee("同名核验人员",UUID.randomUUID());}
     UUID employee(){
         UUID id=UUID.randomUUID();
+        return employee(com.uten.imp.support.SyntheticEmployeeIdentity.name("其他核验人员",id),id);
+    }
+    UUID employee(String name,UUID id){
         db.update("""
           INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-          SELECT ?,?,'同名核验人员','其他',department_id,DATE '2020-01-01','active','regular' FROM employees WHERE code='ADMIN'
-          """,id,"D"+id.toString().replace("-","").substring(0,15));return id;
+          SELECT ?,?,?,'其他',department_id,DATE '2020-01-01','active','regular' FROM employees WHERE code='ADMIN'
+          """,id,"D"+id.toString().replace("-","").substring(0,15),name);return id;
+    }
+    @Test void currentGuardRemainsActiveAfterPreGuardHistoryIsMigrated(){
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM employees WHERE full_name='同名核验人员'",Integer.class));
+        assertThrows(RuntimeException.class,this::historicalEmployee);
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM employees WHERE full_name='同名核验人员'",Integer.class));
     }
     void bind(){db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,actor.toString());db.queryForObject("SELECT set_config('app.actor_account','duplicate-review-fixture',true)",String.class);}
     UUID archive(int version){return transaction.execute(status->{bind();return db.queryForObject("SELECT fn_archive_verified_employee_duplicate(?,?,?,0,'已核对原始证件和入职记录','test-reviewed-evidence')",UUID.class,source,retained,version);});}

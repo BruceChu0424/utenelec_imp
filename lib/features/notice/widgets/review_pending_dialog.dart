@@ -722,105 +722,64 @@ class _Header extends StatelessWidget {
     final subtitle = hasReviews
         ? (count == 1 ? '有 1 项事务等待你处理' : '有 $count 项事务等待你处理')
         : (count == 1 ? '有 1 条通知需要你确认' : '有 $count 条通知需要你确认');
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(UtenRadius.card),
-          ),
-          child: Icon(
-            hasReviews ? Icons.fact_check_rounded : Icons.campaign_rounded,
-            size: 28,
-            color: scheme.onPrimaryContainer,
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s12),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return UtenDialogHeader(
+      padding: EdgeInsets.zero,
+      icon: hasReviews ? Icons.fact_check_rounded : Icons.campaign_rounded,
+      title: Text(hasReviews ? '待办提醒' : '登录提醒'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(subtitle),
+          if (count > 1) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
               children: [
-                Text(
-                  hasReviews ? '待办提醒' : '登录提醒',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                if (count > 1) ...[
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      for (final level in ReviewNoticeLevel.values)
-                        if ((levelCounts[level] ?? 0) > 0)
+                for (final level in ReviewNoticeLevel.values)
+                  if ((levelCounts[level] ?? 0) > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.secondaryContainer.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(UtenRadius.pill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
+                            width: 8,
+                            height: 8,
                             decoration: BoxDecoration(
-                              color: scheme.secondaryContainer.withValues(
-                                alpha: 0.6,
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                UtenRadius.pill,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: _levelStyleOf(theme, level).accent,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  l10n.noticeLevelSummary(
-                                    _levelLabel(l10n, level),
-                                    levelCounts[level]!,
-                                  ),
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: scheme.onSecondaryContainer,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                              color: _levelStyleOf(theme, level).accent,
+                              shape: BoxShape.circle,
                             ),
                           ),
-                    ],
-                  ),
-                ],
+                          const SizedBox(width: 5),
+                          Text(
+                            l10n.noticeLevelSummary(
+                              _levelLabel(l10n, level),
+                              levelCounts[level]!,
+                            ),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.onSecondaryContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
               ],
             ),
-          ),
-        ),
-        IconButton(
-          icon: Icon(
-            Icons.close_rounded,
-            size: 20,
-            color: scheme.onSurfaceVariant,
-          ),
-          tooltip: '关闭，稍后可从工作台或通知进入',
-          onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-        ),
-      ],
+          ],
+        ],
+      ),
+      showCloseButton: true,
+      closeTooltip: '关闭，稍后可从工作台或通知进入',
+      onClose: () => Navigator.of(context, rootNavigator: true).pop(),
     );
   }
 }
@@ -1174,40 +1133,19 @@ class _Actions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!hasReviews) {
-      return OutlinedButton(
-        onPressed: busy ? null : onSnooze,
-        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-        child: const Text('全部稍后再看'),
-      );
-    }
-    return Row(
+    return UtenDialogActions(
+      padding: const EdgeInsets.only(top: UtenSpacing.s16),
       children: [
-        Expanded(
-          child: FilledButton.icon(
+        OutlinedButton(
+          onPressed: busy ? null : onSnooze,
+          child: const Text('全部稍后再看'),
+        ),
+        if (hasReviews)
+          FilledButton.icon(
             onPressed: busy ? null : onReview,
             icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-            // 同域进入对应任务页，混合待办进入工作台首页，
-            // 不再直达第一条的详情页。
             label: const Text('去工作台处理'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(46),
-              textStyle: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
           ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: OutlinedButton(
-            onPressed: busy ? null : onSnooze,
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(46),
-            ),
-            child: const Text('全部稍后再看'),
-          ),
-        ),
       ],
     );
   }

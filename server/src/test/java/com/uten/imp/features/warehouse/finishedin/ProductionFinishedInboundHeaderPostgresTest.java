@@ -92,13 +92,14 @@ class ProductionFinishedInboundHeaderPostgresTest {
             if(method.equals("setParameter")){parameters.put(call.getArgument(0),call.getArgument(1));return call.getMock();}
             if(method.equals("getSingleResult"))return jdbc.queryForObject(sql,parameters,Object.class);
             if(method.equals("getResultList"))return jdbc.query(sql,parameters,(rs,index)->{
-                Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int col=0;col<row.length;col++)row[col]=rs.getObject(col+1);return row;
+                Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int col=0;col<row.length;col++) { row[col]=rs.getObject(col+1); } return row;
             });
             if(Query.class.isAssignableFrom(call.getMethod().getReturnType()))return call.getMock();
             return org.mockito.Answers.RETURNS_DEFAULTS.answer(call);
         });
     }
     private void execute(String sql,Object...values) {
-        var parameters=new MapSqlParameterSource();for(int index=0;index<values.length;index+=2)parameters.addValue((String)values[index],values[index+1]);jdbc.update(sql,parameters);
+        var parameters = new MapSqlParameterSource(com.uten.imp.support.KeyValueTestData.map(values));
+        jdbc.update(sql, parameters);
     }
 }

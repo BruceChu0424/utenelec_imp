@@ -965,23 +965,17 @@ class _SalesClientDetailDialogState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     if (_readerChanged) {
-      return UtenDialogFrame(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('账号、权限或服务器已变化，请关闭后重新打开明细'),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
-            ],
+      return UtenAlertDialog(
+        title: const Text('明细已失效'),
+        content: const Text('账号、权限或服务器已变化，请关闭后重新打开明细'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
           ),
-        ),
+        ],
       );
     }
     final accepted = _acceptedHeaderView;
@@ -1028,25 +1022,22 @@ class _SalesClientDetailDialogState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              UtenDialogHeader(
+                title: Text('${widget.clientName} · ${widget.docType.label}明细'),
+                subtitle: Text(
+                  '${widget.dateFrom} ~ ${widget.dateTo}'
+                  '${data != null && data.total >= 0 ? '，共 ${data.total} 条' : ''}',
+                ),
+                icon: Icons.person_outline_rounded,
+                showCloseButton: true,
+                closeTooltip: '关闭',
+                onClose: () => Navigator.of(context).pop(),
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+              ),
+              UtenDialogActions(
+                showDivider: false,
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 children: [
-                  Icon(
-                    Icons.person_outline_rounded,
-                    size: 18,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '${widget.clientName} · ${widget.docType.label}明细'
-                      '(${widget.dateFrom} ~ ${widget.dateTo}'
-                      '${data != null && data.total >= 0 ? '，共 ${data.total} 条' : ''})',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
                   UtenPrintPreviewButton(
                     title: '${widget.clientName} · ${widget.docType.label}明细',
                     subtitle:
@@ -1054,11 +1045,6 @@ class _SalesClientDetailDialogState
                     loader: _printLoader,
                     type: UtenButtonType.primary,
                     size: UtenButtonSize.large,
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    tooltip: '关闭',
                   ),
                 ],
               ),

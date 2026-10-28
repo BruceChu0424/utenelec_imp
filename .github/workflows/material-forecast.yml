@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: material-forecast-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: material-forecast-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   offline:

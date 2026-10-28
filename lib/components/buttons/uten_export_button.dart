@@ -28,6 +28,7 @@ import '../../shared/providers/export_context_epoch_provider.dart';
 import '../../shared/providers/shared_providers.dart';
 import 'uten_button.dart';
 import '../feedback/uten_dialog.dart';
+import '../feedback/uten_dialog_modules.dart';
 import '../feedback/uten_task_progress_dialog.dart';
 
 /// A business export may select a template or a group of files before the
@@ -578,6 +579,7 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
     final hasPassword = _pwd.text.isNotEmpty;
     return UtenAlertDialog(
       maxWidth: 520,
+      showCloseButton: true,
       title: UtenDialogHeading(
         icon: Icons.file_download_outlined,
         title: Text(
@@ -585,26 +587,53 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
               ? l10n.exportPdfDialogTitle
               : l10n.exportDialogTitle,
         ),
+        subtitle: Text(l10n.exportDialogSubtitle(widget.format.toUpperCase())),
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: _name,
-            autofocus: true,
-            maxLength: 150,
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                labelText: l10n.exportFileNameLabel,
-                suffixText: '.${widget.format}',
-                counterText: '',
-                border: const OutlineInputBorder(),
-                isDense: true,
+          UtenDialogField(
+            label: Text(l10n.exportFileNameLabel),
+            child: Semantics(
+              label: l10n.exportFileNameLabel,
+              child: TextField(
+                key: const Key('uten-export-filename'),
+                controller: _name,
+                autofocus: true,
+                maxLength: 150,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    prefixIcon: const Icon(Icons.description_outlined),
+                    suffixIcon: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s8),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: UtenRadius.mdAll,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s4,
+                          ),
+                          child: Text(
+                            '.${widget.format}',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    counterText: '',
+                    isDense: true,
+                  ),
+                ),
+                onChanged: (_) => setState(() => _error = null),
+                onSubmitted: (_) => _submit(),
               ),
             ),
-            onChanged: (_) => setState(() => _error = null),
-            onSubmitted: (_) => _submit(),
           ),
           if (_supportsDirectoryPicker) ...[
             const SizedBox(height: 8),
@@ -632,13 +661,11 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
             ),
           ],
           const SizedBox(height: UtenSpacing.s16),
-          UtenButton(
-            type: UtenButtonType.tonal,
-            size: UtenButtonSize.small,
+          UtenDialogSettingTile(
             icon: _passwordExpanded
                 ? Icons.lock_open_rounded
-                : Icons.lock_outline_rounded,
-            onPressed: () => setState(() {
+                : Icons.shield_outlined,
+            onTap: () => setState(() {
               _passwordExpanded = !_passwordExpanded;
               if (!_passwordExpanded) {
                 _pwd.clear();
@@ -646,10 +673,17 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
               }
               _error = null;
             }),
-            child: Text(
+            title: Text(
               _passwordExpanded
                   ? l10n.exportRemovePassword
                   : l10n.exportSetPassword,
+            ),
+            subtitle: Text(l10n.exportPasswordProtectionDescription),
+            trailing: Icon(
+              _passwordExpanded
+                  ? Icons.expand_less_rounded
+                  : Icons.chevron_right_rounded,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           UtenCollapsibleContent(
@@ -710,11 +744,15 @@ class _ExportFileDialogState extends State<_ExportFileDialog> {
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
-        TextButton(
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.commonCancel),
         ),
-        FilledButton(
+        UtenButton(
+          size: UtenButtonSize.large,
+          icon: Icons.download_rounded,
           onPressed: _submit,
           child: Text(
             hasPassword

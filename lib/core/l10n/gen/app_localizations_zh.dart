@@ -3114,6 +3114,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get exportDialogTitle => '导出 Excel';
 
   @override
+  String exportDialogSubtitle(String format) {
+    return '将当前数据保存为 $format 文件';
+  }
+
+  @override
+  String get exportPasswordProtectionDescription => '为文件添加密码保护';
+
+  @override
   String get exportFileNameLabel => '文件名';
 
   @override

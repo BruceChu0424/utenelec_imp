@@ -245,37 +245,11 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '预览 · 费用报销单 ${claim.claimNo}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    UtenButton(
-                      isLoading: _printing,
-                      icon: Icons.print_outlined,
-                      onPressed: _printing ? null : () => _print(context),
-                      child: const Text('打印'),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.close_rounded),
-                      label: const Text('关闭'),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
+              UtenDialogHeader(
+                title: Text('预览 · 费用报销单 ${claim.claimNo}'),
+                icon: Icons.receipt_long_outlined,
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
               ),
               const Divider(height: 1),
               Expanded(
@@ -289,6 +263,21 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
                     ),
                   ),
                 ),
+              ),
+              UtenDialogActions(
+                children: [
+                  UtenButton(
+                    isLoading: _printing,
+                    icon: Icons.print_outlined,
+                    onPressed: _printing ? null : () => _print(context),
+                    child: const Text('打印'),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('关闭'),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
               ),
             ],
           ),

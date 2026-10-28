@@ -229,7 +229,9 @@ class FulfillmentWorkbenchPageReadPostgresTest {
                 parameters.addValue(invocation.getArgument(0), invocation.getArgument(1));
             return null;
         });
-        table.bind(bindings);
+        if (table != null) {
+            table.bind(bindings);
+        }
         return jdbc.query(sql, parameters, (rs, index) -> {
             Object[] row = new Object[58];
             for (int column = 0; column < row.length; column++) row[column] = rs.getObject(column + 1);

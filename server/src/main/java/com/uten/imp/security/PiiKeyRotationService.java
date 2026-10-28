@@ -213,6 +213,9 @@ public class PiiKeyRotationService {
 
     private static Progress progress(UUID id, Checkpoint state, Map<String,Long> remaining) {
         String status = "SCANNED".equals(state.status()) && !remaining.isEmpty() ? "RESCAN_REQUIRED" : state.status();
+        // App-field scanning never proves that immutable merge envelopes,
+        // backups, WAL, offline copies or older writers no longer need a key.
+        // Every status/replay stays closed: this API cannot authorize retirement.
         return new Progress(id,state.targetVersion(),status,state.sequence(),state.verified(),state.rewrapped(),remaining,false);
     }
 }

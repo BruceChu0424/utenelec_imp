@@ -215,7 +215,7 @@ class ClientFinancialOwnershipPostgresTest {
     private UUID staff(String tag) {
         UUID id=UUID.randomUUID();
         em.createNativeQuery("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT :id,:code,:name,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'")
-            .setParameter("id",id).setParameter("code","T-"+id).setParameter("name",tag).executeUpdate();
+            .setParameter("id",id).setParameter("code","T-"+id).setParameter("name",com.uten.imp.support.SyntheticEmployeeIdentity.name(tag,id)).executeUpdate();
         em.createNativeQuery("INSERT INTO users(employee_id,login_account,password_hash,must_change_password,is_super_admin,status,remote_access) VALUES(:id,:login,'test-not-used',false,false,'active',false)")
             .setParameter("id",id).setParameter("login","T-"+id).executeUpdate();return id;
     }

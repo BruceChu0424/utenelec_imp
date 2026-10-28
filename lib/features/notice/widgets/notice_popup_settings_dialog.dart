@@ -10,6 +10,7 @@
 // - 人事打卡与运维/账号安全告警不在此列（强制动作/面向超管，不开放关闭）。
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_dialog_modules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -112,33 +113,17 @@ class _NoticePopupSettingsDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            '通知设置',
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const UtenFieldHintIcon(
-                          info: '关闭后该类通知不再弹窗提醒；通知仍保留在通知中心，未读徽章照常显示。',
-                          dense: true,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () =>
-                        Navigator.of(context, rootNavigator: true).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
+              UtenDialogHeader(
+                padding: EdgeInsets.zero,
+                icon: Icons.notifications_outlined,
+                title: const Text('通知设置'),
+                subtitle: const Text('按类别管理弹窗提醒'),
+                trailing: const UtenFieldHintIcon(
+                  info: '关闭后该类通知不再弹窗提醒；通知仍保留在通知中心，未读徽章照常显示。',
+                  dense: true,
+                ),
+                showCloseButton: true,
+                onClose: () => Navigator.of(context, rootNavigator: true).pop(),
               ),
               const SizedBox(height: UtenSpacing.s8),
               Flexible(child: _body(theme)),
@@ -193,7 +178,7 @@ class _NoticePopupSettingsDialogState
               ),
             )
           else
-            for (final pref in mine) _applicableRow(theme, pref),
+            for (final pref in mine) _applicableRow(pref),
           if (others.isNotEmpty) ...[
             _sectionHeader(theme, '其它类别（当前岗位不会收到）', others.length),
             for (final pref in others)
@@ -242,32 +227,25 @@ class _NoticePopupSettingsDialogState
     );
   }
 
-  Widget _applicableRow(ThemeData theme, NoticePopupPreference pref) {
+  Widget _applicableRow(NoticePopupPreference pref) {
     final enabled = !pref.popupDisabled;
     final busy = _saving.contains(pref.sourceEvent);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s2),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              pref.label.isEmpty ? pref.sourceEvent : pref.label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: UtenDialogSettingTile(
+        canRequestFocus: false,
+        icon: Icons.notifications_outlined,
+        title: Text(pref.label.isEmpty ? pref.sourceEvent : pref.label),
+        onTap: busy ? null : () => _toggle(pref, !enabled),
+        trailing: Semantics(
+          label: '${pref.label}弹窗提醒',
+          button: true,
+          child: Switch(
+            key: ValueKey('popup-pref-switch-${pref.sourceEvent}'),
+            value: enabled,
+            onChanged: busy ? null : (value) => _toggle(pref, value),
           ),
-          const SizedBox(width: UtenSpacing.s8),
-          Semantics(
-            label: '${pref.label}弹窗提醒',
-            button: true,
-            child: Switch(
-              key: ValueKey('popup-pref-switch-${pref.sourceEvent}'),
-              value: enabled,
-              onChanged: busy ? null : (value) => _toggle(pref, value),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

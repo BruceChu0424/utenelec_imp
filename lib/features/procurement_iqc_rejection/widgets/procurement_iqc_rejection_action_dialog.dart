@@ -215,34 +215,12 @@ class _ProcurementIqcRejectionActionDialogState
                     title: '正在提交拒收办理',
                     description: '正在保存退回、入库或改判的记录，请勿重复提交或关闭弹窗。',
                   ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s16,
-                    UtenSpacing.s16,
-                    UtenSpacing.s8,
-                    UtenSpacing.s8,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          minHeight: 48,
-                        ),
-                        tooltip: '关闭',
-                        onPressed: _busy ? null : () => Navigator.pop(context),
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
-                  ),
+                UtenDialogHeader(
+                  icon: Icons.fact_check_outlined,
+                  title: Text(_title),
+                  showCloseButton: true,
+                  closeTooltip: '关闭',
+                  onClose: _busy ? null : () => Navigator.pop(context),
                 ),
                 Flexible(
                   child: SingleChildScrollView(
@@ -407,26 +385,20 @@ class _ProcurementIqcRejectionActionDialogState
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: _busy ? null : () => Navigator.pop(context),
-                        child: const Text('取消'),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      UtenButton(
-                        key: const Key('iqc-action-submit'),
-                        size: UtenButtonSize.large,
-                        icon: _busy ? null : Icons.check_rounded,
-                        isLoading: _busy,
-                        onPressed: _busy ? null : _submit,
-                        child: Text(_submitLabel),
-                      ),
-                    ],
-                  ),
+                UtenDialogActions(
+                  children: [
+                    TextButton(
+                      onPressed: _busy ? null : () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                    UtenButton(
+                      key: const Key('iqc-action-submit'),
+                      icon: _busy ? null : Icons.check_rounded,
+                      isLoading: _busy,
+                      onPressed: _busy ? null : _submit,
+                      child: Text(_submitLabel),
+                    ),
+                  ],
                 ),
               ],
             ),

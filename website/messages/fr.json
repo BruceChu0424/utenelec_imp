@@ -227,7 +227,7 @@
     "archiveItemLabel": "Archive {number}",
     "archiveNote": "Les archives de l’entreprise sont présentées à titre de contexte historique. Le périmètre des projets actuels et les détails des produits doivent faire l’objet d’une confirmation distincte.",
     "title": "Projets de référence",
-    "subtitle": "Les produits UTEN en situation réelle",
+    "subtitle": "Informations sur les projets et archives de l’entreprise",
     "empty": "Aucun contenu de projet pour le moment"
   },
   "About": {
@@ -240,8 +240,8 @@
     "craft": "Savoir-faire",
     "mission": "Mission et vision",
     "coreCraftTitle": "Savoir-faire essentiels",
-    "teamTitle": "Gestion intégrée · Équipe professionnelle · Service international",
-    "teamBody": "Des équipes intégrées en production, R&D, essais, vente, planification et service client, appuyées par des professionnels expérimentés du secteur."
+    "teamTitle": "Des échanges techniques clairs autour des produits",
+    "teamBody": "Définissez les gammes, les modèles précis, les échantillons et les documents nécessaires, puis confirmez chaque besoin avec l’équipe concernée."
   },
   "Join": {
     "title": "Partenaires",

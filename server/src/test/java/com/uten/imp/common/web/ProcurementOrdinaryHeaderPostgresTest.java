@@ -72,7 +72,12 @@ class ProcurementOrdinaryHeaderPostgresTest {
         factory.setManagedTypes(PersistenceManagedTypes.of(documents().map(document->document.entity().getName()).toArray(String[]::new)));
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none","hibernate.jdbc.time_zone","UTC"));factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();PG.stop();}
+    @AfterAll static void stop() {
+        if (emf != null) {
+            emf.close();
+        }
+        PG.stop();
+    }
     @BeforeEach void prepare() {
         db.execute("TRUNCATE "+documents().map(Document::table).collect(java.util.stream.Collectors.joining(",")));
         em=emf.createEntityManager();

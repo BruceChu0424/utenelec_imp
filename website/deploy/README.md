@@ -12,16 +12,20 @@ file, Aliyun OIDC provider/role variables, OSS `website/` prefix, Linux users,
 state, backup credentials and timers. Never substitute an ERP key, role,
 database, service account or backup repository.
 
+The executable activation and paired-recovery chain in this directory currently
+targets SQLite plus image uploads. It does not implement PostgreSQL activation,
+backup/restore or private PDF document recovery. Do not substitute a PostgreSQL
+URL into these scripts. For the intended Aliyun ECS website with company-local
+IMP, read [the connection and operator guide](../docs/aliyun-local-erp-integration.md);
+the production database, images and private-document recovery plan and release
+preparation still require separate validation and deployment approval.
+
 ## Source acceptance
 
 Run from `website/`:
 
 ```bash
-npm ci
-npm run lint
-npx tsc --noEmit
-npm run test:all
-npm run test:prisma-migrations
+node scripts/quality-gate.mjs
 python3 -m unittest discover -s deploy/tests -p 'test_*.py'
 find deploy -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 ```
@@ -31,6 +35,11 @@ assembles a clean release, produces a CycloneDX SBOM, inventories every Prisma
 migration, and signs only after the protected website environment is approved.
 The release tag is `website-vX.Y.Z`. A local working directory is never a
 production artifact.
+
+The shared quality gate performs the locked install and generates Next.js route
+types before lint/typecheck. Do not replace it with a bare `tsc` command on a clean
+checkout. Optional PostgreSQL test credentials and legacy-source archives remain
+private inputs; the test runner reports missing opt-in/source evidence explicitly.
 
 Required website-only GitHub configuration:
 

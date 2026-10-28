@@ -13,6 +13,15 @@ public record NumericColumnFilter(String operator, BigDecimal lower, BigDecimal 
     private static final Pattern COMPARISON = Pattern.compile("^(<=|>=|!=|=|<|>)?\\s*(" + DECIMAL + ")$");
     private static final Pattern RANGE = Pattern.compile("^(" + DECIMAL + ")\\s*\\.\\.\\s*(" + DECIMAL + ")$");
 
+    public NumericColumnFilter {
+        if (lower == null || operator == null) throw invalid();
+        if (upper != null) {
+            if (!"BETWEEN".equals(operator) || lower.compareTo(upper) > 0) throw invalid();
+        } else if (!java.util.Set.of("=", "!=", ">", ">=", "<", "<=").contains(operator)) {
+            throw invalid();
+        }
+    }
+
     public static NumericColumnFilter parse(String input) {
         if (input == null) throw invalid();
         String value = input.strip();
@@ -32,15 +41,33 @@ public record NumericColumnFilter(String operator, BigDecimal lower, BigDecimal 
 
     /** The expression and parameter name must come from the caller's fixed whitelist. */
     public String sql(String expression, String parameter) {
-        return upper == null ? expression + " " + operator + " :" + parameter
-                : expression + " BETWEEN :" + parameter + "_lower AND :" + parameter + "_upper";
+        requireParameter(parameter);
+        if (upper != null) return expression + " BETWEEN :" + parameter + "_lower AND :" + parameter + "_upper";
+        // SQL structure is chosen from literals; the parsed request token never enters SQL.
+        String comparison = switch (operator) {
+            case "=" -> " = :";
+            case "!=" -> " != :";
+            case ">" -> " > :";
+            case ">=" -> " >= :";
+            case "<" -> " < :";
+            case "<=" -> " <= :";
+            default -> throw invalid();
+        };
+        return expression + comparison + parameter;
     }
 
     public void bind(String parameter, BiConsumer<String, BigDecimal> binder) {
+        requireParameter(parameter);
         if (upper == null) binder.accept(parameter, lower);
         else {
             binder.accept(parameter + "_lower", lower);
             binder.accept(parameter + "_upper", upper);
+        }
+    }
+
+    private static void requireParameter(String parameter) {
+        if (parameter == null || !parameter.matches("[A-Za-z_][A-Za-z_0-9]*")) {
+            throw new IllegalArgumentException("A server-owned SQL parameter name is required");
         }
     }
 

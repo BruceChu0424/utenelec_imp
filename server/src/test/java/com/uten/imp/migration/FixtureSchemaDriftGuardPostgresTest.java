@@ -76,6 +76,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // Only asserts that reset-generation migrations contain no CREATE TABLE text;
             // this source-contract oracle never executes a database fixture or dynamic DDL.
             "BusinessDataResetSqlContractTest.java",
+            // Reads V954 SQL text and asserts its CREATE TABLE declaration;
+            // never executes fixture DDL or opens a database.
+            "DataLifecycleRegistryContractTest.java",
             "MigratedSchemaBaselinePostgresTest.java",
             // Creates complete projections from trusted live Flyway catalog
             // metadata rather than hand-written fixture DDL.
@@ -170,6 +173,11 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // This one candidate oracle owns sparse facts behind its source
+            // views; these names never exempt production binding relations or
+            // another fixture with the same relation name.
+            "com/uten/imp/features/notice/NoticePermissionCandidatePostgresTest.java#fixture_user_template_sources",
+            "com/uten/imp/features/notice/NoticePermissionCandidatePostgresTest.java#fixture_department_template_sources",
             // Transaction-start SPI oracle: a private row guard proves the actor lock
             // exists before business DML, without inventing a production relation.
             "com/uten/imp/security/TransactionWritePreparationPostgresTest.java#preparation_probe",

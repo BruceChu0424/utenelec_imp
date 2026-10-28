@@ -6,6 +6,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/shared/search/calendar_column_query.dart';
 import 'package:uten_imp/shared/search/retain_hierarchy_filter_context.dart';
+import '../support/field_hint_support.dart';
 
 class _Row extends EditableGridRow {
   _Row(this.id, this.quantity);
@@ -234,7 +235,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _search(tester, '日期', '2024-02-30');
-      expect(find.text(CalendarColumnQuery.error), findsOneWidget);
+      await readFieldHint(tester, CalendarColumnQuery.error);
       expect(find.text('A'), findsOneWidget);
       expect(find.text('B'), findsOneWidget);
       await tester.enterText(

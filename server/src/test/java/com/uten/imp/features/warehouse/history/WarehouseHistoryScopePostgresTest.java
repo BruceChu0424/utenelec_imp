@@ -195,9 +195,7 @@ class WarehouseHistoryScopePostgresTest {
     }
 
     private void execute(String sql, Object... parameters) {
-        if (parameters.length % 2 != 0) throw new IllegalArgumentException("SQL fixture parameters must be key/value pairs");
-        var values = new MapSqlParameterSource();
-        for (int index = 0; index + 1 < parameters.length; index += 2) values.addValue((String) parameters[index], parameters[index + 1]);
+        var values = new MapSqlParameterSource(com.uten.imp.support.KeyValueTestData.map(parameters));
         jdbc.update(sql, values);
     }
 }

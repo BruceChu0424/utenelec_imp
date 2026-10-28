@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.application.port.GoodsMasterWriteAccessPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.ColorRepository;
@@ -378,8 +380,8 @@ class GoodsImportCellCorrectionsSafetyTest {
         when(query.setParameter(anyString(), any())).thenReturn(query);
         var actor = mock(SecurityContextCurrentUser.class);
         when(actor.requireId()).thenReturn(UUID.randomUUID());
-        var importer = new GoodsImportService(service, repository, null, categories,
-                null, colors, null, units, em, actor, null);
+        var importer = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(service, repository, null, categories,
+                null, colors, null, units, em, actor, null));
         ReflectionTestUtils.setField(importer, "writeAccess", mock(GoodsMasterWriteAccessPort.class));
         return new Fixture(importer, service, category, saved);
     }

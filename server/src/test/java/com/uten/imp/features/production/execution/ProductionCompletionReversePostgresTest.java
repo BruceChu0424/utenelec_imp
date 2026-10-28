@@ -369,7 +369,7 @@ class ProductionCompletionReversePostgresTest {
                     id,code,full_name,id_type,department_id,
                     hire_date,status,employment_type
                 ) VALUES(?,?,?,'其他',?,?,'active','regular')
-                """, employee, "E-" + employee, "owner", department,
+                """, employee, "E-" + employee, com.uten.imp.support.SyntheticEmployeeIdentity.name("owner",employee), department,
                 LocalDate.of(2026, 1, 1));
         for (SegmentFixture segment : segments) {
             update(connection, """

@@ -506,14 +506,10 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Semantics(
-              namesRoute: true,
-              child: DefaultTextStyle.merge(
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-                child: title,
-              ),
+            UtenDialogHeader(
+              padding: EdgeInsets.zero,
+              icon: Icons.publish_outlined,
+              title: title,
             ),
             const SizedBox(height: UtenSpacing.s16),
             Expanded(
@@ -528,11 +524,8 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
               ),
             ),
             const SizedBox(height: UtenSpacing.s16),
-            OverflowBar(
-              alignment: MainAxisAlignment.center,
-              overflowAlignment: OverflowBarAlignment.center,
-              spacing: UtenSpacing.s12,
-              overflowSpacing: UtenSpacing.s8,
+            UtenDialogActions(
+              padding: const EdgeInsets.only(top: UtenSpacing.s16),
               children: actions,
             ),
           ],

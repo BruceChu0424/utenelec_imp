@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/audit/device_audit_store.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/admin/repositories/remote_access_repository.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
@@ -127,18 +128,23 @@ void main() {
           },
         };
       final repo = DioAuthRepository(api);
+      // The transport carries the shared platform label. Linux intentionally
+      // uses its desktop label; a missing native plugin uses the fallback.
+      final deviceLabel = await loginDeviceLabel();
+      expect(deviceLabel, isNotEmpty);
+      expect(deviceLabel.length, lessThanOrEqualTo(64));
       await repo.login('worker', 'password');
       expect(api.body, {
         'loginAccount': 'worker',
         'password': 'password',
-        'deviceName': '本设备',
+        'deviceName': deviceLabel,
       });
       await repo.loginWithOtp('worker', 'password', '001234');
       expect(api.body, {
         'loginAccount': 'worker',
         'password': 'password',
         'otpCode': '001234',
-        'deviceName': '本设备',
+        'deviceName': deviceLabel,
       });
     },
   );

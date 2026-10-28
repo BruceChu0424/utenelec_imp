@@ -381,11 +381,10 @@ class _MyBatchDetailDialog extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '员工信息修改',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                const UtenDialogHeader(
+                  padding: EdgeInsets.zero,
+                  icon: Icons.badge_outlined,
+                  title: Text('员工信息修改'),
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 Flexible(
@@ -408,13 +407,15 @@ class _MyBatchDetailDialog extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: UtenButton(
-                    type: UtenButtonType.ghost,
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(l10n.profileChangeCancel2),
-                  ),
+                UtenDialogActions(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s16),
+                  children: [
+                    UtenButton(
+                      type: UtenButtonType.ghost,
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(l10n.profileChangeCancel2),
+                    ),
+                  ],
                 ),
               ],
             ),

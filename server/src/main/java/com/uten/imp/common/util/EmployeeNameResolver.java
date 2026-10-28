@@ -157,13 +157,22 @@ public class EmployeeNameResolver {
         if (employeeId != null) return nameWithCodeOf(employeeId);
         if (documentId == null || documentLegacyId == null || documentLegacyId <= 0 || role == null) return null;
         // All identifiers are fixed enum constants; only values enter query parameters.
+        // The sealed resolver uses a scalar exact-legacy lookup. Guard corrupt
+        // duplicate current identities before calling it; its private alias
+        // lookup retains its own unique-key/definer contract and needs no new ACL.
         String sql = """
                 SELECT employee.full_name || '(' || employee.code || ')'
                 FROM %s document
-                JOIN employees employee ON employee.id = fn_employee_identity_from_legacy_worker(NULLIF(document.%s, 0))
+                CROSS JOIN LATERAL (
+                    SELECT count(*) AS exact_count FROM employees candidate
+                    WHERE candidate.legacy_id = NULLIF(document.%s, 0)
+                ) legacy_identity
+                JOIN employees employee ON employee.id = CASE WHEN legacy_identity.exact_count <= 1
+                    THEN fn_employee_identity_from_legacy_worker(NULLIF(document.%s, 0))
+                    ELSE NULL::uuid END
                 WHERE document.id = :documentId AND document.legacy_id = :documentLegacyId
                   AND document.%s IS NULL
-                """.formatted(role.table, role.legacyColumn, role.employeeColumn);
+                """.formatted(role.table, role.legacyColumn, role.legacyColumn, role.employeeColumn);
         List<?> rows = em.createNativeQuery(sql)
                 .setParameter("documentId", documentId)
                 .setParameter("documentLegacyId", documentLegacyId)

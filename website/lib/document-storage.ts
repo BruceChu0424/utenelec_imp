@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdir, lstat, open, readFile, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, mkdir, lstat, open, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, PDFDict, PDFName, PDFArray, PDFStream, PDFRef, type PDFObject } from 'pdf-lib';
 
@@ -45,6 +46,11 @@ export async function documentDirectory(): Promise<string> {
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Documents directory must be a real directory');
   return directory;
+}
+/** Readiness uses the same directory authority as upload and download. It
+ * never creates a missing production mount or exposes a private file path. */
+export async function assertDocumentsDirectoryReady(): Promise<void> {
+  await access(await documentDirectory(), constants.R_OK | constants.W_OK | constants.X_OK);
 }
 export async function storeDocument(bytes: Uint8Array) {
   const validation = await validatePublicPdf(bytes);

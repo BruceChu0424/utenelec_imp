@@ -402,25 +402,12 @@ class _ProcurementIqcActualCreditDialogState
                       title: '正在确认供应商实际贷项',
                       description: '正在保存贷项和案件分摊，请勿重复提交或关闭弹窗。',
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '确认供应商实际贷项',
-                            style: theme.textTheme.titleLarge,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: '关闭',
-                          onPressed: _busy
-                              ? null
-                              : () => Navigator.pop(context),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ],
-                    ),
+                  UtenDialogHeader(
+                    icon: Icons.account_balance_wallet_outlined,
+                    title: const Text('确认供应商实际贷项'),
+                    showCloseButton: true,
+                    closeTooltip: '关闭',
+                    onClose: _busy ? null : () => Navigator.pop(context),
                   ),
                   Flexible(
                     child: SingleChildScrollView(
@@ -632,38 +619,32 @@ class _ProcurementIqcActualCreditDialogState
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        TextButton(
-                          onPressed: _busy ? null : _refresh,
-                          child: Text(_uncertain ? '查询处理结果' : '刷新来源与余额'),
+                  UtenDialogActions(
+                    children: [
+                      TextButton(
+                        onPressed: _busy ? null : _refresh,
+                        child: Text(_uncertain ? '查询处理结果' : '刷新来源与余额'),
+                      ),
+                      if (canInput)
+                        UtenButton(
+                          key: const Key('iqc-credit-preview'),
+                          type: preview == null
+                              ? UtenButtonType.primary
+                              : UtenButtonType.secondary,
+                          isLoading: _busy && preview == null,
+                          onPressed: _editable && !_needsRefresh
+                              ? _previewAmount
+                              : null,
+                          child: const Text('预览账面分配'),
                         ),
-                        if (canInput)
-                          UtenButton(
-                            key: const Key('iqc-credit-preview'),
-                            type: preview == null
-                                ? UtenButtonType.primary
-                                : UtenButtonType.secondary,
-                            isLoading: _busy && preview == null,
-                            onPressed: _editable && !_needsRefresh
-                                ? _previewAmount
-                                : null,
-                            child: const Text('预览账面分配'),
-                          ),
-                        if (preview != null)
-                          UtenButton(
-                            key: const Key('iqc-action-submit'),
-                            isLoading: _busy,
-                            onPressed: _busy || _needsRefresh ? null : _confirm,
-                            child: Text(_uncertain ? '重试同一次确认' : '确认以上金额与分项'),
-                          ),
-                      ],
-                    ),
+                      if (preview != null)
+                        UtenButton(
+                          key: const Key('iqc-action-submit'),
+                          isLoading: _busy,
+                          onPressed: _busy || _needsRefresh ? null : _confirm,
+                          child: Text(_uncertain ? '重试同一次确认' : '确认以上金额与分项'),
+                        ),
+                    ],
                   ),
                 ],
               ),

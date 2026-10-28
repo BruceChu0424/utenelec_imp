@@ -266,6 +266,6 @@ class ReadScopeVersionAuthorityPostgresTest {
         UUID id = UUID.randomUUID(); db.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
                 SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'
-                """, id, "RS-" + id, "Read scope " + label); return id;
+                """, id, "RS-" + id, com.uten.imp.support.SyntheticEmployeeIdentity.name("Read scope " + label,id)); return id;
     }
 }

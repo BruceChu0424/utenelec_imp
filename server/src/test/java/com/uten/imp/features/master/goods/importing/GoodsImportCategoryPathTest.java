@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
@@ -119,8 +121,8 @@ class GoodsImportCategoryPathTest {
         when(units.findAll()).thenReturn(List.of());
         var actor = mock(SecurityContextCurrentUser.class);
         when(actor.requireId()).thenReturn(UUID.randomUUID());
-        return new GoodsImportService(null, mock(GoodsRepository.class), null, categories,
-                null, colors, null, units, null, actor, null);
+        return GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(null, mock(GoodsRepository.class), null, categories,
+                null, colors, null, units, null, actor, null));
     }
 
     private static byte[] workbook(String path) throws Exception {

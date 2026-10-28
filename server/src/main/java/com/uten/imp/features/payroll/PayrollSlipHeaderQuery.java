@@ -62,10 +62,14 @@ record PayrollSlipHeaderQuery(String sort, String order, Map<String, String> fil
         if (value.length() > 20) throw invalid();
         var match = java.util.regex.Pattern.compile("^([0-9]{4})(?:(?:-|年)([0-9]{1,2})月?)?$").matcher(value);
         if (!match.matches()) throw new ApiException(ErrorCode.VALIDATION_FAILED, "工资期间请输入年份或年月，例如 2026、2026-10");
-        int year = Integer.parseInt(match.group(1));
-        Short normalizedYear = PayrollService.normalizeYear(year);
-        return match.group(2) == null ? new Short[]{normalizedYear}
-                : new Short[]{normalizedYear, PayrollService.normalizeMonth(Integer.parseInt(match.group(2)))};
+        try {
+            int year = Integer.parseInt(match.group(1));
+            Short normalizedYear = PayrollService.normalizeYear(year);
+            return match.group(2) == null ? new Short[]{normalizedYear}
+                    : new Short[]{normalizedYear, PayrollService.normalizeMonth(Integer.parseInt(match.group(2)))};
+        } catch (NumberFormatException ignored) {
+            throw invalid();
+        }
     }
 
     private static ApiException invalid() { return new ApiException(ErrorCode.VALIDATION_FAILED, "工资条表头查询条件无效"); }

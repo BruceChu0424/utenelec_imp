@@ -32,7 +32,12 @@ class FinanceReconciliationHeaderPostgresTest {
         factory.setManagedTypes(PersistenceManagedTypes.of(FinanceReconciliation.class.getName()));factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
         factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();PG.stop();}
+    @AfterAll static void stop() {
+        if (emf != null) {
+            emf.close();
+        }
+        PG.stop();
+    }
     @BeforeEach void prepare(){db.execute("TRUNCATE finance_reconciliations");em=emf.createEntityManager();}
     @AfterEach void close(){if(em!=null)em.close();}
     @Test void exactOriginalCurrencyAndChineseCalendarHeadersShareCountPageFacetsAndReversalIdentity(){

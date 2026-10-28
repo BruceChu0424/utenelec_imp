@@ -649,7 +649,7 @@ class PaymentStyleHierarchyConcurrencyPostgresTest {
                 """)) {
             insert.setObject(1, id);
             insert.setString(2, "TX-" + codePrefix + "-" + shortId());
-            insert.setString(3, name);
+            insert.setString(3, name + " [" + id + "]");
             insert.setString(4, category);
             insert.setObject(5, parentId);
             insert.setInt(6, parentId == null ? 0 : 1);

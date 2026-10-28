@@ -171,29 +171,16 @@ class _SubcontractDrawTaskDetailDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.inventory_2_outlined,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        detail == null
-                            ? '委外任务详情'
-                            : '委外任务 · ${_label(detail.task.goodsName)}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: _busy == null ? _close : null,
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                UtenDialogHeader(
+                  padding: EdgeInsets.zero,
+                  icon: Icons.inventory_2_outlined,
+                  title: Text(
+                    detail == null
+                        ? '委外任务详情'
+                        : '委外任务 · ${_label(detail.task.goodsName)}',
+                  ),
+                  showCloseButton: true,
+                  onClose: _busy == null ? _close : null,
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 if (_loading && detail == null)
@@ -359,10 +346,8 @@ class _SubcontractDrawTaskDetailDialogState
   Widget _actions(SubcontractDrawTaskDetail detail) {
     final idle = _busy == null;
     final canGoDraw = widget.canSubmitDraw && detail.task.canDraw;
-    return Wrap(
-      alignment: WrapAlignment.end,
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
+    return UtenDialogActions(
+      padding: const EdgeInsets.only(top: UtenSpacing.s16),
       children: [
         if (detail.allows(SubcontractDrawTaskDetail.closeAction))
           UtenButton(

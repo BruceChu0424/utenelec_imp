@@ -27,14 +27,17 @@ class CategorySiblingNamePostgresTest {
 
     @BeforeAll static void prepare() throws Exception {
         DB.start();
+        var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
+        // The oracle installs V959 itself; preserve its genuine pre-migration
+        // column/default/key shapes without copying future triggers or invented columns.
+        com.uten.imp.support.MigratedProjectionSchema.createTables(
+                new org.springframework.jdbc.core.JdbcTemplate(dataSource), "958", TABLES.toArray(String[]::new));
         try (var connection = connection(); var sql = connection.createStatement()) {
-            for (String table : TABLES) {
-                sql.execute("CREATE TABLE " + table + "(id uuid PRIMARY KEY, name text NOT NULL,"
-                        + " parent_id uuid, category text DEFAULT 'EXPENSE', is_deleted boolean NOT NULL DEFAULT false)");
-            }
             // Existing ambiguous history must remain readable after upgrading.
-            sql.execute("INSERT INTO material_categories(id,name) VALUES ('" + UUID.randomUUID()
-                    + "','历史重复'),('" + UUID.randomUUID() + "','历史重复')");
+            try(var insert=connection.prepareStatement("INSERT INTO material_categories(id,name) VALUES (?,'历史重复'),(?,'历史重复')")) {
+                insert.setObject(1,UUID.randomUUID());insert.setObject(2,UUID.randomUUID());insert.executeUpdate();
+            }
             try (var source = CategorySiblingNamePostgresTest.class.getResourceAsStream(
                     "/db/migration/V959__category_sibling_names.sql")) {
                 assertNotNull(source);
@@ -53,20 +56,20 @@ class CategorySiblingNamePostgresTest {
             SQLException createError = assertThrows(SQLException.class, () -> insert(table, " 1分类 ", firstParent));
             assertEquals("23505", createError.getSQLState());
             UUID rename = insert(table, "2分类", firstParent);
-            assertThrows(SQLException.class, () -> update(table, rename, "name='1分类'"));
-            assertThrows(SQLException.class, () -> update(table, other, "parent_id='" + firstParent + "'"));
-            update(table, first, "is_deleted=true");
+            assertThrows(SQLException.class, () -> update(table, rename, "name", "1分类"));
+            assertThrows(SQLException.class, () -> update(table, other, "parent_id", firstParent));
+            update(table, first, "is_deleted", true);
             insert(table, "1分类", firstParent);
-            assertThrows(SQLException.class, () -> update(table, first, "is_deleted=false"));
+            assertThrows(SQLException.class, () -> update(table, first, "is_deleted", false));
             insert(table, "顶层", null);
             assertThrows(SQLException.class, () -> insert(table, "顶层", null));
         }
     }
 
     @Test void financialRootNamesAreScopedToTheirBusinessCategory() throws Exception {
-        try (var connection = connection(); var sql = connection.createStatement()) {
-            sql.execute("INSERT INTO payment_styles(id,name,category) VALUES ('" + UUID.randomUUID()
-                    + "','账户','INCOME'),('" + UUID.randomUUID() + "','账户','EXPENSE')");
+        try (var connection = connection(); var sql = connection.prepareStatement(
+                "INSERT INTO payment_styles(id,name,category) VALUES (?,'账户','INCOME'),(?,'账户','EXPENSE')")) {
+            sql.setObject(1,UUID.randomUUID());sql.setObject(2,UUID.randomUUID());sql.executeUpdate();
         }
     }
 
@@ -74,9 +77,8 @@ class CategorySiblingNamePostgresTest {
         UUID parent = UUID.randomUUID();
         try (var first = connection(); var executor = Executors.newSingleThreadExecutor()) {
             first.setAutoCommit(false);
-            try (var sql = first.createStatement()) {
-                sql.execute("INSERT INTO material_categories(id,name,parent_id) VALUES ('" + UUID.randomUUID()
-                        + "','并发分类','" + parent + "')");
+            try (var sql = first.prepareStatement("INSERT INTO material_categories(id,name,parent_id) VALUES (?,'并发分类',?)")) {
+                sql.setObject(1,UUID.randomUUID());sql.setObject(2,parent);sql.executeUpdate();
             }
             var started = new CountDownLatch(1);
             var second = executor.submit(() -> {
@@ -99,16 +101,26 @@ class CategorySiblingNamePostgresTest {
 
     private static UUID insert(String table, String name, UUID parent) throws SQLException {
         UUID id = UUID.randomUUID();
+        String command = "payment_styles".equals(table)
+                ? "INSERT INTO payment_styles(id,name,parent_id,category) VALUES (?,?,?,'EXPENSE')"
+                : "INSERT INTO " + table + "(id,name,parent_id) VALUES (?,?,?)";
         try (var connection = connection(); var sql = connection.prepareStatement(
-                "INSERT INTO " + table + "(id,name,parent_id) VALUES (?,?,?)")) {
+                command)) {
             sql.setObject(1, id); sql.setString(2, name); sql.setObject(3, parent); sql.executeUpdate();
         }
         return id;
     }
 
-    private static void update(String table, UUID id, String changes) throws SQLException {
-        try (var connection = connection(); var sql = connection.createStatement()) {
-            sql.executeUpdate("UPDATE " + table + " SET " + changes + " WHERE id='" + id + "'");
+    private static void update(String table, UUID id, String column, Object value) throws SQLException {
+        String assignment=switch(column) {
+            case "name" -> "name=?";
+            case "parent_id" -> "parent_id=?";
+            case "is_deleted" -> "is_deleted=?";
+            default -> throw new IllegalArgumentException("Unsupported category test field");
+        };
+        try (var connection = connection(); var sql = connection.prepareStatement(
+                "UPDATE " + table + " SET " + assignment + " WHERE id=?")) {
+            sql.setObject(1,value);sql.setObject(2,id);sql.executeUpdate();
         }
     }
 

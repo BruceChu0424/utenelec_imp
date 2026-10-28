@@ -43,7 +43,6 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final compactActions = MediaQuery.sizeOf(context).width < 544;
     return UtenAlertDialog(
       maxWidth: 880,
       scrollable: false,
@@ -244,29 +243,11 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
       ),
       actionsPadding: const EdgeInsets.all(UtenSpacing.s16),
       actions: [
-        SizedBox(
-          width: 880,
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
-              for (final action in actions)
-                if (compactActions && action is FilledButton)
-                  SizedBox(
-                    width:
-                        MediaQuery.sizeOf(context).width - UtenSpacing.s16 * 4,
-                    child: action,
-                  )
-                else
-                  action,
-            ],
-          ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('关闭'),
         ),
+        ...actions,
       ],
     );
   }

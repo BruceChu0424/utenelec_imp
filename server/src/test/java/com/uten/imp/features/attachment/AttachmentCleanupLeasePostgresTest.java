@@ -107,8 +107,8 @@ class AttachmentCleanupLeasePostgresTest {
         UUID employee=UUID.randomUUID(),actor=UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'清理回归','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
-                """,employee,"EX-"+employee);
+                SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """,employee,"EX-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("清理回归",employee));
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"expiry-"+actor);
         jdbc.update("""
                 INSERT INTO attachment_upload_sessions(id,storage_key,owner_type,owner_id,user_id,original_name,

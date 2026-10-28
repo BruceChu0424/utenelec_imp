@@ -66,6 +66,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
         assertThat(cipher.available()).isTrue();
         verify(smsGatewaySecretRewrap).onStartup();
         assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NULL", Boolean.class)).isTrue();
+        var historicalReaderSources = com.uten.imp.support.HistoricalPermissionReaderSources.installBeforeForwardUpgrade(db);
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
         try {
             // Write versioned V854 analysis/request/approval/receipt facts through JDBC,
@@ -98,6 +99,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_preplan_make_public_supply_sources(uuid,uuid,uuid[])') IS NULL",Boolean.class))
                     .isTrue();
             var historyThrough855=db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=855 ORDER BY installed_rank",String.class);
+            historicalReaderSources.removeBeforeForwardUpgrade(db);
             var currentMigration=com.uten.imp.testsupport.TestFlyway.configure().dataSource(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword())
                     .locations("classpath:db/migration").target(CURRENT_HEAD_VERSION).load();
             assertThat(currentMigration.migrate().migrationsExecuted)

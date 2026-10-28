@@ -305,10 +305,10 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                 INSERT INTO employees(
                     id, code, full_name, id_type, department_id, hire_date,
                     status, employment_type, created_at, updated_at, is_deleted, version)
-                VALUES (?, ?, '改量复核测试员工', '身份证', ?, DATE '2026-01-01',
+                VALUES (?, ?, ?, '身份证', ?, DATE '2026-01-01',
                         'active', 'regular', now(), now(), FALSE, 0)
                 """, employeeId, "EMP-QRC-" + suffix + "-" + employeeId
-                .toString().substring(0, 8), departmentId);
+                .toString().substring(0, 8),com.uten.imp.support.SyntheticEmployeeIdentity.name("改量复核测试员工",employeeId), departmentId);
         UUID userId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO users(

@@ -90,4 +90,18 @@ class MasterReferenceCatalogShapeTest {
         assertThat(MasterReferenceCatalog.exemptions())
                 .allSatisfy(exemption -> assertThat(exemption.note()).isNotBlank());
     }
+
+    @Test
+    void monthlyStockProjectionKeepsLedgerHistoryWithoutInventingOpenBusinessReferences() {
+        var monthly = MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("stock_monthly_summaries")).toList();
+        assertThat(monthly).extracting(MasterReferenceCatalog.Exemption::column)
+                .containsExactlyInAnyOrder("goods_id", "color_id", "warehouse_id");
+        assertThat(monthly).allSatisfy(exemption -> {
+            assertThat(exemption.reason()).isEqualTo(MasterReferenceCatalog.ExemptReason.HISTORY);
+            assertThat(exemption.note()).contains("stock_movements", "stock_balances", "可重建");
+        });
+        assertThat(MasterReferenceCatalog.references())
+                .noneMatch(reference -> reference.table().equals("stock_monthly_summaries"));
+    }
 }

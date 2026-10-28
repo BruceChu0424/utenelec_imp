@@ -11,49 +11,9 @@ import '../../core/theme/uten_scroll_behavior.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_motion.dart';
+import 'uten_dialog_chrome.dart';
 
-/// One clear heading hierarchy for short confirmations and important alerts.
-class UtenDialogHeading extends StatelessWidget {
-  const UtenDialogHeading({
-    super.key,
-    required this.title,
-    required this.icon,
-    this.danger = false,
-    this.accent,
-  });
-
-  final Widget title;
-  final IconData icon;
-  final bool danger;
-  final Color? accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = accent ?? (danger ? scheme.error : scheme.primary);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: UtenRadius.mdAll,
-          ),
-          child: Icon(icon, color: color, size: 26),
-        ),
-        const SizedBox(width: UtenSpacing.s16),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: title,
-          ),
-        ),
-      ],
-    );
-  }
-}
+export 'uten_dialog_chrome.dart';
 
 /// The standard confirmation and short-form shell. Native AlertDialog keeps
 /// keyboard focus, semantics, action overflow and route behavior; the shell
@@ -89,9 +49,17 @@ class UtenAlertDialog extends AlertDialog {
     super.constraints,
     super.scrollable = true,
     this.maxWidth = 560,
+    this.subtitle,
+    this.headingIcon,
+    this.showCloseButton = false,
+    this.onClose,
   });
 
   final double maxWidth;
+  final Widget? subtitle;
+  final IconData? headingIcon;
+  final bool showCloseButton;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -118,23 +86,42 @@ class UtenAlertDialog extends AlertDialog {
               behavior: originalScrollBehavior,
               child: content!,
             );
+      Widget header() => UtenDialogHeader(
+        title: title!,
+        subtitle: subtitle,
+        leading: icon == null
+            ? null
+            : IconTheme.merge(
+                data: IconThemeData(
+                  color: iconColor ?? Theme.of(context).colorScheme.primary,
+                  size: 28,
+                ),
+                child: icon!,
+              ),
+        icon:
+            headingIcon ??
+            (title is Text && icon == null ? Icons.info_outline_rounded : null),
+        showCloseButton: showCloseButton,
+        onClose: onClose ?? () => Navigator.maybePop(context),
+        padding: titlePadding?.resolve(Directionality.of(context)),
+      );
       AlertDialog alert(
         BoxConstraints box, {
         bool? canScroll,
         EdgeInsets? margins,
       }) => AlertDialog(
-        icon: icon,
+        icon: title == null ? icon : null,
         iconPadding: iconPadding,
         iconColor: iconColor,
-        title: title,
-        titlePadding:
-            titlePadding ??
-            EdgeInsets.fromLTRB(
-              compact ? 12 : 24,
-              compact ? 20 : 28,
-              compact ? 12 : 24,
-              0,
-            ),
+        title: title == null
+            ? null
+            : (canScroll ?? scrollable)
+            ? header()
+            : UtenDialogSurface(
+                backgroundColor: backgroundColor,
+                child: header(),
+              ),
+        titlePadding: EdgeInsets.zero,
         titleTextStyle:
             titleTextStyle ??
             Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -144,17 +131,37 @@ class UtenAlertDialog extends AlertDialog {
         content: body,
         contentPadding:
             contentPadding ??
-            EdgeInsets.fromLTRB(compact ? 12 : 24, 20, compact ? 12 : 24, 24),
+            EdgeInsets.fromLTRB(
+              compact ? 12 : 24,
+              title == null ? 24 : 0,
+              compact ? 12 : 24,
+              24,
+            ),
         contentTextStyle:
             contentTextStyle ??
             Theme.of(context).textTheme.bodyLarge?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
               height: 1.55,
             ),
-        actions: actions,
-        actionsPadding:
-            actionsPadding ??
-            EdgeInsets.fromLTRB(compact ? 12 : 24, 0, compact ? 12 : 24, 24),
+        actions: actions == null || actions!.isEmpty
+            ? null
+            : [
+                SizedBox(
+                  width: box.maxWidth,
+                  child: UtenDialogActions(
+                    padding: actionsPadding,
+                    alignment: actionsAlignment ?? MainAxisAlignment.center,
+                    overflowAlignment:
+                        actionsOverflowAlignment ?? OverflowBarAlignment.center,
+                    overflowDirection:
+                        actionsOverflowDirection ?? VerticalDirection.down,
+                    overflowSpacing: actionsOverflowButtonSpacing ?? 8,
+                    spacing: (buttonPadding?.horizontal ?? 16) / 2,
+                    children: actions!,
+                  ),
+                ),
+              ],
+        actionsPadding: EdgeInsets.zero,
         actionsAlignment: actionsAlignment ?? MainAxisAlignment.center,
         actionsOverflowAlignment:
             actionsOverflowAlignment ?? OverflowBarAlignment.center,
@@ -162,16 +169,18 @@ class UtenAlertDialog extends AlertDialog {
         actionsOverflowButtonSpacing: actionsOverflowButtonSpacing ?? 8,
         buttonPadding: buttonPadding,
         backgroundColor: backgroundColor,
-        elevation: elevation,
-        shadowColor: shadowColor,
-        surfaceTintColor: surfaceTintColor,
+        elevation: elevation ?? 8,
+        shadowColor:
+            shadowColor ??
+            Theme.of(context).colorScheme.shadow.withValues(alpha: 0.16),
+        surfaceTintColor: surfaceTintColor ?? Colors.transparent,
         semanticLabel: semanticLabel,
         insetPadding: margins ?? inset,
         clipBehavior: clipBehavior ?? Clip.antiAlias,
         shape:
             shape ??
             RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(UtenRadius.card),
+              borderRadius: UtenRadius.dialogAll,
               side: BorderSide(
                 color: Theme.of(context).colorScheme.outlineVariant,
               ),
@@ -234,7 +243,10 @@ class UtenAlertDialog extends AlertDialog {
         );
       }
       return ScrollConfiguration(
-        behavior: const _UtenDialogScrollBehavior(),
+        behavior: _UtenDialogScrollBehavior(
+          paintSurface: true,
+          backgroundColor: backgroundColor,
+        ),
         child: alert(bounds),
       );
     },
@@ -243,7 +255,27 @@ class UtenAlertDialog extends AlertDialog {
 
 /// Share page scrollbar ownership and position isolation in long confirmations.
 class _UtenDialogScrollBehavior extends UtenScrollBehavior {
-  const _UtenDialogScrollBehavior();
+  const _UtenDialogScrollBehavior({
+    this.paintSurface = false,
+    this.backgroundColor,
+  });
+
+  final bool paintSurface;
+  final Color? backgroundColor;
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    final viewport = super.buildScrollbar(context, child, details);
+    // Paint across the reserved scrollbar lane too, before any scrolled content.
+    // Business scrollables restore their original behavior in the body subtree.
+    return paintSurface
+        ? UtenDialogSurface(backgroundColor: backgroundColor, child: viewport)
+        : viewport;
+  }
 }
 
 /// Larger business workspaces keep their own bounded body and fixed actions.
@@ -277,16 +309,25 @@ class UtenDialogFrame extends Dialog {
       final inset = insetPadding ?? utenDialogInsetPadding(context);
       return Dialog(
         backgroundColor: backgroundColor,
-        elevation: elevation,
-        shadowColor: shadowColor,
-        surfaceTintColor: surfaceTintColor,
+        elevation: elevation ?? 8,
+        shadowColor:
+            shadowColor ??
+            Theme.of(context).colorScheme.shadow.withValues(alpha: 0.16),
+        surfaceTintColor: surfaceTintColor ?? Colors.transparent,
         insetAnimationDuration: MediaQuery.disableAnimationsOf(context)
             ? Duration.zero
             : insetAnimationDuration,
         insetAnimationCurve: insetAnimationCurve,
         insetPadding: inset,
         clipBehavior: clipBehavior ?? Clip.antiAlias,
-        shape: shape,
+        shape:
+            shape ??
+            RoundedRectangleBorder(
+              borderRadius: UtenRadius.dialogAll,
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
         alignment: alignment,
         semanticsRole: semanticsRole,
         constraints: utenDialogConstraints(
@@ -297,7 +338,12 @@ class UtenDialogFrame extends Dialog {
           requested: constraints,
           fillHeight: fillHeight,
         ),
-        child: child,
+        child: child == null
+            ? null
+            : UtenDialogSurface(
+                backgroundColor: backgroundColor,
+                child: child!,
+              ),
       );
     },
   );
@@ -390,7 +436,7 @@ abstract final class UtenDialog {
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           UtenButton(
-            type: UtenButtonType.ghost,
+            type: UtenButtonType.secondary,
             size: UtenButtonSize.large,
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(cancelLabel ?? '取消'),

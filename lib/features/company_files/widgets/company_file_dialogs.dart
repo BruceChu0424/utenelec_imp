@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -771,33 +772,43 @@ class _CompanyFileAccessDialogState
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          RadioListTile<_EntryAccessMode>(
-                            key: const Key('entry-access-everyone'),
-                            contentPadding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            dense: true,
-                            value: _EntryAccessMode.everyone,
-                            enabled: !_busy,
-                            title: Text(l.companyFilesEveryoneCanRead),
-                          ),
-                          RadioListTile<_EntryAccessMode>(
-                            key: const Key('entry-access-inherit'),
-                            contentPadding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            dense: true,
-                            value: _EntryAccessMode.inherit,
-                            enabled: !_busy,
-                            title: Text(l.companyFilesInheritEntryAccess),
-                          ),
-                          RadioListTile<_EntryAccessMode>(
-                            key: const Key('entry-access-specific'),
-                            contentPadding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            dense: true,
-                            value: _EntryAccessMode.specific,
-                            enabled: !_busy,
-                            title: Text(l.companyFilesSpecificReaders),
-                          ),
+                          for (final option in [
+                            (
+                              _EntryAccessMode.everyone,
+                              'entry-access-everyone',
+                              Icons.public_outlined,
+                              l.companyFilesEveryoneCanRead,
+                            ),
+                            (
+                              _EntryAccessMode.inherit,
+                              'entry-access-inherit',
+                              Icons.account_tree_outlined,
+                              l.companyFilesInheritEntryAccess,
+                            ),
+                            (
+                              _EntryAccessMode.specific,
+                              'entry-access-specific',
+                              Icons.people_outline_rounded,
+                              l.companyFilesSpecificReaders,
+                            ),
+                          ]) ...[
+                            if (option.$1 != _EntryAccessMode.everyone)
+                              const SizedBox(height: UtenSpacing.s12),
+                            UtenDialogSettingTile(
+                              canRequestFocus: false,
+                              key: Key(option.$2),
+                              icon: option.$3,
+                              title: Text(option.$4),
+                              selected: _mode == option.$1,
+                              onTap: _busy
+                                  ? null
+                                  : () => _selectMode(option.$1),
+                              trailing: Radio<_EntryAccessMode>(
+                                value: option.$1,
+                                enabled: !_busy,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),

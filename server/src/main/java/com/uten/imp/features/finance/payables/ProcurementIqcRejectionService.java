@@ -365,6 +365,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         Query data = em.createNativeQuery(select() + from() + where
                 + " ORDER BY " + relevance + headers.orderBy() + " LIMIT :limit OFFSET :offset");
         bind(data, params);
+        headers.bindOrder(data);
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);
         @SuppressWarnings("unchecked")

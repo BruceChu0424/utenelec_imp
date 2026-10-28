@@ -34,8 +34,8 @@ public final class CategorySiblingNameGuard {
             case MOULD -> "MOULD_CATEGORY_HIERARCHY";
             case PAYMENT_STYLE -> "PAYMENT_STYLE_HIERARCHY";
         };
-        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended('"
-                + lockKey + "',0))").getSingleResult();
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:hierarchyLockKey,0))")
+                .setParameter("hierarchyLockKey", lockKey).getSingleResult();
     }
 
     public static void requireAvailable(EntityManager em, Kind kind,

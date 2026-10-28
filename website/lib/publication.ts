@@ -94,3 +94,8 @@ export function publicProductWhere(extra: Prisma.ProductWhereInput = {}): Prisma
 export function publicNewsWhere(extra: Prisma.NewsWhereInput = {}): Prisma.NewsWhereInput {
   return { AND: [{ published: true }, extra] };
 }
+
+/** Case and archive list, detail and sitemap share the same publication rule. */
+export function publicCaseWhere(extra: Prisma.CaseItemWhereInput = {}): Prisma.CaseItemWhereInput {
+  return { AND: [{ published: true }, extra] };
+}

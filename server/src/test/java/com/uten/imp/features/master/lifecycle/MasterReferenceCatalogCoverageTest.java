@@ -159,6 +159,51 @@ class MasterReferenceCatalogCoverageTest {
     }
 
     @Test
+    void monthlyProjectionLifetimeUpgradeIsIdempotentAndRejectsUnreviewedTriggers() throws Exception {
+        String migration = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V968__stock_monthly_summary_goods_lifetime.sql"));
+        try (Connection connection = connection(); var statement = connection.createStatement()) {
+            connection.setAutoCommit(false);
+            try {
+                String before;
+                try (var rows = statement.executeQuery(
+                        "SELECT coalesce(jsonb_agg(to_jsonb(f) ORDER BY goods_id)::text,'[]') FROM goods_code_usage_facts f")) {
+                    assertThat(rows.next()).isTrue();
+                    before = rows.getString(1);
+                }
+                statement.execute(migration);
+                statement.execute(migration);
+                try (var rows = statement.executeQuery(
+                        "SELECT coalesce(jsonb_agg(to_jsonb(f) ORDER BY goods_id)::text,'[]') FROM goods_code_usage_facts f")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getString(1)).as("Installing a recorder must not invent or rewrite lifetime facts").isEqualTo(before);
+                }
+                for (String replacement : List.of(
+                        "CREATE TRIGGER trg_track_goods_code_usage AFTER INSERT OR UPDATE OR DELETE "
+                                + "ON stock_monthly_summaries FOR EACH ROW WHEN (false) "
+                                + "EXECUTE FUNCTION fn_capture_goods_code_use('U:goods_id')",
+                        "CREATE CONSTRAINT TRIGGER trg_track_goods_code_usage AFTER INSERT OR UPDATE OR DELETE "
+                                + "ON stock_monthly_summaries DEFERRABLE INITIALLY DEFERRED FOR EACH ROW "
+                                + "EXECUTE FUNCTION fn_capture_goods_code_use('U:goods_id')")) {
+                    var original = connection.setSavepoint();
+                    try {
+                        statement.execute("DROP TRIGGER trg_track_goods_code_usage ON stock_monthly_summaries");
+                        statement.execute(replacement);
+                        org.assertj.core.api.Assertions.assertThatThrownBy(() -> statement.execute(migration))
+                                .isInstanceOf(SQLException.class)
+                                .satisfies(error -> assertThat(((SQLException) error).getSQLState()).isEqualTo("23514"))
+                                .hasMessageContaining("Unreviewed monthly stock lifetime trigger");
+                    } finally {
+                        connection.rollback(original);
+                    }
+                }
+            } finally {
+                connection.rollback();
+            }
+        }
+    }
+
+    @Test
     void goodsCodeUsageTracksBusinessIdentityColumnsAndClassifiesJsonSnapshotsExplicitly() throws SQLException {
         Set<String> tracked = new TreeSet<>();
         try (Connection connection = connection(); var statement = connection.createStatement();
@@ -166,7 +211,7 @@ class MasterReferenceCatalogCoverageTest {
             while (rows.next()) tracked.add(rows.getString(1) + "." + rows.getString(2));
         }
         assertThat(tracked).contains("goods_bom_items.goods_id", "goods_bom_items.component_goods_id",
-                "sales_order_items.goods_id", "stock_balances.goods_id", "rd_tasks.goods_id",
+                "sales_order_items.goods_id", "stock_balances.goods_id", "stock_monthly_summaries.goods_id", "rd_tasks.goods_id",
                 "goods_cost_sheets.input", "goods_cost_sheets.calculation", "goods_cost_snapshots.payload",
                 "production_material_discovery_requests.requested_materials",
                 "production_material_increment_requests.source_snapshot",

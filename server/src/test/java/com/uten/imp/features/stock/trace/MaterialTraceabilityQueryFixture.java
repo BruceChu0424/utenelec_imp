@@ -164,8 +164,7 @@ final class MaterialTraceabilityQueryFixture implements AutoCloseable {
         UUID id = UUID.randomUUID();
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("id", id);
-        if (fields.length % 2 != 0) throw new IllegalArgumentException("Fixture fields must be pairs");
-        for (int i = 0; i < fields.length; i += 2) values.put((String) fields[i], fields[i + 1]);
+        values.putAll(com.uten.imp.support.KeyValueTestData.map(fields));
         if (!table.matches("[a-z_]+") || values.keySet().stream().anyMatch(name -> !name.matches("[a-z_]+")))
             throw new IllegalArgumentException("Only internal fixture identifiers are allowed");
         String names = String.join(",", values.keySet());

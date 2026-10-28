@@ -1,5 +1,6 @@
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_dialog_modules.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -216,12 +217,19 @@ class _InventoryCostPostingDialogState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(l10n.inventoryCostPolicyHint),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenDialogSettingTile(
+                    canRequestFocus: false,
+                    icon: Icons.inventory_2_outlined,
                     title: Text(l10n.inventoryCostEnabled),
-                    value: enabled,
-                    onChanged: (value) => localSetState(() => enabled = value),
+                    onTap: () => localSetState(() => enabled = !enabled),
+                    trailing: Switch(
+                      value: enabled,
+                      onChanged: (value) =>
+                          localSetState(() => enabled = value),
+                    ),
                   ),
+                  const SizedBox(height: UtenSpacing.s12),
                   UtenDateField(
                     label: l10n.inventoryCostEffectiveDate,
                     value: effective,
@@ -570,22 +578,12 @@ class _InventoryCostPostingDialogState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l10n.inventoryCostTitle,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.pop(context, _changed),
-                    icon: const Icon(Icons.close),
-                    tooltip: MaterialLocalizations.of(context).closeButtonLabel,
-                  ),
-                ],
+              UtenDialogHeader(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+                icon: Icons.account_balance_wallet_outlined,
+                title: Text(l10n.inventoryCostTitle),
+                showCloseButton: true,
+                onClose: _busy ? null : () => Navigator.pop(context, _changed),
               ),
               Wrap(
                 spacing: UtenSpacing.s8,

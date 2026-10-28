@@ -4,6 +4,54 @@
 
 `UtenDialog.show` 提供已有的统一确认样式。需要定制输入布局时，沿用业务弹窗的 builder，并通过 `UtenDialog.showAndWaitForExit<T>` 等待弹层完全退出后再释放外部控制器。
 
+## 2026-10-28 统一渐变弹窗与模块
+
+设计默认使用 `frontend-design`，以本次用户提供的第三张图为视觉依据。顶部青绿色渐变向下融入主题底色，左侧图标块对应标题和说明，内容左对齐，底部用细分隔线和整组居中的操作建立层次。普通弹窗、业务工作区、同一表单的手机底部弹层复用以下入口，业务代码只组合内容和回调。
+
+| 公共入口 | 职责及参数 |
+|---|---|
+| `UtenAlertDialog` | 短确认和表单；传 `title`、`subtitle`、`headingIcon`、`content`、`actions`。`showCloseButton` 在允许取消的流程显式启用；`onClose` 可配置关闭动作 |
+| `UtenDialogFrame` | 表格、编辑器、核对和预览的有界工作区；自动提供渐变表面、圆角和轻柔阴影 |
+| `UtenDialogSurface` | 没有约束、滚动或路由行为的渐变表面；全屏/底部弹层可以复用；嵌套时只绘制一层渐变 |
+| `UtenDialogHeader` / `UtenDialogHeading` | 标题、可选说明、图标块、可组合 `leading`/`trailing` 及关闭按钮；`Header` 的 `showCloseButton: true, onClose: null` 保持可见但禁用，供保存/下载保护；可传 `closeTooltip` 保留原入口标签 |
+| `UtenDialogActions` | 细分隔线、间距、居中按钮组、窄屏溢出堆叠；同时统一 Material 按钮和 `UtenButton` 的视觉规格，保留禁用、危险操作及回调 |
+| `UtenDialogField` | 外置字段标签、输入模块、可选说明；控制器和验证由调用方持有 |
+| `UtenDialogSettingTile` | 整行可点击的图标、标题、说明、尾部箭头/自定义控件；用于密码等设置，默认浅底和整卡主色细描边 |
+| `UtenDialogOptionCard` | 全卡片选择、右侧单选标记、选中描边与浅色底，支持键盘和大字布局 |
+
+设置卡片默认采用与导入选中项一致的主题主色细边框；单选卡片仍明确区分选中主色、未选中浅灰。组合原生 Radio/Switch 时传 `canRequestFocus: false`，由原生控件负责键盘焦点，保留 RadioGroup 箭头导航；纯设置入口继续支持整卡 Tab/Enter。普通信息、提示和业务状态卡不套用选择状态。
+
+模块源码位于 [`uten_dialog_chrome.dart`](../../lib/components/feedback/uten_dialog_chrome.dart)、[`uten_dialog_modules.dart`](../../lib/components/feedback/uten_dialog_modules.dart)，标题/表面/操作区由原 `uten_dialog.dart` 统一导出。
+
+配色使用已有主题语义：默认浅色主色 `#0F766E`、白色表面 `#FFFFFF`、主文字 `#0F172A`、辅助文字 `#475569`、细边框 `#E2E8F0`；深色底面 `#101A2C` 配主题亮青绿。公司自定义品牌继续跟随 `ColorScheme`，不在业务弹窗硬编码上述颜色。浅色顶部主色叠加 7.5%，深色 16%，渐变最多延伸 220 逻辑像素，底部恢复原表面。标题 20/700，说明使用 `bodyMedium`，沿用 NotoSansSC；弹窗圆角 `UtenRadius.dialog`（20），输入、按钮和模块圆角 `UtenRadius.control`（10）。
+
+底部按钮由公共布局先测量组内实际最大高度，再以同一个紧高度重新布局所有按钮表面；带图标、混合原生/自定义按钮、放大字号或文案换行时仍等高，窄屏堆叠也沿用这一高度，不能只设置相同 `minHeight`。常规最小高度 48，宽度随文案和图标调整；取消使用浅灰底/淡描边，主动作保留主题主色和轻微阴影。可点击面积继续遵循 `UtenControlMetrics`，缩放不会缩小手机触控目标。图标块在极窄局部空间缩小或省略装饰，正文、标题和关闭控件继续保留；选项卡正常字号等高，大字时允许内容自然增高。
+
+```dart
+UtenAlertDialog(
+  title: const Text('选择处理方式'),
+  subtitle: const Text('请选择本次导入的处理方式'),
+  headingIcon: Icons.file_upload_outlined,
+  showCloseButton: true,
+  content: UtenDialogOptionCard(
+    icon: Icons.note_add_outlined,
+    title: const Text('新建货品'),
+    subtitle: const Text('全部新建，保留文件中的分类'),
+    selected: selected,
+    onTap: selectCreate,
+  ),
+  actions: [
+    UtenButton(type: UtenButtonType.secondary, onPressed: cancel,
+      child: const Text('取消')),
+    UtenButton(onPressed: next, child: const Text('下一步')),
+  ],
+)
+```
+
+保留差异：原生日历/时钟继续保留专用交互，文件选择器由系统拥有；侧滑面板保持响应式路线，打印纸面保持白色和原始版式。庆典插画保留居中内容，复杂业务标题可组合原有帮助/权限控件，不自动拆解其 Widget。仅视觉统一，金额、数量、单位、原始来源、权限、草稿、身份代次、提交和控制器退出协议不变。
+
+完整逐调用清单、迁移回执、测试日志及实际功能路由测试截图位于 `output/dialog-unification-20261028/`。清单将源码接入、组件/调用方回归和真实员工验收分别记录；源码接入不代表已逐一人工点击或已部署。
+
 ## 外部控制器的生命周期
 
 Flutter `showDialog` 返回的结果在 `Navigator.pop` 时完成，此时退场动画中的 `TextField` 仍然挂载。外部创建的 `TextEditingController` 只有在路由 `completed` 之后才能释放。`showAndWaitForExit` 包装原 Material `showDialog`，保留其 root navigator、barrier、主题、媒体信息、safe area 和 route settings 默认行为；它从实际 builder 上捕获 `ModalRoute` 并等待 `completed`，没有另建一套 DialogRoute 协议。

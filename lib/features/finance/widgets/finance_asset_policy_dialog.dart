@@ -513,46 +513,18 @@ class _FinanceAssetPolicySurfaceState
             color: theme.colorScheme.surface,
             child: Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s20,
-                    UtenSpacing.s12,
-                    UtenSpacing.s8,
-                    UtenSpacing.s12,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                '资产类别与会计政策',
-                                style: theme.textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const UtenFieldHintIcon(
-                              info: '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
-                              dense: true,
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        constraints: const BoxConstraints(
-                          minWidth: 48,
-                          minHeight: 48,
-                        ),
-                        tooltip: '关闭',
-                        onPressed: _close,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-                    ],
+                UtenDialogSurface(
+                  child: UtenDialogHeader(
+                    icon: Icons.account_balance_outlined,
+                    title: const Text('资产类别与会计政策'),
+                    trailing: const UtenFieldHintIcon(
+                      info: '所有口径由服务端政策驱动；此处不预设金额门槛或税务优惠。',
+                      dense: true,
+                    ),
+                    showCloseButton: true,
+                    onClose: _close,
                   ),
                 ),
-                const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
                   child: UtenSegmentRow<FinanceAssetLedger>(
@@ -840,32 +812,26 @@ class _FinanceAssetPolicySurfaceState
             ),
           ),
           if (widget.canApprove) ...[
-            const Divider(height: 1),
             SafeArea(
               top: false,
-              child: Padding(
+              child: UtenDialogActions(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    if (_selected != null &&
-                        _selected!.status.toUpperCase() != 'ACTIVE')
-                      UtenActionButton(
-                        type: UtenActionButtonType.secondary,
-                        onAction: _activate,
-                        icon: Icons.verified_outlined,
-                        label: const Text('审核并启用'),
-                      ),
+                children: [
+                  if (_selected != null &&
+                      _selected!.status.toUpperCase() != 'ACTIVE')
                     UtenActionButton(
-                      key: const Key('finance-asset-policy-save'),
-                      onAction: _save,
-                      icon: Icons.save_outlined,
-                      label: Text(_selected == null ? '创建草稿' : '保存政策'),
+                      type: UtenActionButtonType.secondary,
+                      onAction: _activate,
+                      icon: Icons.verified_outlined,
+                      label: const Text('审核并启用'),
                     ),
-                  ],
-                ),
+                  UtenActionButton(
+                    key: const Key('finance-asset-policy-save'),
+                    onAction: _save,
+                    icon: Icons.save_outlined,
+                    label: Text(_selected == null ? '创建草稿' : '保存政策'),
+                  ),
+                ],
               ),
             ),
           ],

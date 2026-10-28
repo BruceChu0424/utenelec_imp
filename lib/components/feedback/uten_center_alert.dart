@@ -261,7 +261,7 @@ class _CenterAlertDialog extends StatelessWidget {
       maxWidth: maxWidth,
       constraints: BoxConstraints(maxHeight: maxHeight),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(UtenRadius.card),
+        borderRadius: UtenRadius.dialogAll,
         side: isUrgent
             ? BorderSide(color: accent.withValues(alpha: 0.5), width: 1.5)
             : BorderSide.none,

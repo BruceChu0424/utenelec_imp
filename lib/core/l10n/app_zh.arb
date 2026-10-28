@@ -1312,6 +1312,13 @@
   "impersonationNoTargets": "暂无可切换的员工",
   "impersonationStartFailed": "切换失败",
   "exportDialogTitle": "导出 Excel",
+  "exportDialogSubtitle": "将当前数据保存为 {format} 文件",
+  "@exportDialogSubtitle": {
+    "placeholders": {
+      "format": {"type": "String"}
+    }
+  },
+  "exportPasswordProtectionDescription": "为文件添加密码保护",
   "exportFileNameLabel": "文件名",
   "exportFileNameRequired": "请填写文件名（不超过 150 个字符）",
   "exportSaveLocationLabel": "保存位置",

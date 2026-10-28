@@ -40,6 +40,7 @@ class PermissionCatalogPlainNamesPostgresTest {
             var source=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
             com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).target("895").load().migrate();
             var db=new JdbcTemplate(source);
+            com.uten.imp.support.HistoricalPermissionReaderSources.install(db);
             UUID department=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
             UUID otherDepartment=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_SALES'",UUID.class);
             UUID manager=account(db,department,true);
@@ -105,6 +106,7 @@ class PermissionCatalogPlainNamesPostgresTest {
             var afterCodes=new LinkedHashSet<>(db.queryForList("SELECT code FROM permissions",String.class));
             assertThat(afterCodes).containsExactlyInAnyOrderElementsOf(union(beforeCodes,union(Set.copyOf(SPLIT),Set.of(ASSET_REVERSE))));
             var after=resolver(db).grantedPermissionsFor(users,afterCodes);
+            com.uten.imp.support.HistoricalPermissionReaderSources.assertNoIndependentAssignments(db);
             for(UUID id:users) {
                 var expected=new LinkedHashSet<>(before.get(id));
                 if(expected.contains(CONFIRM)) expected.addAll(SPLIT);

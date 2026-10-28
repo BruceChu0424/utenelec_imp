@@ -15,8 +15,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep complete diagnostics while fixes for a different commit run in parallel.
+  group: quality-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   secrets:

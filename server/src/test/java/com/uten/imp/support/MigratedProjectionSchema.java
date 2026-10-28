@@ -49,6 +49,68 @@ public final class MigratedProjectionSchema {
         copyCatalogTables(connection, false, true, tables);
     }
 
+    /** Copies a real read view over explicitly cloned relations in a private schema.
+     * The source is rendered without public on the search path so its dependencies
+     * cannot silently resolve back to the migrated business tables. */
+    public static void copyReadViewFromMigratedCatalog(Connection connection, String view, String... tables) throws SQLException {
+        String schema;
+        String searchPath;
+        try (var statement = connection.createStatement();
+                var rows = statement.executeQuery("SELECT current_schema(), current_setting('search_path')")) {
+            if (!rows.next() || rows.getString(1) == null
+                    || Set.of("public", "pg_catalog", "information_schema").contains(rows.getString(1))) {
+                throw new IllegalArgumentException("Projection copies require an explicit private target schema");
+            }
+            schema = rows.getString(1);
+            searchPath = rows.getString(2);
+        }
+        String targetSchema = identifier(schema);
+        String targetView = identifier(view);
+        String definition;
+        try {
+            try (var statement = connection.createStatement()) {
+                statement.execute("SET search_path TO pg_catalog");
+            }
+            try (var statement = connection.prepareStatement("""
+                    SELECT pg_catalog.pg_get_viewdef(relation.oid, true)
+                    FROM pg_catalog.pg_class relation
+                    JOIN pg_catalog.pg_namespace namespace ON namespace.oid=relation.relnamespace
+                    WHERE namespace.nspname='public' AND relation.relname=? AND relation.relkind='v'
+                    """)) {
+                statement.setString(1, view);
+                try (var rows = statement.executeQuery()) {
+                    if (!rows.next()) throw new IllegalArgumentException("No migrated read view: " + view);
+                    definition = rows.getString(1);
+                }
+            }
+        } finally {
+            try (var statement = connection.prepareStatement("SELECT pg_catalog.set_config('search_path', ?, false)")) {
+                statement.setString(1, searchPath);
+                statement.execute();
+            }
+        }
+        for (String table : tables) {
+            String targetRelation = targetSchema + "." + identifier(table);
+            try (var statement = connection.prepareStatement("SELECT pg_catalog.to_regclass(?)")) {
+                statement.setString(1, targetRelation);
+                try (var rows = statement.executeQuery()) {
+                    if (!rows.next() || rows.getString(1) == null) {
+                        throw new IllegalArgumentException("Missing private projection relation: " + table);
+                    }
+                }
+            }
+            String sourceRelation = "(?:public|\"public\")\\.(?:\"" + java.util.regex.Pattern.quote(table)
+                    + "\"|" + java.util.regex.Pattern.quote(table) + ")(?![a-zA-Z_0-9$])";
+            definition = definition.replaceAll(sourceRelation, java.util.regex.Matcher.quoteReplacement(targetRelation));
+        }
+        if (java.util.regex.Pattern.compile("(?:public|\"public\")\\.").matcher(definition).find()) {
+            throw new IllegalArgumentException("Read projection has an uncloned public dependency: " + view);
+        }
+        try (var statement = connection.createStatement()) {
+            statement.execute("CREATE VIEW " + targetSchema + "." + targetView + " AS " + definition);
+        }
+    }
+
     private static void copyCatalogTables(Connection connection, boolean data, boolean constraints, String... tables) throws SQLException {
         try (var statement = connection.createStatement(); var rows = statement.executeQuery("SELECT current_schema()")) {
             if (!rows.next() || rows.getString(1) == null || rows.getString(1).equals("public")) {

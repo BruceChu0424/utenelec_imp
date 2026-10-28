@@ -909,75 +909,56 @@ class _SettlementTermsDialogState
     final canEdit = _canEdit;
     return PopScope(
       canPop: !_saving,
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      !current
-                          ? '读取范围已更新'
-                          : canEdit
-                          ? '维护账期 · ${widget.item.name}'
-                          : widget.item.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  MasterRecordHistoryAction(
-                    entityType: 'reference-methods',
-                    recordId: widget.item.id,
-                    enabled: current && !_saving,
-                    onChanged: () {
-                      final route = ModalRoute.of(context);
-                      if (route != null && route.isActive) {
-                        route.navigator?.removeRoute(route);
-                      }
-                      widget.onHistoryChanged();
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: _saving
+      child: UtenDialogSurface(
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              UtenDialogHeader(
+                icon: Icons.event_note_outlined,
+                title: Text(
+                  !current
+                      ? '读取范围已更新'
+                      : canEdit
+                      ? '维护账期 · ${widget.item.name}'
+                      : widget.item.name,
+                ),
+                trailing: MasterRecordHistoryAction(
+                  entityType: 'reference-methods',
+                  recordId: widget.item.id,
+                  enabled: current && !_saving,
+                  onChanged: () {
+                    final route = ModalRoute.of(context);
+                    if (route != null && route.isActive) {
+                      route.navigator?.removeRoute(route);
+                    }
+                    widget.onHistoryChanged();
+                  },
+                ),
+                showCloseButton: true,
+                onClose: _saving ? null : () => Navigator.of(context).pop(),
+              ),
+              if (!current)
+                const UtenInlineNotice(
+                  level: UtenInlineNoticeLevel.warning,
+                  title: '原输入已保留，此窗口不会提交',
+                  message: '请关闭窗口，核对当前信息后重新操作。',
+                ),
+              Flexible(
+                child: Visibility(
+                  visible: current,
+                  maintainState: true,
+                  child: MasterEditForm(
+                    key: _formKey,
+                    fields: widget.fields,
+                    initialValues: widget.initialValues,
+                    readOnlyKeys: canEdit && !_saving
                         ? null
-                        : () => Navigator.of(context).pop(),
+                        : {for (final field in widget.fields) field.key},
                   ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            if (!current)
-              const UtenInlineNotice(
-                level: UtenInlineNoticeLevel.warning,
-                title: '原输入已保留，此窗口不会提交',
-                message: '请关闭窗口，核对当前信息后重新操作。',
-              ),
-            Flexible(
-              child: Visibility(
-                visible: current,
-                maintainState: true,
-                child: MasterEditForm(
-                  key: _formKey,
-                  fields: widget.fields,
-                  initialValues: widget.initialValues,
-                  readOnlyKeys: canEdit && !_saving
-                      ? null
-                      : {for (final field in widget.fields) field.key},
                 ),
               ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Wrap(
-                alignment: WrapAlignment.center,
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
+              UtenDialogActions(
                 children: [
                   UtenButton(
                     type: UtenButtonType.secondary,
@@ -994,8 +975,8 @@ class _SettlementTermsDialogState
                     ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

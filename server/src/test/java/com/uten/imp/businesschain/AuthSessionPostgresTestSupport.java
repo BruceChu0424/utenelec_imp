@@ -3,7 +3,6 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.support.RequiresDatabaseTests;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,11 +12,6 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
-import org.springframework.context.ApplicationContextInitializer;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.beans.factory.support.RootBeanDefinition;
-import org.springframework.boot.test.util.TestPropertyValues;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
@@ -33,8 +27,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Map;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -76,44 +68,9 @@ abstract class AuthSessionPostgresTestSupport {
     static final String DATABASE_LEASE_BEAN = "authSessionDatabaseLease";
 
     /** Runs once per actual Spring context, including when the cache rebuilds it. */
-    public static final class DatabaseInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
-        @Override
-        public void initialize(ConfigurableApplicationContext context) {
-            final MigratedSchemaBaseline.ScopedDatabase database;
-            try {
-                database = MigratedSchemaBaseline.openDatabase("auth_session");
-            } catch (java.sql.SQLException failure) {
-                throw new IllegalStateException("Cannot create isolated auth-session test database", failure);
-            }
-            try {
-                var definition = new RootBeanDefinition(MigratedSchemaBaseline.ScopedDatabase.class, () -> database);
-                definition.setDestroyMethodName("close");
-                ((BeanDefinitionRegistry) context.getBeanFactory()).registerBeanDefinition(DATABASE_LEASE_BEAN, definition);
-                TestPropertyValues.of(
-                        "spring.datasource.url=" + database.getJdbcUrl(),
-                        "spring.datasource.username=" + database.getUsername(),
-                        "spring.datasource.password=" + database.getPassword()).applyTo(context.getEnvironment());
-                context.addBeanFactoryPostProcessor(factory -> {
-                    for (String name : factory.getBeanNamesForType(javax.sql.DataSource.class, true, false)) {
-                        // Both the main pool and any secondary datasource must
-                        // close before dropping the clone. EM and the evidence
-                        // writer already depend on their configured datasource.
-                        factory.registerDependentBean(DATABASE_LEASE_BEAN, name);
-                        if (factory.containsBeanDefinition(name)) {
-                            var source = factory.getBeanDefinition(name);
-                            var dependencies = new LinkedHashSet<String>();
-                            if (source.getDependsOn() != null) dependencies.addAll(Arrays.asList(source.getDependsOn()));
-                            dependencies.add(DATABASE_LEASE_BEAN);
-                            source.setDependsOn(dependencies.toArray(String[]::new));
-                        }
-                    }
-                });
-            } catch (RuntimeException | Error failure) {
-                try { database.close(); }
-                catch (java.sql.SQLException cleanup) { failure.addSuppressed(cleanup); }
-                throw failure;
-            }
-        }
+    public static final class DatabaseInitializer extends com.uten.imp.support.MigratedSchemaContextInitializer {
+        @Override protected String databaseLabel() { return "auth_session"; }
+        @Override protected String leaseBeanName() { return DATABASE_LEASE_BEAN; }
     }
 
     /** 只由测试推进的时钟: 服务端会话 (last_seen/绝对期限/再认证有效期) 都按它判定。 */

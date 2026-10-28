@@ -196,8 +196,8 @@ class ServerOperationsPermissionMigrationPostgresTest {
         UUID id=UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                VALUES(?,?,'Operations fixture','其他',?,CURRENT_DATE,'active','regular')
-                """,id,"OPS-"+id,department);
+                VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')
+                """,id,"OPS-"+id,com.uten.imp.support.SyntheticEmployeeIdentity.name("Operations fixture",id),department);
         jdbc.update("""
                 INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)
                 VALUES(?,?,?,'fixture-only',false,'active',?)

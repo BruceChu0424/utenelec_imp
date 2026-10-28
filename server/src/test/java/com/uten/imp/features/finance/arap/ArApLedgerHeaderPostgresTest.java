@@ -35,7 +35,12 @@ class ArApLedgerHeaderPostgresTest {
                 Client.class.getName(),ClientCategory.class.getName(),Supplier.class.getName(),SupplierCategory.class.getName(),Currency.class.getName()));
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();PG.stop();}
+    @AfterAll static void stop() {
+        if (emf != null) {
+            emf.close();
+        }
+        PG.stop();
+    }
     @BeforeEach void prepare(){
         db.execute("TRUNCATE ar_ap_ledger,ar_ap_source_refs,clients,suppliers,currencies");
         currency=UUID.randomUUID();client=UUID.randomUUID();supplier=UUID.randomUUID();

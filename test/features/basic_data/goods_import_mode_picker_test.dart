@@ -6,11 +6,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/goods_import.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_import_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_import_mode_picker.dart';
+
+import '../../support/dialog_fixture_capture.dart';
 
 class _Picker extends FilePicker {
   @override
@@ -101,26 +105,35 @@ Future<void> _pumpEntry(
   WidgetTester tester,
   _Repository repository, {
   double textScale = 1,
+  bool dark = true,
+  TargetPlatform? platform,
 }) async {
   await tester.pumpWidget(
-    ProviderScope(
-      overrides: [goodsImportRepositoryProvider.overrideWithValue(repository)],
-      child: MaterialApp(
-        theme: buildDarkTheme(),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('zh'),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: Scaffold(
-          body: Consumer(
-            builder: (context, ref, _) => TextButton(
-              onPressed: () => showGoodsImportWithModePicker(context, ref),
-              child: const Text('打开'),
+    dialogFixtureBoundary(
+      ProviderScope(
+        overrides: [
+          goodsImportRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+            platform: platform,
+          ),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: Consumer(
+              builder: (context, ref, _) => TextButton(
+                onPressed: () => showGoodsImportWithModePicker(context, ref),
+                child: const Text('打开'),
+              ),
             ),
           ),
         ),
@@ -130,9 +143,94 @@ Future<void> _pumpEntry(
 }
 
 void main() {
+  setUpAll(loadDialogFixtureFonts);
+  if (dialogFixtureCaptureEnabled) {
+    for (final dark in [false, true]) {
+      testWidgets('capture actual import picker dark=$dark', (tester) async {
+        tester.view.physicalSize = const Size(1000, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await _pumpEntry(tester, _Repository(), dark: dark);
+        await tester.tap(find.text('打开'));
+        await tester.pumpAndSettle();
+        await captureDialogFixture(
+          tester,
+          'actual-goods-import-picker-${dark ? 'dark' : 'light'}',
+        );
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   setUp(() {
     FilePicker.platform = _Picker();
   });
+
+  for (final fixture in [
+    (const Size(1000, 800), TargetPlatform.windows),
+    (const Size(390, 844), TargetPlatform.android),
+  ]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final dark in [false, true]) {
+        testWidgets(
+          'actual import actions have equal visible height ${fixture.$2} scale=$scale dark=$dark',
+          (tester) async {
+            tester.view.physicalSize = fixture.$1;
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.resetPhysicalSize);
+            addTearDown(tester.view.resetDevicePixelRatio);
+            await _pumpEntry(
+              tester,
+              _Repository(),
+              dark: dark,
+              textScale: scale,
+              platform: fixture.$2,
+            );
+            await tester.tap(find.text('打开'));
+            await tester.pumpAndSettle();
+            final cancel = find.ancestor(
+              of: find.text('取消'),
+              matching: find.byType(UtenButton),
+            );
+            final next = find.ancestor(
+              of: find.text('下一步'),
+              matching: find.byType(UtenButton),
+            );
+            final cancelRect = tester.getRect(
+              find
+                  .descendant(of: cancel, matching: find.byType(Material))
+                  .first,
+            );
+            final nextRect = tester.getRect(
+              find.descendant(of: next, matching: find.byType(Material)).first,
+            );
+            final measured = 'cancel=$cancelRect primary=$nextRect';
+            expect(
+              nextRect.height,
+              closeTo(cancelRect.height, 0.01),
+              reason: measured,
+            );
+            expect(
+              nextRect.top,
+              closeTo(cancelRect.top, 0.01),
+              reason: measured,
+            );
+            expect(
+              nextRect.center.dy,
+              closeTo(cancelRect.center.dy, 0.01),
+              reason: measured,
+            );
+            await tester.tap(find.text('取消'));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  }
 
   testWidgets('the chosen mode rides detection and commit', (tester) async {
     final repository = _Repository();

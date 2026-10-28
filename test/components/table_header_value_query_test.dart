@@ -9,6 +9,7 @@ import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/search/numeric_column_query.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
+import '../support/field_hint_support.dart';
 
 class _Row extends EditableGridRow {
   _Row(this.id, this.exact);
@@ -305,7 +306,7 @@ void main() {
         lessThan(tester.getTopLeft(find.text('取消排序')).dy),
       );
       await _submit(tester, '<');
-      expect(find.text(NumericColumnQuery.error), findsOneWidget);
+      await readFieldHint(tester, NumericColumnQuery.error);
       expect(find.text('A'), findsOneWidget);
       await _submit(tester, '<0');
       expect(find.text('A'), findsOneWidget);

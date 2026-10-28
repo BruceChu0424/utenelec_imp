@@ -78,17 +78,12 @@ Future<void> showAccountCredentialDialog(
       child: PopScope(
         canPop: false,
         child: UtenAlertDialog(
-          title: Row(
-            children: [
-              const Icon(Icons.key_rounded),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  title ?? l10n.employeeOnboardCredentialTitle,
-                  key: const ValueKey('account-credential-title'),
-                ),
-              ),
-            ],
+          title: UtenDialogHeading(
+            title: Text(
+              title ?? l10n.employeeOnboardCredentialTitle,
+              key: const ValueKey('account-credential-title'),
+            ),
+            icon: Icons.key_rounded,
           ),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),

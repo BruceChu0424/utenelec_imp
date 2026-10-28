@@ -6,6 +6,7 @@ import { setRequestLocale, getTranslations } from 'next-intl/server';
 import { getCases } from '@/lib/queries';
 import { isLegacyCompanyActivity, tr } from '@/lib/content';
 import { buildPageMetadata } from '@/lib/seo';
+import { Link } from '@/i18n/navigation';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -18,6 +19,7 @@ export default async function CasesPage({ params }: { params: Promise<{ locale: 
   setRequestLocale(locale);
   const t = await getTranslations('Cases');
   const tn = await getTranslations('News');
+  const common = await getTranslations('Common');
   const cases = await getCases();
   const projectCases = cases.filter((item) => !isLegacyCompanyActivity(item.slug));
   const activities = cases.filter((item) => isLegacyCompanyActivity(item.slug));
@@ -54,8 +56,9 @@ export default async function CasesPage({ params }: { params: Promise<{ locale: 
                   </div>
                   <div className="p-6">
                     {ct.location && <p className="flex items-center gap-1.5 text-xs font-semibold text-accent"><MapPin className="h-3.5 w-3.5" />{ct.location}</p>}
-                    <h2 className="mt-3 text-xl font-semibold leading-snug tracking-[-.025em]">{ct.title}</h2>
+                    <h2 className="mt-3 text-xl font-semibold leading-snug tracking-[-.025em]"><Link locale={locale} href={`/cases/${c.slug}`} className="hover:text-accent">{ct.title}</Link></h2>
                     {ct.content && <p className="mt-3 line-clamp-3 text-sm leading-7 text-muted-foreground">{ct.content}</p>}
+                    <Link locale={locale} href={`/cases/${c.slug}`} className="public-text-link mt-4" aria-label={`${common('viewDetail')}: ${ct.title}`}>{common('viewDetail')}</Link>
                   </div>
                 </article>
               );
@@ -77,7 +80,7 @@ export default async function CasesPage({ params }: { params: Promise<{ locale: 
                 return (
                   <article key={item.slug} className="card-uten grid gap-6 p-6 sm:grid-cols-[56px_1fr] md:p-8">
                     <span className="grid h-14 w-14 place-items-center rounded-full bg-accent/10 text-accent"><CalendarDays className="h-5 w-5" /></span>
-                    <div><p className="text-xs font-bold tracking-[.16em] text-accent">{t('archiveItemLabel', { number: formatSequence.format(index + 1) })}</p><h3 className="mt-3 text-xl font-semibold tracking-[-.02em]">{content.title}</h3>{content.location && <p className="mt-2 text-sm text-muted-foreground">{content.location}</p>}{content.content && <p className="mt-4 text-sm leading-7 text-muted-foreground">{content.content}</p>}</div>
+                    <div><p className="text-xs font-bold tracking-[.16em] text-accent">{t('archiveItemLabel', { number: formatSequence.format(index + 1) })}</p><h3 className="mt-3 text-xl font-semibold tracking-[-.02em]"><Link locale={locale} href={`/cases/${item.slug}`} className="hover:text-accent">{content.title}</Link></h3>{content.location && <p className="mt-2 text-sm text-muted-foreground">{content.location}</p>}{content.content && <p className="mt-4 text-sm leading-7 text-muted-foreground">{content.content}</p>}<Link locale={locale} href={`/cases/${item.slug}`} className="public-text-link mt-4" aria-label={`${common('viewDetail')}: ${content.title}`}>{common('viewDetail')}</Link></div>
                   </article>
                 );
               })}

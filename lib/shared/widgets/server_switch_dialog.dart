@@ -51,6 +51,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
     final theme = Theme.of(context);
     return UtenAlertDialog(
       scrollable: false,
+      headingIcon: Icons.dns_outlined,
       title: Row(
         children: [
           const Flexible(child: Text('服务器')),

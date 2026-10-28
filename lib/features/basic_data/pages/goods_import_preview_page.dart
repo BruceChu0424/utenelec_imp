@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_picker_icon_button.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_page_layout.dart';
@@ -69,6 +70,8 @@ class GoodsImportPreviewPage extends StatefulWidget {
     this.excludedRowNums = const {},
     this.needsValidation = false,
     this.pickReference,
+    this.replacementChoices = const {},
+    this.onReplacementChoicesChanged,
   });
 
   final GoodsImportReport report;
@@ -79,6 +82,8 @@ class GoodsImportPreviewPage extends StatefulWidget {
   final GoodsImportCorrections cellCorrections;
   final Set<int> excludedRowNums;
   final bool needsValidation;
+  final Map<String, bool> replacementChoices;
+  final void Function(Map<String, bool>)? onReplacementChoicesChanged;
   final Future<GoodsImportReferenceSelection?> Function(
     BuildContext context, {
     required String field,
@@ -104,9 +109,10 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       if (_ready.contains(row.rowNum)) '${row.rowNum}',
   };
   final _controllers = <String, TextEditingController>{};
-  final _originalValues = <String, String>{};
   final _pickedCategorySegments = <int, List<String>>{};
-  final _replaceRows = <int>{};
+  late final _replacementChoices = Map<String, bool>.of(
+    widget.replacementChoices,
+  );
   final _manuallyDeselected = <int>{};
   Timer? _debounce;
   int _revision = 0;
@@ -347,6 +353,19 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     });
   }
 
+  bool _replacesConflicts(int row) =>
+      _replacementChoices[_changes[row]?.rowKey] ??
+      widget.mode == GoodsImportMode.updateOnly;
+
+  void _setReplacement(int row, bool replace) {
+    final key = _changes[row]?.rowKey;
+    if (key != null) _replacementChoices[key] = replace;
+  }
+
+  void _publishReplacementChoices() => widget.onReplacementChoicesChanged?.call(
+    Map<String, bool>.unmodifiable(_replacementChoices),
+  );
+
   void _removeSelected() {
     if (_selected.isEmpty || _checking) return;
     setState(() {
@@ -421,7 +440,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
           for (final row in confirmedReport.reviewRows)
             if (selected.contains(row.rowNum) &&
                 row.hasConflicts &&
-                _replaceRows.contains(row.rowNum))
+                _replacesConflicts(row.rowNum))
               row.rowKey,
         },
         hasRemaining: remaining.isNotEmpty,
@@ -495,19 +514,17 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       (change) =>
           change.field == field ||
           (field == 'cNumber' && change.field == 'clientModel') ||
-          (field == 'categoryPath' && change.field == 'categoryId'),
+          (field == 'categoryPath' && change.field == 'categoryId') ||
+          (field == 'colorName' && change.field == 'colorId') ||
+          (field == 'unitName' && change.field == 'unitId'),
     );
-    final original = _originalValues.putIfAbsent(
-      '${row.rowNum}:$field',
-      () => _value(row, field),
-    );
-    final before = old.isEmpty ? original : old.first.oldValue;
+    // Only the server review knows the current master value. A new/local-only
+    // draft must never present the original file text as an existing value.
+    final before = old.isEmpty ? controller.text : old.first.oldValue;
     final error = _cellError(row, field, label);
     final changed = (before ?? '') != controller.text;
     final replacementEnabled =
-        old.isEmpty ||
-        !old.first.isConflict ||
-        _replaceRows.contains(row.rowNum);
+        old.isEmpty || !old.first.isConflict || _replacesConflicts(row.rowNum);
     return Builder(
       builder: (cellContext) {
         final theme = Theme.of(cellContext);
@@ -516,6 +533,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
           after: controller.text,
           decimalValues: false,
           replacementEnabled: replacementEnabled,
+          showValueLabels: true,
           child: Theme(
             data: theme.copyWith(
               textTheme: theme.textTheme.copyWith(
@@ -674,11 +692,13 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
               onPressed: _checking
                   ? null
                   : () => setState(() {
-                      if (!_replaceRows.remove(row.rowNum)) {
-                        _replaceRows.add(row.rowNum);
-                      }
+                      _setReplacement(
+                        row.rowNum,
+                        !_replacesConflicts(row.rowNum),
+                      );
+                      _publishReplacementChoices();
                     }),
-              child: Text(_replaceRows.contains(row.rowNum) ? '替换差异' : '保留原值'),
+              child: Text(_replacesConflicts(row.rowNum) ? '替换差异' : '保留原值'),
             );
           }
           final errors =
@@ -777,7 +797,9 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   String _rowStatus(GoodsImportProblemRow row) {
     if (_indexedErrors[row.rowNum]?.isNotEmpty == true) return '待修正';
     final changes = _changes[row.rowNum];
-    if (changes?.hasConflicts == true) return '替换差异';
+    if (changes?.hasConflicts == true) {
+      return _replacesConflicts(row.rowNum) ? '替换差异' : '保留原值';
+    }
     if (changes != null) return '补齐资料';
     return widget.mode == GoodsImportMode.createOnly ? '新建货品' : '已通过';
   }
@@ -793,9 +815,13 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
     final selectedReady =
         _selected.isNotEmpty &&
         _selected.every((id) => _ready.contains(int.parse(id)));
-    return Scaffold(
+    final page = Scaffold(
       appBar: UtenAppBar(
-        title: widget.mode == GoodsImportMode.createOnly ? '确认新建货品' : '确认导入货品',
+        title: switch (widget.mode) {
+          GoodsImportMode.createOnly => '确认新建货品',
+          GoodsImportMode.updateOnly => '确认修改货品',
+          GoodsImportMode.mixed => '确认导入货品',
+        },
         leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
         showPagePermissionAction: false,
       ),
@@ -889,6 +915,9 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
                             _message!,
                             style: TextStyle(color: theme.colorScheme.error),
                           ),
+                        if (widget.mode == GoodsImportMode.updateOnly &&
+                            _report.conflictRows > 0)
+                          const Text('默认使用文件中的差异；不想修改的行可选择保留原值。'),
                         for (final error in _activeErrors.where(
                           (error) =>
                               !rows.any((row) => row.rowNum == error.rowNum),
@@ -929,25 +958,29 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
                     emptyMessage: '没有待导入货品',
                     toolbarLeadingActions: [
                       if (_report.conflictRows > 0)
-                        UtenButton(
-                          key: const ValueKey('goods-import-replace-selected'),
-                          type: UtenButtonType.secondary,
-                          icon: Icons.find_replace,
-                          onPressed: _checking || _selected.isEmpty
-                              ? null
-                              : () => setState(() {
-                                  _replaceRows.addAll(
-                                    _selected
-                                        .map(int.parse)
-                                        .where(
-                                          (row) =>
-                                              _changes[row]?.hasConflicts ==
-                                              true,
-                                        ),
-                                  );
-                                }),
-                          child: const Text('替换所选差异'),
-                        ),
+                        for (final replace in [true, false])
+                          UtenButton(
+                            key: ValueKey(
+                              replace
+                                  ? 'goods-import-replace-selected'
+                                  : 'goods-import-keep-selected',
+                            ),
+                            type: UtenButtonType.secondary,
+                            icon: replace ? Icons.find_replace : Icons.undo,
+                            onPressed: _checking || _selected.isEmpty
+                                ? null
+                                : () => setState(() {
+                                    for (final row in _selected.map(
+                                      int.parse,
+                                    )) {
+                                      if (_changes[row]?.hasConflicts == true) {
+                                        _setReplacement(row, replace);
+                                      }
+                                    }
+                                    _publishReplacementChoices();
+                                  }),
+                            child: Text(replace ? '替换所选差异' : '保留所选原值'),
+                          ),
                       UtenButton(
                         key: const ValueKey('goods-import-select-ready'),
                         type: UtenButtonType.secondary,
@@ -1006,5 +1039,6 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
         ),
       ),
     );
+    return UtenContentContainer.wide(selectable: false, child: page);
   }
 }

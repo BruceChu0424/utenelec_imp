@@ -172,26 +172,26 @@ class _MasterDetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _header(theme, context),
-          const Divider(height: 1),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: UtenFormGrid(
-                columns: 4,
-                maxColumns: 4,
-                minFieldWidth: 260,
-                children: [for (final row in rows) _cell(theme, row)],
+    return UtenDialogSurface(
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _header(theme, context),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: UtenFormGrid(
+                  columns: 4,
+                  maxColumns: 4,
+                  minFieldWidth: 260,
+                  children: [for (final row in rows) _cell(theme, row)],
+                ),
               ),
             ),
-          ),
-          const Divider(height: 1),
-          _actions(context),
-        ],
+            _actions(context),
+          ],
+        ),
       ),
     );
   }
@@ -199,27 +199,13 @@ class _MasterDetailBody extends StatelessWidget {
   Widget _header(ThemeData theme, BuildContext context) {
     final detailRoute = ModalRoute.of(context);
     final navigator = Navigator.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          if (historyEntityType != null && historyRecordId != null)
-            MasterRecordHistoryAction(
+    return UtenDialogHeader(
+      title: Text(title),
+      icon: Icons.article_outlined,
+      showCloseButton: true,
+      onClose: () => _act(context),
+      trailing: historyEntityType != null && historyRecordId != null
+          ? MasterRecordHistoryAction(
               entityType: historyEntityType!,
               recordId: historyRecordId,
               onChanged: () {
@@ -229,13 +215,8 @@ class _MasterDetailBody extends StatelessWidget {
                 }
                 onHistoryChanged?.call();
               },
-            ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => _act(context),
-          ),
-        ],
-      ),
+            )
+          : null,
     );
   }
 
@@ -268,60 +249,54 @@ class _MasterDetailBody extends StatelessWidget {
   }
 
   Widget _actions(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        children: [
-          for (final action in extraActions)
-            UtenButton(
-              type: action.type,
-              icon: action.icon,
-              onPressed: () {
-                _act(context, action.onPressed);
-              },
-              child: Text(action.label),
-            ),
-          if (onToggleStatus != null)
-            UtenButton(
-              type: statusActionLabel == '停用' || statusActionLabel == '禁用'
-                  ? UtenButtonType.danger
-                  : UtenButtonType.secondary,
-              icon: statusActionLabel == '停用' || statusActionLabel == '禁用'
-                  ? Icons.block_rounded
-                  : Icons.check_circle_outline_rounded,
-              onPressed: () {
-                _act(context, onToggleStatus);
-              },
-              child: Text(statusActionLabel),
-            ),
-          if (canEdit && onEdit != null)
-            UtenButton(
-              type: UtenButtonType.secondary,
-              icon: Icons.edit_outlined,
-              onPressed: () {
-                _act(context, onEdit);
-              },
-              child: const Text('编辑'), // TODO(l10n): 补 arb
-            ),
-          if (canDelete && onDelete != null)
-            UtenButton(
-              type: UtenButtonType.danger,
-              icon: Icons.delete_outline,
-              onPressed: () {
-                _act(context, onDelete);
-              },
-              child: const Text('删除'), // TODO(l10n): 补 arb
-            ),
+    return UtenDialogActions(
+      children: [
+        for (final action in extraActions)
+          UtenButton(
+            type: action.type,
+            icon: action.icon,
+            onPressed: () {
+              _act(context, action.onPressed);
+            },
+            child: Text(action.label),
+          ),
+        if (onToggleStatus != null)
+          UtenButton(
+            type: statusActionLabel == '停用' || statusActionLabel == '禁用'
+                ? UtenButtonType.danger
+                : UtenButtonType.secondary,
+            icon: statusActionLabel == '停用' || statusActionLabel == '禁用'
+                ? Icons.block_rounded
+                : Icons.check_circle_outline_rounded,
+            onPressed: () {
+              _act(context, onToggleStatus);
+            },
+            child: Text(statusActionLabel),
+          ),
+        if (canEdit && onEdit != null)
           UtenButton(
             type: UtenButtonType.secondary,
-            onPressed: () => _act(context),
-            child: const Text('关闭'), // TODO(l10n): 补 arb
+            icon: Icons.edit_outlined,
+            onPressed: () {
+              _act(context, onEdit);
+            },
+            child: const Text('编辑'), // TODO(l10n): 补 arb
           ),
-        ],
-      ),
+        if (canDelete && onDelete != null)
+          UtenButton(
+            type: UtenButtonType.danger,
+            icon: Icons.delete_outline,
+            onPressed: () {
+              _act(context, onDelete);
+            },
+            child: const Text('删除'), // TODO(l10n): 补 arb
+          ),
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => _act(context),
+          child: const Text('关闭'), // TODO(l10n): 补 arb
+        ),
+      ],
     );
   }
 }

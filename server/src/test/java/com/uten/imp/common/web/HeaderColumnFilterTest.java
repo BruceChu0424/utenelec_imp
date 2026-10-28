@@ -12,6 +12,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class HeaderColumnFilterTest {
+    @Test void callerMapsAndReturnedViewsCannotChangeTheAcceptedQuery() {
+        var input = new java.util.LinkedHashMap<>(Map.of("amountMin", "1.20"));
+        var filter = new HeaderColumnFilter(input);
+        input.put("amountMin", "999.00");
+        assertEquals("1.20", filter.values().get("amountMin"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> filter.values().put("amountMin", "0"));
+        assertEquals(Map.of("amountMin", "1.20"), filter.values());
+    }
     @Test void maskedAmountAndNullProbesFailBeforeParsingOrTouchingAnyJpaProperty() {
         for (var values : java.util.List.of(Map.of("amountMin", "NaN"), Map.of("amountNull", "true"),
                 Map.of("search.total","NaN"), Map.of("search.amount",">1"))) {

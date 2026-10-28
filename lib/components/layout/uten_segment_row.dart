@@ -189,22 +189,12 @@ class UtenSegmentRow<T> extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '选择分类',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: () => Navigator.of(panelContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+              LayoutBuilder(
+                builder: (context, bounds) => UtenDialogHeader(
+                  title: const Text('选择分类'),
+                  icon: bounds.maxWidth < 280 ? null : Icons.category_outlined,
+                  showCloseButton: true,
+                  onClose: () => Navigator.of(panelContext).pop(),
                 ),
               ),
               const Divider(height: 1),

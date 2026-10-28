@@ -1256,18 +1256,9 @@ void main() {
         .widget<MaterialAnalysisPreparationCell>(mainLabel)
         .style;
     expect(style.phase, MaterialPreparationStatusPhase.awaitingReceipt);
-    final background = find.ancestor(
-      of: mainLabel,
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is Container &&
-            widget.decoration is BoxDecoration &&
-            (widget.decoration as BoxDecoration).color == style.background,
-      ),
-    );
     expect(
-      background,
-      findsWidgets,
+      tableCellBackgroundColor(tester, mainLabel),
+      style.background,
       reason: '整格背景由MasterColumnDef.cellColor铺满',
     );
     final entry = find.byKey(const Key('material-analysis-entry-buy'));
@@ -1280,6 +1271,10 @@ void main() {
     final bucketStyle = tester
         .widget<MaterialAnalysisPreparationCell>(bucketLabel)
         .style;
+    expect(
+      tableCellBackgroundColor(tester, bucketLabel),
+      bucketStyle.background,
+    );
     expect(bucketStyle.background, style.background);
     expect(bucketStyle.foreground, style.foreground);
     expect(bucketStyle.icon, style.icon);
@@ -2878,11 +2873,33 @@ void main() {
           );
         }
         if (scenario.manual) {
-          await tester.enterText(
-            find.byKey(
-              const ValueKey('material-aggregate-qty-g-raw|本色|unit-1'),
+          final quantity = find.byKey(
+            const ValueKey('material-aggregate-qty-g-raw|本色|unit-1'),
+          );
+          final element = tester.element(quantity);
+          final controller = tester.widget<TextField>(quantity).controller!;
+          final editable = tester.state<EditableTextState>(
+            find.descendant(of: quantity, matching: find.byType(EditableText)),
+          );
+          final nativeLogStart = tester.testTextInput.log.length;
+          await tester.enterText(quantity, '7');
+          expect(controller.text, '7', reason: '原生首次输入必须先进入实际controller');
+          expect(tester.element(quantity), same(element));
+          expect(
+            tester.state<EditableTextState>(
+              find.descendant(
+                of: quantity,
+                matching: find.byType(EditableText),
+              ),
             ),
-            '7',
+            same(editable),
+          );
+          expect(
+            tester.testTextInput.log
+                .skip(nativeLogStart)
+                .where((call) => call.method == 'TextInput.clearClient'),
+            isEmpty,
+            reason: '收起quiet提示不能卸载汇总数量editor或丢掉原生输入连接',
           );
           await _settlePreview(tester);
         }

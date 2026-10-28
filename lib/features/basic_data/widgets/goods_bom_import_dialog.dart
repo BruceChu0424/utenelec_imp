@@ -10,6 +10,7 @@
 // - 检测报告列出逐行错误（第几行/哪列/为什么）与提醒（名称不一致等，不拦提交）。
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_dialog_modules.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -491,6 +492,14 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     );
   }
 
+  void _chooseMode(BomImportMode? value) {
+    if (!_commitUncertain &&
+        (value != BomImportMode.replace ||
+            widget.canReplace?.call() != false)) {
+      setState(() => _mode = value ?? BomImportMode.replace);
+    }
+  }
+
   Widget _reportView(ThemeData theme, BomImportReport r) {
     final levelSummary = r.levelCounts.isEmpty
         ? ''
@@ -554,30 +563,51 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
           Text('导入方式：', style: theme.textTheme.titleSmall), // TODO(l10n): 补 arb
           RadioGroup<BomImportMode>(
             groupValue: _mode,
-            onChanged: (v) {
-              if (!_commitUncertain &&
-                  (v != BomImportMode.replace ||
-                      widget.canReplace?.call() != false)) {
-                setState(() => _mode = v ?? BomImportMode.replace);
-              }
-            },
+            onChanged: _chooseMode,
             child: Column(
               children: [
-                RadioListTile<BomImportMode>(
-                  value: BomImportMode.merge,
+                UtenDialogSettingTile(
+                  canRequestFocus: false,
+                  icon: Icons.merge_type_rounded,
                   title: Text(basicDataL10n(context).bomImportMergeLabel),
-                  dense: true,
-                ),
-                if (widget.canReplace?.call() != false)
-                  const RadioListTile<BomImportMode>(
-                    value: BomImportMode.replace,
-                    title: Text('按文件为准（替换各级现有组件）'), // TODO(l10n): 补 arb
-                    dense: true,
+                  selected: _mode == BomImportMode.merge,
+                  onTap: _commitUncertain
+                      ? null
+                      : () => _chooseMode(BomImportMode.merge),
+                  trailing: Radio<BomImportMode>(
+                    value: BomImportMode.merge,
+                    enabled: !_commitUncertain,
                   ),
-                const RadioListTile<BomImportMode>(
-                  value: BomImportMode.append,
-                  title: Text('在现有组件后追加'), // TODO(l10n): 补 arb
-                  dense: true,
+                ),
+                if (widget.canReplace?.call() != false) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenDialogSettingTile(
+                    canRequestFocus: false,
+                    icon: Icons.find_replace_rounded,
+                    title: const Text('按文件为准（替换各级现有组件）'),
+                    selected: _mode == BomImportMode.replace,
+                    onTap: _commitUncertain
+                        ? null
+                        : () => _chooseMode(BomImportMode.replace),
+                    trailing: Radio<BomImportMode>(
+                      value: BomImportMode.replace,
+                      enabled: !_commitUncertain,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: UtenSpacing.s12),
+                UtenDialogSettingTile(
+                  canRequestFocus: false,
+                  icon: Icons.playlist_add_rounded,
+                  title: const Text('在现有组件后追加'),
+                  selected: _mode == BomImportMode.append,
+                  onTap: _commitUncertain
+                      ? null
+                      : () => _chooseMode(BomImportMode.append),
+                  trailing: Radio<BomImportMode>(
+                    value: BomImportMode.append,
+                    enabled: !_commitUncertain,
+                  ),
                 ),
               ],
             ),

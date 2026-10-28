@@ -381,7 +381,10 @@ class MaterialAnalysisSupplyProgressServiceTest {
             var dataSource = new org.springframework.jdbc.datasource.DriverManagerDataSource(
                     postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
             var db = new org.springframework.jdbc.core.JdbcTemplate(dataSource);
-            com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db, "employees", "users");
+            com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db, "employees", "users",
+                    "employee_identity_aliases", "employee_identity_user_tombstones");
+            com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,
+                    "fn_canonical_employee_identity", "fn_employee_merge_retained_user");
             db.execute("ALTER TABLE users ADD CONSTRAINT name_fixture_employee_fk FOREIGN KEY(employee_id) REFERENCES employees(id)");
             ProjectionScenario scenario = new ProjectionScenario(false, true);
             UUID historicEmployee = UUID.randomUUID();

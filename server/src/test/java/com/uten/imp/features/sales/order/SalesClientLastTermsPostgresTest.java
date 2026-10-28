@@ -294,8 +294,8 @@ class SalesClientLastTermsPostgresTest {
         UUID department = jdbc.queryForObject("SELECT id FROM departments WHERE NOT is_deleted ORDER BY code LIMIT 1", UUID.class);
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                VALUES (?,?,'客户条款权限测试员工','其他',?,CURRENT_DATE,'active','regular')
-                """, employee, "TERM-" + employee, department);
+                VALUES (?,?,?,'其他',?,CURRENT_DATE,'active','regular')
+                """, employee, "TERM-" + employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("客户条款权限测试员工",employee), department);
         jdbc.update("""
                 INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password,is_super_admin)
                 VALUES (?, ?, ?, 'test-only', 'active', false, false)

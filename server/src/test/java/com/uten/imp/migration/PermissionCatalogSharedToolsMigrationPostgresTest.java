@@ -41,6 +41,7 @@ class PermissionCatalogSharedToolsMigrationPostgresTest {
             var source = new DriverManagerDataSource(database.getJdbcUrl(), database.getUsername(), database.getPassword());
             com.uten.imp.testsupport.TestFlyway.configure().dataSource(source).target("874").load().migrate();
             var jdbc = new JdbcTemplate(source);
+            com.uten.imp.support.HistoricalPermissionReaderSources.install(jdbc);
             UUID department = jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'", UUID.class);
             UUID manager = account(jdbc, department, "manager");
             UUID target = account(jdbc, department, "target");
@@ -94,6 +95,7 @@ class PermissionCatalogSharedToolsMigrationPostgresTest {
             assertThat(rows(jdbc, "user_permission_overrides")).isEqualTo(beforeOverrides);
             assertThat(rows(jdbc, "manager_permission_delegations")).isEqualTo(beforeDelegations);
             assertThat(resolver(jdbc).grantedPermissionsFor(List.of(target, manager), codes)).isEqualTo(beforeEffective);
+            com.uten.imp.support.HistoricalPermissionReaderSources.assertNoIndependentAssignments(jdbc);
             assertThat(jdbc.queryForObject("SELECT module || '/' || category FROM permissions WHERE code='ai:use'", String.class))
                     .isEqualTo("通用/AI 助手");
             assertThat(jdbc.queryForObject("SELECT category FROM permissions WHERE code='sales_quote:export'", String.class))

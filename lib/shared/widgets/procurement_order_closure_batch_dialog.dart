@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_dialog_modules.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_field_message.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -282,6 +283,7 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
                     const SizedBox(height: UtenSpacing.s8),
                     Text(l10n.orderClosureReceiptFinalityHint),
                     Text(l10n.orderClosureQuantityBasisHint),
+                    const SizedBox(height: UtenSpacing.s8),
                     RadioGroup<String>(
                       groupValue: _mode,
                       onChanged: (mode) {
@@ -292,18 +294,44 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
                         }
                       },
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          RadioListTile<String>(
-                            value: 'CLOSE',
+                          UtenDialogSettingTile(
+                            canRequestFocus: false,
+                            key: const Key(
+                              'procurement-order-closure-batch-mode-close',
+                            ),
+                            icon: Icons.task_alt_rounded,
                             title: Text(l10n.orderClosureAction),
                             subtitle: Text(l10n.orderClosureCloseHint),
-                            enabled: !_busy,
+                            selected: _mode == 'CLOSE',
+                            trailing: Radio<String>(
+                              value: 'CLOSE',
+                              enabled: !_busy,
+                            ),
+                            onTap: _busy
+                                ? null
+                                : () => setState(() => _mode = 'CLOSE'),
                           ),
-                          RadioListTile<String>(
-                            value: 'CLOSE_AND_REORDER',
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenDialogSettingTile(
+                            canRequestFocus: false,
+                            key: const Key(
+                              'procurement-order-closure-batch-mode-reorder',
+                            ),
+                            icon: Icons.playlist_add_rounded,
                             title: Text(l10n.orderClosureReorder),
                             subtitle: Text(l10n.orderClosureReorderHint),
-                            enabled: !_busy && _canReorder,
+                            selected: _mode == 'CLOSE_AND_REORDER',
+                            trailing: Radio<String>(
+                              value: 'CLOSE_AND_REORDER',
+                              enabled: !_busy && _canReorder,
+                            ),
+                            onTap: !_busy && _canReorder
+                                ? () => setState(
+                                    () => _mode = 'CLOSE_AND_REORDER',
+                                  )
+                                : null,
                           ),
                         ],
                       ),

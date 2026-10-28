@@ -3265,6 +3265,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get exportDialogTitle => 'Export Excel';
 
   @override
+  String exportDialogSubtitle(String format) {
+    return 'Save the current data as a $format file';
+  }
+
+  @override
+  String get exportPasswordProtectionDescription =>
+      'Protect the file with a password';
+
+  @override
   String get exportFileNameLabel => 'File name';
 
   @override

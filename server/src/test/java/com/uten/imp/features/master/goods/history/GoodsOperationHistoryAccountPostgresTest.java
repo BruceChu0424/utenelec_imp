@@ -381,8 +381,9 @@ class GoodsOperationHistoryAccountPostgresTest {
     private void login(Person person,Set<String> permissions,boolean superAdmin){principal=user(person,permissions,superAdmin,false,true,null,UUID.randomUUID());}
     private static AuthUser user(Person person,Set<String> permissions,boolean superAdmin,boolean mustChange,boolean unlocked,UUID impersonatedBy,UUID session){return new AuthUser(person.account(),person.employee(),"history-account",permissions,mustChange,unlocked,superAdmin,false,impersonatedBy,session);}
     private Person person(){UUID employee=UUID.randomUUID(),account=UUID.randomUUID();return inTx(()->{
-        em.createNativeQuery("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT :id,:code,'history account','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'")
-                .setParameter("id",employee).setParameter("code","AH-"+employee).executeUpdate();
+        em.createNativeQuery("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT :id,:code,:name,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'")
+                .setParameter("id",employee).setParameter("code","AH-"+employee)
+                .setParameter("name",com.uten.imp.support.SyntheticEmployeeIdentity.name("history account",employee)).executeUpdate();
         em.createNativeQuery("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin) VALUES(:id,:employee,:login,'test-only',false,'active',false)")
                 .setParameter("id",account).setParameter("employee",employee).setParameter("login","account-history-"+account).executeUpdate();return new Person(account,employee);
     });}

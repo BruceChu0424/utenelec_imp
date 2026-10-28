@@ -180,7 +180,7 @@ final class _MaterialAggregateTableController {
     // 留白与主表数量格行高不一致）。
     return append
         ? field
-        : Tooltip(
+        : UtenEditorTooltip(
             message: floor == 'NaN'
                 ? '来源缺少可核对的精确数量，请刷新后重试。'
                 : materialQuantityUnits(floor) > BigInt.zero

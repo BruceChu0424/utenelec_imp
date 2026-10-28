@@ -6,6 +6,7 @@ import { Images, Plus, Trash2 } from 'lucide-react';
 import { saveSeries } from '@/app/admin/actions';
 import { pickLocale } from '@/lib/content';
 import { ImageUpload } from './ImageUpload';
+import { ClientForm } from '@/components/forms/ClientForm';
 import { SERIES_CATALOG_ROLES } from '@/lib/product-taxonomy';
 
 type SeriesMedia = {
@@ -130,7 +131,7 @@ export function SeriesForm({
   };
 
   return (
-    <form onSubmit={onSubmit} className="max-w-4xl pb-10">
+    <ClientForm onSubmit={onSubmit} className="max-w-4xl pb-10">
       <input type="hidden" name="expectedHash" value={baseHash} />
       <p className="mb-4 text-sm text-muted-foreground">保存草稿后进入版本预览；审核发布才会更新官网。</p>
       <div>
@@ -331,6 +332,6 @@ export function SeriesForm({
         </button>
         <Link href="/admin/series" className="btn-outline min-h-11">取消</Link>
       </div>
-    </form>
+    </ClientForm>
   );
 }

@@ -44,7 +44,7 @@ class LifecyclePermanentHistoryPostgresTest {
     @AfterAll static void close() throws Exception {if(factory!=null){ factory.close(); }if(database!=null){ database.close(); }}
     @BeforeEach void staff() {
         actor=UUID.randomUUID();employee=UUID.randomUUID();
-        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'保全测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"LIFE-"+employee);
+        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"LIFE-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("保全测试",employee));
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"life-"+actor);
     }
     @Test void providerSoftDeleteAndEarlierConfigurationsStayPrivateAndReadable() throws Exception {

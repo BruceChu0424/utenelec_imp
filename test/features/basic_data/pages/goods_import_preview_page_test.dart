@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/data_display/uten_review_input_cell.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -42,6 +46,24 @@ const _source = [
     cells: {'code': '003', 'name': '铜端子', 'categoryPath': '原材料 / 铜件'},
   ),
 ];
+
+const _nameConflict = GoodsImportReviewRow(
+  rowKey: 'goods:2',
+  rowNum: 2,
+  code: '001',
+  name: '单联开关',
+  categoryPath: '成品 / V3 / 白色',
+  matchType: 'UUID',
+  changes: [
+    GoodsImportChange(
+      field: 'name',
+      label: '货品名称',
+      oldValue: '原名称',
+      newValue: '单联开关',
+      kind: 'CONFLICT',
+    ),
+  ],
+);
 
 GoodsImportReport _report({
   GoodsImportCorrections corrections = const {},
@@ -109,6 +131,8 @@ Future<void> _open(
   Size size = const Size(1440, 900),
   double scale = 1,
   bool dark = false,
+  double zoom = 1,
+  bool inheritedPageGutter = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -128,7 +152,10 @@ Future<void> _open(
         data: MediaQuery.of(
           context,
         ).copyWith(textScaler: TextScaler.linear(scale)),
-        child: RepaintBoundary(key: _captureKey, child: child!),
+        child: UtenDisplayZoomBox(
+          fontFactor: zoom,
+          child: RepaintBoundary(key: _captureKey, child: child!),
+        ),
       ),
       home: Scaffold(
         body: Builder(
@@ -137,18 +164,26 @@ Future<void> _open(
               final value = await Navigator.of(context)
                   .push<GoodsImportPreviewDecision>(
                     MaterialPageRoute(
-                      builder: (_) => GoodsImportPreviewPage(
-                        report: report ?? _report(),
-                        filename: 'V3系列导入.xlsx',
-                        mode: mode,
-                        detect:
-                            detect ??
-                            (corrections, excluded) async => _report(
-                              corrections: corrections,
-                              excluded: excluded,
-                            ),
-                        onDraftChanged: onDraft ?? (_, _) {},
-                      ),
+                      builder: (_) {
+                        final page = GoodsImportPreviewPage(
+                          report: report ?? _report(),
+                          filename: 'V3系列导入.xlsx',
+                          mode: mode,
+                          detect:
+                              detect ??
+                              (corrections, excluded) async => _report(
+                                corrections: corrections,
+                                excluded: excluded,
+                              ),
+                          onDraftChanged: onDraft ?? (_, _) {},
+                        );
+                        return inheritedPageGutter
+                            ? UtenContentContainer.wide(
+                                selectable: false,
+                                child: page,
+                              )
+                            : page;
+                      },
                     ),
                   );
               if (result != null) result.value = value;
@@ -170,6 +205,66 @@ UtenCategoryTreeView<ProductCategoryNode> _tree(WidgetTester tester) =>
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final scenario in [
+    (const Size(1440, 900), 1.0),
+    (const Size(1024, 900), 1.0),
+    (const Size(390, 900), 1.0),
+    (const Size(1440, 900), 2.0),
+  ]) {
+    testWidgets(
+      '${scenario.$1.width}px at ${scenario.$2} zoom aligns back and hierarchy without duplicate host gutters',
+      (tester) async {
+        Rect? standaloneTable;
+        for (final inherited in [false, true]) {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await _open(
+            tester,
+            size: scenario.$1,
+            zoom: scenario.$2,
+            inheritedPageGutter: inherited,
+          );
+          final gutter =
+              UtenContentContainer.gutterForWidth(
+                scenario.$1.width / scenario.$2,
+                fontZoom: scenario.$2,
+              ) *
+              scenario.$2;
+          final back = find.descendant(
+            of: find.byType(UtenBackButton),
+            matching: find.byType(IconButton),
+          );
+          expect(tester.getRect(back).left, closeTo(gutter, .01));
+          final table = tester.getRect(
+            find.byKey(const ValueKey('goods-import-preview-table')),
+          );
+          expect(table.height, greaterThan(0));
+          if (standaloneTable == null) {
+            standaloneTable = table;
+          } else {
+            expect(
+              table,
+              standaloneTable,
+              reason:
+                  'An existing page gutter must not shrink or move the table twice',
+            );
+          }
+          expect(_table(tester).items.length, _source.length);
+          final open = find.byKey(
+            const ValueKey('goods-import-open-categories'),
+          );
+          if (open.evaluate().isNotEmpty) {
+            await tester.ensureVisible(open);
+            await tester.tap(open);
+            await tester.pumpAndSettle();
+          }
+          final tree = find.byKey(const ValueKey('goods-import-category-tree'));
+          expect(tester.getRect(tree).left, closeTo(gutter, .01));
+          expect(_tree(tester).nodes, isNotEmpty);
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+  }
   testWidgets(
     'identity and BOM errors appear in their read-only single-line cells',
     (tester) async {
@@ -498,29 +593,12 @@ void main() {
   testWidgets(
     'conflict replacement is explicit and keeps server row identities',
     (tester) async {
-      const change = GoodsImportReviewRow(
-        rowKey: 'goods:2',
-        rowNum: 2,
-        code: '001',
-        name: '单联开关',
-        categoryPath: '成品 / V3 / 白色',
-        matchType: 'UUID',
-        changes: [
-          GoodsImportChange(
-            field: 'name',
-            label: '货品名称',
-            oldValue: '原名称',
-            newValue: '单联开关',
-            kind: 'CONFLICT',
-          ),
-        ],
-      );
       final result = _Result();
       await _open(
         tester,
         result: result,
         mode: GoodsImportMode.mixed,
-        report: _report(changes: [change]),
+        report: _report(changes: const [_nameConflict]),
       );
       expect(find.text('保留原值'), findsOneWidget);
       expect(
@@ -541,6 +619,197 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(result.value!.replaceRowKeys, {'goods:2'});
+    },
+  );
+
+  for (final narrow in [false, true]) {
+    testWidgets(
+      'update mode visibly reviews original and imported names and applies changes by default ${narrow ? "narrow" : "desktop"}',
+      (tester) async {
+        final result = _Result();
+        await _open(
+          tester,
+          result: result,
+          mode: GoodsImportMode.updateOnly,
+          report: _report(
+            source: [_source.first],
+            changes: const [_nameConflict],
+          ),
+          size: narrow ? const Size(390, 1100) : const Size(1440, 900),
+          scale: narrow ? 2 : 1,
+        );
+        final input = find.byKey(const ValueKey('goods-import-name-2'));
+        await tester.ensureVisible(
+          find.ancestor(of: input, matching: find.byType(UtenReviewInputCell)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('确认修改货品'), findsOneWidget);
+        expect(find.text('原值'), findsOneWidget);
+        expect(find.text('导入值'), findsOneWidget);
+        expect(find.text('原值').hitTestable(), findsOneWidget);
+        expect(find.text('导入值').hitTestable(), findsOneWidget);
+        expect(find.text('原名称'), findsOneWidget);
+        expect(tester.widget<UtenInput>(input).controller!.text, '单联开关');
+        expect(
+          tester.widget<Text>(find.text('原名称')).style!.decoration,
+          TextDecoration.lineThrough,
+        );
+        expect(
+          tester.getRect(find.text('原名称')).bottom,
+          lessThanOrEqualTo(tester.getRect(input).top),
+        );
+        expect(
+          _table(tester).columns
+              .firstWhere((column) => column.key == 'result')
+              .value(_table(tester).items.single),
+          '替换差异',
+        );
+        expect(tester.takeException(), isNull);
+        final confirm = find.byKey(
+          const ValueKey('goods-import-preview-confirm'),
+        );
+        // At large text sizes the floating action group scrolls independently
+        // from the table. Bring its confirm action fully into that viewport.
+        await tester.ensureVisible(confirm);
+        await tester.pumpAndSettle();
+        expect(confirm.hitTestable(), findsOneWidget);
+        expect(
+          tester.getRect(confirm).bottom,
+          lessThanOrEqualTo(tester.view.physicalSize.height),
+        );
+        expect(find.text('原值').hitTestable(), findsOneWidget);
+        expect(find.text('导入值').hitTestable(), findsOneWidget);
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'goods-import-update-old-new-${narrow ? "narrow-200" : "desktop"}',
+          );
+        }
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(result.value!.replaceRowKeys, {'goods:2'});
+      },
+    );
+  }
+
+  testWidgets(
+    'update mode explicit keep survives rechecking and can be changed in bulk',
+    (tester) async {
+      final result = _Result();
+      await _open(
+        tester,
+        result: result,
+        mode: GoodsImportMode.updateOnly,
+        report: _report(
+          source: [_source.first],
+          changes: const [_nameConflict],
+        ),
+        detect: (corrections, excluded) async => _report(
+          source: [_source.first],
+          corrections: corrections,
+          excluded: excluded,
+          changes: const [_nameConflict],
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('goods-import-conflict-2')));
+      await tester.pumpAndSettle();
+      expect(find.text('保留原值'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-import-redetect-corrections')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('保留原值'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text('原名称')).style!.decoration,
+        TextDecoration.none,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('goods-import-replace-selected')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('替换差异'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-import-keep-selected')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('保留原值'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-import-preview-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(result.value!.replaceRowKeys, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'color and unit identity changes show the server original labels',
+    (tester) async {
+      await _open(
+        tester,
+        mode: GoodsImportMode.updateOnly,
+        size: const Size(2400, 1000),
+        report: _report(
+          source: const [
+            GoodsImportProblemRow(
+              rowNum: 2,
+              code: '001',
+              name: '单联开关',
+              categoryPath: '成品',
+              cells: {'colorName': '梦幻金', 'unitName': '个'},
+            ),
+          ],
+          changes: const [
+            GoodsImportReviewRow(
+              rowKey: 'goods:2',
+              rowNum: 2,
+              code: '001',
+              name: '单联开关',
+              categoryPath: '成品',
+              matchType: 'UUID',
+              changes: [
+                GoodsImportChange(
+                  field: 'colorId',
+                  label: '主颜色',
+                  oldValue: '灰色',
+                  newValue: '梦幻金',
+                  kind: 'CONFLICT',
+                ),
+                GoodsImportChange(
+                  field: 'unitId',
+                  label: '单位',
+                  oldValue: '只',
+                  newValue: '个',
+                  kind: 'CONFLICT',
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      expect(find.text('原值'), findsNWidgets(2));
+      expect(find.text('导入值'), findsNWidgets(2));
+      for (final field in ['colorName', 'unitName']) {
+        final cell = tester.widget<UtenInput>(
+          find.byKey(ValueKey('goods-import-$field-2')),
+        );
+        expect(cell.controller!.text, field == 'colorName' ? '梦幻金' : '个');
+      }
+      for (final original in ['灰色', '只']) {
+        expect(find.text(original), findsOneWidget);
+        expect(find.byTooltip(original), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.text(original)).style!.decoration,
+          TextDecoration.lineThrough,
+        );
+      }
+      await tester.tap(find.byKey(const ValueKey('goods-import-conflict-2')));
+      await tester.pumpAndSettle();
+      expect(find.text('保留原值'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text('灰色')).style!.decoration,
+        TextDecoration.none,
+      );
     },
   );
 

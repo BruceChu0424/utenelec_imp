@@ -36,11 +36,10 @@ final class WarehouseTaskHeaderQuery {
         if (!sortable(column)) throw new com.uten.imp.common.web.ApiException(
                 com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "仓库任务排序字段不正确");
         return switch (column) {
-            case "goodsName", "goodsCode", "colorName", "specification" -> inbound
-                    ? "line_data->>'" + column + "'" : switch (column) {
-                        case "goodsName" -> "goods_name"; case "goodsCode" -> "goods_code";
-                        case "colorName" -> "color_name"; default -> "specification";
-                    };
+            case "goodsName" -> inbound ? "line_data->>'goodsName'" : "goods_name";
+            case "goodsCode" -> inbound ? "line_data->>'goodsCode'" : "goods_code";
+            case "colorName" -> inbound ? "line_data->>'colorName'" : "color_name";
+            case "specification" -> inbound ? "line_data->>'specification'" : "specification";
             case "quantity" -> inbound ? "CAST(line_data->>'quantity' AS numeric)" : "quantity";
             case "billNo" -> "bill_no"; case "sourceDocNo" -> "source_doc_no";
             case "partyName" -> "party_name"; case "warehouseName" -> "warehouse_name";

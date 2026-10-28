@@ -23,7 +23,7 @@ public record HeaderColumnFilter(Map<String, String> values) {
             "billDate", "deliver", "total", "amount", "amountLocal", "weight", "department", "toWarehouse");
     private static final Set<String> TYPED_SEARCH_KEYS = Set.of("search.billDate", "search.deliver", "search.total", "search.amount", "search.amountLocal", "search.weight");
 
-    public HeaderColumnFilter {
+    public HeaderColumnFilter(Map<String, String> values) {
         Map<String, String> safe = new LinkedHashMap<>();
         if (values != null) values.forEach((key, value) -> {
             if (!(key.startsWith("search.") ? SEARCH_KEYS.contains(key.substring(7)) : KEYS.contains(key)))
@@ -33,7 +33,12 @@ public record HeaderColumnFilter(Map<String, String> values) {
                 safe.put(key, value.strip());
             }
         });
-        values = Map.copyOf(safe);
+        this.values = Map.copyOf(safe);
+    }
+
+    @Override
+    public Map<String, String> values() {
+        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
     public static HeaderColumnFilter from(Map<String, String> query) {

@@ -27,7 +27,6 @@ class ColumnEditorDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final theme = Theme.of(context);
     final availableHeight = math.max(
       0.0,
       media.size.height -
@@ -55,37 +54,11 @@ class ColumnEditorDialog extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primaryContainer,
-                              borderRadius: UtenRadius.lgAll,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(UtenSpacing.s12),
-                              child: Icon(
-                                icon,
-                                color: theme.colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s12),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    title,
-                                    style: theme.textTheme.titleLarge,
-                                  ),
-                                ),
-                                UtenFieldHintIcon(info: subtitle, dense: true),
-                              ],
-                            ),
-                          ),
-                        ],
+                      UtenDialogHeader(
+                        padding: EdgeInsets.zero,
+                        icon: icon,
+                        title: Text(title),
+                        subtitle: Text(subtitle),
                       ),
                       const SizedBox(height: UtenSpacing.s24),
                       child,
@@ -93,18 +66,7 @@ class ColumnEditorDialog extends StatelessWidget {
                   ),
                 ),
               ),
-              if (actions.isNotEmpty) ...[
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s8,
-                    children: actions,
-                  ),
-                ),
-              ],
+              if (actions.isNotEmpty) UtenDialogActions(children: actions),
             ],
           ),
         ),

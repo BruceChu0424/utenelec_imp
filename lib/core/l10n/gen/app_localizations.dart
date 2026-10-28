@@ -5995,6 +5995,18 @@ abstract class AppLocalizations {
   /// **'导出 Excel'**
   String get exportDialogTitle;
 
+  /// No description provided for @exportDialogSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'将当前数据保存为 {format} 文件'**
+  String exportDialogSubtitle(String format);
+
+  /// No description provided for @exportPasswordProtectionDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'为文件添加密码保护'**
+  String get exportPasswordProtectionDescription;
+
   /// No description provided for @exportFileNameLabel.
   ///
   /// In zh, this message translates to:

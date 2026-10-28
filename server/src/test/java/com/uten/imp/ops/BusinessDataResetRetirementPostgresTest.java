@@ -81,6 +81,7 @@ class BusinessDataResetRetirementPostgresTest {
             jdbc.execute("CREATE ROLE uten LOGIN NOINHERIT NOSUPERUSER PASSWORD 'retirement-fixture-only'");
             var old = TestFlyway.configure().dataSource(dataSource).locations("classpath:db/migration").target("918").load();
             old.migrate();
+            com.uten.imp.support.HistoricalPermissionReaderSources.install(jdbc);
             assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.business_data_reset()')::text", String.class)).isNotNull();
             UUID retiredPermission = jdbc.queryForObject("SELECT id FROM permissions WHERE code='system:business_data_reset'", UUID.class);
             // Preserve a real prior maintenance membership boundary whose owner differs from all refresh owners.
@@ -132,6 +133,7 @@ class BusinessDataResetRetirementPostgresTest {
             assertThat(jdbc.queryForObject("SELECT proowner::regrole::text FROM pg_proc WHERE oid='public.fn_require_runtime_refresh()'::regprocedure", String.class)).isEqualTo("retirement_reset_owner");
             for (String view : REFRESHES) maintainer.execute("SELECT public.refresh_" + view + "_mv()");
             assertThat(resolver.grantedPermissionsFor(List.of(delegatedUser), Set.of("goods:view", "goods:edit"))).isEqualTo(effectiveBefore);
+            com.uten.imp.support.HistoricalPermissionReaderSources.assertNoIndependentAssignments(jdbc);
             assertThat(jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1", Long.class)).isGreaterThan(epochBefore);
             assertThat(jdbc.queryForList("SELECT delegation.* FROM manager_permission_delegations delegation JOIN permissions p ON p.id=delegation.permission_id WHERE user_id=? AND p.code='goods:edit'", delegatedUser)).isEqualTo(staleBefore);
             assertThat(jdbc.queryForObject("SELECT delegation.grantor_authorization_epoch=state.epoch FROM manager_permission_delegations delegation JOIN permissions p ON p.id=delegation.permission_id CROSS JOIN authorization_state state WHERE user_id=? AND p.code='goods:view' AND state.singleton_id=1", Boolean.class, delegatedUser)).isTrue();

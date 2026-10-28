@@ -5,9 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.uten.imp.security.TxSessionVars;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -18,7 +16,8 @@ import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedSchemaBaseline;
+import com.uten.imp.support.HistoricalEmployeeSchema;
 
 import java.sql.SQLException;
 import java.sql.Savepoint;
@@ -55,11 +54,8 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     private static final String BAD_CHECK_DIGIT = "110105194912310021";
     private static final String SHORT_ID = "11010519491231002";
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private MigratedSchemaBaseline.ScopedDatabase database;
+    private boolean currentSchema;
 
     private static JdbcTemplate jdbc;
     private static JdbcTransactionManager transactionManager;
@@ -69,30 +65,13 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     private ListAppender<ILoggingEvent> logs;
     private final AtomicReference<Runnable> duringDecrypt = new AtomicReference<>();
 
-    @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
-        var dataSource = new DriverManagerDataSource(
-                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
-        jdbc = new JdbcTemplate(dataSource);
-        transactionManager = new JdbcTransactionManager(dataSource);
-    }
-
-    @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
-    }
-
     @BeforeEach
-    void setUp() {
-        jdbc.update("DELETE FROM employee_sensitive WHERE employee_id IN "
-                + "(SELECT id FROM employees WHERE code LIKE 'V807-RUNNER-%')");
-        jdbc.update("DELETE FROM employees WHERE code LIKE 'V807-RUNNER-%'");
+    void setUp() throws Exception {
+        database=HistoricalEmployeeSchema.openDatabase("employee_identity_check_runner");
+        var dataSource=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
+        jdbc=new JdbcTemplate(dataSource);
+        transactionManager=new JdbcTransactionManager(dataSource);
+        currentSchema=false;
 
         tx = mock(TxSessionVars.class);
         when(tx.tryDecrypt(anyString())).thenAnswer(invocation -> {
@@ -115,10 +94,14 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     }
 
     @AfterEach
-    void detachLogs() {
-        Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-        root.detachAppender(logs);
-        logs.stop();
+    void detachLogs() throws Exception {
+        try {
+            Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+            root.detachAppender(logs);
+            logs.stop();
+        } finally {
+            if(database!=null)database.close();
+        }
     }
 
     @Test
@@ -188,9 +171,9 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     void aConcurrentCorrectionIsNeverOverwrittenByTheStartupSnapshot() {
         UUID corrected = legacyEmployee("concurrent", "身份证", "enc:" + VALID_ID);
         duringDecrypt.set(() -> jdbc.update(
-                "UPDATE employee_sensitive SET id_card_enc = ?, id_card_check = 'check_digit' "
+                "UPDATE employee_sensitive SET id_card_enc = ?, id_card_hash=?, id_card_check = 'check_digit' "
                         + "WHERE employee_id = ?",
-                "enc:" + BAD_CHECK_DIGIT, corrected));
+                "enc:" + BAD_CHECK_DIGIT,fingerprint(BAD_CHECK_DIGIT), corrected));
 
         runCheck();
 
@@ -204,8 +187,8 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     void aConcurrentReentryOfAnUnreadableNumberIsNeverOverwritten() {
         UUID reentered = legacyEmployee("concurrent-unreadable", "身份证", "garbage-before-reentry");
         duringDecrypt.set(() -> jdbc.update(
-                "UPDATE employee_sensitive SET id_card_enc = ?, id_card_check = 'valid' WHERE employee_id = ?",
-                "enc:" + VALID_ID, reentered));
+                "UPDATE employee_sensitive SET id_card_enc = ?, id_card_hash=?, id_card_check = 'valid' WHERE employee_id = ?",
+                "enc:" + VALID_ID,fingerprint(VALID_ID), reentered));
 
         runCheck();
 
@@ -216,10 +199,11 @@ class EmployeeIdentityCheckRunnerPostgresTest {
 
     @Test
     void databaseRequiresAResultExactlyWhenACipherExists() {
+        upgradeToCurrent();
         UUID cipherWithoutCheck = employee("cipher-no-check", "身份证");
         assertThatThrownBy(() -> jdbc.update(
-                "INSERT INTO employee_sensitive(employee_id, id_card_enc) VALUES (?, 'enc:x')",
-                cipherWithoutCheck))
+                "INSERT INTO employee_sensitive(employee_id, id_card_enc,id_card_hash) VALUES (?, 'enc:x',?)",
+                cipherWithoutCheck,fingerprint("x")))
                 .hasMessageContaining("employee_sensitive_id_card_check_presence_ck");
 
         UUID checkWithoutCipher = employee("check-no-cipher", "身份证");
@@ -234,14 +218,14 @@ class EmployeeIdentityCheckRunnerPostgresTest {
 
         UUID unknownValue = employee("unknown-value", "身份证");
         assertThatThrownBy(() -> jdbc.update(
-                "INSERT INTO employee_sensitive(employee_id, id_card_enc, id_card_check) "
-                        + "VALUES (?, 'enc:x', 'invalid')",
-                unknownValue))
+                "INSERT INTO employee_sensitive(employee_id, id_card_enc, id_card_hash,id_card_check) "
+                        + "VALUES (?, 'enc:x', ?, 'invalid')",
+                unknownValue,fingerprint("x")))
                 .hasMessageContaining("employee_sensitive_id_card_check_value_ck");
 
         UUID unreadable = employee("stored-unreadable", "身份证");
-        jdbc.update("INSERT INTO employee_sensitive(employee_id, id_card_enc, id_card_check) "
-                + "VALUES (?, 'garbage', 'unreadable')", unreadable);
+        jdbc.update("INSERT INTO employee_sensitive(employee_id, id_card_enc,id_card_hash, id_card_check) "
+                + "VALUES (?, 'garbage', ?, 'unreadable')", unreadable,fingerprint("synthetic-corrupted-history"));
         assertThat(check(unreadable)).isEqualTo("unreadable");
     }
 
@@ -284,7 +268,21 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     }
 
     private void runCheck() {
+        upgradeToCurrent();
         runner.run(mock(ApplicationArguments.class));
+    }
+
+    private void upgradeToCurrent() {
+        if(!currentSchema) {
+            HistoricalEmployeeSchema.upgradeToCurrent(database);
+            currentSchema=true;
+        }
+    }
+
+    private static String fingerprint(String value) {
+        var properties=new com.uten.imp.config.props.CryptoProperties();
+        properties.setHmacKey("identity-check-runner-test-only-hmac-key");
+        return new TxSessionVars(properties,null,null).hmac(com.uten.imp.common.util.IdCardUtil.normalize(value));
     }
 
     private List<ILoggingEvent> runnerEvents() {

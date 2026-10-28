@@ -952,12 +952,15 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
                                        confirmed_at, status, employment_type)
                 VALUES (?, ?, ?, '身份证', ?::uuid, DATE '2025-01-02', DATE '2025-04-02', 'active', 'regular')
                 """, id, code, name, departmentId);
+        String originalDocument=com.uten.imp.support.SyntheticEmployeeIdentity.document();
         List<String> derived = new TransactionTemplate(transactionManager).execute(status ->
-                List.of(tx.encrypt(phone), tx.hmac(phone)));
+                List.of(tx.encrypt(originalDocument),tx.hmac(com.uten.imp.common.util.IdCardUtil.normalize(originalDocument)),
+                        tx.encrypt(phone), tx.hmac(phone)));
         jdbc.update("""
-                INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_check, phone_enc, phone_hash)
-                VALUES (?, ?, 'unchecked', ?, ?)
-                """, id, identityCipher, derived.get(0), derived.get(1));
+                INSERT INTO employee_sensitive (employee_id, id_card_enc,id_card_hash, id_card_check, phone_enc, phone_hash)
+                VALUES (?, ?, ?, 'unchecked', ?, ?)
+                """, id, derived.get(0),derived.get(1), derived.get(2), derived.get(3));
+        jdbc.update("UPDATE employee_sensitive SET id_card_enc=? WHERE employee_id=?",identityCipher,id);
         return id;
     }
 

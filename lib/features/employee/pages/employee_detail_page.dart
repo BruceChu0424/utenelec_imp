@@ -1672,7 +1672,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           content: Text(
             lock ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？' : '解锁后该员工可重新登录，是否继续？',
           ),
-          actionsAlignment: MainAxisAlignment.end,
+          actionsAlignment: MainAxisAlignment.center,
           actions: [
             UtenButton(
               key: const ValueKey('employee-account-lock-cancel'),

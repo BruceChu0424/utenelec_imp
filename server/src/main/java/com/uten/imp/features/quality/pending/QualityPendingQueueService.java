@@ -94,7 +94,12 @@ public class QualityPendingQueueService {
                     "bill_no","party","goods","goods_code","color_name","warehouse","place"),headers.predicate());
         bindings.put("queue_keyword",keyword);bindings.put("queue_drafts",write(drafts));
         String kindWhere=kind==null?"TRUE":"kind=:queue_kind",statusWhere=status==null?"TRUE":"status=:queue_status";
-        if(kind!=null)bindings.put("queue_kind",kind);if(status!=null)bindings.put("queue_status",status);
+        if (kind != null) {
+            bindings.put("queue_kind", kind);
+        }
+        if (status != null) {
+            bindings.put("queue_status", status);
+        }
         String metadataSql=prefix+"""
             SELECT (SELECT COUNT(*) FROM eligible WHERE %s AND %s),
               (SELECT COALESCE(jsonb_agg(jsonb_build_object('value',status,'label',status,'count',qty) ORDER BY status),'[]'::jsonb)::text
@@ -135,7 +140,13 @@ public class QualityPendingQueueService {
     private static void bind(Query query,Map<String,Object> values,SqlColumnSearch.Criteria headers){values.forEach(query::setParameter);headers.bind(query);}
     private String write(Object value){try{return json.writeValueAsString(value);}catch(Exception failure){throw new IllegalStateException(failure);}}
     private JsonNode tree(Object value){try{return json.readTree(value.toString());}catch(Exception failure){throw new IllegalStateException("Invalid quality query metadata",failure);}}
-    private List<Facet> facets(Object value){List<Facet> result=new ArrayList<>();for(JsonNode item:tree(value))result.add(new Facet(item.path("value").asText(),item.path("label").asText(),item.path("count").asLong()));return List.copyOf(result);}
+    private List<Facet> facets(Object value) {
+        List<Facet> result = new ArrayList<>();
+        for (JsonNode item : tree(value)) {
+            result.add(new Facet(item.path("value").asText(), item.path("label").asText(), item.path("count").asLong()));
+        }
+        return List.copyOf(result);
+    }
     private static String blank(String value){return value==null||value.isBlank()?null:value.strip();}
     private static ApiException invalid(String value){return new ApiException(ErrorCode.VALIDATION_FAILED,value);}
 }

@@ -111,8 +111,16 @@ class PaymentStyleWorkspaceRuntimePostgresTest {
         assertEquals(2,enabled.succeeded());assertEquals("使用",text("status",parent));assertEquals("使用",text("status",child));
     }
     @Test void aReferencedLeafAndProtectedSystemSubjectAreReportedWithoutDiscardingOtherSuccesses() {
-        UUID protectedId=UUID.randomUUID();
-        db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,'手续费','EXPENSE','使用')",protectedId,"SYS-TEST-"+protectedId);
+        var existing=db.queryForList("SELECT id FROM payment_styles WHERE name='手续费' AND category='EXPENSE' AND parent_id IS NULL AND NOT is_deleted ORDER BY id LIMIT 1",UUID.class);
+        UUID protectedId;
+        if(existing.isEmpty()) {
+            protectedId=UUID.randomUUID();
+            db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,'手续费','EXPENSE','使用')",protectedId,"SYS-TEST-"+protectedId);
+        } else {
+            protectedId=existing.getFirst();
+        }
+        assertEquals("手续费",text("name",protectedId));
+        assertEquals("使用",text("status",protectedId));
         UUID accountStyle=create("referenced account subject",null,"ACCOUNT"),ordinary=create("independent expense",null,"EXPENSE"),account=UUID.randomUUID();
         UUID currency=UUID.randomUUID();
         db.update("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,'workspace account currency',1,'使用')",currency,"CUR-"+currency);

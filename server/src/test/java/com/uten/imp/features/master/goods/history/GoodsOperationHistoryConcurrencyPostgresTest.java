@@ -508,7 +508,7 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
     }
     private static UUID employee() throws SQLException {
         UUID id = UUID.randomUUID(); try (Connection db = connection()) {
-            execute(db, "INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'concurrent owner',id_type,department_id,current_date,'active','regular' FROM employees WHERE code='ADMIN'", id, "CEMP-" + id); db.commit(); return id;
+            execute(db, "INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,current_date,'active','regular' FROM employees WHERE code='ADMIN'", id, "CEMP-" + id,com.uten.imp.support.SyntheticEmployeeIdentity.name("concurrent owner",id)); db.commit(); return id;
         }
     }
     private static UUID client(UUID owner) throws SQLException {

@@ -1,8 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.security.TxSessionVars;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -12,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.JdbcTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedSchemaBaseline;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -30,11 +29,7 @@ import static org.mockito.Mockito.when;
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class EmployeePiiExtraBackfillRunnerPostgresTest {
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private MigratedSchemaBaseline.ScopedDatabase database;
 
     private static JdbcTemplate jdbc;
     private static JdbcTransactionManager transactionManager;
@@ -43,34 +38,18 @@ class EmployeePiiExtraBackfillRunnerPostgresTest {
     private TxSessionVars tx;
     private EmployeePiiExtraBackfillRunner runner;
 
-    @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
-        var dataSource = new DriverManagerDataSource(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword());
-        jdbc = new JdbcTemplate(dataSource);
-        transactionManager = new JdbcTransactionManager(dataSource);
-        transactions = new TransactionTemplate(transactionManager);
-    }
-
-    @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    @AfterEach
+    void close() throws Exception {
+        if(database!=null)database.close();
     }
 
     @BeforeEach
-    void setUp() {
-        jdbc.update("DELETE FROM employees WHERE code LIKE 'V286-RUNNER-%'");
+    void setUp() throws Exception {
+        database=MigratedSchemaBaseline.openDatabase("employee_pii_backfill");
+        var dataSource=new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword());
+        jdbc=new JdbcTemplate(dataSource);
+        transactionManager=new JdbcTransactionManager(dataSource);
+        transactions=new TransactionTemplate(transactionManager);
         normalizeAdminSeed();
 
         tx = mock(TxSessionVars.class);

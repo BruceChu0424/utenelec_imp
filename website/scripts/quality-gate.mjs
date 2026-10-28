@@ -49,6 +49,9 @@ try {
   run(process.execPath, [prismaCli, 'generate', '--schema', 'prisma/schema.prisma']);
   run(process.execPath, [prismaCli, 'migrate', 'deploy', '--schema', 'prisma/schema.prisma']);
   await mkdir(environment.UPLOADS_DIR, { mode: 0o700 });
+  // A clean checkout has no generated route declarations. Next's supported
+  // typegen command also rewrites next-env.d.ts for the current output mode.
+  run(process.execPath, ['node_modules/next/dist/bin/next', 'typegen']);
   npm(['run', 'lint']);
   run(process.execPath, ['node_modules/typescript/bin/tsc', '--noEmit']);
   npm(['run', 'test:all']);

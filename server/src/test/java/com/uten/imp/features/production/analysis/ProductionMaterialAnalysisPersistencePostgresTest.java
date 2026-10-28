@@ -802,7 +802,7 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 INSERT INTO employees(
                     id,code,full_name,id_type,department_id,hire_date,status,employment_type
                 ) VALUES(?,?,?,'其他',?,?,'active','regular')
-                """, employeeId, "V234-E-" + employeeId, "V234 owner",
+                """, employeeId, "V234-E-" + employeeId, com.uten.imp.support.SyntheticEmployeeIdentity.name("V234 owner",employeeId),
                 departmentId, LocalDate.of(2026, 1, 1));
         insert(connection, """
                 INSERT INTO users(id,employee_id,login_account,password_hash,status)

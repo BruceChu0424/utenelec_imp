@@ -94,9 +94,9 @@ class AiUsageDashboardPostgresTest {
         UUID userId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date, status, employment_type)
-                SELECT ?, ?, '用量看板测试', '其他', id, CURRENT_DATE, 'active', 'regular'
+                SELECT ?, ?, ?, '其他', id, CURRENT_DATE, 'active', 'regular'
                 FROM departments WHERE code = 'DEPT_FIN'
-                """, employeeId, "UD-" + tag);
+                """, employeeId, "UD-" + tag,com.uten.imp.support.SyntheticEmployeeIdentity.name("用量看板测试",employeeId));
         jdbc.update("""
                 INSERT INTO users(id, employee_id, login_account, password_hash, must_change_password, status)
                 VALUES (?, ?, ?, 'test-only', false, 'active')
@@ -213,7 +213,8 @@ class AiUsageDashboardPostgresTest {
                 .containsExactlyInAnyOrder(spender, limited);
 
         AiUsageDtos.DashboardPerson spenderRow = personOf(day, spender);
-        assertThat(spenderRow.name()).isEqualTo("用量看板测试");
+        assertThat(spenderRow.name()).isEqualTo(jdbc.queryForObject(
+                "SELECT e.full_name FROM employees e JOIN users u ON u.employee_id=e.id WHERE u.id=?",String.class,spender));
         assertThat(spenderRow.deleted()).isFalse();
         assertThat(spenderRow.disabled()).isFalse();
         assertThat(spenderRow.dailyTokenLimit()).isNull();

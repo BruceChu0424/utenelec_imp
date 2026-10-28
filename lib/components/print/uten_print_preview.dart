@@ -713,68 +713,55 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        _invalidated ? '预览已失效' : '预览 · ${widget.title}',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                UtenDialogHeader(
+                  title: Text(_invalidated ? '预览已失效' : '预览 · ${widget.title}'),
+                  icon: Icons.print_outlined,
+                  showCloseButton: true,
+                  onClose: () => Navigator.of(context).pop(),
+                ),
+                UtenDialogActions(
+                  showDivider: false,
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                  children: [
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      size: UtenButtonSize.small,
+                      icon: Icons.print_outlined,
+                      isLoading: _printing,
+                      onPressed:
+                          (table == null || table.rows.isEmpty || _printing)
+                          ? null
+                          : _print,
+                      child: const Text('打印'),
+                    ),
+                    if (widget.exportEndpoint != null)
+                      UtenExportButton(
+                        endpoint: widget.exportEndpoint!,
+                        report: widget.exportReport ?? '',
+                        queryParams: widget.exportQuery ?? const {},
+                        bodyParams: {
+                          ...?widget.exportBody,
+                          if (widget.projection != null)
+                            'columnProjection': widget.projection!.toJson(),
+                        },
+                        filename: widget.exportFilename ?? widget.title,
+                        requiredPermission: widget.exportPermission,
+                        enabled: !_invalidated,
+                        prepareExport: () async {
+                          final version = _contextVersion;
+                          return UtenExportSelection(
+                            stillCurrent: () => _isCurrent(version),
+                          );
+                        },
+                        label: '下载Excel',
                       ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: UtenSpacing.s8,
-                        runSpacing: UtenSpacing.s4,
-                        children: [
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            size: UtenButtonSize.small,
-                            icon: Icons.print_outlined,
-                            isLoading: _printing,
-                            onPressed:
-                                (table == null ||
-                                    table.rows.isEmpty ||
-                                    _printing)
-                                ? null
-                                : _print,
-                            child: const Text('打印'),
-                          ),
-                          if (widget.exportEndpoint != null)
-                            UtenExportButton(
-                              endpoint: widget.exportEndpoint!,
-                              report: widget.exportReport ?? '',
-                              queryParams: widget.exportQuery ?? const {},
-                              bodyParams: {
-                                ...?widget.exportBody,
-                                if (widget.projection != null)
-                                  'columnProjection': widget.projection!
-                                      .toJson(),
-                              },
-                              filename: widget.exportFilename ?? widget.title,
-                              requiredPermission: widget.exportPermission,
-                              enabled: !_invalidated,
-                              prepareExport: () async {
-                                final version = _contextVersion;
-                                return UtenExportSelection(
-                                  stillCurrent: () => _isCurrent(version),
-                                );
-                              },
-                              label: '下载Excel',
-                            ),
-                          UtenButton(
-                            type: UtenButtonType.tonal,
-                            icon: Icons.close_rounded,
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('关闭'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    UtenButton(
+                      type: UtenButtonType.tonal,
+                      icon: Icons.close_rounded,
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('关闭'),
+                    ),
+                  ],
                 ),
                 const Divider(height: 1),
               ],

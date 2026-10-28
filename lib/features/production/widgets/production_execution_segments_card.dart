@@ -1454,45 +1454,23 @@ class _ExecutionSegmentDetail extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-                UtenSpacing.s8,
-                UtenSpacing.s8,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '执行子计划详情',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          segment.segmentCode,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _statusBadge(theme, segment),
-                  const SizedBox(width: UtenSpacing.s4),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
+            UtenDialogSurface(
+              child: UtenDialogHeader(
+                icon: Icons.precision_manufacturing_outlined,
+                title: const Text('执行子计划详情'),
+                subtitle: Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(segment.segmentCode),
+                    _statusBadge(theme, segment),
+                  ],
+                ),
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
               ),
             ),
-            const Divider(height: 1),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -1656,73 +1634,66 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                 ),
               ),
             ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s12),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('关闭'),
+            UtenDialogActions(
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
+                ),
+                if (canStart &&
+                    segment.startRoute == null &&
+                    const [
+                      'WAITING',
+                      'READY',
+                      'DISPATCHED',
+                    ].contains(segment.status))
+                  FilledButton.icon(
+                    onPressed: () =>
+                        Navigator.of(context).pop(_SegmentAction.route),
+                    icon: const Icon(Icons.alt_route_rounded),
+                    label: const Text('路线确认'),
                   ),
-                  if (canStart &&
-                      segment.startRoute == null &&
-                      const [
-                        'WAITING',
-                        'READY',
-                        'DISPATCHED',
-                      ].contains(segment.status))
-                    FilledButton.icon(
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.route),
-                      icon: const Icon(Icons.alt_route_rounded),
-                      label: const Text('路线确认'),
+                if (canStart &&
+                    segment.startRoute != null &&
+                    segment.canRequestDraw)
+                  FilledButton.icon(
+                    key: ValueKey(
+                      'production-execution-detail-draw-${segment.id}',
                     ),
-                  if (canStart &&
-                      segment.startRoute != null &&
-                      segment.canRequestDraw)
-                    FilledButton.icon(
-                      key: ValueKey(
-                        'production-execution-detail-draw-${segment.id}',
-                      ),
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.draw),
-                      icon: const Icon(Icons.move_to_inbox_outlined),
-                      label: Text(
-                        segment.status == 'IN_PROGRESS' ? '继续领料' : '去领料',
-                      ),
+                    onPressed: () =>
+                        Navigator.of(context).pop(_SegmentAction.draw),
+                    icon: const Icon(Icons.move_to_inbox_outlined),
+                    label: Text(
+                      segment.status == 'IN_PROGRESS' ? '继续领料' : '去领料',
                     ),
-                  if (canStart &&
-                      segment.startRoute == 'BATCH' &&
-                      segment.canSplitBatch)
-                    FilledButton.icon(
-                      key: ValueKey(
-                        'production-execution-detail-batch-${segment.id}',
-                      ),
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.splitBatch),
-                      icon: const Icon(Icons.call_split_rounded),
-                      label: const Text('分批领料'),
+                  ),
+                if (canStart &&
+                    segment.startRoute == 'BATCH' &&
+                    segment.canSplitBatch)
+                  FilledButton.icon(
+                    key: ValueKey(
+                      'production-execution-detail-batch-${segment.id}',
                     ),
-                  if (canStart &&
-                      (segment.status == 'READY' ||
-                          segment.status == 'DISPATCHED') &&
-                      segment.startRoute != null &&
-                      segment.canStart)
-                    FilledButton.icon(
-                      key: ValueKey(
-                        'production-execution-detail-start-${segment.id}',
-                      ),
-                      onPressed: () =>
-                          Navigator.of(context).pop(_SegmentAction.start),
-                      icon: const Icon(Icons.play_circle_outline),
-                      label: const Text('开工'),
+                    onPressed: () =>
+                        Navigator.of(context).pop(_SegmentAction.splitBatch),
+                    icon: const Icon(Icons.call_split_rounded),
+                    label: const Text('分批领料'),
+                  ),
+                if (canStart &&
+                    (segment.status == 'READY' ||
+                        segment.status == 'DISPATCHED') &&
+                    segment.startRoute != null &&
+                    segment.canStart)
+                  FilledButton.icon(
+                    key: ValueKey(
+                      'production-execution-detail-start-${segment.id}',
                     ),
-                ],
-              ),
+                    onPressed: () =>
+                        Navigator.of(context).pop(_SegmentAction.start),
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('开工'),
+                  ),
+              ],
             ),
           ],
         ),

@@ -2,13 +2,14 @@
 //
 // Material 自带区间选择器把关闭按钮钉死在头部左上、铅笔与「应用」钉在右上，
 // 布局不可通过主题调整；这里自绘紧凑弹窗（内容自适应高度，最大 520 宽）：
-// UtenRadius.dialog 圆角、右上角关闭、右下角「确定」主按钮。
+// 共享渐变标题、右上角关闭及底部居中的「取消 / 确定」。
 // 口径出自 admin 审计日志（2026-09-28 用户口径），2026-10-24 推广为全站
 // 唯一形态：所有日期范围选择都走本函数，不再各自内联 builder。
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../buttons/uten_button.dart';
+import 'uten_dialog.dart';
 
 /// [wrap] 供调用方叠加自己的包装（如 trackNativeReadDialog 的只读门禁），
 /// 作用在弹窗内容之外、居中约束之内。返回值与 showDateRangePicker 一致：
@@ -33,15 +34,7 @@ Future<DateTimeRange?> showUtenDateRangePicker({
         helpText: helpText,
       );
       if (wrap != null) dialog = wrap(dialogContext, dialog);
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: dialog,
-          ),
-        ),
-      );
+      return dialog;
     },
   );
 }
@@ -230,25 +223,30 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
     final helpText =
         widget.helpText ??
         _t(context, '选择日期范围', 'Select date range', '날짜 범위 선택');
-    return Material(
-      color: scheme.surface,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.dialogAll,
-        side: BorderSide(color: scheme.outlineVariant),
-      ),
-      child: Column(
+    return UtenAlertDialog(
+      maxWidth: 520,
+      showCloseButton: true,
+      title: _buildHeader(scheme, helpText),
+      content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildHeader(scheme, helpText),
-          Divider(height: 1, thickness: 1, color: scheme.outlineVariant),
           _buildMonthNav(scheme, localizations),
           _buildWeekdayRow(scheme, localizations),
           _buildGrid(scheme),
-          _buildFooter(scheme),
         ],
       ),
+      actions: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(localizations.cancelButtonLabel),
+        ),
+        UtenButton(
+          onPressed: _startDate == null ? null : _confirm,
+          child: Text(_t(context, '确定', 'OK', '확인')),
+        ),
+      ],
     );
   }
 
@@ -270,55 +268,23 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
     final endText = _endDate == null
         ? localizations.dateRangeEndLabel
         : localizations.formatCompactDate(_endDate!);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 8, 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  helpText,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: startText,
-                        style: _startDate == null
-                            ? placeholderStyle
-                            : valueStyle,
-                      ),
-                      TextSpan(text: ' – ', style: placeholderStyle),
-                      TextSpan(
-                        text: endText,
-                        style: _endDate == null ? placeholderStyle : valueStyle,
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+    return UtenDialogHeading(
+      icon: Icons.date_range_outlined,
+      title: Text(helpText),
+      subtitle: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: startText,
+              style: _startDate == null ? placeholderStyle : valueStyle,
             ),
-          ),
-          IconButton(
-            tooltip: localizations.closeButtonTooltip,
-            icon: const Icon(Icons.close, size: 20),
-            visualDensity: VisualDensity.compact,
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
+            TextSpan(text: ' – ', style: placeholderStyle),
+            TextSpan(
+              text: endText,
+              style: _endDate == null ? placeholderStyle : valueStyle,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -438,24 +404,6 @@ class _UtenDateRangePickerDialogState extends State<UtenDateRangePickerDialog> {
         onPointerUp: _handlePointer,
         onPointerCancel: _handlePointer,
         child: Column(children: rows),
-      ),
-    );
-  }
-
-  Widget _buildFooter(ColorScheme scheme) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
-      ),
-      padding: const EdgeInsets.fromLTRB(24, 12, 16, 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          UtenButton(
-            onPressed: _startDate == null ? null : _confirm,
-            child: Text(_t(context, '确定', 'OK', '확인')),
-          ),
-        ],
       ),
     );
   }

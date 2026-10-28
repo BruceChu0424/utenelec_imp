@@ -298,91 +298,83 @@ class _AiProgressDialogState extends State<_AiProgressDialog> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 440),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    const AiSparkleBadge(),
-                    const SizedBox(width: UtenSpacing.s16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.title,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (widget.subtitle != null) ...[
-                            const SizedBox(height: UtenSpacing.s4),
-                            Text(
-                              widget.subtitle!,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+                UtenDialogHeader(
+                  title: Text(widget.title),
+                  subtitle: widget.subtitle == null
+                      ? null
+                      : Text(widget.subtitle!),
+                  leading: const AiSparkleBadge(),
+                  showCloseButton: true,
+                  onClose: _cancel,
                 ),
-                const SizedBox(height: UtenSpacing.s20),
-                _AnimatedProgressBar(value: _progressValue()),
-                const SizedBox(height: UtenSpacing.s16),
-                Semantics(
-                  liveRegion: true,
-                  label: currentLabel,
-                  child: ExcludeSemantics(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var i = 0; i < widget.stages.length; i++)
-                          _StageRow(
-                            key: ValueKey('ai-progress-stage-$i'),
-                            label: widget.stages[i].label,
-                            state: i < _current
-                                ? _StageState.done
-                                : i == _current
-                                ? _StageState.current
-                                : _StageState.pending,
-                            isLast: i == widget.stages.length - 1,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _AnimatedProgressBar(value: _progressValue()),
+                      const SizedBox(height: UtenSpacing.s16),
+                      Semantics(
+                        liveRegion: true,
+                        label: currentLabel,
+                        child: ExcludeSemantics(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = 0; i < widget.stages.length; i++)
+                                _StageRow(
+                                  key: ValueKey('ai-progress-stage-$i'),
+                                  label: widget.stages[i].label,
+                                  state: i < _current
+                                      ? _StageState.done
+                                      : i == _current
+                                      ? _StageState.current
+                                      : _StageState.pending,
+                                  isLast: i == widget.stages.length - 1,
+                                ),
+                            ],
                           ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (queued || slow) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  _HintLine(
-                    text: queued ? l10n.aiJobQueued : l10n.aiJobSlowHint,
-                  ),
-                ],
-                const SizedBox(height: UtenSpacing.s20),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.schedule_rounded,
-                      size: 16,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: UtenSpacing.s6),
-                    Expanded(
-                      child: Text(
-                        l10n.aiJobElapsed(_formatElapsed(_elapsed)),
-                        key: const ValueKey('ai-progress-elapsed'),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
-                    ),
+                      if (queued || slow) ...[
+                        const SizedBox(height: UtenSpacing.s12),
+                        _HintLine(
+                          text: queued ? l10n.aiJobQueued : l10n.aiJobSlowHint,
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s20),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule_rounded,
+                            size: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: UtenSpacing.s6),
+                          Expanded(
+                            child: Text(
+                              l10n.aiJobElapsed(_formatElapsed(_elapsed)),
+                              key: const ValueKey('ai-progress-elapsed'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                UtenDialogActions(
+                  children: [
                     UtenButton(
                       key: const ValueKey('ai-progress-cancel'),
                       type: UtenButtonType.ghost,

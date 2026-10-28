@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.GoodsService;
@@ -139,9 +141,9 @@ class GoodsImportRestoreDeletedTest {
         when(em.createNativeQuery(anyString())).thenReturn(nativeQuery);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
-        return new GoodsImportService(
+        return GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 goodsService == null ? mock(GoodsService.class) : goodsService, goods, null, categories,
-                null, colors, null, units, em, currentUser, null);
+                null, colors, null, units, em, currentUser, null));
     }
 
     private static byte[] workbook(String code, String name, String category, String goodsId) throws Exception {

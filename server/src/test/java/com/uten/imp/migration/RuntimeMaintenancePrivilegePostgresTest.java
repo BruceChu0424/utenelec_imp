@@ -126,14 +126,23 @@ class RuntimeMaintenancePrivilegePostgresTest {
         }
     }
 
-    @Test void allSixConcurrentRefreshFunctionsWorkThroughTheActualSchedulerOnPostgres16() {
+    @Test void legacyForwardersRemainScopedAndCurrentSchedulerRefreshesOnlyActiveViews() {
         for(String view:VIEWS) {
             assertThrows(org.springframework.dao.DataAccessException.class,()->app.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY public."+view));
             assertThrows(org.springframework.dao.DataAccessException.class,()->outsider.execute("SELECT public.refresh_"+view+"()"));
         }
         new com.uten.imp.features.reporting.MaterializedViewRefreshScheduler(
                 new DriverManagerDataSource(PG.getJdbcUrl(),"uten",PASSWORD)).refreshAll();
-        assertEquals(6,owner.queryForObject("SELECT count(*) FROM report_materialized_view_refresh_state WHERE status='SUCCESS' AND last_succeeded_at IS NOT NULL",Integer.class));
+        // V951 deliberately retired two unused projections from the current
+        // scheduler. This historical V625 database retains all six forwarding
+        // functions for its original maintenance protocol.
+        assertEquals(java.util.Set.of("production_monthly_mv", "purchase_monthly_mv",
+                        "sales_monthly_mv", "subcontract_monthly_mv"),
+                new java.util.HashSet<>(owner.queryForList("SELECT view_name FROM report_materialized_view_refresh_state "
+                        + "WHERE status='SUCCESS' AND last_succeeded_at IS NOT NULL", String.class)));
+        for (String view : VIEWS) {
+            app.execute("SELECT public.refresh_" + view + "()");
+        }
         assertThrows(org.springframework.dao.DataAccessException.class,()->app.execute("SELECT public.refresh_stock_monthly_mv('system_settings')"));
         assertEquals("uten",app.queryForObject("SELECT current_user",String.class));
         assertThrows(org.springframework.dao.DataAccessException.class,()->app.execute("SELECT public.fn_require_runtime_maintenance(false)"));

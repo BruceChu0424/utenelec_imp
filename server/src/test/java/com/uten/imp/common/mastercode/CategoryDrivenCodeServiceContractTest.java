@@ -42,6 +42,38 @@ class CategoryDrivenCodeServiceContractTest {
     }
 
     @Test
+    void unchangedLongDisplayCodeKeepsItsDistinctStableCounterInCheckAndUpdate() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query persistedLabel = fluentQuery();
+        Query lock = fluentQuery();
+        Query duplicateCheck = fluentQuery();
+        UUID entityId = UUID.randomUUID();
+        when(entityManager.createNativeQuery(anyString())).thenReturn(persistedLabel, lock, duplicateCheck);
+        when(persistedLabel.getSingleResult()).thenReturn(true);
+        when(lock.getResultList()).thenReturn(List.of(99L));
+        when(duplicateCheck.getSingleResult()).thenReturn(false);
+        var service = new CategoryDrivenCodeService(entityManager);
+
+        // Historical/reused labels may end in 000002 while their UUID keeps
+        // counter 88. Checking that unchanged label must not try to acquire 2.
+        assertNull(service.requestedSequenceProblem(CLIENT, "KH000002", entityId, null));
+        verify(persistedLabel).setParameter("id", entityId);
+        verify(persistedLabel).setParameter("code", "KH000002");
+        verify(entityManager).createNativeQuery(anyString());
+
+        var allocation = service.allocateForUpdate(CLIENT, entityId, null, "KH000002",
+                new CategoryCodeAllocation("KH000002", 88L, null, false));
+
+        assertEquals("KH000002", allocation.code());
+        assertEquals(88L, allocation.sequence());
+        org.junit.jupiter.api.Assertions.assertFalse(allocation.managed());
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(entityManager, org.mockito.Mockito.times(3)).createNativeQuery(sql.capture());
+        assertTrue(sql.getAllValues().stream().noneMatch(value -> value.contains("code_sequence =")),
+                "Neither the read check nor unchanged update may reserve the displayed suffix as a new counter");
+    }
+
+    @Test
     void ungroupedNewMasterUsesFallbackPrefixAndAtomicSequence() {
         EntityManager entityManager = mock(EntityManager.class);
         Query lock = fluentQuery();

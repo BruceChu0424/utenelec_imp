@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_motion.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -184,104 +185,90 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
       });
     return Material(
       key: const ValueKey('notice-group-stage'),
-      color: theme.colorScheme.surfaceContainerLow,
+      color: theme.colorScheme.surface,
       borderRadius: UtenRadius.dialogAll,
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s20,
-              UtenSpacing.s12,
-              UtenSpacing.s8,
-              UtenSpacing.s12,
+      child: UtenDialogSurface(
+        child: Column(
+          children: [
+            UtenDialogHeader(
+              title: const Text('相关通知'),
+              subtitle: Text(
+                '共 ${notices.length} 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}，未读排在前面',
+              ),
+              icon: Icons.notifications_none_rounded,
+              trailing: IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(Icons.close_rounded),
+                tooltip: '收起相关通知',
+              ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '相关通知',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s4),
-                      Text(
-                        '共 ${notices.length} 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}，未读排在前面',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (unread > 0) ...[
-                        const SizedBox(height: UtenSpacing.s4),
-                        TextButton.icon(
-                          onPressed: _markingAll || _openingId != null
-                              ? null
-                              : _markAllRead,
-                          icon: _markingAll
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.done_all_rounded, size: 18),
-                          label: const Text('全部已读'),
-                        ),
-                      ],
-                    ],
+            if (unread > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s20,
+                  0,
+                  UtenSpacing.s20,
+                  UtenSpacing.s8,
+                ),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _markingAll || _openingId != null
+                        ? null
+                        : _markAllRead,
+                    icon: _markingAll
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.done_all_rounded, size: 18),
+                    label: const Text('全部已读'),
                   ),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.close_rounded),
-                  tooltip: '收起相关通知',
-                ),
-              ],
+              ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.separated(
+                key: const PageStorageKey('notice-group-cards'),
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                itemCount: notices.length,
+                separatorBuilder: (_, index) =>
+                    const SizedBox(height: UtenSpacing.s12),
+                itemBuilder: (context, index) {
+                  final notice = notices[index];
+                  return AnimatedBuilder(
+                    key: ValueKey(notice.id),
+                    animation: widget.animation,
+                    child: NoticeCard(
+                      notice: notice,
+                      unread: _isUnread(notice),
+                      showInteractions: false,
+                      onTap: () => _openNotice(notice),
+                    ),
+                    builder: (context, child) {
+                      final progress = UtenAnim.standard.transform(
+                        ((widget.animation.value - 0.12) / 0.88).clamp(
+                          0.0,
+                          1.0,
+                        ),
+                      );
+                      return Transform.translate(
+                        key: ValueKey('notice-unfold-${notice.id}'),
+                        offset: Offset(
+                          0,
+                          -(1 - progress) * math.min(index, 4) * 92,
+                        ),
+                        child: Opacity(opacity: progress, child: child),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.separated(
-              key: const PageStorageKey('notice-group-cards'),
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              itemCount: notices.length,
-              separatorBuilder: (_, index) =>
-                  const SizedBox(height: UtenSpacing.s12),
-              itemBuilder: (context, index) {
-                final notice = notices[index];
-                return AnimatedBuilder(
-                  key: ValueKey(notice.id),
-                  animation: widget.animation,
-                  child: NoticeCard(
-                    notice: notice,
-                    unread: _isUnread(notice),
-                    showInteractions: false,
-                    onTap: () => _openNotice(notice),
-                  ),
-                  builder: (context, child) {
-                    final progress = UtenAnim.standard.transform(
-                      ((widget.animation.value - 0.12) / 0.88).clamp(0.0, 1.0),
-                    );
-                    return Transform.translate(
-                      key: ValueKey('notice-unfold-${notice.id}'),
-                      offset: Offset(
-                        0,
-                        -(1 - progress) * math.min(index, 4) * 92,
-                      ),
-                      child: Opacity(opacity: progress, child: child),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

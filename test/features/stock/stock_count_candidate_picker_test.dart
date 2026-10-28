@@ -184,6 +184,17 @@ Future<void> _open(
   await tester.pumpAndSettle();
 }
 
+Future<void> _goToPickerPage(WidgetTester tester, int page) async {
+  final input = find.descendant(
+    of: find.byKey(const Key('picker-footer-pagination')),
+    matching: find.byType(TextField),
+  );
+  expect(input, findsOneWidget);
+  await tester.enterText(input, '$page');
+  await tester.testTextInput.receiveAction(TextInputAction.done);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
@@ -284,8 +295,7 @@ void main() {
       tester.getCenter(input).dy,
       closeTo(tester.getCenter(find.text('/ 2')).dy, 1),
     );
-    await tester.tap(find.text('下一页'));
-    await tester.pumpAndSettle();
+    await _goToPickerPage(tester, 2);
     expect(repo.requests.last, endsWith('|2'));
     expect(tester.takeException(), isNull);
   });
@@ -344,8 +354,7 @@ void main() {
     final repo = _Repo();
     final results = <List<CountStockRow>>[];
     await _open(tester, repo, results);
-    await tester.tap(find.text('下一页'));
-    await tester.pumpAndSettle();
+    await _goToPickerPage(tester, 2);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.pump();
     final list = find.byWidget(
@@ -415,8 +424,7 @@ void main() {
     final results = <List<CountStockRow>>[];
     await _open(tester, _Repo(), results);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|白')));
-    await tester.tap(find.text('下一页'));
-    await tester.pumpAndSettle();
+    await _goToPickerPage(tester, 2);
     await tester.tap(find.byKey(const ValueKey('goods-picker-item-pp|黑')));
     await tester.enterText(find.byType(EditableText).first, '红');
     await tester.pump(const Duration(milliseconds: 301));

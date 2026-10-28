@@ -425,12 +425,10 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     return showDialog<void>(
       context: context,
       builder: (ctx) => UtenAlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.error_outline_rounded, color: UtenColors.error),
-            SizedBox(width: UtenSpacing.s8),
-            Text('删除失败'), // TODO(l10n): 补 arb
-          ],
+        title: const UtenDialogHeading(
+          title: Text('删除失败'), // TODO(l10n): 补 arb
+          icon: Icons.error_outline_rounded,
+          danger: true,
         ),
         content: Text(message),
         actionsAlignment: MainAxisAlignment.center,

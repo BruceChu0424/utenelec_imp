@@ -103,7 +103,7 @@ class ProductionOverLimitHeaderPostgresTest {
                 case "getSingleResult" -> {return jdbc.queryForObject(sql,parameters,Long.class);}
                 case "getResultList" -> {var bound=new MapSqlParameterSource(parameters).addValue("test_limit",paging[1]).addValue("test_offset",paging[0]);
                     return jdbc.query(sql+" LIMIT :test_limit OFFSET :test_offset",bound,(rs,index)->{
-                        Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;});}
+                        Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++) { row[i]=rs.getObject(i+1); } return row;});}
                 default -> {return null;}
             }
         });

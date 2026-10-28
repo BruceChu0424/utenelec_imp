@@ -264,12 +264,9 @@ class _SelectedEmployeeProvisionDialogState
       canPop: !_submitting,
       child: UtenAlertDialog(
         key: const ValueKey('provision-selected-employee-dialog'),
-        title: Row(
-          children: [
-            const Icon(Icons.person_add_alt_1_rounded),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(child: Text(l10n.accountProvisionConfirmTitle)),
-          ],
+        title: UtenDialogHeading(
+          title: Text(l10n.accountProvisionConfirmTitle),
+          icon: Icons.person_add_alt_1_rounded,
         ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),

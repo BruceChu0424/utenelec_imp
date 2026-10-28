@@ -12,6 +12,7 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_drop_target.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/features/basic_data/models/goods_import.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_import_preview_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_import_repository.dart';
@@ -340,6 +341,25 @@ GoodsImportReport _problemReport({
   excluded: excluded,
 );
 
+GoodsImportResult _completedResult({
+  int imported = 0,
+  int updated = 0,
+  int filled = 0,
+  int ignored = 0,
+  int unchanged = 0,
+}) => GoodsImportResult(
+  batchId: imported == 0 ? '' : 'batch:completed',
+  importedCount: imported,
+  createdCategories: 0,
+  createdColors: 0,
+  createdUnits: 0,
+  createdCategoryPaths: const [],
+  updatedCount: updated,
+  filledCount: filled,
+  ignoredCount: ignored,
+  unchangedCount: unchanged,
+);
+
 Future<void> _tapKey(WidgetTester tester, String key) async {
   final target = find.byKey(ValueKey(key));
   await tester.ensureVisible(target);
@@ -422,6 +442,149 @@ void main() {
       expect(repo.commits, 0);
       await _confirm(tester);
       expect(repo.submittedModes.single, mode);
+    });
+  }
+
+  testWidgets('update mode sends replacement choices without an extra toggle', (
+    tester,
+  ) async {
+    final repo = _Repository();
+    await _open(tester, repo, mode: GoodsImportMode.updateOnly);
+    await _confirm(tester);
+    expect(repo.submittedModes.single, GoodsImportMode.updateOnly);
+    expect(repo.submittedSelections.single, {'goods:2'});
+  });
+
+  testWidgets(
+    'explicit keep survives returning and a rejected update submission',
+    (tester) async {
+      final repo = _Repository()
+        ..reviewRows = const [
+          _conflict,
+          GoodsImportReviewRow(
+            rowKey: 'goods:3',
+            rowNum: 3,
+            code: 'G002',
+            name: '螺丝',
+            categoryPath: '原料 / 紧固件',
+            matchType: 'UUID',
+            changes: [
+              GoodsImportChange(
+                field: 'name',
+                label: '货品名称',
+                oldValue: '原螺丝',
+                newValue: '螺丝',
+                kind: 'CONFLICT',
+              ),
+            ],
+          ),
+        ];
+      await _open(tester, repo, mode: GoodsImportMode.updateOnly);
+      await _tapKey(tester, 'goods-import-conflict-2');
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查看导入预览'));
+      await tester.pumpAndSettle();
+      void expectChoices() {
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('goods-import-conflict-2')),
+            matching: find.text('保留原值'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('goods-import-conflict-3')),
+            matching: find.text('替换差异'),
+          ),
+          findsOneWidget,
+        );
+      }
+
+      expectChoices();
+      repo
+        ..planId = 'plan:latest'
+        ..rejection = ApiException('CONFLICT', '资料已变化', httpStatus: 409);
+      await _confirm(tester);
+      expect(repo.commits, 1);
+      expect(repo.submittedSelections.single, {'goods:3'});
+      expectChoices();
+      repo.rejection = null;
+      await _confirm(tester);
+      expect(repo.submittedPlans, ['plan:first', 'plan:latest']);
+      expect(repo.submittedSelections.last, {'goods:3'});
+    },
+  );
+
+  testWidgets(
+    'explicit replacement choices stay within their file in a queue',
+    (tester) async {
+      picker.files = _queueFiles([1, 2]);
+      final repo = _Repository();
+      await _open(tester, repo, mode: GoodsImportMode.updateOnly);
+      await _tapKey(tester, 'goods-import-conflict-2');
+      await _confirm(tester);
+      expect(repo.submittedSelections.single, isEmpty);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('goods-import-conflict-2')),
+          matching: find.text('替换差异'),
+        ),
+        findsOneWidget,
+      );
+      await _confirm(tester);
+      expect(repo.submittedSelections.last, {'goods:2'});
+    },
+  );
+
+  for (final scenario in [
+    (
+      name: 'updated goods',
+      result: _completedResult(imported: 2, updated: 2),
+      headline: '已写入 2 条货品',
+      details: ['修改 2'],
+    ),
+    (
+      name: 'retained conflicts without writes',
+      result: _completedResult(ignored: 8),
+      headline: '未写入变更',
+      details: ['保留原值 8'],
+    ),
+    (
+      name: 'unchanged rows without writes',
+      result: _completedResult(unchanged: 8),
+      headline: '未写入变更',
+      details: ['资料相同 8'],
+    ),
+    (
+      name: 'BOM writes while goods fields are retained',
+      result: _completedResult(imported: 7, ignored: 8),
+      headline: '已更新 7 条货品的组装信息',
+      details: ['保留原值 8'],
+    ),
+    (
+      name: 'overlapping updated and filled counters',
+      result: _completedResult(imported: 2, updated: 2, filled: 2),
+      headline: '已写入 2 条货品',
+      details: ['修改 2', '补齐 2'],
+    ),
+  ]) {
+    testWidgets('result distinguishes ${scenario.name}', (tester) async {
+      final repo = _Repository()
+        ..reviewRows = []
+        ..resultFor = () => scenario.result;
+      await _open(tester, repo);
+      await _confirm(tester);
+      expect(find.text(scenario.headline), findsOneWidget);
+      for (final detail in scenario.details) {
+        expect(find.text(detail), findsOneWidget);
+      }
+      expect(find.textContaining('已导入'), findsNothing);
+      if (scenario.result.updatedCount == 0) {
+        expect(find.textContaining('修改 '), findsNothing);
+      }
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -750,20 +913,114 @@ void main() {
   );
 
   testWidgets(
+    'rejected code refreshes its row and preserves edits and permanent exclusions',
+    (tester) async {
+      var codeBecameOccupied = false;
+      final repo = _Repository()
+        ..reportFor = (_, edits, excluded) => _report(
+          rows: const [
+            _firstRow,
+            _secondRow,
+            _thirdRow,
+            GoodsImportProblemRow(
+              rowNum: 5,
+              code: 'G005',
+              name: '稍后导入的货品',
+              categoryPath: '成品',
+            ),
+          ],
+          errors: codeBecameOccupied && edits[3]?['code'] != 'AVAILABLE'
+              ? const [
+                  GoodsImportError(
+                    rowNum: 3,
+                    column: '编号',
+                    message: '编号 NEW 已占用，请更换编号',
+                  ),
+                ]
+              : const [],
+          edits: edits,
+          excluded: excluded,
+          plan: codeBecameOccupied ? 'plan:latest' : 'plan:first',
+        );
+      await _open(tester, repo);
+      Future<void> toggleRow(int row) async {
+        final target = find.byKey(ValueKey('goods-import-preview-row-$row'));
+        await tester.tap(
+          find
+              .descendant(of: target, matching: find.byType(Checkbox))
+              .hitTestable(),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      // Permanently remove row 4, then leave row 5 out of this submission only.
+      for (final row in [2, 3, 5]) {
+        await toggleRow(row);
+      }
+      await _tapKey(tester, 'goods-import-remove-selected');
+      await _editCode(tester, 'NEW');
+      await _tapKey(tester, 'goods-import-select-ready');
+      await toggleRow(5);
+      repo.resultFor = () {
+        codeBecameOccupied = true;
+        throw ApiException('CONFLICT', '编号已占用', httpStatus: 409);
+      };
+      await _confirm(tester);
+      expect(repo.commits, 1);
+      expect(repo.submittedExclusions.single, {4, 5});
+      expect(repo.detectedExclusions.last, {4});
+      expect(repo.detectedCorrections.last, {
+        3: {'code': 'NEW'},
+      });
+      expect(repo.detectedBytes.last, same(repo.submittedBytes.single));
+      expect(find.byType(GoodsImportPreviewPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('goods-import-preview-row-4')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('goods-import-preview-row-5')),
+        findsOneWidget,
+      );
+      final failedCell = tester.widget<UtenInput>(
+        find.byKey(const ValueKey('goods-import-code-3')),
+      );
+      expect(failedCell.controller!.text, 'NEW');
+      expect(failedCell.errorMessage, '编号 NEW 已占用，请更换编号');
+      final validCell = tester.widget<UtenInput>(
+        find.byKey(const ValueKey('goods-import-code-2')),
+      );
+      expect(validCell.errorMessage, isNull);
+      expect(find.text('1 处待修正'), findsOneWidget);
+      expect(find.text('可导入 2 条'), findsOneWidget);
+
+      repo.resultFor = null;
+      await _editCode(tester, 'AVAILABLE');
+      expect(repo.commits, 1);
+      await _confirm(tester);
+      expect(repo.commits, 2);
+      expect(repo.submittedPlans, ['plan:first', 'plan:latest']);
+      expect(repo.submittedExclusions.last, {4});
+      expect(repo.submittedCorrections.last, {
+        3: {'code': 'AVAILABLE'},
+      });
+    },
+  );
+
+  testWidgets(
     'a concurrent write requires a fresh detection and another confirmation',
     (tester) async {
-      final repo = _Repository()
-        ..rejection = ApiException('CONFLICT', '资料已变更，请重新检测');
+      final repo = _Repository();
       await _open(tester, repo);
-      await _confirm(tester, replace: true);
-      expect(repo.commits, 1);
       repo
         ..planId = 'plan:latest'
-        ..rejection = null;
-      await tester.tap(find.text('重新检测当前文件'));
-      await tester.pumpAndSettle();
+        ..rejection = ApiException('CONFLICT', '资料已变更，请重新检测');
+      await _confirm(tester, replace: true);
       expect(repo.commits, 1);
+      expect(repo.detections, 2);
+      expect(find.byType(GoodsImportPreviewPage), findsOneWidget);
       expect(repo.detectedBytes.last, same(repo.detectedBytes.first));
+      repo.rejection = null;
       await _confirm(tester, replace: true);
       expect(repo.submittedPlans, ['plan:first', 'plan:latest']);
     },
@@ -886,10 +1143,9 @@ void main() {
       await _confirm(tester);
       await _confirm(tester);
       expect(repo.commits, 2);
-      expect(find.text('已完成 1/3 个文件'), findsOneWidget);
+      expect(find.text('已完成 1/3 个文件', skipOffstage: false), findsOneWidget);
       repo.rejectionsByFile.clear();
-      await tester.tap(find.text('重新检测当前文件'));
-      await tester.pumpAndSettle();
+      expect(find.byType(GoodsImportPreviewPage), findsOneWidget);
       expect(repo.detectedBytes.last, same(repo.detectedBytes[1]));
       await _confirm(tester);
       expect(repo.commits, 3);

@@ -191,37 +191,17 @@ class _DepartmentOrgChartDialogState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 8, 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.account_tree_outlined,
-                      color: theme.colorScheme.primary,
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
-                        '${widget.node.name} · 组织架构图',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: '刷新',
-                      onPressed: _loading || _retired ? null : _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                    ),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+              UtenDialogHeader(
+                icon: Icons.account_tree_outlined,
+                title: Text('${widget.node.name} · 组织架构图'),
+                trailing: IconButton(
+                  tooltip: '刷新',
+                  onPressed: _loading || _retired ? null : _load,
+                  icon: const Icon(Icons.refresh_rounded),
                 ),
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
               ),
-              const Divider(height: 1),
               Flexible(
                 child: _loading
                     ? const Center(
@@ -242,33 +222,31 @@ class _DepartmentOrgChartDialogState
                         children: [_deptTile(context, _root!, 0)],
                       ),
               ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(
+              if (!canExport) ...[
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                  child: Text(
+                    '如需打印件请联系有导出权限的同事',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+              if (canExport)
+                UtenDialogActions(
                   children: [
-                    if (!canExport)
-                      Expanded(
-                        child: Text(
-                          '如需打印件请联系有导出权限的同事',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    const Spacer(),
-                    if (canExport)
-                      UtenButton(
-                        icon: Icons.print_outlined,
-                        isLoading: _printing,
-                        onPressed: (_loading || _error != null)
-                            ? null
-                            : _printPdf,
-                        child: const Text('打印架构图'),
-                      ),
+                    UtenButton(
+                      icon: Icons.print_outlined,
+                      isLoading: _printing,
+                      onPressed: (_loading || _error != null)
+                          ? null
+                          : _printPdf,
+                      child: const Text('打印架构图'),
+                    ),
                   ],
                 ),
-              ),
             ],
           ),
         ),

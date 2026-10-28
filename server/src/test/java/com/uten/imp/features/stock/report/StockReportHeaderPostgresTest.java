@@ -146,7 +146,7 @@ class StockReportHeaderPostgresTest {
             String method=call.getMethod().getName();
             if(method.equals("setParameter")){parameters.put(call.getArgument(0),call.getArgument(1));return call.getMock();}
             if(method.equals("getResultList")) return named.query(sql,parameters,(rs,row)->{
-                Object[] values=new Object[rs.getMetaData().getColumnCount()];for(int column=0;column<values.length;column++)values[column]=rs.getObject(column+1);return values;
+                Object[] values=new Object[rs.getMetaData().getColumnCount()];for(int column=0;column<values.length;column++) { values[column]=rs.getObject(column+1); } return values;
             });
             if(method.equals("getSingleResult")) return named.queryForObject(sql,parameters,Object.class);
             if(call.getMethod().getReturnType().isAssignableFrom(Query.class)) return call.getMock();

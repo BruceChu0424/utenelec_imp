@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ClipboardList, Layers3, Plus, Trash2 } from 'lucide-react';
 import { saveProduct } from '@/app/admin/actions';
 import { ImageUpload } from './ImageUpload';
+import { ClientForm } from '@/components/forms/ClientForm';
 import { pickLocale } from '@/lib/content';
 import {
   readAdminProductSpecs,
@@ -311,8 +312,10 @@ export function ProductForm({ product, series, baseHash }: { product: Product; s
   };
 
   return (
-    <form onSubmit={onSubmit} className="max-w-5xl pb-10">
+    <ClientForm onSubmit={onSubmit} className="max-w-5xl pb-10">
       <input type="hidden" name="expectedHash" value={baseHash} />
+      {/* Preserve historical metadata; the corporate showcase has no ordering controls. */}
+      <input type="hidden" name="minOrderQty" value={product?.minOrderQty ?? ''} />
       <p className="mb-4 text-sm text-muted-foreground">保存草稿后进入版本预览；审核发布才会更新官网。</p>
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Product CMS</p>
@@ -379,10 +382,6 @@ export function ProductForm({ product, series, baseHash }: { product: Product; s
                 <option key={value} value={value}>{STATUS_LABELS[value] || value}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label htmlFor="minOrderQty" className="label-uten">最小起订量</label>
-            <input id="minOrderQty" name="minOrderQty" type="number" min="1" step="1" defaultValue={product?.minOrderQty ?? ''} className="input-uten tabular-nums" placeholder="未知可留空" />
           </div>
           <div>
             <label htmlFor="sortOrder" className="label-uten">排序</label>
@@ -617,6 +616,6 @@ export function ProductForm({ product, series, baseHash }: { product: Product; s
         </button>
         <Link href="/admin/products" className="btn-outline min-h-11">取消</Link>
       </div>
-    </form>
+    </ClientForm>
   );
 }

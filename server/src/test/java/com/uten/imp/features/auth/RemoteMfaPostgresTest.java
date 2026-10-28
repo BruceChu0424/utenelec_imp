@@ -310,8 +310,8 @@ class RemoteMfaPostgresTest {
         UUID employee=UUID.randomUUID(),id=UUID.randomUUID();String label=UUID.randomUUID().toString();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'MFA测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
-                """,employee,"MFA-"+label);
+                SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """,employee,"MFA-"+label,com.uten.imp.support.SyntheticEmployeeIdentity.name("MFA测试",employee));
         jdbc.update("""
                 INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin,remote_access)
                 VALUES(?,?,?,'test-only',false,'active',?,true)

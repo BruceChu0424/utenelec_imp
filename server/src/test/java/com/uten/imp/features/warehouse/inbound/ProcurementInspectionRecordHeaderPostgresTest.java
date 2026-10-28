@@ -32,7 +32,14 @@ class ProcurementInspectionRecordHeaderPostgresTest {
         var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(source);factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setManagedTypes(PersistenceManagedTypes.of());factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void close() throws Exception { if(emf!=null)emf.close();if(database!=null)database.close(); }
+    @AfterAll static void close() throws Exception {
+        if (emf != null) {
+            emf.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @Test void ordinaryHeadersKeepEventEffectChineseDayAndExactNumbersBeforeCountMetricsAndPages() {
         UUID receipt=UUID.randomUUID(),supplier=UUID.randomUUID(),goods=UUID.randomUUID(),color=UUID.randomUUID(),employee=UUID.randomUUID();
         db.update("INSERT INTO suppliers(id,name) VALUES(?,'供应%_商')",supplier);

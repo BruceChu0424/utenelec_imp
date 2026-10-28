@@ -117,8 +117,8 @@ class ClientReleasePermissionMigrationPostgresTest {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                VALUES(?,?,'Client release fixture','其他',?,CURRENT_DATE,'active','regular')
-                """, id, "RELEASE-" + id, department);
+                VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')
+                """, id, "RELEASE-" + id,com.uten.imp.support.SyntheticEmployeeIdentity.name("Client release fixture",id), department);
         jdbc.update("""
                 INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)
                 VALUES(?,?,?,'fixture-only',false,'active',?)

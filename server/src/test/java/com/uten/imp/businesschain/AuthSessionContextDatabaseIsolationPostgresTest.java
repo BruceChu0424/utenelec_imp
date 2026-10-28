@@ -36,8 +36,16 @@ class AuthSessionContextDatabaseIsolationPostgresTest {
                     FROM departments WHERE code='DEPT_ENG' AND NOT is_deleted
                     """, employee, "SYN-AUTH-" + employee.toString().substring(0, 8));
             String corrupt = "v1:bm90IGEgcGdwIG1lc3NhZ2U=";
-            firstDb.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,id_card_check) VALUES(?,?,'unchecked')",
-                    employee, corrupt);
+            String originalDocument=com.uten.imp.support.SyntheticEmployeeIdentity.document();
+            var crypto=new com.uten.imp.config.props.CryptoProperties();
+            crypto.setHmacKey("identity-isolation-hmac-test-only-key");
+            String fingerprint=new com.uten.imp.security.TxSessionVars(crypto,null,null)
+                    .hmac(com.uten.imp.common.util.IdCardUtil.normalize(originalDocument));
+            firstDb.update("""
+                    INSERT INTO employee_sensitive(employee_id,id_card_enc,id_card_hash,id_card_check)
+                    VALUES(?,'v1:'||encode(pgp_sym_encrypt(?,?),'base64'),?,'unchecked')
+                    """,employee,originalDocument,"identity-isolation-pgp-test-only-key",fingerprint);
+            firstDb.update("UPDATE employee_sensitive SET id_card_enc=? WHERE employee_id=?",corrupt,employee);
             try (var second = context(secondCloses)) {
                 secondLease = second.getBean(AuthSessionPostgresTestSupport.DATABASE_LEASE_BEAN,
                         MigratedSchemaBaseline.ScopedDatabase.class);
@@ -47,6 +55,7 @@ class AuthSessionContextDatabaseIsolationPostgresTest {
                 assertEquals(0, secondDb.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id=?", Integer.class, employee));
                 assertEquals(0, secondDb.queryForObject("SELECT count(*) FROM employee_sensitive WHERE id_card_check='unchecked'", Integer.class));
                 assertEquals(corrupt, firstDb.queryForObject("SELECT id_card_enc FROM employee_sensitive WHERE employee_id=?", String.class, employee));
+                assertEquals(fingerprint,firstDb.queryForObject("SELECT id_card_hash FROM employee_sensitive WHERE employee_id=?",String.class,employee));
                 assertEquals("unchecked", firstDb.queryForObject("SELECT id_card_check FROM employee_sensitive WHERE employee_id=?", String.class, employee));
                 // Open the secondary pool too: cleanup must close real holders,
                 // rather than make dropdb --force kill an otherwise live pool.

@@ -1,10 +1,20 @@
 package com.uten.imp.security;
 
 import java.util.List;
+import java.util.Map;
 
 /** Explicit pgcrypto fields; SQL identifiers never come from a maintenance request. */
 final class PiiRotationCatalog {
     static final String VERSION = "pii-pgp-v1";
+    enum PreservationPolicy { IMMUTABLE_EMPLOYEE_MERGE_ENVELOPE }
+    /**
+     * The reviewed external merge protocol uses a versioned application PGP key,
+     * but permanently binds these ciphertext bytes to its merge certificate.
+     * Retain its historical keys; ordinary app PII rotation must never rewrap it
+     * or acquire access to this private, append-only preservation relation.
+     */
+    static final Map<String,PreservationPolicy> PRESERVED_CIPHERS=Map.of(
+            "employee_identity_merge_payloads.snapshot_enc",PreservationPolicy.IMMUTABLE_EMPLOYEE_MERGE_ENVELOPE);
     record Target(String table, String keySql, String predicate, String payloadPrefix, List<String> columns) { }
     static final List<Target> TARGETS = List.of(
             new Target("employee_sensitive", "employee_id::text", "TRUE", "", List.of(

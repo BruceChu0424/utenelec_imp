@@ -75,38 +75,13 @@ class _ApplicationDetailBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.assignment_outlined, color: theme.colorScheme.primary),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '委外申请 · $title',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (identity.isNotEmpty)
-                      Text(
-                        identity,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: '关闭',
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
+          UtenDialogHeader(
+            padding: EdgeInsets.zero,
+            icon: Icons.assignment_outlined,
+            title: Text('委外申请 · $title'),
+            subtitle: identity.isNotEmpty ? Text(identity) : null,
+            showCloseButton: true,
+            onClose: () => Navigator.of(context).pop(),
           ),
           if (locked) ...[
             const SizedBox(height: UtenSpacing.s12),
@@ -144,8 +119,8 @@ class _ApplicationDetailBody extends StatelessWidget {
             _SourceOwnership(sources: task.sources),
           ],
           const SizedBox(height: UtenSpacing.s12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          UtenDialogActions(
+            padding: const EdgeInsets.only(top: UtenSpacing.s16),
             children: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -153,7 +128,6 @@ class _ApplicationDetailBody extends StatelessWidget {
               ),
               if ((document?.canView ?? false) &&
                   (document?.number ?? '').isNotEmpty) ...[
-                const SizedBox(width: UtenSpacing.s8),
                 FilledButton.tonalIcon(
                   onPressed: () {
                     final path = document!.path;

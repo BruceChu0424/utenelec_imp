@@ -87,10 +87,15 @@ class _CelebrationLoginDialog extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: UtenSpacing.s20),
-            UtenButton(
-              isExpanded: true,
-              onPressed: () => Navigator.of(context, rootNavigator: true).pop(),
-              child: Text(l10n.celebrationDismiss),
+            UtenDialogActions(
+              padding: const EdgeInsets.only(top: UtenSpacing.s16),
+              children: [
+                UtenButton(
+                  onPressed: () =>
+                      Navigator.of(context, rootNavigator: true).pop(),
+                  child: Text(l10n.celebrationDismiss),
+                ),
+              ],
             ),
           ],
         ),

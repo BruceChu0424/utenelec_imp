@@ -138,7 +138,7 @@ class ReportKeywordSearchPostgresTest {
             case "sales" -> ReflectionTestUtils.invokeMethod(SalesReportService.class, "addCommonDocFilters",
                     where, null, null, null, null, null, null, keyword, "o.bill_no", "o.bill_date");
             case "stock" -> ReflectionTestUtils.invokeMethod(StockReportService.class, "addCommonFilters",
-                    where, null, null, null, null, null, null, null, keyword, true);
+                    where, null, null, null, null, null, null, null, keyword, true, false);
             default -> throw new IllegalArgumentException(report);
         }
         return where;

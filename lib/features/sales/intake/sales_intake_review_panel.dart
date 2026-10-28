@@ -180,7 +180,7 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
         );
       }
       if (size.width < 700) return Dialog.fullscreen(child: panel);
-      // 圆角沿用主题 dialogTheme(全站弹窗 18)。
+      // 居中窗口共用弹窗外壳；小屏仍保留完整核对工作区。
       return UtenDialogFrame(
         insetPadding: const EdgeInsets.all(UtenSpacing.s24),
         clipBehavior: Clip.antiAlias,
@@ -470,143 +470,148 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
         : _result.lines;
     return Material(
       color: theme.colorScheme.surface,
-      child: Column(
-        children: [
-          _PanelHeader(
-            title: l10n.salesIntakeReviewTitle,
-            subtitle: l10n.salesIntakeReviewSubtitle(
-              _result.file.name ?? '',
-              _result.lines.length,
+      child: UtenDialogSurface(
+        child: Column(
+          children: [
+            _PanelHeader(
+              title: l10n.salesIntakeReviewTitle,
+              subtitle: l10n.salesIntakeReviewSubtitle(
+                _result.file.name ?? '',
+                _result.lines.length,
+              ),
+              onClose: _busy ? null : () => Navigator.of(context).pop(),
+              closeTooltip: l10n.salesIntakeClose,
             ),
-            onClose: _busy ? null : () => Navigator.of(context).pop(),
-            closeTooltip: l10n.salesIntakeClose,
-          ),
-          Expanded(
-            child: CustomScrollView(
-              key: const ValueKey('sales-intake-review-scroll'),
-              controller: _scroll,
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s20,
-                    UtenSpacing.s16,
-                    UtenSpacing.s20,
-                    0,
-                  ),
-                  sliver: SliverList.list(
-                    children: [
-                      ..._buildNotices(context, l10n),
-                      _StepCard(
-                        step: 1,
-                        title: l10n.salesIntakeStepClient,
-                        child: _buildClientStep(context, l10n),
-                      ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      if (_result.extraColumns.isNotEmpty &&
-                          (widget.docType == SalesDocType.quote ||
-                              widget.docType == SalesDocType.order))
-                        _buildExtraColumns(context),
-                      _buildGoodsHeader(context, l10n),
-                      const SizedBox(height: UtenSpacing.s8),
-                      if (_filter == _LineFilter.review && _reviewLines.isEmpty)
-                        UtenInlineNotice(
-                          message: l10n.salesIntakeNoReviewLines,
-                        ),
-                    ],
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s20,
-                  ),
-                  sliver: SliverList.builder(
-                    itemCount: visibleLines.length,
-                    itemBuilder: (context, index) {
-                      final line = visibleLines[index];
-                      final compact =
-                          _filter == _LineFilter.all &&
-                          !_reviewLines.contains(line) &&
-                          !_expandedMatched.contains(line.key);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                        child: compact
-                            ? _matchedTile(context, l10n, line)
-                            : _lineCard(context, l10n, line),
-                      );
-                    },
-                  ),
-                ),
-                if (_filter == _LineFilter.review && _matchedLines.isNotEmpty)
+            Expanded(
+              child: CustomScrollView(
+                key: const ValueKey('sales-intake-review-scroll'),
+                controller: _scroll,
+                slivers: [
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s20,
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s20,
+                      UtenSpacing.s16,
+                      UtenSpacing.s20,
+                      0,
                     ),
                     sliver: SliverList.list(
                       children: [
-                        _MatchedToggle(
-                          label: l10n.salesIntakeMatchedCollapsed(
-                            _matchedLines.length,
-                          ),
-                          actionLabel: _matchedExpanded
-                              ? l10n.salesIntakeCollapse
-                              : l10n.salesIntakeExpand,
-                          expanded: _matchedExpanded,
-                          onTap: () => setState(
-                            () => _matchedExpanded = !_matchedExpanded,
-                          ),
+                        ..._buildNotices(context, l10n),
+                        _StepCard(
+                          step: 1,
+                          title: l10n.salesIntakeStepClient,
+                          child: _buildClientStep(context, l10n),
                         ),
+                        const SizedBox(height: UtenSpacing.s16),
+                        if (_result.extraColumns.isNotEmpty &&
+                            (widget.docType == SalesDocType.quote ||
+                                widget.docType == SalesDocType.order))
+                          _buildExtraColumns(context),
+                        _buildGoodsHeader(context, l10n),
                         const SizedBox(height: UtenSpacing.s8),
+                        if (_filter == _LineFilter.review &&
+                            _reviewLines.isEmpty)
+                          UtenInlineNotice(
+                            message: l10n.salesIntakeNoReviewLines,
+                          ),
                       ],
                     ),
                   ),
-                if (_filter == _LineFilter.review && _matchedExpanded)
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: UtenSpacing.s20,
                     ),
                     sliver: SliverList.builder(
-                      itemCount: _matchedLines.length,
+                      itemCount: visibleLines.length,
                       itemBuilder: (context, index) {
-                        final line = _matchedLines[index];
+                        final line = visibleLines[index];
+                        final compact =
+                            _filter == _LineFilter.all &&
+                            !_reviewLines.contains(line) &&
+                            !_expandedMatched.contains(line.key);
                         return Padding(
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s8,
                           ),
-                          child: _expandedMatched.contains(line.key)
-                              ? _lineCard(context, l10n, line)
-                              : _matchedTile(context, l10n, line),
+                          child: compact
+                              ? _matchedTile(context, l10n, line)
+                              : _lineCard(context, l10n, line),
                         );
                       },
                     ),
                   ),
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: UtenSpacing.s24),
-                ),
-              ],
-            ),
-          ),
-          _Footer(
-            summary: importCount == 0
-                ? l10n.salesIntakeNothingToImport
-                : l10n.salesIntakeSummary(
-                    importCount,
-                    _yellowRowCount,
-                    _skippedLineCount,
-                  ),
-            importLabel: l10n.salesIntakeImportAll(importCount),
-            cancelLabel: l10n.salesIntakeCancel,
-            onImport: importCount == 0 || _busy
-                ? null
-                : () => Navigator.of(context).pop(
-                    SalesIntakeReviewApply(
-                      _decisions,
-                      result: _result,
-                      jobId: _jobId,
+                  if (_filter == _LineFilter.review && _matchedLines.isNotEmpty)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s20,
+                      ),
+                      sliver: SliverList.list(
+                        children: [
+                          _MatchedToggle(
+                            label: l10n.salesIntakeMatchedCollapsed(
+                              _matchedLines.length,
+                            ),
+                            actionLabel: _matchedExpanded
+                                ? l10n.salesIntakeCollapse
+                                : l10n.salesIntakeExpand,
+                            expanded: _matchedExpanded,
+                            onTap: () => setState(
+                              () => _matchedExpanded = !_matchedExpanded,
+                            ),
+                          ),
+                          const SizedBox(height: UtenSpacing.s8),
+                        ],
+                      ),
                     ),
+                  if (_filter == _LineFilter.review && _matchedExpanded)
+                    SliverPadding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s20,
+                      ),
+                      sliver: SliverList.builder(
+                        itemCount: _matchedLines.length,
+                        itemBuilder: (context, index) {
+                          final line = _matchedLines[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                            ),
+                            child: _expandedMatched.contains(line.key)
+                                ? _lineCard(context, l10n, line)
+                                : _matchedTile(context, l10n, line),
+                          );
+                        },
+                      ),
+                    ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: UtenSpacing.s24),
                   ),
-            onCancel: _busy ? null : () => Navigator.of(context).pop(),
-          ),
-        ],
+                ],
+              ),
+            ),
+            _Footer(
+              summary: importCount == 0
+                  ? l10n.salesIntakeNothingToImport
+                  : l10n.salesIntakeSummary(
+                      importCount,
+                      _yellowRowCount,
+                      _skippedLineCount,
+                    ),
+              importLabel: l10n.salesIntakeImportAll(importCount),
+              cancelLabel: l10n.salesIntakeCancel,
+              onImport: importCount == 0 || _busy
+                  ? null
+                  : () => Navigator.of(context).pop(
+                      SalesIntakeReviewApply(
+                        _decisions,
+                        result: _result,
+                        jobId: _jobId,
+                      ),
+                    ),
+              onCancel: _busy ? null : () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1715,77 +1720,20 @@ class _PanelHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final dark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s16,
+    return UtenDialogHeader(
+      title: Text(title),
+      subtitle: Text(
+        subtitle,
+        // 手机上文件名常常很长: 给两行, 「共 N 行明细」不被省略号吃掉。
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
       ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: AlignmentDirectional.centerStart,
-          end: AlignmentDirectional.centerEnd,
-          colors: dark
-              ? [UtenColors.teal950, theme.colorScheme.surface]
-              : [UtenColors.teal50, theme.colorScheme.surface],
-        ),
-        border: Border(
-          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [UtenColors.teal400, UtenColors.teal700],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s2),
-                Text(
-                  subtitle,
-                  // 手机上文件名常常很长: 给两行, 「共 N 行明细」不被省略号吃掉。
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: closeTooltip,
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
+      icon: Icons.auto_awesome_rounded,
+      trailing: IconButton(
+        tooltip: closeTooltip,
+        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+        onPressed: onClose,
+        icon: const Icon(Icons.close_rounded),
       ),
     );
   }
@@ -2377,68 +2325,46 @@ class _Footer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final compact = MediaQuery.sizeOf(context).width < 700;
     final buttons = [
       UtenButton(
-        type: UtenButtonType.ghost,
+        type: UtenButtonType.secondary,
         size: UtenButtonSize.large,
-        height: 56,
         onPressed: onCancel,
         child: Text(cancelLabel),
       ),
-      const SizedBox(width: UtenSpacing.s12),
       UtenButton(
         key: const ValueKey('sales-intake-import-all'),
         size: UtenButtonSize.large,
-        height: 56,
         icon: Icons.playlist_add_check_rounded,
         onPressed: onImport,
         child: Text(importLabel),
       ),
     ];
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s12,
-        UtenSpacing.s20,
-        UtenSpacing.s12,
-      ),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(
-          top: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-        boxShadow: UtenElevation.mid(
-          isDark: theme.brightness == Brightness.dark,
-        ),
-      ),
+    return ColoredBox(
+      color: theme.colorScheme.surface,
       child: SafeArea(
         top: false,
-        child: compact
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(summary, style: theme.textTheme.bodyMedium),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: buttons,
-                  ),
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      summary,
-                      key: const ValueKey('sales-intake-summary'),
-                      style: theme.textTheme.bodyLarge,
-                    ),
-                  ),
-                  ...buttons,
-                ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s20,
+                UtenSpacing.s12,
+                UtenSpacing.s20,
+                0,
               ),
+              child: Text(
+                summary,
+                key: const ValueKey('sales-intake-summary'),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            UtenDialogActions(showDivider: false, children: buttons),
+          ],
+        ),
       ),
     );
   }

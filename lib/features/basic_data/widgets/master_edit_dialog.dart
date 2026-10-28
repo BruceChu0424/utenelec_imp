@@ -1055,84 +1055,61 @@ class _MasterEditDialogState extends ConsumerState<_MasterEditDialog>
   Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
 
   Widget _buildDialog(BuildContext context) {
-    final theme = Theme.of(context);
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s8,
-              UtenSpacing.s12,
+    return UtenDialogSurface(
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UtenDialogHeader(
+              title: Text(widget.title),
+              icon: Icons.edit_note_rounded,
+              showCloseButton: true,
+              onClose: _saving ? null : _close,
+              trailing:
+                  widget.historyEntityType != null &&
+                      widget.historyRecordId != null
+                  ? MasterRecordHistoryAction(
+                      entityType: widget.historyEntityType!,
+                      recordId: widget.historyRecordId,
+                      enabled: !_saving,
+                      onChanged: () {
+                        if (!_submissionCurrent) return;
+                        // A restored server version invalidates this editor's
+                        // opening snapshot. Keep the history panel above it open.
+                        final route = ModalRoute.of(context);
+                        if (route != null && route.isActive) {
+                          route.navigator?.removeRoute(route);
+                        }
+                        widget.onHistoryChanged?.call();
+                      },
+                    )
+                  : null,
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (widget.historyEntityType != null &&
-                    widget.historyRecordId != null)
-                  MasterRecordHistoryAction(
-                    entityType: widget.historyEntityType!,
-                    recordId: widget.historyRecordId,
-                    enabled: !_saving,
-                    onChanged: () {
-                      if (!_submissionCurrent) return;
-                      // A restored server version invalidates this editor's
-                      // opening snapshot. Keep the history panel above it open.
-                      final route = ModalRoute.of(context);
-                      if (route != null && route.isActive) {
-                        route.navigator?.removeRoute(route);
-                      }
-                      widget.onHistoryChanged?.call();
-                    },
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: _saving ? null : _close,
-                ),
-              ],
+            Flexible(
+              child: MasterEditForm(
+                key: widget.formKey,
+                controller: _controller,
+                fields: widget.fields,
+                initialValues: widget.initialValues,
+                fixedValues: widget.fixedValues,
+                readOnlyKeys: widget.readOnlyKeys,
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Flexible(
-            child: MasterEditForm(
-              key: widget.formKey,
-              controller: _controller,
-              fields: widget.fields,
-              initialValues: widget.initialValues,
-              fixedValues: widget.fixedValues,
-              readOnlyKeys: widget.readOnlyKeys,
-            ),
-          ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
+            UtenDialogActions(
               children: [
                 UtenButton(
                   type: UtenButtonType.secondary,
                   onPressed: _saving ? null : _close,
                   child: const Text('取消'), // TODO(l10n): 补 arb
                 ),
-                const SizedBox(width: UtenSpacing.s12),
                 UtenActionButton(
                   label: const Text('保存'), // TODO(l10n): 补 arb
                   onAction: _save,
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

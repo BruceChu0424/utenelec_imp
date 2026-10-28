@@ -5,7 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -70,33 +70,41 @@ class _PurchaseOrderPrintDialogState extends State<_PurchaseOrderPrintDialog> {
 
   @override
   Widget build(BuildContext context) => Dialog.fullscreen(
-    child: Scaffold(
-      appBar: UtenAppBar(
-        title: '预览采购单 ${_document.billNo}',
-        showPagePermissionAction: false,
-        leading: IconButton(
-          tooltip: '关闭',
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          UtenButton(
-            key: const Key('purchase-print-preview-print'),
-            icon: Icons.print_outlined,
-            isLoading: _printing,
-            onPressed: _printing ? null : _print,
-            child: const Text('打印'),
-          ),
-        ],
-      ),
-      body: ColoredBox(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: PurchaseOrderPrintPaper(document: _document),
-          ),
+    child: UtenDialogSurface(
+      child: SafeArea(
+        child: Column(
+          children: [
+            UtenDialogHeader(
+              title: Text(
+                '预览采购单 ${_document.billNo}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              icon: Icons.print_outlined,
+              showCloseButton: true,
+              closeTooltip: '关闭',
+              onClose: () => Navigator.of(context).pop(),
+              trailing: UtenButton(
+                key: const Key('purchase-print-preview-print'),
+                icon: Icons.print_outlined,
+                isLoading: _printing,
+                onPressed: _printing ? null : _print,
+                child: const Text('打印'),
+              ),
+            ),
+            Expanded(
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: PurchaseOrderPrintPaper(document: _document),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     ),

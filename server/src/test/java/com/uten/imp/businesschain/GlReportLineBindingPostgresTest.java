@@ -161,8 +161,14 @@ class GlReportLineBindingPostgresTest {
         fixture.loginAs(w.superAdminUserId());
         String token = UUID.randomUUID().toString().substring(0, 8).toUpperCase(java.util.Locale.ROOT);
         String name = "同名销售费用" + token;
-        UUID first = style("GL-SF-A-" + token, name, "EXPENSE");
-        UUID second = style("GL-SF-B-" + token, name, "EXPENSE");
+        // Same labels remain a real UUID-grouping regression, under distinct
+        // lawful parents rather than an ambiguous sibling path rejected by V959.
+        UUID firstParent=style("GL-SF-PA-"+token,"销售费用目录A"+token,"EXPENSE");
+        UUID secondParent=style("GL-SF-PB-"+token,"销售费用目录B"+token,"EXPENSE");
+        UUID first = style("GL-SF-A-" + token, name, "EXPENSE",firstParent);
+        UUID second = style("GL-SF-B-" + token, name, "EXPENSE",secondParent);
+        assertThat(jdbc.queryForObject("SELECT a.name=b.name AND a.parent_id<>b.parent_id FROM payment_styles a,payment_styles b WHERE a.id=? AND b.id=?",
+                Boolean.class,first,second)).isTrue();
         bindings.replace("SALES_FEE", List.of(first, second));
         post(first, "10.0000", java.time.LocalDate.of(YEAR, MONTH, 1));
         post(first, "5.0000", java.time.LocalDate.of(YEAR, MONTH, 15));
@@ -280,9 +286,13 @@ class GlReportLineBindingPostgresTest {
     }
 
     private UUID style(String code, String name, String category) {
+        return style(code,name,category,null);
+    }
+
+    private UUID style(String code,String name,String category,UUID parent) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,?,?,?,0,'使用')",
-                id, code, name, category);
+        jdbc.update("INSERT INTO payment_styles(id,code,name,category,parent_id,level,status) VALUES(?,?,?,?,?,?,'使用')",
+                id, code, name, category,parent,parent==null?0:1);
         return id;
     }
 

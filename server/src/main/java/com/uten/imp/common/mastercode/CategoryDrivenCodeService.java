@@ -204,6 +204,31 @@ public class CategoryDrivenCodeService {
         }
 
         lockSequence(type);
+        return resolveUpdateAllocation(type, entityId, newCategoryId, requestedCode, current, true);
+    }
+
+    /** Read-only save preview; category moves use the writer's exact label and identity rules. */
+    @Transactional(readOnly = true)
+    public CategoryCodeAllocation previewForUpdate(
+            MasterType type, UUID entityId, UUID newCategoryId, String requestedCode) {
+        requireType(type);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("SELECT code,code_sequence,code_prefix_category_id,code_managed FROM "
+                + type.table + " WHERE id=:id AND is_deleted=false")
+                .setParameter("id", entityId).getResultList();
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "资料不存在，请刷新后重试");
+        Object[] row = rows.getFirst();
+        CategoryCodeAllocation current = new CategoryCodeAllocation((String) row[0], number(row[1]),
+                (UUID) row[2], Boolean.TRUE.equals(row[3]));
+        if (current.sequence() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "更新编号缺少当前记录元数据");
+        }
+        return resolveUpdateAllocation(type, entityId, newCategoryId, requestedCode, current, false);
+    }
+
+    private CategoryCodeAllocation resolveUpdateAllocation(
+            MasterType type, UUID entityId, UUID newCategoryId, String requestedCode,
+            CategoryCodeAllocation current, boolean reserveSequence) {
         EffectivePrefix effective = effectivePrefixOrFallback(type, newCategoryId);
 
         boolean explicitlyBlank = requestedCode != null && requestedCode.isBlank();
@@ -233,7 +258,7 @@ public class CategoryDrivenCodeService {
             if (managed.width() >= LONG_SUFFIX_MIN_WIDTH) {
                 requireSequenceAvailable(type, managed.value(), entityId);
                 requireCodeAvailable(type, requested, entityId);
-                reserveSequenceLocked(type, managed.value());
+                if (reserveSequence) reserveSequenceLocked(type, managed.value());
                 return new CategoryCodeAllocation(
                         requested, managed.value(), effective.ownerCategoryId(), true);
             }
@@ -257,6 +282,12 @@ public class CategoryDrivenCodeService {
 
     /** Read-only counterpart of the long-managed suffix guard used on save. */
     String requestedSequenceProblem(MasterType type, String requestedCode, UUID entityId, UUID categoryId) {
+        // An unchanged label retains its persisted identity counter on update
+        // and restore. A reused label can legitimately have another counter.
+        if (entityId != null && Boolean.TRUE.equals(em.createNativeQuery(
+                "SELECT EXISTS (SELECT 1 FROM " + type.table
+                        + " WHERE id=:id AND upper(btrim(code))=upper(btrim(:code)))")
+                .setParameter("id", entityId).setParameter("code", requestedCode).getSingleResult())) return null;
         if (type == MasterType.GOODS && entityId == null && em.createNativeQuery(
                 "SELECT fn_goods_code_reusable_owner(:code)").setParameter("code", requestedCode)
                 .getSingleResult() instanceof UUID) return null;

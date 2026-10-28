@@ -511,9 +511,9 @@ public final class ProcurementReceiptFixtureSupport {
         UUID employee = UUID.randomUUID(), actor = UUID.randomUUID();
         execute(connection, """
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                VALUES(?,?,'Receipt fixture actor',(SELECT id_type FROM employees ORDER BY id LIMIT 1),
+                VALUES(?,?,?,(SELECT id_type FROM employees ORDER BY id LIMIT 1),
                     ?,DATE '2026-01-01','active','regular')
-                """, employee, "RF-E-" + employee, department);
+                """, employee, "RF-E-" + employee, SyntheticEmployeeIdentity.name("Receipt fixture actor",employee), department);
         execute(connection, "INSERT INTO users(id,employee_id,login_account,password_hash,status) VALUES(?,?,?,'test-only-hash','active')",
                 actor, employee, "receipt-fixture-" + actor);
         return actor;

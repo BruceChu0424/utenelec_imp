@@ -46,12 +46,9 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
     return UtenAlertDialog(
       scrollable: false,
       key: const Key('set-temporary-password-dialog'),
-      title: const Row(
-        children: [
-          Icon(Icons.key_rounded),
-          SizedBox(width: UtenSpacing.s8),
-          Text('设置临时密码'),
-        ],
+      title: const UtenDialogHeading(
+        title: Text('设置临时密码'),
+        icon: Icons.key_rounded,
       ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),

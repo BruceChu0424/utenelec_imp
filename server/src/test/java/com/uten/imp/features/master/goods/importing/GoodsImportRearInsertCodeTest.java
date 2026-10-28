@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryRepository;
@@ -105,9 +107,9 @@ class GoodsImportRearInsertCodeTest {
         when(units.findAll()).thenReturn(List.of());
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(java.util.UUID.randomUUID());
-        return new GoodsImportService(
+        return GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 null, goods, null, categories,
-                null, colors, null, units, null, currentUser, null);
+                null, colors, null, units, null, currentUser, null));
     }
 
     private static byte[] workbook(String rearInsertCode) throws Exception {

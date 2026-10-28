@@ -4,8 +4,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.support.MigratedSchemaBaseline;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -44,24 +43,16 @@ class HrTaskServicePostgresTest {
     private SecurityContextCurrentUser currentUser;
     private HrTaskService service;
 
-    @BeforeAll
-    static void open() throws Exception {
-        database = MigratedSchemaBaseline.openDatabase("hr_task_birthday");
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                database.getJdbcUrl(), database.getUsername(), database.getPassword()));
-    }
-
-    @AfterAll
-    static void close() throws Exception {
+    @AfterEach
+    void close() throws Exception {
         if (database != null) database.close();
     }
 
     @BeforeEach
-    void setUp() {
-        jdbc.update("DELETE FROM notice_celebration_subjects WHERE notice_id IN "
-                + "(SELECT id FROM notices WHERE title LIKE 'HRTASK-TEST-%')");
-        jdbc.update("DELETE FROM notices WHERE title LIKE 'HRTASK-TEST-%'");
-        jdbc.update("DELETE FROM employees WHERE code LIKE 'HRTASK-TEST-%'");
+    void setUp() throws Exception {
+        database = MigratedSchemaBaseline.openDatabase("hr_task_birthday");
+        jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                database.getJdbcUrl(), database.getUsername(), database.getPassword()));
         // Neutralize seed rows (e.g. ADMIN) so only this test's fixtures feed birthdays or the badge.
         jdbc.update("UPDATE employees SET birth_month_day = NULL WHERE birth_month_day IS NOT NULL");
         jdbc.update("UPDATE employees SET hire_date = ? WHERE code NOT LIKE 'HRTASK-TEST-%'",

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_dialog_modules.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -408,14 +409,10 @@ void main() {
       await _open(tester, api);
       expect(find.textContaining('本单旧库计量未核验'), findsOneWidget);
       expect(find.text('旧库计量未核验，不能重建'), findsOneWidget);
-      final reorder = tester.widget<RadioListTile<String>>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is RadioListTile<String> &&
-              widget.value == 'CLOSE_AND_REORDER',
-        ),
+      final reorder = tester.widget<UtenDialogSettingTile>(
+        find.byKey(const Key('procurement-order-closure-mode-reorder')),
       );
-      expect(reorder.enabled, isFalse);
+      expect(reorder.onTap, isNull);
       expect(find.textContaining('剩余订货量: —'), findsOneWidget);
       await tester.ensureVisible(find.text('结束并重新生成剩余订单'));
       await tester.tap(find.text('结束并重新生成剩余订单'));

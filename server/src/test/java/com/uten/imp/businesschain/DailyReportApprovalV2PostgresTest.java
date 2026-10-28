@@ -304,7 +304,7 @@ class DailyReportApprovalV2PostgresTest {
     private UUID user(String... permissions) {
         UUID department=UUID.randomUUID(),employee=UUID.randomUUID(),user=UUID.randomUUID();String tag=user.toString().substring(0,10);
         db.update("INSERT INTO departments(id,code,name,level) VALUES(?,?,?,'一级部门')",department,"RV2-D-"+tag,"V2独立部门");
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",employee,"RV2-E-"+tag,"V2审核员",department);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",employee,"RV2-E-"+tag,com.uten.imp.support.SyntheticEmployeeIdentity.name("V2审核员",employee),department);
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) VALUES(?,?,?,'test-only','active',FALSE)",user,employee,"rv2-"+tag);
         for(String permission:permissions) assertEquals(1,db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code=?",user,permission));
         return user;

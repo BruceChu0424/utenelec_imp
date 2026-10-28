@@ -760,8 +760,8 @@ class SubcontractStepDrawMigrationPostgresTest {
                 ORDER BY department.code,permission.code,identity.source_id
                 """);
         writeDepartmentIdentityEvidence(identities);
-        assertEquals(1,count("SELECT count(*) FROM permissions WHERE code='company_file:view' AND NOT baseline"),
-                "V931 makes only the former company-library baseline independently revocable");
+        assertEquals(1,count("SELECT count(*) FROM permissions WHERE code='company_file:view' AND baseline"),
+                "V958 restores the company-library entry baseline while retaining V931's exact department-grant identities");
         int liveDepartments=count("SELECT count(*) FROM departments WHERE NOT is_deleted");
         assertEquals(liveDepartments,count("""
                 SELECT count(*) FROM business_record_identities identity
@@ -770,7 +770,7 @@ class SubcontractStepDrawMigrationPostgresTest {
                 JOIN departments department ON department.id=grant_row.department_id
                 JOIN permissions permission ON permission.id=grant_row.permission_id
                 WHERE identity.source_table='department_permissions' AND permission.code='company_file:view'
-                  AND NOT department.is_deleted AND NOT permission.baseline AND grant_row.created_by IS NULL
+                  AND NOT department.is_deleted AND permission.baseline AND grant_row.created_by IS NULL
                   AND identity.parent_table='departments' AND identity.parent_id=department.id::text
                 """),"each V931 identity retains its exact live department grant/parent and real migration actor");
         assertEquals(0,count("""

@@ -588,6 +588,9 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "未使用货品编号复用归属证据，旧新 UUID 独立保留", "goods_code_reuse_releases", "old_goods_id", "new_goods_id");
         exempt(out, ExemptReason.HISTORY, "库存流水", "stock_movements",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
+        exempt(out, ExemptReason.HISTORY,
+                "stock_movements 已发生库存流水的可重建月度投影；不是独立在办引用，当前库存由 stock_balances 守卫覆盖",
+                "stock_monthly_summaries", "goods_id", "color_id", "warehouse_id");
         // V743(ADR-135): 重量调整只追加、称重观测只记已发生的称重, 主档删除后照样能查。
         exempt(out, ExemptReason.HISTORY, "库存重量调整流水", "stock_weight_adjustments",
                 "goods_id", "color_id", "warehouse_id");

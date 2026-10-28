@@ -115,6 +115,8 @@ public class GoodsImportService {
     private final SecurityContextCurrentUser currentUser;
     private final MasterLifecycleService lifecycle;
     @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService identifierAvailability;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.master.goods.history.GoodsOperationHistoryService operationHistory;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.port.GoodsMasterWriteAccessPort writeAccess;
@@ -312,6 +314,7 @@ public class GoodsImportService {
 
         for (ParsedRow r : parsed.rows) {
             dataRows++;
+            int rowErrorOffset = errors.size();
             try {
             // 新建模式不看系统标识（身份上）；修改/混合按系统标识解析身份。
             Goods byId = mode == GoodsImportMode.CREATE_ONLY || r.goodsId == null
@@ -418,6 +421,28 @@ public class GoodsImportService {
                             category.segments().stream().map(PlannedCategorySegment::name).toList());
                 }
             }
+            // Detection must use the same lifetime ownership and managed suffix
+            // rules as save. Checking live goods alone misses deleted/historical
+            // claims and identifiers owned by another master-data family.
+            if (!identityBlocked && category != null && (restoreGoodsId != null || existingGoods != null
+                    || r.code != null && !r.code.isEmpty())
+                    && errors.subList(rowErrorOffset, errors.size()).stream().noneMatch(error -> error.rowNum() == r.rowNum
+                            && ("编号".equals(error.column()) || "系统标识".equals(error.column())))) {
+                var domain = com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService.Domain.GOODS;
+                // Blank/omitted codes in an import preserve an existing label;
+                // the manual edit API's blank opt-in allocation does not apply.
+                String requestedCode = existingGoods != null && (r.code == null || r.code.isEmpty())
+                        ? existingGoods.getCode() : r.code;
+                var availability = restoreGoodsId == null
+                        ? identifierAvailability.checkForTargetCategory(domain, requestedCode,
+                                existingGoods == null ? null : existingGoods.getId(),
+                                nearestExistingCategoryId(category))
+                        : identifierAvailability.checkForRestore(domain, byId.getCode(), restoreGoodsId,
+                                byId.getCategory() == null ? null : byId.getCategory().getId());
+                if (!availability.available()) {
+                    errors.add(new GoodsImportError(r.rowNum, "编号", availability.message()));
+                }
+            }
             if (r.sourceType != null && !r.sourceType.isEmpty() && !VALID_SOURCE_TYPES.contains(r.sourceType)) {
                 errors.add(new GoodsImportError(r.rowNum, "来源", "来源必须为 自制/采购/委外"));
             }
@@ -466,7 +491,7 @@ public class GoodsImportService {
                             categoryPath(existingGoods.getCategory()), matchType, changes));
                 }
             } else if (restoreGoodsId == null) addedRows++;
-            UUID bomSourceGoodsId = planBomCopy(mode, r, existingGoods, restoreGoodsId, bomSourceByCode,
+            UUID bomSourceGoodsId = planBomCopy(r, existingGoods, restoreGoodsId, bomSourceByCode,
                     bomSourceRows, bomRefTargetsWithRows, bomCreateAllowed, bomDeleteAllowed, errors);
             plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId,
                     existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId));
@@ -883,7 +908,7 @@ public class GoodsImportService {
      * 校验口径与 {@link GoodsBomPasteService} 提交期一致：源货品存在且可见、有可运营组装行、
      * 组件未删除未停用且可见、权限（goods:bom:create；替换已有组装另需 goods:bom:delete）。
      */
-    private UUID planBomCopy(GoodsImportMode mode, ParsedRow r, Goods existingGoods, UUID restoreGoodsId,
+    private UUID planBomCopy(ParsedRow r, Goods existingGoods, UUID restoreGoodsId,
                              Map<String, java.util.Optional<Goods>> sourceByCode,
                              Map<UUID, List<GoodsBomItem>> sourceRows,
                              Set<UUID> targetsWithRows,
@@ -1930,6 +1955,15 @@ public class GoodsImportService {
             List<GoodsImportReviewRow.Change> changes,
             UUID bomSourceGoodsId) {}
 
+    /** New category segments inherit the last persisted ancestor's effective prefix. */
+    private static UUID nearestExistingCategoryId(CategoryPathPlan category) {
+        for (int i = category.segments().size() - 1; i >= 0; i--) {
+            UUID existing = category.segments().get(i).existingId();
+            if (existing != null) return existing;
+        }
+        return null;
+    }
+
     private record CategoryPathPlan(List<PlannedCategorySegment> segments) {}
 
     private record PlannedCategorySegment(UUID existingId, UUID newToken, String name) {}
@@ -1946,7 +1980,8 @@ public class GoodsImportService {
             for (MaterialCategory category : categories) {
                 UUID parentId = category.getParent() == null ? null : category.getParent().getId();
                 entries.add("C|" + category.getId() + "|" + parentId + "|"
-                        + normKey(category.getName()) + "|" + category.isDeleted());
+                        + normKey(category.getName()) + "|" + category.isDeleted() + "|"
+                        + normCode(category.getCodePrefix()));
             }
             for (Color color : colors) {
                 entries.add("O|" + color.getId() + "|" + normKey(color.getName())

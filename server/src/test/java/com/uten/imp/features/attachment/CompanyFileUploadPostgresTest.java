@@ -107,7 +107,7 @@ class CompanyFileUploadPostgresTest {
     @BeforeEach void setup()throws Exception {
         actor=UUID.randomUUID();employee=UUID.randomUUID();session=UUID.randomUUID();
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) "
-                +"SELECT ?,?,'文件上传测试人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"UP-"+employee);
+                +"SELECT ?,?,?,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"UP-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("文件上传测试人",employee));
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) VALUES(?,?,?,'test-only','active',false)",actor,employee,"upload-"+actor);
         current=mock(SecurityContextCurrentUser.class);login(ALL,session);
         var properties=new StorageProperties();properties.setProvider("local");properties.setLocalDir(directory.toString());properties.setUploadsEnabled(true);

@@ -40,4 +40,17 @@ class NumericColumnFilterTest {
             assertThrows(ApiException.class, () -> NumericColumnFilter.parse(input), input);
         assertThrows(ApiException.class, () -> NumericColumnFilter.parse(null));
     }
+
+    @Test void directConstructionAndParameterNamesCannotBypassTheSqlGrammar() {
+        for(String operator:new String[]{"= 1 OR TRUE --", "BETWEEN", "<>", ""}) {
+            assertThrows(ApiException.class,()->new NumericColumnFilter(operator,BigDecimal.ONE,null));
+        }
+        assertThrows(ApiException.class,()->new NumericColumnFilter("=",BigDecimal.ONE,BigDecimal.TEN));
+        assertThrows(ApiException.class,()->new NumericColumnFilter("BETWEEN",BigDecimal.TEN,BigDecimal.ONE));
+        var filter=NumericColumnFilter.parse(">=1");
+        for(String name:new String[]{"amount) OR TRUE --", "value:other", ""}) {
+            assertThrows(IllegalArgumentException.class,()->filter.sql("amount",name));
+            assertThrows(IllegalArgumentException.class,()->filter.bind(name,(key,value)->{}));
+        }
+    }
 }

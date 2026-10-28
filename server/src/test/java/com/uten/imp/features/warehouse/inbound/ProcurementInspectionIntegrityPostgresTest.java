@@ -1202,7 +1202,7 @@ class ProcurementInspectionIntegrityPostgresTest {
                     status,employment_type)
                 VALUES (?,?,?,'其他',?,?,'active','regular')
                 """, employeeId, "E-IQC-" + employeeId,
-                "IQC production actor", departmentId,
+                com.uten.imp.support.SyntheticEmployeeIdentity.name("IQC production actor",employeeId), departmentId,
                 LocalDate.of(2026, 8, 28));
         jdbc.update("""
                 INSERT INTO users(

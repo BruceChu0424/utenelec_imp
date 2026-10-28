@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.Color;
 import com.uten.imp.features.master.color.ColorRepository;
@@ -100,6 +102,26 @@ class GoodsImportPlanSafetyTest {
     }
 
     @Test
+    void commitRejectsCategoryPrefixDriftBeforeAnyWrites() throws Exception {
+        Fixtures fixtures = fixtures();
+        var categories = (MaterialCategoryRepository) org.springframework.test.util.ReflectionTestUtils
+                .getField(fixtures.service, "categoryRepo");
+        var target = categories.findByDeletedFalseOrderBySortOrderAscNameAsc().getFirst();
+        target.setCodePrefix("OLD");
+        byte[] workbook = workbook("", "导入货品", "成品", "红色", "个");
+        UUID planId = fixtures.service.detect(workbook).planId();
+        assertNotNull(planId);
+        target.setCodePrefix("NEW");
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> fixtures.service.commit(planId, workbook, "prefix-changed.xlsx"));
+
+        assertTrue(error.getMessage().contains("发生了变化"));
+        // This fixture has no EntityManager or write services: the prefix guard
+        // must reject before locking, creating references, or writing any goods.
+    }
+
+    @Test
     void commitRejectsAPlanDetectedByAnotherUser() throws Exception {
         Fixtures fixtures = fixtures();
         when(fixtures.currentUser.requireId()).thenReturn(
@@ -135,9 +157,9 @@ class GoodsImportPlanSafetyTest {
         when(colors.findAll()).thenReturn(List.of(color(colorId, "红色")));
         when(units.findAll()).thenReturn(List.of(unit(unitId, "个")));
         when(goodsService.saveImported(any())).thenReturn(UUID.randomUUID());
-        GoodsImportService service = new GoodsImportService(
+        GoodsImportService service = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 goodsService, goods, categoryService, categories,
-                colorService, colors, unitService, units, em, currentUser, null);
+                colorService, colors, unitService, units, em, currentUser, null));
         byte[] workbook = workbook("", "导入货品", "成品", "红色", "个");
         UUID planId = service.detect(workbook).planId();
 
@@ -178,9 +200,9 @@ class GoodsImportPlanSafetyTest {
         when(goodsService.saveImported(any())).thenReturn(UUID.randomUUID());
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
-        GoodsImportService service = new GoodsImportService(
+        GoodsImportService service = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 goodsService, goods, mock(MaterialCategoryService.class), categories,
-                colorService, colors, unitService, units, writeEntityManager(), currentUser, null);
+                colorService, colors, unitService, units, writeEntityManager(), currentUser, null));
         byte[] workbook = workbookWithDuplicateMasters();
         UUID planId = service.detect(workbook).planId();
 
@@ -213,9 +235,9 @@ class GoodsImportPlanSafetyTest {
         when(units.findAll()).thenReturn(List.of(unit(unitId, "个")));
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
 
-        GoodsImportService service = new GoodsImportService(
+        GoodsImportService service = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(
                 null, goods, null, categories,
-                null, colors, null, units, null, currentUser, null);
+                null, colors, null, units, null, currentUser, null));
         return new Fixtures(service, colors, units, currentUser, unitId);
     }
 

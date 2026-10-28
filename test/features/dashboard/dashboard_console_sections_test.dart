@@ -244,7 +244,7 @@ void main() {
     }
   }
 
-  testWidgets('逾期副标题、未读状态和未知副标题保持直接显示', (tester) async {
+  testWidgets('隐藏确定零未读的冗余说明，保留逾期和未知副标题', (tester) async {
     await tester.pumpWidget(
       host(
         panel(
@@ -272,9 +272,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    for (final text in ['5', '0', '2', '3 个已逾期', '今天没有未读消息', '当前需要核对']) {
+    for (final text in ['5', '0', '2', '3 个已逾期', '当前需要核对']) {
       expect(find.text(text), findsOneWidget);
     }
+    expect(find.text('今天没有未读消息'), findsNothing);
     expect(
       find.byWidgetPredicate(
         (widget) => widget is UtenFieldHintIcon && widget.info == '3 个已逾期',
@@ -282,6 +283,35 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('未读加载、错误和未知值保留原值与原因，不显示伪零', (tester) async {
+    for (final state in [
+      ('…', '正在加载未读通知'),
+      ('—', '未读通知统计暂不可用'),
+      ('未知', '等待服务器返回未读状态'),
+      ('25', '请及时查看新消息'),
+    ]) {
+      await tester.pumpWidget(
+        host(
+          panel(
+            metrics: [
+              metric(
+                id: 'notice-unread',
+                title: '未读通知',
+                value: state.$1,
+                subtitle: state.$2,
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(state.$1), findsOneWidget);
+      expect(find.text(state.$2), findsOneWidget);
+      expect(find.text('0'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('今日概览范围图标同行且可由键盘展开', (tester) async {

@@ -261,7 +261,6 @@ class _FinanceAssetDetailSurfaceState
       child: Column(
         children: [
           _header(theme),
-          const Divider(height: 1),
           Expanded(child: _content(theme)),
         ],
       ),
@@ -271,97 +270,83 @@ class _FinanceAssetDetailSurfaceState
   Widget _header(ThemeData theme) {
     final summary = _detail?.summary;
     final revisionTitle = financeAssetRevisionTitle(_detail);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
+    final canEdit =
+        summary != null &&
+        widget.capabilities.canEdit &&
+        widget.onEdit != null &&
+        summary.status.toUpperCase() == 'DRAFT';
+    final canDelete =
+        summary != null &&
+        widget.capabilities.canDelete &&
+        widget.onDelete != null &&
+        (ref.watch(isSuperAdminProvider) ||
+            ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.financeAssetDelete)) &&
+        summary.status.toUpperCase() == 'DRAFT';
+    return UtenDialogSurface(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: UtenRadius.lgAll,
+          UtenDialogHeader(
+            icon: widget.ledger == FinanceAssetLedger.fixedAsset
+                ? Icons.apartment_outlined
+                : Icons.calendar_month_outlined,
+            title: Text(
+              revisionTitle ?? summary?.name ?? '${widget.ledger.label}详情',
             ),
-            child: Icon(
-              widget.ledger == FinanceAssetLedger.fixedAsset
-                  ? Icons.apartment_outlined
-                  : Icons.calendar_month_outlined,
-              color: theme.colorScheme.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
+            subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (revisionTitle != null)
-                  Text(
-                    revisionTitle,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                Text(
-                  summary?.name ?? '${widget.ledger.label}详情',
-                  style:
-                      (revisionTitle == null
-                              ? theme.textTheme.titleLarge
-                              : theme.textTheme.titleMedium)
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                ),
+                if (revisionTitle != null && summary != null)
+                  Text(summary.name, style: theme.textTheme.titleMedium),
                 if (summary != null)
                   Wrap(
                     spacing: UtenSpacing.s8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      Text(
-                        summary.code,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                      Text(summary.code),
                       financeAssetStatusBadge(summary.status),
                     ],
                   ),
               ],
             ),
+            showCloseButton: widget.showClose,
+            onClose: _close,
           ),
-          if (summary != null &&
-              widget.capabilities.canEdit &&
-              widget.onEdit != null &&
-              summary.status.toUpperCase() == 'DRAFT')
-            UtenButton(
-              type: UtenButtonType.secondary,
-              icon: Icons.edit_outlined,
-              onPressed: widget.onEdit,
-              child: const Text('编辑'),
-            ),
-          if (summary != null &&
-              widget.capabilities.canDelete &&
-              widget.onDelete != null &&
-              (ref.watch(isSuperAdminProvider) ||
-                  ref
-                      .watch(currentPermissionsProvider)
-                      .contains(Perm.financeAssetDelete)) &&
-              summary.status.toUpperCase() == 'DRAFT')
-            IconButton(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              tooltip: '删除草稿',
-              color: theme.colorScheme.error,
-              onPressed: widget.onDelete,
-              icon: const Icon(Icons.delete_outline_rounded),
-            ),
-          if (widget.showClose)
-            IconButton(
-              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-              tooltip: '关闭',
-              onPressed: _close,
-              icon: const Icon(Icons.close_rounded),
+          if (canEdit || canDelete)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s24,
+                0,
+                UtenSpacing.s24,
+                UtenSpacing.s16,
+              ),
+              child: Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  if (canEdit)
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      icon: Icons.edit_outlined,
+                      onPressed: widget.onEdit,
+                      child: const Text('编辑'),
+                    ),
+                  if (canDelete)
+                    IconButton(
+                      constraints: const BoxConstraints(
+                        minWidth: 48,
+                        minHeight: 48,
+                      ),
+                      tooltip: '删除草稿',
+                      color: theme.colorScheme.error,
+                      onPressed: widget.onDelete,
+                      icon: const Icon(Icons.delete_outline_rounded),
+                    ),
+                ],
+              ),
             ),
         ],
       ),

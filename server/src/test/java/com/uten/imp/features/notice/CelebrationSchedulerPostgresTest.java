@@ -3,15 +3,14 @@ package com.uten.imp.features.notice;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.notice.NoticeService.CelebrationSubject;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
+import com.uten.imp.support.MigratedSchemaBaseline;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -49,11 +48,7 @@ class CelebrationSchedulerPostgresTest {
 
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 
-    private static final PostgreSQLContainer POSTGRES =
-            new PostgreSQLContainer("postgres:16-alpine")
-                    .withDatabaseName("uten_imp")
-                    .withUsername("fixture_admin")
-                    .withPassword("uten");
+    private MigratedSchemaBaseline.ScopedDatabase database;
 
     private static JdbcTemplate jdbc;
 
@@ -61,32 +56,15 @@ class CelebrationSchedulerPostgresTest {
     private SystemSettingsService settings;
     private CelebrationScheduler scheduler;
 
-    @BeforeAll
-    static void migrate() {
-        POSTGRES.start();
-        com.uten.imp.testsupport.TestFlyway.configure()
-                .dataSource(
-                        POSTGRES.getJdbcUrl(),
-                        POSTGRES.getUsername(),
-                        POSTGRES.getPassword())
-                .locations("classpath:db/migration")
-                .load()
-                .migrate();
-        jdbc = new JdbcTemplate(new DriverManagerDataSource(
-                POSTGRES.getJdbcUrl(),
-                POSTGRES.getUsername(),
-                POSTGRES.getPassword()));
-    }
-
-    @AfterAll
-    static void stopPostgres() {
-        POSTGRES.stop();
+    @AfterEach
+    void close() throws Exception {
+        if(database!=null)database.close();
     }
 
     @BeforeEach
-    void setUp() {
-        jdbc.update("DELETE FROM notices WHERE title LIKE 'CELEB-TEST-%'");
-        jdbc.update("DELETE FROM employees WHERE code LIKE 'CELEB-TEST-%'");
+    void setUp() throws Exception {
+        database=MigratedSchemaBaseline.openDatabase("celebration_scheduler");
+        jdbc=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
         // Neutralize seed rows (e.g. ADMIN) so only this test's fixtures can match today.
         jdbc.update("UPDATE employees SET birth_month_day = NULL WHERE birth_month_day IS NOT NULL");
         jdbc.update("UPDATE employees SET hire_date = ? WHERE code NOT LIKE 'CELEB-TEST-%'",

@@ -295,13 +295,18 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
                 INSERT INTO employees (id, code, full_name, id_type, department_id, hire_date,
                                        confirmed_at, status, employment_type)
                 VALUES (?, ?, ?, '身份证', ?::uuid, DATE '2025-01-02', DATE '2025-04-02', 'active', 'regular')
-                """, id, code, "证件读不出" + code.substring(code.length() - 3), departmentId);
+                """, id, code, com.uten.imp.support.SyntheticEmployeeIdentity.name("证件读不出",id), departmentId);
+        String originalDocument=com.uten.imp.support.SyntheticEmployeeIdentity.document();
         List<String> derived = new TransactionTemplate(transactionManager).execute(status ->
-                List.of(tx.encrypt(phone), tx.hmac(phone)));
+                List.of(tx.encrypt(originalDocument),tx.hmac(com.uten.imp.common.util.IdCardUtil.normalize(originalDocument)),
+                        tx.encrypt(phone), tx.hmac(phone)));
         jdbc.update("""
-                INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_check, phone_enc, phone_hash)
-                VALUES (?, ?, ?, ?, ?)
-                """, id, identityCipher, identityCheck, derived.get(0), derived.get(1));
+                INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_hash, id_card_check, phone_enc, phone_hash)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, id, derived.get(0),derived.get(1), identityCheck, derived.get(2), derived.get(3));
+        // Model damaged ciphertext / an unavailable historical key after a
+        // canonical fingerprint has already been stored, retaining that evidence.
+        jdbc.update("UPDATE employee_sensitive SET id_card_enc=? WHERE employee_id=?",identityCipher,id);
         return id;
     }
 
@@ -313,7 +318,7 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
                 INSERT INTO employees (id, code, full_name, id_type, department_id, hire_date,
                                        confirmed_at, status, employment_type)
                 VALUES (?, ?, ?, ?, ?::uuid, DATE '2025-01-02', DATE '2025-04-02', 'active', 'regular')
-                """, id, code, "证件核对" + code.substring(code.length() - 3), idType, departmentId);
+                """, id, code, com.uten.imp.support.SyntheticEmployeeIdentity.name("证件核对",id), idType, departmentId);
         List<String> derived = new TransactionTemplate(transactionManager).execute(status -> {
             List<String> values = new ArrayList<>();
             values.add(identity == null ? null : tx.encrypt(identity));

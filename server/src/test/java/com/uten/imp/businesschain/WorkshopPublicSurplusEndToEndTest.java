@@ -423,11 +423,11 @@ class WorkshopPublicSurplusEndToEndTest {
         assertEquals(1,batch.groups().size());
         assertTrue(batch.groups().getFirst().summary().startsWith("送入仓库 1100(其中实际超产 100"),batch.groups().getFirst().summary());
         assertTrue(batch.summary().contains("共 1100"),batch.summary());
-        // 仓库待登记：一个任务、一行(一批)，其中实际超产 100。
+        // 仓库待登记：一个任务、一行(一批)；夹具基本单位为“个”，摘要保留单位。
         var tasks=beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService.class);
         var arrival=tasks.list(detail.getBillNo(),"ARRIVAL_REGISTRATION",null,1,40).getItems();
         assertEquals(1,arrival.size());assertEquals(1,arrival.getFirst().lineCount());
-        qty("100",arrival.getFirst().actualSurplusQty());assertEquals("其中实际超产 100",arrival.getFirst().actualSurplusNote());
+        qty("100",arrival.getFirst().actualSurplusQty());assertEquals("其中实际超产 100 个",arrival.getFirst().actualSurplusNote());
         var pending=arrivals.batchDetail(List.of(report)).getFirst();
         assertEquals(1,pending.lots().size());
         var lotView=pending.lots().getFirst();

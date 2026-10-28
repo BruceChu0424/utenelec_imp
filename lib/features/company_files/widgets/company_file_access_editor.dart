@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -227,6 +228,23 @@ class _CompanyFileInitialAccessEditorState
     );
   }
 
+  void _selectInitialMode(_InitialAccessMode? value) {
+    if (!_enabled || value == null) return;
+    setState(() => _mode = value);
+    _publish();
+  }
+
+  void _setPasswordEnabled(bool value) {
+    setState(() {
+      _passwordEnabled = value;
+      if (!value) {
+        _password.clear();
+        _repeat.clear();
+      }
+    });
+    _publish();
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
@@ -239,41 +257,45 @@ class _CompanyFileInitialAccessEditorState
         const SizedBox(height: UtenSpacing.s8),
         RadioGroup<_InitialAccessMode>(
           groupValue: _mode,
-          onChanged: (value) {
-            if (!_enabled || value == null) return;
-            setState(() => _mode = value);
-            _publish();
-          },
+          onChanged: _selectInitialMode,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              RadioListTile<_InitialAccessMode>(
-                key: const Key('initial-access-everyone'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                dense: true,
-                value: _InitialAccessMode.everyone,
-                enabled: _enabled,
-                title: Text(l.companyFilesEveryoneCanRead),
-              ),
-              RadioListTile<_InitialAccessMode>(
-                key: const Key('initial-access-inherit'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                dense: true,
-                value: _InitialAccessMode.inherit,
-                enabled: _enabled,
-                title: Text(l.companyFilesInheritEntryAccess),
-              ),
-              RadioListTile<_InitialAccessMode>(
-                key: const Key('initial-access-specific'),
-                contentPadding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                dense: true,
-                value: _InitialAccessMode.specific,
-                enabled: _enabled,
-                title: Text(l.companyFilesSpecificReaders),
-              ),
+              for (final option in [
+                (
+                  _InitialAccessMode.everyone,
+                  'initial-access-everyone',
+                  Icons.public_outlined,
+                  l.companyFilesEveryoneCanRead,
+                ),
+                (
+                  _InitialAccessMode.inherit,
+                  'initial-access-inherit',
+                  Icons.account_tree_outlined,
+                  l.companyFilesInheritEntryAccess,
+                ),
+                (
+                  _InitialAccessMode.specific,
+                  'initial-access-specific',
+                  Icons.people_outline_rounded,
+                  l.companyFilesSpecificReaders,
+                ),
+              ]) ...[
+                if (option.$1 != _InitialAccessMode.everyone)
+                  const SizedBox(height: UtenSpacing.s12),
+                UtenDialogSettingTile(
+                  canRequestFocus: false,
+                  key: Key(option.$2),
+                  icon: option.$3,
+                  title: Text(option.$4),
+                  selected: _mode == option.$1,
+                  onTap: !_enabled ? null : () => _selectInitialMode(option.$1),
+                  trailing: Radio<_InitialAccessMode>(
+                    value: option.$1,
+                    enabled: _enabled,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -299,25 +321,20 @@ class _CompanyFileInitialAccessEditorState
         ],
         const SizedBox(height: UtenSpacing.s16),
         const Divider(),
-        SwitchListTile(
-          key: const Key('initial-access-password-switch'),
-          contentPadding: EdgeInsets.zero,
+        UtenDialogSettingTile(
+          canRequestFocus: false,
+          icon: Icons.shield_outlined,
           title: Text(l.companyFilesSetInitialPassword),
-          value: _passwordEnabled,
-          onChanged: !_enabled
+          subtitle: Text(l.companyFilesEntryPasswordHint),
+          onTap: !_enabled
               ? null
-              : (value) {
-                  setState(() {
-                    _passwordEnabled = value;
-                    if (!value) {
-                      _password.clear();
-                      _repeat.clear();
-                    }
-                  });
-                  _publish();
-                },
+              : () => _setPasswordEnabled(!_passwordEnabled),
+          trailing: Switch(
+            key: const Key('initial-access-password-switch'),
+            value: _passwordEnabled,
+            onChanged: !_enabled ? null : _setPasswordEnabled,
+          ),
         ),
-        Text(l.companyFilesEntryPasswordHint, style: theme.textTheme.bodySmall),
         if (_passwordEnabled) ...[
           const SizedBox(height: UtenSpacing.s12),
           UtenInput(

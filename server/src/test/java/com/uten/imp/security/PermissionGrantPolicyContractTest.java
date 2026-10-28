@@ -113,7 +113,7 @@ class PermissionGrantPolicyContractTest {
     }
 
     @Test
-    void pageSurfacesOnlyOfferGrantableCodesAndEveryDelegableCodeHasASurface() {
+    void pageSurfacesOnlyOfferGrantableCodesAndEveryDelegablePageCodeHasASurface() {
         JdbcTemplate db = PermissionCatalogTestSupport.database();
         assertThat(db.queryForList("""
                 SELECT permission.code FROM permission_surface_permissions mapping
@@ -121,6 +121,21 @@ class PermissionGrantPolicyContractTest {
                 JOIN permissions permission ON permission.id = mapping.permission_id
                 WHERE 'SUPERADMIN_ONLY' = ANY(permission.grant_policy)
                 """, String.class)).isEmpty();
+
+        // V958 deliberately removed these seven global administration codes
+        // from the common-module page surface. Directory ACLs grant local
+        // actions; the system permission catalog grants whole-library powers.
+        // Lock the exact catalog exception rather than ignoring a module or
+        // reintroducing global actions into the ordinary page's grant drawer.
+        List<String> globalLibraryAdministration = db.queryForList("""
+                SELECT code FROM permissions
+                WHERE module = '系统管理' AND code LIKE 'company_file:%'
+                ORDER BY code
+                """, String.class);
+        assertThat(globalLibraryAdministration).containsExactly(
+                "company_file:create", "company_file:delete", "company_file:edit",
+                "company_file:manage_permissions", "company_file:move",
+                "company_file:restore", "company_file:upload");
         assertThat(db.queryForList("""
                 SELECT permission.code FROM permissions permission
                 WHERE NOT permission.baseline
@@ -131,8 +146,8 @@ class PermissionGrantPolicyContractTest {
                       WHERE mapping.permission_id = permission.id)
                 ORDER BY permission.code
                 """, String.class))
-                .as("可由负责人委派的码必须挂在至少一个页面权限面上，否则负责人无处可授")
-                .isEmpty();
+                .as("除 V958 的七个全局资料管理码外，可委派码必须有页面权限面；不能遗漏新码")
+                .containsExactlyElementsOf(globalLibraryAdministration);
     }
 
     @Test

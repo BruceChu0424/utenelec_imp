@@ -88,7 +88,6 @@ class _SubcontractApplicationKitDialogState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
     final kits = _kits;
     final title = widget.title?.trim() ?? '';
@@ -105,32 +104,17 @@ class _SubcontractApplicationKitDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.fact_check_outlined,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      title.isEmpty ? '齐套情况' : '齐套情况 · $title',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const UtenFieldHintIcon(
-                    info:
-                        '委外价格每天不同，直属物料够做至少一套才解锁生成委外订货单；可下单 = 剩余未下单与现有物料够做的套数取小，订货数量超出会被拒绝。物料被别的委外单先占走时可下单会变少。',
-                    dense: true,
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
+              UtenDialogHeader(
+                padding: EdgeInsets.zero,
+                icon: Icons.fact_check_outlined,
+                title: Text(title.isEmpty ? '齐套情况' : '齐套情况 · $title'),
+                trailing: const UtenFieldHintIcon(
+                  info:
+                      '委外价格每天不同，直属物料够做至少一套才解锁生成委外订货单；可下单 = 剩余未下单与现有物料够做的套数取小，订货数量超出会被拒绝。物料被别的委外单先占走时可下单会变少。',
+                  dense: true,
+                ),
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
               ),
               const SizedBox(height: UtenSpacing.s12),
               if (_loading && kits == null)
@@ -164,8 +148,8 @@ class _SubcontractApplicationKitDialogState
                   ),
                 ),
               const SizedBox(height: UtenSpacing.s12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              UtenDialogActions(
+                padding: const EdgeInsets.only(top: UtenSpacing.s16),
                 children: [
                   UtenButton(
                     type: UtenButtonType.ghost,

@@ -1732,9 +1732,14 @@ void main() {
       await tester.pumpAndSettle();
       await expectTableReadFailureDetails(tester, '无权查看实际生产凭证');
       expect(api.traceCalls, 1);
-      await tester.ensureVisible(
-        find.byKey(const Key('where-used-result-mode')),
+      // Viewing the table error scrolls this sliver header offstage. Flutter's
+      // viewport finder omits geometry.visible=false children by default.
+      final modes = find.byKey(
+        const Key('where-used-result-mode'),
+        skipOffstage: false,
       );
+      expect(modes, findsOneWidget);
+      await tester.ensureVisible(modes);
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, 'BOM 与历史关系');
       await tester.pumpAndSettle();

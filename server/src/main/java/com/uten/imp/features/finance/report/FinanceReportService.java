@@ -727,7 +727,7 @@ public class FinanceReportService {
                               WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
                               THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
-        return executeRawPaged(cols, core, "c.name,c.id", keyword, from, to, page, size, "c", documentScope,headers,sort,order,java.util.Set.of("materialAmount"));
+        return executeRawPaged(cols, core, keyword, from, to, page, size, "c", documentScope,headers,sort,order,java.util.Set.of("materialAmount"));
     }
 
     /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
@@ -934,7 +934,7 @@ public class FinanceReportService {
                 LEFT JOIN paid pa ON pa.supplier_id=s.id
                 LEFT JOIN offsets o ON o.supplier_id=s.id
                 """;
-        return executeRawPaged(cols, core, "s.name,s.id", keyword, from, to, page, size, "s", documentScope,headers,sort,order);
+        return executeRawPaged(cols, core, keyword, from, to, page, size, "s", documentScope,headers,sort,order);
     }
 
     private void assertOpeningWindowReplayable(String direction, String keyword, LocalDate from, LocalDate to) {
@@ -974,13 +974,13 @@ public class FinanceReportService {
 
     /** 原生 SQL 分页执行器（CTE/聚合报表用，如 B 应收汇总 / D 应付汇总）。SQL 含 :from/:to[/:kw] 参数。
      *  [partyAlias] 外层主表别名（应收=客户 c / 应付=供应商 s），keyword 走 {alias}.name/{alias}.code。 */
-    private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql, String orderBy,
+    private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql,
                                                  String keyword, LocalDate from, LocalDate to, int page, int size,
                                                  String partyAlias, NativeReadScope documentScope,
                                                  Map<String,String> headers,String sort,String order) {
-        return executeRawPaged(cols,coreSql,orderBy,keyword,from,to,page,size,partyAlias,documentScope,headers,sort,order,java.util.Set.of());
+        return executeRawPaged(cols,coreSql,keyword,from,to,page,size,partyAlias,documentScope,headers,sort,order,java.util.Set.of());
     }
-    private ReportTableResponse executeRawPaged(List<ReportColumn> cols,String coreSql,String orderBy,String keyword,LocalDate from,LocalDate to,
+    private ReportTableResponse executeRawPaged(List<ReportColumn> cols,String coreSql,String keyword,LocalDate from,LocalDate to,
             int page,int size,String partyAlias,NativeReadScope documentScope,Map<String,String> headers,String sort,String order,
             java.util.Set<String> nonQueryableKeys) {
         var search = new FinanceWhereBuilder("WHERE TRUE");
@@ -2180,8 +2180,18 @@ public class FinanceReportService {
         boolean searching=!KeywordSearch.terms(keyword).isEmpty();
         if(searching)projected+=" WHERE "+TaskKeywordSearch.conditionParameter("prepaymentKeyword","event_scope.\"eventNo\"","event_scope.\"salesOrderNos\"","event_scope.\"clientCode\"","event_scope.\"clientName\"","event_scope.\"reason\"");
         var result=FinanceProjectedReportTable.query(em,projectedColumns,projected,q->{
-            if(clientId!=null)q.setParameter("clientId",clientId);if(dateFrom!=null)q.setParameter("dateFrom",dateFrom);if(dateTo!=null)q.setParameter("dateTo",dateTo);
-            if(searching)q.setParameter("prepaymentKeyword",KeywordSearch.phrase(keyword));
+            if (clientId != null) {
+                q.setParameter("clientId", clientId);
+            }
+            if (dateFrom != null) {
+                q.setParameter("dateFrom", dateFrom);
+            }
+            if (dateTo != null) {
+                q.setParameter("dateTo", dateTo);
+            }
+            if (searching) {
+                q.setParameter("prepaymentKeyword", KeywordSearch.phrase(keyword));
+            }
         },"report.\"__headerOrdinal\"",options.filters(),java.util.Set.of(),page,size,options.sort(),options.order(),true,reportTotalSpecs(columns,columns));
         result.rows().forEach(row->row.put("salesOrderIds",row.remove("__salesOrderIds")));
         return result;

@@ -751,12 +751,14 @@ class SecurityPermissionMigrationTest {
             try (Connection connection = openConnection();
                  PreparedStatement cleanupSuggestion =
                          connection.prepareStatement("delete from suggestions where id = ?");
-                 PreparedStatement cleanupEmployee =
-                         connection.prepareStatement("delete from employees where code = ?")) {
+                 PreparedStatement retireEmployee = connection.prepareStatement(
+                         "UPDATE employees SET status='resigned',is_deleted=TRUE WHERE code=?")) {
                 cleanupSuggestion.setObject(1, suggestionId);
                 cleanupSuggestion.executeUpdate();
-                cleanupEmployee.setString(1, employeeCode);
-                cleanupEmployee.executeUpdate();
+                // Identity/history rows survive cleanup; the test database lease
+                // owns their final disposal, not a forbidden physical staff delete.
+                retireEmployee.setString(1, employeeCode);
+                assertEquals(1,retireEmployee.executeUpdate());
             }
         }
     }

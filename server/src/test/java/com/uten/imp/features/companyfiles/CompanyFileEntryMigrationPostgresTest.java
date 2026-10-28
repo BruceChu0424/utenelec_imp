@@ -41,6 +41,7 @@ class CompanyFileEntryMigrationPostgresTest {
         POSTGRES.start();
         source=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());db=new JdbcTemplate(source);
         TestFlyway.configure().dataSource(source).locations("classpath:db/migration").target("930").load().migrate();
+        com.uten.imp.support.HistoricalPermissionReaderSources.install(db);
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'迁移验证人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"MIG-"+employee);
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) VALUES(?,?,?,'test-only','active',false)",actor,employee,"upgrade-"+actor);
         db.update("INSERT INTO company_file_nodes(id,kind,name,password_hash,password_revision,created_by,updated_by) VALUES(?,'FOLDER',?,?,7,?,?)",folder,"old-protected-folder",HASH,actor,actor);
@@ -93,6 +94,7 @@ class CompanyFileEntryMigrationPostgresTest {
         db.update("DELETE FROM department_permissions WHERE department_id=? AND permission_id=(SELECT id FROM permissions WHERE code='company_file:view')",root);
         assertThat(configured(root)).isFalse();assertThat(configured(child)).isFalse();
         Map<UUID,Set<String>> actual=resolver.grantedPermissionsFor(List.of(rootUser,childUser,actor),Set.of("company_file:view"));
+        com.uten.imp.support.HistoricalPermissionReaderSources.assertNoIndependentAssignments(db);
         assertThat(actual.getOrDefault(rootUser,Set.of())).isEmpty();assertThat(actual.getOrDefault(childUser,Set.of())).isEmpty();
         var current=mock(SecurityContextCurrentUser.class);
         var user=new AuthUser(rootUser,rootEmployee,"upgrade",actual.getOrDefault(rootUser,Set.of()),false,true,false,false,null,UUID.randomUUID());when(current.get()).thenReturn(Optional.of(user));

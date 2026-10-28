@@ -937,48 +937,19 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              UtenDialogHeader(
+                title: const Text('货架目视化清单'),
+                icon: Icons.view_list_outlined,
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
+              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: UtenInput(
-                        label: '抬头标题', // TODO(l10n): 补 arb
-                        hint: '如：五金仓库物料库', // TODO(l10n): 补 arb
-                        controller: _title,
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      size: UtenButtonSize.small,
-                      icon: Icons.print_outlined,
-                      onPressed: widget.groups.isEmpty ? null : _print,
-                      child: const Text('打印'), // TODO(l10n): 补 arb
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    UtenExportButton(
-                      endpoint: '/stock/reports/export',
-                      report: 'shelf-labels',
-                      queryParams: widget.exportQuery,
-                      filename: '货架目视化清单',
-                      requiredPermission: Perm.stockReportExport,
-                      label: '下载Excel', // TODO(l10n): 补 arb
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.close_rounded,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('关闭'), // TODO(l10n): 补 arb
-                    ),
-                  ],
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                child: UtenInput(
+                  label: '抬头标题',
+                  hint: '如：五金仓库物料库',
+                  controller: _title,
+                  onChanged: (_) => setState(() {}),
                 ),
               ),
               const Divider(height: 1),
@@ -1004,6 +975,30 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                     ),
                   ),
                 ),
+              ),
+              UtenDialogActions(
+                children: [
+                  UtenButton(
+                    icon: Icons.print_outlined,
+                    onPressed: widget.groups.isEmpty ? null : _print,
+                    child: const Text('打印'), // TODO(l10n): 补 arb
+                  ),
+                  UtenExportButton(
+                    type: UtenButtonType.secondary,
+                    endpoint: '/stock/reports/export',
+                    report: 'shelf-labels',
+                    queryParams: widget.exportQuery,
+                    filename: '货架目视化清单',
+                    requiredPermission: Perm.stockReportExport,
+                    label: '下载Excel', // TODO(l10n): 补 arb
+                  ),
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    icon: Icons.close_rounded,
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('关闭'), // TODO(l10n): 补 arb
+                  ),
+                ],
               ),
             ],
           ),

@@ -132,6 +132,7 @@ class ReportReadPlanPostgresTest {
         Object service = constructor.newInstance(Arrays.stream(constructor.getParameterTypes())
                 .map(parameter -> parameter == EntityManager.class ? em : mock(parameter)).toArray());
         Method execute = Arrays.stream(type.getDeclaredMethods()).filter(method -> method.getName().equals("execute"))
+                .filter(method -> method.getParameterCount() == 11)
                 .findFirst().orElseThrow();
         execute.setAccessible(true);
         Class<?> whereType = execute.getParameterTypes()[3];

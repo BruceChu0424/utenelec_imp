@@ -48,7 +48,7 @@ class CompanyFileEntryAccessPostgresTest {
         login(actor,employee,ALL,session);
     }
     void insertUser(UUID id,UUID employeeId,UUID departmentId) {
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,current_date,'active','regular')",employeeId,"EA-"+employeeId,"资料访问测试人",departmentId);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,current_date,'active','regular')",employeeId,"EA-"+employeeId,com.uten.imp.support.SyntheticEmployeeIdentity.name("资料访问测试人",employeeId),departmentId);
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) VALUES(?,?,?,'test-only','active',false)",id,employeeId,"entry-"+id);
     }
     void login(UUID id,UUID employeeId,Set<String> permissions,UUID sid) {

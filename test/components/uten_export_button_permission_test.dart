@@ -13,6 +13,8 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
@@ -22,26 +24,199 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 
-Widget _app({required Set<String> permissions, required Widget child}) {
-  return ProviderScope(
-    overrides: [
-      apiClientProvider.overrideWithValue(_NoDownloadApi()),
-      authenticatedScopeProvider.overrideWithValue(
-        const AuthenticatedScope(userId: 'a'),
+import '../support/dialog_fixture_capture.dart';
+
+Widget _app({
+  required Set<String> permissions,
+  required Widget child,
+  ThemeData? theme,
+  double textScale = 1,
+}) {
+  return dialogFixtureBoundary(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(_NoDownloadApi()),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'a'),
+        ),
+        apiBaseUrlProvider.overrideWithValue('https://a.invalid'),
+        currentPermissionsProvider.overrideWithValue(permissions),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(body: child),
       ),
-      apiBaseUrlProvider.overrideWithValue('https://a.invalid'),
-      currentPermissionsProvider.overrideWithValue(permissions),
-    ],
-    child: MaterialApp(
-      locale: const Locale('zh'),
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(body: child),
     ),
   );
 }
 
 void main() {
+  setUpAll(loadDialogFixtureFonts);
+  if (dialogFixtureCaptureEnabled) {
+    for (final dark in [false, true]) {
+      testWidgets('capture actual export settings dark=$dark', (tester) async {
+        tester.view.physicalSize = const Size(1000, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          _app(
+            permissions: {},
+            theme: dark ? buildDarkTheme() : buildLightTheme(),
+            child: const UtenExportButton(
+              endpoint: '/export',
+              report: 'goods',
+              filename: '货品资料',
+              queryParams: {},
+            ),
+          ),
+        );
+        await tester.tap(find.text('下载表格'));
+        await tester.pumpAndSettle();
+        await captureDialogFixture(
+          tester,
+          'actual-export-settings-${dark ? 'dark' : 'light'}',
+        );
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final fixture in [
+    (const Size(1000, 800), TargetPlatform.windows),
+    (const Size(390, 844), TargetPlatform.android),
+  ]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final dark in [false, true]) {
+        testWidgets(
+          'actual export actions have equal visible height ${fixture.$2} scale=$scale dark=$dark',
+          (tester) async {
+            tester.view.physicalSize = fixture.$1;
+            tester.view.devicePixelRatio = 1;
+            addTearDown(tester.view.resetPhysicalSize);
+            addTearDown(tester.view.resetDevicePixelRatio);
+            await tester.pumpWidget(
+              _app(
+                permissions: {},
+                theme: (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+                  platform: fixture.$2,
+                ),
+                textScale: scale,
+                child: const UtenExportButton(
+                  endpoint: '/export',
+                  report: 'goods',
+                  filename: '货品资料',
+                  queryParams: {},
+                ),
+              ),
+            );
+            await tester.tap(find.text('下载表格'));
+            await tester.pumpAndSettle();
+            final cancel = find.ancestor(
+              of: find.text('取消'),
+              matching: find.byType(UtenButton),
+            );
+            final download = find.ancestor(
+              of: find.text('直接下载'),
+              matching: find.byType(UtenButton),
+            );
+            final cancelRect = tester.getRect(
+              find
+                  .descendant(of: cancel, matching: find.byType(Material))
+                  .first,
+            );
+            final downloadRect = tester.getRect(
+              find
+                  .descendant(of: download, matching: find.byType(Material))
+                  .first,
+            );
+            final measured = 'cancel=$cancelRect primary=$downloadRect';
+            expect(
+              downloadRect.height,
+              closeTo(cancelRect.height, 0.01),
+              reason: measured,
+            );
+            expect(
+              downloadRect.top,
+              closeTo(cancelRect.top, 0.01),
+              reason: measured,
+            );
+            expect(
+              downloadRect.center.dy,
+              closeTo(cancelRect.center.dy, 0.01),
+              reason: measured,
+            );
+            await tester.tap(find.text('取消'));
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'export settings remain usable on a narrow large-text screen dark=$dark',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          _app(
+            permissions: {},
+            theme: dark ? buildDarkTheme() : buildLightTheme(),
+            textScale: 2,
+            child: const UtenExportButton(
+              endpoint: '/export',
+              report: 'detail',
+              queryParams: {},
+            ),
+          ),
+        );
+        await tester.tap(find.text('下载表格'));
+        await tester.pumpAndSettle();
+        expect(find.text('.xlsx'), findsOneWidget);
+        await tester.ensureVisible(find.text('设置密码'));
+        await tester.tap(find.text('设置密码'));
+        await tester.pumpAndSettle();
+        final password = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == '打开密码(可选，1–128 位)',
+        );
+        await tester.ensureVisible(password);
+        await tester.enterText(password, '1');
+        await tester.pumpAndSettle();
+        expect(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is TextField && widget.decoration?.labelText == '确认密码',
+          ),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(find.text('取消'));
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(find.text('导出 Excel'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('PDF format uses the PDF password dialog title', (tester) async {
     await tester.pumpWidget(
       _app(
@@ -401,12 +576,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 2026-10-28 起弹窗先收文件名（必填）与保存位置，密码区在其后。
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is TextField && w.decoration?.labelText == '文件名',
-        ),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('uten-export-filename')), findsOneWidget);
       expect(
         find.byWidgetPredicate(
           (w) =>
@@ -467,9 +637,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 2026-10-28 起弹窗先收文件名（必填，预填默认名）；清空后不能直接下载。
-    final nameField = find.byWidgetPredicate(
-      (w) => w is TextField && w.decoration?.labelText == '文件名',
-    );
+    final nameField = find.byKey(const Key('uten-export-filename'));
     expect(nameField, findsOneWidget);
     await tester.enterText(nameField, '');
     await tester.tap(find.text('直接下载'));

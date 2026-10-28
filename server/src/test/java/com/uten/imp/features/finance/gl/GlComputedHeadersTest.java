@@ -12,9 +12,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class GlComputedHeadersTest {
     private static Map<String,Object> row(Object... pairs){
-        Map<String,Object> row=new LinkedHashMap<>();
-        for(int i=0;i<pairs.length;i+=2)row.put((String)pairs[i],pairs[i+1]);
-        return row;
+        return com.uten.imp.support.KeyValueTestData.map(pairs);
     }
     private static ReportTableResponse response(List<ReportColumn> columns,List<Map<String,Object>> rows){
         return new ReportTableResponse(columns,rows,Map.of(),1,Math.max(1,rows.size()),rows.size(),rows.isEmpty()?0:1,

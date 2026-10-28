@@ -47,12 +47,24 @@ class AccountCurrencyHeaderPostgresTest {
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none","hibernate.jdbc.time_zone","UTC"));
         factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void close() throws Exception { if(emf!=null)emf.close();if(database!=null)database.close(); }
+    @AfterAll static void close() throws Exception {
+        if (emf != null) {
+            emf.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void clean() {
         db.execute("TRUNCATE accounts,currencies");em=emf.createEntityManager();repositories=new JpaRepositoryFactory(em);
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("reader","n/a","account:view","account:balance:view"));
     }
-    @AfterEach void closeEntityManager() { if(em!=null)em.close();SecurityContextHolder.clearContext(); }
+    @AfterEach void closeEntityManager() {
+        if (em != null) {
+            em.close();
+        }
+        SecurityContextHolder.clearContext();
+    }
 
     @Test void accountHeadersKeepExactOriginalCurrencyValuesAndCountBeforePagingAndExport() {
         UUID first=account("A-01","90071992547409.1234",false),second=account("A-02","90071992547409.1235",false);

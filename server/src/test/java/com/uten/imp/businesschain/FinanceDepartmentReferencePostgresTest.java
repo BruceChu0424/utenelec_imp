@@ -137,7 +137,7 @@ class FinanceDepartmentReferencePostgresTest {
         assertTrue(fields.containsAll(Set.of("id","code","name","level","children")));assertMinimalTree(node.path("children"));}}
     private UUID department(String name){UUID id=UUID.randomUUID();db.update("INSERT INTO departments(id,code,name,level) VALUES(?,?,?,'一级部门')",id,"FINREF-"+id,name);return id;}
     private UUID user(String permission){UUID id=UUID.randomUUID(), employee=UUID.randomUUID(), department=department("独立财务引用权限");
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",employee,"FINREF-E-"+id,"财务引用测试",department);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",employee,"FINREF-E-"+id,com.uten.imp.support.SyntheticEmployeeIdentity.name("财务引用测试",employee),department);
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) VALUES(?,?,?,'test-only','active',FALSE)",id,employee,"finref-"+id);
         assertEquals(1,db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,'grant' FROM permissions WHERE code=?",id,permission));return id;}
     private UUID employee(UUID user){return db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,user);}

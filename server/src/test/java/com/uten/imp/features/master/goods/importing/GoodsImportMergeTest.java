@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods.importing;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.application.port.GoodsMasterWriteAccessPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.ColorRepository;
@@ -658,8 +660,8 @@ class GoodsImportMergeTest {
         when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of(category));
         when(colors.findAll()).thenReturn(List.of());
         when(units.findAll()).thenReturn(List.of());
-        var service = new GoodsImportService(goodsService, repo, null, categories,
-                null, colors, null, units, em, user, null);
+        var service = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(goodsService, repo, null, categories,
+                null, colors, null, units, em, user, null));
         GoodsMasterWriteAccessPort access = mock(GoodsMasterWriteAccessPort.class);
         ReflectionTestUtils.setField(service, "writeAccess", access);
         return new Fixture(service, goodsService, repo, goods, category, access);

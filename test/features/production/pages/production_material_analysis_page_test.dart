@@ -11,6 +11,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
+import '../../../support/table_cell_geometry.dart';
+import '../../../support/field_hint_support.dart';
+import 'package:uten_imp/shared/search/numeric_column_query.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/layout/uten_picker_confirm_bar.dart';
@@ -4676,7 +4679,7 @@ void main() {
     },
   );
 
-  testWidgets('物料办理和编号支持文本搜索，数量表头保留纯标签且不挂说明图标', (tester) async {
+  testWidgets('编号按文本、数量按数值条件筛选，物料办理不检索按钮且表头不挂说明', (tester) async {
     final json = unconfirmedBuyChildTree()..['allowedActions'] = const ['VIEW'];
     await _pumpPage(
       tester,
@@ -4708,7 +4711,7 @@ void main() {
       findsOneWidget,
     );
 
-    // 名称/编号按统一文本搜索契约提供入口；数量列保留原业务控件。
+    // 编号走文本；数量取 exactValueOf 的数值条件；物料办理不检索按钮文字。
     for (final label in const ['物料办理', '编号', '需要数量', '还缺数量', '下单数量']) {
       final header = await _materialHeaderCell(tester, label);
       expect(
@@ -4716,7 +4719,7 @@ void main() {
         findsNothing,
         reason: '「$label」列头不该有 ⓘ',
       );
-      if (label == '物料办理' || label == '编号') {
+      if (label != '物料办理') {
         expect(
           find.descendant(
             of: header,
@@ -4741,13 +4744,36 @@ void main() {
         final input = find.byKey(const Key('uten-column-keyword-input'));
         expect(input, findsOneWidget);
         expect(tester.widget<TextField>(input).decoration!.hintText, label);
-        await tester.tapAt(const Offset(5, 5));
-        await tester.pumpAndSettle();
+        if (label == '编号') {
+          await tester.tapAt(const Offset(5, 5));
+          await tester.pumpAndSettle();
+        } else {
+          await readFieldHint(tester, NumericColumnQuery.help);
+          await tester.enterText(input, '>9');
+          await tester.testTextInput.receiveAction(TextInputAction.search);
+          await tester.pumpAndSettle();
+          // The fixture's required quantity is 10; shortage and order are 8.
+          // A literal keyword search for ">9" could not produce this result.
+          expect(
+            find.byKey(const ValueKey('material-table-row-buy-child')),
+            label == '需要数量' ? findsOneWidget : findsNothing,
+          );
+          final filteredLabel = '$label：>9';
+          await _materialHeaderCell(tester, filteredLabel);
+          await tester.tap(find.text(filteredLabel).hitTestable().last);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('所有').last);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('material-table-row-buy-child')),
+            findsOneWidget,
+          );
+        }
       } else {
         expect(
           find.descendant(of: header, matching: find.byType(Icon)),
           findsNothing,
-          reason: '「$label」数量列头不该有文本搜索 / 排序图标',
+          reason: '物料办理不应按操作按钮文字搜索或排序',
         );
       }
     }
@@ -9673,9 +9699,7 @@ Future<void> _chooseRoute(WidgetTester tester, String label) =>
     _chooseMaterialRoute(tester, 'material-path-1', label);
 
 /// 点主表列头（进度 / 供应方式）打开筛选下拉，选一个桶（文案「标签 (计数)」）。
-/// 主表某一列的列头格：按标签文本在表格区域内定位, 取最近的 Container 祖先。
-/// 有筛选桶 / 说明的列头是 InkWell > Container > Row[标签, ⓘ, 箭头], 纯标签
-/// 列头是裸 Container > 标签——两种形态最近的 Container 都是这一格本身。
+/// Read the shared semantic header frame; label decoration is not the cell.
 /// 宽屏联动模式下列头会随表体滚出视口(offstage), 所以先 ensureVisible。
 Future<Finder> _materialHeaderCell(WidgetTester tester, String label) async {
   final text = find
@@ -9687,7 +9711,7 @@ Future<Finder> _materialHeaderCell(WidgetTester tester, String label) async {
       .first;
   await tester.ensureVisible(text);
   await tester.pumpAndSettle();
-  return find.ancestor(of: text, matching: find.byType(Container)).first;
+  return tableCellFrame(text);
 }
 
 Future<void> _selectMaterialHeaderFilter(

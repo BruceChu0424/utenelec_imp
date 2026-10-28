@@ -72,7 +72,14 @@ class MasterNumericHeadersPostgresTest {
                 com.uten.imp.features.org.position.Position.class.getName()));
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none","hibernate.jdbc.time_zone","UTC"));factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void close() throws Exception { if(emf!=null)emf.close();if(database!=null)database.close(); }
+    @AfterAll static void close() throws Exception {
+        if (emf != null) {
+            emf.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void clean() {
         db.execute("TRUNCATE goods,goods_bom_items,moulds,clients,suppliers,stock_balances,warehouses,subcontract_orders,subcontract_order_items,subcontract_short_delivery_cases,procurement_order_qty_change_logs");
         em=emf.createEntityManager();repositories=new JpaRepositoryFactory(em);

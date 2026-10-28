@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { catalogFamilySlug } from '@/lib/catalog';
 import { prisma } from '@/lib/db';
-import { publicNewsWhere, publicProductWhere } from '@/lib/publication';
+import { publicCaseWhere, publicNewsWhere, publicProductWhere } from '@/lib/publication';
 import { getCatalogNavigation } from '@/lib/queries';
 import { directContentLocales, hasText, localizedUrl, REVIEWED_SITE_LOCALES } from '@/lib/seo';
 
@@ -10,7 +10,7 @@ import { directContentLocales, hasText, localizedUrl, REVIEWED_SITE_LOCALES } fr
 export const dynamic = 'force-dynamic';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [products, families, news] = await Promise.all([
+  const [products, families, news, cases] = await Promise.all([
     prisma.product.findMany({
       where: publicProductWhere(),
       select: { slug: true, i18n: true, updatedAt: true, series: { include: { parent: true } } },
@@ -20,6 +20,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       where: publicNewsWhere(),
       select: { slug: true, i18n: true, updatedAt: true },
     }),
+    prisma.caseItem.findMany({ where: publicCaseWhere(), select: { slug: true, i18n: true, updatedAt: true } }),
   ]);
 
   const staticPaths = [
@@ -80,5 +81,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }));
   });
 
-  return [...staticEntries, ...seriesEntries, ...productEntries, ...newsEntries];
+  const caseEntries: MetadataRoute.Sitemap = cases.flatMap((item) => {
+    const locales = directContentLocales<{ title?: string; content?: string }>(
+      item.i18n, content => hasText(content.title) && hasText(content.content));
+    return locales.map(locale => ({ url: localizedUrl(locale, `/cases/${item.slug}`),
+      lastModified: item.updatedAt, changeFrequency: 'yearly' as const, priority: 0.5 }));
+  });
+
+  return [...staticEntries, ...seriesEntries, ...productEntries, ...newsEntries, ...caseEntries];
 }

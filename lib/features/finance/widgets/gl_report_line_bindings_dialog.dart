@@ -252,20 +252,14 @@ class _GlReportLineBindingsDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          '附表取数设置',
-                          style: theme.textTheme.titleMedium,
-                        ),
-                      ),
-                      const UtenFieldHintIcon(
-                        info:
-                            '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
-                        dense: true,
-                      ),
-                    ],
+                  const UtenDialogHeader(
+                    padding: EdgeInsets.zero,
+                    icon: Icons.account_tree_outlined,
+                    title: Text('附表取数设置'),
+                    trailing: UtenFieldHintIcon(
+                      info: '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
+                      dense: true,
+                    ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   Expanded(
@@ -319,10 +313,8 @@ class _GlReportLineBindingsDialogState
                           ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s8,
+                  UtenDialogActions(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s16),
                     children: [
                       if (widget.canEdit) ...[
                         OutlinedButton(

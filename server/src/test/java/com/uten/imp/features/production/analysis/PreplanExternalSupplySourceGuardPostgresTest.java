@@ -716,7 +716,7 @@ class PreplanExternalSupplySourceGuardPostgresTest {
                     SELECT id_type FROM employees ORDER BY id LIMIT 1
                 ),?,?,'active','regular')
                 """,
-                employeeId, "V250-E-" + employeeId, "V250 owner",
+                employeeId, "V250-E-" + employeeId, com.uten.imp.support.SyntheticEmployeeIdentity.name("V250 owner",employeeId),
                 departmentId, LocalDate.of(2026, 1, 1));
         execute(
                 connection,

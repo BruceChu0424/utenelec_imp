@@ -46,10 +46,13 @@ public final class ColumnKeywordSearch {
         if (searches.size() > 160) throw invalid("列搜索条件过多");
         Map<String, String> result = new LinkedHashMap<>();
         searches.forEach((key, value) -> {
-            if (!allowed.contains(key)) throw invalid("此列不支持搜索：" + key);
+            // Keep the server's declared key, not the equal request String: callers
+            // may use this key in fixed SQL parameter namespaces and projections.
+            String declared = allowed.stream().filter(candidate -> candidate.equals(key)).findFirst()
+                    .orElseThrow(() -> invalid("此列不支持搜索：" + key));
             if (value == null || value.isBlank()) return;
             if (value.length() > 200) throw invalid("每列搜索关键词不能超过 200 个字符");
-            if (!KeywordSearch.terms(value).isEmpty()) result.put(key, value.strip());
+            if (!KeywordSearch.terms(value).isEmpty()) result.put(declared, value.strip());
         });
         return result;
     }

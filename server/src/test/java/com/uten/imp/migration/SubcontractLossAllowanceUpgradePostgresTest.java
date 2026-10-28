@@ -103,7 +103,7 @@ class SubcontractLossAllowanceUpgradePostgresTest {
                 }
                 connection.commit();
             }
-            db.execute("SELECT fn_assert_subcontract_target_outbound_receipt('" + item + "')");
+            db.queryForObject("SELECT fn_assert_subcontract_target_outbound_receipt(?)",Object.class,item);
             Map<String,Object> beforePlan = db.queryForMap(
                     "SELECT planned_qty,issued_qty,bom_unit_qty FROM subcontract_material_plan_items WHERE id=?",line);
             Map<String,Object> beforeIssue = db.queryForMap("""
@@ -139,7 +139,7 @@ class SubcontractLossAllowanceUpgradePostgresTest {
                     WHERE tgname=? AND tgrelid=CAST(? AS regclass)
                     """,String.class,identity.substring(identity.indexOf('|')+1),identity.substring(0,identity.indexOf('|'))),
                     "original guard restored: "+identity));
-            db.execute("SELECT fn_assert_subcontract_target_outbound_receipt('" + item + "')");
+            db.queryForObject("SELECT fn_assert_subcontract_target_outbound_receipt(?)",Object.class,item);
             assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(?)",Boolean.class,receiptLine));
             assertDecimal(new BigDecimal("0.0110"),db.queryForObject(
                     "SELECT fn_subcontract_draw_f(10000,fn_subcontract_supply_unit_qty(0.000001,10))",BigDecimal.class),"minimum usage allowance");

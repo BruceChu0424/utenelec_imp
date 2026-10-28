@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import '../layout/uten_app_bar_action_feedback.dart';
+import '../feedback/uten_dialog_action_scope.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -123,6 +124,7 @@ class UtenButton extends StatelessWidget {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final inAppBar = UtenAppBarActionPresentation.contains(context);
+    final inDialog = UtenDialogActionScope.contains(context);
     final enabled = press != null && !loading;
     final effectiveOnTap = enabled
         ? UtenAppBarActionScope.wrap(context, press)
@@ -133,7 +135,7 @@ class UtenButton extends StatelessWidget {
         ? UtenAppBarActionScope.wrap(context, longPress)
         : null;
     final (enabledBackground, enabledForeground, enabledBorder) =
-        _resolveColors(colorScheme, inAppBar: inAppBar);
+        _resolveColors(colorScheme, inAppBar: inAppBar, inDialog: inDialog);
 
     // 禁用态刻意比 M3 默认（12% 底 + 38% 字）浓：默认那套在浅色底上几乎透明，
     // 用户在物料分析/下达采购等页反馈「不选的时候根本不知道这里可以点」。
@@ -156,7 +158,12 @@ class UtenButton extends StatelessWidget {
     final minimumHeight = UtenControlMetrics.minimumHitExtent(
       context,
       desktop: context.scaled(
-        inAppBar ? UtenFilterRow.minHeight : (height ?? _minimumExtent),
+        inAppBar
+            ? UtenFilterRow.minHeight
+            : (height ??
+                  (inDialog
+                      ? UtenControlMetrics.primaryHeight
+                      : _minimumExtent)),
       ),
     );
     final iconSize = context.scaled(_iconSize);
@@ -179,6 +186,10 @@ class UtenButton extends StatelessWidget {
         onLongPress: effectiveLongPress,
         child: Material(
           color: background,
+          elevation: inDialog && enabled && type == UtenButtonType.primary
+              ? 1
+              : 0,
+          shadowColor: colorScheme.primary.withValues(alpha: 0.18),
           shape: shape,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
@@ -207,6 +218,8 @@ class UtenButton extends StatelessWidget {
               child: Padding(
                 padding: inAppBar
                     ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+                    : inDialog
+                    ? const EdgeInsets.symmetric(horizontal: 20, vertical: 12)
                     : _padding,
                 child: DefaultTextStyle.merge(
                   style:
@@ -216,6 +229,8 @@ class UtenButton extends StatelessWidget {
                                   fontWeight: FontWeight.w600,
                                   height: 1.2,
                                 )
+                              : inDialog
+                              ? _textStyle.copyWith(fontSize: 14)
                               : _textStyle)
                           .copyWith(color: foreground),
                   child: inAppBar
@@ -276,19 +291,26 @@ class UtenButton extends StatelessWidget {
   (Color, Color, Color?) _resolveColors(
     ColorScheme colorScheme, {
     bool inAppBar = false,
+    bool inDialog = false,
   }) {
-    return switch (inAppBar ? UtenButtonType.primary : type) {
+    return switch (inAppBar
+        ? UtenButtonType.primary
+        : inDialog && type == UtenButtonType.ghost
+        ? UtenButtonType.secondary
+        : type) {
       UtenButtonType.primary => (
         colorScheme.primary,
         colorScheme.onPrimary,
         null,
       ),
       UtenButtonType.secondary => (
-        colorScheme.surfaceContainerHigh,
+        inDialog
+            ? colorScheme.surfaceContainerLow
+            : colorScheme.surfaceContainerHigh,
         colorScheme.onSurface,
         // 2026-09-15 用户口径：普通动作按钮（取消/返回/进度追踪这类 secondary）
         // 全站统一带边框——与悬浮组按钮同语言，实底按钮不再「裸」在页面上。
-        colorScheme.outline,
+        inDialog ? colorScheme.outlineVariant : colorScheme.outline,
       ),
       UtenButtonType.tonal => (
         colorScheme.primaryContainer,

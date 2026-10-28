@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.support.GoodsImportIdentifierAvailabilityFixture;
+
 import com.uten.imp.application.port.ExportLimitPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
@@ -41,8 +43,8 @@ class GoodsExportImportTemplateTest {
             new ExportColumn("bomRef", "组装信息ID", ExportColumn.TEXT),
             new ExportColumn("code", "编号", ExportColumn.TEXT),
             new ExportColumn("name", "货品名称", ExportColumn.TEXT),
-            new ExportColumn("spec", "规格", ExportColumn.TEXT),
-            new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
+            new ExportColumn("categoryPath", "类别", ExportColumn.TEXT),
+            new ExportColumn("spec", "规格", ExportColumn.TEXT));
     private static final List<Map<String, Object>> ROWS = List.of(Map.of(
             "name", "原货品", "code", "OLD001", "categoryPath", "成品 / 电工", "spec", "10A",
             "goodsId", UUID.randomUUID().toString(), "bomRef", ""));
@@ -145,8 +147,8 @@ class GoodsExportImportTemplateTest {
         var actor = mock(SecurityContextCurrentUser.class);
         when(actor.requireId()).thenReturn(UUID.randomUUID());
         var repository = mock(GoodsRepository.class);
-        var importer = new GoodsImportService(goods, repository, null, categories,
-                null, mock(ColorRepository.class), null, mock(UnitRepository.class), em, actor, null);
+        var importer = GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(goods, repository, null, categories,
+                null, mock(ColorRepository.class), null, mock(UnitRepository.class), em, actor, null));
 
         var report = importer.detect(file);
         assertTrue(report.errors().isEmpty(), () -> report.errors().toString());
@@ -213,10 +215,36 @@ class GoodsExportImportTemplateTest {
         byte[] bytes = writer().build(COLUMNS, ROWS, GoodsExportProjection.forImportTemplate(null), "master_goods");
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var sheet = workbook.getSheetAt(0);
-            assertEquals(List.of("系统标识", "组装信息ID", "编号", "货品名称", "规格", "类别"),
+            assertEquals(List.of("系统标识", "组装信息ID", "编号", "货品名称", "类别", "规格"),
                     java.util.stream.IntStream.range(0, 6).mapToObj(i -> sheet.getRow(0).getCell(i).getStringCellValue()).toList());
             assertEquals(ROWS.getFirst().get("goodsId"), sheet.getRow(1).getCell(0).getStringCellValue());
             assertEquals("OLD001", sheet.getRow(1).getCell(2).getStringCellValue());
+        }
+    }
+
+    @Test
+    void categoryFollowsGoodsNameEvenWhenScreenPlacesItElsewhere() throws Exception {
+        for (var visible : List.of(
+                List.of("name", "spec", "categoryPath"),
+                List.of("categoryPath", "name", "spec"),
+                List.of("name", "spec"),
+                List.of("categoryPath", "spec"))) {
+            var projection = new TableColumnProjection("goods", "master_goods", visible.stream()
+                    .map(key -> new TableColumnProjection.Column(key,
+                            "spec".equals(key) ? "规格" : "自定义标题", 180.0, null, null)).toList());
+            var normalized = GoodsExportProjection.forImportTemplate(projection);
+            byte[] bytes = writer().build(COLUMNS, ROWS, normalized, "master_goods");
+            try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+                var sheet = workbook.getSheetAt(0);
+                int name = columnIndex(sheet, "货品名称"), category = columnIndex(sheet, "类别");
+                assertEquals(name + 1, category, visible.toString());
+                assertEquals("原货品", sheet.getRow(1).getCell(name).getStringCellValue());
+                assertEquals("成品 / 电工", sheet.getRow(1).getCell(category).getStringCellValue());
+                assertEquals("10A", sheet.getRow(1).getCell(columnIndex(sheet, "规格")).getStringCellValue());
+            }
+            assertEquals(visible.contains("categoryPath") ? 180.0 : null,
+                    normalized.columns().stream().filter(column -> "categoryPath".equals(column.key()))
+                            .findFirst().orElseThrow().width());
         }
     }
 
@@ -293,7 +321,7 @@ class GoodsExportImportTemplateTest {
         when(units.findAll()).thenReturn(List.of());
         var actor = mock(SecurityContextCurrentUser.class);
         when(actor.requireId()).thenReturn(UUID.randomUUID());
-        return new GoodsImportService(null, mock(GoodsRepository.class), null, categories,
-                null, colors, null, units, null, actor, null);
+        return GoodsImportIdentifierAvailabilityFixture.allowAll(new GoodsImportService(null, mock(GoodsRepository.class), null, categories,
+                null, colors, null, units, null, actor, null));
     }
 }

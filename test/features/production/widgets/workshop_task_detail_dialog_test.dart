@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -78,14 +79,36 @@ void main() {
         expect(records, 1);
         expect(tester.takeException(), isNull);
         if (width == 375) {
-          final close = tester.getRect(find.text('关闭'));
-          final plan = tester.getRect(find.text('查看生产计划'));
-          final record = tester.getRect(find.text('查看用料记录'));
-          final report = tester.getRect(find.byType(FilledButton).last);
-          expect(close.center.dy, plan.center.dy);
-          expect(plan.center.dy, record.center.dy);
+          Rect surface(String label) {
+            final button = find
+                .ancestor(
+                  of: find.text(label),
+                  matching: find.byWidgetPredicate(
+                    (widget) => widget is ButtonStyleButton,
+                  ),
+                )
+                .first;
+            return tester.getRect(
+              find
+                  .descendant(of: button, matching: find.byType(Material))
+                  .first,
+            );
+          }
+
+          final close = surface('关闭');
+          final plan = surface('查看生产计划');
+          final record = surface('查看用料记录');
+          final report = surface('报工');
+          final group = tester.getRect(find.byType(UtenDialogActions));
+          for (final rect in [close, plan, record, report]) {
+            expect(rect.height, closeTo(report.height, 0.01));
+            expect(rect.center.dx, closeTo(group.center.dx, 0.01));
+            expect(rect.left, greaterThanOrEqualTo(group.left));
+            expect(rect.right, lessThanOrEqualTo(group.right));
+          }
+          expect(plan.top, greaterThan(close.bottom));
+          expect(record.top, greaterThan(plan.bottom));
           expect(report.top, greaterThan(record.bottom));
-          expect(report.width, greaterThan(280));
           await _writePreview(tester, 'mobile');
         } else {
           await _writePreview(tester, 'tablet');

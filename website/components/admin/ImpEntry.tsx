@@ -12,7 +12,9 @@ export function ImpEntry() {
     const code = hash.get('code'), verifier = hash.get('verifier');
     // React strict-effects replay must not discard the already captured entry.
     if (!entry.current && code && verifier) entry.current = { code, verifier };
-    window.history.replaceState(null, '', window.location.pathname);
+    // Keep the router's navigation state: replacing it with null can remount
+    // this page after the fragment was cleared, losing the one-use credentials.
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
     if (!entry.current) { setError('入口已失效。请返回 IMP 工作台重新打开官网管理。'); return; }
     let active = true;
     fetch('/api/imp/entry/inspect', { method: 'POST', headers: { 'content-type': 'application/json' },

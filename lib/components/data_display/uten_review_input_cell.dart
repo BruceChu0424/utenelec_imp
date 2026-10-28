@@ -14,6 +14,7 @@ class UtenReviewInputCell extends StatelessWidget {
     this.beforeKey,
     this.decimalValues = true,
     this.replacementEnabled = true,
+    this.showValueLabels = false,
   });
   final String? before;
   final String? after;
@@ -26,6 +27,10 @@ class UtenReviewInputCell extends StatelessWidget {
 
   /// A reviewed conflict can retain the original until replacement is chosen.
   final bool replacementEnabled;
+
+  /// Use a visible original/imported pair when the review needs more context
+  /// than a compact inline comparison. Other table callers keep their layout.
+  final bool showValueLabels;
   final Widget child;
 
   @override
@@ -59,7 +64,46 @@ class UtenReviewInputCell extends StatelessWidget {
           : null,
       // Table hosts provide finite column widths. Avoid LayoutBuilder here:
       // stretch rows measure intrinsic height to draw continuous tree guides.
-      child: inTable
+      child: showValueLabels
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                changed
+                    ? Row(
+                        children: [
+                          Text(
+                            '原值',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: ExcludeSemantics(
+                              child: Tooltip(
+                                message: original,
+                                child: retained,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+                SizedBox(height: changed ? 4 : 0),
+                Row(
+                  children: [
+                    changed
+                        ? Text(
+                            '导入值',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          )
+                        : const SizedBox.shrink(),
+                    SizedBox(width: changed ? 6 : 0),
+                    Expanded(child: child),
+                  ],
+                ),
+              ],
+            )
+          : inTable
           // Retain the reviewed value beside its replacement without adding
           // a second line to every editable row. Full text stays available on
           // hover and through the surrounding review semantics.

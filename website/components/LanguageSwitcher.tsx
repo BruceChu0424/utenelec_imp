@@ -2,7 +2,7 @@
 
 import { Check, ChevronDown, Globe2 } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { usePathname, useRouter } from '@/i18n/navigation';
 import { LOCALES } from '@/lib/content';
 
@@ -17,6 +17,7 @@ export function LanguageSwitcher() {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const menuId = useId();
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -25,19 +26,11 @@ export function LanguageSwitcher() {
     const outside = (event: MouseEvent) => {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     };
-    const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && open) {
-        setOpen(false);
-        window.requestAnimationFrame(() => triggerRef.current?.focus());
-      }
-    };
     document.addEventListener('mousedown', outside);
-    document.addEventListener('keydown', escape);
     return () => {
       document.removeEventListener('mousedown', outside);
-      document.removeEventListener('keydown', escape);
     };
-  }, [open]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -49,8 +42,8 @@ export function LanguageSwitcher() {
   const change = (nextLocale: string) => {
     setOpen(false);
     if (nextLocale === locale) return;
-    const query = typeof window === 'undefined' ? '' : window.location.search;
-    router.replace(`${pathname}${query}`, { locale: nextLocale });
+    const suffix = typeof window === 'undefined' ? '' : `${window.location.search}${window.location.hash}`;
+    router.replace(`${pathname}${suffix}`, { locale: nextLocale });
   };
 
   const moveFocus = (event: ReactKeyboardEvent, target: 'next' | 'previous' | 'first' | 'last') => {
@@ -63,7 +56,16 @@ export function LanguageSwitcher() {
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+    }} onKeyDown={(event) => {
+      if (event.key !== 'Escape' || !open) return;
+      // Dismiss this popup first; a containing mobile navigation dialog stays open.
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }}>
       <button
         ref={triggerRef}
         type="button"
@@ -78,6 +80,7 @@ export function LanguageSwitcher() {
         aria-label={t('switch')}
         aria-expanded={open}
         aria-haspopup="menu"
+        aria-controls={open ? menuId : undefined}
       >
         <Globe2 className="h-4 w-4" />
         <span>{locale.toUpperCase()}</span>
@@ -85,7 +88,7 @@ export function LanguageSwitcher() {
       </button>
 
       {open && (
-        <div ref={menuRef} className="absolute end-0 z-[110] mt-2 grid max-h-[min(70vh,420px)] w-48 overflow-y-auto rounded-2xl border border-border bg-card p-1.5 shadow-lg" role="menu" onKeyDown={(event) => {
+        <div ref={menuRef} id={menuId} className="absolute end-0 z-[110] mt-2 grid max-h-[min(70vh,420px)] w-48 overflow-y-auto rounded-2xl border border-border bg-card p-1.5 shadow-lg" role="menu" aria-label={t('switch')} onKeyDown={(event) => {
           if (event.key === 'ArrowDown') moveFocus(event, 'next');
           else if (event.key === 'ArrowUp') moveFocus(event, 'previous');
           else if (event.key === 'Home') moveFocus(event, 'first');
@@ -98,6 +101,7 @@ export function LanguageSwitcher() {
               onClick={() => change(entry)}
               role="menuitemradio"
               aria-checked={entry === locale}
+              tabIndex={entry === locale ? 0 : -1}
               className="flex min-h-11 w-full items-center justify-between rounded-xl px-3 text-sm font-medium transition hover:bg-muted"
             >
               {NAMES[entry] || entry}

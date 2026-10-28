@@ -3196,6 +3196,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get exportDialogTitle => 'Excel 내보내기';
 
   @override
+  String exportDialogSubtitle(String format) {
+    return '현재 데이터를 $format 파일로 저장';
+  }
+
+  @override
+  String get exportPasswordProtectionDescription => '파일에 비밀번호 보호 추가';
+
+  @override
   String get exportFileNameLabel => '파일 이름';
 
   @override

@@ -5117,7 +5117,6 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _dialogHeader(context, theme, widget.title ?? '编辑组件'),
-              const Divider(height: 1),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -5259,7 +5258,6 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                   ),
                 ),
               ),
-              const Divider(height: 1),
               _dialogActions(
                 theme,
                 onCancel: () => Navigator.of(context).pop(),
@@ -5326,29 +5324,11 @@ String? _designQtyError(AppLocalizations l10n, String raw) {
 }
 
 Widget _dialogHeader(BuildContext context, ThemeData theme, String title) {
-  return Padding(
-    padding: const EdgeInsets.fromLTRB(
-      UtenSpacing.s16,
-      UtenSpacing.s12,
-      UtenSpacing.s8,
-      UtenSpacing.s12,
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
-    ),
+  return UtenDialogHeader(
+    icon: Icons.account_tree_outlined,
+    title: Text(title),
+    showCloseButton: true,
+    onClose: () => Navigator.of(context).pop(),
   );
 }
 
@@ -5358,26 +5338,20 @@ Widget _dialogActions(
   required VoidCallback onSave,
   required bool saving,
 }) {
-  return Padding(
-    padding: const EdgeInsets.all(UtenSpacing.s16),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: onCancel,
-          child: const Text('取消'),
-        ),
-        const SizedBox(width: UtenSpacing.s12),
-        UtenButton(
-          icon: Icons.save_outlined,
-          isLoading: saving,
-          onPressed: onSave,
-          child: const Text('保存'),
-        ),
-      ],
-    ),
+  return UtenDialogActions(
+    children: [
+      UtenButton(
+        type: UtenButtonType.secondary,
+        onPressed: onCancel,
+        child: const Text('取消'),
+      ),
+      UtenButton(
+        icon: Icons.save_outlined,
+        isLoading: saving,
+        onPressed: onSave,
+        child: const Text('保存'),
+      ),
+    ],
   );
 }
 

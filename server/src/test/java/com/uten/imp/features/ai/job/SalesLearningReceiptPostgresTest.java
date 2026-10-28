@@ -41,8 +41,8 @@ class SalesLearningReceiptPostgresTest {
         tx=new TransactionTemplate(transactions);actor=UUID.randomUUID();UUID employee=UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'学习回执','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
-                """,employee,"LE-"+employee);
+                SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """,employee,"LE-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("学习回执",employee));
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"learning-"+actor);
         current=mock(SecurityContextCurrentUser.class);when(current.requireId()).thenReturn(actor);
         jobs=new AiJobRepository(named);usage=new AiJobUsageAdapter(jobs,new ObjectMapper(),mock(AiInputOriginalStore.class));

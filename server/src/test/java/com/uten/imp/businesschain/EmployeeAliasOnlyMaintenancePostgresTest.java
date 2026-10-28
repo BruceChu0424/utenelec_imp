@@ -38,9 +38,9 @@ class EmployeeAliasOnlyMaintenancePostgresTest extends AuthSessionPostgresTestSu
         UUID alias = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted)
-                SELECT ?,?,'Synthetic historical alias','其他',department_id,CURRENT_DATE,'active','regular',true
+                SELECT ?,?,?,'其他',department_id,CURRENT_DATE,'active','regular',true
                 FROM employees WHERE id=?
-                """, alias, "ALIAS-" + alias, canonical);
+                """, alias, "ALIAS-" + alias,com.uten.imp.support.SyntheticEmployeeIdentity.name("Synthetic historical alias",alias), canonical);
         String databaseIdentity = jdbc.queryForObject("""
                 SELECT jsonb_build_object('database',current_database(),
                   'system_identifier',(SELECT system_identifier::text FROM pg_control_system()),

@@ -33,32 +33,52 @@ public class MasterIdentifierAvailabilityService {
 
     @Transactional(readOnly = true)
     public Availability check(Domain domain, String code, UUID entityId, UUID categoryId) {
-        return checkInternal(domain, code, entityId, categoryId, false);
+        return checkInternal(domain, code, entityId, categoryId, false, true);
+    }
+
+    /** A planned category may be new; null explicitly means the domain fallback prefix. */
+    @Transactional(readOnly = true)
+    public Availability checkForTargetCategory(Domain domain, String code, UUID entityId, UUID categoryId) {
+        return checkInternal(domain, code, entityId, categoryId, false, false);
     }
 
     /** Trusted object-version restoration keeps a soft-deleted entity's original UUID. */
     @Transactional(readOnly = true)
     public Availability checkForRestore(Domain domain, String code, UUID entityId, UUID categoryId) {
         if (entityId == null) throw new ApiException(ErrorCode.CONFLICT, "编号恢复缺少原资料身份");
-        return checkInternal(domain, code, entityId, categoryId, true);
+        return checkInternal(domain, code, entityId, categoryId, true, true);
     }
 
-    private Availability checkInternal(Domain domain, String code, UUID entityId, UUID categoryId, boolean includeDeleted) {
+    private Availability checkInternal(Domain domain, String code, UUID entityId, UUID categoryId,
+                                       boolean includeDeleted, boolean inheritCurrentCategory) {
         Availability result = check(em, domain, code, entityId, includeDeleted);
-        if (!result.available() || result.normalizedCode() == null) return result;
+        if (!result.available()) return result;
+        boolean categoryDriven = domain == Domain.GOODS || domain == Domain.CLIENT
+                || domain == Domain.SUPPLIER || domain == Domain.MOULD;
+        if (result.normalizedCode() == null && (!categoryDriven || entityId == null || includeDeleted)) return result;
         if (domain == Domain.WAREHOUSE && "001".equals(result.normalizedCode())) {
             Object root = em.createNativeQuery("SELECT fn_warehouse_root_id()").getSingleResult();
             if (root != null && !root.equals(entityId)) return new Availability("001", false, "编号001由主仓专用，普通子仓不能使用");
         }
-        if (domain == Domain.GOODS || domain == Domain.CLIENT || domain == Domain.SUPPLIER || domain == Domain.MOULD) {
+        if (categoryDriven) {
             UUID category = categoryId;
-            if (category == null && entityId != null) {
+            if (inheritCurrentCategory && category == null && entityId != null) {
                 Object existing = em.createNativeQuery("SELECT category_id FROM " + domain.table + " WHERE id=:id")
                         .setParameter("id", entityId).getSingleResult();
                 category = existing == null ? null : (UUID) existing;
             }
-            String problem = new CategoryDrivenCodeService(em).requestedSequenceProblem(
-                    CategoryDrivenCodeService.MasterType.valueOf(domain.name()), result.normalizedCode(), entityId, category);
+            var categories = new CategoryDrivenCodeService(em);
+            var type = CategoryDrivenCodeService.MasterType.valueOf(domain.name());
+            if (entityId != null && !includeDeleted) {
+                try {
+                    categories.previewForUpdate(type, entityId, category, code);
+                    return result;
+                } catch (ApiException invalid) {
+                    if (invalid.getCode() != ErrorCode.CONFLICT && invalid.getCode() != ErrorCode.VALIDATION_FAILED) throw invalid;
+                    return new Availability(result.normalizedCode(), false, invalid.getMessage());
+                }
+            }
+            String problem = categories.requestedSequenceProblem(type, result.normalizedCode(), entityId, category);
             if (problem != null) return new Availability(result.normalizedCode(), false, problem);
         }
         return result;

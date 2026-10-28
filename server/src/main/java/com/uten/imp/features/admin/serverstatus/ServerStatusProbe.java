@@ -457,7 +457,7 @@ public class ServerStatusProbe {
             } else result.add(report);
         }
         if(!retentionScheduled&&auditRetentionWatched) unscheduledAuditRetention(now).ifPresent(result::add);
-        appendPersistedOnlyEvidence(result, runs, now);
+        appendPersistedOnlyEvidence(result, runs);
         return List.copyOf(result);
     }
 
@@ -467,7 +467,7 @@ public class ServerStatusProbe {
      * 只是观测增强, 查询失败时静默跳过, 不影响状态页其余部分。
      */
     private void appendPersistedOnlyEvidence(List<JobReport> result,
-            List<ScheduledTaskRunRegistry.Run> memoryRuns, Instant now) {
+            List<ScheduledTaskRunRegistry.Run> memoryRuns) {
         if (durableRunStore == null) return;
         java.util.Set<String> inMemory = new java.util.HashSet<>();
         for (var run : memoryRuns) inMemory.add(run.name());
@@ -481,12 +481,12 @@ public class ServerStatusProbe {
             return;
         }
         for (ScheduledTaskRunStore.PersistedRun run : persisted.values()) {
-            result.add(persistedReport(run, now));
+            result.add(persistedReport(run));
         }
     }
 
     /** 由持久完成回执合成状态页报告: 完成事实跨重启可见, 不推断排队/运行中状态。 */
-    private JobReport persistedReport(ScheduledTaskRunStore.PersistedRun run, Instant now) {
+    private JobReport persistedReport(ScheduledTaskRunStore.PersistedRun run) {
         String label = ScheduledTaskCatalog.labelOf(run.taskKey());
         String took = run.durationMs() <= 0 ? ""
                 : ", 耗时 " + humanDuration(Duration.ofMillis(run.durationMs()));

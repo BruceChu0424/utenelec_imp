@@ -17,6 +17,24 @@ import static org.mockito.Mockito.*;
 class CategorySiblingNameGuardTest {
     @ParameterizedTest
     @EnumSource(CategorySiblingNameGuard.Kind.class)
+    void hierarchyLockKeyIsBoundAsDataWithoutChangingTheDomainLock(CategorySiblingNameGuard.Kind kind) {
+        var em=mock(EntityManager.class);
+        var query=mock(Query.class,RETURNS_SELF);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        CategorySiblingNameGuard.lockHierarchy(em,kind);
+        verify(em).createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:hierarchyLockKey,0))");
+        verify(query).setParameter("hierarchyLockKey",switch(kind) {
+            case MATERIAL -> "MATERIAL_CATEGORY_HIERARCHY";
+            case CLIENT -> "CLIENT_CATEGORY_HIERARCHY";
+            case SUPPLIER -> "SUPPLIER_CATEGORY_HIERARCHY";
+            case MOULD -> "MOULD_CATEGORY_HIERARCHY";
+            case PAYMENT_STYLE -> "PAYMENT_STYLE_HIERARCHY";
+        });
+        verify(query).getSingleResult();
+    }
+
+    @ParameterizedTest
+    @EnumSource(CategorySiblingNameGuard.Kind.class)
     void checksNormalizedNameWithinTheSelectedParentAndExcludesSelf(CategorySiblingNameGuard.Kind kind) {
         var em = mock(EntityManager.class);
         var query = mock(Query.class);

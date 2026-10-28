@@ -636,85 +636,94 @@ class _ContactCard extends StatelessWidget {
       if ((row.positionName ?? '').isNotEmpty) row.positionName!,
       if ((row.departmentName ?? '').isNotEmpty) row.departmentName!,
     ];
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s8,
-        UtenSpacing.s20,
-        UtenSpacing.s20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  foregroundColor: theme.colorScheme.onPrimaryContainer,
-                  child: Text(initial, style: theme.textTheme.headlineSmall),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s4,
-                  children: [
-                    Text(name, style: theme.textTheme.titleLarge),
-                    if (row.departmentManager)
-                      const EmployeeLeadershipBadge(departmentManager: true),
-                    if (row.isSelf) _selfTag(theme),
-                  ],
-                ),
-                if (subParts.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    subParts.join(' · '),
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+    return UtenDialogSurface(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s20,
+          UtenSpacing.s8,
+          UtenSpacing.s20,
+          UtenSpacing.s20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            UtenDialogHeader(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s20),
+              icon: Icons.contact_page_outlined,
+              title: const Text('联系方式'),
+              showCloseButton: true,
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                    radius: 32,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    foregroundColor: theme.colorScheme.onPrimaryContainer,
+                    child: Text(initial, style: theme.textTheme.headlineSmall),
                   ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s4,
+                    children: [
+                      Text(name, style: theme.textTheme.titleLarge),
+                      if (row.departmentManager)
+                        const EmployeeLeadershipBadge(departmentManager: true),
+                      if (row.isSelf) _selfTag(theme),
+                    ],
+                  ),
+                  if (subParts.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      subParts.join(' · '),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          if (hasCode)
-            _ContactLine(
-              icon: Icons.badge_outlined,
-              label: '工号',
-              value: row.code!,
-            ),
-          if (hasPhone)
-            _ContactLine(
-              icon: Icons.phone_outlined,
-              label: '办公电话',
-              value: row.officePhone!,
-              onTap: () => _launchUri(context, 'tel:${row.officePhone}'),
-            ),
-          if (hasEmail)
-            _ContactLine(
-              icon: Icons.mail_outline_rounded,
-              label: '邮箱',
-              value: row.email!,
-              onTap: () => _launchUri(context, 'mailto:${row.email}'),
-            ),
-          if (!hasCode && !hasPhone && !hasEmail)
-            Padding(
-              padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Text(
-                '暂无其它联系方式',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
               ),
             ),
-        ],
+            const SizedBox(height: UtenSpacing.s16),
+            if (hasCode)
+              _ContactLine(
+                icon: Icons.badge_outlined,
+                label: '工号',
+                value: row.code!,
+              ),
+            if (hasPhone)
+              _ContactLine(
+                icon: Icons.phone_outlined,
+                label: '办公电话',
+                value: row.officePhone!,
+                onTap: () => _launchUri(context, 'tel:${row.officePhone}'),
+              ),
+            if (hasEmail)
+              _ContactLine(
+                icon: Icons.mail_outline_rounded,
+                label: '邮箱',
+                value: row.email!,
+                onTap: () => _launchUri(context, 'mailto:${row.email}'),
+              ),
+            if (!hasCode && !hasPhone && !hasEmail)
+              Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: Text(
+                  '暂无其它联系方式',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

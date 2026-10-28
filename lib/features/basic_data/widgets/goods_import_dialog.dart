@@ -81,6 +81,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
   final _queue = ImportFileQueue();
   GoodsImportCorrections _cellCorrections = {};
   GoodsImportCorrections _problemDraft = {};
+  final _replacementChoices = <String, bool>{};
   final _excludedRowNums = <int>{};
   GoodsImportCorrections? _submittedCorrections;
   Set<int>? _submittedExclusions;
@@ -135,86 +136,58 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                ),
-                child: Row(
+              UtenDialogHeader(
+                icon: Icons.upload_file_outlined,
+                title: Row(
                   children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '导入货品',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          UtenFieldHintIcon(
-                            info:
-                                '${basicDataL10n(context).importFilesTransactionNote}\n\n'
-                                '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
-                                '${basicDataL10n(context).goodsImportTemplateHint}\n'
-                                '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
-                                '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
-                                '${basicDataL10n(context).goodsNameEnImportHint}\n'
-                                '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
-                                '${basicDataL10n(context).goodsImportMergeHint}\n'
-                                '缺失的分类/颜色/单位会自动新建。\n'
-                                '如从「导出货品」取得文件，导出时请不要设置密码。',
-                            dense: true,
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          // 标题旁标注本次导入模式（入口三选一带进来的口径）。
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: UtenSpacing.s8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(
-                                UtenRadius.sm,
-                              ),
-                            ),
-                            child: Text(
-                              widget.mode.label,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSecondaryContainer,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: _detecting || _committing || _reviewing
-                          ? null
-                          : () => Navigator.of(context).pop(),
+                    const Flexible(child: Text('导入货品')),
+                    UtenFieldHintIcon(
+                      info:
+                          '${basicDataL10n(context).importFilesTransactionNote}\n\n'
+                          '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
+                          '${basicDataL10n(context).goodsImportTemplateHint}\n'
+                          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
+                          '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
+                          '${basicDataL10n(context).goodsNameEnImportHint}\n'
+                          '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'
+                          '${basicDataL10n(context).goodsImportMergeHint}\n'
+                          '缺失的分类/颜色/单位会自动新建。\n'
+                          '如从「导出货品」取得文件，导出时请不要设置密码。',
+                      dense: true,
                     ),
                   ],
                 ),
+                subtitle: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(UtenRadius.sm),
+                    ),
+                    child: Text(
+                      widget.mode.label,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                  ),
+                ),
+                showCloseButton: true,
+                onClose: _detecting || _committing || _reviewing
+                    ? null
+                    : () => Navigator.of(context).pop(),
               ),
-              const Divider(height: 1),
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(UtenSpacing.s16),
                   child: _body(theme),
                 ),
               ),
-              if (!_detecting && !_committing) ...[
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: _actions(theme),
-                ),
-              ],
+              if (!_detecting && !_committing) _actions(theme),
             ],
           ),
         ),
@@ -366,18 +339,12 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           ],
         ),
         const SizedBox(height: UtenSpacing.s12),
-        Text('已导入 ${r.importedCount} 条货品', style: theme.textTheme.bodyMedium),
+        Text(_writeMessage(r), style: theme.textTheme.bodyMedium),
         const SizedBox(height: UtenSpacing.s8),
         Wrap(
           spacing: UtenSpacing.s16,
           runSpacing: UtenSpacing.s8,
-          children: [
-            if (r.createdCount > 0) Text('新增 ${r.createdCount}'),
-            if (r.filledCount > 0) Text('补齐 ${r.filledCount}'),
-            if (r.updatedCount > 0) Text('替换 ${r.updatedCount}'),
-            if (r.ignoredCount > 0) Text('保留 ${r.ignoredCount}'),
-            if (r.unchangedCount > 0) Text('相同 ${r.unchangedCount}'),
-          ],
+          children: [for (final detail in _resultDetails(r)) Text(detail)],
         ),
         if (r.createdCategories > 0 ||
             r.createdColors > 0 ||
@@ -411,17 +378,18 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       return const SizedBox.shrink();
     }
     if (_result != null) {
-      return UtenButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('完成'),
+      return UtenDialogActions(
+        children: [
+          UtenButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('完成'),
+          ),
+        ],
       );
     }
     // 初始 / 检测后
     final canReview = _report?.previewRows.isNotEmpty == true && _bytes != null;
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s8,
+    return UtenDialogActions(
       children: [
         UtenButton(
           type: UtenButtonType.secondary,
@@ -660,15 +628,15 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           for (final entry in _problemDraft.entries)
             if (!_excludedRowNums.contains(entry.key)) entry.key: entry.value,
         };
+        final processedKeys = report.reviewRows
+            .map((row) => row.rowKey)
+            .toSet();
+        _replacementChoices.removeWhere(
+          (key, _) => processedKeys.contains(key),
+        );
         _committing = false;
         _commitUncertain = false;
-        final summary = basicDataL10n(context).importResultSummary(
-          res.createdCount,
-          res.filledCount,
-          res.updatedCount,
-          res.ignoredCount,
-          res.unchangedCount,
-        );
+        final summary = _summaryOf(res);
         if (report.hasErrors || _previewHasRemaining) {
           _result = null;
           _queue.recordPartial(summary);
@@ -679,7 +647,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _queue.succeed(_summaryOf(_result!));
         }
       });
-      context.appSuccess('已导入 ${res.importedCount} 条货品');
+      context.appSuccess(_summaryOf(res));
       widget.onImported?.call();
       if (report.hasErrors || _previewHasRemaining) {
         _reviewExclusions = null;
@@ -691,6 +659,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       }
     } catch (e) {
       if (!mounted || !_owner.isCurrent) return;
+      var redetectRejectedCommit = false;
       setState(() {
         _committing = false;
         _queue.pause(failed: true);
@@ -705,6 +674,12 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
           _report = null;
           _commitUncertain = false;
           _detectionMessage = e.message;
+          // This request was rejected before it could commit. Refresh the full
+          // editable file; temporary unselected rows must remain available.
+          _reviewExclusions = null;
+          _previewHasRemaining = false;
+          _queue.approved = false;
+          redetectRejectedCommit = true;
         } else {
           _commitUncertain =
               e is! ApiException ||
@@ -718,6 +693,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       });
       if (_commitUncertain) widget.onImported?.call();
       context.appApiError(e);
+      if (redetectRejectedCommit) await _detectCurrentFile();
     }
   }
 
@@ -726,6 +702,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     _previewHasRemaining = false;
     _cellCorrections = {};
     _problemDraft = {};
+    _replacementChoices.clear();
     _excludedRowNums.clear();
     _submittedCorrections = null;
     _submittedExclusions = null;
@@ -733,14 +710,28 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     _correctionsNeedDetection = false;
   }
 
+  String _writeMessage(GoodsImportResult result) {
+    if (result.importedCount == 0) return '未写入变更';
+    if (result.createdCount == 0 &&
+        result.restoredCount == 0 &&
+        result.updatedCount == 0 &&
+        result.filledCount == 0) {
+      return '已更新 ${result.importedCount} 条货品的组装信息';
+    }
+    return '已写入 ${result.importedCount} 条货品';
+  }
+
+  List<String> _resultDetails(GoodsImportResult result) => [
+    if (result.createdCount > 0) '新增 ${result.createdCount}',
+    if (result.restoredCount > 0) '恢复 ${result.restoredCount}',
+    if (result.updatedCount > 0) '修改 ${result.updatedCount}',
+    if (result.filledCount > 0) '补齐 ${result.filledCount}',
+    if (result.ignoredCount > 0) '保留原值 ${result.ignoredCount}',
+    if (result.unchangedCount > 0) '资料相同 ${result.unchangedCount}',
+  ];
+
   String _summaryOf(GoodsImportResult result) =>
-      basicDataL10n(context).importResultSummary(
-        result.createdCount,
-        result.filledCount,
-        result.updatedCount,
-        result.ignoredCount,
-        result.unchangedCount,
-      );
+      [_writeMessage(result), ..._resultDetails(result)].join('，');
 
   GoodsImportResult _combinedResult(GoodsImportResult latest) =>
       _sumResults(latest, _fileResults);
@@ -789,6 +780,13 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
             : _cellCorrections,
         excludedRowNums: Set.of(_excludedRowNums),
         needsValidation: _correctionsNeedDetection,
+        replacementChoices: Map.unmodifiable(_replacementChoices),
+        onReplacementChoicesChanged: (choices) {
+          if (!_owner.isCurrent) return;
+          _replacementChoices
+            ..clear()
+            ..addAll(choices);
+        },
         pickReference:
             (
               pickerContext, {

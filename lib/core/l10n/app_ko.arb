@@ -1191,6 +1191,8 @@
   "impersonationNoTargets": "전환할 직원이 없습니다",
   "impersonationStartFailed": "전환 실패",
   "exportDialogTitle": "Excel 내보내기",
+  "exportDialogSubtitle": "현재 데이터를 {format} 파일로 저장",
+  "exportPasswordProtectionDescription": "파일에 비밀번호 보호 추가",
   "exportFileNameLabel": "파일 이름",
   "exportFileNameRequired": "파일 이름을 입력하세요(최대 150자)",
   "exportSaveLocationLabel": "저장 위치",

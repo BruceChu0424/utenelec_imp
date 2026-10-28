@@ -29,6 +29,26 @@ class BootstrapInventoryContractTest(unittest.TestCase):
             self.assertEqual(inventory[table], 'EMPTY')
         self.assertEqual(inventory['users'], 'SEED_OR_ADMIN')
 
+    def test_new_projection_assignments_and_sealed_identity_evidence_are_never_seed_exemptions(self):
+        inventory = dict(INVENTORY)
+        for table in (
+                'business_archive_eligibility', 'business_archive_packages', 'business_outbox_payload_history',
+                'department_permission_template_bindings', 'user_permission_template_bindings', 'permission_template_applies',
+                'employee_code_reuse_claims', 'employee_code_reuse_releases', 'employee_identity_document_claims',
+                'employee_identity_historical_claims', 'employee_identity_legacy_roles', 'employee_identity_merge_payloads',
+                'employee_identity_merges', 'employee_identity_review_certificates', 'employee_identity_user_tombstones',
+                'employee_legacy_identity_aliases', 'party_month_dirty', 'party_monthly_summaries',
+                'scheduled_task_runs', 'stock_monthly_summaries'):
+            with self.subTest(table=table):
+                self.assertEqual(inventory[table], 'EMPTY')
+
+    def test_actual_flyway_seed_metadata_is_preserved_without_clearing_it(self):
+        inventory = dict(INVENTORY)
+        for table in ('data_lifecycle_policies', 'stock_monthly_verification_state',
+                      'employee_identity_merge_installation', 'employee_code_reuse_installation'):
+            with self.subTest(table=table):
+                self.assertEqual(inventory[table], 'SEED_OR_ADMIN')
+
 
 class BootstrapInventoryPostgresTest(unittest.TestCase):
     @classmethod

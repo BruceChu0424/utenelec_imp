@@ -56,7 +56,7 @@ BEGIN
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
     -- The reviewed inventory includes the later archive/file/measurement schema
-    -- through V948. Future root tables still require explicit classification.
+    -- through V968. Future root tables still require explicit classification.
     -- SEED_OR_ADMIN retains the existing explicit master/admin checks above;
     -- it never grants permission to reuse a previous business import.
     CREATE TEMP TABLE bootstrap_target_table_inventory (
@@ -601,7 +601,37 @@ BEGIN
         ('workshop_material_requisition_postings','EMPTY'),
         ('workshop_material_requisitions','EMPTY'),
         ('workshop_material_settings','EMPTY'),
-        ('workshop_material_stock_documents','EMPTY');
+        ('workshop_material_stock_documents','EMPTY'),
+        -- V949-V965 additions: derived facts, delivery receipts, authorization
+        -- assignments and sealed identity evidence must all remain empty for
+        -- a first bootstrap. None is an exception for an existing import.
+        ('business_archive_eligibility','EMPTY'),
+        ('business_archive_packages','EMPTY'),
+        ('business_outbox_payload_history','EMPTY'),
+        ('department_permission_template_bindings','EMPTY'),
+        ('employee_code_reuse_claims','EMPTY'),
+        ('employee_code_reuse_releases','EMPTY'),
+        ('employee_identity_document_claims','EMPTY'),
+        ('employee_identity_historical_claims','EMPTY'),
+        ('employee_identity_legacy_roles','EMPTY'),
+        ('employee_identity_merge_payloads','EMPTY'),
+        ('employee_identity_merges','EMPTY'),
+        ('employee_identity_review_certificates','EMPTY'),
+        ('employee_identity_user_tombstones','EMPTY'),
+        ('employee_legacy_identity_aliases','EMPTY'),
+        ('party_month_dirty','EMPTY'),
+        ('party_monthly_summaries','EMPTY'),
+        ('permission_template_applies','EMPTY'),
+        ('scheduled_task_runs','EMPTY'),
+        ('stock_monthly_summaries','EMPTY'),
+        ('user_permission_template_bindings','EMPTY'),
+        -- Real Flyway seeds: lifecycle policy metadata, the initial empty
+        -- verification cursor and the two sealed extension-installation
+        -- receipts exist even before any employee/business fact is written.
+        ('data_lifecycle_policies','SEED_OR_ADMIN'),
+        ('stock_monthly_verification_state','SEED_OR_ADMIN'),
+        ('employee_identity_merge_installation','SEED_OR_ADMIN'),
+        ('employee_code_reuse_installation','SEED_OR_ADMIN');
     SELECT string_agg(table_row.relname,', ' ORDER BY table_row.relname)
       INTO unknown_tables
     FROM pg_catalog.pg_class table_row

@@ -218,7 +218,7 @@ public class BusinessArchiveEligibilityService {
         jdbc.update("UPDATE business_archive_packages SET status = 'SUPERSEDED' "
                 + "WHERE object_family = ? AND object_id = ? AND status = 'VERIFIED'",
                 FAMILY_PURCHASE_ORDER, orderId);
-        Integer nextVersion = 1 + jdbc.query("""
+        int nextVersion = 1 + jdbc.query("""
                         SELECT COALESCE(max(package_version), 0) FROM business_archive_packages
                         WHERE object_family = ? AND object_id = ?
                         """,
@@ -421,7 +421,8 @@ public class BusinessArchiveEligibilityService {
     @Transactional(readOnly = true)
     public Map<String, Object> eligibilityPage(String objectFamily, Boolean eligible, int page, int size) {
         int boundedSize = Math.max(1, Math.min(size, 100));
-        int offset = Math.max(0, (page - 1) * boundedSize);
+        int boundedPage = Math.max(1, page);
+        long offset = ((long) boundedPage - 1L) * boundedSize;
         StringBuilder where = new StringBuilder("WHERE object_family = ?");
         List<Object> args = new ArrayList<>(List.of(objectFamily));
         if (eligible != null) {

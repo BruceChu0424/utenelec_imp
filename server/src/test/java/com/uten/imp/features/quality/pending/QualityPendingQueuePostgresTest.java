@@ -110,7 +110,7 @@ class QualityPendingQueuePostgresTest {
         for(String key:List.of("FQC_SHEET","FQC"))plans.add(new QualityPendingSourcePort.Plan(key,
             "SELECT identity,kind,bill_no,party,goods,goods_code,color_name,warehouse,place,item_count,pending_qty,entered_at,status_code,sequence_at,goods_names FROM quality_fqc_fixture WHERE source_key='"+key+"' AND owner_id=:qualityTestOwner",Map.of("qualityTestOwner",owner)));
         when(fqc.pendingPlans()).thenReturn(plans);
-        when(fqc.pendingPayloads(anyString(),anySet())).thenAnswer(call->{Map<String,Object> result=new LinkedHashMap<>();for(String id:call.<Set<String>>getArgument(1))result.put(id,Map.of("identity",id));return result;});
+        when(fqc.pendingPayloads(anyString(),anySet())).thenAnswer(call->{Map<String,Object> result=new LinkedHashMap<>();for(String id:call.<Set<String>>getArgument(1)) { result.put(id,Map.of("identity",id)); } return result;});
         var current=mock(SecurityContextCurrentUser.class);when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"reader",permissions,false,true,false)));
         return new Fixture(connection,new QualityPendingQueueService(em,List.of(iqc,fqc),current,new ObjectMapper()),iqc);
     }
@@ -118,7 +118,7 @@ class QualityPendingQueuePostgresTest {
         Map<String,Object> parameters=new LinkedHashMap<>();return mock(Query.class,call->{
             if(call.getMethod().getName().equals("setParameter")){parameters.put(call.getArgument(0),call.getArgument(1));return call.getMock();}
             if(call.getMethod().getName().equals("getResultList"))return jdbc.query(sql,parameters,(rs,index)->{
-                int count=rs.getMetaData().getColumnCount();if(count==1)return rs.getObject(1);Object[] row=new Object[count];for(int i=0;i<count;i++)row[i]=rs.getObject(i+1);return row;});
+                int count=rs.getMetaData().getColumnCount();if(count==1)return rs.getObject(1);Object[] row=new Object[count];for(int i=0;i<count;i++) { row[i]=rs.getObject(i+1); } return row;});
             return null;
         });
     }

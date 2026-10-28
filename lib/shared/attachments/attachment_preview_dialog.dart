@@ -195,15 +195,17 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
           ? Dialog.fullscreen(
               key: const ValueKey('attachment-preview-fullscreen'),
               backgroundColor: theme.colorScheme.surface,
-              child: ClipRect(child: SizedBox.expand(child: content)),
+              child: UtenDialogSurface(
+                child: ClipRect(child: SizedBox.expand(child: content)),
+              ),
             )
           : UtenDialogFrame(
               key: const ValueKey('attachment-preview-windowed'),
               insetPadding: const EdgeInsets.all(UtenSpacing.s16),
               backgroundColor: theme.colorScheme.surface,
               clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(UtenRadius.xl),
+              shape: const RoundedRectangleBorder(
+                borderRadius: UtenRadius.dialogAll,
               ),
               child: content,
             ),
@@ -216,75 +218,81 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     AttachmentPreviewPayload? payload,
   ) {
     final subtitle = _subtitle(payload);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s8,
-        UtenSpacing.s4,
-        UtenSpacing.s8,
-      ),
-      child: Row(
-        children: [
-          Icon(kind.icon, size: 20, color: kind.color),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall,
-                ),
-                if (subtitle != null)
-                  Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+    final tools = Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s4,
+      children: [
+        _TypeChip(
+          label: attachmentTypeLabel(widget.name, widget.contentType),
+          color: kind.color,
+        ),
+        IconButton(
+          tooltip: _fullscreen ? '退出全屏' : '全屏',
+          icon: Icon(
+            _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+            size: 20,
+          ),
+          onPressed: _downloading
+              ? null
+              : () => setState(() => _fullscreen = !_fullscreen),
+        ),
+        IconButton(
+          tooltip: '下载原件',
+          icon: _downloading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.download_outlined, size: 20),
+          onPressed: _downloading || _converted && widget.onDownload == null
+              ? null
+              : _download,
+        ),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 600;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenDialogHeader(
+              title: Text(
+                widget.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: subtitle == null
+                  ? null
+                  : Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-              ],
+              icon: kind.icon,
+              trailing: compact ? null : tools,
+              showCloseButton: true,
+              closeTooltip: '关闭',
+              onClose: _downloading ? null : _close,
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          _TypeChip(
-            label: attachmentTypeLabel(widget.name, widget.contentType),
-            color: kind.color,
-          ),
-          IconButton(
-            tooltip: _fullscreen ? '退出全屏' : '全屏',
-            icon: Icon(
-              _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-              size: 20,
-            ),
-            onPressed: _downloading
-                ? null
-                : () => setState(() => _fullscreen = !_fullscreen),
-          ),
-          IconButton(
-            tooltip: '下载原件',
-            icon: _downloading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.download_outlined, size: 20),
-            onPressed: _downloading || _converted && widget.onDownload == null
-                ? null
-                : _download,
-          ),
-          IconButton(
-            tooltip: '关闭',
-            icon: const Icon(Icons.close_rounded, size: 20),
-            onPressed: _downloading ? null : _close,
-          ),
-        ],
-      ),
+            if (compact)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s20,
+                  0,
+                  UtenSpacing.s20,
+                  UtenSpacing.s8,
+                ),
+                child: Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: tools,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 

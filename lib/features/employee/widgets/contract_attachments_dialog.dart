@@ -90,22 +90,12 @@ class _ContractAttachmentsDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: '关闭',
-                    icon: const Icon(Icons.close_rounded, size: 20),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
+              UtenDialogHeader(
+                padding: EdgeInsets.zero,
+                icon: Icons.attach_file_rounded,
+                title: Text(widget.title),
+                showCloseButton: true,
+                onClose: () => Navigator.pop(context),
               ),
               Flexible(
                 child: _loading

@@ -4604,7 +4604,7 @@ class FullChainEndToEndTest {
                 insert into employees(id, code, full_name, id_type, department_id, hire_date,
                                       status, employment_type)
                 values (?, ?, ?, '其他', ?, DATE '2026-01-01', 'active', 'regular')
-                """, emp, "REV-" + emp, "审核员", w.departmentId());
+                """, emp, "REV-" + emp, com.uten.imp.support.SyntheticEmployeeIdentity.name("审核员",emp), w.departmentId());
         jdbc.update("""
                 insert into users(id, employee_id, login_account, password_hash,
                                   must_change_password, is_super_admin, status)
@@ -8144,7 +8144,7 @@ class FullChainEndToEndTest {
                 accountId, w.currencyId(), accountStyleId);
         UUID expenseStyleId = UUID.randomUUID();
         jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
-                        + "values (?, 'TEST-FEE-recv', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
+                        + "values (?, 'TEST-FEE-recv', ?, 'EXPENSE', 0, '使用')", expenseStyleId,"测试费用项目-"+expenseStyleId);
         UUID approver = createUserWithPerms(
                 w, "fin-approver", "finance_receipt:edit",
                 "finance_receipt:approve", "finance_receipt:reverse");
@@ -8364,7 +8364,7 @@ class FullChainEndToEndTest {
                 accountId, w.currencyId(), accountStyleId);
         UUID expenseStyleId = UUID.randomUUID();
         jdbc.update("insert into payment_styles(id, code, name, category, level, status) "
-                        + "values (?, 'TEST-FEE-recvg', '测试费用项目', 'EXPENSE', 0, '使用')", expenseStyleId);
+                        + "values (?, 'TEST-FEE-recvg', ?, 'EXPENSE', 0, '使用')", expenseStyleId,"测试费用项目-"+expenseStyleId);
         UUID usdId = UUID.randomUUID();
         jdbc.update("insert into currencies(id, code, name, exchange_rate, status) "
                         + "values (?, 'USD-recvg', '美元', 7, '使用')", usdId);

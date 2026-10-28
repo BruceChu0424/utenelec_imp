@@ -46,14 +46,21 @@ public final class GoodsExportProjection {
             columns.add(requested.getOrDefault(key, new TableColumnProjection.Column(
                     key, REQUIRED.get(key), null, null, null)));
         }
-        requested.forEach((key, column) -> { if (!IDENTITY_KEYS.contains(key)) columns.add(column); });
-        // Use canonical headers even when the user renamed a visible required field.
-        for (String key : new String[]{"name", "categoryPath"}) {
-            if (!requested.containsKey(key)) columns.add(new TableColumnProjection.Column(
-                    key, REQUIRED.get(key), null, null, null));
+        var category = requested.getOrDefault("categoryPath", new TableColumnProjection.Column(
+                "categoryPath", REQUIRED.get("categoryPath"), null, null, null));
+        requested.forEach((key, column) -> {
+            if (!IDENTITY_KEYS.contains(key) && !"categoryPath".equals(key)) {
+                columns.add(column);
+                if ("name".equals(key)) columns.add(category);
+            }
+        });
+        // Name and category stay adjacent in every goods workbook, including
+        // exports from screens that hide the category or rename either header.
+        if (!requested.containsKey("name")) {
+            columns.add(new TableColumnProjection.Column("name", REQUIRED.get("name"), null, null, null));
+            columns.add(category);
         }
-        // All remaining visible columns retain their current order. Only missing
-        // required import context is appended; permissions remain server-owned.
+        // All other visible columns retain their current order; permissions remain server-owned.
         // Sensitive columns are not in REQUIRED and remain subject to the server's
         // authorized available-column list in ExportTableProjectionService.
         if (columns.size() > 160) {

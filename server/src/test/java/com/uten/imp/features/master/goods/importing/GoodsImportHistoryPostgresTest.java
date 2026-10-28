@@ -122,6 +122,8 @@ class GoodsImportHistoryPostgresTest {
         goodsService = transactional(new GoodsService(goods, categories, colors, units, null, tx, em,
                 new CategoryDrivenCodeService(em), goodsOwners, current, new GoodsCostMasker(current), null));
         var importTarget = new GoodsImportService(goodsService, goods, null, categories, null, colors, null, units, em, current, null);
+        ReflectionTestUtils.setField(importTarget, "identifierAvailability",
+                new com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService(em));
         ReflectionTestUtils.setField(importTarget, "writeAccess", (GoodsMasterWriteAccessPort) id -> {
             Goods value = em.find(Goods.class, id);
             if (value == null || value.isDeleted()) throw new IllegalStateException("goods not available");
@@ -526,7 +528,7 @@ class GoodsImportHistoryPostgresTest {
                 .setParameter("code", newCode).getSingleResult()).longValue());
     }
 
-    @Test void reviewedRenameCannotTakeAnotherGoodsHistoricalNumberAndRollsBackItsBatch() throws Exception {
+    @Test void reviewedRenameCannotTakeAnotherGoodsHistoricalNumberAtDetection() throws Exception {
         UUID otherId = UUID.randomUUID();
         String movedCode = "H" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
         inTx(() -> {
@@ -540,17 +542,304 @@ class GoodsImportHistoryPostgresTest {
         });
         byte[] file = identityWorkbook(newCode, existingId.toString());
         var detected = inTx(() -> importer.detect(file));
-        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
-
-        assertThrows(ApiException.class, () -> inTx(() -> {
-            provenance("/api/master/goods/import/commit", "POST");
-            return importer.commit(detected.planId(), file, "occupied-history.xlsx", Set.of("goods:2"));
-        }));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertEquals(2, detected.errors().getFirst().rowNum());
+        assertEquals(0, detected.readyToImport());
+        assertNull(detected.planId());
 
         assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
         assertEquals(movedCode, scalar("SELECT code FROM goods WHERE id=:id", otherId));
         assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods_import_batches WHERE created_by=:actor")
                 .setParameter("actor", actor).getSingleResult()).longValue());
+    }
+
+    @Test void deletedHistoricalNumberIsRejectedBeforeConfirmationAndCanBeCorrectedInPlace() throws Exception {
+        UUID deletedId = UUID.randomUUID();
+        inTx(() -> {
+            // Old/imported identities deliberately have no complete nonuse proof.
+            em.createNativeQuery("SELECT set_config('app.business_identifier_legacy_import','on',true)").getSingleResult();
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,code_sequence,is_deleted)
+                    VALUES(:id,:code,'历史已删货品',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods),true)
+                    """).setParameter("id", deletedId).setParameter("code", newCode)
+                    .setParameter("category", categoryId).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(newCode, "");
+        var detected = inTx(() -> importer.detect(file));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertEquals(List.of(2), detected.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertNull(detected.planId());
+        assertEquals(0, detected.readyToImport());
+
+        Map<Integer, String> corrections = Map.of(2, "");
+        var corrected = inTx(() -> importer.detect(file, corrections, Set.of()));
+        assertTrue(corrected.errors().isEmpty(), corrected.errors().toString());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(corrected.planId(), file, "corrected-history.xlsx", Set.of(), corrections, Set.of());
+        });
+        assertEquals(1, imported.createdCount());
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", deletedId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code")
+                .setParameter("code", newCode).getSingleResult()).longValue());
+    }
+
+    @Test void anotherMasterFamilyLifetimeReservationIsRejectedAtDetection() throws Exception {
+        inTx(() -> {
+            em.createNativeQuery("INSERT INTO colors(id,code,name,is_deleted) VALUES(:id,:code,'已删颜色',true)")
+                    .setParameter("id", UUID.randomUUID()).setParameter("code", newCode).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(newCode, "");
+        var detected = inTx(() -> importer.detect(file));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertNull(detected.planId());
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods_import_batches WHERE created_by=:actor")
+                .setParameter("actor", actor).getSingleResult()).longValue());
+    }
+
+    @Test void usedDeletedNumberIsIsolatedWhileUnusedDeletedAndFreshNumbersCommitTogether() throws Exception {
+        UUID usedId = UUID.randomUUID(), componentId = UUID.randomUUID();
+        String freshCode = "F" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
+        inTx(() -> {
+            for (var row : Map.of(usedId, newCode, componentId, freshCode + "C").entrySet()) {
+                em.createNativeQuery("""
+                        INSERT INTO goods(id,code,name,category_id,code_sequence)
+                        VALUES(:id,:code,'组装历史货品',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                        """).setParameter("id", row.getKey()).setParameter("code", row.getValue())
+                        .setParameter("category", categoryId).executeUpdate();
+            }
+            em.createNativeQuery("INSERT INTO goods_bom_items(goods_id,component_goods_id) VALUES(:id,:component)")
+                    .setParameter("id", usedId).setParameter("component", componentId).executeUpdate();
+            // Removing the visible BOM must not erase its lifetime usage fact.
+            em.createNativeQuery("UPDATE goods_bom_items SET is_deleted=true WHERE goods_id=:id")
+                    .setParameter("id", usedId).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET is_deleted=true WHERE id IN (:used,:unused)")
+                    .setParameter("used", usedId).setParameter("unused", existingId).executeUpdate();
+            em.createNativeQuery("UPDATE category_master_code_sequences SET last_seq=(SELECT max(code_sequence) FROM goods) WHERE master_type='GOODS'")
+                    .executeUpdate();
+            return null;
+        });
+        assertEquals("goods_bom_items.goods_id", scalar("SELECT first_source FROM goods_code_usage_facts WHERE goods_id=:id", usedId));
+        byte[] file;
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            String[] titles = {"编号", "名称", "类别", "系统标识"};
+            var header = sheet.createRow(0);
+            for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
+            List<String> codes = List.of(newCode, existingCode, freshCode);
+            for (int index = 0; index < codes.size(); index++) {
+                var row = sheet.createRow(index + 1);
+                row.createCell(0).setCellValue(codes.get(index));
+                row.createCell(1).setCellValue("待导入货品" + index);
+                row.createCell(2).setCellValue(categoryName());
+            }
+            book.write(out); file = out.toByteArray();
+        }
+        var detected = inTx(() -> importer.detect(file));
+        assertEquals(List.of(2), detected.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertEquals(List.of(3, 4), detected.readyRowNums());
+        assertEquals(2, detected.readyToImport());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "used-unused-fresh.xlsx");
+        });
+        assertEquals(2, imported.createdCount());
+        assertEquals(0, imported.restoredCount());
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", usedId));
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code AND NOT is_deleted")
+                .setParameter("code", newCode).getSingleResult()).longValue());
+        for (String code : List.of(existingCode, freshCode)) {
+            assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods WHERE code=:code AND NOT is_deleted")
+                    .setParameter("code", code).getSingleResult()).longValue());
+        }
+    }
+
+    @Test void provenUnusedDeletedNumberPassesDetectionAndCommitsToANewIdentity() throws Exception {
+        long originalSequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue();
+        String reusedCode = CategoryDrivenCodeService.format("9U", originalSequence, 6);
+        inTx(() -> {
+            em.createNativeQuery("UPDATE material_categories SET code_prefix='9U' WHERE id=:id")
+                    .setParameter("id", categoryId).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET code=:code,is_deleted=true WHERE id=:id")
+                    .setParameter("code", reusedCode).setParameter("id", existingId).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(reusedCode, "");
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.readyToImport());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "reuse-unused.xlsx");
+        });
+        assertEquals(1, imported.createdCount());
+        assertEquals(0, imported.restoredCount());
+        UUID createdId = (UUID) em.createNativeQuery("SELECT id FROM goods WHERE code=:code AND NOT is_deleted")
+                .setParameter("code", reusedCode).getSingleResult();
+        assertNotEquals(existingId, createdId);
+        assertEquals("true", scalar("SELECT is_deleted::text FROM goods WHERE id=:id", existingId));
+        assertEquals(1L, ((Number) em.createNativeQuery("SELECT count(*) FROM goods_code_reuse_releases WHERE old_goods_id=:id AND new_goods_id=:next")
+                .setParameter("id", existingId).setParameter("next", createdId).getSingleResult()).longValue());
+        long newSequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", createdId).getSingleResult()).longValue();
+        assertNotEquals(originalSequence, newSequence, "A reused label must get a fresh stable identity counter");
+        var identifiers = new com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService(em);
+        assertTrue(inTx(() -> identifiers.check(
+                com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService.Domain.GOODS,
+                reusedCode, createdId, categoryId)).available(), "Keeping the reused label must not reclaim its old suffix counter");
+        inTx(() -> {
+            em.createNativeQuery("UPDATE goods SET is_deleted=true WHERE id=:id").setParameter("id", createdId).executeUpdate();
+            return null;
+        });
+        assertTrue(inTx(() -> identifiers.checkForRestore(
+                com.uten.imp.common.mastercode.MasterIdentifierAvailabilityService.Domain.GOODS,
+                reusedCode, createdId, categoryId)).available(), "Restoring the original identity retains its fresh counter");
+    }
+
+    @Test void newChildCategoryStillChecksItsInheritedLongManagedSuffixBeforeConfirmation() throws Exception {
+        long sequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue();
+        inTx(() -> {
+            em.createNativeQuery("UPDATE material_categories SET code_prefix='9I' WHERE id=:id")
+                    .setParameter("id", categoryId).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(CategoryDrivenCodeService.format("9I", sequence, 6), "");
+        Map<Integer, Map<String, String>> corrections = Map.of(2, Map.of("categoryPath", categoryName() + " / 新建子分类"));
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(), corrections));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertTrue(detected.errors().getFirst().message().contains("数字序号"));
+        assertNull(detected.planId());
+        assertEquals(0L, ((Number) em.createNativeQuery("SELECT count(*) FROM material_categories WHERE name='新建子分类'")
+                .getSingleResult()).longValue());
+    }
+
+    @Test void uuidUpdateIntoAWhollyNewCategoryChecksTheFallbackPrefixRatherThanItsOldCategory() throws Exception {
+        UUID otherId = UUID.randomUUID();
+        long occupied = inTx(() -> {
+            em.createNativeQuery("UPDATE material_categories SET code_prefix='9N' WHERE id=:id")
+                    .setParameter("id", categoryId).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,code_sequence)
+                    VALUES(:id,:code,'序号占用货品',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                    """).setParameter("id", otherId).setParameter("code", newCode)
+                    .setParameter("category", categoryId).executeUpdate();
+            return ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                    .setParameter("id", otherId).getSingleResult()).longValue();
+        });
+        byte[] file = identityWorkbook(CategoryDrivenCodeService.format("HP", occupied, 6), existingId.toString());
+        Map<Integer, Map<String, String>> corrections = Map.of(2, Map.of("categoryPath", "全新根分类" + categoryId));
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(), corrections, GoodsImportMode.UPDATE_ONLY));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertTrue(detected.errors().getFirst().message().contains("数字序号"));
+        assertNull(detected.planId());
+    }
+
+    @Test void updateOnlyReviewedWorkbookNameIsAppliedAndOmittedValuesArePreserved() throws Exception {
+        byte[] file;
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(identityWorkbook(existingCode, existingId.toString())));
+             var out = new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(1).getCell(1).setCellValue("123");
+            book.write(out); file = out.toByteArray();
+        }
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        var nameChange = detected.reviewRows().getFirst().changes().stream()
+                .filter(change -> "name".equals(change.field())).findFirst().orElseThrow();
+        assertEquals("现有货品", nameChange.oldValue());
+        assertEquals("123", nameChange.newValue());
+        assertEquals("CONFLICT", nameChange.kind());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "update-name.xlsx", Set.of("goods:2"),
+                    Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
+        });
+        assertEquals(1, imported.importedCount());
+        assertEquals(1, imported.updatedCount());
+        assertEquals(0, imported.ignoredCount());
+        assertEquals("123", scalar("SELECT name FROM goods WHERE id=:id", existingId));
+        assertEquals("保留规格", scalar("SELECT spec FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("12.3400", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+    }
+
+    @Test void managedCategoryMoveChecksTheRenderedTargetLabelBeforeConfirmationWithoutReservingAnything() throws Exception {
+        UUID targetCategory = UUID.randomUUID(), holderId = UUID.randomUUID();
+        long sequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue();
+        String oldCode = CategoryDrivenCodeService.format("HP", sequence, 6);
+        String targetCode = CategoryDrivenCodeService.format("9M", sequence, 6);
+        String targetName = "目标分类" + targetCategory;
+        inTx(() -> {
+            em.createNativeQuery("INSERT INTO material_categories(id,code,name,code_prefix) VALUES(:id,:code,:name,'9M')")
+                    .setParameter("id", targetCategory).setParameter("code", "MC" + targetCategory.toString().replace("-", ""))
+                    .setParameter("name", targetName).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET code=:code,code_managed=true WHERE id=:id")
+                    .setParameter("code", oldCode).setParameter("id", existingId).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO goods(id,code,name,category_id,code_sequence)
+                    VALUES(:id,:code,'历史编号所有者',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))
+                    """).setParameter("id", holderId).setParameter("code", targetCode)
+                    .setParameter("category", categoryId).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET code=:code WHERE id=:id")
+                    .setParameter("code", newCode).setParameter("id", holderId).executeUpdate();
+            return null;
+        });
+        long beforeCounter = ((Number) em.createNativeQuery("SELECT last_seq FROM category_master_code_sequences WHERE master_type='GOODS'")
+                .getSingleResult()).longValue();
+        long beforeClaims = ((Number) em.createNativeQuery("SELECT count(*) FROM business_identifier_reservation_members")
+                .getSingleResult()).longValue();
+        byte[] file = identityWorkbook(oldCode, existingId.toString());
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(),
+                Map.of(2, Map.of("categoryPath", targetName)), GoodsImportMode.UPDATE_ONLY));
+        assertEquals(1, detected.errors().size(), detected.errors().toString());
+        assertEquals("编号", detected.errors().getFirst().column());
+        assertTrue(detected.errors().getFirst().message().contains(targetCode));
+        assertNull(detected.planId());
+        assertEquals(oldCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(beforeCounter, ((Number) em.createNativeQuery("SELECT last_seq FROM category_master_code_sequences WHERE master_type='GOODS'")
+                .getSingleResult()).longValue());
+        assertEquals(beforeClaims, ((Number) em.createNativeQuery("SELECT count(*) FROM business_identifier_reservation_members")
+                .getSingleResult()).longValue());
+    }
+
+    @Test void pureNumericManagedCategoryMoveKeepsTheLabelAndStableCounter() throws Exception {
+        UUID targetCategory = UUID.randomUUID();
+        String numericCode = "2801511001", targetName = "数字编号目标" + targetCategory;
+        long sequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue();
+        inTx(() -> {
+            em.createNativeQuery("INSERT INTO material_categories(id,code,name,code_prefix) VALUES(:id,:code,:name,'9P')")
+                    .setParameter("id", targetCategory).setParameter("code", "NC" + targetCategory.toString().replace("-", ""))
+                    .setParameter("name", targetName).executeUpdate();
+            em.createNativeQuery("UPDATE goods SET code=:code,code_managed=true WHERE id=:id")
+                    .setParameter("code", numericCode).setParameter("id", existingId).executeUpdate();
+            return null;
+        });
+        byte[] file = identityWorkbook(numericCode, existingId.toString());
+        Map<Integer, Map<String, String>> corrections = Map.of(2, Map.of("categoryPath", targetName));
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(), corrections, GoodsImportMode.UPDATE_ONLY));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "numeric-category-move.xlsx", Set.of("goods:2"),
+                    Map.of(), Set.of(), corrections, GoodsImportMode.UPDATE_ONLY);
+        });
+        assertEquals(1, imported.updatedCount());
+        assertEquals(numericCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(targetCategory.toString(), scalar("SELECT category_id::text FROM goods WHERE id=:id", existingId));
+        assertEquals(sequence, ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue());
     }
 
     private byte[] identityWorkbook(String code, String goodsId) throws Exception {

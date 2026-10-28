@@ -1309,6 +1309,8 @@
   "impersonationNoTargets": "No employees available to switch",
   "impersonationStartFailed": "Switch failed",
   "exportDialogTitle": "Export Excel",
+  "exportDialogSubtitle": "Save the current data as a {format} file",
+  "exportPasswordProtectionDescription": "Protect the file with a password",
   "exportFileNameLabel": "File name",
   "exportFileNameRequired": "Enter a file name (up to 150 characters)",
   "exportSaveLocationLabel": "Save location",

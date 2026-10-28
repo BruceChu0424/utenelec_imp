@@ -1081,86 +1081,63 @@ class _MaterialReallocationDialogBodyState
       },
       child: Material(
         key: const Key('material-cross-reallocation-sheet'),
-        color: theme.colorScheme.surface,
+        color: Colors.transparent,
         borderRadius: UtenRadius.xxlAll,
         clipBehavior: Clip.antiAlias,
-        child: SafeArea(
-          child: Column(
-            children: [
-              // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
-              if (_submitting)
-                const UtenBusyOverlay(
-                  title: '正在提交跨批复用',
-                  description: '正在保存供给归属调整，请勿重复提交或关闭面板。',
+        child: UtenDialogSurface(
+          child: SafeArea(
+            child: Column(
+              children: [
+                // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                if (_submitting)
+                  const UtenBusyOverlay(
+                    title: '正在提交跨批复用',
+                    description: '正在保存供给归属调整，请勿重复提交或关闭面板。',
+                  ),
+                _header(theme),
+                _sourceSummary(theme),
+                const Divider(height: 1),
+                Expanded(child: _candidatePanel(theme)),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  transitionBuilder: (child, animation) => SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0, 1),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                  child: hasSelection
+                      ? _selectionPanel(theme)
+                      : const SizedBox(width: double.infinity),
                 ),
-              _header(theme),
-              const Divider(height: 1),
-              _sourceSummary(theme),
-              const Divider(height: 1),
-              Expanded(child: _candidatePanel(theme)),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                transitionBuilder: (child, animation) => SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 1),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-                child: hasSelection
-                    ? _selectionPanel(theme)
-                    : const SizedBox(width: double.infinity),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _header(ThemeData theme) => Padding(
-    padding: const EdgeInsets.fromLTRB(
-      UtenSpacing.s12,
-      UtenSpacing.s12,
-      UtenSpacing.s8,
-      UtenSpacing.s12,
+  Widget _header(ThemeData theme) => UtenDialogHeader(
+    icon: Icons.swap_horiz_rounded,
+    title: Text(
+      widget.futureTransfer
+          ? '调入其他计划在途'
+          : widget.receiveIntoCurrent
+          ? '从其他计划调入'
+          : '跨计划让料',
     ),
-    child: Row(
-      children: [
-        IconButton(
-          tooltip: '返回',
-          onPressed: _locked ? null : _requestClose,
-          icon: const Icon(Icons.arrow_back_rounded),
-        ),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.futureTransfer
-                    ? '调入其他计划在途'
-                    : widget.receiveIntoCurrent
-                    ? '从其他计划调入'
-                    : '跨计划让料',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              Text(
-                widget.futureTransfer
-                    ? '已自动匹配可调入的专属在途；可多选，到货并检验合格后生效。'
-                    : widget.receiveIntoCurrent
-                    ? '已自动匹配可调入的现货来源；确认后立即生效。'
-                    : '让出后本计划优先待补；接受计划无需返还。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    subtitle: Text(
+      widget.futureTransfer
+          ? '已自动匹配可调入的专属在途；可多选，到货并检验合格后生效。'
+          : widget.receiveIntoCurrent
+          ? '已自动匹配可调入的现货来源；确认后立即生效。'
+          : '让出后本计划优先待补；接受计划无需返还。',
     ),
+    showCloseButton: true,
+    closeTooltip: '返回',
+    onClose: _locked ? null : _requestClose,
   );
 
   Widget _sourceSummary(ThemeData theme) {
@@ -1669,35 +1646,30 @@ class _MaterialReallocationDialogBodyState
                   children: scrollContent,
                 ),
               ),
-              Padding(
+              UtenDialogActions(
                 padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Row(
-                  children: [
-                    UtenButton(
-                      key: const Key('cross-reallocation-cancel'),
-                      size: UtenButtonSize.large,
-                      type: UtenButtonType.ghost,
-                      onPressed: _locked ? null : _requestClose,
-                      child: const Text('返回'),
+                children: [
+                  UtenButton(
+                    key: const Key('cross-reallocation-cancel'),
+                    type: UtenButtonType.ghost,
+                    onPressed: _locked ? null : _requestClose,
+                    child: const Text('返回'),
+                  ),
+                  UtenButton(
+                    key: const Key('cross-reallocation-confirm'),
+                    isLoading: _submitting,
+                    onPressed: _submitting ? null : _submit,
+                    child: Text(
+                      _uncertain
+                          ? '重试确认调拨'
+                          : _multiSelect
+                          ? '确认调入（${rows.length} 笔）'
+                          : widget.receiveIntoCurrent
+                          ? '确认调入'
+                          : '确认让料',
                     ),
-                    const Spacer(),
-                    UtenButton(
-                      key: const Key('cross-reallocation-confirm'),
-                      size: UtenButtonSize.large,
-                      isLoading: _submitting,
-                      onPressed: _submitting ? null : _submit,
-                      child: Text(
-                        _uncertain
-                            ? '重试确认调拨'
-                            : _multiSelect
-                            ? '确认调入（${rows.length} 笔）'
-                            : widget.receiveIntoCurrent
-                            ? '确认调入'
-                            : '确认让料',
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),

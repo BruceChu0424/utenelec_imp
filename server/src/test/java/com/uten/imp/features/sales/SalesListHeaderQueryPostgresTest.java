@@ -69,7 +69,14 @@ class SalesListHeaderQueryPostgresTest {
         factory.setManagedTypes(PersistenceManagedTypes.of(SalesOrder.class.getName(),SalesQuote.class.getName(),SalesShipment.class.getName(),SalesReturn.class.getName(),SalesOtherShipment.class.getName()));
         factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));factory.afterPropertiesSet();emf=factory.getObject();
     }
-    @AfterAll static void close() throws Exception {if(emf!=null)emf.close();if(database!=null)database.close();}
+    @AfterAll static void close() throws Exception {
+        if (emf != null) {
+            emf.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void session() {
         db.execute("TRUNCATE sales_orders,sales_quotes,sales_shipments,sales_returns,sales_other_shipments");
         em=emf.createEntityManager();users=mock(SecurityContextCurrentUser.class);permissions(Set.of(SalesPriceMasker.PERM));

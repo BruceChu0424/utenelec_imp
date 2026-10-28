@@ -415,30 +415,23 @@ class _GoodsIssueMethodDialogState
                   ),
                 ),
               ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      onPressed: _saving
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      child: const Text('取消'),
-                    ),
-                    const SizedBox(width: UtenSpacing.s12),
-                    UtenButton(
-                      key: const Key('goods-issue-method-confirm'),
-                      icon: Icons.check_rounded,
-                      isLoading: _saving,
-                      onPressed: _canConfirm ? _save : null,
-                      child: Text(_needsPreview ? '确认切换' : '保存'),
-                    ),
-                  ],
-                ),
+              UtenDialogActions(
+                children: [
+                  UtenButton(
+                    type: UtenButtonType.secondary,
+                    onPressed: _saving
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('取消'),
+                  ),
+                  UtenButton(
+                    key: const Key('goods-issue-method-confirm'),
+                    icon: Icons.check_rounded,
+                    isLoading: _saving,
+                    onPressed: _canConfirm ? _save : null,
+                    child: Text(_needsPreview ? '确认切换' : '保存'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -449,32 +442,15 @@ class _GoodsIssueMethodDialogState
 
   Widget _header(ThemeData theme, AppLocalizations? l10n) {
     final name = widget.detail.name ?? widget.detail.code ?? '';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
+    return UtenDialogHeader(
+      icon: Icons.inventory_2_outlined,
+      title: Text(
+        name.isEmpty
+            ? (l10n?.wmIssueMethod ?? '发料方式')
+            : '${l10n?.wmIssueMethod ?? '发料方式'}：$name',
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              name.isEmpty
-                  ? (l10n?.wmIssueMethod ?? '发料方式')
-                  : '${l10n?.wmIssueMethod ?? '发料方式'}：$name',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: _saving ? null : () => Navigator.of(context).pop(false),
-          ),
-        ],
-      ),
+      showCloseButton: true,
+      onClose: _saving ? null : () => Navigator.of(context).pop(false),
     );
   }
 

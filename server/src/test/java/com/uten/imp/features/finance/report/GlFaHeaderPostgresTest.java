@@ -106,7 +106,7 @@ class GlFaHeaderPostgresTest {
     private Query query(String sql){Map<String,Object> parameters=new LinkedHashMap<>();return mock(Query.class,call->{
         String method=call.getMethod().getName();if(method.equals("setParameter")){parameters.put(call.getArgument(0),call.getArgument(1));return call.getMock();}
         if(method.equals("getSingleResult"))return named.queryForObject(sql,parameters,Object.class);
-        if(method.equals("getResultList"))return named.query(sql,parameters,(rs,row)->{Object[] result=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<result.length;i++)result[i]=rs.getObject(i+1);return result;});
+        if(method.equals("getResultList"))return named.query(sql,parameters,(rs,row)->{Object[] result=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<result.length;i++) { result[i]=rs.getObject(i+1); } return result;});
         if(Query.class.isAssignableFrom(call.getMethod().getReturnType()))return call.getMock();return org.mockito.Answers.RETURNS_DEFAULTS.answer(call);
     });}
 }

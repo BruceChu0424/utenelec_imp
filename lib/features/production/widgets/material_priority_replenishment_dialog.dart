@@ -443,243 +443,228 @@ class _MaterialPriorityReplenishmentDialogState
       canPop: !_locked,
       child: Material(
         key: const Key('material-priority-replenishment-dialog'),
-        color: theme.colorScheme.surface,
-        child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
-              if (_saving)
-                const UtenBusyOverlay(
-                  title: '正在提交补供',
-                  description: '正在下达补自制计划或调拨，请勿重复提交或关闭弹窗。',
+        color: Colors.transparent,
+        child: UtenDialogSurface(
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 提交网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
+                if (_saving)
+                  const UtenBusyOverlay(
+                    title: '正在提交补供',
+                    description: '正在下达补自制计划或调拨，请勿重复提交或关闭弹窗。',
+                  ),
+                UtenDialogHeader(
+                  title: const Text('为原计划补供'),
+                  icon: Icons.playlist_add_check_rounded,
+                  showCloseButton: true,
+                  closeTooltip: '稍后补供',
+                  onClose: _locked
+                      ? null
+                      : () => Navigator.of(context, rootNavigator: true).pop(),
                 ),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text('为原计划补供', style: theme.textTheme.titleLarge),
-                    ),
-                    IconButton(
-                      tooltip: '稍后补供',
-                      onPressed: _locked
-                          ? null
-                          : () => Navigator.of(
-                              context,
-                              rootNavigator: true,
-                            ).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : SingleChildScrollView(
-                        padding: const EdgeInsets.all(UtenSpacing.s16),
-                        child: AbsorbPointer(
-                          absorbing: _locked,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                widget.futureTransfer
-                                    ? '专属在途份额已调整，实际入库前不计现货。现在可以补原计划；稍后办理不会撤销本次调整。'
-                                    : '调拨已生效。现在可以补原计划；选择稍后办理不会撤销这次调拨。',
-                                style: theme.textTheme.bodyMedium,
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              Text('原供料计划：${widget.sourceLabel}'),
-                              if (preview != null) ...[
+                Expanded(
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : SingleChildScrollView(
+                          padding: const EdgeInsets.all(UtenSpacing.s16),
+                          child: AbsorbPointer(
+                            absorbing: _locked,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
                                 Text(
-                                  '物料：${preview.material?.goodsName ?? preview.material?.goodsCode ?? '原计划物料'}',
-                                ),
-                                Text(
-                                  '本次调用 ${_fact('transferredQty', preview.transferredQty)} · 原计划待补 ${_fact('priorityPendingQty', preview.priorityPendingQty)} · 当前可补 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}',
+                                  widget.futureTransfer
+                                      ? '专属在途份额已调整，实际入库前不计现货。现在可以补原计划；稍后办理不会撤销本次调整。'
+                                      : '调拨已生效。现在可以补原计划；选择稍后办理不会撤销这次调拨。',
+                                  style: theme.textTheme.bodyMedium,
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
-                                UtenDropdownField(
-                                  label: '补供方式',
-                                  info: '沿原计划已经确认的供货路线办理，不改写历史任务。',
-                                  value: preview.allowedRoutes.contains(_route)
-                                      ? _route?.name
-                                      : null,
-                                  allowClear: false,
-                                  searchable: false,
-                                  enabled:
-                                      !_locked &&
-                                      preview.allowedRoutes.length > 1,
-                                  items: [
-                                    for (final route in preview.allowedRoutes)
-                                      UtenDropdownItem(
-                                        value: route.name,
-                                        label: route.label,
-                                      ),
-                                  ],
-                                  onChanged: (value) {
-                                    final route = preview.allowedRoutes
-                                        .where((r) => r.name == value)
-                                        .firstOrNull;
-                                    if (route != null) {
-                                      setState(() => _route = route);
-                                    }
-                                  },
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
-                                TextField(
-                                  key: const Key(
-                                    'priority-replenishment-quantity',
+                                Text('原供料计划：${widget.sourceLabel}'),
+                                if (preview != null) ...[
+                                  Text(
+                                    '物料：${preview.material?.goodsName ?? preview.material?.goodsCode ?? '原计划物料'}',
                                   ),
-                                  controller: _quantity,
-                                  enabled: !_locked && blocked == null,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: UtenInputDecoration(
-                                    InputDecoration(
-                                      labelText: '本次补供数量',
-                                      suffixText: preview.material?.unitName,
-                                      error: _quantityError == null
-                                          ? null
-                                          : UtenFieldMessage.error(
-                                              _quantityError!,
-                                            ),
-                                    ),
-                                    info: _canExtra
-                                        ? '先补原计划，超出当前待补量的部分单独进入公共余量。'
-                                        : '最多 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}；额外备货请另建完整任务。',
-                                  ),
-                                  onChanged: (_) => setState(() {
-                                    _quantityError = _validateQuantity();
-                                  }),
-                                ),
-                                if (_canExtra)
-                                  CheckboxListTile(
-                                    key: const Key(
-                                      'priority-replenishment-public-extra',
-                                    ),
-                                    contentPadding: EdgeInsets.zero,
-                                    title: const Text('超出部分作为公共备货'),
-                                    value: _allowExtra,
-                                    onChanged: _locked
-                                        ? null
-                                        : (value) => setState(() {
-                                            _allowExtra = value ?? false;
-                                            _quantityError =
-                                                _validateQuantity();
-                                          }),
-                                  ),
-                                const SizedBox(height: UtenSpacing.s8),
-                                Text(
-                                  '补原计划 ${materialTransferText(assigned)} · 公共余量 ${materialTransferText(extra)}${preview.safetyReplenishmentQty > 0 ? ' · 另加安全补库 ${_fact('safetyReplenishmentQty', preview.safetyReplenishmentQty)}' : ''}',
-                                ),
-                                if (preview.createsProductionPlan) ...[
-                                  const SizedBox(height: UtenSpacing.s12),
-                                  InkWell(
-                                    key: const Key(
-                                      'priority-replenishment-workshop',
-                                    ),
-                                    onTap: _locked ? null : _pickWorkshop,
-                                    child: InputDecorator(
-                                      decoration: const UtenInputDecoration(
-                                        InputDecoration(labelText: '生产车间'),
-                                      ),
-                                      child: Text(
-                                        _departmentName ??
-                                            utenFieldPlaceholder(
-                                              label: '生产车间',
-                                            )!,
-                                      ),
-                                    ),
+                                  Text(
+                                    '本次调用 ${_fact('transferredQty', preview.transferredQty)} · 原计划待补 ${_fact('priorityPendingQty', preview.priorityPendingQty)} · 当前可补 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}',
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
-                                  UtenEmployeePicker(
-                                    candidateScopeKey: (
-                                      'replenishment-owner',
-                                      _departmentId,
-                                    ),
-                                    key: ValueKey(_worker?.id),
-                                    label: '负责人',
-                                    initial: _worker,
-                                    enabled: !_locked,
-                                    loader: (keyword) async {
-                                      final result = await ref
-                                          .read(employeeRepositoryProvider)
-                                          .listPickerCandidates(
-                                            size: 30,
-                                            search: keyword,
-                                            statuses: const {
-                                              'active',
-                                              'probation',
-                                            },
-                                            departmentId: _departmentId,
-                                            includeSubtree: true,
-                                          );
-                                      return [
-                                        for (final person in result)
-                                          UtenEmployeePickerItem(
-                                            id: person.id,
-                                            name: person.fullName,
-                                            employeeCode: person.code,
-                                            accountStatus: person.accountStatus,
-                                            employmentStatus: person.status,
-                                            departmentId: person.departmentId,
-                                            departmentName:
-                                                person.departmentName,
-                                          ),
-                                      ];
+                                  UtenDropdownField(
+                                    label: '补供方式',
+                                    info: '沿原计划已经确认的供货路线办理，不改写历史任务。',
+                                    value:
+                                        preview.allowedRoutes.contains(_route)
+                                        ? _route?.name
+                                        : null,
+                                    allowClear: false,
+                                    searchable: false,
+                                    enabled:
+                                        !_locked &&
+                                        preview.allowedRoutes.length > 1,
+                                    items: [
+                                      for (final route in preview.allowedRoutes)
+                                        UtenDropdownItem(
+                                          value: route.name,
+                                          label: route.label,
+                                        ),
+                                    ],
+                                    onChanged: (value) {
+                                      final route = preview.allowedRoutes
+                                          .where((r) => r.name == value)
+                                          .firstOrNull;
+                                      if (route != null) {
+                                        setState(() => _route = route);
+                                      }
                                     },
-                                    onChanged: (worker) =>
-                                        setState(() => _worker = worker),
                                   ),
-                                ],
-                              ],
-                              if (blocked != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Text(
-                                    blocked,
-                                    style: TextStyle(
-                                      color: theme.colorScheme.error,
-                                    ),
-                                  ),
-                                ),
-                              if (_error != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 12),
-                                  child: Text(
-                                    _error!,
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  TextField(
                                     key: const Key(
-                                      'priority-replenishment-error',
+                                      'priority-replenishment-quantity',
                                     ),
-                                    style: TextStyle(
-                                      color: theme.colorScheme.error,
+                                    controller: _quantity,
+                                    enabled: !_locked && blocked == null,
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                          decimal: true,
+                                        ),
+                                    decoration: UtenInputDecoration(
+                                      InputDecoration(
+                                        labelText: '本次补供数量',
+                                        suffixText: preview.material?.unitName,
+                                        error: _quantityError == null
+                                            ? null
+                                            : UtenFieldMessage.error(
+                                                _quantityError!,
+                                              ),
+                                      ),
+                                      info: _canExtra
+                                          ? '先补原计划，超出当前待补量的部分单独进入公共余量。'
+                                          : '最多 ${_fact('remainingSupplementQty', preview.remainingSupplementQty)}；额外备货请另建完整任务。',
+                                    ),
+                                    onChanged: (_) => setState(() {
+                                      _quantityError = _validateQuantity();
+                                    }),
+                                  ),
+                                  if (_canExtra)
+                                    CheckboxListTile(
+                                      key: const Key(
+                                        'priority-replenishment-public-extra',
+                                      ),
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('超出部分作为公共备货'),
+                                      value: _allowExtra,
+                                      onChanged: _locked
+                                          ? null
+                                          : (value) => setState(() {
+                                              _allowExtra = value ?? false;
+                                              _quantityError =
+                                                  _validateQuantity();
+                                            }),
+                                    ),
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  Text(
+                                    '补原计划 ${materialTransferText(assigned)} · 公共余量 ${materialTransferText(extra)}${preview.safetyReplenishmentQty > 0 ? ' · 另加安全补库 ${_fact('safetyReplenishmentQty', preview.safetyReplenishmentQty)}' : ''}',
+                                  ),
+                                  if (preview.createsProductionPlan) ...[
+                                    const SizedBox(height: UtenSpacing.s12),
+                                    InkWell(
+                                      key: const Key(
+                                        'priority-replenishment-workshop',
+                                      ),
+                                      onTap: _locked ? null : _pickWorkshop,
+                                      child: InputDecorator(
+                                        decoration: const UtenInputDecoration(
+                                          InputDecoration(labelText: '生产车间'),
+                                        ),
+                                        child: Text(
+                                          _departmentName ??
+                                              utenFieldPlaceholder(
+                                                label: '生产车间',
+                                              )!,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: UtenSpacing.s12),
+                                    UtenEmployeePicker(
+                                      candidateScopeKey: (
+                                        'replenishment-owner',
+                                        _departmentId,
+                                      ),
+                                      key: ValueKey(_worker?.id),
+                                      label: '负责人',
+                                      initial: _worker,
+                                      enabled: !_locked,
+                                      loader: (keyword) async {
+                                        final result = await ref
+                                            .read(employeeRepositoryProvider)
+                                            .listPickerCandidates(
+                                              size: 30,
+                                              search: keyword,
+                                              statuses: const {
+                                                'active',
+                                                'probation',
+                                              },
+                                              departmentId: _departmentId,
+                                              includeSubtree: true,
+                                            );
+                                        return [
+                                          for (final person in result)
+                                            UtenEmployeePickerItem(
+                                              id: person.id,
+                                              name: person.fullName,
+                                              employeeCode: person.code,
+                                              accountStatus:
+                                                  person.accountStatus,
+                                              employmentStatus: person.status,
+                                              departmentId: person.departmentId,
+                                              departmentName:
+                                                  person.departmentName,
+                                            ),
+                                        ];
+                                      },
+                                      onChanged: (worker) =>
+                                          setState(() => _worker = worker),
+                                    ),
+                                  ],
+                                ],
+                                if (blocked != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: Text(
+                                      blocked,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              if (!_uncertain)
-                                TextButton.icon(
-                                  onPressed: () =>
-                                      _load(preserveQuantity: true),
-                                  icon: const Icon(Icons.refresh),
-                                  label: const Text('重新核对补供'),
-                                ),
-                            ],
+                                if (_error != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: Text(
+                                      _error!,
+                                      key: const Key(
+                                        'priority-replenishment-error',
+                                      ),
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
+                                  ),
+                                if (!_uncertain)
+                                  TextButton.icon(
+                                    onPressed: () =>
+                                        _load(preserveQuantity: true),
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('重新核对补供'),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Wrap(
-                  alignment: WrapAlignment.end,
-                  spacing: 8,
-                  runSpacing: 8,
+                ),
+                UtenDialogActions(
                   children: [
                     UtenButton(
                       type: UtenButtonType.secondary,
@@ -719,8 +704,8 @@ class _MaterialPriorityReplenishmentDialogState
                       ),
                   ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

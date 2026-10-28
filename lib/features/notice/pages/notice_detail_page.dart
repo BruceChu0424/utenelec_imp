@@ -12,6 +12,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -51,28 +52,39 @@ class NoticeDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(noticeDetailProvider(noticeId));
-
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '通知详情',
-        leading: onBack == null ? null : UtenBackButton(onPressed: onBack),
-        showBackButton: onBack == null,
+    final body = detail.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => UtenEmpty.error(
+        message: humanErrorMessage(e) ?? '通知加载失败，请稍后重试',
+        onAction: () => ref.invalidate(noticeDetailProvider(noticeId)),
       ),
-      body: detail.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => UtenEmpty.error(
-          message: humanErrorMessage(e) ?? '通知加载失败，请稍后重试',
-          onAction: () => ref.invalidate(noticeDetailProvider(noticeId)),
+      data: (notice) {
+        if (notice == null) return const UtenEmpty(message: '通知不存在');
+        return _Content(
+          notice: notice,
+          onBack: onBack,
+          onActionNavigate: onActionNavigate,
+        );
+      },
+    );
+    if (onBack != null) {
+      return UtenDialogSurface(
+        child: Column(
+          children: [
+            UtenDialogHeader(
+              title: const Text('通知详情'),
+              icon: Icons.notifications_none_rounded,
+              showCloseButton: true,
+              onClose: onBack,
+            ),
+            Expanded(child: body),
+          ],
         ),
-        data: (notice) {
-          if (notice == null) return const UtenEmpty(message: '通知不存在');
-          return _Content(
-            notice: notice,
-            onBack: onBack,
-            onActionNavigate: onActionNavigate,
-          );
-        },
-      ),
+      );
+    }
+    return Scaffold(
+      appBar: const UtenAppBar(title: '通知详情'),
+      body: body,
     );
   }
 }

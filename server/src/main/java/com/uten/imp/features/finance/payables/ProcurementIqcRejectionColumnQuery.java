@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -20,12 +21,15 @@ final class ProcurementIqcRejectionColumnQuery {
             "CREDIT_CONFIRMED", "供应商贷项已闭环",
             "CLOSED_NO_CREDIT", "零金额无需贷项，已结案",
             "REVERSED", "下游已反向");
+    private static final List<Map.Entry<String,String>> REASONS=List.copyOf(NEXT_STEPS.entrySet());
 
-    /** Only trusted labels below are SQL literals; all request text remains a bound parameter. */
+    /** Business labels remain data even when they participate in a filter or ordering. */
     private static String nextStepSql() {
         StringBuilder sql = new StringBuilder("CASE rejection.status");
-        NEXT_STEPS.forEach((status, text) -> sql.append(" WHEN '").append(status)
-                .append("' THEN '").append(text.replace("'", "''")).append("'"));
+        for(int index=0;index<REASONS.size();index++) {
+            sql.append(" WHEN :iqc_reason_status_").append(index)
+                    .append(" THEN :iqc_reason_label_").append(index);
+        }
         return sql.append(" ELSE '").append(UNKNOWN).append("' END").toString();
     }
     static final String DISPLAY_REASON_SQL = "COALESCE(NULLIF(regexp_replace(rejection.finance_exception_message,"
@@ -39,7 +43,10 @@ final class ProcurementIqcRejectionColumnQuery {
         return status == null ? UNKNOWN : NEXT_STEPS.getOrDefault(status, UNKNOWN);
     }
 
-    record Read(SqlColumnSearch.Criteria criteria, String orderBy, boolean explicitOrder) {}
+    record Read(SqlColumnSearch.Criteria criteria, String orderBy, boolean explicitOrder,
+                Map<String,Object> orderParameters) {
+        void bindOrder(jakarta.persistence.Query query) { orderParameters.forEach(query::setParameter); }
+    }
     static Read read(Map<String, String> parameters, boolean amountVisible) {
         Map<String, String> request = parameters == null ? Map.of() : parameters;
         String sort = request.get("sort");
@@ -72,6 +79,19 @@ final class ProcurementIqcRejectionColumnQuery {
             ordering = field.expression() + ("desc".equalsIgnoreCase(direction) ? " DESC" : " ASC")
                     + " NULLS LAST,rejection.created_at DESC,rejection.id";
         }
-        return new Read(criteria, ordering, explicit);
+        Map<String,Object> labels=new LinkedHashMap<>();
+        if(criteria.predicate().contains(":iqc_reason_")||ordering.contains(":iqc_reason_")) {
+            for(int index=0;index<REASONS.size();index++) {
+                labels.put("iqc_reason_status_"+index,REASONS.get(index).getKey());
+                labels.put("iqc_reason_label_"+index,REASONS.get(index).getValue());
+            }
+        }
+        if(criteria.predicate().contains(":iqc_reason_")) {
+            Map<String,Object> bindings=new LinkedHashMap<>(criteria.parameters());
+            bindings.putAll(labels);
+            criteria=new SqlColumnSearch.Criteria(criteria.predicate(),Map.copyOf(bindings));
+        }
+        return new Read(criteria, ordering, explicit,
+                ordering.contains(":iqc_reason_")?Map.copyOf(labels):Map.of());
     }
 }

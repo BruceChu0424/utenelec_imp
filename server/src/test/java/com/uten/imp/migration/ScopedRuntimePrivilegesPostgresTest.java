@@ -174,6 +174,14 @@ class ScopedRuntimePrivilegesPostgresTest {
         assertEquals("f",scalar(runtime,"SELECT has_table_privilege(current_user,'v_stock_usable','INSERT')"));
         execute(runtime,"INSERT INTO v_audit_log_all(actor_account,action,target_type,target_id,result,event_source,risk_level,event_category) "
                 +"VALUES('runtime-acl-fixture','insert','acl_business_probe','fixture','success','business','low','data_change')");
+        assertEquals("t", scalar(runtime, "SELECT created_at IS NOT NULL "
+                + "AND event_source='business' AND device_capture_status='legacy' "
+                + "FROM v_audit_log_all WHERE actor_account='runtime-acl-fixture' ORDER BY id DESC LIMIT 1"));
+        execute(runtime, "INSERT INTO v_audit_log_all(actor_account,action,target_type,target_id,result,risk_level,event_category) "
+                + "VALUES('runtime-defaults-fixture','insert','acl_business_probe','fixture','success','low','data_change')");
+        assertEquals("t", scalar(runtime, "SELECT created_at=transaction_timestamp() "
+                + "AND event_source='database' AND device_capture_status='legacy' "
+                + "FROM v_audit_log_all WHERE actor_account='runtime-defaults-fixture' ORDER BY id DESC LIMIT 1"));
         runtime.rollback();
         assertEquals(before,facts(owner));
     }

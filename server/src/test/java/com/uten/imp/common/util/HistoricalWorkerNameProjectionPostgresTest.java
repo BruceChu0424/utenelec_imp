@@ -66,6 +66,10 @@ class HistoricalWorkerNameProjectionPostgresTest {
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,"employees","users");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,
+                "employee_identity_aliases", "employee_identity_user_tombstones", "employee_legacy_identity_aliases");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,
+                "fn_canonical_employee_identity", "fn_employee_merge_retained_user", "fn_employee_identity_from_legacy_worker");
         db.execute("ALTER TABLE employees ADD PRIMARY KEY(id); ALTER TABLE users ADD PRIMARY KEY(id)");
         Set<String> tables=new LinkedHashSet<>();
         for(var key:HistoricalWorkerRole.values()) {
@@ -77,7 +81,7 @@ class HistoricalWorkerNameProjectionPostgresTest {
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void reset() {
         var tables=new LinkedHashSet<String>();for(var key:HistoricalWorkerRole.values())tables.add(role(key).table());
-        db.execute("TRUNCATE employees,users,"+String.join(",",tables));
+        db.execute("TRUNCATE employee_identity_aliases,employee_identity_user_tombstones,employee_legacy_identity_aliases,employees,users,"+String.join(",",tables));
         db.update("INSERT INTO employees(id,legacy_id,full_name,code,status,is_deleted) VALUES (?,409,'Same name','UT0004','active',false),(?,546,'Same name','UT0192','resigned',false)",CURRENT,HISTORY);
         statements=new ArrayList<>();EntityManager em=mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(call->{
@@ -156,6 +160,18 @@ class HistoricalWorkerNameProjectionPostgresTest {
         document(HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER,546,null);
         db.update("INSERT INTO employees(id,legacy_id,full_name,code,status,is_deleted) VALUES (?,546,'Other','UT1234','resigned',false)",UUID.randomUUID());
         assertThat(names.historicalWorkerNameWithCodeOf(null,DOCUMENT,42,HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER)).isNull();
+    }
+    @Test void verifiedLegacyAliasKeepsTheDeletedHistoricalNameWithoutAnExactCurrentLegacyRow() {
+        document(HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER,777777,null);
+        db.update("UPDATE employees SET is_deleted=true WHERE id=?",HISTORY);
+        db.update("""
+                INSERT INTO employee_legacy_identity_aliases(namespace_key,legacy_id,canonical_employee_id,source_employee_id,evidence_reference)
+                VALUES ('B_WORKER',777777,?,?,'verified-projection-fixture')
+                """,HISTORY,UUID.randomUUID());
+        assertThat(names.historicalWorkerNameWithCodeOf(null,DOCUMENT,42,HistoricalWorkerRole.PURCHASE_ORDER_PURCHASER))
+                .isEqualTo("Same name(UT0192)");
+        assertThat(db.queryForObject("SELECT purchaser_legacy_id FROM purchase_orders",Integer.class)).isEqualTo(777777);
+        assertThat(db.queryForObject("SELECT count(*) FROM employees",Integer.class)).isEqualTo(2);
     }
     @ParameterizedTest @ValueSource(strings={"request","order","purchaseReceipt","subcontractReceipt","issue","materialReturn"})
     void actualDetailProjectionReadsHistoryWithoutInventingRoleUuid(String kind) {

@@ -66,6 +66,17 @@ class ProcurementIqcRejectionHeaderPostgresTest {
         var counts=service.counts(null,null,Map.of("search.holdReason","闭环"));
         assertThat(counts.total()).isEqualTo(2); // pending generic hold + the completed credit label
         assertThat(counts.pendingReturn()).isEqualTo(1);assertThat(counts.creditConfirmed()).isEqualTo(1);
+        var reasonOrder=service.list(null,null,null,2,1,Map.of("sort","holdReason","order","asc"));
+        assertThat(reasonOrder.total()).isEqualTo(3);
+        var expectedReasonOrder=db.queryForList("""
+                SELECT id FROM procurement_iqc_rejection_cases
+                WHERE owner_user_id=?
+                ORDER BY COALESCE(NULLIF(regexp_replace(finance_exception_message,
+                    '^[[:space:]]+|[[:space:]]+$','','g'),''),
+                    CASE status WHEN 'PENDING_RETURN' THEN ? WHEN 'CREDIT_CONFIRMED' THEN ? ELSE ? END),
+                    created_at DESC,id LIMIT 1 OFFSET 1
+                """,UUID.class,owner,"IQC不合格实物退回及供应商贷项尚未闭环","供应商贷项已闭环","下一步：修复后重试财务投影");
+        assertThat(reasonOrder.items()).extracting(item->item.id()).containsExactlyElementsOf(expectedReasonOrder);
         actor.set(user(owner,false));
         var masked=service.list(null,"TERMINAL",null,1,20,Map.of("search.holdReason","贷项已闭环"));
         assertThat(masked.items()).singleElement().satisfies(item->{
@@ -103,11 +114,11 @@ class ProcurementIqcRejectionHeaderPostgresTest {
             return switch(call.getMethod().getName()){
                 case "setParameter" -> {values.put(call.getArgument(0),call.getArgument(1));yield call.getMock();}
                 case "getResultList" -> {executed.add(sql);yield named.query(sql,values,(rs,index)->{
-                    Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;});}
+                    Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++) { row[i]=rs.getObject(i+1); } return row;});}
                 case "getSingleResult" -> {executed.add(sql);yield sql.startsWith("SELECT COUNT(*) FROM")
                         ?named.queryForObject(sql,values,Long.class)
                         :named.queryForObject(sql,values,(rs,index)->{
-                            Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;});}
+                            Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++) { row[i]=rs.getObject(i+1); } return row;});}
                 default -> null;
             };
         });

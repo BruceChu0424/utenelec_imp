@@ -70,7 +70,10 @@ public class PermissionTemplateAssignmentService {
     @Transactional
     public Result unbind(Unbind request) {
         transfer.lockConfiguration(); transfer.requireActor(); tx.bind();
-        Targets targets=targets(request==null?null:request.userIds(),request==null?null:request.departmentIds());
+        if (request == null) {
+            throw invalid("请选择 1 至 500 个不重复的员工或部门");
+        }
+        Targets targets=targets(request.userIds(),request.departmentIds());
         List<Binding> current=bindings.list().stream().filter(binding->binding.kind().equals("user")
                 ? targets.users.contains(binding.targetId()):targets.departments.contains(binding.targetId())).toList();
         requireExpectedBindings(request.expectedBindings(),targets,current);
@@ -351,7 +354,14 @@ public class PermissionTemplateAssignmentService {
         if(!plan.issues.isEmpty()) throw invalid(String.join("；",plan.issues));
         if(!new HashSet<>(confirmations==null?List.of():confirmations).containsAll(plan.sensitive.stream().map(SensitiveAddition::key).toList())) throw invalid("请逐项确认本次新增的敏感权限");
     }
-    @SafeVarargs private static Set<String> union(Collection<String>... sets) { Set<String> result=new TreeSet<>();for(var set:sets) result.addAll(set);return result; }
+    @SafeVarargs
+    private static Set<String> union(Collection<String>... sets) {
+        Set<String> result = new TreeSet<>();
+        for (var set : sets) {
+            result.addAll(set);
+        }
+        return result;
+    }
     private static Set<String> difference(Collection<String> left,Collection<String> right) { Set<String> result=new TreeSet<>(left);result.removeAll(right);return result; }
     private static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED,message); }
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT,message); }

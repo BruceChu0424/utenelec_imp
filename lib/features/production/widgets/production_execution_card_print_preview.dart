@@ -261,9 +261,7 @@ class _ProductionExecutionCardPrintDialogState
           child: Column(
             children: [
               _header(theme),
-              const Divider(height: 1),
               Expanded(child: _body(theme)),
-              const Divider(height: 1),
               _footer(),
             ],
           ),
@@ -274,48 +272,22 @@ class _ProductionExecutionCardPrintDialogState
   }
 
   Widget _header(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
+    return UtenDialogHeader(
+      icon: Icons.print_outlined,
+      title: UtenSectionHeader(title: 'A4 生产计划单 · 流水线执行工卡', info: _sourceInfo),
+      subtitle: Text(
+        _views.isEmpty
+            ? '正在读取已确认计划包…'
+            : _views.length == 1
+            ? '${_views.single.planBillNo ?? _views.single.planId} · '
+                  '${_views.single.cards.length} 张执行工卡 · '
+                  '计划包 ${_shortId(_views.single.packageId)}'
+            : '${_views.length} 张生产计划 · '
+                  '$_cardCount 张执行工卡 · 打印前整批复核',
       ),
-      child: Row(
-        children: [
-          Icon(Icons.print_outlined, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UtenSectionHeader(
-                  title: 'A4 生产计划单 · 流水线执行工卡',
-                  info: _sourceInfo,
-                ),
-                Text(
-                  _views.isEmpty
-                      ? '正在读取已确认计划包…'
-                      : _views.length == 1
-                      ? '${_views.single.planBillNo ?? _views.single.planId} · '
-                            '${_views.single.cards.length} 张执行工卡 · '
-                            '计划包 ${_shortId(_views.single.packageId)}'
-                      : '${_views.length} 张生产计划 · '
-                            '$_cardCount 张执行工卡 · 打印前整批复核',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _printing ? null : () => Navigator.pop(context),
-            tooltip: '关闭生产计划打印预览',
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
-      ),
+      showCloseButton: true,
+      closeTooltip: '关闭生产计划打印预览',
+      onClose: _printing ? null : () => Navigator.pop(context),
     );
   }
 
@@ -640,26 +612,20 @@ class _ProductionExecutionCardPrintDialogState
   Widget _footer() {
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Wrap(
-          alignment: WrapAlignment.end,
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: _printing ? null : () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-            UtenButton(
-              icon: Icons.print_outlined,
-              isLoading: _printingTarget == 'all',
-              onPressed: _views.isNotEmpty && !_printing ? _printAll : null,
-              child: Text('打印全部（$_cardCount 张工卡）'),
-            ),
-          ],
-        ),
+      child: UtenDialogActions(
+        children: [
+          UtenButton(
+            type: UtenButtonType.secondary,
+            onPressed: _printing ? null : () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+          UtenButton(
+            icon: Icons.print_outlined,
+            isLoading: _printingTarget == 'all',
+            onPressed: _views.isNotEmpty && !_printing ? _printAll : null,
+            child: Text('打印全部（$_cardCount 张工卡）'),
+          ),
+        ],
       ),
     );
   }

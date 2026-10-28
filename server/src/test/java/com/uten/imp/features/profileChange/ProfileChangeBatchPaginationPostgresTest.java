@@ -1,6 +1,5 @@
 package com.uten.imp.features.profilechange;
 
-import com.uten.imp.testsupport.FixtureDatabaseProperties;
 
 import com.uten.imp.application.port.HrNoticePort;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -24,15 +23,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.test.annotation.DirtiesContext;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.TestContext;
-import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.context.annotation.Import;
 import com.uten.imp.config.JpaAuditingConfig;
-import org.springframework.test.context.support.AbstractTestExecutionListener;
-import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -50,9 +42,8 @@ import static org.mockito.Mockito.*;
 
 /** Actual JPA/native SQL proof: the queue's unit is a complete submitted batch. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@TestExecutionListeners(listeners = ProfileChangeBatchPaginationPostgresTest.DatabaseCleanup.class,
-        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
+@org.springframework.test.context.ContextConfiguration(initializers=com.uten.imp.support.MigratedSchemaContextInitializer.class)
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=true",
@@ -64,21 +55,6 @@ import static org.mockito.Mockito.*;
         com.uten.imp.migration.AuditFreshStartGuardCallback.class})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProfileChangeBatchPaginationPostgresTest {
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine")
-            .withDatabaseName("profile_batch_pages").withUsername("fixture_admin").withPassword("uten");
-
-    @DynamicPropertySource
-    static void database(DynamicPropertyRegistry registry) {
-        POSTGRES.start();
-        FixtureDatabaseProperties.bindSameRole(registry, POSTGRES::getJdbcUrl,
-                POSTGRES::getUsername, POSTGRES::getPassword);
-    }
-
-    public static class DatabaseCleanup extends AbstractTestExecutionListener {
-        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder() - 1; }
-        @Override public void afterTestClass(TestContext ignored) { POSTGRES.stop(); }
-    }
-
     @Autowired ProfileChangeRepository repository;
     @Autowired EmployeeRepository employees;
     @Autowired JdbcTemplate jdbc;
@@ -404,6 +380,7 @@ class ProfileChangeBatchPaginationPostgresTest {
             jdbc.execute("SELECT set_config('app.profile_change_snapshot_codec', 'v1', true)");
             return reviews.review(fixture[1], new ProfileChangeDto.ReviewAction("approve", null));
         }));
+        var secondPending=new AtomicReference<CompletableFuture<String>>();
         try {
             assertTrue(applied.await(5, TimeUnit.SECONDS));
             CountDownLatch secondStarted = new CountDownLatch(1);
@@ -417,6 +394,7 @@ class ProfileChangeBatchPaginationPostgresTest {
                     return error.getMessage();
                 }
             }));
+            secondPending.set(second);
             assertTrue(secondStarted.await(5, TimeUnit.SECONDS));
             assertThrows(TimeoutException.class, () -> second.get(300, TimeUnit.MILLISECONDS), "另一审批必须等第一审批提交后重读");
             release.countDown();
@@ -432,13 +410,10 @@ class ProfileChangeBatchPaginationPostgresTest {
         } finally {
             release.countDown();
             first.get(5, TimeUnit.SECONDS);
-            inNewTransaction(() -> {
-                jdbc.execute("SELECT set_config('app.profile_change_snapshot_codec', 'v1', true)");
-                jdbc.update("DELETE FROM profile_change_requests WHERE batch_id = ?", fixture[1]);
-                jdbc.update("DELETE FROM employees WHERE id IN (?, ?)", employeeA, employeeB);
-                jdbc.update("DELETE FROM departments WHERE id IN (?, ?)", departmentA, departmentB);
-                return null;
-            });
+            var pending=secondPending.get();
+            if(pending!=null)pending.get(5,TimeUnit.SECONDS);
+            // The method's context closes all pools, then drops its private lease.
+            // Committed history and employee identities are never physically deleted.
         }
     }
 

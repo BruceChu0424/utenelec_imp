@@ -195,7 +195,7 @@ void main() {
       expect(api.writes, isEmpty);
       await tester.tap(find.byKey(const ValueKey('inventory-cost-policy')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(SwitchListTile));
+      await tester.tap(find.byType(Switch));
       await tester.tap(find.text('确认'));
       await tester.pumpAndSettle();
       expect(api.writes, isEmpty);

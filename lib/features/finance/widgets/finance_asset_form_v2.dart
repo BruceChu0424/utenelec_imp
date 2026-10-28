@@ -573,10 +573,8 @@ class _FinanceAssetFormSurfaceState
               child: Column(
                 children: [
                   _header(theme),
-                  const Divider(height: 1),
                   Expanded(
-                    child: UtenDetailActionLayout(
-                      actions: _actions(),
+                    child: _formActionLayout(
                       body: Form(
                         key: _formKey,
                         autovalidateMode: AutovalidateMode.onUserInteraction,
@@ -864,56 +862,53 @@ class _FinanceAssetFormSurfaceState
     );
   }
 
+  Widget _formActionLayout({required Widget body}) {
+    if (!widget.inPanel) {
+      return UtenDetailActionLayout(body: body, actions: _actions());
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: body),
+        UtenDialogActions(children: _actions()),
+      ],
+    );
+  }
+
   Widget _header(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_isNew ? '新建' : '编辑'}${widget.ledger.label}',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
+    return UtenDialogSurface(
+      child: UtenDialogHeader(
+        icon: widget.ledger == FinanceAssetLedger.fixedAsset
+            ? Icons.apartment_outlined
+            : Icons.calendar_month_outlined,
+        title: Text('${_isNew ? '新建' : '编辑'}${widget.ledger.label}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_isNew)
+              Text(
+                financeAssetEntryText(context, 'generatedCode'),
+                style: theme.textTheme.bodySmall,
+              ),
+            if (widget.existing != null) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.existing!.code,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                if (_isNew)
-                  Text(
-                    financeAssetEntryText(context, 'generatedCode'),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                if (widget.existing != null) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          widget.existing!.code,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      financeAssetStatusBadge(widget.existing!.status),
-                    ],
-                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  financeAssetStatusBadge(widget.existing!.status),
                 ],
-              ],
-            ),
-          ),
-          IconButton(
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            tooltip: '关闭',
-            onPressed: _requestClose,
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
+              ),
+            ],
+          ],
+        ),
+        showCloseButton: true,
+        onClose: _requestClose,
       ),
     );
   }
@@ -1064,7 +1059,7 @@ class _FinanceAssetFormSurfaceState
   List<Widget> _actions() => [
     UtenButton(
       type: UtenButtonType.secondary,
-      size: UtenButtonSize.large,
+      size: widget.inPanel ? UtenButtonSize.medium : UtenButtonSize.large,
       onPressed: _requestClose,
       child: const Text('取消'),
     ),

@@ -203,12 +203,9 @@ class _EmployeeIdentityCorrectionDialogState
       child: UtenAlertDialog(
         scrollable: false,
         key: const ValueKey('employee-identity-correction-dialog'),
-        title: Row(
-          children: [
-            const Icon(Icons.badge_outlined),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(child: Text(l10n.employeeIdentityCorrectTitle)),
-          ],
+        title: UtenDialogHeading(
+          title: Text(l10n.employeeIdentityCorrectTitle),
+          icon: Icons.badge_outlined,
         ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),

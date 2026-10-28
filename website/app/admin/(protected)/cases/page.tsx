@@ -10,7 +10,7 @@ export default async function CasesAdmin() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h1 className="font-heading text-2xl font-bold">样板工程</h1>
+        <h1 className="font-heading text-2xl font-bold">案例与足迹</h1>
         <Link href="/admin/cases/edit" className="btn-accent btn-sm"><Plus className="h-4 w-4" />新增案例</Link>
       </div>
       <div className="mt-6 card-uten overflow-x-auto">

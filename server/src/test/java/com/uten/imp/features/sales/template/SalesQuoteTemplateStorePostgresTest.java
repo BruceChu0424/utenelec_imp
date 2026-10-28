@@ -51,8 +51,8 @@ class SalesQuoteTemplateStorePostgresTest {
         actor = UUID.randomUUID(); UUID employee = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'模板测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
-                """, employee, "TE-" + employee);
+                SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """, employee, "TE-" + employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("模板测试",employee));
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",
                 actor, employee, "template-" + actor);
         client = client(employee); otherClient = client(employee);

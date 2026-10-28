@@ -200,7 +200,7 @@ class NativeReadScopeVersionPostgresTest {
     private void grant(UUID recipient,String scope,UUID owner){db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,?,?)",recipient,scope,owner);}
     private static long generation(String domain){return db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=?",Long.class,domain);}
     private void insertUser(UUID user,UUID employee){db.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin) VALUES(?,?,?,'test-fixture-only',false,false)",user,employee,"native-scope-"+user);}
-    private static UUID employee(String label){UUID id=UUID.randomUUID();db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'",id,"NS-"+id,label);return id;}
+    private static UUID employee(String label){UUID id=UUID.randomUUID();db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'",id,"NS-"+id,com.uten.imp.support.SyntheticEmployeeIdentity.name(label,id));return id;}
     private static UUID department(UUID parent){UUID id=UUID.randomUUID();db.update("INSERT INTO departments(id,code,name,level,parent_id) VALUES(?,?,?,'二级班组',?)",id,"NS-"+id,"Native scope fixture",parent);return id;}
     private static UUID warehouse(){
         UUID root=db.queryForObject("SELECT fn_warehouse_root_id()",UUID.class);

@@ -45,18 +45,29 @@ public final class FinanceProjectedReportTable {
         String filtered="SELECT report.* FROM ("+source+") report "+header.where().sql();
         int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
         String ordering=fallbackOrder;
-        Set<String> visible=new LinkedHashSet<>();for(var column:columns)if(!column.key().startsWith("__"))visible.add(column.key());
-        if(sort!=null&&!sort.isBlank()&&visible.contains(sort)) {
+        Map<String,String> visible=new LinkedHashMap<>();
+        for(var column:columns) {
+            if(!column.key().startsWith("__")) visible.put(column.key(),expression(column.key()));
+        }
+        String requestedExpression=visible.get(sort);
+        if(sort!=null&&!sort.isBlank()&&requestedExpression!=null) {
             if(chronological)throw invalid("此报表按业务时间保留结余顺序");
             if(order!=null&&!Set.of("asc","desc").contains(order))throw invalid("排序方向无效");
-            ordering=expression(sort)+("desc".equals(order)?" DESC":" ASC")+" NULLS LAST,"+fallbackOrder;
+            ordering=requestedExpression+("desc".equals(order)?" DESC":" ASC")+" NULLS LAST,"+fallbackOrder;
         }
         Consumer<Query> bind=query->{bindSource.accept(query);header.where().params().forEach(query::setParameter);};
         var data=ReportExportCursor.query(em,filtered+" ORDER BY "+ordering+" LIMIT :__limit OFFSET :__offset");
         bind.accept(data);data.setParameter("__limit",safeSize).setParameter("__offset",(long)(safePage-1)*safeSize);
         @SuppressWarnings("unchecked") List<Object[]> values=ReportExportCursor.rows(em,data);
         var rows=new ArrayList<Map<String,Object>>();
-        for(Object[] value:values){var row=new LinkedHashMap<String,Object>();for(int i=0;i<columns.size();i++)row.put(columns.get(i).key(),normal(value[i]));ReportQueryKit.includeDecimalTexts(row);rows.add(row);}
+        for(Object[] value:values){
+            var row=new LinkedHashMap<String,Object>();
+            for(int i=0;i<columns.size();i++) {
+                row.put(columns.get(i).key(),normal(value[i]));
+            }
+            ReportQueryKit.includeDecimalTexts(row);
+            rows.add(row);
+        }
         long total=ReportReadPlan.UNKNOWN_TOTAL;
         if(ReportReadPlan.current().includeCount()){var count=em.createNativeQuery("SELECT COUNT(*) FROM ("+filtered+") header_count");bind.accept(count);total=((Number)count.getSingleResult()).longValue();}
         var facets=new LinkedHashMap<String,List<ReportFacet>>();
@@ -80,7 +91,13 @@ public final class FinanceProjectedReportTable {
 
     /** Positional aliases preserve each SQL owner's exact output, including internal identity columns. */
     public static String aliasProjection(String source,List<ReportColumn> columns,String alias,String... extraColumns) {
-        var names=new ArrayList<String>();for(var column:columns)names.add(quoted(column.key()));for(String key:extraColumns)names.add(quoted(key));
+        var names=new ArrayList<String>();
+        for(var column:columns) {
+            names.add(quoted(column.key()));
+        }
+        for(String key:extraColumns) {
+            names.add(quoted(key));
+        }
         return "SELECT "+alias+".* FROM ("+source+") "+alias+"("+String.join(",",names)+")";
     }
     private record Header(ReportQueryKit.WhereBuilder.Built where,Set<String> keys) { }
@@ -98,16 +115,29 @@ public final class FinanceProjectedReportTable {
         }
         var where=new ReportQueryKit.WhereBuilder("WHERE TRUE");
         Set<String> keys=ReportColumnSearch.apply(where,filters,types,expressions,dates);
-        for(var entry:filters.entrySet()){
-            String key=entry.getKey(),value=entry.getValue();if(!nonblank(value))continue;
-            if(key.startsWith("search.")){if(!keys.contains(key.substring(7)))throw invalid("此报表列不支持搜索："+key.substring(7));continue;}
+        for(var entry:filters.entrySet()) {
+            String key=entry.getKey(),value=entry.getValue();
+            if(!nonblank(value))continue;
+            if(key.startsWith("search.")) {
+                if(!keys.contains(key.substring(7)))throw invalid("此报表列不支持搜索："+key.substring(7));
+            } else if(!(key.equals("currencyCode")&&hasCurrencyIdentity(columns))&&!facetKeys.contains(key)) {
+                throw invalid("此报表列不支持候选筛选："+key);
+            }
+        }
+        // Resolve SQL identifiers and parameter names from the owning report's
+        // declarations. Request keys select a declaration but are never SQL text.
+        var declaredFacets=new LinkedHashSet<>(facetKeys);
+        if(hasCurrencyIdentity(columns))declaredFacets.add("currencyCode");
+        for(String key:declaredFacets) {
+            String value=filters.get(key);
+            if(!nonblank(value))continue;
             if(key.equals("currencyCode")&&hasCurrencyIdentity(columns)){
                 if(value.equals(ReportTableResponse.NULL_FACET))where.add(expression("__currencyId")+" IS NULL",null,null);
                 else {UUID id;try{id=UUID.fromString(value);}catch(IllegalArgumentException failure){throw invalid("币别条件无效");}where.add(expression("__currencyId")+"=:headerCurrency","headerCurrency",id);}
-            }else if(facetKeys.contains(key)){
+            }else {
                 if(value.equals(ReportTableResponse.NULL_FACET))where.add(expression(key)+" IS NULL",null,null);
                 else where.add(expression(key)+"=:headerFacet_"+key,"headerFacet_"+key,key.equals("settled")?ReportQueryKit.parseRequiredBoolean(value):value);
-            }else throw invalid("此报表列不支持候选筛选："+key);
+            }
         }
         return new Header(where.build(null),keys);
     }

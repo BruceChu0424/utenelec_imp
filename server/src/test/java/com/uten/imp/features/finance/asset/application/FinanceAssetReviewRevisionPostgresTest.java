@@ -354,7 +354,7 @@ class FinanceAssetReviewRevisionPostgresTest {
     private Actor actor(String label) {
         UUID employee=UUID.randomUUID(),user=UUID.randomUUID();
         UUID department=jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);
-        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"ARE-"+employee,label,department);
+        jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",employee,"ARE-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name(label,employee),department);
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status) VALUES(?,?,?,'test-not-used',false,false,'active')",user,employee,"asset-revision-"+user);
         return new Actor(user,employee,department);
     }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../components/feedback/uten_dialog_modules.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_field_message.dart';
 import '../../core/l10n/gen/app_localizations.dart';
@@ -281,16 +282,32 @@ class _ProcurementOrderClosureDialogState
                         }
                       },
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          RadioListTile<String>(
-                            value: 'CLOSE',
+                          UtenDialogSettingTile(
+                            canRequestFocus: false,
+                            key: const Key(
+                              'procurement-order-closure-mode-close',
+                            ),
+                            icon: Icons.task_alt_rounded,
                             title: Text(l10n.orderClosureAction),
                             subtitle: Text(l10n.orderClosureCloseHint),
+                            selected: _mode == 'CLOSE',
+                            trailing: Radio<String>(
+                              value: 'CLOSE',
+                              enabled: !_submitting,
+                            ),
+                            onTap: _submitting
+                                ? null
+                                : () => setState(() => _mode = 'CLOSE'),
                           ),
-                          RadioListTile<String>(
-                            value: 'CLOSE_AND_REORDER',
-                            enabled:
-                                !_submitting && preview?.canReorder == true,
+                          const SizedBox(height: UtenSpacing.s12),
+                          UtenDialogSettingTile(
+                            canRequestFocus: false,
+                            key: const Key(
+                              'procurement-order-closure-mode-reorder',
+                            ),
+                            icon: Icons.playlist_add_rounded,
                             title: Text(l10n.orderClosureReorder),
                             subtitle: Text(
                               preview?.canReorder == false
@@ -298,6 +315,17 @@ class _ProcurementOrderClosureDialogState
                                         l10n.orderClosureUnverifiedQuantity)
                                   : l10n.orderClosureReorderHint,
                             ),
+                            selected: _mode == 'CLOSE_AND_REORDER',
+                            trailing: Radio<String>(
+                              value: 'CLOSE_AND_REORDER',
+                              enabled:
+                                  !_submitting && preview?.canReorder == true,
+                            ),
+                            onTap: !_submitting && preview?.canReorder == true
+                                ? () => setState(
+                                    () => _mode = 'CLOSE_AND_REORDER',
+                                  )
+                                : null,
                           ),
                         ],
                       ),

@@ -304,7 +304,7 @@ class SalesReportUnitsPostgresTest {
     }
     @ParameterizedTest @ValueSource(strings={"ORDER","SHIPMENT","RETURN","OTHER_SHIPMENT"})
     void everyDisplayedScalarDetailHeaderUsesItsRealSnapshotProjectionBeforePageCountFacetsAndTotals(String type){
-        Doc doc=create(type,EACH);create(type,EACH);
+        create(type,EACH);create(type,EACH);
         var baseline=detail(type,null);
         var expected=baseline.columns().stream().filter(column->Set.of("text","number","money","date").contains(column.type()))
                 .map(ReportColumn::key).toList();

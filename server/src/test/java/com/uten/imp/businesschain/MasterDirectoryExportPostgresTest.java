@@ -52,7 +52,7 @@ class MasterDirectoryExportPostgresTest extends AuthSessionPostgresTestSupport {
     @BeforeEach void reader(){
         employee=UUID.randomUUID();
         jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'",
-                employee,"MX-"+employee,"Master export reader");
+                employee,"MX-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("Master export reader",employee));
         master=new MasterReportExportSource(context.getBean(GoodsService.class),context.getBean(ClientService.class),
                 context.getBean(SupplierService.class),context.getBean(AccountService.class),context.getBean(CurrencyService.class),
                 context.getBean(ColorService.class),context.getBean(UnitService.class),context.getBean(MouldService.class),

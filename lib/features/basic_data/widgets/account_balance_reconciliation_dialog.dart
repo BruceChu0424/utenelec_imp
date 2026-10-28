@@ -639,14 +639,13 @@ class _AccountBalanceReconciliationDialogState
             _buildHeader(),
             const Divider(height: 1),
             Expanded(child: _buildBody(compact)),
-            const Divider(height: 1),
             _buildFooter(),
           ],
         ),
       ),
     );
     if (compact) {
-      return Dialog.fullscreen(child: Material(child: content));
+      return Dialog.fullscreen(child: UtenDialogSurface(child: content));
     }
     return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s24),
@@ -659,44 +658,13 @@ class _AccountBalanceReconciliationDialogState
   }
 
   Widget _buildHeader() {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s16,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.fact_check_outlined, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '账户余额核对',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  '逐项输入目标余额，或使用全部填 0 预设 · 生效日 $_effectiveDate',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: _submitting ? null : () => Navigator.pop(context),
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
-      ),
+    return UtenDialogHeader(
+      title: const Text('账户余额核对'),
+      subtitle: Text('逐项输入目标余额，或使用全部填 0 预设 · 生效日 $_effectiveDate'),
+      icon: Icons.fact_check_outlined,
+      showCloseButton: true,
+      closeTooltip: '关闭',
+      onClose: _submitting ? null : () => Navigator.pop(context),
     );
   }
 
@@ -1246,25 +1214,20 @@ class _AccountBalanceReconciliationDialogState
   }
 
   Widget _buildFooter() {
-    return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _submitting ? null : () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          UtenButton(
-            icon: Icons.task_alt_rounded,
-            isLoading: _submitting,
-            onPressed: _submitting ? null : _submit,
-            child: Text('提交核对（${_targetAccounts.length}）'),
-          ),
-        ],
-      ),
+    return UtenDialogActions(
+      children: [
+        UtenButton(
+          type: UtenButtonType.secondary,
+          onPressed: _submitting ? null : () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        UtenButton(
+          icon: Icons.task_alt_rounded,
+          isLoading: _submitting,
+          onPressed: _submitting ? null : _submit,
+          child: Text('提交核对（${_targetAccounts.length}）'),
+        ),
+      ],
     );
   }
 }

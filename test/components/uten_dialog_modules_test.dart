@@ -6,6 +6,69 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
+  testWidgets(
+    'setting cards retain one native control and focus across narrow wrapping',
+    (tester) async {
+      final width = ValueNotifier<double>(360);
+      final focus = FocusNode();
+      addTearDown(width.dispose);
+      addTearDown(focus.dispose);
+      var enabled = false;
+      var changes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          home: Scaffold(
+            body: Center(
+              child: StatefulBuilder(
+                builder: (context, setState) => ValueListenableBuilder<double>(
+                  valueListenable: width,
+                  builder: (context, value, _) => SizedBox(
+                    width: value,
+                    child: UtenDialogSettingTile(
+                      canRequestFocus: false,
+                      icon: Icons.shield_outlined,
+                      title: const Text('设置密码'),
+                      subtitle: const Text('保留原生控件的键盘焦点和完整说明'),
+                      onTap: () => setState(() {
+                        enabled = !enabled;
+                        changes++;
+                      }),
+                      trailing: Switch(
+                        focusNode: focus,
+                        value: enabled,
+                        onChanged: (next) => setState(() {
+                          enabled = next;
+                          changes++;
+                        }),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final original = tester.element(find.byType(Switch));
+      focus.requestFocus();
+      await tester.pump();
+      for (final value in [112.0, 360.0]) {
+        width.value = value;
+        await tester.pumpAndSettle();
+        expect(tester.element(find.byType(Switch)), same(original));
+        expect(focus.hasFocus, isTrue);
+        expect(find.byType(Switch).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(enabled, isTrue);
+      expect(changes, 1);
+    },
+  );
+
   testWidgets('native radio cards preserve grouped arrow navigation', (
     tester,
   ) async {

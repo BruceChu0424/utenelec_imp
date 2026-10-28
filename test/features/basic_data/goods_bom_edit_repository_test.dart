@@ -7,8 +7,87 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_edit_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/bom_component_quantity_field.dart';
+
+const _exactDesignValues = {
+  'qty': 1234567890123.1235,
+  'qtyText': '1234567890123.12345',
+  'price': 12345678901234.568,
+  'priceText': '12345678901234.5678',
+  'total': 12345678901234.988,
+  'totalText': '12345678901234.9876',
+  'basisOutputQty': 1234567890123.5432,
+  'basisOutputQtyText': '1234567890123.54321',
+};
 
 void main() {
+  test(
+    'description edit and copied preview retain unchanged exact design decimals',
+    () async {
+      final api = _DraftApi()
+        ..exactDesignValues = _exactDesignValues
+        ..richEvidence = true;
+      final draft = _draft(api);
+      final updated = await draft.update('frame', 'screw-edge', {
+        'summary': '只修改备注',
+      });
+      expect(updated.qtyExactText, '1234567890123.12345');
+      expect(updated.priceExactText, '12345678901234.5678');
+      expect(updated.totalExactText, '12345678901234.9876');
+      expect(updated.basisOutputQtyExactText, '1234567890123.54321');
+      expect(updated.systemLearned, isTrue);
+      await draft.paste(
+        mode: BomPasteMode.append,
+        targets: [const BomPasteTarget('root')],
+        items: [bomComponentCopyBody(updated)],
+      );
+      final copied = (await draft.list('root')).last;
+      expect(copied.qtyExactText, updated.qtyExactText);
+      expect(copied.totalExactText, updated.totalExactText);
+      await draft.preview();
+      final operations = api.commands.single.$2['operations'] as List;
+      final body = (operations.last as Map)['body'] as Map;
+      expect(body['qty'], '1234567890123.12345');
+      expect(body['price'], '12345678901234.5678');
+      expect(body['total'], '12345678901234.9876');
+      expect(body['basisOutputQty'], '1234567890123.54321');
+    },
+  );
+
+  test(
+    'explicit exact quantity overrides synchronize draft companions and exact total',
+    () async {
+      final api = _DraftApi()..exactDesignValues = _exactDesignValues;
+      final draft = _draft(api);
+      final updated = await draft.update('frame', 'screw-edge', {
+        'qty': '2.50000',
+      });
+      expect(updated.qty, 2.5);
+      expect(updated.qtyExactText, '2.50000');
+      expect(updated.priceExactText, '12345678901234.5678');
+      expect(updated.totalExactText, '30864197253086.419500000');
+      await draft.preview();
+      final operation =
+          (api.commands.single.$2['operations'] as List).single as Map;
+      expect((operation['body'] as Map)['qty'], '2.50000');
+    },
+  );
+
+  test(
+    'component replacement clears exact price and total from the old identity',
+    () async {
+      final api = _DraftApi()..exactDesignValues = _exactDesignValues;
+      final replaced = await _draft(
+        api,
+      ).update('frame', 'screw-edge', {'componentGoodsId': 'nut'});
+      expect(replaced.price, isNull);
+      expect(replaced.priceExactText, isNull);
+      expect(replaced.total, isNull);
+      expect(replaced.totalExactText, isNull);
+      expect(replaced.qtyExactText, '1234567890123.12345');
+      expect(replaced.basisOutputQtyExactText, '1234567890123.54321');
+    },
+  );
   test(
     'component master batch avoids child BOM reads and retains the displayed version',
     () async {
@@ -609,6 +688,7 @@ class _DraftApi extends ApiClient {
   bool periodic = false;
   bool richEvidence = false;
   bool masterWritable = true;
+  Map<String, dynamic> exactDesignValues = const {};
   Completer<Map<String, dynamic>>? pendingSnapshot;
 
   @override
@@ -626,6 +706,7 @@ class _DraftApi extends ApiClient {
           'frame' => [
             {
               ..._row('screw-edge', 'screw'),
+              ...exactDesignValues,
               if (richEvidence) ...{
                 'systemLearned': true,
                 'auditedAt': '2026-01-01T00:00:00Z',

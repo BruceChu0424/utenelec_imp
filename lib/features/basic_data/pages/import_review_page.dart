@@ -330,7 +330,7 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
   Widget build(BuildContext context) {
     final l10n = basicDataL10n(context);
     final theme = Theme.of(context);
-    return CallbackShortcuts(
+    final page = CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () =>
             Navigator.of(context).pop(),
@@ -346,8 +346,7 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
             showPagePermissionAction: false,
           ),
           body: SafeArea(
-            child: UtenContentContainer.wide(
-              selectable: false,
+            child: Padding(
               padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -485,6 +484,10 @@ class _ImportReviewPageState extends State<ImportReviewPage> {
           ),
         ),
       ),
+    );
+    return ColoredBox(
+      color: theme.scaffoldBackgroundColor,
+      child: UtenContentContainer.wide(selectable: false, child: page),
     );
   }
 }

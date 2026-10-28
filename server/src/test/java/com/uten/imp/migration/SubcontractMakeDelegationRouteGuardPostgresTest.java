@@ -315,10 +315,11 @@ class SubcontractMakeDelegationRouteGuardPostgresTest {
         }
         try {
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date, status, employment_type) VALUES (?,?,'V467 guard actor','其他',?,DATE '2026-09-04','active','regular')")) {
+                    "INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date, status, employment_type) VALUES (?,?,?,'其他',?,DATE '2026-09-04','active','regular')")) {
                 statement.setObject(1, employeeId);
                 statement.setString(2, employeeCode);
-                statement.setObject(3, departmentId);
+                statement.setString(3,com.uten.imp.support.SyntheticEmployeeIdentity.name("V467 guard actor",employeeId));
+                statement.setObject(4, departmentId);
                 statement.executeUpdate();
             }
             try (PreparedStatement statement = connection.prepareStatement(

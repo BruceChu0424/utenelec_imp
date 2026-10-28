@@ -42,6 +42,7 @@ class WarehouseHistoryOwnerNamesBatchPostgresTest {
         var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         db = new JdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db, "employees", "users");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentEmployeeIdentityReaders(db);
         var measured = new DelegatingDataSource(source) {
             @Override public Connection getConnection() throws java.sql.SQLException {
                 Connection connection = super.getConnection();
@@ -67,7 +68,8 @@ class WarehouseHistoryOwnerNamesBatchPostgresTest {
         POSTGRES.stop();
     }
     @BeforeEach void reset() {
-        db.execute("TRUNCATE employees, users"); em = factory.createEntityManager(); names = new EmployeeNameResolver(em); STATEMENTS.clear();
+        db.execute("TRUNCATE employee_identity_aliases, employee_identity_user_tombstones, employees, users");
+        em = factory.createEntityManager(); names = new EmployeeNameResolver(em); STATEMENTS.clear();
     }
     @AfterEach void closeEntityManager() { if (em != null) em.close(); }
 
@@ -166,6 +168,30 @@ class WarehouseHistoryOwnerNamesBatchPostgresTest {
         assertThat(result.getFirst().approverName()).isEqualTo("旧审核");
         assertThat(result.getLast().makerName()).isNull(); assertThat(result.getLast().approverName()).isNull();
         assertThat(STATEMENTS).isEmpty();
+    }
+
+    @Test void verifiedAliasesAndRetiredUserAccountsResolveTogetherWithoutRewritingHistory() {
+        UUID retained = employee("CANONICAL", "保留责任人", false);
+        UUID archivedEmployee = UUID.randomUUID(), retiredUser = UUID.randomUUID();
+        UUID retainedUser = user(retained);
+        db.update("UPDATE users SET is_deleted=false, status='active' WHERE id=?", retainedUser);
+        db.update("INSERT INTO employee_identity_aliases(alias_employee_id,canonical_employee_id,reason,evidence_reference) "
+                + "VALUES (?,?,'verified projection','projection-evidence')", archivedEmployee, retained);
+        db.update("INSERT INTO employee_identity_user_tombstones(source_user_id,source_employee_id,canonical_employee_id,retained_user_id,evidence_reference) "
+                + "VALUES (?,?,?,?,'projection-evidence')", retiredUser, archivedEmployee, retained, retainedUser);
+        List<Object[]> facts = List.of(row(1, archivedEmployee, null, null, null),
+                row(2, retiredUser, null, null, null));
+        var fixture = fixture(facts);
+        STATEMENTS.clear();
+        var result = fixture.service().list(WarehouseHistoryType.PURCHASE_RECEIPT,
+                "", null, null, null, 1, 20).getItems();
+        assertThat(result.stream().map(WarehouseHistoryListItem::makerName))
+                .containsExactly("保留责任人", "保留责任人");
+        assertThat(STATEMENTS).hasSize(1);
+        assertThat(facts.getFirst()[10]).isEqualTo(archivedEmployee);
+        assertThat(facts.getLast()[10]).isEqualTo(retiredUser);
+        assertThat(db.queryForObject("SELECT count(*) FROM employees", Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT count(*) FROM users", Integer.class)).isEqualTo(1);
     }
 
     private record Fixture(WarehouseHistoryQueryService service, EntityManager projection, Query count, Query rows, WarehouseTaskScopePort scopes) { }

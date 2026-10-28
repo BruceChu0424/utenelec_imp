@@ -187,7 +187,7 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
     }
     @Test void malformedFixtureBindingsFailBeforeAnyDatabaseWrite() {
         assertThatThrownBy(() -> execute("SELECT 1", "missingValue"))
-                .isInstanceOf(IllegalArgumentException.class).hasMessage("SQL fixture parameters must be key/value pairs");
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("Fixture values must contain complete key/value pairs");
     }
 
     private void execute(String sql, Object... parameters) {

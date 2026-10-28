@@ -105,60 +105,103 @@ class UtenDialogSettingTile extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 84),
             child: Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: scheme.primary.withValues(
-                        alpha: dark ? 0.13 : 0.07,
-                      ),
-                      borderRadius: UtenRadius.controlAll,
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 28,
-                      color: selected || !showBorder
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s16),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        DefaultTextStyle.merge(
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            color: scheme.onSurface,
-                            fontWeight: FontWeight.w700,
-                            height: 1.35,
-                          ),
-                          child: title,
-                        ),
-                        if (subtitle != null) ...[
-                          const SizedBox(height: UtenSpacing.s4),
-                          DefaultTextStyle.merge(
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.45,
+              child: LayoutBuilder(
+                builder: (context, bounds) {
+                  const leadingExtent = 52.0;
+                  const leadingGap = UtenSpacing.s16;
+                  const trailingGap = UtenSpacing.s12;
+                  final available = bounds.hasBoundedWidth
+                      ? bounds.maxWidth
+                      : MediaQuery.sizeOf(context).width;
+                  final controlExtent = UtenControlMetrics.minimumHitExtent(
+                    context,
+                  );
+                  final trailingExtent = trailing == null
+                      ? 24.0
+                      : controlExtent;
+                  // Decoration never takes the last readable control-width of
+                  // text. A single Wrap keeps native controls mounted when the
+                  // row flows vertically; it does not duplicate their state.
+                  final showLeading =
+                      available >=
+                      leadingExtent +
+                          leadingGap +
+                          trailingGap +
+                          trailingExtent +
+                          controlExtent;
+                  final inlineTextWidth =
+                      available -
+                      (showLeading ? leadingExtent + leadingGap : 0) -
+                      trailingExtent -
+                      trailingGap;
+                  final stacked = inlineTextWidth < controlExtent;
+                  return Wrap(
+                    runSpacing: UtenSpacing.s8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (showLeading)
+                        Padding(
+                          padding: const EdgeInsets.only(right: leadingGap),
+                          child: Container(
+                            width: leadingExtent,
+                            height: leadingExtent,
+                            decoration: BoxDecoration(
+                              color: scheme.primary.withValues(
+                                alpha: dark ? 0.13 : 0.07,
+                              ),
+                              borderRadius: UtenRadius.controlAll,
                             ),
-                            child: subtitle!,
+                            child: Icon(
+                              icon,
+                              size: 28,
+                              color: selected || !showBorder
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
+                            ),
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s12),
-                  trailing ??
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: scheme.onSurfaceVariant,
-                        size: 24,
+                        ),
+                      SizedBox(
+                        width: stacked ? available : inlineTextWidth,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DefaultTextStyle.merge(
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                              child: title,
+                            ),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: UtenSpacing.s4),
+                              DefaultTextStyle.merge(
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  height: 1.45,
+                                ),
+                                child: subtitle!,
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                ],
+                      Padding(
+                        padding: EdgeInsets.only(
+                          left: stacked ? 0 : trailingGap,
+                        ),
+                        child:
+                            trailing ??
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: scheme.onSurfaceVariant,
+                              size: 24,
+                            ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),

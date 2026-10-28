@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/print/pdf_printer.dart';
@@ -260,8 +261,12 @@ class _ProductionExecutionCardPrintDialogState
           width: double.infinity,
           child: Column(
             children: [
-              _header(theme),
-              Expanded(child: _body(theme)),
+              Expanded(
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: _header(theme),
+                  body: _body(theme),
+                ),
+              ),
               _footer(),
             ],
           ),

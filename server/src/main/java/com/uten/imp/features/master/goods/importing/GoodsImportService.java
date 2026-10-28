@@ -1245,8 +1245,16 @@ public class GoodsImportService {
     }
 
     private static void validateDecimal(BigDecimal value) {
+        if (value.precision() > 64 || value.scale() < -18 || value.scale() > 64) {
+            throw new NumberFormatException("numeric(18,4) representation limit");
+        }
+        // Reject overflowing integer exponents before stripping zeros can
+        // overflow BigDecimal's scale or expand an impossible business value.
+        if (value.signum() != 0 && (long) value.precision() - value.scale() > 14) {
+            throw new NumberFormatException("numeric(18,4) limit");
+        }
         BigDecimal normalized = value.stripTrailingZeros();
-        if (normalized.scale() > 4 || normalized.precision() - normalized.scale() > 14) {
+        if (normalized.scale() > 4 || (long) normalized.precision() - normalized.scale() > 14) {
             throw new NumberFormatException("numeric(18,4) limit");
         }
     }
@@ -1258,8 +1266,7 @@ public class GoodsImportService {
         var type = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA
                 ? cell.getCachedFormulaResultType() : cell.getCellType();
         if (type == org.apache.poi.ss.usermodel.CellType.NUMERIC) {
-            return cell instanceof org.apache.poi.xssf.usermodel.XSSFCell xssf
-                    ? xssf.getRawValue() : BigDecimal.valueOf(cell.getNumericCellValue()).toPlainString();
+            return com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, 4);
         }
         if (type == org.apache.poi.ss.usermodel.CellType.ERROR) {
             return org.apache.poi.ss.usermodel.FormulaError.forInt(cell.getErrorCellValue()).getString();

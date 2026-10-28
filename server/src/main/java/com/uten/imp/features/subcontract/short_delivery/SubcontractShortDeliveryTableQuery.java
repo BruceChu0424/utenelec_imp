@@ -3,6 +3,7 @@ package com.uten.imp.features.subcontract.short_delivery;
 import com.uten.imp.common.util.NumericColumnFilter;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.SqlColumnSearch;
+import com.uten.imp.common.util.ColumnKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.Query;
@@ -34,6 +35,8 @@ record SubcontractShortDeliveryTableQuery(Map<String, String> filters) {
             "expectedCompleteBy", SqlColumnSearch.Field.calendarDate("c.expected_complete_by"));
     static final Map<String, String> EXACT = Map.of(
             "severity", "c.severity", "status", "(" + SubcontractShortDeliveryService.EFFECTIVE_STATUS_SQL + ")");
+    private static final Set<String> SEARCH_FIELDS=java.util.stream.Stream.of(TEXT.keySet(),NUMERIC.keySet(),DATES.keySet())
+            .flatMap(Set::stream).collect(java.util.stream.Collectors.toUnmodifiableSet());
     private static final Map<String, String> SORT = sortFields();
     private static Map<String, String> sortFields() {
         Map<String, String> fields = new LinkedHashMap<>(TEXT);
@@ -46,10 +49,9 @@ record SubcontractShortDeliveryTableQuery(Map<String, String> filters) {
         Map<String, String> safe = new LinkedHashMap<>();
         if (filters != null) filters.forEach((key, raw) -> {
             if (!key.startsWith("search.") && !key.startsWith("f.")) return;
-            String column = key.substring(key.indexOf('.') + 1);
             boolean exact = key.startsWith("f.");
-            if (exact ? !EXACT.containsKey(column) : !TEXT.containsKey(column) && !NUMERIC.containsKey(column) && !DATES.containsKey(column))
-                throw invalid();
+            String column = ColumnKeywordSearch.declaredKey(key.substring(key.indexOf('.')+1),exact?EXACT.keySet():SEARCH_FIELDS);
+            if(column==null)throw invalid();
             if (raw == null || raw.isBlank()) return;
             String value = raw.strip();
             if (value.length() > 500) throw invalid();
@@ -62,7 +64,7 @@ record SubcontractShortDeliveryTableQuery(Map<String, String> filters) {
                     ? Set.of("SEVERE", "BELOW_FLOOR", "WITHIN_TOLERANCE", "UNSET_TOLERANCE")
                     : Set.of("PENDING_OWNER", "WAITING_MORE", "ACCEPTED_LOSS", "COMPLETED", "CANCELED")).contains(value))
                 throw invalid();
-            safe.put(key, value);
+            safe.put((exact?"f.":"search.")+column, value);
         });
         filters = Map.copyOf(safe);
     }

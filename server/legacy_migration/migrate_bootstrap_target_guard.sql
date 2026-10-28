@@ -613,7 +613,7 @@ BEGIN
         ('employee_code_reuse_releases','EMPTY'),
         ('employee_identity_document_claims','EMPTY'),
         ('employee_identity_historical_claims','EMPTY'),
-        ('employee_identity_legacy_roles','EMPTY'),
+        ('employee_identity_legacy_roles','SEED_OR_ADMIN'),
         ('employee_identity_merge_payloads','EMPTY'),
         ('employee_identity_merges','EMPTY'),
         ('employee_identity_review_certificates','EMPTY'),
@@ -651,6 +651,40 @@ BEGIN
         RAISE EXCEPTION 'bootstrap table inventory differs from reviewed schema (unclassified %, missing %)',
             COALESCE(unknown_tables,'none'),COALESCE(missing_tables,'none');
     END IF;
+    -- V964's sealed role declarations are fixed schema metadata, not historical
+    -- employee assignments. Require all nineteen exact declarations; do not
+    -- turn this into an exemption for missing, extra or edited role evidence.
+    WITH expected(source_table,uuid_column,legacy_column,namespace_key) AS (VALUES
+        ('purchase_requests','applicant_id','applicant_legacy_id','B_WORKER'),
+        ('purchase_orders','purchaser_id','purchaser_legacy_id','B_WORKER'),
+        ('purchase_receipts','sender_id','sender_legacy_id','B_WORKER'),
+        ('purchase_receipts','receiver_id','receiver_legacy_id','B_WORKER'),
+        ('purchase_receipts','purchaser_id','purchaser_legacy_id','B_WORKER'),
+        ('sales_orders','seller_id','seller_legacy_id','B_WORKER'),
+        ('sales_shipments','seller_id','seller_legacy_id','B_WORKER'),
+        ('sales_shipments','sender_id','sender_legacy_id','B_WORKER'),
+        ('sales_other_shipments','seller_id','seller_legacy_id','B_WORKER'),
+        ('sales_other_shipments','sender_id','sender_legacy_id','B_WORKER'),
+        ('sales_returns','seller_id','seller_legacy_id','B_WORKER'),
+        ('finance_receipts','operator_id','operator_legacy_id','B_WORKER'),
+        ('finance_payments','operator_id','operator_legacy_id','B_WORKER'),
+        ('finance_expenses','operator_id','operator_legacy_id','B_WORKER'),
+        ('finance_other_incomes','operator_id','operator_legacy_id','B_WORKER'),
+        ('stock_documents','worker_id','worker_legacy_id','B_WORKER'),
+        ('subcontract_material_issues','worker_id','operator_legacy_id','B_WORKER'),
+        ('subcontract_material_returns','worker_id','operator_legacy_id','B_WORKER'),
+        ('subcontract_receipts','sender_id','receiver_legacy_id','B_WORKER')
+    ), actual AS (
+        SELECT source_table,uuid_column,legacy_column,namespace_key
+        FROM public.employee_identity_legacy_roles
+    ), difference AS (
+        (SELECT * FROM expected EXCEPT SELECT * FROM actual)
+        UNION ALL (SELECT * FROM actual EXCEPT SELECT * FROM expected)
+    )
+    SELECT EXISTS(SELECT 1 FROM difference) OR (SELECT count(*) FROM actual)<>19 INTO occupied;
+    IF occupied THEN
+        RAISE EXCEPTION 'bootstrap employee legacy role declarations differ from reviewed V964 metadata';
+    END IF;
     SELECT array_agg(table_name ORDER BY table_name) INTO clear_tables
     FROM bootstrap_target_table_inventory WHERE disposition='EMPTY';
     FOREACH clear_table IN ARRAY COALESCE(clear_tables, ARRAY[]::text[])
@@ -660,6 +694,41 @@ BEGIN
             -- 它们不是业务事实; 只有来源表本身是要清空的业务表时才算「目标库已有业务数据」。
             SELECT EXISTS (SELECT 1 FROM public.business_record_identities identity
                             WHERE identity.source_table = ANY(clear_tables)) INTO occupied;
+        ELSIF clear_table = 'business_record_history' THEN
+            -- V931 seeds the company-library entry for every initial department;
+            -- V958 removes that exact grant after making the entry a baseline.
+            -- V775 correctly retains its immutable DELETE evidence. Permit only
+            -- this unattributed, identity-bound configuration migration shape.
+            -- Every other history row still proves a non-fresh target, even if
+            -- its original business row has already been removed.
+            SELECT EXISTS (
+                SELECT 1 FROM public.business_record_history history
+                WHERE (
+                    history.source_table = 'department_permissions'
+                    AND history.operation = 'DELETE'
+                    AND history.parent_table = 'departments'
+                    AND history.actor_id IS NULL AND history.actor_name IS NULL AND history.request_id IS NULL
+                    AND history.payload ?& ARRAY['created_at','created_by','department_id','permission_id']
+                    AND history.payload - ARRAY['created_at','created_by','department_id','permission_id'] = '{}'::jsonb
+                    AND jsonb_typeof(history.payload->'created_at') = 'string'
+                    AND history.payload->'created_by' = 'null'::jsonb
+                    AND history.parent_id = history.payload->>'department_id'
+                    AND history.source_id = jsonb_build_object(
+                        'department_id',history.payload->'department_id',
+                        'permission_id',history.payload->'permission_id')::text
+                    AND EXISTS (SELECT 1 FROM public.permissions permission
+                                WHERE permission.id::text=history.payload->>'permission_id'
+                                  AND permission.code='company_file:view' AND permission.baseline)
+                    AND EXISTS (SELECT 1 FROM public.departments department
+                                WHERE department.id::text=history.parent_id)
+                    AND EXISTS (SELECT 1 FROM public.business_record_identities identity
+                                WHERE identity.source_table=history.source_table AND identity.source_id=history.source_id
+                                  AND identity.parent_table=history.parent_table AND identity.parent_id=history.parent_id)
+                    AND NOT EXISTS (SELECT 1 FROM public.business_record_history duplicate
+                                    WHERE duplicate.source_table=history.source_table
+                                      AND duplicate.source_id=history.source_id AND duplicate.id<>history.id)
+                ) IS NOT TRUE
+            ) INTO occupied;
         ELSE
             EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', clear_table) INTO occupied;
         END IF;

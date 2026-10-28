@@ -1,6 +1,6 @@
 // 货品组装信息(BOM)行模型(对应后端 BomItemView)+ 「BOM 学习记录」模型。
 //
-// 数值字段一律 (json['x'] as num?)?.toDouble()，防 int/double/String 序列化差异。
+// 展示/计算保留 double API；复制与未改动回写优先使用服务端的精确十进制文本伴随字段。
 // hasChildren = 组件自身也有 BOM（组装树可继续展开，懒加载子级）。
 //
 // ADR-129 两个数：qty = 设计使用数量(工程人员维护)；真实使用数量来自学习
@@ -10,6 +10,14 @@
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+
+double? _bomNumber(Object? value) =>
+    value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '');
+
+String? _bomExactText(Map<String, dynamic> json, String field) =>
+    json['${field}Text'] as String? ??
+    (json[field] is String ? json[field] as String : null);
 
 /// BOM 用量展示(设计/真实使用数量、基准产量、学习累计)：固定 6 位再去尾零，
 /// 与服务端 6 位计算口径一致，不出现浮点噪声或科学计数法。
@@ -214,8 +222,11 @@ class GoodsBomItem {
     this.defaultSupplierId,
     this.vendLegacyId,
     this.qty,
+    this.qtyExactText,
     this.price,
+    this.priceExactText,
     this.total,
+    this.totalExactText,
     this.summary,
     this.legacyId,
     this.hasChildren = false,
@@ -223,6 +234,7 @@ class GoodsBomItem {
     this.controlStage = BomControlStage.start,
     this.consumptionBasis = BomConsumptionBasis.perUnit,
     this.basisOutputQty = 1,
+    this.basisOutputQtyExactText,
     this.allowPartialPackage = true,
     this.hardGate = true,
     this.auditedAt,
@@ -230,6 +242,7 @@ class GoodsBomItem {
     this.systemLearned = false,
     this.componentIssueMethod,
     this.unitWeightGrams,
+    this.unitWeightGramsExactText,
     this.warnings = const [],
   });
 
@@ -250,8 +263,14 @@ class GoodsBomItem {
 
   /// 设计使用数量(goods_bom_items.qty，工程人员维护)。
   final double? qty;
+
+  /// Exact wire companions own unchanged copy payloads; doubles remain for
+  /// existing presentation/calculation callers and explicit numeric overrides.
+  final String? qtyExactText;
   final double? price;
+  final String? priceExactText;
   final double? total;
+  final String? totalExactText;
   final String? summary; // 备注（外购/外加工...）
   final int? legacyId;
   final bool hasChildren;
@@ -259,6 +278,7 @@ class GoodsBomItem {
   final BomControlStage controlStage;
   final BomConsumptionBasis consumptionBasis;
   final double basisOutputQty;
+  final String? basisOutputQtyExactText;
   final bool allowPartialPackage;
   final bool hardGate;
 
@@ -277,6 +297,7 @@ class GoodsBomItem {
 
   /// 服务端给出的单个重量 (克)；旧响应没有时按 [qty] 与组件单位换算。
   final double? unitWeightGrams;
+  final String? unitWeightGramsExactText;
 
   /// 保存后服务端给的提醒 (如与货品资料单重相差 20% 以上)；只提示，不拦截。
   final List<String> warnings;
@@ -285,13 +306,17 @@ class GoodsBomItem {
   bool get audited => auditedAt != null;
 
   /// 设计使用数量展示。
-  String get designQtyText => qty == null ? '' : formatBomQty(qty!);
+  String get designQtyText =>
+      financeExactTrimmed(qtyExactText) ??
+      (qty == null ? '' : formatBomQty(qty!));
 
   /// 真实使用数量展示：没有数据或不适用显示「—」(原因见 [actual] 的 status)。
   String get actualQtyText =>
       actual.qty == null ? '—' : formatBomQty(actual.qty!);
 
-  String get basisOutputQtyText => formatBomQty(basisOutputQty);
+  String get basisOutputQtyText =>
+      financeExactTrimmed(basisOutputQtyExactText) ??
+      formatBomQty(basisOutputQty);
 
   /// 尾包展示：只有「按包装」显示 允许/整包，其余 —(表格/预览/PDF 同口径)。
   String get partialPackageLabel =>
@@ -330,16 +355,21 @@ class GoodsBomItem {
       colorLegacyId: (json['colorLegacyId'] as num?)?.toInt(),
       defaultSupplierId: json['defaultSupplierId'] as String?,
       vendLegacyId: (json['vendLegacyId'] as num?)?.toInt(),
-      qty: (json['qty'] as num?)?.toDouble(),
-      price: (json['price'] as num?)?.toDouble(),
-      total: (json['total'] as num?)?.toDouble(),
+      qty: _bomNumber(json['qty'] ?? json['qtyText']),
+      qtyExactText: _bomExactText(json, 'qty'),
+      price: _bomNumber(json['price'] ?? json['priceText']),
+      priceExactText: _bomExactText(json, 'price'),
+      total: _bomNumber(json['total'] ?? json['totalText']),
+      totalExactText: _bomExactText(json, 'total'),
       summary: json['summary'] as String?,
       legacyId: (json['legacyId'] as num?)?.toInt(),
       hasChildren: json['hasChildren'] as bool? ?? false,
       componentSourceType: json['componentSourceType'] as String?,
       controlStage: controlStage,
       consumptionBasis: BomConsumptionBasis.fromCode(json['consumptionBasis']),
-      basisOutputQty: (json['basisOutputQty'] as num?)?.toDouble() ?? 1,
+      basisOutputQty:
+          _bomNumber(json['basisOutputQty'] ?? json['basisOutputQtyText']) ?? 1,
+      basisOutputQtyExactText: _bomExactText(json, 'basisOutputQty'),
       allowPartialPackage: json['allowPartialPackage'] as bool? ?? true,
       hardGate:
           controlStage.supportsHardGate && (json['hardGate'] as bool? ?? true),
@@ -347,7 +377,10 @@ class GoodsBomItem {
       actual: BomActualUsage.fromJson(json),
       systemLearned: json['systemLearned'] as bool? ?? false,
       componentIssueMethod: json['componentIssueMethod'] as String?,
-      unitWeightGrams: (json['unitWeightGrams'] as num?)?.toDouble(),
+      unitWeightGrams: _bomNumber(
+        json['unitWeightGrams'] ?? json['unitWeightGramsText'],
+      ),
+      unitWeightGramsExactText: _bomExactText(json, 'unitWeightGrams'),
       warnings: [
         for (final w in (json['warnings'] as List?) ?? const [])
           if (w is String && w.trim().isNotEmpty) w.trim(),

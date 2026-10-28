@@ -814,7 +814,7 @@ class ProcurementArrivalGuardPostgresTest {
                 """)) {
             employee.setObject(1, employeeId);
             employee.setString(2, "E-ARR-" + employeeId);
-            employee.setString(3, "Arrival finance reviewer");
+            employee.setString(3, com.uten.imp.support.SyntheticEmployeeIdentity.name("Arrival finance reviewer",employeeId));
             employee.setObject(4, LocalDate.of(2026, 8, 2));
             assertEquals(1, employee.executeUpdate());
         }

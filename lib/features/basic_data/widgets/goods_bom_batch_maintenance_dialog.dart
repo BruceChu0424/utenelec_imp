@@ -13,6 +13,7 @@ import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../providers/goods_clipboard.dart';
@@ -65,15 +66,19 @@ class _ComponentInput {
     : quantity = TextEditingController(
         text: copied == null
             ? (goods.isPeriodicIssue ? '' : '1')
-            : formatBomQty(
-                copied.isPeriodicEdge
-                    ? copied.periodicUnitWeightGrams ?? copied.qty ?? 0
-                    : copied.qty ?? 0,
-              ),
-      );
+            : copied.isPeriodicEdge
+            ? financeExactTrimmed(copied.unitWeightGramsExactText) ??
+                  formatBomQty(
+                    copied.periodicUnitWeightGrams ?? copied.qty ?? 0,
+                  )
+            : copied.designQtyText,
+      ) {
+    initialQuantityText = quantity.text;
+  }
   final GoodsListItem goods;
   final GoodsBomItem? copied;
   final TextEditingController quantity;
+  late final String initialQuantityText;
 }
 
 class _BatchMaintenanceDialogState
@@ -231,12 +236,30 @@ class _BatchMaintenanceDialogState
     final body = copied == null
         ? <String, dynamic>{'price': goods.price}
         : bomComponentCopyBody(copied);
+    if (copied != null &&
+        component.quantity.text.trim() ==
+            component.initialQuantityText.trim()) {
+      // The visible double is only a preview; unchanged copies retain the
+      // exact server decimals, including periodic quantities in base units.
+      return body;
+    }
     if (goods.isPeriodicIssue) {
       body.addAll(periodicBomQuantityBody(goods.id, entered, goods.unitName));
     } else {
-      body.addAll({'componentGoodsId': goods.id, 'qty': entered});
+      body.addAll({
+        'componentGoodsId': goods.id,
+        'qty': copied?.qtyExactText == null
+            ? entered
+            : financeExactDecimal(component.quantity.text) ?? entered,
+      });
     }
-    if (copied != null && body['qty'] != copied.qty) body.remove('total');
+    if (copied != null &&
+        financeExactTrimmed(body['qty']?.toString()) !=
+            financeExactTrimmed(
+              copied.qtyExactText ?? copied.qty?.toString(),
+            )) {
+      body.remove('total');
+    }
     return body;
   }
 

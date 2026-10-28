@@ -99,17 +99,16 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-    appBar: UtenAppBar(
-      title: _l.costImport,
-      info: _l.costImportReview,
-      leading: UtenBackButton(onPressed: () => Navigator.pop(context)),
-      showPagePermissionAction: false,
-    ),
-    body: SafeArea(
-      child: UtenContentContainer.wide(
-        selectable: false,
+  Widget build(BuildContext context) {
+    final page = Scaffold(
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      appBar: UtenAppBar(
+        title: _l.costImport,
+        info: _l.costImportReview,
+        leading: UtenBackButton(onPressed: () => Navigator.pop(context)),
+        showPagePermissionAction: false,
+      ),
+      body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -318,17 +317,22 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
           ],
         ),
       ),
-    ),
-    floatingActionButton: UtenFloatingActionGroup(
-      children: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(_l.commonCancel),
-        ),
-        UtenButton(onPressed: _apply, child: Text(_l.costImportApply)),
-      ],
-    ),
-  );
+      floatingActionButton: UtenFloatingActionGroup(
+        children: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_l.commonCancel),
+          ),
+          UtenButton(onPressed: _apply, child: Text(_l.costImportApply)),
+        ],
+      ),
+    );
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: UtenContentContainer.wide(selectable: false, child: page),
+    );
+  }
+
   @override
   void dispose() {
     for (final row in _rows) {

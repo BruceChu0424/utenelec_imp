@@ -10,6 +10,24 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class SubcontractShortDeliveryTableQueryTest {
+    @Test void requestKeysSelectDeclaredFiltersAndPreserveLongTextExactValuesAndFacetExclusion() {
+        String requested=new String("f.status".toCharArray());
+        String text="x".repeat(500);
+        var headers=new SubcontractShortDeliveryTableQuery(Map.of(requested,"PENDING_OWNER",
+                "search.goodsName",text,"search.shortfallQty",">=0.0000000001"));
+        assertThat(headers.filters().keySet().stream().filter(key->key.equals(requested)).findFirst().orElseThrow())
+                .isNotSameAs(requested);
+        assertThat(headers.sql(null)).contains(":short_header_status",":short_header_goodsName",":short_header_shortfallQty")
+                .doesNotContain(text,"0.0000000001");
+        var bound=mock(Query.class);headers.bind(bound,null);
+        verify(bound).setParameter("short_header_status","PENDING_OWNER");
+        verify(bound).setParameter("short_header_goodsName",text);
+        verify(bound).setParameter("short_header_shortfallQty",new BigDecimal("0.0000000001"));
+        assertThat(headers.sql("status")).doesNotContain(":short_header_status").contains(":short_header_goodsName");
+        assertThatThrownBy(()->new SubcontractShortDeliveryTableQuery(Map.of("f.status) OR TRUE --","")))
+                .isInstanceOf(ApiException.class);
+    }
+
     @Test void numericTextAndEffectiveStatusPredicatesRemainBoundAndExclusiveCandidatesKeepOtherFilters() {
         var headers = new SubcontractShortDeliveryTableQuery(Map.of(
                 "search.shortfallQty", "-9007199254740993.0001..0",

@@ -55,6 +55,7 @@ class CategoryHierarchyMoveContractTest {
         Scenario scenario = scenario(kind, false);
 
         invokeUpdate(scenario);
+        assertBoundHierarchyLock(scenario);
 
         assertSame(scenario.currentParent, parentOf(scenario.kind, scenario.root));
         assertThat(callCount(scenario.repo, "isDescendant")).isZero();
@@ -72,6 +73,7 @@ class CategoryHierarchyMoveContractTest {
         scenario.requestedParentId = scenario.targetParentId;
 
         invokeUpdate(scenario);
+        assertBoundHierarchyLock(scenario);
 
         assertSame(scenario.targetParent, parentOf(scenario.kind, scenario.root));
         assertThat(callCount(scenario.repo, "isDescendant")).isEqualTo(1);
@@ -91,6 +93,7 @@ class CategoryHierarchyMoveContractTest {
                 () -> invokeUpdate(scenario));
 
         assertInstanceOf(ApiException.class, thrown.getCause());
+        assertBoundHierarchyLock(scenario);
         assertSame(scenario.currentParent, parentOf(scenario.kind, scenario.root));
         assertThat(callCount(scenario.repo, "save")).isZero();
         assertThat(callCount(scenario.repo, "rebuildSubtreeHierarchy")).isZero();
@@ -160,7 +163,7 @@ class CategoryHierarchyMoveContractTest {
             default -> Answers.RETURNS_DEFAULTS.answer(invocation);
         });
         EntityManager em = mock(EntityManager.class);
-        Query lockQuery = mock(Query.class);
+        Query lockQuery = mock(Query.class,Answers.RETURNS_SELF);
         when(em.createNativeQuery(anyString())).thenReturn(lockQuery);
         CategoryDrivenCodeService categoryCodes = mock(CategoryDrivenCodeService.class);
         when(categoryCodes.effectivePrefix(
@@ -168,9 +171,16 @@ class CategoryHierarchyMoveContractTest {
                 .thenReturn(new CategoryDrivenCodeService.EffectivePrefix(rootId, rootId, "CS"));
 
         return new Scenario(
-                kind, repo, em, mock(TxSessionVars.class), mock(MasterCodeService.class),
+                kind, repo, em, lockQuery, mock(TxSessionVars.class), mock(MasterCodeService.class),
                 categoryCodes, mock(SystemMasterCategoryRegistry.class),
                 root, currentParent, targetParent, currentParentId, targetParentId);
+    }
+
+    private static void assertBoundHierarchyLock(Scenario scenario) {
+        var order=org.mockito.Mockito.inOrder(scenario.em,scenario.lockQuery);
+        order.verify(scenario.em).createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:hierarchyLockKey,0))");
+        order.verify(scenario.lockQuery).setParameter("hierarchyLockKey",scenario.kind.name()+"_CATEGORY_HIERARCHY");
+        order.verify(scenario.lockQuery).getSingleResult();
     }
 
     private static void invokeUpdate(Scenario scenario) throws Exception {
@@ -280,6 +290,7 @@ class CategoryHierarchyMoveContractTest {
         private final CategoryKind kind;
         private final Object repo;
         private final EntityManager em;
+        private final Query lockQuery;
         private final TxSessionVars tx;
         private final MasterCodeService masterCodeService;
         private final CategoryDrivenCodeService categoryCodes;
@@ -295,6 +306,7 @@ class CategoryHierarchyMoveContractTest {
                 CategoryKind kind,
                 Object repo,
                 EntityManager em,
+                Query lockQuery,
                 TxSessionVars tx,
                 MasterCodeService masterCodeService,
                 CategoryDrivenCodeService categoryCodes,
@@ -307,6 +319,7 @@ class CategoryHierarchyMoveContractTest {
             this.kind = kind;
             this.repo = repo;
             this.em = em;
+            this.lockQuery = lockQuery;
             this.tx = tx;
             this.masterCodeService = masterCodeService;
             this.categoryCodes = categoryCodes;

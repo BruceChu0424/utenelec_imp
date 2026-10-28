@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -339,22 +340,29 @@ void main() {
       final persistedCard = find.byKey(
         const ValueKey('production-work-card-print-segment-1'),
       );
-      final previewScroll = find
-          .descendant(
-            of: find.byType(ListView).last,
-            matching: find.byType(Scrollable),
-          )
-          .first;
-      await tester.scrollUntilVisible(
-        persistedCard,
-        200,
-        scrollable: previewScroll,
-      );
-      await tester.pumpAndSettle();
+      // At small heights the common coordinator scrolls the title away first.
+      // Its visible viewport receives the gesture; the inner paper may still
+      // extend behind that viewport and is not a valid initial pointer target.
+      for (
+        var attempt = 0;
+        attempt < 20 && persistedCard.hitTestable().evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.drag(
+          find.byType(UtenCollapsingHeaderScrollView),
+          const Offset(0, -120),
+        );
+        await tester.pumpAndSettle();
+      }
       expect(persistedCard.hitTestable(), findsOneWidget);
       expect(find.textContaining('SEG-001 · 测试产品'), findsOneWidget);
-      await tester.tap(find.byTooltip('关闭生产计划打印预览'));
+      final close = find.byTooltip('关闭生产计划打印预览');
+      await tester.ensureVisible(close);
       await tester.pumpAndSettle();
+      expect(close.hitTestable(), findsOneWidget);
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(find.text('A4 生产计划单 · 流水线执行工卡'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

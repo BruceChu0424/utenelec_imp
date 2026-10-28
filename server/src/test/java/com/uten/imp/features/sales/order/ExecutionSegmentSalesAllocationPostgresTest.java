@@ -455,7 +455,7 @@ class ExecutionSegmentSalesAllocationPostgresTest {
         insert(connection,"""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
                 VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')
-                """,employee,"E-"+employee,"Allocation workshop owner",department);
+                """,employee,"E-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("Allocation workshop owner",employee),department);
         insert(connection,"""
                 INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,is_super_admin,status)
                 VALUES(?,?,?,'fixture-password-not-used',false,false,'active')

@@ -773,6 +773,107 @@ class GoodsImportHistoryPostgresTest {
         assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
     }
 
+    @Test void mixedImportAppliesReviewedNameChangeAndCreatesNewRowWithoutClearingOmittedFields() throws Exception {
+        byte[] file;
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            String[] titles = {"编号", "货品名称", "类别", "系统标识"};
+            String[][] values = {
+                    {existingCode, "456", categoryName(), existingId.toString()},
+                    {newCode, "混合导入新货品", categoryName(), ""}};
+            var header = sheet.createRow(0);
+            for (int column = 0; column < titles.length; column++) header.createCell(column).setCellValue(titles[column]);
+            for (int index = 0; index < values.length; index++) {
+                var row = sheet.createRow(index + 1);
+                for (int column = 0; column < titles.length; column++) row.createCell(column).setCellValue(values[index][column]);
+            }
+            book.write(out); file = out.toByteArray();
+        }
+        var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(), Map.of(), GoodsImportMode.MIXED));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals(1, detected.addedRows());
+        assertEquals(1, detected.conflictRows());
+        assertEquals(2, detected.readyToImport());
+        assertEquals(1, detected.reviewRows().size());
+        var reviewed = detected.reviewRows().getFirst();
+        assertEquals(existingId, reviewed.goodsId());
+        assertEquals("goods:2", reviewed.rowKey());
+        assertEquals(1, reviewed.changes().size());
+        var nameChange = reviewed.changes().getFirst();
+        assertEquals("name", nameChange.field());
+        assertEquals("现有货品", nameChange.oldValue());
+        assertEquals("456", nameChange.newValue());
+        assertEquals("CONFLICT", nameChange.kind());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "mixed-name-and-new.xlsx", Set.of(reviewed.rowKey()),
+                    Map.of(), Set.of(), Map.of(), GoodsImportMode.MIXED);
+        });
+        assertEquals(2, imported.importedCount());
+        assertEquals(1, imported.createdCount());
+        assertEquals(1, imported.updatedCount());
+        assertEquals(0, imported.filledCount());
+        assertEquals(0, imported.ignoredCount());
+        assertEquals("456", scalar("SELECT name FROM goods WHERE id=:id", existingId));
+        assertEquals(existingCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals("保留规格", scalar("SELECT spec FROM goods WHERE id=:id", existingId));
+        assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
+        assertEquals("12.3400", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
+        assertEquals("Learned English", scalar("SELECT name_en FROM goods WHERE id=:id", existingId));
+        UUID createdId = (UUID) em.createNativeQuery("SELECT id FROM goods WHERE code=:code AND NOT is_deleted")
+                .setParameter("code", newCode).getSingleResult();
+        assertNotEquals(existingId, createdId);
+        assertEquals("混合导入新货品", scalar("SELECT name FROM goods WHERE id=:id", createdId));
+    }
+
+    @Test void numericCellTailsNormalizeAtTheBoundaryWhileExactLargeDecimalsSurviveReviewAndCommit() throws Exception {
+        byte[] file;
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            String[] titles = {"编号", "货品名称", "类别", "系统标识", "价格", "最小起订量", "订货倍数"};
+            String[][] rows = {
+                    {existingCode, "现有货品", categoryName(), existingId.toString(), "35.299999999999997", "0.30000000000000004", "1.0000000000000002"},
+                    {newCode, "大额精确价格", categoryName(), "", "12345678901234.1234", "1", "0"}};
+            var header = sheet.createRow(0);
+            for (int column = 0; column < titles.length; column++) header.createCell(column).setCellValue(titles[column]);
+            for (int index = 0; index < rows.length; index++) {
+                var row = sheet.createRow(index + 1);
+                for (int column = 0; column < titles.length; column++) {
+                    var cell = row.createCell(column);
+                    if (column >= 4) {
+                        cell.setCellValue(0d);
+                        cell.getCTCell().setV(rows[index][column]);
+                    } else cell.setCellValue(rows[index][column]);
+                }
+            }
+            book.write(out); file = out.toByteArray();
+        }
+        var detected = inTx(() -> importer.detect(file));
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        assertEquals("35.3", detected.previewRows().getFirst().cells().get("price"));
+        assertEquals("0.3", detected.previewRows().getFirst().cells().get("minOrderQty"));
+        assertEquals("1", detected.previewRows().getFirst().cells().get("orderMultipleQty"));
+        assertEquals("12345678901234.1234", detected.previewRows().get(1).cells().get("price"));
+        var priceChange = detected.reviewRows().getFirst().changes().stream()
+                .filter(change -> "price".equals(change.field())).findFirst().orElseThrow();
+        var json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsBytes(priceChange));
+        assertTrue(json.get("oldValue").isTextual());
+        assertTrue(json.get("newValue").isTextual());
+        assertEquals("12.3400", json.get("oldValue").asText());
+        assertEquals("35.3", json.get("newValue").asText());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "numeric-cell-boundary.xlsx", Set.of("goods:2"));
+        });
+        assertEquals(1, imported.updatedCount());
+        assertEquals(1, imported.createdCount());
+        assertEquals("35.3000", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
+        assertEquals("0.3000", scalar("SELECT min_order_qty::text FROM goods WHERE id=:id", existingId));
+        assertEquals("1.0000", scalar("SELECT order_multiple_qty::text FROM goods WHERE id=:id", existingId));
+        assertEquals("12345678901234.1234", em.createNativeQuery("SELECT price::text FROM goods WHERE code=:code")
+                .setParameter("code", newCode).getSingleResult());
+    }
+
     @Test void managedCategoryMoveChecksTheRenderedTargetLabelBeforeConfirmationWithoutReservingAnything() throws Exception {
         UUID targetCategory = UUID.randomUUID(), holderId = UUID.randomUUID();
         long sequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")

@@ -96,14 +96,14 @@ Map<String, dynamic> periodicBomQuantityBody(
 Map<String, dynamic> bomComponentCopyBody(GoodsBomItem item) => {
   'componentGoodsId': item.componentGoodsId,
   'copiedFromBomItemId': item.id,
-  'qty': item.qty,
-  'price': item.price,
-  'total': item.total,
+  'qty': item.qtyExactText ?? item.qty,
+  'price': item.priceExactText ?? item.price,
+  'total': item.totalExactText ?? item.total,
   'summary': item.summary,
   if (!item.isPeriodicEdge) ...{
     'controlStage': item.controlStage.code,
     'consumptionBasis': item.consumptionBasis.code,
-    'basisOutputQty': item.basisOutputQty,
+    'basisOutputQty': item.basisOutputQtyExactText ?? item.basisOutputQty,
     'allowPartialPackage': item.allowPartialPackage,
     'hardGate': item.hardGate,
   },

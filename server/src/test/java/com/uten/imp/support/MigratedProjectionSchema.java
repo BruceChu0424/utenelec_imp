@@ -149,6 +149,20 @@ public final class MigratedProjectionSchema {
         }
     }
 
+    /** Real UUID name-reader dependencies for a projection with caller-owned
+     * employee/user column shapes. Does not model merge commands or their guards. */
+    public static void createCurrentEmployeeIdentityReaders(JdbcTemplate target) {
+        createCurrentTables(target, "employee_identity_aliases", "employee_identity_user_tombstones");
+        createCurrentFunctions(target, "fn_canonical_employee_identity", "fn_employee_merge_retained_user");
+    }
+
+    /** Adds the separately keyed legacy-worker evidence to the common UUID readers. */
+    public static void createCurrentLegacyWorkerIdentityReaders(JdbcTemplate target) {
+        createCurrentEmployeeIdentityReaders(target);
+        createCurrentTables(target, "employee_legacy_identity_aliases");
+        createCurrentFunctions(target, "fn_employee_identity_from_legacy_worker");
+    }
+
     /** Uses actual migrated view SQL, after callers model its real relations/functions. */
     public static void createCurrentViews(JdbcTemplate target, String... names) {
         Catalog catalog = CATALOGS.computeIfAbsent(CURRENT, MigratedProjectionSchema::readCatalog);

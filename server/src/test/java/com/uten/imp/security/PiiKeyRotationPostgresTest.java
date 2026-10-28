@@ -93,7 +93,8 @@ class PiiKeyRotationPostgresTest {
                         AND acl.privilege_type IN ('SELECT','INSERT','UPDATE','DELETE'))
                 OR EXISTS(
                     SELECT 1 FROM pg_attribute attribute
-                    CROSS JOIN LATERAL aclexplode(COALESCE(attribute.attacl,ARRAY[]::aclitem[])) acl
+                    CROSS JOIN LATERAL aclexplode(CASE WHEN cardinality(attribute.attacl)>0
+                        THEN attribute.attacl ELSE NULL::aclitem[] END) acl
                     WHERE attribute.attrelid='employee_identity_merge_payloads'::regclass
                         AND attribute.attname='snapshot_enc' AND acl.grantee=0
                         AND acl.privilege_type IN ('SELECT','INSERT','UPDATE'))

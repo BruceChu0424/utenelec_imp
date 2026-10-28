@@ -18,6 +18,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/pricing/price_analysis_l10n.dart';
@@ -135,6 +136,10 @@ class _GoodsPurchaseOverReceiptDetailRow extends MasterDetailRow {
 
   final double? pct;
   final VoidCallback? onEdit;
+}
+
+class _GoodsSystemIdDetailRow extends MasterDetailRow {
+  const _GoodsSystemIdDetailRow(String id) : super('系统标识', id);
 }
 
 /// 查看态详情的一个分组（标题 + 字段行），用于把扁平字段切成带小标题的区块。
@@ -1561,6 +1566,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
     return [
       _DetailSection('基础', [
+        _GoodsSystemIdDetailRow(d.id),
         MasterDetailRow('货品名称', d.name),
         MasterDetailRow('客户货品名称', d.clientGoodsName),
         _GoodsNameEnDetailRow(
@@ -1742,6 +1748,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       );
     }
     return Container(
+      key: r is _GoodsSystemIdDetailRow
+          ? const ValueKey('goods-system-identity')
+          : null,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s12,
@@ -1762,10 +1771,44 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             ),
           ),
           const SizedBox(height: 2),
-          MasterDetailValue(value: r.value),
+          if (r is _GoodsSystemIdDetailRow)
+            Row(
+              children: [
+                Expanded(child: MasterDetailValue(value: r.value)),
+                const SizedBox(width: UtenSpacing.s4),
+                IconButton(
+                  key: const ValueKey('goods-system-identity-copy'),
+                  tooltip: '复制系统标识',
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints.tightFor(
+                    width: UtenControlMetrics.minimumHitExtent(
+                      context,
+                      desktop: 32,
+                    ),
+                    height: UtenControlMetrics.minimumHitExtent(
+                      context,
+                      desktop: 32,
+                    ),
+                  ),
+                  onPressed: () => _copySystemId(r.value!),
+                ),
+              ],
+            )
+          else
+            MasterDetailValue(value: r.value),
         ],
       ),
     );
+  }
+
+  Future<void> _copySystemId(String id) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: id));
+      if (mounted) context.appSuccess('系统标识已复制');
+    } catch (_) {
+      if (mounted) context.appError('系统标识复制失败，请重试');
+    }
   }
 
   // ---- 组装信息 Tab ----

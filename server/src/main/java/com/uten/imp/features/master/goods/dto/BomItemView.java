@@ -59,6 +59,18 @@ public class BomItemView {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private BigDecimal componentStockQty;
 
+    // Keep the numeric fields for older clients; copy/edit paths use the exact
+    // companions before JSON numbers can pass through a JavaScript double.
+    public String getQtyText() { return exactText(qty); }
+    public String getPriceText() { return exactText(price); }
+    public String getTotalText() { return exactText(total); }
+    public String getBasisOutputQtyText() { return exactText(basisOutputQty); }
+    public String getUnitWeightGramsText() { return exactText(unitWeightGrams); }
+
+    private static String exactText(BigDecimal value) {
+        return value == null ? null : value.toPlainString();
+    }
+
     public BomItemView(UUID id, UUID componentGoodsId, String componentCode, String componentName,
                        String componentModel, String componentSpec, String componentMaterial,
                        String componentUnitName, String componentColorName, UUID colorId, Integer colorLegacyId,

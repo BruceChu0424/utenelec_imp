@@ -42,10 +42,8 @@ class EmployeeNameResolverBatchPostgresTest {
         var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         db = new JdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
-                db, "employees", "users", "procurement_order_approval_cases", "employee_identity_aliases",
-                "employee_identity_user_tombstones", "employee_legacy_identity_aliases", "purchase_requests");
-        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,"fn_canonical_employee_identity",
-                "fn_employee_merge_retained_user","fn_employee_identity_from_legacy_worker");
+                db, "employees", "users", "procurement_order_approval_cases", "purchase_requests");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentLegacyWorkerIdentityReaders(db);
         var measured = new DelegatingDataSource(source) {
             @Override public Connection getConnection() throws java.sql.SQLException {
                 Connection connection = super.getConnection();

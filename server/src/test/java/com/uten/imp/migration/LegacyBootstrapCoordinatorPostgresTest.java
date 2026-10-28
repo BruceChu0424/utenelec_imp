@@ -225,8 +225,20 @@ class LegacyBootstrapCoordinatorPostgresTest {
         try (var connection = DriverManager.getConnection(url, postgres.getUsername(), postgres.getPassword());
              var statement = connection.createStatement()) {
             connection.setAutoCommit(false);
+            String seedHistory = bootstrapHistoryFacts(statement);
             statement.execute(guard);
+            assertThat(bootstrapHistoryFacts(statement)).as("the read-only guard preserves V958 configuration history")
+                    .isEqualTo(seedHistory);
             connection.rollback();
+
+            statement.execute("INSERT INTO business_record_history(source_table,source_id,payload,operation) "
+                    + "VALUES('stock_movements','private-bootstrap-retained-business-proof','{}','DELETE')");
+            java.sql.SQLException retainedBusiness = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute(guard));
+            assertThat(retainedBusiness.getSQLState()).isEqualTo("P0001");
+            assertThat(retainedBusiness.getMessage()).contains("business facts in business_record_history");
+            connection.rollback();
+            assertThat(bootstrapHistoryFacts(statement)).isEqualTo(seedHistory);
 
             // A new unreviewed root table still fails closed; V937 is one exact
             // EMPTY registration, never an automatic catalog exemption.
@@ -239,39 +251,58 @@ class LegacyBootstrapCoordinatorPostgresTest {
             connection.rollback();
             statement.execute("DROP TABLE unexpected_bootstrap_fact");
             connection.commit();
-
+        }
+        // An intentional old verified alias is real V963 history. New V964
+        // commands require their complete sealed merge protocol; this fixture
+        // must not bypass those guards to recreate the old state on a new schema.
+        try (var history = com.uten.imp.support.HistoricalEmployeeSchema.openDatabase("bootstrap_alias_history")) {
             UUID alias = UUID.randomUUID();
-            statement.execute("SELECT set_config('app.actor_account','ops:private-bootstrap-guard-fixture',true),"
-                    + "set_config('app.employee_identity_merge_evidence','private-bootstrap-alias-proof',true)");
-            try (var insert = connection.prepareStatement("""
-                    INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted,deleted_at)
-                    SELECT ?,'FIXTURE-ARCHIVED-ALIAS','Synthetic archived identity','其他',department_id,
-                           CURRENT_DATE,'resigned','regular',true,now()
-                    FROM employees WHERE code='ADMIN'
-                    """)) {
-                insert.setObject(1, alias);
-                insert.executeUpdate();
+            try (var connection = history.openConnection(); var statement = connection.createStatement()) {
+                connection.setAutoCommit(false);
+                statement.execute("SELECT set_config('app.actor_account','ops:private-bootstrap-guard-fixture',true),"
+                        + "set_config('app.employee_identity_merge_evidence','private-bootstrap-alias-proof',true)");
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted,deleted_at)
+                        SELECT ?,'FIXTURE-ARCHIVED-ALIAS','Synthetic archived identity','其他',department_id,
+                               CURRENT_DATE,'resigned','regular',true,now()
+                        FROM employees WHERE code='ADMIN'
+                        """)) {
+                    insert.setObject(1, alias);
+                    insert.executeUpdate();
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO employee_identity_aliases(alias_employee_id,canonical_employee_id,reason,evidence_reference)
+                        SELECT ?,id,'Verified synthetic old identity','private-bootstrap-alias-proof' FROM employees WHERE code='ADMIN'
+                        """)) {
+                    insert.setObject(1, alias);
+                    assertThat(insert.executeUpdate()).isEqualTo(1);
+                }
+                connection.commit();
             }
-            try (var insert = connection.prepareStatement("""
-                    INSERT INTO employee_identity_aliases(alias_employee_id,canonical_employee_id,reason,evidence_reference)
-                    SELECT ?,id,'Verified synthetic old identity','private-bootstrap-alias-proof' FROM employees WHERE code='ADMIN'
-                    """)) {
-                insert.setObject(1, alias);
-                assertThat(insert.executeUpdate()).isEqualTo(1);
+            com.uten.imp.support.HistoricalEmployeeSchema.upgradeToCurrent(history);
+            try (var connection = history.openConnection(); var statement = connection.createStatement()) {
+                connection.setAutoCommit(false);
+                String before = bootstrapIdentityFacts(statement);
+                java.sql.SQLException nonempty = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                        () -> statement.execute(guard));
+                assertThat(nonempty.getSQLState()).isEqualTo("P0001");
+                assertThat(nonempty.getMessage()).contains("bootstrap requires a fresh schema-only target");
+                connection.rollback();
+                assertThat(bootstrapIdentityFacts(statement)).as("rejected bootstrap preserves exact employee/alias identity facts").isEqualTo(before);
+                try (var rows = statement.executeQuery("SELECT count(*) FROM employee_identity_aliases")) {
+                    assertThat(rows.next()).isTrue();
+                    assertThat(rows.getLong(1)).isEqualTo(1);
+                }
+                connection.rollback();
             }
-            connection.commit();
-            String before = bootstrapIdentityFacts(statement);
-            java.sql.SQLException nonempty = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
-                    () -> statement.execute(guard));
-            assertThat(nonempty.getSQLState()).isEqualTo("P0001");
-            assertThat(nonempty.getMessage()).contains("bootstrap requires a fresh schema-only target");
-            connection.rollback();
-            assertThat(bootstrapIdentityFacts(statement)).as("rejected bootstrap preserves exact employee/alias identity facts").isEqualTo(before);
-            try (var rows = statement.executeQuery("SELECT count(*) FROM employee_identity_aliases")) {
-                assertThat(rows.next()).isTrue();
-                assertThat(rows.getLong(1)).isEqualTo(1);
-            }
-            connection.rollback();
+        }
+    }
+
+    private static String bootstrapHistoryFacts(java.sql.Statement statement) throws Exception {
+        try (var rows = statement.executeQuery("SELECT md5(COALESCE(jsonb_agg(to_jsonb(history) ORDER BY id)::text,'[]')) "
+                + "FROM business_record_history history")) {
+            rows.next();
+            return rows.getString(1);
         }
     }
 

@@ -15,6 +15,29 @@ import compose_bootstrap
 HERE = Path(__file__).resolve().parent
 GUARD = (HERE / 'migrate_bootstrap_target_guard.sql').read_text(encoding='utf-8')
 INVENTORY = re.findall(r"\('([a-z][a-z0-9_]*)','(EMPTY|SEED_OR_ADMIN)'\)", GUARD)
+# Independent fixture declaration reviewed against sealed V964, not learned
+# from the guard under test or from a runtime catalog.
+LEGACY_ROLES = (
+    ('purchase_requests','applicant_id','applicant_legacy_id','B_WORKER'),
+    ('purchase_orders','purchaser_id','purchaser_legacy_id','B_WORKER'),
+    ('purchase_receipts','sender_id','sender_legacy_id','B_WORKER'),
+    ('purchase_receipts','receiver_id','receiver_legacy_id','B_WORKER'),
+    ('purchase_receipts','purchaser_id','purchaser_legacy_id','B_WORKER'),
+    ('sales_orders','seller_id','seller_legacy_id','B_WORKER'),
+    ('sales_shipments','seller_id','seller_legacy_id','B_WORKER'),
+    ('sales_shipments','sender_id','sender_legacy_id','B_WORKER'),
+    ('sales_other_shipments','seller_id','seller_legacy_id','B_WORKER'),
+    ('sales_other_shipments','sender_id','sender_legacy_id','B_WORKER'),
+    ('sales_returns','seller_id','seller_legacy_id','B_WORKER'),
+    ('finance_receipts','operator_id','operator_legacy_id','B_WORKER'),
+    ('finance_payments','operator_id','operator_legacy_id','B_WORKER'),
+    ('finance_expenses','operator_id','operator_legacy_id','B_WORKER'),
+    ('finance_other_incomes','operator_id','operator_legacy_id','B_WORKER'),
+    ('stock_documents','worker_id','worker_legacy_id','B_WORKER'),
+    ('subcontract_material_issues','worker_id','operator_legacy_id','B_WORKER'),
+    ('subcontract_material_returns','worker_id','operator_legacy_id','B_WORKER'),
+    ('subcontract_receipts','sender_id','receiver_legacy_id','B_WORKER'),
+)
 
 
 class BootstrapInventoryContractTest(unittest.TestCase):
@@ -35,7 +58,7 @@ class BootstrapInventoryContractTest(unittest.TestCase):
                 'business_archive_eligibility', 'business_archive_packages', 'business_outbox_payload_history',
                 'department_permission_template_bindings', 'user_permission_template_bindings', 'permission_template_applies',
                 'employee_code_reuse_claims', 'employee_code_reuse_releases', 'employee_identity_document_claims',
-                'employee_identity_historical_claims', 'employee_identity_legacy_roles', 'employee_identity_merge_payloads',
+                'employee_identity_historical_claims', 'employee_identity_merge_payloads',
                 'employee_identity_merges', 'employee_identity_review_certificates', 'employee_identity_user_tombstones',
                 'employee_legacy_identity_aliases', 'party_month_dirty', 'party_monthly_summaries',
                 'scheduled_task_runs', 'stock_monthly_summaries'):
@@ -45,7 +68,8 @@ class BootstrapInventoryContractTest(unittest.TestCase):
     def test_actual_flyway_seed_metadata_is_preserved_without_clearing_it(self):
         inventory = dict(INVENTORY)
         for table in ('data_lifecycle_policies', 'stock_monthly_verification_state',
-                      'employee_identity_merge_installation', 'employee_code_reuse_installation'):
+                      'employee_identity_merge_installation', 'employee_code_reuse_installation',
+                      'employee_identity_legacy_roles'):
             with self.subTest(table=table):
                 self.assertEqual(inventory[table], 'SEED_OR_ADMIN')
 
@@ -80,11 +104,17 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
             'currencies': 'is_base_currency boolean',
             'material_categories': 'legacy_id int, legacy_code_snapshot text',
             'system_master_category_registry': 'client_category_id uuid,supplier_category_id uuid,mould_category_id uuid',
-            'business_record_identities': 'source_table text',
+            'business_record_identities': 'source_table text,source_id text,parent_table text,parent_id text',
+            'business_record_history': '''source_table text,source_id text,parent_table text,parent_id text,
+                payload jsonb,operation text,actor_id uuid,actor_name text,request_id uuid''',
+            'permissions': 'code text,baseline boolean',
+            'employee_identity_legacy_roles': 'source_table text,uuid_column text,legacy_column text,namespace_key text',
         }
         fixture = 'BEGIN;\n' + '\n'.join(
             'CREATE TABLE public.' + name + '(id uuid' + (',' + columns[name] if name in columns else '') + ');'
             for name, _ in INVENTORY)
+        fixture += '\nINSERT INTO employee_identity_legacy_roles(source_table,uuid_column,legacy_column,namespace_key) VALUES ' + ','.join(
+            '(' + ','.join(repr(value) for value in role) + ')' for role in LEGACY_ROLES) + ';'
         sql = fixture + '\n' + change + '\n' + GUARD + '\n' + postcheck + '\nROLLBACK;'
         result = subprocess.run(['docker', 'exec', '-i', '-e', 'PGPASSWORD=isolated-contract-only', self.container,
                                  'psql', '-h', '127.0.0.1', '-d', 'postgres', '-X', '-q',
@@ -116,6 +146,70 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
                      postcheck="DO $$ BEGIN IF (SELECT count(*) FROM public.business_record_identities)<>1 THEN RAISE EXCEPTION 'configuration identity changed'; END IF; END $$;")
         self.execute("INSERT INTO public.business_record_identities(source_table) VALUES('stock_movements');",
                      error='bootstrap target already contains business facts in business_record_identities')
+
+    @staticmethod
+    def migration_entry_history():
+        return """
+            INSERT INTO departments(id) VALUES('00000000-0000-0000-0000-000000000001');
+            INSERT INTO permissions(id,code,baseline)
+              VALUES('00000000-0000-0000-0000-000000000002','company_file:view',true);
+            INSERT INTO business_record_identities(source_table,source_id,parent_table,parent_id)
+              SELECT 'department_permissions',jsonb_build_object('department_id',department.id,
+                  'permission_id',permission.id)::text,'departments',department.id::text
+              FROM departments department CROSS JOIN permissions permission;
+            INSERT INTO business_record_history(id,source_table,source_id,parent_table,parent_id,payload,operation)
+              SELECT '00000000-0000-0000-0000-000000000003','department_permissions',
+                  jsonb_build_object('department_id',department.id,'permission_id',permission.id)::text,
+                  'departments',department.id::text,
+                  jsonb_build_object('department_id',department.id,'permission_id',permission.id,
+                      'created_at','2026-01-01T00:00:00Z','created_by',null),'DELETE'
+              FROM departments department CROSS JOIN permissions permission;
+            """
+
+    def test_only_exact_identity_bound_v958_configuration_history_is_preserved(self):
+        self.execute(self.migration_entry_history(), postcheck="""
+            DO $$ BEGIN
+              IF (SELECT count(*) FROM business_record_history)<>1
+                 OR (SELECT count(*) FROM business_record_identities)<>1 THEN
+                RAISE EXCEPTION 'migration evidence changed';
+              END IF;
+            END $$;
+            """)
+
+    def test_sealed_role_declarations_reject_missing_extra_and_modified_rows(self):
+        for change in (
+            "DELETE FROM employee_identity_legacy_roles WHERE source_table='stock_documents'",
+            "INSERT INTO employee_identity_legacy_roles(source_table,uuid_column,legacy_column,namespace_key) VALUES ('unexpected','worker_id','worker_legacy_id','B_WORKER')",
+            "UPDATE employee_identity_legacy_roles SET legacy_column='wrong_source' WHERE source_table='stock_documents'",
+            "INSERT INTO employee_identity_legacy_roles(source_table,uuid_column,legacy_column,namespace_key) SELECT source_table,uuid_column,legacy_column,namespace_key FROM employee_identity_legacy_roles WHERE source_table='stock_documents'",
+        ):
+            with self.subTest(change=change):
+                self.execute(change + ';', error='bootstrap employee legacy role declarations differ')
+
+    def test_historical_business_without_a_live_row_still_rejects_bootstrap(self):
+        self.execute("""
+            INSERT INTO business_record_history(source_table,source_id,payload,operation)
+              VALUES('stock_movements','retained-only-business-proof','{}','DELETE');
+            """, error='bootstrap target already contains business facts in business_record_history')
+
+    def test_configuration_history_cannot_hide_actors_corruption_or_other_permissions(self):
+        changes = (
+            "UPDATE business_record_history SET actor_id='00000000-0000-0000-0000-000000000004'",
+            "UPDATE business_record_history SET actor_name='someone'",
+            "UPDATE business_record_history SET request_id='00000000-0000-0000-0000-000000000004'",
+            "UPDATE business_record_history SET operation='SOFT_DELETE'",
+            "UPDATE business_record_history SET parent_id='00000000-0000-0000-0000-000000000004'",
+            "UPDATE business_record_history SET source_id='not-the-retained-identity'",
+            "UPDATE business_record_history SET payload=payload||'{\"extra\":true}'::jsonb",
+            "UPDATE permissions SET code='company_file:edit'",
+            "UPDATE permissions SET baseline=false",
+            "DELETE FROM business_record_identities",
+            "INSERT INTO business_record_history SELECT '00000000-0000-0000-0000-000000000004',source_table,source_id,parent_table,parent_id,payload,operation,actor_id,actor_name,request_id FROM business_record_history",
+        )
+        for change in changes:
+            with self.subTest(change=change):
+                self.execute(self.migration_entry_history() + change + ';',
+                             error='bootstrap target already contains business facts in business_record_history')
 
 
 if __name__ == '__main__':

@@ -435,6 +435,87 @@ void main() {
   );
 
   testWidgets(
+    'copied rows whose doubles collide retain their own exact quantity in preview',
+    (tester) async {
+      final rows = [
+        GoodsBomItem.fromJson({
+          'id': 'edge-a',
+          'componentGoodsId': 'component-a',
+          'componentName': 'A',
+          'qty': 1234567890123.1235,
+          'qtyText': '1234567890123.12345',
+        }),
+        GoodsBomItem.fromJson({
+          'id': 'edge-b',
+          'componentGoodsId': 'component-b',
+          'componentName': 'B',
+          'qty': 1234567890123.1235,
+          'qtyText': '1234567890123.12346',
+        }),
+      ];
+      expect(rows.first.qty, rows.last.qty);
+      final repository = _Repository();
+      await _open(tester, repository, copied: rows);
+      await tester.tap(find.text('使用已复制组件'));
+      await tester.pumpAndSettle();
+      await _submit(tester);
+      expect(
+        {
+          for (final item in repository.previews.single.items)
+            item['componentGoodsId']: item['qty'],
+        },
+        {
+          'component-a': '1234567890123.12345',
+          'component-b': '1234567890123.12346',
+        },
+      );
+    },
+  );
+
+  testWidgets(
+    'unchanged copied exact decimals reach preview without a double round trip',
+    (tester) async {
+      final copied = GoodsBomItem.fromJson({
+        'id': 'exact-edge',
+        'componentGoodsId': 'component-a',
+        'componentName': '精确用量',
+        'componentUnitName': '个',
+        'qty': 1234567890123.1235,
+        'qtyText': '1234567890123.12345',
+        'price': 12345678901234.568,
+        'priceText': '12345678901234.5678',
+        'total': 12345678901234.988,
+        'totalText': '12345678901234.9876',
+        'basisOutputQty': 1234567890123.5432,
+        'basisOutputQtyText': '1234567890123.54321',
+      });
+      final repository = _Repository();
+      await _open(tester, repository, copied: [copied]);
+      await tester.tap(find.text('使用已复制组件'));
+      await tester.pumpAndSettle();
+      final quantity = find.byKey(
+        const ValueKey('goods-bom-batch-qty-component-a'),
+      );
+      expect(
+        tester.widget<TextField>(quantity).controller!.text,
+        '1234567890123.12345',
+      );
+      await _submit(tester);
+      final unchanged = repository.previews.single.items.single;
+      expect(unchanged['qty'], '1234567890123.12345');
+      expect(unchanged['price'], '12345678901234.5678');
+      expect(unchanged['total'], '12345678901234.9876');
+      expect(unchanged['basisOutputQty'], '1234567890123.54321');
+      await tester.enterText(quantity, '1234567890123.54321');
+      await _submit(tester);
+      final changed = repository.previews.last.items.single;
+      expect(changed['qty'], '1234567890123.54321');
+      expect(changed['price'], '12345678901234.5678');
+      expect(changed.containsKey('total'), isFalse);
+    },
+  );
+
+  testWidgets(
     'copied ADD preserves design metadata and recomputes copied total only when quantity changes',
     (tester) async {
       final repository = _Repository();

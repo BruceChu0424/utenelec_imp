@@ -19,7 +19,26 @@ class HeaderColumnFilterTest {
         assertEquals("1.20", filter.values().get("amountMin"));
         assertThrows(UnsupportedOperationException.class,
                 () -> filter.values().put("amountMin", "0"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> filter.values().entrySet().iterator().next().setValue("0"));
         assertEquals(Map.of("amountMin", "1.20"), filter.values());
+    }
+    @Test void explicitValueObjectKeepsEqualityAndItsOriginalJsonShape() throws Exception {
+        var filter = new HeaderColumnFilter(Map.of("amountMin", " 1.20 "));
+        var equivalent = HeaderColumnFilter.from(Map.of("hf.amountMin", "1.20"));
+        assertNotSame(filter, equivalent);
+        assertEquals(filter, equivalent);
+        assertEquals(filter.hashCode(), equivalent.hashCode());
+        assertEquals(1, new java.util.HashSet<>(java.util.List.of(filter, equivalent)).size());
+        assertEquals(HeaderColumnFilter.EMPTY, new HeaderColumnFilter(null));
+        assertNotEquals(filter, HeaderColumnFilter.EMPTY);
+        assertEquals("HeaderColumnFilter[values={amountMin=1.20}]", filter.toString());
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var json = mapper.writeValueAsString(filter);
+        assertEquals(mapper.readTree("{\"values\":{\"amountMin\":\"1.20\"}}"), mapper.readTree(json));
+        var restored = mapper.readValue(json, HeaderColumnFilter.class);
+        assertEquals(filter, restored);
+        assertThrows(UnsupportedOperationException.class, () -> restored.values().clear());
     }
     @Test void maskedAmountAndNullProbesFailBeforeParsingOrTouchingAnyJpaProperty() {
         for (var values : java.util.List.of(Map.of("amountMin", "NaN"), Map.of("amountNull", "true"),

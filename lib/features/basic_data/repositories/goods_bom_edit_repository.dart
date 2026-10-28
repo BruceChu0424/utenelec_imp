@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../../../core/performance/json_value_snapshot.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 import 'package:uuid/uuid.dart';
 
@@ -432,6 +433,13 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   }
 
   void _applyBody(Map<String, dynamic> row, Map<String, dynamic> body) {
+    const decimalFields = {
+      'qty',
+      'price',
+      'total',
+      'basisOutputQty',
+      'unitWeightGrams',
+    };
     const structureFields = [
       'componentGoodsId',
       'qty',
@@ -442,11 +450,16 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       'allowPartialPackage',
       'hardGate',
     ];
-    final previous = {for (final key in structureFields) key: row[key]};
+    Object? recordedValue(String key) =>
+        decimalFields.contains(key) ? row['${key}Text'] ?? row[key] : row[key];
+    final previous = {
+      for (final key in structureFields) key: recordedValue(key),
+    };
     for (final key in const [
       'componentGoodsId',
       'qty',
       'price',
+      'total',
       'summary',
       'colorId',
       'defaultSupplierId',
@@ -456,27 +469,54 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       'allowPartialPackage',
       'hardGate',
     ]) {
-      if (body.containsKey(key)) row[key] = body[key];
+      if (body.containsKey(key)) {
+        row[key] = body[key];
+        if (decimalFields.contains(key)) {
+          row['${key}Text'] = body[key]?.toString();
+        }
+      }
     }
-    if (body['unitWeightGrams'] case final num grams) {
+    final rawGrams = body['unitWeightGrams'];
+    final grams = rawGrams is num
+        ? rawGrams.toDouble()
+        : double.tryParse(rawGrams?.toString() ?? '');
+    if (grams != null && grams.isFinite) {
       row['unitWeightGrams'] = grams;
+      row['unitWeightGramsText'] = rawGrams.toString();
       final factor = periodicGramsPerBaseUnit(
         row['componentUnitName'] as String?,
       );
-      if (factor != null) row['qty'] = grams / factor;
+      if (factor != null) {
+        final exactQty = rawGrams is String
+            ? financeExactMultiplyTexts([rawGrams, factor == 1 ? '1' : '0.001'])
+            : null;
+        row['qty'] = exactQty ?? grams / factor;
+        row['qtyText'] = row['qty'].toString();
+      }
     }
     if (row['componentIssueMethod'] == 'PERIODIC') {
       row['controlStage'] = 'START';
       row['consumptionBasis'] = 'PER_UNIT';
       row['basisOutputQty'] = 1.0;
+      row['basisOutputQtyText'] = '1';
       row['allowPartialPackage'] = true;
       row['hardGate'] = false;
     }
-    final qty = row['qty'] as num?;
-    final price = row['price'] as num?;
-    row['total'] = qty == null || price == null ? null : qty * price;
+    if (!body.containsKey('total') &&
+        (body.containsKey('qty') ||
+            body.containsKey('price') ||
+            rawGrams != null)) {
+      final qty = recordedValue('qty')?.toString();
+      final price = recordedValue('price')?.toString();
+      row['total'] = financeExactMultiplyTexts([qty, price]);
+      row['totalText'] = row['total'];
+    }
     row['auditedAt'] = null;
-    if (structureFields.any((key) => previous[key] != row[key])) {
+    bool sameValue(String key) => decimalFields.contains(key)
+        ? financeExactTrimmed(previous[key]?.toString()) ==
+              financeExactTrimmed(recordedValue(key)?.toString())
+        : previous[key] == row[key];
+    if (structureFields.any((key) => !sameValue(key))) {
       row['systemLearned'] = false;
     }
   }
@@ -512,7 +552,8 @@ class GoodsBomEditDraft implements GoodsBomRepository {
             key == 'usageBasis' ||
             key == 'effectiveQty' ||
             key == 'relearnedAt' ||
-            key == 'unitWeightGrams',
+            key == 'unitWeightGrams' ||
+            key == 'unitWeightGramsText',
       );
       row.addAll(component);
       row['hasChildren'] = children.isNotEmpty;
@@ -521,6 +562,9 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       row['defaultSupplierId'] = null;
       row['vendLegacyId'] = null;
       row['price'] = null;
+      row['priceText'] = null;
+      row['total'] = null;
+      row['totalText'] = null;
       row['systemLearned'] = false;
     }
     _applyBody(row, body);

@@ -88,6 +88,7 @@ import 'goods_bom_learning_panel.dart';
 import 'periodic_bom_confirmation.dart';
 import 'bom_component_picker.dart';
 import 'bom_component_quantity_field.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 
 export 'bom_component_picker.dart'
     show
@@ -196,7 +197,7 @@ class _BomInlineValues {
           item.isPeriodicEdge
               ? _plainQty(item.periodicUnitWeightGrams ?? item.qty)
               : item.designQtyText,
-        'basisOutputQty' => formatBomQty(item.basisOutputQty),
+        'basisOutputQty' => item.basisOutputQtyText,
         _ => item.summary ?? '',
       };
   TextEditingController _controller(String field) => _text.putIfAbsent(
@@ -452,7 +453,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
             ),
           );
         } else {
-          body['qty'] = entered;
+          body['qty'] = item.qtyExactText == null
+              ? entered
+              : financeExactDecimal(values.qty.text) ?? entered;
         }
       }
       if (values.changed.contains('basisOutputQty')) {
@@ -461,7 +464,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
           context.appWarning(_l10n.bomDesignQtyInvalid);
           return false;
         }
-        body['basisOutputQty'] = parsed;
+        body['basisOutputQty'] = item.basisOutputQtyExactText == null
+            ? parsed
+            : financeExactDecimal(values.basis.text) ?? parsed;
       }
       if (values.changed.contains('consumptionBasis')) {
         body['consumptionBasis'] = values.consumption.code;
@@ -1421,19 +1426,24 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       item.defaultSupplierId,
       item.vendLegacyId,
       item.qty,
+      item.qtyExactText,
       item.price,
+      item.priceExactText,
       item.total,
+      item.totalExactText,
       item.summary,
       item.legacyId,
       item.hasChildren,
       item.controlStage,
       item.consumptionBasis,
       item.basisOutputQty,
+      item.basisOutputQtyExactText,
       item.allowPartialPackage,
       item.hardGate,
       item.auditedAt,
       item.systemLearned,
       item.unitWeightGrams,
+      item.unitWeightGramsExactText,
     ),
     (
       item.actual.qty,
@@ -2046,11 +2056,21 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         componentSourceType: goods.sourceType,
         componentIssueMethod: goods.issueMethod,
         qty: sameUnit && sameShape ? original.qty : null,
+        qtyExactText: sameUnit && sameShape ? original.qtyExactText : null,
+        unitWeightGrams: sameUnit && sameShape
+            ? original.unitWeightGrams
+            : null,
+        unitWeightGramsExactText: sameUnit && sameShape
+            ? original.unitWeightGramsExactText
+            : null,
         controlStage: sameShape ? original.controlStage : BomControlStage.start,
         consumptionBasis: sameShape
             ? original.consumptionBasis
             : BomConsumptionBasis.perUnit,
         basisOutputQty: sameShape ? original.basisOutputQty : 1,
+        basisOutputQtyExactText: sameShape
+            ? original.basisOutputQtyExactText
+            : null,
         allowPartialPackage: sameShape ? original.allowPartialPackage : true,
         hardGate: goods.isPeriodicIssue
             ? false
@@ -2063,10 +2083,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         if (!current()) throw StateError(_l10n.bomEditPermissionChanged);
         final request = <String, dynamic>{
           'componentGoodsId': goods.id,
-          'qty': item.qty,
+          'qty': item.qtyExactText ?? item.qty,
           'controlStage': item.controlStage.code,
           'consumptionBasis': item.consumptionBasis.code,
-          'basisOutputQty': item.basisOutputQty,
+          'basisOutputQty': item.basisOutputQtyExactText ?? item.basisOutputQty,
           'allowPartialPackage': item.allowPartialPackage,
           'hardGate': item.hardGate,
           'colorId': goods.colorId,
@@ -2111,7 +2131,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         );
         if (saved != true || !current()) return;
       } else {
-        await stage({'qty': item.qty});
+        await stage({'qty': item.qtyExactText ?? item.qty});
         if (!mounted || !current()) return;
         context.appSuccess(_l10n.bomEditComponentStaged);
       }
@@ -2764,23 +2784,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     }
   }
 
-  Map<String, dynamic> _copyBody(GoodsBomItem item) => {
-    'componentGoodsId': item.componentGoodsId,
-    'copiedFromBomItemId': item.id,
-    'qty': item.qty,
-    'price': item.price,
-    'summary': item.summary,
-    if (item.colorId != null) 'colorId': item.colorId,
-    if (item.defaultSupplierId != null)
-      'defaultSupplierId': item.defaultSupplierId,
-    if (!item.isPeriodicEdge) ...{
-      'controlStage': item.controlStage.code,
-      'consumptionBasis': item.consumptionBasis.code,
-      'basisOutputQty': item.basisOutputQty,
-      'allowPartialPackage': item.allowPartialPackage,
-      'hardGate': item.hardGate,
-    },
-  };
+  Map<String, dynamic> _copyBody(GoodsBomItem item) =>
+      bomComponentCopyBody(item);
 
   // ---- 审计标记（V256） ---------------------------------------------------
   //
@@ -4960,9 +4965,9 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
     if (e.isPeriodicEdge) {
       // 期间边按克输入显示 (ADR-131)；组件单位不能按克换算时按基本单位显示。
       final grams = e.periodicUnitWeightGrams;
-      _qtyCtl.text = grams != null
-          ? periodicGramsText(grams)
-          : _plainQty(e.qty);
+      _qtyCtl.text =
+          financeExactTrimmed(e.unitWeightGramsExactText) ??
+          (grams != null ? periodicGramsText(grams) : _plainQty(e.qty));
       _initialQtyText = _qtyCtl.text;
       _qtyCtl.addListener(_onGramsChanged);
     } else {
@@ -4996,6 +5001,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
     if (_saving || !widget.canWrite()) return;
     final e = widget.editing;
     final raw = _qtyCtl.text.trim();
+    final submitQuantity = raw != _initialQtyText || widget.requireQuantity;
     final entered = double.tryParse(raw);
     if (e.isPeriodicEdge) {
       if (entered == null || !entered.isFinite || entered <= 0) {
@@ -5026,15 +5032,23 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
       confirmUnusual = true;
     }
     final body = <String, dynamic>{
+      'componentGoodsId': e.componentGoodsId,
       // 期间边按克提交 (服务端换成基本单位存，形状固定为开工前、按每件、不设齐套门槛)。
-      if (e.isPeriodicEdge)
+      if (e.isPeriodicEdge && submitQuantity)
         ..._periodicEdgeBody(e.componentGoodsId, entered!, e.componentUnitName)
-      else ...{
-        'componentGoodsId': e.componentGoodsId,
-        if (raw != _initialQtyText || widget.requireQuantity)
-          'qty': double.parse(raw),
+      else if (!e.isPeriodicEdge) ...{
+        if (submitQuantity)
+          'qty': e.qtyExactText == null
+              ? double.parse(raw)
+              : financeExactDecimal(raw) ?? double.parse(raw),
       },
-      if (confirmUnusual) periodicConfirmUnusualWeight: true, 'price': e.price,
+      if (confirmUnusual) periodicConfirmUnusualWeight: true,
+      if (e.isPeriodicEdge &&
+          submitQuantity &&
+          e.unitWeightGramsExactText != null &&
+          periodicGramsPerBaseUnit(e.componentUnitName) != null)
+        'unitWeightGrams': financeExactDecimal(raw) ?? entered,
+      'price': e.priceExactText ?? e.price,
       // 实时关联只回传 UUID；历史 legacy 快照缺少 UUID 时不解析、不覆盖。
       if (e.colorId != null) 'colorId': e.colorId,
       if (e.defaultSupplierId != null) 'defaultSupplierId': e.defaultSupplierId,

@@ -117,5 +117,5 @@ class MasterReadScopeVersionPostgresTest {
     }
     private void grant(UUID user,UUID owner){db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,'goods',?)",user,owner);}
     private long generation(){return db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='master_goods'",Long.class);}
-    private UUID employee(String label){UUID id=UUID.randomUUID();db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'",id,"MS-"+id,label);return id;}
+    private UUID employee(String label){UUID id=UUID.randomUUID();db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,id_type,department_id,CURRENT_DATE,'active','regular' FROM employees WHERE code='ADMIN'",id,"MS-"+id,com.uten.imp.support.SyntheticEmployeeIdentity.name(label,id));return id;}
 }

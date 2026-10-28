@@ -186,8 +186,9 @@ class UtenSegmentRow<T> extends StatelessWidget {
             maxWidth: 480,
             maxHeight: MediaQuery.sizeOf(panelContext).height * 0.85,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: ListView(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
             children: [
               LayoutBuilder(
                 builder: (context, bounds) => UtenDialogHeader(
@@ -198,51 +199,42 @@ class UtenSegmentRow<T> extends StatelessWidget {
                 ),
               ),
               const Divider(height: 1),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  children: [
-                    for (final segment in segments)
-                      Semantics(
-                        selected: selected.contains(segment.value),
-                        button: true,
-                        enabled: segment.enabled,
-                        child: InkWell(
-                          onTap: segment.enabled
-                              ? () => Navigator.of(
-                                  panelContext,
-                                ).pop(_SegmentChoice(segment.value))
-                              : null,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: UtenFilterRow.heightOf(panelContext),
+              const SizedBox(height: 8),
+              for (final segment in segments)
+                Semantics(
+                  selected: selected.contains(segment.value),
+                  button: true,
+                  enabled: segment.enabled,
+                  child: InkWell(
+                    onTap: segment.enabled
+                        ? () => Navigator.of(
+                            panelContext,
+                          ).pop(_SegmentChoice(segment.value))
+                        : null,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: UtenFilterRow.heightOf(panelContext),
+                      ),
+                      child: Padding(
+                        padding: UtenFilterRow.contentPadding,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              child: selected.contains(segment.value)
+                                  ? const Icon(Icons.check_rounded, size: 18)
+                                  : segment.icon,
                             ),
-                            child: Padding(
-                              padding: UtenFilterRow.contentPadding,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SizedBox(
-                                    width: 24,
-                                    child: selected.contains(segment.value)
-                                        ? const Icon(
-                                            Icons.check_rounded,
-                                            size: 18,
-                                          )
-                                        : segment.icon,
-                                  ),
-                                  const SizedBox(width: UtenFilterRow.iconGap),
-                                  Expanded(child: _panelLabel(segment)),
-                                ],
-                              ),
-                            ),
-                          ),
+                            const SizedBox(width: UtenFilterRow.iconGap),
+                            Expanded(child: _panelLabel(segment)),
+                          ],
                         ),
                       ),
-                  ],
+                    ),
+                  ),
                 ),
-              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),

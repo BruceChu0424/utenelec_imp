@@ -66,10 +66,7 @@ class HistoricalWorkerNameProjectionPostgresTest {
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentColumns(db,"employees","users");
-        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,
-                "employee_identity_aliases", "employee_identity_user_tombstones", "employee_legacy_identity_aliases");
-        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,
-                "fn_canonical_employee_identity", "fn_employee_merge_retained_user", "fn_employee_identity_from_legacy_worker");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentLegacyWorkerIdentityReaders(db);
         db.execute("ALTER TABLE employees ADD PRIMARY KEY(id); ALTER TABLE users ADD PRIMARY KEY(id)");
         Set<String> tables=new LinkedHashSet<>();
         for(var key:HistoricalWorkerRole.values()) {

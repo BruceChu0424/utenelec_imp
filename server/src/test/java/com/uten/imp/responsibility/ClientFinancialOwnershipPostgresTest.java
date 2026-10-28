@@ -58,7 +58,8 @@ class ClientFinancialOwnershipPostgresTest {
             primary=staff("primary"); secondary=staff("secondary"); target=staff("target");
             actor=(UUID)em.createNativeQuery("SELECT id FROM users WHERE employee_id=:id").setParameter("id",primary).getSingleResult();
             category=UUID.randomUUID();
-            em.createNativeQuery("INSERT INTO client_categories(id,code,name) VALUES(:id,:code,'owners test')").setParameter("id",category).setParameter("code","C-"+category).executeUpdate();
+            em.createNativeQuery("INSERT INTO client_categories(id,code,name) VALUES(:id,:code,:name)")
+                .setParameter("id",category).setParameter("code","C-"+category).setParameter("name","owners test "+category).executeUpdate();
             client=UUID.randomUUID();
             em.createNativeQuery("INSERT INTO clients(id,category_id,code,name,status,owner_employee_id,credit_floor,init_total,bank,code_sequence) VALUES(:id,:category,:code,'客户原名','使用',:owner,100,200,'原银行',(SELECT coalesce(max(code_sequence),0)+1 FROM clients))")
                 .setParameter("id",client).setParameter("category",category).setParameter("code","C-"+client).setParameter("owner",primary).executeUpdate(); return null;

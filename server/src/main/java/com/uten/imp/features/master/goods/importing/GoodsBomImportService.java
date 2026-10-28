@@ -833,8 +833,9 @@ public class GoodsBomImportService {
         Cell cell = index == null ? null : row.getCell(index);
         if (cell == null) return null;
         if (cell.getCellType() == CellType.NUMERIC) {
-            // BigDecimal.valueOf 取 double 的最短十进制写法(0.03125、1.0E-5)；不能再过下面的字符过滤。
-            return boundedNumber(BigDecimal.valueOf(cell.getNumericCellValue()), key);
+            // 读取原生数值与受限浮点尾差；显示格式不能舍入实际用量。
+            String raw = com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, "basisOutputQty".equals(key) ? 6 : 5);
+            return raw == null ? null : boundedNumber(new BigDecimal(raw), key);
         }
         String raw = trim(df, row, col, key);
         if (isBlank(raw)) return null;

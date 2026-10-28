@@ -314,6 +314,9 @@ void main() {
       findsOneWidget,
     );
     final loadsBefore = server.listLoads;
+    await tester.ensureVisible(_urgeButton);
+    await tester.pumpAndSettle();
+    expect(_urgeButton.hitTestable(), findsOneWidget);
     await tester.tap(_urgeButton);
     await tester.pumpAndSettle();
 

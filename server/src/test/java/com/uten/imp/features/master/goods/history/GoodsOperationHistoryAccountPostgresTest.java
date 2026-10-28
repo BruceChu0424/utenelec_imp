@@ -345,7 +345,11 @@ class GoodsOperationHistoryAccountPostgresTest {
         UUID category=category("category actions"),parent=category("move parent");
         UUID operation=command("/api/master/material-categories/"+category,"PUT",()->{
             if(action.equals("move"))em.createNativeQuery("UPDATE material_categories SET parent_id=:parent,version=version+1 WHERE id=:id").setParameter("parent",parent).setParameter("id",category).executeUpdate();
-            else execute("UPDATE material_categories SET "+switch(action){case "name"->"name='edited'";case "reorder"->"sort_order=3";default->"name='edited',sort_order=3";}+",version=version+1 WHERE id=:id",category);
+            else {
+                var update=em.createNativeQuery("UPDATE material_categories SET "+switch(action){case "name"->"name=:editedName";case "reorder"->"sort_order=3";default->"name=:editedName,sort_order=3";}+",version=version+1 WHERE id=:id").setParameter("id",category);
+                if(!action.equals("reorder"))update.setParameter("editedName","edited "+category);
+                update.executeUpdate();
+            }
         });
         Set<String> granted=new HashSet<>(permissions);granted.addAll(Set.of("goods:view","material_category:view"));login(a,granted,false);
         assertEquals(allowed,entry(operation).canUndo());
@@ -391,7 +395,7 @@ class GoodsOperationHistoryAccountPostgresTest {
     private UUID goodsIn(UUID category,UUID owner,String name){UUID id=UUID.randomUUID();return inTx(()->{insertGoods(id,category,owner,name);return id;});}
     private void insertGoods(UUID id,UUID category,UUID owner,String name){em.createNativeQuery("INSERT INTO goods(id,code,name,category_id,owner_employee_id,code_sequence) VALUES(:id,:code,:name,:category,:owner,(SELECT coalesce(max(code_sequence),0)+1 FROM goods))")
             .setParameter("id",id).setParameter("code","AHG-"+id).setParameter("name",name).setParameter("category",category).setParameter("owner",owner).executeUpdate();}
-    private UUID category(String name){UUID id=UUID.randomUUID();return inTx(()->{em.createNativeQuery("INSERT INTO material_categories(id,code,name) VALUES(:id,:code,:name)").setParameter("id",id).setParameter("code","AHC-"+id).setParameter("name",name).executeUpdate();return id;});}
+    private UUID category(String name){UUID id=UUID.randomUUID();return inTx(()->{em.createNativeQuery("INSERT INTO material_categories(id,code,name) VALUES(:id,:code,:name)").setParameter("id",id).setParameter("code","AHC-"+id).setParameter("name",name+" "+id).executeUpdate();return id;});}
     private UUID bom(UUID parent,UUID component){UUID id=UUID.randomUUID();return inTx(()->{em.createNativeQuery("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(:id,:parent,:component,1)").setParameter("id",id).setParameter("parent",parent).setParameter("component",component).executeUpdate();return id;});}
     private UUID edit(UUID id,String name){return command("/api/master/goods/"+id,"PUT",()->em.createNativeQuery("UPDATE goods SET name=:name,version=version+1 WHERE id=:id").setParameter("name",name).setParameter("id",id).executeUpdate());}
     private UUID command(String path,String method,Runnable action){return inTx(()->{provenance(path,method);action.run();return (UUID)em.createNativeQuery("SELECT id FROM goods_operation_history WHERE actor_id=:actor ORDER BY created_at DESC,id DESC LIMIT 1").setParameter("actor",principal.getId()).getSingleResult();});}

@@ -3,6 +3,7 @@ package com.uten.imp.features.subcontract.draw;
 import com.uten.imp.common.util.NumericColumnFilter;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.SqlColumnSearch;
+import com.uten.imp.common.util.ColumnKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.Query;
@@ -27,6 +28,8 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
     private static final Map<String, SqlColumnSearch.Field> DATES = Map.of(
             "needDate", SqlColumnSearch.Field.calendarDate("deliver_date"),
             "issuedAt", SqlColumnSearch.Field.instant("NULL::timestamptz"));
+    private static final Set<String> SEARCH_FIELDS=java.util.stream.Stream.of(TEXT.keySet(),NUMERIC.keySet(),DATES.keySet())
+            .flatMap(Set::stream).collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     SubcontractDrawTableQuery {
         Map<String, String> safe = new LinkedHashMap<>();
@@ -36,13 +39,13 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
             if (key.equals("f.colorName")) {
                 if (raw != null && !raw.isBlank()) {
                     if (raw.length() > 500) throw invalid();
-                    safe.put(key, raw.strip());
+                    safe.put("f.colorName", raw.strip());
                 }
                 return;
             }
             if (!key.startsWith("search.")) return;
-            String column = key.substring(7);
-            if (!TEXT.containsKey(column) && !NUMERIC.containsKey(column) && !DATES.containsKey(column)) throw invalid();
+            String column = ColumnKeywordSearch.declaredKey(key.substring(7),SEARCH_FIELDS);
+            if (column==null) throw invalid();
             if (raw == null || raw.isBlank()) return;
             String value = raw.strip();
             if (value.length() > 500) throw invalid();
@@ -51,7 +54,7 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
                 if (value.length() > 128) throw invalid();
                 SqlColumnSearch.criteria(Map.of(column, value), DATES);
             }
-            safe.put(key, value);
+            safe.put("search."+column, value);
         });
         filters = Map.copyOf(safe);
     }

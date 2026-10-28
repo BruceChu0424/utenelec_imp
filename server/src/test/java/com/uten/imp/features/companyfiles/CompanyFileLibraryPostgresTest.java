@@ -53,7 +53,7 @@ class CompanyFileLibraryPostgresTest {
     @BeforeEach void actor() {
         actor=UUID.randomUUID();employee=UUID.randomUUID();session=UUID.randomUUID();
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) "
-                +"SELECT ?,?,'资料库测试人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"LIB-"+employee);
+                +"SELECT ?,?,?,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"LIB-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("资料库测试人",employee));
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) "
                 +"VALUES(?,?,?,'test-only','active',false)",actor,employee,"library-"+actor);
         current=mock(SecurityContextCurrentUser.class);attachments=mock(AttachmentAccessPort.class);
@@ -196,8 +196,8 @@ class CompanyFileLibraryPostgresTest {
         UUID viewer=UUID.randomUUID(),viewerEmployee=UUID.randomUUID();
         String account="detail-viewer-"+viewer;
         update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) "
-                +"SELECT ?,?,'只读资料查看人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
-                viewerEmployee,"DETAIL-"+viewerEmployee);
+                +"SELECT ?,?,?,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
+                viewerEmployee,"DETAIL-"+viewerEmployee,com.uten.imp.support.SyntheticEmployeeIdentity.name("只读资料查看人",viewerEmployee));
         update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) "
                 +"VALUES(?,?,?,'test-only','active',false)",viewer,viewerEmployee,account);
         AuthUser reader=new AuthUser(viewer,viewerEmployee,account,Set.of("company_file:view"),
@@ -489,7 +489,7 @@ class CompanyFileLibraryPostgresTest {
         db.update("UPDATE users SET status='disabled' WHERE id=?",inactiveCreator);
         actor=UUID.randomUUID();employee=UUID.randomUUID();session=UUID.randomUUID();
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) "
-                +"SELECT ?,?,'授权资料管理员','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"MGR-"+employee);
+                +"SELECT ?,?,?,'其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"MGR-"+employee,com.uten.imp.support.SyntheticEmployeeIdentity.name("授权资料管理员",employee));
         db.update("INSERT INTO users(id,employee_id,login_account,password_hash,status,must_change_password) "
                 +"VALUES(?,?,?,'test-only','active',false)",actor,employee,"library-manager-"+actor);
         login(Set.of("company_file:view","company_file:delete"),session);

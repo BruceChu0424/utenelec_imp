@@ -1,5 +1,7 @@
 package com.uten.imp.common.web;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.uten.imp.common.util.FinancialExactAmount;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -15,7 +17,8 @@ import java.util.Map;
 import java.util.Set;
 
 /** Fixed header controls. The client never supplies a JPA property or SQL expression. */
-public record HeaderColumnFilter(Map<String, String> values) {
+public final class HeaderColumnFilter {
+    private final Map<String, String> values;
     public static final HeaderColumnFilter EMPTY = new HeaderColumnFilter(Map.of());
     private static final Set<String> KEYS = Set.of("amountMin", "amountMax", "amountNull", "deliverFrom", "deliverTo",
             "apPosted", "weightMin", "weightMax", "weightNull", "recordOrigin");
@@ -23,9 +26,10 @@ public record HeaderColumnFilter(Map<String, String> values) {
             "billDate", "deliver", "total", "amount", "amountLocal", "weight", "department", "toWarehouse");
     private static final Set<String> TYPED_SEARCH_KEYS = Set.of("search.billDate", "search.deliver", "search.total", "search.amount", "search.amountLocal", "search.weight");
 
-    public HeaderColumnFilter(Map<String, String> values) {
+    @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
+    public HeaderColumnFilter(@JsonProperty("values") Map<String, String> input) {
         Map<String, String> safe = new LinkedHashMap<>();
-        if (values != null) values.forEach((key, value) -> {
+        if (input != null) input.forEach((key, value) -> {
             if (!(key.startsWith("search.") ? SEARCH_KEYS.contains(key.substring(7)) : KEYS.contains(key)))
                 throw invalid("不支持的表头筛选字段: " + key);
             if (value != null && !value.isBlank()) {
@@ -36,9 +40,24 @@ public record HeaderColumnFilter(Map<String, String> values) {
         this.values = Map.copyOf(safe);
     }
 
-    @Override
+    @JsonProperty("values")
     public Map<String, String> values() {
         return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(values));
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        return other instanceof HeaderColumnFilter filter && values.equals(filter.values);
+    }
+
+    @Override
+    public int hashCode() {
+        return values.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "HeaderColumnFilter[values=" + values + "]";
     }
 
     public static HeaderColumnFilter from(Map<String, String> query) {

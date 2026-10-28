@@ -9,9 +9,11 @@ import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_split_view.dart';
@@ -19,6 +21,9 @@ import '../../../components/layout/uten_page_layout.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/human_error_message.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
+import '../../../shared/widgets/uten_hierarchy_tree_view.dart'
+    show UtenHierarchyRowSkin;
 import '../models/goods_import.dart';
 import '../models/product_category_node.dart';
 import '../widgets/basic_data_l10n.dart';
@@ -109,6 +114,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       if (_ready.contains(row.rowNum)) '${row.rowNum}',
   };
   final _controllers = <String, TextEditingController>{};
+  final _categorySearchController = TextEditingController();
   final _pickedCategorySegments = <int, List<String>>{};
   late final _replacementChoices = Map<String, bool>.of(
     widget.replacementChoices,
@@ -219,6 +225,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _categorySearchController.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
     }
@@ -355,7 +362,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
 
   bool _replacesConflicts(int row) =>
       _replacementChoices[_changes[row]?.rowKey] ??
-      widget.mode == GoodsImportMode.updateOnly;
+      widget.mode != GoodsImportMode.createOnly;
 
   void _setReplacement(int row, bool replace) {
     final key = _changes[row]?.rowKey;
@@ -828,45 +835,76 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       body: SafeArea(
         child: UtenSplitView(
           persistenceKey: 'basicData.goodsImportPreview',
-          initialLeadingWidth: 280,
+          minTwoPaneWidth: 840,
           selectedLeadingLabel: _pathLabels[_category] ?? '本次导入分类',
+          selectedLeadingKey: _category,
           openLeadingButtonKey: const ValueKey('goods-import-open-categories'),
-          leading: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Text('本次导入分类', style: theme.textTheme.titleSmall),
+          leading: UtenCategoryTreeView<ProductCategoryNode>(
+            key: const ValueKey('goods-import-category-tree'),
+            nodes: tree,
+            flatLevelColors: true,
+            expandOnRowTap: true,
+            initiallyExpandDepth: 100,
+            selectedIds: {?_category},
+            sortByCode: false,
+            showSearch: false,
+            searchController: _categorySearchController,
+            header: Padding(
+              padding: const EdgeInsets.only(
+                top: UtenSpacing.s12,
+                bottom: UtenSpacing.s8,
               ),
-              ListTile(
-                key: const ValueKey('goods-import-all-categories'),
-                dense: true,
-                selected: _category == null,
-                leading: const Icon(Icons.inventory_2_outlined, size: 20),
-                title: Text('全部货品（${rows.length}）'),
-                onTap: () => setState(() => _category = null),
-              ),
-              Expanded(
-                child: UtenCategoryTreeView<ProductCategoryNode>(
-                  key: const ValueKey('goods-import-category-tree'),
-                  nodes: tree,
-                  initiallyExpandDepth: 100,
-                  selectedIds: {?_category},
-                  sortByCode: false,
-                  onNodeTap: (node) => setState(() => _category = node.id),
-                  trailingBuilder: (node) => Padding(
-                    padding: const EdgeInsets.only(right: UtenSpacing.s8),
-                    child: Text(
-                      '${node.goodsCount}',
-                      style: theme.textTheme.bodySmall,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  UtenHierarchySearchHeader(
+                    search: UtenSearchBar(
+                      key: const ValueKey('goods-import-category-search'),
+                      controller: _categorySearchController,
+                      hint: '搜索本次导入分类',
                     ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  Builder(
+                    builder: (context) => UtenButton(
+                      key: const ValueKey('goods-import-all-categories'),
+                      type: _category == null
+                          ? UtenButtonType.primary
+                          : UtenButtonType.secondary,
+                      isExpanded: true,
+                      icon: Icons.inventory_2_outlined,
+                      onPressed: () {
+                        setState(() => _category = null);
+                        UtenHierarchyPanelScope.maybeOf(
+                          context,
+                        )?.onSelection?.call();
+                      },
+                      child: Text('全部货品（${rows.length}）'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            onNodeTap: (node) => setState(() => _category = node.id),
+            trailingBuilder: (node) => Padding(
+              padding: const EdgeInsets.only(right: UtenSpacing.s8),
+              child: Builder(
+                builder: (context) => Text(
+                  '${node.goodsCount}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: UtenHierarchyRowSkin.maybeOf(context)?.foreground,
                   ),
                 ),
               ),
-            ],
+            ),
           ),
           trailing: UtenPageEdgePadding.pane(
-            padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s12,
+              UtenSpacing.s12,
+              UtenSpacing.s16,
+              0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -915,7 +953,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
                             _message!,
                             style: TextStyle(color: theme.colorScheme.error),
                           ),
-                        if (widget.mode == GoodsImportMode.updateOnly &&
+                        if (widget.mode != GoodsImportMode.createOnly &&
                             _report.conflictRows > 0)
                           const Text('默认使用文件中的差异；不想修改的行可选择保留原值。'),
                         for (final error in _activeErrors.where(
@@ -1039,6 +1077,9 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
         ),
       ),
     );
-    return UtenContentContainer.wide(selectable: false, child: page);
+    return ColoredBox(
+      color: theme.scaffoldBackgroundColor,
+      child: UtenContentContainer.wide(selectable: false, child: page),
+    );
   }
 }

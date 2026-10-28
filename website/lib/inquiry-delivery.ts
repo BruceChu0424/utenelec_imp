@@ -63,7 +63,7 @@ export async function acknowledgeInquiries(items: unknown) {
       throw new BridgeError(400, 'INVALID_RECEIPT');
     }
     return { deliveryId, sourceId, erpInquiryId } as { deliveryId: string; sourceId: string; erpInquiryId: string };
-  });
+  }).sort((left, right) => left.deliveryId < right.deliveryId ? -1 : left.deliveryId > right.deliveryId ? 1 : 0);
   return prisma.$transaction(async tx => {
     for (const receipt of receipts) {
       const current = await tx.inquiryDelivery.findUnique({ where: { id: receipt.deliveryId } });
@@ -74,7 +74,13 @@ export async function acknowledgeInquiries(items: unknown) {
       }
       const updated = await tx.inquiryDelivery.updateMany({ where: { id: receipt.deliveryId, state: 'PENDING' },
         data: { state: 'ACKNOWLEDGED', erpInquiryId: receipt.erpInquiryId, acknowledgedAt: new Date() } });
-      if (updated.count !== 1) throw new BridgeError(409, 'RECEIPT_CHANGED');
+      if (updated.count !== 1) {
+        // A concurrent identical receipt may have committed while UPDATE waited.
+        // Read that committed fact before treating the acknowledgement as a conflict.
+        const committed = await tx.inquiryDelivery.findUnique({ where: { id: receipt.deliveryId } });
+        if (!committed || committed.inquiryId !== receipt.sourceId || committed.state !== 'ACKNOWLEDGED'
+            || committed.erpInquiryId !== receipt.erpInquiryId) throw new BridgeError(409, 'RECEIPT_CHANGED');
+      }
     }
     return { acknowledged: receipts.length };
   });

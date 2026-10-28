@@ -18,6 +18,23 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class SubcontractDrawDeliveryDifferenceTest {
+    @Test void declaredHeaderKeysKeepFiveHundredCharacterValuesAndHiddenDifferenceQueriesBound() {
+        String requested=new String("search.differenceQty".toCharArray());
+        String text="x".repeat(500);
+        var headers=new SubcontractDrawTableQuery(null,null,java.util.Map.of(requested,"-0.0001..0","search.goods",text));
+        org.assertj.core.api.Assertions.assertThat(headers.filters().keySet().stream()
+                .filter(key->key.equals(requested)).findFirst().orElseThrow()).isNotSameAs(requested);
+        org.assertj.core.api.Assertions.assertThat(headers.sql(false))
+                .contains("NULL::numeric BETWEEN :draw_header_differenceQty_lower AND :draw_header_differenceQty_upper",
+                        ":draw_header_goods").doesNotContain(text,"-0.0001");
+        var query=org.mockito.Mockito.mock(jakarta.persistence.Query.class);headers.bind(query);
+        org.mockito.Mockito.verify(query).setParameter("draw_header_differenceQty_lower",new java.math.BigDecimal("-0.0001"));
+        org.mockito.Mockito.verify(query).setParameter("draw_header_differenceQty_upper",java.math.BigDecimal.ZERO);
+        org.mockito.Mockito.verify(query).setParameter("draw_header_goods",text);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->new SubcontractDrawTableQuery(null,null,
+                java.util.Map.of("search.differenceQty) OR TRUE --",""))).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
     @Test void colorCandidatesCoverTheAuthorizedLaneBeforePaginationAndKeepOtherFilters() {
         var fixture = fixture(true, BigDecimal.ZERO);
         var result = fixture.service.tasks(2, 50, "", "", null, List.of(), List.of(), null,

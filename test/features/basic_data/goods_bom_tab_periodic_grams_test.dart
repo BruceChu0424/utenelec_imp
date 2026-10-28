@@ -471,6 +471,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'editing only a periodic note never writes the rounded weight preview',
+    (tester) async {
+      final repo = _FakeBomRepo(
+        rows: const [
+          GoodsBomItem(
+            id: 'row-pc',
+            componentGoodsId: 'pc',
+            componentName: '精确克数',
+            componentUnitName: '克',
+            componentIssueMethod: 'PERIODIC',
+            qty: 1.23456,
+            unitWeightGrams: 1.23456,
+            price: 2,
+          ),
+        ],
+      );
+      await _pumpTab(tester, repo);
+      await _openEditForPc(tester);
+      final note = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.decoration?.labelText == '备注',
+      );
+      await tester.enterText(note, '只修改备注');
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      await saveBomEdit(tester);
+      expect(repo.updates, hasLength(1));
+      expect(repo.updates.single['summary'], '只修改备注');
+      expect(repo.updates.single.containsKey('qty'), isFalse);
+      expect(repo.updates.single.containsKey('unitWeightGrams'), isFalse);
+    },
+  );
+
   testWidgets('单个重量小于 0.1 克要二次确认，确认后才提交', (tester) async {
     final repo = _FakeBomRepo();
     await _pumpTab(tester, repo);

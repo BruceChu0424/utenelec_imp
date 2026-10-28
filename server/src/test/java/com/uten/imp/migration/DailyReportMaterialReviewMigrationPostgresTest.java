@@ -170,6 +170,88 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             Map.entry("idx_sco_price_period","CREATE INDEX idx_sco_price_period ON public.subcontract_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
             Map.entry("idx_so_price_period","CREATE INDEX idx_so_price_period ON public.sales_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
             Map.entry("idx_procurement_price_history_snapshot","CREATE INDEX idx_procurement_price_history_snapshot ON public.procurement_order_approval_cases USING gin (submission_snapshot jsonb_path_ops)"));
+    // Independently reviewed V949-V968 CREATE TABLE/INDEX and key declarations.
+    // PostgreSQL canonical index spelling is pinned here, never learned from
+    // the catalog under test or regenerated at runtime.
+    private static final List<String> V949_TO_V968_TABLE_ADDITIONS = List.of(
+            "business_archive_eligibility",
+            "business_archive_packages",
+            "business_outbox_payload_history",
+            "data_lifecycle_policies",
+            "department_permission_template_bindings",
+            "employee_code_reuse_claims",
+            "employee_code_reuse_installation",
+            "employee_code_reuse_releases",
+            "employee_identity_document_claims",
+            "employee_identity_historical_claims",
+            "employee_identity_legacy_roles",
+            "employee_identity_merge_installation",
+            "employee_identity_merge_payloads",
+            "employee_identity_merges",
+            "employee_identity_review_certificates",
+            "employee_identity_user_tombstones",
+            "employee_legacy_identity_aliases",
+            "party_month_dirty",
+            "party_monthly_summaries",
+            "permission_template_applies",
+            "scheduled_task_runs",
+            "stock_monthly_summaries",
+            "stock_monthly_verification_state",
+            "user_permission_template_bindings");
+    private static final Map<String,String> V949_TO_V968_INDEX_ADDITIONS = Map.ofEntries(
+            Map.entry("business_archive_eligibility_pkey","CREATE UNIQUE INDEX business_archive_eligibility_pkey ON public.business_archive_eligibility USING btree (id)"),
+            Map.entry("business_archive_packages_pkey","CREATE UNIQUE INDEX business_archive_packages_pkey ON public.business_archive_packages USING btree (id)"),
+            Map.entry("business_outbox_payload_history_pkey","CREATE UNIQUE INDEX business_outbox_payload_history_pkey ON public.business_outbox_payload_history USING btree (outbox_id)"),
+            Map.entry("data_lifecycle_policies_pkey","CREATE UNIQUE INDEX data_lifecycle_policies_pkey ON public.data_lifecycle_policies USING btree (policy_key)"),
+            Map.entry("department_permission_template_bindings_pkey","CREATE UNIQUE INDEX department_permission_template_bindings_pkey ON public.department_permission_template_bindings USING btree (department_id)"),
+            Map.entry("department_permission_template_bindings_template_idx","CREATE INDEX department_permission_template_bindings_template_idx ON public.department_permission_template_bindings USING btree (template_id)"),
+            Map.entry("employee_code_reuse_claims_code","CREATE INDEX employee_code_reuse_claims_code ON public.employee_code_reuse_claims USING btree (normalized_code, new_employee_id)"),
+            Map.entry("employee_code_reuse_claims_new_employee_id_key","CREATE UNIQUE INDEX employee_code_reuse_claims_new_employee_id_key ON public.employee_code_reuse_claims USING btree (new_employee_id)"),
+            Map.entry("employee_code_reuse_claims_pkey","CREATE UNIQUE INDEX employee_code_reuse_claims_pkey ON public.employee_code_reuse_claims USING btree (release_id)"),
+            Map.entry("employee_code_reuse_installation_pkey","CREATE UNIQUE INDEX employee_code_reuse_installation_pkey ON public.employee_code_reuse_installation USING btree (singleton)"),
+            Map.entry("employee_code_reuse_releases_code","CREATE INDEX employee_code_reuse_releases_code ON public.employee_code_reuse_releases USING btree (normalized_code, released_at, id)"),
+            Map.entry("employee_code_reuse_releases_pkey","CREATE UNIQUE INDEX employee_code_reuse_releases_pkey ON public.employee_code_reuse_releases USING btree (id)"),
+            Map.entry("employee_code_reuse_releases_source_employee_id_key","CREATE UNIQUE INDEX employee_code_reuse_releases_source_employee_id_key ON public.employee_code_reuse_releases USING btree (source_employee_id)"),
+            Map.entry("employee_identity_document_claims_pkey","CREATE UNIQUE INDEX employee_identity_document_claims_pkey ON public.employee_identity_document_claims USING btree (document_hash)"),
+            Map.entry("employee_identity_historical_claim_idx","CREATE INDEX employee_identity_historical_claim_idx ON public.employee_identity_historical_claims USING btree (claim_kind, claim_hash)"),
+            Map.entry("employee_identity_historical_claims_pkey","CREATE UNIQUE INDEX employee_identity_historical_claims_pkey ON public.employee_identity_historical_claims USING btree (source_employee_id, claim_kind, claim_hash)"),
+            Map.entry("employee_identity_legacy_roles_pkey","CREATE UNIQUE INDEX employee_identity_legacy_roles_pkey ON public.employee_identity_legacy_roles USING btree (source_table, uuid_column)"),
+            Map.entry("employee_identity_merge_installation_pkey","CREATE UNIQUE INDEX employee_identity_merge_installation_pkey ON public.employee_identity_merge_installation USING btree (version)"),
+            Map.entry("employee_identity_merge_payloads_pkey","CREATE UNIQUE INDEX employee_identity_merge_payloads_pkey ON public.employee_identity_merge_payloads USING btree (source_employee_id)"),
+            Map.entry("employee_identity_merges_canonical_idx","CREATE INDEX employee_identity_merges_canonical_idx ON public.employee_identity_merges USING btree (canonical_employee_id)"),
+            Map.entry("employee_identity_merges_pkey","CREATE UNIQUE INDEX employee_identity_merges_pkey ON public.employee_identity_merges USING btree (source_employee_id)"),
+            Map.entry("employee_identity_review_certificates_pkey","CREATE UNIQUE INDEX employee_identity_review_certificates_pkey ON public.employee_identity_review_certificates USING btree (id)"),
+            Map.entry("employee_identity_reviews_employee_idx","CREATE INDEX employee_identity_reviews_employee_idx ON public.employee_identity_review_certificates USING btree (new_employee_id, review_kind)"),
+            Map.entry("employee_identity_user_tombstones_pkey","CREATE UNIQUE INDEX employee_identity_user_tombstones_pkey ON public.employee_identity_user_tombstones USING btree (source_user_id)"),
+            Map.entry("employee_legacy_identity_aliases_pkey","CREATE UNIQUE INDEX employee_legacy_identity_aliases_pkey ON public.employee_legacy_identity_aliases USING btree (namespace_key, legacy_id)"),
+            Map.entry("employee_sensitive_id_card_hash_idx","CREATE INDEX employee_sensitive_id_card_hash_idx ON public.employee_sensitive USING btree (id_card_hash) WHERE (id_card_hash IS NOT NULL)"),
+            Map.entry("idx_business_archive_eligibility_state","CREATE INDEX idx_business_archive_eligibility_state ON public.business_archive_eligibility USING btree (eligible, evaluated_at DESC)"),
+            Map.entry("idx_business_archive_packages_object","CREATE INDEX idx_business_archive_packages_object ON public.business_archive_packages USING btree (object_family, object_id, status)"),
+            Map.entry("idx_business_outbox_payload_history_dedupe","CREATE INDEX idx_business_outbox_payload_history_dedupe ON public.business_outbox_payload_history USING btree (dedupe_key)"),
+            Map.entry("idx_client_categories_sibling_name","CREATE INDEX idx_client_categories_sibling_name ON public.client_categories USING btree (btrim(name), parent_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_material_categories_sibling_name","CREATE INDEX idx_material_categories_sibling_name ON public.material_categories USING btree (btrim(name), parent_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_mould_categories_sibling_name","CREATE INDEX idx_mould_categories_sibling_name ON public.mould_categories USING btree (btrim(name), parent_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_party_month_dirty_queue","CREATE INDEX idx_party_month_dirty_queue ON public.party_month_dirty USING btree (touched_at)"),
+            Map.entry("idx_party_monthly_party_month","CREATE INDEX idx_party_monthly_party_month ON public.party_monthly_summaries USING btree (party_id, side, month_start)"),
+            Map.entry("idx_payment_styles_sibling_name","CREATE INDEX idx_payment_styles_sibling_name ON public.payment_styles USING btree (category, btrim(name), parent_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_procurement_pending_qty_revision_case","CREATE INDEX idx_procurement_pending_qty_revision_case ON public.procurement_order_source_revisions USING btree (pending_case_id) WHERE (pending_case_id IS NOT NULL)"),
+            Map.entry("idx_scheduled_task_runs_task_time","CREATE INDEX idx_scheduled_task_runs_task_time ON public.scheduled_task_runs USING btree (task_key, started_at DESC)"),
+            Map.entry("idx_stock_monthly_summaries_goods","CREATE INDEX idx_stock_monthly_summaries_goods ON public.stock_monthly_summaries USING btree (goods_id)"),
+            Map.entry("idx_supplier_categories_sibling_name","CREATE INDEX idx_supplier_categories_sibling_name ON public.supplier_categories USING btree (btrim(name), parent_id) WHERE (NOT is_deleted)"),
+            Map.entry("ix_master_versions_before_category","CREATE INDEX ix_master_versions_before_category ON public.master_record_versions USING btree (entity_type, ((NULLIF((before_row ->> 'category_id'::text), ''::text))::uuid), id DESC)"),
+            Map.entry("party_month_dirty_pkey","CREATE UNIQUE INDEX party_month_dirty_pkey ON public.party_month_dirty USING btree (side, party_id, month_start)"),
+            Map.entry("party_monthly_summaries_id_key","CREATE UNIQUE INDEX party_monthly_summaries_id_key ON public.party_monthly_summaries USING btree (id)"),
+            Map.entry("party_monthly_summaries_pkey","CREATE UNIQUE INDEX party_monthly_summaries_pkey ON public.party_monthly_summaries USING btree (side, party_id, month_start, currency_key)"),
+            Map.entry("permission_template_applies_pkey","CREATE UNIQUE INDEX permission_template_applies_pkey ON public.permission_template_applies USING btree (user_id)"),
+            Map.entry("permission_template_applies_template_idx","CREATE INDEX permission_template_applies_template_idx ON public.permission_template_applies USING btree (template_id)"),
+            Map.entry("scheduled_task_runs_pkey","CREATE UNIQUE INDEX scheduled_task_runs_pkey ON public.scheduled_task_runs USING btree (id)"),
+            Map.entry("stock_monthly_summaries_id_key","CREATE UNIQUE INDEX stock_monthly_summaries_id_key ON public.stock_monthly_summaries USING btree (id)"),
+            Map.entry("stock_monthly_summaries_pkey","CREATE UNIQUE INDEX stock_monthly_summaries_pkey ON public.stock_monthly_summaries USING btree (month_start, movement_type, goods_id, warehouse_id, color_key)"),
+            Map.entry("stock_monthly_verification_state_pkey","CREATE UNIQUE INDEX stock_monthly_verification_state_pkey ON public.stock_monthly_verification_state USING btree (singleton)"),
+            Map.entry("uq_business_archive_eligibility_object","CREATE UNIQUE INDEX uq_business_archive_eligibility_object ON public.business_archive_eligibility USING btree (object_family, object_id)"),
+            Map.entry("uq_business_archive_packages_version","CREATE UNIQUE INDEX uq_business_archive_packages_version ON public.business_archive_packages USING btree (object_family, object_id, package_version)"),
+            Map.entry("user_permission_template_bindings_pkey","CREATE UNIQUE INDEX user_permission_template_bindings_pkey ON public.user_permission_template_bindings USING btree (user_id)"),
+            Map.entry("user_permission_template_bindings_template_idx","CREATE INDEX user_permission_template_bindings_template_idx ON public.user_permission_template_bindings USING btree (template_id)"));
     @BeforeAll static void migrate() {
         pg.start();com.uten.imp.testsupport.TestFlyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("839").load().migrate();
         db=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
@@ -195,7 +277,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor));
         assertEquals(tables,tablesAfterV840);assertEquals(indexes,indexesAfterV840);assertEquals(resetPolicy,resetPolicyAfterV840);
     }
-    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredTableIndexAndResetPolicyDelta() {
+    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredTableIndexAndResetPolicyDelta() throws Exception {
         TreeSet<String> expectedTables=new TreeSet<>(tablesAfterV840);
         assertTrue(expectedTables.add("document_unapprovals"));
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
@@ -227,9 +309,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // writable customer owners live in their own authorization-lineage table.
         assertTrue(expectedTables.add("client_co_owners"));
         V938_TO_V939_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
+        assertEquals(24, V949_TO_V968_TABLE_ADDITIONS.size());
+        V949_TO_V968_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
-        assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
         assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
                 expectedIndexes.remove("procurement_inspection_items_item_uk"));
@@ -297,7 +380,41 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE UNIQUE INDEX client_co_owners_client_id_employee_id_key ON public.client_co_owners USING btree (client_id, employee_id)"));
         assertNull(expectedIndexes.put("idx_client_co_owners_employee",
                 "CREATE INDEX idx_client_co_owners_employee ON public.client_co_owners USING btree (employee_id, client_id)"));
-        assertEquals(expectedIndexes,catalogMap(indexes()));
+        // V962 moves document uniqueness to the reviewed durable claims table.
+        assertEquals("CREATE UNIQUE INDEX uk_employee_sensitive_id_card_hash ON public.employee_sensitive USING btree (id_card_hash) WHERE (id_card_hash IS NOT NULL)",
+                expectedIndexes.remove("uk_employee_sensitive_id_card_hash"));
+        assertEquals(53, V949_TO_V968_INDEX_ADDITIONS.size());
+        V949_TO_V968_INDEX_ADDITIONS.forEach((name, definition) -> assertNull(expectedIndexes.put(name, definition),
+                "A reviewed V949-V968 index addition must not replace an existing index: " + name));
+        List<String> actualTables = tables();
+        TreeMap<String,String> actualIndexes = catalogMap(indexes());
+        if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {
+            TreeSet<String> addedTables = new TreeSet<>(actualTables);
+            addedTables.removeAll(expectedTables);
+            TreeSet<String> removedTables = new TreeSet<>(expectedTables);
+            removedTables.removeAll(actualTables);
+            TreeMap<String,String> addedIndexes = new TreeMap<>(actualIndexes);
+            addedIndexes.keySet().removeAll(expectedIndexes.keySet());
+            TreeMap<String,String> removedIndexes = new TreeMap<>(expectedIndexes);
+            removedIndexes.keySet().removeAll(actualIndexes.keySet());
+            TreeMap<String,String> changedIndexes = new TreeMap<>();
+            actualIndexes.forEach((name,definition) -> {
+                if (expectedIndexes.containsKey(name) && !definition.equals(expectedIndexes.get(name))) {
+                    changedIndexes.put(name,definition);
+                }
+            });
+            var diagnostic = java.nio.file.Path.of(System.getProperty("uten.build.directory", "target"),
+                    "daily-forward-schema-delta.json");
+            java.nio.file.Files.createDirectories(diagnostic.toAbsolutePath().getParent());
+            java.nio.file.Files.writeString(diagnostic, new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writerWithDefaultPrettyPrinter().writeValueAsString(Map.of(
+                            "addedTables", addedTables, "removedTables", removedTables,
+                            "addedIndexes", addedIndexes, "removedIndexes", removedIndexes,
+                            "changedIndexes", changedIndexes)));
+        }
+        assertAll("Every table and index delta must match independently reviewed migration declarations",
+                () -> assertEquals(expectedTables.stream().toList(), actualTables),
+                () -> assertEquals(expectedIndexes, actualIndexes));
         Map.of("report_export_jobs",List.of("trg_guard_report_export_identity","trg_report_export_jobs_no_truncate"),
                 "read_scope_domains",List.of("trg_read_scope_domains_immutable","trg_read_scope_domains_no_truncate"),
                 "read_scope_change_events",List.of("trg_read_scope_event_insert","trg_read_scope_event_immutable","trg_read_scope_event_no_truncate"))

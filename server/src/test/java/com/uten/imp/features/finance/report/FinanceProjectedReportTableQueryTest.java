@@ -34,9 +34,9 @@ class FinanceProjectedReportTableQueryTest {
         });
         String hostileValue="x' OR TRUE --";
         FinanceProjectedReportTable.query(em,COLUMNS,"SELECT name,qty,settled FROM authorised_facts",
-                query->{},"report.\"name\"",Map.of(new String("name"),hostileValue,
+                query->{},"report.\"name\"",Map.of(new String("name".toCharArray()),hostileValue,
                         "search.qty",">=9007199254740993.0001","settled","true"),
-                Set.of("name","settled"),2,20,new String("qty"),"desc",false,List.of());
+                Set.of("name","settled"),2,20,new String("qty".toCharArray()),"desc",false,List.of());
         assertThat(statements).hasSize(4).allSatisfy(sql->assertThat(sql)
                 .doesNotContain(hostileValue,"9007199254740993.0001"));
         assertThat(statements.getFirst()).contains("ORDER BY report.\"qty\" DESC NULLS LAST", ":headerFacet_name",

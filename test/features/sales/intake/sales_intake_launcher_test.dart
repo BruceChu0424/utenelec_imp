@@ -282,8 +282,18 @@ void main() {
   group('另有工作表', () {
     Future<void> tapSheetChip(WidgetTester tester, int index) async {
       final chip = find.byKey(ValueKey('sales-intake-other-sheet-$index'));
-      await tester.ensureVisible(chip);
+      await tester.scrollUntilVisible(
+        chip,
+        240,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const ValueKey('sales-intake-review-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       await tester.pumpAndSettle();
+      expect(chip.hitTestable(), findsOneWidget);
       await tester.tap(chip);
       await tester.pumpAndSettle();
     }

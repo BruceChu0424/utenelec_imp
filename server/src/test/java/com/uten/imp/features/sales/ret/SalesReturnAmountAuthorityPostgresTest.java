@@ -238,8 +238,8 @@ class SalesReturnAmountAuthorityPostgresTest {
         jdbc.update("""
                 INSERT INTO employees(id, code, full_name, id_type, department_id, hire_date,
                     status, employment_type, version)
-                VALUES (?, ?, 'Return authority employee', '身份证', ?, DATE '2026-01-01', 'active', 'regular', 0)
-                """, employeeId, "RET-EMP-" + suffix, departmentId);
+                VALUES (?, ?, ?, '身份证', ?, DATE '2026-01-01', 'active', 'regular', 0)
+                """, employeeId, "RET-EMP-" + suffix,com.uten.imp.support.SyntheticEmployeeIdentity.name("Return authority employee",employeeId), departmentId);
         jdbc.update("""
                 INSERT INTO users(id, employee_id, login_account, password_hash, must_change_password,
                     status, failed_attempts, is_super_admin, auth_version)

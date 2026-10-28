@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -68,6 +70,7 @@ Future<void> _open(
   bool dark = false,
   String? description = '新增 1，补齐 1，冲突 2，相同 1。空白不覆盖已有值。',
   String? ignoreDescription,
+  bool inheritedPageGutter = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -85,7 +88,18 @@ Future<void> _open(
         data: MediaQuery.of(
           context,
         ).copyWith(textScaler: TextScaler.linear(textScale)),
-        child: RepaintBoundary(key: _captureKey, child: child!),
+        child: RepaintBoundary(
+          key: _captureKey,
+          child: inheritedPageGutter
+              ? ColoredBox(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  child: UtenContentContainer.wide(
+                    selectable: false,
+                    child: child!,
+                  ),
+                )
+              : child!,
+        ),
       ),
       home: Scaffold(
         body: Builder(
@@ -116,6 +130,57 @@ MasterDataTableView<ImportReviewRow> _table(WidgetTester tester) =>
     );
 
 void main() {
+  for (final width in [390.0, 1024.0, 1440.0]) {
+    testWidgets(
+      'width $width aligns standalone and hosted review page edges without duplicate gutters',
+      (tester) async {
+        Rect? standaloneTable;
+        for (final inherited in [false, true]) {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await _open(
+            tester,
+            _Result(),
+            size: Size(width, 900),
+            inheritedPageGutter: inherited,
+          );
+          final gutter = UtenContentContainer.gutterForWidth(width);
+          final back = find.descendant(
+            of: find.byType(UtenBackButton),
+            matching: find.byType(IconButton),
+          );
+          final summary = find.byKey(const ValueKey('import-review-summary'));
+          final table = tester.getRect(
+            find.byKey(const ValueKey('import-review-table')),
+          );
+          expect(tester.getRect(back).left, closeTo(gutter, .01));
+          expect(tester.getRect(summary).left, closeTo(gutter, .01));
+          expect(table.left, closeTo(gutter, .01));
+          if (standaloneTable == null) {
+            standaloneTable = table;
+          } else {
+            expect(table, standaloneTable);
+          }
+          final ownBackground = find.descendant(
+            of: find.byType(ImportReviewPage),
+            matching: find.byType(ColoredBox),
+          );
+          final background = tester.widget<ColoredBox>(ownBackground.first);
+          expect(
+            background.color,
+            Theme.of(
+              tester.element(find.byType(ImportReviewPage)),
+            ).scaffoldBackgroundColor,
+          );
+          expect(
+            tester.getRect(ownBackground.first).left,
+            closeTo(inherited ? gutter : 0, .01),
+          );
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
+  }
+
   testWidgets('shows inline old/new values and starts with zero replacements', (
     tester,
   ) async {

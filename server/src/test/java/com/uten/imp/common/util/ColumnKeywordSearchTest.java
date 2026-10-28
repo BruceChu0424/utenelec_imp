@@ -9,8 +9,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ColumnKeywordSearchTest {
     @Test void validatedKeysComeFromTheServerDeclarationWhileValuesRemainUnmodifiedData() {
-        String declared=new String("amount");
-        String requested=new String("amount");
+        String declared=new String("amount".toCharArray());
+        String requested=new String("amount".toCharArray());
+        assertSame(declared,ColumnKeywordSearch.declaredKey(requested,Set.of(declared)));
         var result=ColumnKeywordSearch.validate(Map.of(requested,"  >=0.0000000001  "),Set.of(declared));
         assertSame(declared,result.keySet().iterator().next());
         assertEquals(">=0.0000000001",result.get(declared));

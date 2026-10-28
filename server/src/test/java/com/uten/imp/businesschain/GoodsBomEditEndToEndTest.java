@@ -283,7 +283,7 @@ class GoodsBomEditEndToEndTest {
         UUID owner=UUID.randomUUID();
         UUID department=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,employee);
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,CURRENT_DATE,'active','regular')",
-                owner,"BOM-OWNER-"+owner,"另一个货品负责人",department);
+                owner,"BOM-OWNER-"+owner,com.uten.imp.support.SyntheticEmployeeIdentity.name("另一个货品负责人",owner),department);
         db.update("UPDATE goods SET owner_employee_id=? WHERE id=?",owner,shared);
         db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES(?,'goods',?)",actor,owner);
         ReflectionTestUtils.setField(ReflectionTestUtils.getField(goodsService, "goodsReadScopePolicy"), "ownerScopeEnabled", true);
@@ -299,7 +299,7 @@ class GoodsBomEditEndToEndTest {
 
     private UUID editableGoods(String tag) {
         UUID id=goods(tag),category=UUID.randomUUID();
-        db.update("INSERT INTO material_categories(id,code,name) VALUES(?,?,?)",category,"BMC-"+category,"组装单元格测试分类");
+        db.update("INSERT INTO material_categories(id,code,name) VALUES(?,?,?)",category,"BMC-"+category,"组装单元格测试分类 "+category);
         db.update("UPDATE goods SET category_id=? WHERE id=?",category,id);
         return id;
     }

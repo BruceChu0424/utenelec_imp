@@ -1125,7 +1125,7 @@ void main() {
     await _edit(tester);
     final operations = (fixture.api.commands.single.$2['operations'] as List)
         .cast<Map<String, dynamic>>();
-    expect((operations.last['body'] as Map)['qty'], 7);
+    expect((operations.last['body'] as Map)['qty'], '7.0');
     expect((operations.last['body'] as Map)['summary'], '新备注');
     expect((operations.last['body'] as Map)['componentGoodsId'], 'washer');
   });
@@ -1202,7 +1202,7 @@ void main() {
       await _edit(tester);
       final operations = (fixture.api.commands.single.$2['operations'] as List)
           .cast<Map<String, dynamic>>();
-      expect((operations.last['body'] as Map)['qty'], 8);
+      expect((operations.last['body'] as Map)['qty'], '8');
     },
   );
 
@@ -1393,6 +1393,36 @@ void main() {
     expect(fixture.api.commands, isEmpty);
     expect(find.text('编辑模式'), findsOneWidget);
   });
+
+  testWidgets(
+    'same-unit replacement preserves the selected edge exact quantity',
+    (tester) async {
+      final fixture = await _pump(
+        tester,
+        replaceComponent: () async =>
+            const GoodsListItem(id: 'washer', name: '垫片', unitName: '个'),
+      );
+      fixture.api.tree['source']!.first.addAll({
+        'qty': 1234567890123.1235,
+        'qtyText': '1234567890123.12345',
+        'basisOutputQty': 1234567890123.5432,
+        'basisOutputQtyText': '1234567890123.54321',
+      });
+      await _edit(tester);
+      await tester.tap(
+        await activateBomEditor(tester, 'goods-bom-replace-source/row-frame'),
+      );
+      await tester.pumpAndSettle();
+      await _edit(tester);
+      final operation =
+          (fixture.api.commands.single.$2['operations'] as List).single as Map;
+      final body = operation['body'] as Map;
+      expect(body['componentGoodsId'], 'washer');
+      expect(body['qty'], '1234567890123.12345');
+      expect(body['basisOutputQty'], '1234567890123.54321');
+      expect(body.containsKey('price'), isFalse);
+    },
+  );
 
   testWidgets(
     'existing component picker replaces only the draft relation and discard restores it',

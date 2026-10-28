@@ -48,13 +48,18 @@ public final class ColumnKeywordSearch {
         searches.forEach((key, value) -> {
             // Keep the server's declared key, not the equal request String: callers
             // may use this key in fixed SQL parameter namespaces and projections.
-            String declared = allowed.stream().filter(candidate -> candidate.equals(key)).findFirst()
-                    .orElseThrow(() -> invalid("此列不支持搜索：" + key));
+            String declared = declaredKey(key,allowed);
+            if(declared==null)throw invalid("此列不支持搜索：" + key);
             if (value == null || value.isBlank()) return;
             if (value.length() > 200) throw invalid("每列搜索关键词不能超过 200 个字符");
             if (!KeywordSearch.terms(value).isEmpty()) result.put(declared, value.strip());
         });
         return result;
+    }
+
+    /** Resolve an equal request token to the owning feature's actual declaration. */
+    public static String declaredKey(String requested,Set<String> allowed) {
+        return allowed.stream().filter(candidate->candidate.equals(requested)).findFirst().orElse(null);
     }
 
     private static ApiException invalid(String message) {

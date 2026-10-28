@@ -744,18 +744,25 @@ class SubcontractStepDrawMigrationPostgresTest {
                     """, decision), "V896 拆分决定必须保留原财务授权的部门、创建者、时间与精确父级身份: " + decision);
         }
         // V931 independently replaces company_file:view's whole-company baseline
-        // with explicit grants to every live department. Those retained identities
-        // are unrelated to the V798 draw seed and must be proven, not subtracted blindly.
+        // with explicit grants to every live department. V958 restores the
+        // baseline and retires those live allocations; their exact permanent
+        // identities and deletion snapshots remain unrelated to the V798 seed.
         List<Map<String,Object>> identities=rows("""
                 SELECT identity.source_id,identity.parent_table,identity.parent_id,
                        department.id::text department_id,department.code department_code,
                        department.is_deleted,permission.code permission_code,permission.baseline,
-                       grant_row.created_by::text created_by,grant_row.created_at::text created_at
+                       grant_row.created_by::text created_by,grant_row.created_at::text created_at,
+                       history.operation retired_operation,history.parent_id historical_parent_id,
+                       history.payload->>'created_at' historical_created_at,
+                       history.payload->>'created_by' historical_created_by
                 FROM business_record_identities identity
                 LEFT JOIN department_permissions grant_row ON identity.source_id::jsonb=jsonb_build_object(
                     'department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
-                LEFT JOIN departments department ON department.id=grant_row.department_id
-                LEFT JOIN permissions permission ON permission.id=grant_row.permission_id
+                LEFT JOIN departments department ON department.id::text=identity.parent_id
+                    AND identity.parent_table='departments'
+                LEFT JOIN permissions permission ON permission.id::text=identity.source_id::jsonb->>'permission_id'
+                LEFT JOIN business_record_history history ON history.source_table=identity.source_table
+                    AND history.source_id=identity.source_id AND history.operation='DELETE'
                 WHERE identity.source_table='department_permissions'
                 ORDER BY department.code,permission.code,identity.source_id
                 """);
@@ -763,24 +770,38 @@ class SubcontractStepDrawMigrationPostgresTest {
         assertEquals(1,count("SELECT count(*) FROM permissions WHERE code='company_file:view' AND baseline"),
                 "V958 restores the company-library entry baseline while retaining V931's exact department-grant identities");
         int liveDepartments=count("SELECT count(*) FROM departments WHERE NOT is_deleted");
+        assertEquals(0,count("""
+                SELECT count(*) FROM department_permissions allocation
+                JOIN permissions permission ON permission.id=allocation.permission_id
+                WHERE permission.code='company_file:view'
+                """),"V958 intentionally retires redundant live department sources after restoring the baseline");
         assertEquals(liveDepartments,count("""
                 SELECT count(*) FROM business_record_identities identity
-                JOIN department_permissions grant_row ON identity.source_id::jsonb=jsonb_build_object(
-                    'department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
-                JOIN departments department ON department.id=grant_row.department_id
-                JOIN permissions permission ON permission.id=grant_row.permission_id
+                JOIN business_record_history history ON history.source_table=identity.source_table
+                    AND history.source_id=identity.source_id AND history.operation='DELETE'
+                JOIN departments department ON department.id::text=history.payload->>'department_id'
+                JOIN permissions permission ON permission.id::text=history.payload->>'permission_id'
                 WHERE identity.source_table='department_permissions' AND permission.code='company_file:view'
-                  AND NOT department.is_deleted AND permission.baseline AND grant_row.created_by IS NULL
+                  AND NOT department.is_deleted AND permission.baseline
+                  AND history.payload-ARRAY['created_at','created_by','department_id','permission_id']='{}'::jsonb
+                  AND history.payload->'created_by'='null'::jsonb
+                  AND jsonb_typeof(history.payload->'created_at')='string'
+                  AND history.actor_id IS NULL AND history.actor_name IS NULL AND history.request_id IS NULL
+                  AND history.source_id::jsonb=history.payload-ARRAY['created_at','created_by']
+                  AND history.parent_table='departments' AND history.parent_id=department.id::text
                   AND identity.parent_table='departments' AND identity.parent_id=department.id::text
-                """),"each V931 identity retains its exact live department grant/parent and real migration actor");
+                """),"each V931 identity retains its exact V958 deletion snapshot, parent and migration actor");
         assertEquals(0,count("""
                 SELECT count(*) FROM departments department WHERE NOT department.is_deleted AND NOT EXISTS(
-                    SELECT 1 FROM department_permissions grant_row JOIN permissions permission ON permission.id=grant_row.permission_id
-                    JOIN business_record_identities identity ON identity.source_table='department_permissions'
-                        AND identity.source_id::jsonb=jsonb_build_object('department_id',grant_row.department_id,'permission_id',grant_row.permission_id)
-                    WHERE grant_row.department_id=department.id AND permission.code='company_file:view'
-                        AND identity.parent_table='departments' AND identity.parent_id=department.id::text)
-                """),"V931 preserves the old default entrance for every live department without missing identities");
+                    SELECT 1 FROM business_record_identities identity
+                    JOIN permissions permission ON permission.id::text=identity.source_id::jsonb->>'permission_id'
+                    JOIN business_record_history history ON history.source_table=identity.source_table
+                        AND history.source_id=identity.source_id AND history.operation='DELETE'
+                    WHERE identity.source_table='department_permissions' AND permission.code='company_file:view'
+                        AND identity.source_id::jsonb=jsonb_build_object('department_id',department.id,'permission_id',permission.id)
+                        AND identity.parent_table='departments' AND identity.parent_id=department.id::text
+                    GROUP BY identity.source_id HAVING count(*)=1)
+                """),"every original V931 department identity has exactly one V958 retirement snapshot");
         assertEquals(liveDepartments,count("""
                 SELECT count(*) FROM business_record_identities identity
                 JOIN permissions permission ON permission.id::text=identity.source_id::jsonb->>'permission_id'

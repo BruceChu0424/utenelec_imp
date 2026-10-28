@@ -215,7 +215,7 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),child,raw);
         UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'",UUID.class);
         db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",workshop,"Y-WORK-"+workshop,"让料补供车间",production);
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",worker,"Y-EMP-"+worker,"补供负责人",workshop);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",worker,"Y-EMP-"+worker,com.uten.imp.support.SyntheticEmployeeIdentity.name("补供负责人",worker),workshop);
         return new Scenario(w,root,child,raw,workshop,worker,make);
     }
     private AnalysisView preview(Scenario c,String suffix,String quantity) {

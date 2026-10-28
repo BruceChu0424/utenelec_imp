@@ -444,7 +444,7 @@ class ProductionExecutionBatchEndToEndTest {
         if(fixed)db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=100 WHERE goods_id=?",root);
         UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD'",UUID.class);
         db.update("INSERT INTO departments(id,code,name,parent_id,level) VALUES(?,?,?,?,'二级班组')",workshop,"W-"+tag,"分批车间",production);
-        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",worker,"BATCH-WORKER-"+tag,"分批负责人",workshop);
+        db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) VALUES(?,?,?,'其他',?,DATE '2026-01-01','active','regular')",worker,"BATCH-WORKER-"+tag,com.uten.imp.support.SyntheticEmployeeIdentity.name("分批负责人",worker),workshop);
         UUID workerUser=fixture.createUserWithPerms(w,"worker-"+tag,"production_execution:view","production_execution:start","production_daily_report:view","production_daily_report:create","production_material:settle");
         db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",workshop,workerUser);
         fixture.loginAs(w.superAdminUserId());

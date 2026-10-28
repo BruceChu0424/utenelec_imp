@@ -48,9 +48,9 @@ class StaffSingleDeviceLoginPostgresTest {
         UUID id = UUID.randomUUID();
         jdbc.update("""
             INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-            SELECT ?,?,'单设备测试','其他',id,CURRENT_DATE,'active','regular'
+            SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular'
             FROM departments WHERE code='DEPT_FIN'
-            """, employee, "SDL-" + label);
+            """, employee, "SDL-" + label,com.uten.imp.support.SyntheticEmployeeIdentity.name("单设备测试",employee));
         jdbc.update("""
             INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)
             VALUES(?,?,?,'test-only',false,'active',false)

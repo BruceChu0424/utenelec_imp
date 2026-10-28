@@ -343,6 +343,7 @@ GoodsImportReport _problemReport({
 
 GoodsImportResult _completedResult({
   int imported = 0,
+  int created = 0,
   int updated = 0,
   int filled = 0,
   int ignored = 0,
@@ -354,6 +355,7 @@ GoodsImportResult _completedResult({
   createdColors: 0,
   createdUnits: 0,
   createdCategoryPaths: const [],
+  createdCount: created,
   updatedCount: updated,
   filledCount: filled,
   ignoredCount: ignored,
@@ -370,10 +372,10 @@ Future<void> _tapKey(WidgetTester tester, String key) async {
 Future<void> _confirm(WidgetTester tester, {bool replace = false}) async {
   if (replace &&
       find
-          .byKey(const ValueKey('goods-import-conflict-2'))
+          .byKey(const ValueKey('goods-import-replace-selected'))
           .evaluate()
           .isNotEmpty) {
-    await _tapKey(tester, 'goods-import-conflict-2');
+    await _tapKey(tester, 'goods-import-replace-selected');
   }
   await _tapKey(tester, 'goods-import-preview-confirm');
 }
@@ -454,6 +456,32 @@ void main() {
     expect(repo.submittedModes.single, GoodsImportMode.updateOnly);
     expect(repo.submittedSelections.single, {'goods:2'});
   });
+
+  testWidgets(
+    'mixed mode creates new goods and applies existing file differences',
+    (tester) async {
+      final repo = _Repository()
+        ..reportFor = (_, edits, excluded) => _report(
+          rows: const [_firstRow, _thirdRow],
+          changes: const [_conflict],
+          edits: edits,
+          excluded: excluded,
+        );
+      repo.resultFor = () =>
+          _completedResult(imported: 2, created: 1, updated: 1);
+      await _open(tester, repo);
+      await _confirm(tester);
+      expect(repo.detectedModes.single, GoodsImportMode.mixed);
+      expect(repo.submittedModes.single, GoodsImportMode.mixed);
+      expect(repo.submittedSelections.single, {'goods:2'});
+      expect(repo.submittedExclusions.single, isEmpty);
+      expect(repo.submittedBytes.single, same(repo.detectedBytes.single));
+      expect(find.text('已写入 2 条货品'), findsOneWidget);
+      expect(find.text('新增 1'), findsOneWidget);
+      expect(find.text('修改 1'), findsOneWidget);
+      expect(find.textContaining('保留原值'), findsNothing);
+    },
+  );
 
   testWidgets(
     'explicit keep survives returning and a rejected update submission',
@@ -589,10 +617,11 @@ void main() {
   }
 
   testWidgets(
-    'conflicts preserve stored values until replacement is explicitly chosen',
+    'mixed conflicts retain original values when keep is explicitly chosen',
     (tester) async {
       final repo = _Repository();
       await _open(tester, repo);
+      await _tapKey(tester, 'goods-import-keep-selected');
       await _confirm(tester);
       expect(repo.submittedSelections.single, isEmpty);
       expect(repo.submittedPlans.single, 'plan:first');

@@ -1146,7 +1146,21 @@ void main() {
       await _tap(tester, find.byKey(const ValueKey('company-files-create')));
       expect(find.byType(CompanyFileCreateFolderDialog), findsOneWidget);
       await tester.enterText(_input('company-folder-name'), '受限模板');
-      await _tap(tester, find.byKey(const Key('initial-access-specific')));
+      // Complete editing before scrolling so caret reveal cannot reclaim it.
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      expect(
+        tester
+            .widget<EditableText>(_input('company-folder-name'))
+            .focusNode
+            .hasFocus,
+        isFalse,
+      );
+      final specificReaders = find.descendant(
+        of: find.byKey(const Key('initial-access-specific')),
+        matching: find.byWidgetPredicate((widget) => widget is Radio),
+      );
+      await _tap(tester, specificReaders);
       await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
       await _tap(tester, find.text('查看人(10010)'));
       await _tap(tester, find.byKey(const Key('initial-access-add-allow')));

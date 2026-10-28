@@ -31,6 +31,9 @@ public class ProfileChangeQueryService {
     private final ProfileChangeAccess access;
     private final TxSessionVars tx;
     private final HrNoticePort hrNotice;
+    private ProfileChangeBatchQuery batchQuery;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setBatchQuery(ProfileChangeBatchQuery query) { batchQuery = query; }
 
     /** 当前登录人绑定的员工档案 id。submitted_by 的 FK 指向 employees(id)，不能用 users.id 查。 */
     private UUID requireEmployeeId() {
@@ -44,11 +47,19 @@ public class ProfileChangeQueryService {
     /** 员工自查列表。 */
     @Transactional(readOnly = true)
     public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(int page, int size, String status) {
+        return myList(page, size, status, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(int page, int size, String status,
+            Map<String, String> columns, String sort, String order) {
         UUID employeeId = requireEmployeeId();
         Pageable pageable = Pageables.of(page, size);
         String effectiveStatus = normalizeStatus(status);
         if (effectiveStatus == null) effectiveStatus = "pending";
-        Page<UUID> p = repo.findBatchIds(effectiveStatus, employeeId, null, null, pageable);
+        Page<UUID> p = columns.isEmpty() && sort == null
+                ? repo.findBatchIds(effectiveStatus, employeeId, null, null, pageable)
+                : batchQuery.page(effectiveStatus, employeeId, null, null, page, size, columns, sort, order);
         List<ProfileChangeDto.MyListItem> items = new ArrayList<>();
         for (var e : pageBatches(p, employeeId).entrySet()) {
             List<ProfileChangeRequest> rs = e.getValue();
@@ -102,12 +113,21 @@ public class ProfileChangeQueryService {
     @Transactional(readOnly = true)
     public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(
             int page, int size, String status, UUID employeeId, UUID departmentId) {
+        return hrList(page, size, status, employeeId, departmentId, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(
+            int page, int size, String status, UUID employeeId, UUID departmentId,
+            Map<String, String> columns, String sort, String order) {
         access.requireHr();
         Pageable pageable = Pageables.of(page, size);
         // 默认待审队列；指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效
         String effectiveStatus = normalizeStatus(status);
         if (effectiveStatus == null && employeeId == null) effectiveStatus = "pending";
-        Page<UUID> p = repo.findBatchIds(effectiveStatus, null, employeeId, departmentId, pageable);
+        Page<UUID> p = columns.isEmpty() && sort == null
+                ? repo.findBatchIds(effectiveStatus, null, employeeId, departmentId, pageable)
+                : batchQuery.page(effectiveStatus, null, employeeId, departmentId, page, size, columns, sort, order);
         Map<UUID, List<ProfileChangeRequest>> byBatch = pageBatches(p, null);
         // 员工姓名/部门批量回填（避免逐批 findById 的 N+1）
         Map<UUID, Employee> emps = mapper.employeesById(

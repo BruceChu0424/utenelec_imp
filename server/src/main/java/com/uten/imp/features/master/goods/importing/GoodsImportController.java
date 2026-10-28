@@ -19,6 +19,7 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Map;
 import java.util.UUID;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
@@ -47,8 +48,10 @@ public class GoodsImportController {
 
     @PostMapping(value = "/detect", consumes = "!application/json")
     @PreAuthorize("hasAuthority('goods:import')")
-    public GoodsImportReport detect(HttpServletRequest request) throws IOException {
-        return withImportSlot(() -> service.detect(read(request)));
+    public GoodsImportReport detect(@RequestParam(required = false) String mode,
+                                    HttpServletRequest request) throws IOException {
+        GoodsImportMode parsed = GoodsImportMode.parse(mode);
+        return withImportSlot(() -> service.detect(read(request), Map.of(), Set.of(), Map.of(), parsed));
     }
 
     @PostMapping(value = "/detect", consumes = "application/json")
@@ -60,13 +63,15 @@ public class GoodsImportController {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入检测缺少文件，请重新选择");
             }
             if (selection.file().length > MAX_BYTES) throw tooLarge();
+            GoodsImportMode mode = GoodsImportMode.parse(selection.mode());
             if (!empty(selection.cellCorrections())) {
                 return service.detect(selection.file(), selection.codeCorrections(), selection.excludedRowNums(),
-                        selection.cellCorrections());
+                        selection.cellCorrections(), mode);
             }
             return empty(selection.codeCorrections()) && empty(selection.excludedRowNums())
-                    ? service.detect(selection.file())
-                    : service.detect(selection.file(), selection.codeCorrections(), selection.excludedRowNums());
+                    ? service.detect(selection.file(), Map.of(), Set.of(), Map.of(), mode)
+                    : service.detect(selection.file(), selection.codeCorrections(), selection.excludedRowNums(),
+                            Map.of(), mode);
         });
     }
 
@@ -74,8 +79,11 @@ public class GoodsImportController {
     @PreAuthorize("hasAuthority('goods:import')")
     public GoodsImportResult commit(@RequestParam UUID planId,
                                     @RequestParam(required = false) String filename,
+                                    @RequestParam(required = false) String mode,
                                     HttpServletRequest request) throws IOException {
-        return withImportSlot(() -> service.commit(planId, read(request), filename));
+        GoodsImportMode parsed = GoodsImportMode.parse(mode);
+        return withImportSlot(() -> service.commit(planId, read(request), filename, Set.of(),
+                Map.of(), Set.of(), Map.of(), parsed));
     }
 
     /** A separate mapping condition preserves the existing Java/controller contract. */
@@ -84,8 +92,11 @@ public class GoodsImportController {
     public GoodsImportResult commitReviewed(@RequestParam UUID planId,
                                             @RequestParam(required = false) String filename,
                                             @RequestParam Set<String> replaceRowKeys,
+                                            @RequestParam(required = false) String mode,
                                             HttpServletRequest request) throws IOException {
-        return withImportSlot(() -> service.commit(planId, read(request), filename, replaceRowKeys));
+        GoodsImportMode parsed = GoodsImportMode.parse(mode);
+        return withImportSlot(() -> service.commit(planId, read(request), filename, replaceRowKeys,
+                Map.of(), Set.of(), Map.of(), parsed));
     }
 
     @PostMapping(value = "/commit", consumes = "application/json")
@@ -104,14 +115,16 @@ public class GoodsImportController {
             }
             Set<String> keys = selection.replaceRowKeys() == null
                     ? Set.of() : Set.copyOf(selection.replaceRowKeys());
+            GoodsImportMode mode = GoodsImportMode.parse(selection.mode());
             if (!empty(selection.cellCorrections())) {
                 return service.commit(selection.planId(), selection.file(), selection.filename(), keys,
-                        selection.codeCorrections(), selection.excludedRowNums(), selection.cellCorrections());
+                        selection.codeCorrections(), selection.excludedRowNums(), selection.cellCorrections(), mode);
             }
             return empty(selection.codeCorrections()) && empty(selection.excludedRowNums())
-                    ? service.commit(selection.planId(), selection.file(), selection.filename(), keys)
+                    ? service.commit(selection.planId(), selection.file(), selection.filename(), keys,
+                            Map.of(), Set.of(), Map.of(), mode)
                     : service.commit(selection.planId(), selection.file(), selection.filename(), keys,
-                            selection.codeCorrections(), selection.excludedRowNums());
+                            selection.codeCorrections(), selection.excludedRowNums(), Map.of(), mode);
         });
     }
 

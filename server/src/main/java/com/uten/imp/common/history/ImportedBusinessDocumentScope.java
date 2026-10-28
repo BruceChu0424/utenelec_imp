@@ -38,14 +38,18 @@ public final class ImportedBusinessDocumentScope {
 
     /** The database function also recognizes provenance-only imports and imported parent ownership. */
     public static Predicate predicate(Root<?> root, CriteriaBuilder cb) {
-        Origin origin = origin();
+        return predicate(root,cb,origin());
+    }
+
+    /** Explicit column origin uses the same provenance fact as the surrounding list scope. */
+    public static Predicate predicate(Root<?> root,CriteriaBuilder cb,Origin origin) {
         if (origin == Origin.ALL) return cb.conjunction();
         var imported = imported(root, cb);
         return origin == Origin.LEGACY ? cb.isTrue(imported) : cb.isFalse(imported);
     }
 
     /** Action queues and source selectors never inherit a caller's historical-list scope. */
-    public static Predicate nativeOnly(Root<?> root, CriteriaBuilder cb) { return cb.isFalse(imported(root, cb)); }
+    public static Predicate nativeOnly(Root<?> root, CriteriaBuilder cb) { return predicate(root,cb,Origin.CURRENT); }
 
     /** Existing native-history segments must not hide source 0/-1 imports. */
     public static Predicate lifecycle(Root<?> root, CriteriaBuilder cb, Predicate nativeLifecycle) {

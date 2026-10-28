@@ -27,15 +27,17 @@ public class PermissionTemplateService {
     private final PermissionRepository permissions;
     private final AdminUserSupport support;
     private final PermissionChangeAudit audit;
+    private final PermissionTemplateBindingService bindings;
     private final TxSessionVars tx;
+    private final PermissionTemplateAssignmentService assignments;
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public List<Template> list() {
         transfer.requireActor();
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("SELECT id,name,description,permission_codes::text,row_version,updated_at::text FROM permission_templates WHERE NOT is_deleted ORDER BY lower(name),id").getResultList();
-        return rows.stream().map(this::decode).toList();
+        Map<UUID,List<Binding>> assigned=bindings.list().stream().collect(Collectors.groupingBy(Binding::templateId));
+        return rows.stream().map(row -> decode(row,assigned.getOrDefault(idOf(row),List.of()))).toList();
     }
-
     @Transactional public Template create(Save request) { return save(UUID.randomUUID(),request,true); }
     @Transactional public Template update(UUID id,Save request) { return save(id,request,false); }
 
@@ -48,11 +50,20 @@ public class PermissionTemplateService {
         String description=request.description()==null?"":request.description().trim();
         if(name.isBlank() || name.length()>80 || description.length()>1000) throw invalid("模板名称为 1 至 80 字，说明不超过 1000 字");
         Set<String> codes=validate(request.permissions());
+        if(!create) assignments.validateLinkedDepartments(id,codes);
         long same=((Number)em.createNativeQuery("SELECT count(*) FROM permission_templates WHERE NOT is_deleted AND lower(btrim(name))=lower(:name) AND id<>:id")
                 .setParameter("name",name).setParameter("id",id).getSingleResult()).longValue();
         if(same>0) throw invalid("已存在同名权限模板，请使用其他名称");
         if(create && ((Number)em.createNativeQuery("SELECT count(*) FROM permission_templates WHERE NOT is_deleted").getSingleResult()).longValue()>=1000) throw invalid("权限模板最多保存 1000 个，请先删除不再使用的模板");
         if(previous!=null && name.equals(previous.name()) && description.equals(previous.description()) && codes.equals(new TreeSet<>(previous.permissions()))) return previous;
+        if(previous!=null && bindings.list().stream().anyMatch(binding->binding.templateId().equals(id) && !binding.legacySnapshot())) {
+            Set<String> confirmed=new HashSet<>(request.sensitiveConfirmations()==null?List.of():request.sensitiveConfirmations());
+            Set<String> added=new TreeSet<>(codes);added.removeAll(previous.permissions());
+            Map<String,Permission> catalog=permissions.findAll().stream().collect(Collectors.toMap(Permission::getCode,permission->permission));
+            for(String code:added) if(!GrantPolicy.bulkEligible(catalog.get(code).grantPolicies()) && !confirmed.contains(code)) {
+                throw invalid("模板已有关联对象，请逐项确认本次新增的敏感权限："+catalog.get(code).getName());
+            }
+        }
         UUID actor=support.requireCurrentUser().getId();
         if(create) em.createNativeQuery("INSERT INTO permission_templates(id,name,description,permission_codes,created_by,updated_by) VALUES (:id,:name,:description,CAST(:codes AS jsonb),:actor,:actor)")
                 .setParameter("id",id).setParameter("name",name).setParameter("description",description).setParameter("codes",encode(codes)).setParameter("actor",actor).executeUpdate();
@@ -61,6 +72,12 @@ public class PermissionTemplateService {
         Set<String> before=previous==null?Set.of():new TreeSet<>(previous.permissions());
         audit.record(create?"permission_template_create":"permission_template_update","permission_templates",id.toString(),difference(codes,before),difference(before,codes),
                 Map.of("name",name,"description",description,"version",create?0:previous.version()+1));
+        // 模板修改后差量同步到全部绑定账号（个人收回优先，2026-10-27 用户口径）。
+        if(previous!=null && !before.equals(codes)) {
+            var linked=bindings.list().stream().filter(binding->binding.templateId().equals(id) && !binding.legacySnapshot()).toList();
+            if(!linked.isEmpty()) audit.record("permission_template_sync","permission_templates",id.toString(),
+                    difference(codes,before),difference(before,codes),Map.of("targets",linked,"source","independent_live_template"));
+        }
         return require(id,null,false);
     }
 
@@ -68,24 +85,24 @@ public class PermissionTemplateService {
         transfer.lockConfiguration(); transfer.requireActor(); tx.bind();
         if(request==null || request.expectedVersion()==null) throw invalid("缺少模板版本");
         Template previous=require(id,request.expectedVersion(),true);
+        assignments.detachTemplate(id);
         em.createNativeQuery("UPDATE permission_templates SET is_deleted=true,row_version=row_version+1,updated_by=:actor,updated_at=now() WHERE id=:id")
                 .setParameter("id",id).setParameter("actor",support.requireCurrentUser().getId()).executeUpdate();
+        // 删除模板解除关联：已应用账号保持当前权限，仅不再跟随后续变更（本模板也已不可再改）。
         audit.record("permission_template_delete","permission_templates",id.toString(),List.of(),previous.permissions(),Map.of("name",previous.name(),"version",previous.version()+1));
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Preview preview(UUID targetId,Apply request) {
-        transfer.requireActor(); validateApply(request);
-        Template template=require(request.templateId(),request.templateVersion(),false);
-        return transfer.previewTemplate(targetId,template.id(),template.version(),template.permissions(),request.mode()==ApplyMode.MERGE);
+        validateApply(request);
+        return assignments.preview(new BatchApply(request.templateId(),request.templateVersion(),request.mode(),List.of(targetId),List.of()));
     }
 
     @Transactional public Result apply(UUID targetId,Commit commit) {
-        transfer.lockConfiguration(); transfer.requireActor();
         if(commit==null) throw invalid("缺少模板应用请求");
-        Apply request=commit.request(); validateApply(request);
-        Template template=require(request.templateId(),request.templateVersion(),true);
-        return transfer.applyTemplate(targetId,template.id(),template.version(),template.permissions(),request.mode()==ApplyMode.MERGE,commit.expectedFingerprint(),commit.sensitiveConfirmations());
+        Apply request=commit.request();validateApply(request);
+        return assignments.apply(new BatchCommit(new BatchApply(request.templateId(),request.templateVersion(),request.mode(),List.of(targetId),List.of()),
+                commit.expectedFingerprint(),commit.sensitiveConfirmations()));
     }
 
     private void validateApply(Apply request) {
@@ -102,12 +119,15 @@ public class PermissionTemplateService {
             throw exception;
         }
         if(rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"权限模板已删除或不存在，请刷新模板列表");
-        Template template=decode(rows.getFirst());
+        Template template=decode(rows.getFirst(),bindings.list().stream().filter(binding->binding.templateId().equals(id)).toList());
         if(expected!=null && template.version()!=expected) throw conflict();
         return template;
     }
-    private Template decode(Object[] row) {
-        try { return new Template((UUID)row[0],row[1].toString(),row[2].toString(),mapper.readValue(row[3].toString(),new TypeReference<List<String>>(){}),((Number)row[4]).longValue(),row[5].toString()); }
+    private static UUID idOf(Object[] row) { return (UUID) row[0]; }
+    private Template decode(Object[] row,List<Binding> assigned) {
+        try { return new Template((UUID)row[0],row[1].toString(),row[2].toString(),mapper.readValue(row[3].toString(),new TypeReference<List<String>>(){}),((Number)row[4]).longValue(),row[5].toString(),assigned.size(),
+                    assigned.stream().filter(binding->binding.kind().equals("user")).count(),
+                    assigned.stream().filter(binding->binding.kind().equals("department")).count()); }
         catch(Exception exception) { throw new IllegalStateException("Invalid permission template storage",exception); }
     }
     private Set<String> validate(List<String> requested) {

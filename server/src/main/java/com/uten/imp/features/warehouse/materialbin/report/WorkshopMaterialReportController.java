@@ -66,6 +66,9 @@ public class WorkshopMaterialReportController {
                                           @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
                                           @RequestParam(defaultValue = "1") int page,
                                           @RequestParam(defaultValue = "50") int size) {
-        return reports.ledger(binId, from, to, page, size);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var headers=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        return request==null?reports.ledger(binId,from,to,page,size):reports.ledger(binId,from,to,page,size,headers,
+                request.getParameter("kind"),request.getParameter("sort"),request.getParameter("order"));
     }
 }

@@ -34,6 +34,8 @@ class GoodsQuoteHistoryAuthorizationTest {
                 SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                         "test", "unused", permissions.stream().map(SimpleGrantedAuthority::new).toList()));
                 assertThatThrownBy(() -> service.list(UUID.randomUUID(), 1, 20)).isInstanceOf(AccessDeniedException.class);
+                assertThatThrownBy(() -> service.list(UUID.randomUUID(), 1, 20,
+                        java.util.Map.of("price", ">0"), "price", "desc")).isInstanceOf(AccessDeniedException.class);
             }
             verifyNoInteractions(context.getBean(NamedParameterJdbcTemplate.class));
         }

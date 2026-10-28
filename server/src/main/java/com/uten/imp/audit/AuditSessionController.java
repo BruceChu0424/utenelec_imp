@@ -29,6 +29,8 @@ public class AuditSessionController {
     private final AuditSessionQueryService queryService;
     private final AuditService auditService;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private jakarta.servlet.http.HttpServletRequest request;
 
     @GetMapping
     @PreAuthorize("hasAuthority('audit_log:view')")
@@ -42,8 +44,10 @@ public class AuditSessionController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) Long snapshotAuditId) {
         UUID parsedActorId = parseCanonicalUuid(actorId, "人员编号");
-        AuditSessionPageResponse response = queryService.sessions(
-                parsedActorId, dateFrom, dateTo, page, size, snapshotAuditId);
+        var headers = AuditSessionHeaderQuery.from(request);
+        AuditSessionPageResponse response = headers.active()
+                ? queryService.sessions(parsedActorId, dateFrom, dateTo, page, size, snapshotAuditId, headers)
+                : queryService.sessions(parsedActorId, dateFrom, dateTo, page, size, snapshotAuditId);
         logAccess(
                 "view_audit_session_list",
                 "人员=" + parsedActorId

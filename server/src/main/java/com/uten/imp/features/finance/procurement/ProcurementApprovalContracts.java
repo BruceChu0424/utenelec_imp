@@ -152,8 +152,8 @@ public final class ProcurementApprovalContracts {
     }
 
     /**
-     * V486 批准后改量请求：逐行新数量（old→new 差异行）。仅已批准订单可用，
-     * 服务端校验下游锁定量后立即生效并自动创建财务复核 case。
+     * 逐行数量修订（old→new 差异行）：采购支持待审原单修订，已批准订单进入复核，
+     * 服务端在同一事务校验来源份额、实物锁定量和审批版本。
      */
     public record OrderQtyChangeRequest(
             @NotEmpty List<@Valid OrderQtyChangeItem> items) {

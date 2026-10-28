@@ -125,6 +125,7 @@ class ProfileChangeBatchPaginationPostgresTest {
         doAnswer(call -> { var row = (ProfileChangeRequest) call.getArgument(1); if ("fullName".equals(row.getFieldCode())) { ((com.uten.imp.features.org.employee.Employee) call.getArgument(0)).setFullName(row.getNewValueEnc()); } return null; })
                 .when(applier).applyReviewedChange(any(), any());
         queries = new ProfileChangeQueryService(repository, mapper, codec, access, tx, notices);
+        queries.setBatchQuery(new ProfileChangeBatchQuery(entityManager));
         UserAccountRepository accounts = mock(UserAccountRepository.class);
         when(accounts.findByEmployeeId(any())).thenReturn(Optional.empty());
         reviews = new ProfileChangeReviewService(repository, employees, accounts,
@@ -183,6 +184,26 @@ class ProfileChangeBatchPaginationPostgresTest {
         assertEquals(1, mine.totalElements());
         assertEquals(newest, mine.items().getFirst().batchId());
         assertEquals(3, mine.items().getFirst().itemCount());
+    }
+
+    @Test
+    void headerSearchUsesCompleteBatchGrainAndChineseDatesBeforePaging() {
+        UUID matched = batch(employeeA, "pending", 3, OffsetDateTime.parse("2026-10-27T16:30:00Z"));
+        batch(employeeA, "pending", 1, OffsetDateTime.parse("2026-10-28T01:00:00Z"));
+        batch(employeeB, "pending", 3, OffsetDateTime.parse("2026-10-27T16:30:00Z"));
+        batch(employeeA, "pending", 3, OffsetDateTime.parse("2026-10-27T15:59:59Z"));
+        entityManager.clear();
+
+        var result = queries.myList(1, 1, "pending", java.util.Map.of(
+                "itemCount", ">=2", "fields", "测试字段", "submittedAt", "2026-10-28"),
+                "itemCount", "desc");
+        assertEquals(1, result.totalElements());
+        assertEquals(matched, result.items().getFirst().batchId());
+        assertEquals(3, result.items().getFirst().itemCount());
+        assertEquals(3, result.items().getFirst().fieldCodes().size());
+        assertEquals(1, queries.hrList(1, 1, "pending", null, departmentA,
+                java.util.Map.of("fieldCodes", "testField1", "submittedAt", "2026-10-28"),
+                null, null).totalElements());
     }
 
     @Test

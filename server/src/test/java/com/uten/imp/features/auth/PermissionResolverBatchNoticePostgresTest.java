@@ -148,4 +148,16 @@ class PermissionResolverBatchNoticePostgresTest {
         jdbc.update("UPDATE employees SET department_id=? WHERE id=?",data.other,manager);
         assertThat(resolver.usersGrantedAll(List.of(target),REQUIRED)).isEmpty();
     }
+    @Test void independentUserAndDepartmentTemplateSourcesStayCurrentAndPersonalRevokesStillWin() {
+        UUID actor=data.account(data.company,false),direct=data.account(data.other,false),member=data.account(data.finance,false);
+        UUID denied=data.account(data.finance,false),template=UUID.randomUUID();
+        jdbc.update("INSERT INTO permission_templates(id,name,permission_codes,created_by,updated_by) VALUES (?,?,'[\"sales_order_finance:view\",\"sales_order_finance:confirm\"]'::jsonb,?,?)",template,"Template",actor,actor);
+        jdbc.update("INSERT INTO user_permission_template_bindings(user_id,template_id,bound_by) VALUES (?,?,?)",direct,template,actor);
+        jdbc.update("INSERT INTO department_permission_template_bindings(department_id,template_id,bound_by) VALUES (?,?,?)",data.finance,template,actor);
+        data.override(denied,data.confirm,"revoke","SUPER_ADMIN_CONFIRMED");
+        assertThat(resolver.usersGrantedAll(List.of(direct,member,denied),REQUIRED)).containsExactly(direct,member);
+        jdbc.update("UPDATE permission_templates SET permission_codes='[\"sales_order_finance:view\"]'::jsonb WHERE id=?",template);
+        assertThat(resolver.usersGrantedAll(List.of(direct,member,denied),REQUIRED)).isEmpty();
+        assertThat(resolver.usersGrantedAll(List.of(direct,member,denied),Set.of(BatchPermissionFixture.VIEW))).containsExactly(direct,member,denied);
+    }
 }

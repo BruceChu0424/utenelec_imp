@@ -58,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractPreStockShortDeliveryEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
@@ -266,7 +267,7 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);
-        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
+        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);fixture.loginAs(w.superAdminUserId());
         fixture.drawAndIssueSubcontract(itemId,new BigDecimal("100"),tag+"-draw-"+itemId);
         return new Ordered(orderId,itemId);
     }

@@ -72,6 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractToleranceAutoSettleEndToEndTest {
 
     @DynamicPropertySource
@@ -122,7 +123,7 @@ class SubcontractToleranceAutoSettleEndToEndTest {
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);
         fixture.loginAs(reviewer);
-        fixture.approvePendingFinance("SUBCONTRACT", orderId);
+        fixture.approvePendingFinance("SUBCONTRACT", orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);
         fixture.loginAs(w.superAdminUserId());
 
         // ③ 我方供料全部发完。severity 判定的前提是 materialFullyIssued(): 料没发完一律不判短交,

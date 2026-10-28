@@ -404,6 +404,7 @@ public class AuditQueryService {
                 ? actorDirectory.findUserIdsByNameKeyword(criteria.keyword()) : java.util.Set.of();
         Specification<AuditLog> base = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            AuditEventHeaderQuery.append(root, cb, ps, criteria.columnSearch());
             if (hasText(criteria.action())) {
                 ps.add(cb.like(cb.lower(root.get("action")),
                         criteria.action().trim().toLowerCase(Locale.ROOT) + "%"));
@@ -879,6 +880,6 @@ public class AuditQueryService {
                                                 : List.of(value.getActorAccount()))
                                 .forActor(value.getActorId(), value.getActorAccount())))
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.NOT_FOUND, "审计日志不存在或已归档"));
+                        ErrorCode.NOT_FOUND, "审计日志不存在"));
     }
 }

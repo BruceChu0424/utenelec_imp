@@ -26,4 +26,5 @@ public record EffectivePermissionsDto(
         // （超管恒为全量，个人覆盖对超管无意义，requireNotSuperAdmin 也已拦截写入）
         boolean superAdmin,
         Map<String, List<String>> requiredPermissions,
-        Map<String, List<String>> missingDependencies) {}
+        Map<String, List<String>> missingDependencies,
+        List<String> templatePermissions) {}

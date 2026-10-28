@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.dto;
 
+import com.uten.imp.common.web.ContactSensitiveFilter;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
 

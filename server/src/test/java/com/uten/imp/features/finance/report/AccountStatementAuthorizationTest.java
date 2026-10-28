@@ -32,7 +32,7 @@ class AccountStatementAuthorizationTest {
         PreAuthorize annotation = FinanceReportController.class.getDeclaredMethod(
                         "accountStatement", UUID.class, LocalDate.class, LocalDate.class,
                         String.class, int.class, int.class,
-                        String.class) // 2026-09-25 单号列统一：billNo 表头值筛选参数
+                        String.class, Map.class)
                 .getAnnotation(PreAuthorize.class);
 
         assertThat(annotation.value()).isEqualTo(REQUIRED);
@@ -50,10 +50,16 @@ class AccountStatementAuthorizationTest {
                 mock(FinanceStatementService.class),
                 mock(FinanceCostService.class),
                 mock(GlReportService.class),
-                mock(FixedAssetService.class));
+                mock(FixedAssetService.class),
+                mock(PartyMonthlySummaryService.class));
 
         assertThatThrownBy(() -> service.accountStatement(
                 UUID.randomUUID(), null, null, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("账户流水要求同时具备");
+        assertThatThrownBy(() -> service.accountStatement(
+                UUID.randomUUID(), null, null, null, 1, 20, null,
+                Map.of("search.balance", "invalid-probe")))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("账户流水要求同时具备");
         assertThatThrownBy(() -> service.export(

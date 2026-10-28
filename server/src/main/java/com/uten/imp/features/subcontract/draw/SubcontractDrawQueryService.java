@@ -1,11 +1,13 @@
 package com.uten.imp.features.subcontract.draw;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.FacetBucket;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawCapabilities;
 import com.uten.imp.features.subcontract.draw.SubcontractDrawContracts.DrawItemRequest;
@@ -59,6 +61,7 @@ public class SubcontractDrawQueryService {
 
     static final int MAX_BATCH_ITEMS = 50;
     private static final int MAX_PAGE_SIZE = 200;
+    private static final ObjectMapper FACET_JSON = new ObjectMapper();
 
     private final EntityManager em;
     private final SubcontractDocumentAccessPolicy access;
@@ -81,7 +84,17 @@ public class SubcontractDrawQueryService {
     public DrawTaskPage tasks(int page, int size, String keyword, String status,
                               UUID orderId, List<UUID> orderItemIds, List<UUID> applicationItemIds,
                               UUID applicationId) {
-        String statusFilter = statusFilter(status);
+        return tasks(page, size, keyword, status, orderId, orderItemIds, applicationItemIds, applicationId, null, null, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public DrawTaskPage tasks(int page, int size, String keyword, String status,
+                              UUID orderId, List<UUID> orderItemIds, List<UUID> applicationItemIds,
+                              UUID applicationId, String sort, String order, Map<String, String> parameters) {
+        var headers = new SubcontractDrawTableQuery(sort, order, parameters);
+        String statusFilter = "(" + statusFilter(status) + ")" + headers.sql(access.hasAuthority("subcontract_order:view"));
+        String colorScope = "(" + statusFilter(status) + ")"
+                + headers.sql(access.hasAuthority("subcontract_order:view"), "colorName");
         int pageSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int pageNo = Math.max(page, 1);
         Filters filters = filters(keyword, orderId, orderItemIds, applicationItemIds, applicationId);
@@ -96,21 +109,33 @@ public class SubcontractDrawQueryService {
                            COUNT(*) AS all_rows,
                            COUNT(*) FILTER (WHERE {STATUS_FILTER}) AS filtered_rows
                     FROM classified
+                ), color_buckets AS (
+                    SELECT NULLIF(color_name, '') AS value, COUNT(*) AS count
+                    FROM classified WHERE {COLOR_SCOPE}
+                    GROUP BY NULLIF(color_name, '')
+                ), color_facets AS (
+                    SELECT COALESCE(jsonb_agg(jsonb_build_object('value', value, 'count', count)
+                        ORDER BY value) FILTER (WHERE value IS NOT NULL), '[]'::jsonb)::text AS buckets,
+                        COALESCE(SUM(count) FILTER (WHERE value IS NULL), 0) AS null_count
+                    FROM color_buckets
                 ), page AS (
-                    SELECT *, {SEARCH_RANK} AS search_rank FROM classified WHERE {STATUS_FILTER}
-                    ORDER BY search_rank, status_rank, deliver_date ASC NULLS LAST, order_bill_no,
-                             line_no ASC NULLS LAST, order_item_id
+                    SELECT *, {SEARCH_RANK} AS search_rank
+                    FROM classified WHERE {STATUS_FILTER}
+                    ORDER BY search_rank, {HEADER_ORDER}
                     LIMIT :pageLimit OFFSET :pageOffset
                 )
                 SELECT counts.drawable_rows, counts.submitted_rows, counts.planning_rows,
                        counts.material_rows, counts.all_rows, counts.filtered_rows,
-                       {ROW_SELECT}
-                FROM counts LEFT JOIN page ON TRUE
-                ORDER BY page.search_rank, page.status_rank, page.deliver_date ASC NULLS LAST, page.order_bill_no,
-                         page.line_no ASC NULLS LAST, page.order_item_id
-                """).replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter).replace("{ROW_SELECT}", rowSelect("page"));
+                       {ROW_SELECT}, color_facets.buckets, color_facets.null_count
+                FROM counts CROSS JOIN color_facets LEFT JOIN page ON TRUE
+                ORDER BY page.search_rank, {OUTER_HEADER_ORDER}
+                """).replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter)
+                .replace("{COLOR_SCOPE}", colorScope)
+                .replace("{HEADER_ORDER}", headers.orderSql())
+                .replace("{OUTER_HEADER_ORDER}", headers.orderSql("page.")).replace("{ROW_SELECT}", rowSelect("page"));
         Query query = em.createNativeQuery(sql);
         filters.binder().accept(query);
+        headers.bind(query);
         query.setParameter("pageLimit", pageSize);
         query.setParameter("pageOffset", (long) (pageNo - 1) * pageSize);
         boolean canSubmit = access.hasAuthority(DRAW_AUTHORITY);
@@ -130,8 +155,19 @@ public class SubcontractDrawQueryService {
         counts.put("WAITING_MATERIAL", number(head[3]));
         counts.put("ALL", number(head[4]));
         int totalPages = (int) Math.ceil((double) filtered / pageSize);
+        List<FacetBucket> colors = new ArrayList<>();
+        if (head.length > 34 && head[34] != null) {
+            try {
+                for (var bucket : FACET_JSON.readTree(head[34].toString())) {
+                    colors.add(new FacetBucket(bucket.path("value").asText(), bucket.path("count").asLong(), null));
+                }
+            } catch (java.io.IOException failure) {
+                throw new IllegalStateException("Invalid subcontract draw color facets", failure);
+            }
+        }
         return new DrawTaskPage(new PageResponse<>(items, pageNo, pageSize, filtered, totalPages),
-                counts, new DrawCapabilities(canSubmit));
+                counts, new DrawCapabilities(canSubmit), Map.of("colorName", colors),
+                Map.of("colorName", head.length > 35 ? number(head[35]) : 0L));
     }
 
     /**

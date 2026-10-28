@@ -16,6 +16,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.usermodel.Sheet;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -40,9 +41,11 @@ class GoodsExportImportTemplateTest {
             new ExportColumn("code", "编号", ExportColumn.TEXT),
             new ExportColumn("categoryPath", "类别", ExportColumn.TEXT),
             new ExportColumn("spec", "规格", ExportColumn.TEXT),
-            new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
+            new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT),
+            new ExportColumn("bomRef", "组装信息ID", ExportColumn.TEXT));
     private static final List<Map<String, Object>> ROWS = List.of(Map.of(
-            "name", "原货品", "code", "OLD001", "categoryPath", "成品-电工", "spec", "10A", "goodsId", UUID.randomUUID().toString()));
+            "name", "原货品", "code", "OLD001", "categoryPath", "成品 / 电工", "spec", "10A",
+            "goodsId", UUID.randomUUID().toString(), "bomRef", ""));
 
     @Test
     void visibleColumnExportRetainsCategoryAndEditedTemplatePassesDetection() throws Exception {
@@ -51,19 +54,20 @@ class GoodsExportImportTemplateTest {
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(downloaded));
              var edited = new ByteArrayOutputStream()) {
             var sheet = workbook.getSheetAt(0);
-            assertEquals("类别", sheet.getRow(0).getCell(3).getStringCellValue());
-            assertEquals("成品-电工", sheet.getRow(1).getCell(3).getStringCellValue());
+            assertEquals("货品名称", sheet.getRow(0).getCell(0).getStringCellValue());
+            assertEquals("编号", sheet.getRow(0).getCell(1).getStringCellValue());
+            assertEquals("成品 / 电工", sheet.getRow(1).getCell(columnIndex(sheet, "类别")).getStringCellValue());
             sheet.getRow(1).removeCell(sheet.getRow(1).getCell(0));
             sheet.getRow(1).createCell(0).setCellValue("新增货品");
             sheet.getRow(1).removeCell(sheet.getRow(1).getCell(1));
             sheet.getRow(1).createCell(1).setCellValue("");
-            assertEquals("系统标识", sheet.getRow(0).getCell(4).getStringCellValue());
-            sheet.getRow(1).removeCell(sheet.getRow(1).getCell(4));
+            sheet.getRow(1).removeCell(sheet.getRow(1).getCell(columnIndex(sheet, "系统标识")));
             workbook.write(edited);
             try (var roundTrip = WorkbookFactory.create(new ByteArrayInputStream(edited.toByteArray()))) {
-                assertEquals("新增货品", roundTrip.getSheetAt(0).getRow(1).getCell(0).getStringCellValue());
-                assertEquals("", roundTrip.getSheetAt(0).getRow(1).getCell(1).getStringCellValue());
-                assertNull(roundTrip.getSheetAt(0).getRow(1).getCell(4), "A new goods template must not retain the previous system UUID");
+                var saved = roundTrip.getSheetAt(0);
+                assertEquals("新增货品", saved.getRow(1).getCell(0).getStringCellValue());
+                assertEquals("", saved.getRow(1).getCell(1).getStringCellValue());
+                assertNull(saved.getRow(1).getCell(columnIndex(saved, "系统标识")), "A new goods template must not retain the previous system UUID");
             }
             var report = importer().detect(edited.toByteArray());
             assertTrue(report.errors().isEmpty(), () -> report.errors().toString());
@@ -94,20 +98,20 @@ class GoodsExportImportTemplateTest {
              var edited = new ByteArrayOutputStream()) {
             var sheet = workbook.getSheetAt(0);
             if (removeCodeColumn) {
+                int codeColumn = columnIndex(sheet, "编号");
                 for (var row : sheet) {
-                    row.removeCell(row.getCell(1));
-                    row.shiftCellsLeft(2, row.getLastCellNum() - 1, 1);
+                    row.removeCell(row.getCell(codeColumn));
+                    row.shiftCellsLeft(codeColumn + 1, row.getLastCellNum() - 1, 1);
                 }
             } else {
                 // SXSSF exports inline strings. Replace the cell before editing
                 // so POI cannot leave the original inline value beside a new value.
                 var row = sheet.getRow(1);
-                row.removeCell(row.getCell(1));
-                row.createCell(1).setCellValue(incomingCode);
+                int codeColumn = columnIndex(sheet, "编号");
+                row.removeCell(row.getCell(codeColumn));
+                row.createCell(codeColumn).setCellValue(incomingCode);
             }
-            int idColumn = removeCodeColumn ? 3 : 4;
-            assertEquals("系统标识", sheet.getRow(0).getCell(idColumn).getStringCellValue());
-            assertEquals(ROWS.getFirst().get("goodsId"), sheet.getRow(1).getCell(idColumn).getStringCellValue(),
+            assertEquals(ROWS.getFirst().get("goodsId"), sheet.getRow(1).getCell(columnIndex(sheet, "系统标识")).getStringCellValue(),
                     "The user must be able to retain a historical system identifier in an edited export");
             workbook.write(edited);
             file = edited.toByteArray();
@@ -115,14 +119,13 @@ class GoodsExportImportTemplateTest {
         try (var savedWorkbook = WorkbookFactory.create(new ByteArrayInputStream(file))) {
             var sheet = savedWorkbook.getSheetAt(0);
             if (removeCodeColumn) {
-                assertEquals("规格", sheet.getRow(0).getCell(1).getStringCellValue());
-                assertEquals("10A", sheet.getRow(1).getCell(1).getStringCellValue());
+                assertEquals("10A", sheet.getRow(1).getCell(columnIndex(sheet, "规格")).getStringCellValue());
             } else {
-                assertEquals(incomingCode, sheet.getRow(1).getCell(1).getStringCellValue(),
+                assertEquals(incomingCode, sheet.getRow(1).getCell(columnIndex(sheet, "编号")).getStringCellValue(),
                         "The saved workbook must contain the user's edited number");
             }
             assertEquals(ROWS.getFirst().get("goodsId"),
-                    sheet.getRow(1).getCell(removeCodeColumn ? 3 : 4).getStringCellValue());
+                    sheet.getRow(1).getCell(columnIndex(sheet, "系统标识")).getStringCellValue());
         }
 
         var goods = mock(GoodsService.class);
@@ -174,17 +177,34 @@ class GoodsExportImportTemplateTest {
         byte[] bytes = writer().build(COLUMNS, ROWS, normalized, "master_goods");
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
             var header = workbook.getSheetAt(0).getRow(0);
-            assertEquals(List.of("规格", "货品名称", "编号", "类别", "系统标识"),
-                    java.util.stream.IntStream.range(0, 5).mapToObj(i -> header.getCell(i).getStringCellValue()).toList());
+            assertEquals(List.of("规格", "货品名称", "编号", "类别", "系统标识", "组装信息ID"),
+                    java.util.stream.IntStream.range(0, 6).mapToObj(i -> header.getCell(i).getStringCellValue()).toList());
         }
     }
 
     @Test
     void preservingRequiredColumnsDoesNotGrantSensitiveColumnAccess() {
+        for (String key : List.of("price", "discount")) {
+            var projection = new TableColumnProjection("goods", "master_goods", List.of(
+                    new TableColumnProjection.Column(key, "敏感列", null, null, null)));
+            assertThrows(ApiException.class, () -> writer().build(COLUMNS, ROWS,
+                    GoodsExportProjection.forImportTemplate(projection), "master_goods"));
+        }
+    }
+
+    @Test
+    void userHeaderOrderSurvivesRequiredImportColumnCompletion() throws Exception {
         var projection = new TableColumnProjection("goods", "master_goods", List.of(
-                new TableColumnProjection.Column("price", "价格", null, null, null)));
-        assertThrows(ApiException.class, () -> writer().build(COLUMNS, ROWS,
-                GoodsExportProjection.forImportTemplate(projection), "master_goods"));
+                new TableColumnProjection.Column("code", "编号", null, null, null),
+                new TableColumnProjection.Column("spec", "规格", null, null, null),
+                new TableColumnProjection.Column("name", "货品名称", null, null, null)));
+        byte[] bytes = writer().build(COLUMNS, ROWS,
+                GoodsExportProjection.forImportTemplate(projection), "master_goods");
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var header = workbook.getSheetAt(0).getRow(0);
+            assertEquals(List.of("编号", "规格", "货品名称", "类别", "系统标识", "组装信息ID"),
+                    java.util.stream.IntStream.range(0, 6).mapToObj(i -> header.getCell(i).getStringCellValue()).toList());
+        }
     }
 
     private static byte[] downloadFromSystemExporter() throws Exception {
@@ -212,6 +232,13 @@ class GoodsExportImportTemplateTest {
         when(provider.getObject()).thenReturn(new ExportTableProjectionService(mock(PlatformColumnService.class)));
         ReflectionTestUtils.setField(service, "projections", provider);
         return service;
+    }
+
+    private static int columnIndex(Sheet sheet, String label) {
+        for (var cell : sheet.getRow(0)) {
+            if (label.equals(cell.getStringCellValue())) return cell.getColumnIndex();
+        }
+        throw new AssertionError("Missing exported header: " + label);
     }
 
     private static GoodsImportService importer() {

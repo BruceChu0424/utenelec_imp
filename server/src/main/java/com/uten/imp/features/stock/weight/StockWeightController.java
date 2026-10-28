@@ -69,8 +69,12 @@ public class StockWeightController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String kind,
             @RequestParam(required = false) UUID supplierId,
-            @RequestParam(required = false) String stage) {
-        return estimates.observations(goodsId, page, size, kind, supplierId, stage);
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return estimates.observations(goodsId, page, size, kind, supplierId, stage,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     @PostMapping("/goods/{goodsId}/samples")

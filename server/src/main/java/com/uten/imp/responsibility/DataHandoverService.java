@@ -84,6 +84,28 @@ public class DataHandoverService {
         return buildOffboardingPreview(source, defaultTarget);
     }
 
+    /** Duplicate archival never transfers work or revives a departed employee. */
+    @Transactional(readOnly=true)
+    public DataHandoverPreview previewDuplicateArchive(UUID sourceEmployeeId,UUID retainedEmployeeId) {
+        requireDistinctSourceAndTarget(sourceEmployeeId,retainedEmployeeId);
+        authorization.requireAuthorized(sourceEmployeeId,retainedEmployeeId);
+        employee(retainedEmployeeId,false);
+        return buildOffboardingPreview(employee(sourceEmployeeId,false),null);
+    }
+
+    /** Reuse the complete responsibility inventory under the same locks as a handover. */
+    @Transactional
+    public DataHandoverPreview inspectDuplicateArchive(UUID sourceEmployeeId,UUID retainedEmployeeId) {
+        requireDistinctSourceAndTarget(sourceEmployeeId,retainedEmployeeId);
+        authorization.requireAuthorized(sourceEmployeeId,retainedEmployeeId);
+        lockEmployeeRows(List.of(sourceEmployeeId,retainedEmployeeId));
+        lockOffboardingExtraRows(sourceEmployeeId);
+        lockResponsibilityRows(sourceEmployeeId,ALL_SCOPE_SET,false);
+        clientEvents.lockViewerClients(sourceEmployeeId);
+        employee(retainedEmployeeId,false);
+        return buildOffboardingPreview(employee(sourceEmployeeId,false),null);
+    }
+
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public DataHandoverResult executeManual(DataHandoverRequest request) {
         return execute(request, "MANUAL", true);

@@ -9,6 +9,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.SystemMasterCategoryRegistry;
+import com.uten.imp.features.master.CategorySiblingNameGuard;
 import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import com.uten.imp.features.master.mould.MouldRepository;
 import com.uten.imp.features.master.mouldcategory.dto.*;
@@ -32,9 +33,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class MouldCategoryService {
-
-    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
-            "SELECT pg_advisory_xact_lock(hashtextextended('MOULD_CATEGORY_HIERARCHY',0))";
 
     private final MouldCategoryRepository repo;
     private final MouldRepository mouldRepo;
@@ -83,11 +81,15 @@ public class MouldCategoryService {
     @Transactional
     public MouldCategoryDetail create(MouldCategorySaveRequest req) {
         tx.bind();
+        lockCategoryHierarchy();
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MOULD,
+                name, req.getParentId(), null);
         MouldCategory c = new MouldCategory();
         c.setCode(masterCodeService.nextCode(MasterCodePrefix.MOULD_CATEGORY));
         c.setRemark(cleanRemark(req.getRemark()));
         c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
-        c.setName(req.getName());
+        c.setName(name);
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
             MouldCategory parent = requireCategory(req.getParentId());
@@ -111,15 +113,21 @@ public class MouldCategoryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "不能同时选择上级分类和移到顶层");
         }
-        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
-            lockCategoryHierarchy();
-        }
+        lockCategoryHierarchy();
         MouldCategory c = requireCategory(id);
         rejectSystemCategoryMutation(c);
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        UUID nameParentId = moveToRoot ? null : req.getParentId() != null
+                ? req.getParentId() : c.getParent() == null ? null : c.getParent().getId();
+        UUID oldNameParentId = c.getParent() == null ? null : c.getParent().getId();
+        if (!Objects.equals(c.getName(), name) || !Objects.equals(oldNameParentId, nameParentId)) {
+            CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MOULD,
+                    name, nameParentId, id);
+        }
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.MOULD, id);
-        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+        boolean editChanged = !Objects.equals(c.getName(), name)
                 || (req.getRemark() != null
                     && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
                 || (req.getCodePrefix() != null
@@ -128,7 +136,7 @@ public class MouldCategoryService {
         if (editChanged) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould_category:edit");
         }
-        c.setName(req.getName());
+        c.setName(name);
         if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
         if (req.getCodePrefix() != null) {
             c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
@@ -260,7 +268,7 @@ public class MouldCategoryService {
     }
 
     private void lockCategoryHierarchy() {
-        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
+        CategorySiblingNameGuard.lockHierarchy(em, CategorySiblingNameGuard.Kind.MOULD);
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

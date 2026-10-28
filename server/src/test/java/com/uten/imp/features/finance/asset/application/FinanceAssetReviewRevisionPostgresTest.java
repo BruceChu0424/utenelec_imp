@@ -25,6 +25,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.Set;
+import java.util.Map;
+import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.function.Function;
 import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
@@ -51,7 +55,94 @@ class FinanceAssetReviewRevisionPostgresTest {
     @Autowired FinanceAssetPostingService posting;
     @Autowired FinanceAssetQueryService queries;
     @Autowired ObjectMapper json;
+    @Autowired com.uten.imp.features.purchase.report.PurchaseReportService purchaseReports;
+    @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService subcontractReports;
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    /** Reuse this fully migrated application fixture to validate each real SQL projection. */
+    @Test
+    void everyProcurementReportHeaderExpressionExecutesAgainstTheCurrentPostgresSchema() {
+        Actor reader = actor("report-header");
+        login(reader, Set.of("purchase_report:price:view", "subcontract_report:price:view",
+                "purchase_order:view", "subcontract_order:view", "finance_asset:view"));
+        var from = java.time.LocalDate.of(2026, 1, 1);
+        var to = java.time.LocalDate.of(2026, 12, 31);
+        List<Function<Map<String,String>,com.uten.imp.features.purchase.report.ReportTableResponse>> purchase = List.of(
+                f -> purchaseReports.expediting(null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.requestDetail(null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.requestSummary(null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.orderDetail(null,null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.orderSummary(null,null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.receiptDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.receiptSummary(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.returnDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> purchaseReports.returnSummary(null,null,null,null,from,to,null,f,1,1,null,null));
+        for (var read : purchase) {
+            var schema = read.apply(Map.of());
+            Map<String,String> filter = new LinkedHashMap<>();
+            for (var column : schema.columns()) {
+                if (!schema.columnSearchKeys().contains(column.key())) continue;
+                filter.put("search." + column.key(), Set.of("number","money").contains(column.type())
+                        ? ">=0" : column.type().equals("date") ? "2026-10-01..2026-10-31" : "HEADER-NO-MATCH-" + UUID.randomUUID());
+            }
+            assertThat(read.apply(filter).rows()).isEmpty();
+            assertThat(schema.columnSearchKeys()).doesNotContain("finishedProductName", "__srcId");
+        }
+        List<Function<Map<String,String>,com.uten.imp.features.subcontract.report.ReportTableResponse>> subcontract = List.of(
+                f -> subcontractReports.orderDetail(null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.receiptDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.receiptSummary(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.returnDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.returnSummary(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.materialIssueDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.materialIssueSummary(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.materialReturnDetail(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.materialReturnSummary(null,null,null,null,from,to,null,f,1,1,null,null),
+                f -> subcontractReports.inOutStatus(null,from,to,null,1,1,f,"closingQty","desc"));
+        for (var read : subcontract) {
+            var schema = read.apply(Map.of());
+            Map<String,String> filter = new LinkedHashMap<>();
+            for (var column : schema.columns()) {
+                if (!schema.columnSearchKeys().contains(column.key())) continue;
+                filter.put("search." + column.key(), Set.of("number","money").contains(column.type())
+                        ? ">=0" : column.type().equals("date") ? "2026-10-01..2026-10-31" : "HEADER-NO-MATCH-" + UUID.randomUUID());
+            }
+            assertThat(read.apply(filter).rows()).isEmpty();
+            assertThat(schema.columnSearchKeys()).doesNotContain("docSeq", "step", "__srcId");
+        }
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void headerQueriesFilterAndSortTheWholeLedgerWithTheSameDisplayedBalance(boolean deferred) {
+        Actor maker = actor("header-query");
+        UUID category = category(deferred);
+        login(maker);
+        String token = "HEADER-" + UUID.randomUUID();
+        create(deferred, category, maker, token + "-100", token + " 低值", "100.00", null);
+        var middle = create(deferred, category, maker, token + "-200", token + " 中值", "200.00", null);
+        var high = create(deferred, category, maker, token + "-300", token + " 高值", "300.00", null);
+        Map<String, String> filters = Map.of(
+                "search.name", token,
+                "search.grossAmount", "150..350",
+                "search.balance", ">=200",
+                "sort", "grossAmount", "order", "asc");
+        var first = deferred
+                ? queries.listDeferredExpenses(null, "DRAFT", category, maker.department(), 1, 1, filters)
+                : queries.listFixedAssets(null, "DRAFT", category, maker.department(), 1, 1, filters);
+        var second = deferred
+                ? queries.listDeferredExpenses(null, "DRAFT", category, maker.department(), 2, 1, filters)
+                : queries.listFixedAssets(null, "DRAFT", category, maker.department(), 2, 1, filters);
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getItems()).extracting(AssetWorkbenchResponses.Summary::id).containsExactly(middle.id());
+        assertThat(second.getItems()).extracting(AssetWorkbenchResponses.Summary::id).containsExactly(high.id());
+        var row = first.getItems().getFirst();
+        assertThat(deferred ? row.remainingAmount() : row.netBookValue()).isEqualByComparingTo("200.00");
+        Map<String, String> nameOnly = Map.of("search.name", token + "-200");
+        var sourceIsNotName = deferred
+                ? queries.listDeferredExpenses(null, null, category, null, 1, 20, nameOnly)
+                : queries.listFixedAssets(null, null, category, null, 1, 20, nameOnly);
+        assertThat(sourceIsNotName.getItems()).isEmpty();
+    }
 
     @Test
     void postingAndReversalPermissionsStayIndependentThroughApprovedRunExecution() {
@@ -249,13 +340,15 @@ class FinanceAssetReviewRevisionPostgresTest {
         jdbc.update("""
                 INSERT INTO finance_asset_categories(id,object_type,code,name,cost_style_id,accumulated_style_id,expense_style_id,clearing_style_id,
                     default_method,default_months,default_salvage_rate,effective_from,status)
-                VALUES(?,?,?,'提交对照类别',?,?,?,?,'STRAIGHT_LINE',12,0.05,CURRENT_DATE,'ACTIVE')
-                """,id,deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET","REV-"+id,cost,deferred ? null : accumulated,expense,clearing);
+                VALUES(?,?,?,?,?,?,?,?,'STRAIGHT_LINE',12,0.05,CURRENT_DATE,'ACTIVE')
+                """,id,deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET","REV-"+id,
+                "提交对照类别-"+id,cost,deferred ? null : accumulated,expense,clearing);
         return id;
     }
     private UUID style(String type) {
         UUID id=UUID.randomUUID();
-        jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,'提交对照科目',?,'使用')",id,"AR-"+id,type);
+        jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,?,'使用')",
+                id,"AR-"+id,"提交对照科目-"+id,type);
         return id;
     }
     private Actor actor(String label) {

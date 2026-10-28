@@ -40,6 +40,55 @@ public class ProcurementApprovalReconfirmationService {
     private final BusinessEventPublisher events;
     private final SecurityContextCurrentUser currentUser;
 
+    public record PendingQuantityRevision(UUID caseId, long version, String snapshotHash) { }
+
+    /** The order coordinator is already held; use the same order -> case lock order as finance decisions. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PendingQuantityRevision lockPendingQuantityRevision(OrderSnapshot before) {
+        if (!"PURCHASE".equals(before.orderType())) throw new ApiException(ErrorCode.CONFLICT, "当前订单不支持待审改量");
+        var cases = jdbc.query("""
+                SELECT id, version, snapshot_hash FROM procurement_order_approval_cases
+                WHERE order_type='PURCHASE' AND order_id=? AND status='PENDING' AND request_type='ORDER'
+                FOR UPDATE
+                """, (rs, index) -> new PendingQuantityRevision(rs.getObject("id", UUID.class),
+                        rs.getLong("version"), rs.getString("snapshot_hash")), before.orderId());
+        if (cases.size() != 1 || !HashUtil.sha256(canonicalSnapshotJson(before)).equals(cases.getFirst().snapshotHash())) {
+            throw new ApiException(ErrorCode.CONFLICT, "订单待审内容已变化，请刷新后重试");
+        }
+        return cases.getFirst();
+    }
+
+    /** Amend one pending review in place, preserving its original facts in the append-only event history. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public UUID refreshPendingQuantityCase(OrderSnapshot after, PendingQuantityRevision pending, long changeCount) {
+        String json = canonicalSnapshotJson(after), hash = HashUtil.sha256(json);
+        UUID actorUser = currentUser.requireId(), actorEmployee = currentUser.requireEmployeeId();
+        int recorded = jdbc.update("""
+                INSERT INTO procurement_order_approval_events(id,case_id,event_type,actor_user_id,actor_employee_id,event_snapshot)
+                SELECT ?,id,'QUANTITY_CHANGED',?,?,jsonb_build_object(
+                    'pendingRevision',true,'previousVersion',version,'previousSnapshotHash',snapshot_hash,
+                    'previousSubmissionSnapshot',submission_snapshot,'previousDisplaySnapshot',display_snapshot,
+                    'snapshotHash',?,'changeCount',?)
+                FROM procurement_order_approval_cases
+                WHERE id=? AND order_type='PURCHASE' AND order_id=? AND status='PENDING'
+                  AND request_type='ORDER' AND version=? AND snapshot_hash=?
+                """, UUID.randomUUID(), actorUser, actorEmployee, hash, changeCount,
+                pending.caseId(), after.orderId(), pending.version(), pending.snapshotHash());
+        int changed = jdbc.update("""
+                UPDATE procurement_order_approval_cases SET amount_snapshot=?,submission_snapshot=CAST(? AS jsonb),
+                    snapshot_hash=?,display_snapshot=NULL,version=version+1,updated_at=now()
+                WHERE id=? AND order_type='PURCHASE' AND order_id=? AND status='PENDING'
+                  AND request_type='ORDER' AND version=? AND snapshot_hash=?
+                """, after.totalLocal(), json, hash, pending.caseId(), after.orderId(), pending.version(), pending.snapshotHash());
+        if (recorded != 1 || changed != 1) throw new ApiException(ErrorCode.CONFLICT, "财务审核状态已变化，请刷新后重试");
+        String eventType="PROCUREMENT_FINANCE_SUBMITTED";
+        events.publishOnce(eventType,"PROCUREMENT_APPROVAL_CASE",pending.caseId(),
+                Map.of("orderType",after.orderType(),"orderId",after.orderId(),"status","PENDING",
+                        "version",pending.version()+1,"changeCount",changeCount),
+                eventType+":"+pending.caseId()+":quantity:"+(pending.version()+1));
+        return pending.caseId();
+    }
+
     /**
      * 开立改量复核 case。必须运行在 change-qty 事务内；调用方保证订单已处于
      * 财务批准状态且快照为改后事实。

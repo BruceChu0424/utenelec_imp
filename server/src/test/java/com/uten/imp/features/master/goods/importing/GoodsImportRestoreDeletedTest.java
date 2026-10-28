@@ -24,8 +24,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 2026-10-19「删除后同编号不能导入」修复的契约：detect 把同编号软删行规划为恢复而不是
- * 冲突，commit 走 [GoodsService.restoreImported]（同 UUID 原编号复活），不再新建身份。
+ * 恢复契约（2026-10-28 收口为只认系统标识）：文件携带指向已软删货品的系统标识时，
+ * detect 规划为恢复而不是冲突，commit 走 [GoodsService.restoreImported]（同 UUID 原编号
+ * 复活），不再新建身份。编号本身不再触发匹配：无系统标识一律按新建处理，编号占用
+ * 在用货品即整行报「编号重复」。
  */
 class GoodsImportRestoreDeletedTest {
     @org.junit.jupiter.api.AfterEach void clearAuthentication() {
@@ -33,36 +35,61 @@ class GoodsImportRestoreDeletedTest {
     }
 
     @Test
-    void detect_plansRestoreInsteadOfConflictForASoftDeletedCode() throws Exception {
+    void detect_plansRestoreWhenTheWorkbookCarriesTheDeletedGoodsUuid() throws Exception {
         GoodsRepository goods = mock(GoodsRepository.class);
         UUID deletedId = UUID.randomUUID();
-        var deleted = new com.uten.imp.features.master.goods.Goods();
-        when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
-        when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc("208035801"))
-                .thenReturn(Optional.of(deleted));
-        when(goods.findRestorableDeletedIdsByCode("208035801")).thenReturn(List.of(deletedId));
-        deleted.setId(deletedId);
+        var deleted = deletedGoods(deletedId, "208035801");
+        when(goods.findById(deletedId)).thenReturn(Optional.of(deleted));
         GoodsImportService service = service(goods, null);
 
-        GoodsImportReport report = service.detect(workbook("208035801", "恢复货品", "成品"));
+        GoodsImportReport report = service.detect(workbook("208035801", "恢复货品", "成品", deletedId.toString()));
 
-        assertTrue(report.errors().isEmpty());
+        assertTrue(report.errors().isEmpty(), () -> report.errors().toString());
         assertEquals(1, report.readyToImport());
         assertEquals(1, report.restorableRows());
         assertTrue(report.planId() != null);
     }
 
     @Test
-    void detect_keepsTheConflictWhenTheCodeBelongsToALiveGoods() throws Exception {
+    void detect_treatsASoftDeletedCodeWithoutUuidAsANewRecord() throws Exception {
+        GoodsRepository goods = mock(GoodsRepository.class);
+        when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
+        when(goods.codeHasReuseHistory("208035801")).thenReturn(false);
+        GoodsImportService service = service(goods, null);
+
+        GoodsImportReport report = service.detect(workbook("208035801", "新建货品", "成品", null));
+
+        assertTrue(report.errors().isEmpty(), () -> report.errors().toString());
+        assertEquals(1, report.addedRows());
+        assertEquals(0, report.restorableRows());
+    }
+
+    @Test
+    void detect_reportsDuplicateCodeWhenNoUuidAndCodeBelongsToALiveGoods() throws Exception {
         GoodsRepository goods = mock(GoodsRepository.class);
         when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(true);
         GoodsImportService service = service(goods, null);
 
-        GoodsImportReport report = service.detect(workbook("208035801", "冲突货品", "成品"));
+        GoodsImportReport report = service.detect(workbook("208035801", "冲突货品", "成品", null));
 
         assertEquals(1, report.errors().size());
+        assertEquals("编号", report.errors().getFirst().column());
+        assertTrue(report.errors().getFirst().message().contains("编号重复"));
         assertEquals(0, report.restorableRows());
-        verify(goods, never()).findFirstByCodeAndDeletedTrueOrderByIdAsc(anyString());
+    }
+
+    @Test
+    void detect_rejectsAUuidWhoseCodeDisagreesWithTheDeletedGoods() throws Exception {
+        GoodsRepository goods = mock(GoodsRepository.class);
+        UUID deletedId = UUID.randomUUID();
+        when(goods.findById(deletedId)).thenReturn(Optional.of(deletedGoods(deletedId, "208035801")));
+        GoodsImportService service = service(goods, null);
+
+        GoodsImportReport report = service.detect(workbook("999999999", "恢复货品", "成品", deletedId.toString()));
+
+        assertEquals(1, report.errors().size());
+        assertEquals("系统标识", report.errors().getFirst().column());
+        assertEquals(0, report.restorableRows());
     }
 
     @Test
@@ -73,23 +100,26 @@ class GoodsImportRestoreDeletedTest {
         GoodsRepository goods = mock(GoodsRepository.class);
         GoodsService goodsService = mock(GoodsService.class);
         UUID deletedId = UUID.randomUUID();
-        var deleted = new com.uten.imp.features.master.goods.Goods();
-        deleted.setId(deletedId);
-        deleted.setDeleted(true);
+        var deleted = deletedGoods(deletedId, "208035801");
+        deleted.setName("恢复货品");
         when(goods.findById(deletedId)).thenReturn(Optional.of(deleted));
-        when(goods.existsByCodeAndDeletedFalse("208035801")).thenReturn(false);
-        when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc("208035801"))
-                .thenReturn(Optional.of(deleted));
-        when(goods.findRestorableDeletedIdsByCode("208035801")).thenReturn(List.of(deletedId));
         when(goodsService.restoreImported(any(UUID.class), any())).thenReturn(deletedId);
         GoodsImportService service = service(goods, goodsService);
 
-        byte[] xlsx = workbook("208035801", "恢复货品", "成品");
+        byte[] xlsx = workbook("208035801", "恢复货品", "成品", deletedId.toString());
         GoodsImportReport report = service.detect(xlsx);
         service.commit(report.planId(), xlsx, "恢复清单.xlsx");
 
         verify(goodsService).restoreImported(any(UUID.class), any());
         verify(goodsService, never()).saveImported(any());
+    }
+
+    private static com.uten.imp.features.master.goods.Goods deletedGoods(UUID id, String code) {
+        var deleted = new com.uten.imp.features.master.goods.Goods();
+        deleted.setId(id);
+        deleted.setCode(code);
+        deleted.setDeleted(true);
+        return deleted;
     }
 
     private static GoodsImportService service(GoodsRepository goods, GoodsService goodsService) {
@@ -114,7 +144,7 @@ class GoodsImportRestoreDeletedTest {
                 null, colors, null, units, em, currentUser, null);
     }
 
-    private static byte[] workbook(String code, String name, String category) throws Exception {
+    private static byte[] workbook(String code, String name, String category, String goodsId) throws Exception {
         try (XSSFWorkbook workbook = new XSSFWorkbook();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("货品");
@@ -122,10 +152,12 @@ class GoodsImportRestoreDeletedTest {
             header.createCell(0).setCellValue("编号");
             header.createCell(1).setCellValue("名称");
             header.createCell(2).setCellValue("类别");
+            header.createCell(3).setCellValue("系统标识");
             var row = sheet.createRow(1);
             row.createCell(0).setCellValue(code);
             row.createCell(1).setCellValue(name);
             row.createCell(2).setCellValue(category);
+            if (goodsId != null) row.createCell(3).setCellValue(goodsId);
             workbook.write(output);
             return output.toByteArray();
         }

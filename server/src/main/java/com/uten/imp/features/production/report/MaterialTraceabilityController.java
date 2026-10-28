@@ -33,6 +33,10 @@ public class MaterialTraceabilityController {
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return traceability.trace(subjectType,subjectId,direction,dateFrom,dateTo,page,size);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        String sort=request==null?null:request.getParameter("sort"),order=request==null?null:request.getParameter("order");
+        if(columns.isEmpty()&&sort==null)return traceability.trace(subjectType,subjectId,direction,dateFrom,dateTo,page,size);
+        return traceability.trace(subjectType,subjectId,direction,dateFrom,dateTo,page,size,columns,sort,order);
     }
 }

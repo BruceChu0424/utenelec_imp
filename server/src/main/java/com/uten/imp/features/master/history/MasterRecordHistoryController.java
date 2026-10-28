@@ -31,6 +31,8 @@ public class MasterRecordHistoryController {
       @RequestParam(required = false) String keyword,
       @RequestParam(required = false) String dateFrom,
       @RequestParam(required = false) String dateTo,
+      @RequestParam(required = false) String sourceType,
+      @RequestParam(required = false) String summaryKeyword,
       @RequestParam(defaultValue = "50") int size) {
     return service.search(
         entityType,
@@ -38,7 +40,7 @@ public class MasterRecordHistoryController {
         categoryId,
         cursor,
         new MasterRecordHistoryService.Filters(
-            action, actorId, actorKeyword, keyword, dateFrom, dateTo, size));
+            action, actorId, actorKeyword, keyword, dateFrom, dateTo, size, sourceType, summaryKeyword));
   }
 
   @PostMapping("/{id}/restore")

@@ -9,6 +9,7 @@ import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.AutomaticRequestPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.StepUpInterceptor;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -34,7 +35,7 @@ import java.util.UUID;
  * ({@code POST /api/auth/step-up})、改密时的原密码、进入切换人。连续输错达到「账号锁定阈值」
  * 即暂停验证「锁定时长」分钟, 并吊销当前会话 (被盗的会话不能继续高速试密码)。</p>
  *
- * <p>凭证是 256 位随机串, 只存哈希在本会话行上, 5 分钟有效, 核销一次即清空; 必须由签发它的
+ * <p>凭证是 256 位随机串, 只存哈希在本会话行上, 空闲 5 分钟失效, 连续操作续期; 必须由签发它的
  * 同一个人、同一个会话使用。模拟身份期间不能换取凭证。密码校验在事务外执行, 经过哈希并发闸门。</p>
  */
 @Service
@@ -84,7 +85,7 @@ public class StepUpService {
         this.dummyHash = passwordEncoder.encode("dummy-step-up-timing");
     }
 
-    /** 当前登录员工输入密码, 换取一张本会话专用、5 分钟、一次性的再认证凭证。 */
+    /** 当前登录员工输入密码，换取本会话专用、空闲 5 分钟失效的再认证凭证。 */
     public Grant issue(String password) {
         AuthUser principal = requireStaffSession();
         verifyPassword(principal.getId(), principal.getLoginAccount(), password,
@@ -98,7 +99,7 @@ public class StepUpService {
         return new Grant(raw, TOKEN_TTL.toSeconds());
     }
 
-    /** 核销当前请求携带的凭证 (由 {@code @RequiresStepUp} 拦截器或需要按内容决定的服务调用)。 */
+    /** 校验并续期当前凭证 (由 {@code @RequiresStepUp} 拦截器或按内容决定的服务调用)。 */
     public void consume(AuthUser principal, String rawToken) {
         if (principal == null || principal.isVisitor() || principal.getImpersonatedBy() != null
                 || principal.getSessionId() == null
@@ -109,11 +110,28 @@ public class StepUpService {
                 HashUtil.sha256(rawToken.strip()))) {
             throw new ApiException(ErrorCode.REAUTH_REQUIRED);
         }
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
+                && attributes.getResponse() != null) {
+            attributes.getResponse().setHeader(StepUpInterceptor.RENEWAL_HEADER,
+                    Long.toString(TOKEN_TTL.toSeconds()));
+        }
     }
 
+    /** 全局输入触发的有界活动保活；自动轮询不能延长授权，也不能签发新凭证。 */
+    public Activity activity() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes)
+                || AutomaticRequestPolicy.isAutomatic(attributes.getRequest())) {
+            throw new ApiException(ErrorCode.REAUTH_REQUIRED);
+        }
+        consumeFromCurrentRequest(requireStaffSession());
+        return new Activity(TOKEN_TTL.toSeconds());
+    }
+
+    public record Activity(long expiresInSeconds) {}
+
     /**
-     * 需要按请求内容决定是否再认证的写接口用 (如个人资料改手机号/姓名): 从当前请求头取凭证核销。
-     * 在调用方事务内核销, 业务随后失败回滚时凭证也随之恢复。
+     * 需要按请求内容决定是否再认证的写接口用 (如个人资料改手机号/姓名): 从当前请求头取凭证。
+     * 在调用方事务内校验续期，业务随后失败回滚时续期也随之回滚。
      */
     public void consumeFromCurrentRequest(AuthUser principal) {
         String raw = null;

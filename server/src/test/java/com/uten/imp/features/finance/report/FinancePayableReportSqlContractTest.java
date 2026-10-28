@@ -111,7 +111,8 @@ class FinancePayableReportSqlContractTest {
                 mock(FinanceStatementService.class),
                 mock(FinanceCostService.class),
                 mock(GlReportService.class),
-                mock(FixedAssetService.class)), sql);
+                mock(FixedAssetService.class),
+                mock(PartyMonthlySummaryService.class)), sql);
     }
 
     private record Fixture(FinanceReportService service, List<String> statements) {

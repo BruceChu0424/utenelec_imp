@@ -2,6 +2,7 @@ package com.uten.imp.features.master.search;
 
 import com.uten.imp.common.util.ColumnKeywordSearch;
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.NumericColumnFilter;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
@@ -21,8 +22,13 @@ public final class MasterColumnSearch {
     public static Predicate predicate(CriteriaBuilder cb, Expression<?> recordId,
                                       Domain domain, Map<String, String> searches) {
         Map<String, String> fields = fields(domain);
-        var terms = ColumnKeywordSearch.validate(searches, fields.keySet());
+        var numeric = numericFields(domain);
+        var allowed = new java.util.LinkedHashSet<>(fields.keySet());
+        allowed.addAll(numeric.keySet());
+        var terms = ColumnKeywordSearch.validate(searches, allowed);
         if (terms.isEmpty()) return cb.conjunction();
+        var numbers = new LinkedHashMap<String,NumericColumnFilter>();
+        terms.forEach((key,value) -> { if(numeric.containsKey(key)) numbers.put(key,NumericColumnFilter.parse(value)); });
         if (!(cb instanceof HibernateCriteriaBuilder hibernate)) {
             throw new IllegalStateException("Column keyword search requires the configured Hibernate Criteria provider");
         }
@@ -34,20 +40,48 @@ public final class MasterColumnSearch {
         List<Expression<?>> arguments = new ArrayList<>();
         arguments.add(recordId);
         for (var search : terms.entrySet()) {
+            if(numeric.containsKey(search.getKey())) continue;
             for (String term : KeywordSearch.terms(search.getValue())) {
                 sql.append(" AND (").append(fields.get(search.getKey())).append(" ILIKE ? ESCAPE '\\')");
                 arguments.add(hibernate.value(KeywordSearch.containsPattern(term)));
             }
         }
         sql.append("))");
-        return cb.isTrue(hibernate.sql(sql.toString(), Boolean.class, arguments.toArray(Expression<?>[]::new)));
+        Predicate text=cb.isTrue(hibernate.sql(sql.toString(), Boolean.class, arguments.toArray(Expression<?>[]::new)));
+        if(numbers.isEmpty()) return text;
+        var predicates=new ArrayList<Predicate>();predicates.add(text);
+        numbers.forEach((key,value)->predicates.add(value.predicate(cb,numericValue(cb,recordId,domain,key))));
+        return cb.and(predicates.toArray(Predicate[]::new));
+    }
+
+    /** Fixed display-grain numeric projection, also reused for derived-column ordering. */
+    public static Expression<java.math.BigDecimal> numericValue(CriteriaBuilder cb,Expression<?> recordId,Domain domain,String key) {
+        var expression=numericFields(domain).get(key);
+        if(expression==null) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"数值列不支持检索");
+        if(!(cb instanceof HibernateCriteriaBuilder hibernate)) throw new IllegalStateException("Numeric master columns require Hibernate Criteria");
+        if(domain==Domain.GOODS&&"stockQty".equals(key)) return hibernate.sql(
+                "round("+com.uten.imp.features.master.goods.GoodsStockQuantities.TOTAL_FOR_ID+",2)",java.math.BigDecimal.class,recordId);
+        String table=switch(domain) { case GOODS->"goods";case CLIENT->"clients";case SUPPLIER->"suppliers";case MOULD->"moulds"; };
+        return hibernate.sql("(SELECT "+expression+" FROM "+table+" master WHERE master.id=?)",java.math.BigDecimal.class,recordId);
+    }
+
+    private static Map<String,String> numericFields(Domain domain) {
+        return switch(domain) {
+            case GOODS->Map.of("price","round(master.price,2)","discount","round(master.zk,2)",
+                    "stockQty","stockQty", "minOrderQty","master.min_order_qty", "orderMultipleQty","master.order_multiple_qty");
+            case CLIENT->Map.of("tday","master.tday::numeric","credit","round(master.credit,2)",
+                    "creditFloor","round(coalesce(master.credit_floor,0),2)");
+            case SUPPLIER->Map.of("tday","master.tday::numeric","lossRate",
+                    "(SELECT supplier_loss.loss_pct FROM v_subcontract_supplier_loss_summary supplier_loss WHERE supplier_loss.supplier_id=master.id)");
+            case MOULD->Map.of("tqty","master.tqty");
+        };
     }
 
     private static Map<String, String> fields(Domain domain) {
         Map<String, String> fields = new LinkedHashMap<>();
         switch (domain) {
             case GOODS -> {
-                direct(fields, "name", "nameEn", "code", "series", "model", "spec", "cNumber", "rearInsertCode", "material", "requireRemark");
+                direct(fields, "name", "nameEn", "clientGoodsName", "code", "series", "model", "spec", "cNumber", "rearInsertCode", "material", "requireRemark");
                 fields.put("paper", "COALESCE(master.paper, master.require_remark)");
                 fields.put("colorLegacyId", legacyReference("colors", "color_id", "color_legacy_id", "name", true));
                 fields.put("colorName", fields.get("colorLegacyId"));

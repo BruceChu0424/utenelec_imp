@@ -140,7 +140,8 @@ class LegacyOperatorNamespaceReportPostgresTest {
                 .thenReturn(new NativeReadScope("1=1", null, Set.of()));
         var finance = new FinanceReportService(em, access, mock(SystemSettingsService.class),
                 mock(FinanceStatementService.class), mock(FinanceCostService.class),
-                mock(GlReportService.class), mock(FixedAssetService.class));
+                mock(GlReportService.class), mock(FixedAssetService.class),
+                new com.uten.imp.features.finance.report.PartyMonthlySummaryService(em));
         var purchase = new PurchaseReportService(em, mock(SystemSettingsService.class));
         var production = new ProductionReportService(em, mock(SystemSettingsService.class));
         switch (report) {

@@ -33,7 +33,9 @@ public final class BatchPermissionFixture {
         jdbc.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
         MigratedProjectionSchema.createCurrentTables(jdbc,"permissions","departments","employees","users",
                 "employee_secondary_departments","department_permissions","user_permission_overrides",
-                "authorization_state","manager_permission_delegations");
+                "authorization_state","manager_permission_delegations","permission_templates",
+                "user_permission_template_bindings","department_permission_template_bindings");
+        MigratedProjectionSchema.createCurrentViews(jdbc,"authorization_user_template_permission_sources","authorization_department_permission_sources");
         jdbc.update("INSERT INTO authorization_state(singleton_id,epoch) VALUES (1,0)");
         jdbc.update("INSERT INTO permissions(id,code) VALUES (?,?),(?,?)", view, VIEW, confirm, CONFIRM);
         department(company, "COMPANY", "公司", null);

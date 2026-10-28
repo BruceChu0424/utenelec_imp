@@ -49,6 +49,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -96,8 +97,9 @@ public class PurchaseRequestService {
         // 列排序：sort 命中白名单(日期/金额/单据号)才按实体属性排序，否则默认 billDate DESC。
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
-                        Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+                        Map.of("billDate", "billDate", "billNo", "billNo")));
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&Set.of("billDate","billNo").contains(sort)?null:f.keyword());
         Page<PurchaseRequest> p = requestRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<RequestListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return retainedRecords.page(result, "purchase_requests", p.getContent());
@@ -143,6 +145,7 @@ public class PurchaseRequestService {
             }
             f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
             return cb.and(ps.toArray(new Predicate[0]));

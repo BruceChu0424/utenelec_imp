@@ -81,7 +81,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProductionFqcInspectionService
-        implements ProductionQualityInspectionPort, ProductionOverLimitReleasePort {
+        implements ProductionQualityInspectionPort, ProductionOverLimitReleasePort,
+                com.uten.imp.application.port.QualityPendingSourcePort {
 
     static final String VIEW_AUTHORITY = "production_quality_inspection:view";
     static final String APPROVE_AUTHORITY =
@@ -91,6 +92,71 @@ public class ProductionFqcInspectionService
     static final String EVENT_RESOLVED = "PRODUCTION_FQC_RESOLVED";
     private static final Comparator<UUID> UUID_ORDER =
             Comparator.comparing(UUID::toString);
+
+    @Override
+    public String readAuthority() { return VIEW_AUTHORITY; }
+
+    /** The common quality queue pages document-grain projections, never a capped materialized client list. */
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public List<com.uten.imp.application.port.QualityPendingSourcePort.Plan> pendingPlans() {
+        boolean pool=taskAccess.canAccessQualityPool();
+        NativeReadScope sheets=pool?null:productionAccess.nativeReadScope("owner_report.maker_id","fqcSheetOwners");
+        NativeReadScope loose=pool?null:productionAccess.nativeReadScope("report.maker_id","fqcOwners");
+        String sheetSource=sheetSql(sheetOwnerPredicate(sheets))+" WHERE sheet_row.active_count>0";
+        String looseSource=viewSql((loose==null?"1=1":loose.predicate())
+                +" AND inspection.status IN ('PENDING','PARTIAL') AND sheet_item.sheet_id IS NULL");
+        String sheetPlan="""
+                SELECT 'sheet:'||q.id::text AS identity,'FQC'::text AS kind,q.sheet_no AS bill_no,
+                       concat_ws(' · ',q.warehouse_name,CASE WHEN nullif(q.receiver_name,'') IS NOT NULL THEN '收货 '||q.receiver_name END,
+                           CASE WHEN nullif(q.report_nos,'') IS NOT NULL THEN '报工 '||q.report_nos END) AS party,
+                       coalesce(q.goods_summary,'—') AS goods,coalesce(q.goods_code_summary,'—') AS goods_code,coalesce(q.color_name_summary,'—') AS color_name,
+                       coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place_summary,'—') AS place,
+                       q.active_count AS item_count,coalesce(q.pending_qty_text,'—') AS pending_qty,q.created_at AS entered_at,
+                       CASE WHEN q.active_count<q.item_count THEN 'PARTIAL' ELSE 'PENDING' END AS status_code,
+                       q.created_at AS sequence_at,q.goods_names::text[] AS goods_names FROM (
+                """+sheetSource+") q";
+        String loosePlan="""
+                SELECT 'fqc:'||q.id::text AS identity,'FQC'::text AS kind,coalesce(q.report_no,q.id::text) AS bill_no,
+                       '无检查单 · 计划 '||coalesce(q.plan_no,'—') AS party,coalesce(q.goods_name,'—') AS goods,coalesce(q.goods_code,'—') AS goods_code,
+                       coalesce(q.color_name,'—') AS color_name,coalesce(q.warehouse_name,'—') AS warehouse,coalesce(q.place,'—') AS place,1 AS item_count,
+                       concat_ws(' ',rtrim(rtrim(round(q.reported_qty-q.passed_qty-q.failed_qty,4)::text,'0'),'.'),nullif(q.unit_name,'')) AS pending_qty,
+                       q.created_at AS entered_at,q.status AS status_code,q.created_at AS sequence_at,ARRAY[q.goods_name]::text[] AS goods_names FROM (
+                """+looseSource+") q";
+        return List.of(new com.uten.imp.application.port.QualityPendingSourcePort.Plan("FQC_SHEET",sheetPlan,pendingBindings(sheets)),
+                new com.uten.imp.application.port.QualityPendingSourcePort.Plan("FQC",loosePlan,pendingBindings(loose)));
+    }
+
+    private static Map<String,Object> pendingBindings(NativeReadScope scope) {
+        return scope==null||scope.parameterName()==null?Map.of():Map.of(scope.parameterName(),scope.owners());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public Map<String,Object> pendingPayloads(String planKey,Set<String> identities) {
+        if(planKey==null||!Set.of("FQC_SHEET","FQC").contains(planKey)) throw validation("质检来源不正确");
+        if(identities.isEmpty()) return Map.of();
+        boolean sheet="FQC_SHEET".equals(planKey),pool=taskAccess.canAccessQualityPool();
+        String prefix=sheet?"sheet:":"fqc:";
+        Set<UUID> ids=new LinkedHashSet<>();
+        for(String identity:identities) {
+            if(identity==null||!identity.startsWith(prefix)) throw validation("质检来源身份不正确");
+            try { ids.add(UUID.fromString(identity.substring(prefix.length()))); }
+            catch(IllegalArgumentException malformed) { throw validation("质检来源身份不正确"); }
+        }
+        NativeReadScope scope=pool?null:productionAccess.nativeReadScope(
+                sheet?"owner_report.maker_id":"report.maker_id",sheet?"fqcSheetOwners":"fqcOwners");
+        String sql=sheet?sheetSql(sheetOwnerPredicate(scope))+" WHERE sheet_row.active_count>0 AND sheet_row.id IN (:pendingSourceIds)"
+                :viewSql((scope==null?"1=1":scope.predicate())
+                        +" AND inspection.status IN ('PENDING','PARTIAL') AND sheet_item.sheet_id IS NULL AND inspection.id IN (:pendingSourceIds)");
+        Query query=em.createNativeQuery(sql).setParameter("pendingSourceIds",ids);
+        if(scope!=null) scope.bind(query);
+        Map<String,Object> result=new LinkedHashMap<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(query)) result.put(prefix+row[0],sheet?toSheetView(row):toView(row));
+        return result;
+    }
 
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -227,6 +293,28 @@ public class ProductionFqcInspectionService
             String rawSheetScope,
             int requestedPage,
             int requestedSize) {
+        return list(rawStatus, rawKeyword, rawSheetScope, requestedPage, requestedSize, Map.of(), null, null);
+    }
+
+    private static final Map<String, com.uten.imp.common.util.SqlColumnSearch.Field> HEADER_COLUMNS = Map.ofEntries(
+            Map.entry("reportNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("report.bill_no")),
+            Map.entry("planNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("plan.bill_no")),
+            Map.entry("sheetNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(sheet.sheet_no,'无检查单')")),
+            Map.entry("goodsName", com.uten.imp.common.util.SqlColumnSearch.Field.text("goods.name")),
+            Map.entry("goodsCode", com.uten.imp.common.util.SqlColumnSearch.Field.text("goods.code")),
+            Map.entry("colorName", com.uten.imp.common.util.SqlColumnSearch.Field.text("color.name")),
+            Map.entry("reportedQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("inspection.reported_qty")),
+            Map.entry("passedQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("inspection.passed_qty")),
+            Map.entry("failedQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("inspection.failed_qty")),
+            Map.entry("remainingQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("(inspection.reported_qty-inspection.passed_qty-inspection.failed_qty)")),
+            Map.entry("authorizedInboundQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("COALESCE(release.authorized_qty,0)")),
+            Map.entry("createdAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("inspection.created_at")),
+            Map.entry("updatedAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("inspection.updated_at")));
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public PageResponse<InspectionView> list(String rawStatus, String rawKeyword, String rawSheetScope,
+            int requestedPage, int requestedSize, Map<String, String> columns, String sort, String order) {
         String status = normalizeStatusFilter(rawStatus);
         String keyword = KeywordSearch.phrase(rawKeyword);
         SheetScope sheetScope = normalizeSheetScope(rawSheetScope);
@@ -254,23 +342,31 @@ public class ProductionFqcInspectionService
             case EXACT -> "sheet_item.sheet_id = :sheetId";
             default -> "1=1";
         };
+        var headers = com.uten.imp.common.util.SqlColumnSearch.criteria(columns, HEADER_COLUMNS);
         String pageSql = viewSql(
                 ownerPredicate + " AND " + statusPredicate
                         + " AND " + keywordPredicate
-                        + " AND " + sheetPredicate);
+                        + " AND " + sheetPredicate + " AND " + headers.predicate());
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(*) FROM (" + pageSql + ") fqc_page");
         bindInspectionPage(
                 countQuery, ownerScope, status, keyword, sheetScope);
+        headers.bind(countQuery);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
-        Query query = em.createNativeQuery(pageSql
-                + " ORDER BY " + TaskKeywordSearch.rankNamesFirstParameter("keyword",
+        String defaultOrder = TaskKeywordSearch.rankNamesFirstParameter("keyword",
                         new String[]{"goods.name"}, new String[]{},
                         new String[]{"goods.code", "report.bill_no", "plan.bill_no", "sheet.sheet_no"})
-                + ", inspection.created_at, inspection.id"
+                + ", inspection.created_at, inspection.id";
+        var selectedSort = HEADER_COLUMNS.get(sort == null ? "" : sort);
+        String ordering = selectedSort == null ? defaultOrder
+                : selectedSort.expression() + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC")
+                    + " NULLS LAST, inspection.id " + ("desc".equalsIgnoreCase(order) ? "DESC" : "ASC");
+        Query query = em.createNativeQuery(pageSql
+                + " ORDER BY " + ordering
                 + " OFFSET :offset LIMIT :limit");
         bindInspectionPage(query, ownerScope, status, keyword, sheetScope);
+        headers.bind(query);
         query.setParameter("offset", pageable.getOffset());
         query.setParameter("limit", size);
         List<InspectionView> items =
@@ -2242,24 +2338,24 @@ public class ProductionFqcInspectionService
                 SELECT inspection.id,
                        inspection.source_report_id,
                        inspection.source_report_item_id,
-                       report.bill_no,
+                       report.bill_no AS report_no,
                        inspection.source_plan_item_id,
                        segment.plan_id,
-                       plan.bill_no,
+                       plan.bill_no AS plan_no,
                        inspection.execution_segment_id,
                        inspection.execution_segment_sales_allocation_id,
                        inspection.warehouse_id,
-                       inspection.goods_id, goods.code, goods.name,
-                       inspection.color_id, color.name,
-                       inspection.unit_id, unit.name,
+                       inspection.goods_id, goods.code AS goods_code, goods.name AS goods_name,
+                       inspection.color_id, color.name AS color_name,
+                       inspection.unit_id, unit.name AS unit_name,
                        inspection.unit_rate, inspection.reported_qty,
                        inspection.passed_qty, inspection.failed_qty,
-                       COALESCE(release.authorized_qty, 0),
+                       COALESCE(release.authorized_qty, 0) AS authorized_qty,
                        inspection.status, inspection.report_maker_id,
                        inspection.created_at, inspection.updated_at,
-                       sheet.id, sheet.sheet_no, warehouse.name,
-                       registration.place_snapshot, registration.remark,
-                       registration.receiver_name_snapshot,
+                       sheet.id AS sheet_id, sheet.sheet_no, warehouse.name AS warehouse_name,
+                       registration.place_snapshot AS place, registration.remark AS registration_remark,
+                       registration.receiver_name_snapshot AS receiver_name,
                        registration.stock_in_before_inspection,
                        registration.pre_stocked_at,
                        registration.pre_stocked_by_name,

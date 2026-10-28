@@ -10,8 +10,14 @@ import java.util.Set;
 
 /** Column terms are ANDed before pagination; field resolution is always server-owned. */
 public final class ColumnKeywordSearch {
-    public static final Set<String> CONTACT_SENSITIVE = Set.of("mobile", "phone", "phone2", "bankAccount");
+    public static final Set<String> CONTACT_SENSITIVE = Set.of("mobile", "phone", "phone2", "bankAccount", "bankAccountNo");
     private ColumnKeywordSearch() { }
+
+    /** Direct Java/security-test calls have no servlet request; HTTP calls use the bound request. */
+    public static HttpServletRequest currentRequest() {
+        var attributes=org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        return attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet?servlet.getRequest():null;
+    }
 
     public static Map<String, String> requestValues(HttpServletRequest request) {
         return requestValues(request, null, false);

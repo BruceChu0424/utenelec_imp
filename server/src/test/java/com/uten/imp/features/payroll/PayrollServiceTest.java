@@ -214,6 +214,29 @@ class PayrollServiceTest {
         assertEquals(slip.getId(), result.getItems().get(0).id());
     }
 
+    @Test @SuppressWarnings("unchecked")
+    void headerRangesRetainOwnedPublishedActiveBoundaryBeforeRepositoryPagination() {
+        when(authUser.getPermissions()).thenReturn(Set.of("payroll:view:self"));
+        when(slipRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 50), 201));
+        service.listSlips("UNVIEWED", null, null, null, 2, 50, "netIncome", "desc", Map.of(
+                "search.netIncome", ">=8000.0001", "search.period", "2026-10"));
+        var specification = ArgumentCaptor.forClass(Specification.class);
+        var pageable = ArgumentCaptor.forClass(Pageable.class);
+        verify(slipRepository).findAll(specification.capture(), pageable.capture());
+        Root<PayrollSlip> root = mock(Root.class, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+        CriteriaBuilder builder = mock(CriteriaBuilder.class);
+        specification.getValue().toPredicate(root, mock(CriteriaQuery.class), builder);
+        verify(builder).isTrue(root.get("active"));
+        verify(builder).equal(root.get("employeeId"), employeeId);
+        verify(builder, org.mockito.Mockito.atLeastOnce()).equal(root.get("status"), "PUBLISHED");
+        verify(builder).greaterThanOrEqualTo(root.<BigDecimal>get("netIncome"), new BigDecimal("8000.0001"));
+        verify(builder).equal(root.get("payrollYear"), (short)2026);
+        verify(builder).equal(root.get("payrollMonth"), (short)10);
+        assertEquals(1, pageable.getValue().getPageNumber());
+        assertTrue(pageable.getValue().getSort().getOrderFor("netIncome").isDescending());
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void unreadAndReadPartitionPublishedOwnedSlipsBeforePagination() {

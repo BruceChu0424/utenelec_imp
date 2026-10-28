@@ -9,7 +9,7 @@ import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.dto.ContactExportRequest;
-import com.uten.imp.features.master.dto.ContactSensitiveFilter;
+import com.uten.imp.common.web.ContactSensitiveFilter;
 import com.uten.imp.features.master.supplier.dto.SupplierDetail;
 import com.uten.imp.features.master.supplier.dto.SupplierDictItem;
 import com.uten.imp.features.master.supplier.dto.SupplierFacets;

@@ -50,6 +50,7 @@ class SecurityDefaultsTest {
                         "Content-Disposition",
                         // 密码哈希闸门满时 503 带 Retry-After, 前端据此稍后重试。
                         "Retry-After",
+                        "X-Uten-Step-Up-Idle-Seconds",
                         "X-Uten-Read-Scope-Version",
                         "X-Uten-Read-Scope-Domain",
                         "X-Uten-Audit-Request-Id",

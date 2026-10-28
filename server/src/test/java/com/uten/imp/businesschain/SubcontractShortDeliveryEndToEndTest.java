@@ -55,6 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only","uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractShortDeliveryEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;
@@ -96,7 +97,7 @@ class SubcontractShortDeliveryEndToEndTest {
         // ② 财务批准 → 委外人员领满 20 套, 仓库审核发出(直属物料 20 件到供应商处)。
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);
-        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
+        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);fixture.loginAs(w.superAdminUserId());
         fixture.drawAndIssueSubcontract(itemId,new BigDecimal("20"),"sc-short-draw-"+itemId);
         rate("20",db.queryForObject("SELECT SUM(at_supplier_qty) FROM subcontract_material_issue_items WHERE order_item_id=?",BigDecimal.class,itemId));
 
@@ -281,7 +282,7 @@ class SubcontractShortDeliveryEndToEndTest {
         assertNull(db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
         UUID reviewer=ReflectionTestUtils.invokeMethod(fixture,"createApprover",w);
         financeApproval.submit("SUBCONTRACT",orderId);
-        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId);fixture.loginAs(w.superAdminUserId());
+        fixture.loginAs(reviewer);fixture.approvePendingFinance("SUBCONTRACT",orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);fixture.loginAs(w.superAdminUserId());
         fixture.drawAndIssueSubcontract(itemId,BigDecimal.TEN,"sc-short-complete-draw-"+itemId);
         // 判定页分段计数是全库口径(同一测试库里别的用例也会留下容差内案件), 这里只看本单带来的变化。
         var countsBefore=shortDeliveries.counts();

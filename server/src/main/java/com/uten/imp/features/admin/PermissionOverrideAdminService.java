@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -121,6 +122,7 @@ public class PermissionOverrideAdminService {
         PermissionResolver.PermBreakdown breakdown = permissionResolver.breakdownOf(target);
         Set<String> inherited = new HashSet<>(breakdown.departmentPermissions());
         inherited.addAll(breakdown.baselinePermissions());
+        inherited.addAll(breakdown.templatePermissions());
         inherited.addAll(breakdown.managerGrants());
         Map<String, String> desired = currentOverrides(userId);
         List<Permission> candidates = departmentPermissionAdmin.bulkCandidates(scope);
@@ -168,6 +170,17 @@ public class PermissionOverrideAdminService {
         return applyExact(locked.account(),desired,expected);
     }
 
+    /** Source assignment transactions already preview and validate their complete delta. */
+    PermissionChangeDto applyTemplateSourceConfiguration(UUID userId,Set<String> grants,Set<String> revokes,boolean requireActive) {
+        var locked=accountLifecycle.lock(userId);
+        support.requireAuthorizationTarget(locked.account());
+        accountLifecycle.requireCurrentEmployee(locked);
+        if(requireActive) accountLifecycle.requireActiveAccount(locked);
+        Map<String,String> desired=new LinkedHashMap<>();
+        grants.forEach(code->desired.put(code,GRANT));revokes.forEach(code->desired.put(code,REVOKE));
+        return apply(locked.account(),desired,support.requireCurrentUser().getId(),false,true,true);
+    }
+
     private PermissionChangeDto applyExact(UserAccount target,Map<String,String> desired,Set<String> expected) {
         if(!new PermissionDependencyCatalog(permissionRepo.findAll()).usablePermissions(expected).equals(expected)) {
             throw new ApiException(ErrorCode.BUSINESS,"权限快照缺少操作必需的查看权限，请重新导出或复制");
@@ -181,6 +194,12 @@ public class PermissionOverrideAdminService {
 
     private PermissionChangeDto apply(
             UserAccount target, Map<String, String> desired, UUID sourceActorUserId, boolean bulk, boolean exact) {
+        return apply(target,desired,sourceActorUserId,bulk,exact,false);
+    }
+
+    private PermissionChangeDto apply(
+            UserAccount target, Map<String, String> desired, UUID sourceActorUserId, boolean bulk, boolean exact,
+            boolean preserveUntouchedSources) {
         UUID userId = target.getId();
         Map<String, String> current = currentOverrides(userId);
         PermissionResolver.PermBreakdown breakdown = permissionResolver.breakdownOf(target);
@@ -188,6 +207,7 @@ public class PermissionOverrideAdminService {
         if (breakdown != null) {
             inherited.addAll(breakdown.departmentPermissions());
             inherited.addAll(breakdown.baselinePermissions());
+        inherited.addAll(breakdown.templatePermissions());
             inherited.addAll(breakdown.managerGrants());
         }
         Set<String> enabled = desired.entrySet().stream().filter(entry -> GRANT.equals(entry.getValue())
@@ -247,7 +267,7 @@ public class PermissionOverrideAdminService {
             } else {
                 if (row.isActive()
                         && desiredEffect.equals(row.getEffect())
-                        && CONFIRMED.equals(row.getAuthoritySource())) {
+                        && (preserveUntouchedSources || CONFIRMED.equals(row.getAuthoritySource()))) {
                     continue;
                 }
                 if (row.isActive() && !desiredEffect.equals(row.getEffect())) {

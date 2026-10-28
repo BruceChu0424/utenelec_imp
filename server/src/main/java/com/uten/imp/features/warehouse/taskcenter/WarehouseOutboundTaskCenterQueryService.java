@@ -117,7 +117,12 @@ public class WarehouseOutboundTaskCenterQueryService {
     public record PhysicalLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
                                String colorName, String unitName, BigDecimal quantity,
                                BigDecimal requestedQuantity, BigDecimal issuedQuantity,
-                               BigDecimal weightKg, String stockPlace) {}
+                               BigDecimal weightKg, String stockPlace) {
+        public String getQuantityExact(){return quantity==null?null:quantity.toPlainString();}
+        public String getRequestedQuantityExact(){return requestedQuantity==null?null:requestedQuantity.toPlainString();}
+        public String getIssuedQuantityExact(){return issuedQuantity==null?null:issuedQuantity.toPlainString();}
+        public String getWeightKgExact(){return weightKg==null?null:weightKg.toPlainString();}
+    }
     public record PhysicalDetail(Row document, List<PhysicalLine> lines,
                                  int page, int size, long total, int totalPages) {
         public PhysicalDetail { lines = List.copyOf(lines); }
@@ -126,6 +131,12 @@ public class WarehouseOutboundTaskCenterQueryService {
     /** Resolves the same authorized union row before reading a fixed physical line whitelist. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PhysicalDetail detail(String rowKey, UUID requestedWarehouse, int linePage, int lineSize) {
+        return detail(rowKey,requestedWarehouse,linePage,lineSize,Map.of(),null,null);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public PhysicalDetail detail(String rowKey,UUID requestedWarehouse,int linePage,int lineSize,
+            Map<String,String> columns,String sort,String order) {
         if (currentUser.get().isEmpty() || currentUser.get().orElseThrow().isVisitor()) throw notFound();
         String[] parts = rowKey == null ? new String[0] : rowKey.split(":", -1);
         if ((parts.length != 3 && parts.length != 4) || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")
@@ -162,14 +173,21 @@ public class WarehouseOutboundTaskCenterQueryService {
             int size = Math.max(1, Math.min(500, lineSize));
             // The task's visible header never grants access to sibling items from another warehouse.
             String lineSql = scopedPhysicalLines(document);
-            long total = ((Number) bindDetail(em.createNativeQuery(sql.cte() + " SELECT COUNT(*) FROM (" + lineSql + ") physical_detail"), sql, parts, documentId)
-                    .setParameter("documentId", documentId).getSingleResult()).longValue();
+            var headers=WarehousePhysicalDetailHeaders.criteria(columns,"to_jsonb(physical_detail)");
+            String detailOrder=WarehousePhysicalDetailHeaders.order(sort,order,"to_jsonb(physical_detail)");
+            lineSql="SELECT physical_detail.* FROM ("+lineSql+") physical_detail WHERE ("+headers.predicate()+")";
+            Query countQuery=bindDetail(em.createNativeQuery(sql.cte()+" SELECT COUNT(*) FROM ("+lineSql+") physical_detail"),sql,parts,documentId)
+                    .setParameter("documentId",documentId);
+            headers.bind(countQuery);
+            long total=((Number)countQuery.getSingleResult()).longValue();
             int pages = (int) ((total + size - 1) / size);
             int page = pages == 0 ? 1 : Math.max(1, Math.min(linePage, pages));
-            List<PhysicalLine> lines = NativeQueryResults.objectArrayRows(bindDetail(em.createNativeQuery(
-                    sql.cte() + " SELECT * FROM (" + lineSql + ") physical_detail ORDER BY line_no NULLS LAST,id NULLS LAST LIMIT :lineLimit OFFSET :lineOffset"), sql, parts, documentId)
+            Query lineQuery=bindDetail(em.createNativeQuery(
+                    sql.cte() + " SELECT * FROM (" + lineSql + ") physical_detail ORDER BY "+detailOrder+" LIMIT :lineLimit OFFSET :lineOffset"), sql, parts, documentId)
                     .setParameter("documentId", documentId).setParameter("lineLimit", size)
-                    .setParameter("lineOffset", (long) (page - 1) * size)).stream().map(raw -> new PhysicalLine(
+                    .setParameter("lineOffset", (long) (page - 1) * size);
+            headers.bind(lineQuery);
+            List<PhysicalLine> lines=NativeQueryResults.objectArrayRows(lineQuery).stream().map(raw -> new PhysicalLine(
                         NativeValueConverters.uuid(raw[0]), raw[1] instanceof Number n ? n.intValue() : null,
                         NativeValueConverters.text(raw[2]), NativeValueConverters.text(raw[3]),
                         NativeValueConverters.text(raw[4]), NativeValueConverters.text(raw[5]),
@@ -209,8 +227,10 @@ public class WarehouseOutboundTaskCenterQueryService {
     static String physicalLines(Row document) {
         if (document.recordType().equals("WORKSHOP_REQUISITION")) {
             return """
-                    SELECT physical.item_id AS id,line.line_no,goods.code,goods.name,color.name,unit.name,
-                           physical.quantity,physical.requested_qty,physical.fulfilled_qty,NULL::numeric,goods.stock_place
+                    SELECT physical.item_id AS id,line.line_no,goods.code AS "goodsCode",goods.name AS "goodsName",
+                           color.name AS "colorName",unit.name AS "unitName",physical.quantity,
+                           physical.requested_qty AS "requestedQuantity",physical.fulfilled_qty AS "issuedQuantity",
+                           NULL::numeric AS "weightKg",goods.stock_place AS "stockPlace"
                     FROM workshop_material_requisition_lines line
                     JOIN workshop_material_requisitions request ON request.id=line.requisition_id
                     %s
@@ -223,12 +243,12 @@ public class WarehouseOutboundTaskCenterQueryService {
                     || document.status().equals("DRAW_DISCOVERY_BLOCKED")) {
                 return """
                         SELECT NULL::uuid AS id,suggestion.ordinality::int AS line_no,
-                               COALESCE(NULLIF(suggestion.item->>'goodsCode',''),goods.code),
-                               COALESCE(NULLIF(suggestion.item->>'goodsName',''),goods.name),
-                               COALESCE(NULLIF(suggestion.item->>'colorName',''),color.name),
-                               COALESCE(NULLIF(suggestion.item->>'unitName',''),unit.name),
-                               NULLIF(suggestion.item->>'qty','')::numeric,NULL::numeric,NULL::numeric,NULL::numeric,
-                               suggestion.item->>'stockPlace'
+                               COALESCE(NULLIF(suggestion.item->>'goodsCode',''),goods.code) AS "goodsCode",
+                               COALESCE(NULLIF(suggestion.item->>'goodsName',''),goods.name) AS "goodsName",
+                               COALESCE(NULLIF(suggestion.item->>'colorName',''),color.name) AS "colorName",
+                               COALESCE(NULLIF(suggestion.item->>'unitName',''),unit.name) AS "unitName",
+                               NULLIF(suggestion.item->>'qty','')::numeric AS quantity,NULL::numeric AS "requestedQuantity",
+                               NULL::numeric AS "issuedQuantity",NULL::numeric AS "weightKg",suggestion.item->>'stockPlace' AS "stockPlace"
                         FROM production_material_discovery_requests request
                         CROSS JOIN LATERAL jsonb_array_elements(request.requested_materials) WITH ORDINALITY suggestion(item,ordinality)
                         LEFT JOIN goods ON goods.id=NULLIF(suggestion.item->>'goodsId','')::uuid
@@ -239,7 +259,9 @@ public class WarehouseOutboundTaskCenterQueryService {
             }
             return """
                     SELECT item.id,ROW_NUMBER() OVER(ORDER BY item.id)::int AS line_no,
-                           goods.code,goods.name,color.name,unit.name,item.qty,NULL::numeric,NULL::numeric,NULL::numeric,goods.stock_place
+                           goods.code AS "goodsCode",goods.name AS "goodsName",color.name AS "colorName",unit.name AS "unitName",
+                           item.qty AS quantity,NULL::numeric AS "requestedQuantity",NULL::numeric AS "issuedQuantity",
+                           NULL::numeric AS "weightKg",goods.stock_place AS "stockPlace"
                     FROM production_material_discovery_lines item
                     LEFT JOIN goods ON goods.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id
                     LEFT JOIN units unit ON unit.id=item.unit_id WHERE item.request_id=:documentId
@@ -252,9 +274,10 @@ public class WarehouseOutboundTaskCenterQueryService {
         String requested = document.recordType().equals("SUBCONTRACT_MATERIAL_ISSUE") ? "item.requested_qty" : "NULL::numeric";
         String issued = document.sourceType().equals("DRAW") ? "item.issued_qty" : "NULL::numeric";
         String deleted = document.status().equals("SUBCONTRACT_WITHDRAWN") ? "" : " AND NOT item.is_deleted";
-        return "SELECT item.id,item.line_no,COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),"
-                + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),color.name,unit.name,item.qty,"
-                + requested + "," + issued + ",item.weight,goods.stock_place FROM " + table
+        return "SELECT item.id,item.line_no,COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code) AS \"goodsCode\","
+                + "COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name) AS \"goodsName\",color.name AS \"colorName\","
+                + "unit.name AS \"unitName\",item.qty AS quantity," + requested + " AS \"requestedQuantity\"," + issued
+                + " AS \"issuedQuantity\",item.weight AS \"weightKg\",goods.stock_place AS \"stockPlace\" FROM " + table
                 + " item LEFT JOIN goods ON goods.id=item.goods_id LEFT JOIN colors color ON color.id=item.color_id"
                 + " LEFT JOIN units unit ON unit.id=item.unit_id WHERE item." + foreignKey + "=:documentId" + deleted;
     }
@@ -283,14 +306,14 @@ public class WarehouseOutboundTaskCenterQueryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "查询内容过长");
         }
         String sort = clean(filter.sort());
-        if (sort != null && !Set.of("billNo", "businessDate").contains(sort)) {
+        if (sort != null && !WarehouseTaskHeaderQuery.sortable(sort)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "排序列不正确");
         }
         String order = clean(filter.order());
         order = order == null ? "desc" : order.toLowerCase(Locale.ROOT);
         if (!Set.of("asc", "desc").contains(order)) throw new ApiException(ErrorCode.VALIDATION_FAILED, "排序方向不正确");
         return new Filter(source, status, keyword, billNo, filter.dateFrom(), filter.dateTo(), filter.scopeWarehouseId(),
-                Math.max(1, filter.page()), Math.max(1, Math.min(100, filter.size())), sort, order, filter.view());
+                Math.max(1, filter.page()), Math.max(1, Math.min(100, filter.size())), sort, order, filter.view(), filter.columnSearch());
     }
 
     private static String clean(String value) { return value == null || value.isBlank() ? null : value.trim(); }

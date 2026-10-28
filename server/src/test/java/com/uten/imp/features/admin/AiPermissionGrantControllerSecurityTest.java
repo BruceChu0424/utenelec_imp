@@ -116,7 +116,7 @@ class AiPermissionGrantControllerSecurityTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("IMPERSONATION_READ_ONLY"));
         verifyNoInteractions(business, sessions);
     }
-    @Test void successfulTokenIsConsumedBeforeBusinessAndReplayCannotWriteAgain() throws Exception {
+    @Test void validSessionProofIsCheckedBeforeBusinessAndExpiredProofCannotWrite() throws Exception {
         login(staff(true, null));
         when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-time-test-token"))).thenReturn(true, false);
         when(business.confirm(PROPOSAL)).thenReturn(Map.of("status", "GRANTED", "reply", "已授权"));
@@ -131,7 +131,7 @@ class AiPermissionGrantControllerSecurityTest {
         order.verify(business).confirm(PROPOSAL);
         verify(business, times(1)).confirm(any());
     }
-    @Test void businessRejectionClosesTheOneTimeCardAndIsReportedUnchanged() throws Exception {
+    @Test void businessRejectionClosesTheProposalAndIsReportedUnchanged() throws Exception {
         login(staff(true, null));
         when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-time-test-token"))).thenReturn(true);
         when(business.confirm(PROPOSAL)).thenThrow(new ApiException(ErrorCode.CONFLICT, "授权对象或权限状态已变化，请重新发起并确认授权"));

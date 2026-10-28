@@ -92,7 +92,8 @@ public class GoodsService {
             "owningWarehouse", "owningWorkshop");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额/编号等可排序列；命中才排序，否则默认 id ASC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price", "code", "code");
+    private static final Map<String, String> ALLOWED_SORT = Map.of("price", "price", "code", "code",
+            "discount","discount","minOrderQty","minOrderQty","orderMultipleQty","orderMultipleQty");
 
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
@@ -156,6 +157,7 @@ public class GoodsService {
 
     @Transactional(readOnly = true)
     public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
+        requireHeaderVisibility(f,sort);
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
         var scope = goodsScope();
         var keyword = keywordPlan(f);
@@ -164,7 +166,8 @@ public class GoodsService {
         // 相反；显式排序参数仍然覆盖默认值。
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code")
                 .and(Sort.by(Sort.Direction.ASC, "id"));
-        Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
+        boolean stockSort="stockQty".equals(sort);
+        Sort requestedSort = TableSort.resolve(stockSort?null:sort, order, defaultSort, ALLOWED_SORT);
         Specification<Goods> spec = (root, q, cb) -> {
             // The DTO reads these to-one names for every row. Resolve them in
             // this same data query, while keeping the count predicate unchanged.
@@ -181,9 +184,18 @@ public class GoodsService {
                         keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
                                 goodsVisibleSearchFields(root, mouldCodeForSearch(root))), requestedSort);
             }
+            if(stockSort&&q!=null&&q.getResultType()!=Long.class) {
+                var orders=new ArrayList<jakarta.persistence.criteria.Order>();
+                if(keyword.active()) orders.add(cb.asc(keyword.rank(cb,root.get("category").get("id"),root.get("code"),root.get("name"),
+                        goodsVisibleSearchFields(root,mouldCodeForSearch(root)))));
+                var stock=com.uten.imp.features.master.search.MasterColumnSearch.numericValue(cb,root.get("id"),
+                        com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS,"stockQty");
+                orders.add("desc".equalsIgnoreCase(order)?cb.desc(stock):cb.asc(stock));orders.add(cb.asc(root.get("id")));
+                q.orderBy(orders);
+            }
             return predicate;
         };
-        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
+        Pageable pageable = Pageables.of(page, size, keyword.active()||stockSort ? Sort.unsorted() : requestedSort);
         Page<Goods> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Goods.class, spec, pageable, f);
         List<Goods> content = p.getContent();
         Set<UUID> goodsWithBom = content.isEmpty() ? Set.of() : new java.util.HashSet<>(
@@ -230,6 +242,7 @@ public class GoodsService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:view')")
     public com.uten.imp.features.master.goods.dto.GoodsPageLocation locate(
             GoodsQueryFilter filter, UUID id, int size, String sort, String order) {
+        requireHeaderVisibility(filter,sort);
         var cb = em.getCriteriaBuilder();
         var scope = goodsScope();
         var subtree = resolveCategoryScopeIds(filter);
@@ -244,7 +257,8 @@ public class GoodsService {
         var targets = em.createQuery(targetQuery).setMaxResults(1).getResultList();
         if (targets.isEmpty()) return new com.uten.imp.features.master.goods.dto.GoodsPageLocation(false, 1, 0);
         var target = targets.getFirst();
-        var ordering = TableSort.resolve(sort, order, Sort.by("code").and(Sort.by("id")), ALLOWED_SORT);
+        boolean stockSort="stockQty".equals(sort);
+        var ordering = stockSort?Sort.by("id"):TableSort.resolve(sort, order, Sort.by("code").and(Sort.by("id")), ALLOWED_SORT);
         var countQuery = cb.createQuery(Long.class);
         var root = countQuery.from(Goods.class);
         Predicate same = cb.conjunction();
@@ -257,9 +271,20 @@ public class GoodsService {
             before = cb.lessThan(rank, targetRank);
             same = cb.equal(rank, targetRank);
         }
+        if(stockSort) {
+            var value=stockQuantitiesFor(List.of(id)).getOrDefault(id,BigDecimal.ZERO).setScale(2,java.math.RoundingMode.HALF_UP);
+            var stock=com.uten.imp.features.master.search.MasterColumnSearch.numericValue(cb,root.get("id"),
+                    com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS,"stockQty");
+            boolean ascending=!"desc".equalsIgnoreCase(order);
+            before=cb.or(before,cb.and(same,earlierValue(cb,stock,value,ascending)));
+            same=cb.and(same,cb.equal(stock,value));
+        }
         for (var part : ordering) {
             Comparable<?> value = switch (part.getProperty()) {
                 case "price" -> target.getPrice();
+                case "discount" -> target.getDiscount();
+                case "minOrderQty" -> target.getMinOrderQty();
+                case "orderMultipleQty" -> target.getOrderMultipleQty();
                 case "code" -> target.getCode();
                 default -> target.getId();
             };
@@ -326,6 +351,7 @@ public class GoodsService {
             Root<Goods> root,
             CriteriaBuilder cb,
             GoodsSearchPolicy keyword) {
+        requireHeaderVisibility(f,null);
         List<Predicate> ps = new ArrayList<>();
         ps.add(cb.isFalse(root.get("deleted")));
         // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
@@ -461,8 +487,9 @@ public class GoodsService {
     }
 
     /**
-     * 全分类 id → 中文名 dash 路径（如「货品资料-成品-外贸系列-老系列」，含根）。
+     * 全分类 id → 中文名「 / 」路径（如「货品资料 / 成品 / 外贸系列 / 老系列」，含根）。
      * 一次性载入全树（~881 节点）内存走 parent_id，避免逐行递归/CTE；导出「类别」列用。
+     * 2026-10-28 起分隔符由 {@code -} 改为「 / 」，与导入侧「/」切分同口径（老「-」文件导入仍兜底兼容）。
      */
     private Map<UUID, String> categoryPathMap() {
         List<MaterialCategory> all = categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc();
@@ -480,7 +507,7 @@ public class GoodsService {
                 MaterialCategory p = cur.getParent();
                 cur = (p == null) ? null : byId.get(p.getId());
             }
-            paths.put(leaf.getId(), String.join("-", chain));
+            paths.put(leaf.getId(), String.join(" / ", chain));
         }
         return paths;
     }
@@ -688,12 +715,17 @@ public class GoodsService {
         boolean showPrice = canViewPrice();
         boolean showDiscount = canViewDiscount();
         List<ExportColumn> cols = new ArrayList<>();
+        // 2026-10-28 用户口径：导出列序「系统标识」最前、「组装信息ID」第二，
+        // 其余跟随表格导出顺序（默认列序已改为 编号、货品名称 打头）。
+        cols.add(new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
+        // 组装信息ID（2026-10-28）：值=「货品编号-BOM」（有组装信息才有值，无则空）。
+        // 回导时该列有值即把该编号货品的整棵组装信息复制到本行货品下，空=不复制。
+        cols.add(new ExportColumn("bomRef", "组装信息ID", ExportColumn.TEXT));
+        cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
         cols.add(new ExportColumn("name", "货品名称", ExportColumn.TEXT));
         cols.add(new ExportColumn("clientGoodsName", "客户货品名称", ExportColumn.TEXT));
-        // 名称组与表格一致：货品名称、客户货品名称、英文名称；同名表头支持导回。
+        // 名称组与表格一致：编号、货品名称、客户货品名称、英文名称；同名表头支持导回。
         cols.add(new ExportColumn("nameEn", "英文名称", ExportColumn.TEXT));
-        cols.add(new ExportColumn("code", "编号", ExportColumn.TEXT));
-        cols.add(new ExportColumn("goodsId", "系统标识", ExportColumn.TEXT));
         cols.add(new ExportColumn("categoryPath", "类别", ExportColumn.TEXT));
         cols.add(new ExportColumn("colorName", "主颜色", ExportColumn.TEXT));
         cols.add(new ExportColumn("series", "系列", ExportColumn.TEXT));
@@ -725,6 +757,8 @@ public class GoodsService {
                     row.put("_platformRecordId", g.getId());
                     row.put("code", g.getCode());
                     row.put("goodsId", g.getId().toString());
+                    row.put("bomRef", g.isHasBom() && g.getCode() != null && !g.getCode().isBlank()
+                            ? g.getCode() + GoodsExportProjection.BOM_REF_SUFFIX : "");
                     row.put("categoryPath", categoryPath.get(g.getCategoryId()));
                     row.put("colorName", g.getColorName());
                     row.put("series", g.getSeries());
@@ -1153,6 +1187,14 @@ public class GoodsService {
                 .map(AuthUser::getPermissions)
                 .map(p -> p.contains("goods:discount:view"))
                 .orElse(false);
+    }
+
+    private void requireHeaderVisibility(GoodsQueryFilter filter,String sort) {
+        var columns=filter.columnSearch()==null?Map.<String,String>of():filter.columnSearch();
+        if(("price".equals(sort)||columns.get("price")!=null&&!columns.get("price").isBlank())&&!canViewPrice())
+            throw new ApiException(ErrorCode.FORBIDDEN,"缺少货品价格查看权限，不能按价格检索或排序");
+        if(("discount".equals(sort)||columns.get("discount")!=null&&!columns.get("discount").isBlank())&&!canViewDiscount())
+            throw new ApiException(ErrorCode.FORBIDDEN,"缺少货品折扣查看权限，不能按折扣检索或排序");
     }
 
     /**

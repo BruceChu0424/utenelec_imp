@@ -20,7 +20,10 @@ public class GoodsQuoteHistoryController {
     @GetMapping("/{goodsId}/history")
     @PreAuthorize("hasAuthority('goods:view') and hasAuthority('sales_quote_finance:view')")
     public PageResponse<GoodsQuoteHistoryService.Row> list(@PathVariable UUID goodsId,
-            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
-        return service.list(goodsId, page, size);
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort, @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return service.list(goodsId, page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 }

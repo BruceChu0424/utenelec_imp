@@ -14,7 +14,9 @@ public class PlatformColumnController {
     private final com.uten.imp.audit.AuditDetailViewRecorder detailViews;
     @GetMapping("/scopes") public List<Scope> scopes() { return service.scopes(); }
     @GetMapping("/{scope}/definitions") public List<Definition> definitions(@PathVariable String scope, @RequestParam(required=false) String q,
-            @RequestParam(required=false) List<UUID> ids) { return ids==null?service.search(scope,q):service.definitions(scope,ids); }
+            @RequestParam(required=false) List<UUID> ids,@RequestParam(defaultValue="false") boolean availableOnly) {
+        return ids==null?service.search(scope,q):availableOnly?service.availableDefinitions(scope,ids):service.definitions(scope,ids);
+    }
     @PostMapping("/{scope}/definitions") public Definition create(@PathVariable String scope,@RequestBody CreateDefinition request) { return service.create(scope,request); }
     @DeleteMapping("/{scope}/definitions/{definitionId}") public void delete(@PathVariable String scope,@PathVariable UUID definitionId) { service.delete(scope,definitionId); }
     @PostMapping("/{scope}/values:batch") public List<Row> read(@PathVariable String scope,@RequestBody BatchRead request) { return service.read(scope,request); }

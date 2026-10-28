@@ -78,6 +78,25 @@ public class RdTaskService {
     @Transactional(readOnly = true)
     public PageResponse<RdTaskRow> list(String statusScope, String category, String keyword,
                                         UUID assigneeId, int page, int size) {
+        return list(statusScope, category, keyword, assigneeId, page, size, Map.of(), null, null);
+    }
+
+    private static final Map<String, com.uten.imp.common.util.SqlColumnSearch.Field> COLUMNS = Map.ofEntries(
+            Map.entry("taskNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("t.task_no")),
+            Map.entry("title", com.uten.imp.common.util.SqlColumnSearch.Field.text("t.title")),
+            Map.entry("goods", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(g.name,g.code,'—')")),
+            Map.entry("goodsCode", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(g.code,'—')")),
+            Map.entry("colorName", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(goods_color.name,'—')")),
+            Map.entry("assignee", com.uten.imp.common.util.SqlColumnSearch.Field.text("assignee.full_name")),
+            Map.entry("status", com.uten.imp.common.util.SqlColumnSearch.Field.text("t.status")),
+            Map.entry("priority", com.uten.imp.common.util.SqlColumnSearch.Field.text("CASE WHEN upper(t.priority)='URGENT' THEN 'URGENT' ELSE 'NORMAL' END")),
+            Map.entry("dueDate", com.uten.imp.common.util.SqlColumnSearch.Field.calendarDate("t.due_date")),
+            Map.entry("createdAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("t.created_at")));
+
+    @Transactional(readOnly = true)
+    public PageResponse<RdTaskRow> list(String statusScope, String category, String keyword,
+                                        UUID assigneeId, int page, int size,
+                                        Map<String, String> columns, String sort, String order) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 200);
         List<String> statuses = scopeStatuses(statusScope);
@@ -98,6 +117,9 @@ public class RdTaskService {
         where.add(TaskKeywordSearch.condition(keyword, "t.title", "t.task_no", "g.name", "g.code",
                 "t.source_doc_no", "assignee.full_name", "reporter.full_name", "goods_color.name"));
         args.putAll(TaskKeywordSearch.parameters(keyword));
+        var headers = com.uten.imp.common.util.SqlColumnSearch.criteria(columns, COLUMNS);
+        where.add(headers.predicate());
+        args.putAll(headers.parameters());
         String whereSql = String.join(" AND ", where);
         var namedJdbc = new NamedParameterJdbcTemplate(jdbc);
         Long total = namedJdbc.queryForObject("SELECT COUNT(*) " + TASK_FROM + " WHERE " + whereSql,
@@ -108,9 +130,12 @@ public class RdTaskService {
         args.put("offset", (long) (p - 1) * sz);
         String rank = KeywordSearch.terms(keyword).isEmpty() ? "" : TaskKeywordSearch.rankNamesFirst(keyword,
                 new String[]{"g.name"}, new String[]{}, new String[]{"g.code", "t.task_no", "t.title"}) + ", ";
+        var selected = COLUMNS.get(sort == null ? "" : sort);
+        String ordering = selected == null ? rank + "(t.priority = 'URGENT') DESC,t.created_at DESC,t.id"
+                : selected.expression() + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC") + " NULLS LAST,t.id";
         List<RdTaskRow> items = namedJdbc.query(
                 SELECT_COLUMNS + " WHERE " + whereSql
-                        + " ORDER BY " + rank + "(t.priority = 'URGENT') DESC, t.created_at DESC,t.id LIMIT :limit OFFSET :offset",
+                        + " ORDER BY " + ordering + " LIMIT :limit OFFSET :offset",
                 args, (rs, rowNum) -> mapRow(rs));
 
         int totalPages = t == 0 ? 0 : (int) ((t + sz - 1) / sz);

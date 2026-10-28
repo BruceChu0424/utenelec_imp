@@ -55,23 +55,26 @@ public class EmployeeNameResolver {
         List<UUID> unique = ids.stream().filter(Objects::nonNull).distinct().toList();
         if (unique.isEmpty()) return Collections.emptyMap();
         String sql = """
-                WITH requested_ids AS (
-                    SELECT id FROM employees WHERE id IN (:ids)
-                    UNION
-                    SELECT id FROM users WHERE id IN (:ids)
-                )
+                WITH requested_ids(id) AS (VALUES %s)
                 SELECT requested.id, COALESCE(%s, %s)
                 FROM requested_ids requested
-                LEFT JOIN employees direct_employee ON direct_employee.id = requested.id
+                LEFT JOIN employees direct_employee ON direct_employee.id = fn_canonical_employee_identity(requested.id)
                 LEFT JOIN users legacy_user ON legacy_user.id = requested.id
-                LEFT JOIN employees legacy_employee ON legacy_employee.id = legacy_user.employee_id
-                """.formatted(readNameExpression("direct_employee", withCode),
+                LEFT JOIN users retained_user ON retained_user.id = fn_employee_merge_retained_user(requested.id)
+                LEFT JOIN employees legacy_employee ON legacy_employee.id = fn_canonical_employee_identity(
+                    COALESCE(legacy_user.employee_id,retained_user.employee_id))
+                """.formatted("%s", readNameExpression("direct_employee", withCode),
                         readNameExpression("legacy_employee", withCode));
         Map<UUID, String> result = new LinkedHashMap<>();
         for (int start = 0; start < unique.size(); start += READ_BATCH_SIZE) {
             List<UUID> batch = unique.subList(start, Math.min(start + READ_BATCH_SIZE, unique.size()));
+            String values = java.util.stream.IntStream.range(0,batch.size())
+                    .mapToObj(index -> "(CAST(:raw" + index + " AS uuid))")
+                    .collect(java.util.stream.Collectors.joining(","));
+            var query = em.createNativeQuery(sql.formatted(values));
+            for (int index=0;index<batch.size();index++) query.setParameter("raw"+index,batch.get(index));
             for (Object[] row : NativeQueryResults.objectArrayRows(
-                    em.createNativeQuery(sql).setParameter("ids", batch))) {
+                    query)) {
                 if (row[1] != null) result.put((UUID) row[0], row[1].toString());
             }
         }
@@ -87,10 +90,11 @@ public class EmployeeNameResolver {
     public String nameOf(UUID id) {
         if (id == null) return null;
         Object direct = findFirst(
-                "SELECT full_name FROM employees WHERE id = :id", id);
+                "SELECT full_name FROM employees WHERE id = fn_canonical_employee_identity(:id)", id);
         if (direct != null) return direct.toString();
         Object viaUser = findFirst(
-                "SELECT e.full_name FROM users u JOIN employees e ON e.id = u.employee_id WHERE u.id = :id", id);
+                "SELECT e.full_name FROM users u JOIN employees e ON e.id = fn_canonical_employee_identity(u.employee_id)"
+                        + " WHERE u.id = COALESCE((SELECT id FROM users WHERE id=:id),fn_employee_merge_retained_user(:id))", id);
         return viaUser != null ? viaUser.toString() : null;
     }
 
@@ -102,11 +106,12 @@ public class EmployeeNameResolver {
     public String nameWithCodeOf(UUID id) {
         if (id == null) return null;
         Object direct = findFirst(
-                "SELECT full_name || '(' || code || ')' FROM employees WHERE id = :id", id);
+                "SELECT full_name || '(' || code || ')' FROM employees WHERE id = fn_canonical_employee_identity(:id)", id);
         if (direct != null) return direct.toString();
         Object viaUser = findFirst(
                 "SELECT e.full_name || '(' || e.code || ')' FROM users u"
-                        + " JOIN employees e ON e.id = u.employee_id WHERE u.id = :id", id);
+                        + " JOIN employees e ON e.id = fn_canonical_employee_identity(u.employee_id)"
+                        + " WHERE u.id = COALESCE((SELECT id FROM users WHERE id=:id),fn_employee_merge_retained_user(:id))", id);
         return viaUser != null ? viaUser.toString() : null;
     }
 
@@ -155,7 +160,7 @@ public class EmployeeNameResolver {
         String sql = """
                 SELECT employee.full_name || '(' || employee.code || ')'
                 FROM %s document
-                JOIN employees employee ON employee.legacy_id = NULLIF(document.%s, 0)
+                JOIN employees employee ON employee.id = fn_employee_identity_from_legacy_worker(NULLIF(document.%s, 0))
                 WHERE document.id = :documentId AND document.legacy_id = :documentLegacyId
                   AND document.%s IS NULL
                 """.formatted(role.table, role.legacyColumn, role.employeeColumn);

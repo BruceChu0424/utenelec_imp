@@ -83,6 +83,46 @@ public class SalesReportService {
     private static final List<String> ORDER_PRICE_KEYS =
             List.of("totalAmount", "billedLocalAmount", "billedLocalTotal", "machiningPrice", "price", "discount", "amount");
 
+    /** Expressions were checked against each detail SELECT; snapshots stay snapshots, never today's master name. */
+    private static Map<String,String> detailHeaderExpressions(String kind) {
+        Map<String,String> fields=new LinkedHashMap<>(Map.ofEntries(
+                Map.entry("billNo","i.bill_no"),Map.entry("billDate","i.bill_date"),Map.entry("clientName","c.name"),
+                Map.entry("region","c.region"),Map.entry("series","g.series"),Map.entry("goodsName","i.goods_name_snapshot"),
+                Map.entry("goodsCode","i.goods_code_snapshot"),Map.entry("colorName","col.name"),Map.entry("model","g.model"),
+                Map.entry("spec","g.spec"),Map.entry("qty","i.qty"),Map.entry("price","i.price"),Map.entry("discount","i.discount"),
+                Map.entry("amount","i.amount_local"),Map.entry("remark","i.remark")));
+        switch(kind) {
+            case "ORDER"->fields.putAll(Map.ofEntries(
+                    Map.entry("billNo","o.bill_no"),Map.entry("currencyCode",com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")),
+                    Map.entry("contractNo","o.contract_no"),Map.entry("totalAmount","o.total_original"),
+                    Map.entry("billedLocalTotal","billed_order.amount"),Map.entry("clientOrderNo","i.client_no"),
+                    Map.entry("circumference","i.circumference"),Map.entry("machiningPrice","i.machining_price"),
+                    Map.entry("amount","i.amount_original"),Map.entry("billedLocalAmount","billed_item.amount"),
+                    Map.entry("inboundQty","i.inbound_qty"),Map.entry("shippedQty","i.shipped_qty"),
+                    Map.entry("pendingQty","(i.qty-i.shipped_qty+i.returned_qty-i.flag_qty)"),
+                    Map.entry("stockQty","COALESCE(sb.stock_qty,0)"),Map.entry("inNo","i.in_no"),Map.entry("outNo","i.out_no")));
+            case "SHIPMENT"->fields.put("dealAmount",DEAL_EXPR);
+            case "RETURN"->fields.putAll(Map.of("sellerName","em_sel.full_name","director","d.director","dealAmount",DEAL_EXPR));
+            case "OTHER"->fields.putAll(Map.ofEntries(
+                    Map.entry("director","d.director"),Map.entry("warehouseName","wh.name"),Map.entry("categoryName","cc.name"),
+                    Map.entry("parcelCount","o.parcel_count"),Map.entry("senderName","em_snd.full_name"),Map.entry("shipAddr","o.ship_addr"),
+                    Map.entry("totalAmount","o.total_local"),Map.entry("customerModel","i.client_model"),Map.entry("cartonCount","i.carton_count"),
+                    Map.entry("parcelQty","i.parcel_qty"),Map.entry("weight","i.weight"),Map.entry("circumference","i.circumference"),
+                    Map.entry("materialPrice","i.material_price"),Map.entry("dieCastPrice","i.die_cast_price"),Map.entry("machiningPrice","i.machining_price"),
+                    Map.entry("returnedQty","i.returned_qty"),Map.entry("returnedAmount","i.returned_amount"),
+                    Map.entry("actualAmount","(i.amount_local-COALESCE(i.returned_amount,0))")));
+            default->throw new IllegalArgumentException("Unknown sales report detail source");
+        }
+        return Map.copyOf(fields);
+    }
+    /** All four summaries have already grouped by client/currency/unit before this outer predicate. */
+    private static Map<String,String> summaryHeaderExpressions() {
+        Map<String,String> fields=new LinkedHashMap<>();
+        for(String key:List.of("clientName","region","currencyCode","categoryName","docCount","totalQty","totalAmount","billedLocalTotal","dealAmount","actualAmount"))
+            fields.put(key,"t.\""+key+"\"");
+        return Map.copyOf(fields);
+    }
+
     /** 价格脱敏：无 sales_order:price:view 时把订货明细报表的价格列置 null（导出同口径——导出走本方法分页累积）。 */
     private ReportTableResponse maskOrderPricesIfNeeded(ReportTableResponse r) {
         if (priceMasker.canView()) return r;
@@ -94,7 +134,7 @@ public class SalesReportService {
         }
         return new ReportTableResponse(r.columns(), r.rows(), r.facets(), r.page(), r.size(),
                 r.total(), r.totalPages(), r.totals().stream()
-                        .filter(total -> !ORDER_PRICE_KEYS.contains(total.key())).toList());
+                        .filter(total -> !ORDER_PRICE_KEYS.contains(total.key())).toList()).withColumnSearchKeys(r.columnSearchKeys());
     }
 
     // ======================== 通用执行器（与采购同型） ========================
@@ -109,13 +149,30 @@ public class SalesReportService {
                 page, size, sort, order, java.util.Set.of());
     }
 
+    private ReportTableResponse execute(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            WhereBuilder where,String orderBy,List<FacetSpec> specs,Map<String,String> filters,int page,int size,
+            String sort,String order,Map<String,String> expressions) {
+        return executeRead(columns,dataSelect,fromJoin,where,orderBy,specs,filters,page,size,sort,order,java.util.Set.of(),expressions);
+    }
+
     private ReportTableResponse executeRead(List<ReportColumn> columns, String dataSelect, String fromJoin,
                                              WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                              Map<String,String> activeFacets, int page, int size,
                                              String sort, String order, java.util.Set<String> protectedPriceKeys) {
+        return executeRead(columns,dataSelect,fromJoin,mainWhere,orderBy,specs,activeFacets,page,size,sort,order,protectedPriceKeys,Map.of());
+    }
+    private ReportTableResponse executeRead(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            WhereBuilder mainWhere,String orderBy,List<FacetSpec> specs,Map<String,String> activeFacets,int page,int size,
+            String sort,String order,java.util.Set<String> protectedPriceKeys,Map<String,String> expressions) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
+        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(activeFacets,protectedPriceKeys::contains);
+        Map<String,String> types=new LinkedHashMap<>(),allowed=new LinkedHashMap<>(expressions);
+        for(var column:columns)types.put(column.key(),column.type());
+        protectedPriceKeys.forEach(allowed::remove);
+        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(mainWhere,activeFacets,types,allowed,
+                Map.of("billDate",com.uten.imp.common.util.JpaColumnSearch.Kind.DATE));
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
         if (activeFacets != null) {
@@ -133,12 +190,14 @@ public class SalesReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) if (!protectedPriceKeys.contains(c.key())) sortKeys.add(c.key());
-        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
+        boolean explicitSort=sort!=null&&sortKeys.contains(sort);
+        String resolved=ReportSort.resolveOrderBy(sort,order,orderBy,sortKeys);
+        String effectiveOrderBy = explicitSort?resolved:mainWhere.orderBy(resolved);
 
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
-        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
+        if(!explicitSort)mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -192,7 +251,7 @@ public class SalesReportService {
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals).withColumnSearchKeys(searchKeys);
     }
 
     /**
@@ -399,7 +458,7 @@ public class SalesReportService {
                 new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "o.is_closed", "o.is_closed", "bool"));
         var protectedKeys = priceMasker.canView() ? java.util.Set.<String>of() : java.util.Set.copyOf(ORDER_PRICE_KEYS);
         ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, w,
-                "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, protectedKeys);
+                "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, protectedKeys, detailHeaderExpressions("ORDER"));
         return maskOrderPricesIfNeeded(r); // Rows, decimal text and totals share the same price permission.
     }
 
@@ -446,7 +505,7 @@ public class SalesReportService {
                 facetClient(),
                 new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("SHIPMENT"));
     }
 
     // ----- 销售退货明细 -----
@@ -496,7 +555,7 @@ public class SalesReportService {
                 new FacetSpec("billNo", "i.bill_no AS v, i.bill_no AS lbl", "i.bill_no", "i.bill_no", "text"),
                 facetClient(),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("RETURN"));
     }
 
     // ----- 其它出货明细 -----
@@ -569,7 +628,7 @@ public class SalesReportService {
                 facetClient(), facetWarehouse("warehouseName"),
                 new FacetSpec("settlementStyle", "o.payment_style_id AS v, CAST(o.payment_style_id AS text) AS lbl", "o.payment_style_id", "o.payment_style_id", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order, detailHeaderExpressions("OTHER"));
     }
 
     // ======================== 汇总报表（按 docType 派发；一行一客户） ========================
@@ -678,7 +737,7 @@ public class SalesReportService {
                 ? "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\", t.\"__currencyId\""
                 : "\"clientName\", t.\"__clientId\", t.\"__currencyId\"";
         ReportTableResponse r = executeRead(cols, dataSelect, fromJoin, outer, stableOrder,
-                List.of(facetClientSummary()), facets, page, size, sort, order, protectedKeys);
+                List.of(facetClientSummary()), facets, page, size, sort, order, protectedKeys, summaryHeaderExpressions());
         return maskOrderPricesIfNeeded(r);
     }
 
@@ -729,7 +788,7 @@ public class SalesReportService {
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
         return execute(cols, dataSelect, fromJoin, outer, "\"dealAmount\" DESC, \"clientName\", t.\"__clientId\"",
-                List.of(facetClientSummary()), facets, page, size, sort, order);
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
     }
 
     @Transactional(readOnly = true)
@@ -777,7 +836,7 @@ public class SalesReportService {
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
         return execute(cols, dataSelect, fromJoin, outer, "\"totalAmount\" DESC, \"clientName\", t.\"__clientId\"",
-                List.of(facetClientSummary()), facets, page, size, sort, order);
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
     }
 
     @Transactional(readOnly = true)
@@ -826,7 +885,7 @@ public class SalesReportService {
         WhereBuilder outer = new WhereBuilder("WHERE 1=1");
         inner.params().forEach((k, v) -> outer.add("1=1", k, v));
         return execute(cols, dataSelect, fromJoin, outer, "\"actualAmount\" DESC, \"clientName\", t.\"__clientId\"",
-                List.of(facetClientSummary()), facets, page, size, sort, order);
+                List.of(facetClientSummary()), facets, page, size, sort, order, summaryHeaderExpressions());
     }
 
     // ======================== facet 复用 ========================

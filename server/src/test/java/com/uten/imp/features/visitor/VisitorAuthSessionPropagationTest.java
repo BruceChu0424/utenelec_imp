@@ -161,7 +161,7 @@ class VisitorAuthSessionPropagationTest {
         com.uten.imp.features.auth.AuthSessionService sessions =
                 mock(com.uten.imp.features.auth.AuthSessionService.class);
         when(sessions.lockAndEvaluateForRefresh(sessionId, null, current.getVisitorAccountId()))
-                .thenReturn(com.uten.imp.features.auth.AuthSessionService.Verdict.ACTIVE);
+                .thenReturn(com.uten.imp.features.auth.AuthSessionService.RefreshVerdict.active());
         VisitorRefreshTransaction transaction = new VisitorRefreshTransaction(
                 repository, tokenService, accounts, sessions);
 

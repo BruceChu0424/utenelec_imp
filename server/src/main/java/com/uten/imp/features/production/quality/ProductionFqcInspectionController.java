@@ -40,8 +40,12 @@ public class ProductionFqcInspectionController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) String sheet,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "40") int size) {
-        return service.list(status, keyword, sheet, page, size);
+            @RequestParam(defaultValue = "40") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return service.list(status, keyword, sheet, page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     /** V547 品质检查单队列（待检处置一行一张单）；须声明在 /{id} 之前。 */

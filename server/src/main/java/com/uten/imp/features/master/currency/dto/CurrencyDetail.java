@@ -19,4 +19,8 @@ public class CurrencyDetail {
     private boolean baseCurrency;
     private String status;
     private Integer legacyId;
+
+    public String getExchangeRateText() {
+        return exchangeRate == null ? null : exchangeRate.toPlainString();
+    }
 }

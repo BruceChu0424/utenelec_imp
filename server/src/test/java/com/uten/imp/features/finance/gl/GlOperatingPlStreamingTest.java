@@ -53,7 +53,7 @@ class GlOperatingPlStreamingTest {
         when(lines.styleMonthly(anyCollection(), anyString(), any(), any())).thenReturn(Map.of());
         when(lines.payrollMonthly(anyCollection(), anyInt(), any())).thenReturn(Map.of());
         when(lines.depreciationMonthly(anyCollection(), anyString(), anyString())).thenReturn(Map.of());
-        return new GlReportService(em, lines);
+        return new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company());
     }
 
     private void context() {
@@ -95,5 +95,26 @@ class GlOperatingPlStreamingTest {
                     .isInstanceOf(ApiException.class).hasMessageContaining("500");
         }
         assertThat(pages).hasSize(1);assertThat(pages.getFirst().rows()).hasSize(500);
+    }
+
+    @Test void headersMatchAfterAllFiveHundredAndOneCategoriesAndRetainTheOriginalSubtotalBeforePagingAndExport() {
+        var service=service();
+        var options=new com.uten.imp.features.finance.report.FinanceReportColumnOptions(
+                Map.of("search.item","类别-0500","search.amount",COST.toPlainString()),null,null);
+        var first=service.operatingPlPage(2026,10,1,1,options);
+        var second=service.operatingPlPage(2026,10,2,1,options);
+        assertThat(first.total()).isEqualTo(2);assertThat(first.rows().getFirst()).containsEntry("item","类别-0500").containsEntry("amountExact",COST.toPlainString());
+        assertThat(second.rows().getFirst()).containsEntry("sub","销售成本合计");
+        assertThat((BigDecimal)second.rows().getFirst().get("amount")).isEqualByComparingTo(COST.multiply(new BigDecimal("501")));
+        assertThat(first.columnSearchKeys()).containsExactlyInAnyOrder("category","sub","item","amount","salesRatio","basis");
+        assertThat(service.operatingPlPage(2026,10,3,1,options).rows()).isEmpty();
+        assertThat(service.operatingPlPage(2026,10,1,10,new com.uten.imp.features.finance.report.FinanceReportColumnOptions(
+                Map.of("search.item","OP-unmatched","search.amount","!=0"),null,null)).total()).isZero();
+        context();var pages=new ArrayList<ExportPayload>();
+        try(var sink=ExportPageSink.open(pages::add)) {
+            var report=service.exportInCurrentSnapshot("gl/operating-pl",null,2026,10,1000,options);
+            assertThat(report.total()).isEqualTo(2);
+        }
+        assertThat(pages.stream().flatMap(page->page.rows().stream())).containsExactly(first.rows().getFirst(),second.rows().getFirst());
     }
 }

@@ -39,7 +39,9 @@ public class WarehouseOutboundTaskCenterController {
             @RequestParam(required = false) String order) {
         return queries.list(new WarehouseTaskCenterContracts.Filter(source, status, keyword, billNo,
                 dateFrom, dateTo, scopeWarehouseId, page, size, sort, order,
-                WarehouseTaskCenterContracts.TaskView.requested(view)));
+                WarehouseTaskCenterContracts.TaskView.requested(view)).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(
+                                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest())));
     }
 
     @GetMapping("/{rowKey}/detail")
@@ -50,6 +52,10 @@ public class WarehouseOutboundTaskCenterController {
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(defaultValue = "1") int linePage,
             @RequestParam(defaultValue = "100") int lineSize) {
-        return queries.detail(rowKey, scopeWarehouseId, linePage, lineSize);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        String sort=request==null?null:request.getParameter("sort"),order=request==null?null:request.getParameter("order");
+        return columns.isEmpty()&&sort==null&&order==null?queries.detail(rowKey,scopeWarehouseId,linePage,lineSize)
+                :queries.detail(rowKey,scopeWarehouseId,linePage,lineSize,columns,sort,order);
     }
 }

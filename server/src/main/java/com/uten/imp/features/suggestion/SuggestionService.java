@@ -73,18 +73,35 @@ public class SuggestionService {
             String status,
             int page,
             int size) {
+        return list(scope, category, status, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<SuggestionDto> list(String scope, String category, String status, int page, int size,
+            Map<String, String> columns, String sort, String order) {
         AuthUser u = requireStaff();
         String normalizedScope = normalizeScope(scope);
         String normalizedCategory = normalizeCategory(category);
         String normalizedStatus = normalizeStatus(status);
         validatePage(page, size);
 
-        Pageable pageable = Pageables.of(page, size, Sort.by(
+        Pageable pageable = Pageables.of(page, size, com.uten.imp.common.web.TableSort.resolve(sort, order, Sort.by(
                 Sort.Order.desc("submittedAt"),
-                Sort.Order.desc("id")));
+                Sort.Order.desc("id")), Map.of("submittedAt", "submittedAt")));
         boolean mine = "mine".equals(normalizedScope);
         Page<Suggestion> result;
-        if (mine && normalizedCategory != null && normalizedStatus != null) {
+        if (!columns.isEmpty()) {
+            var fields = columnFields(u);
+            var searches = com.uten.imp.common.util.JpaColumnSearch.validate(columns, fields);
+            result = suggestionRepo.findAll((root, query, cb) -> {
+                var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+                if (mine) predicates.add(cb.equal(root.get("submitterId"), u.getId()));
+                if (normalizedCategory != null) predicates.add(cb.equal(root.get("category"), normalizedCategory));
+                if (normalizedStatus != null) predicates.add(cb.equal(root.get("status"), normalizedStatus));
+                predicates.add(com.uten.imp.common.util.JpaColumnSearch.predicate(root, query, cb, searches, fields));
+                return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+            }, pageable);
+        } else if (mine && normalizedCategory != null && normalizedStatus != null) {
             result = suggestionRepo.findBySubmitterIdAndCategoryAndStatus(
                     u.getId(), normalizedCategory, normalizedStatus, pageable);
         } else if (mine && normalizedCategory != null) {
@@ -129,6 +146,35 @@ public class SuggestionService {
                 result.getSize(),
                 result.getTotalElements(),
                 result.getTotalPages());
+    }
+
+    private Map<String, com.uten.imp.common.util.JpaColumnSearch.Field> columnFields(AuthUser viewer) {
+        return Map.of(
+            "title", com.uten.imp.common.util.JpaColumnSearch.Field.text("title"),
+            "submittedAt", com.uten.imp.common.util.JpaColumnSearch.Field.instant("submittedAt"),
+            "submitter", com.uten.imp.common.util.JpaColumnSearch.Field.text((root, query, cb) -> {
+                jakarta.persistence.criteria.Expression<String> name = root.get("submitterName");
+                if (!canReply(viewer)) {
+                    var masked = cb.<String>selectCase()
+                            .when(cb.lessThanOrEqualTo(cb.length(root.get("submitterName")), 1), "匿名用户")
+                            .otherwise(cb.concat(cb.substring(root.get("submitterName"), 1, 1), "**"));
+                    name = cb.<String>selectCase().when(cb.or(cb.isFalse(root.get("anonymous")),
+                            cb.equal(root.get("submitterId"), viewer.getId())), root.get("submitterName")).otherwise(masked);
+                }
+                return cb.coalesce(cb.nullif(cb.trim(name), ""), "匿名用户");
+            }),
+            "replyCount", com.uten.imp.common.util.JpaColumnSearch.Field.decimal((root, query, cb) -> {
+                var count = query.subquery(Long.class);
+                var reply = count.from(SuggestionReply.class);
+                count.select(cb.count(reply)).where(cb.equal(reply.get("suggestionId"), root.get("id")));
+                return cb.toBigDecimal(count);
+            }),
+            "likes", com.uten.imp.common.util.JpaColumnSearch.Field.decimal((root, query, cb) -> {
+                var count = query.subquery(Long.class);
+                var like = count.from(SuggestionLike.class);
+                count.select(cb.count(like)).where(cb.equal(like.get("id").get("suggestionId"), root.get("id")));
+                return cb.toBigDecimal(count);
+            }));
     }
 
     /** 详情（含回复，按回复时间升序）。 */

@@ -213,10 +213,10 @@ class FinanceReportObjectScopeTest {
         List<CapturedQuery> sensitiveQueries = fixture.queries().stream()
                 .filter(query -> directlyReadsFinanceDocument(query.sql()))
                 .toList();
-        // 列表 + 计数 + 两条服务端合计（按分组维度归并，一维一条）。
+        // 列表 + 计数 + 币别候选 + 两条服务端合计（按分组维度归并，一维一条）。
         // 合计查询是把列表 SQL 整个包进 FROM (...) t，所以同样直读凭证表——
         // 它必须和列表走同一份归属谓词，否则 view:all 之外的人能从表尾合计里反推总额。
-        assertThat(sensitiveQueries).hasSize(4);
+        assertThat(sensitiveQueries).hasSize(5);
         for (CapturedQuery captured : sensitiveQueries) {
             assertThat(captured.sql()).contains("AND 1=1");
             verify(captured.query(), never()).setParameter(eq(OWNERS_PARAM), any());
@@ -348,9 +348,13 @@ class FinanceReportObjectScopeTest {
         ReportTableResponse empty = new ReportTableResponse(
                 List.of(), List.of(), Map.of(), 1, 500, 0, 0);
         when(statementService.supplierStatement(null, null, null, 1, 500)).thenReturn(empty);
+        when(statementService.supplierStatement(null,null,null,1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
         when(costService.productCost(null, null, null, 1, 500)).thenReturn(empty);
+        when(costService.productCost(null,null,null,1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
         when(glReportService.trialBalance(null, null, 1, 500)).thenReturn(empty);
+        when(glReportService.trialBalance(null,null,1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
         when(fixedAssetService.depreciationSchedule(1, 500)).thenReturn(empty);
+        when(fixedAssetService.depreciationSchedule(1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
         return new Fixture(
                 new FinanceReportService(
                         em,
@@ -359,7 +363,8 @@ class FinanceReportObjectScopeTest {
                         statementService,
                         costService,
                         glReportService,
-                        fixedAssetService),
+                        fixedAssetService,
+                        mock(PartyMonthlySummaryService.class)),
                 access,
                 queries);
     }

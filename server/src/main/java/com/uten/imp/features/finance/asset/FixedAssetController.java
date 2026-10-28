@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /** Typed professional asset/deferral workbench API. */
@@ -55,8 +56,9 @@ public class FixedAssetController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return query.listFixedAssets(q, status, categoryId, departmentId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam Map<String, String> columnQuery) {
+        return query.listFixedAssets(q, status, categoryId, departmentId, page, size, columnQuery);
     }
 
     @GetMapping("/fixed-assets/{id}")
@@ -167,8 +169,9 @@ public class FixedAssetController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return query.listDeferredExpenses(q, status, categoryId, departmentId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam Map<String, String> columnQuery) {
+        return query.listDeferredExpenses(q, status, categoryId, departmentId, page, size, columnQuery);
     }
 
     @GetMapping("/deferred-expenses/{id}")
@@ -385,13 +388,21 @@ public class FixedAssetController {
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public ReportTableResponse depreciationSchedule(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) { return legacyReports.depreciationSchedule(page, size); }
+            @RequestParam(defaultValue = "50") int size) {
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?legacyReports.depreciationSchedule(page,size)
+                :legacyReports.depreciationSchedule(page,size,options);
+    }
 
     @GetMapping("/reports/fa/amortization-schedule")
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public ReportTableResponse amortizationSchedule(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) { return legacyReports.amortizationSchedule(page, size); }
+            @RequestParam(defaultValue = "50") int size) {
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?legacyReports.amortizationSchedule(page,size)
+                :legacyReports.amortizationSchedule(page,size,options);
+    }
 
     public record Items<T>(List<T> items) {}
 }

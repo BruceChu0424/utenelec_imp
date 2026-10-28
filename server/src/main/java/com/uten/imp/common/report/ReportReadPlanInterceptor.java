@@ -10,7 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.servlet.AsyncHandlerInterceptor;
 
-/** One request contract for all six report domains; POST exports open their own row-only scope. */
+/** GET and declared POST reads share one contract; exports open their own row-only scope. */
 public class ReportReadPlanInterceptor implements AsyncHandlerInterceptor {
     private static final String SCOPE = ReportReadPlanInterceptor.class.getName() + ".scope";
     private final ReadScopeVersionAuthority authority;
@@ -22,7 +22,10 @@ public class ReportReadPlanInterceptor implements AsyncHandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (!"GET".equalsIgnoreCase(request.getMethod())) return true;
+        boolean declaredPost = "POST".equalsIgnoreCase(request.getMethod())
+                && handler instanceof org.springframework.web.method.HandlerMethod method
+                && method.hasMethodAnnotation(ReadOnlyReportQuery.class);
+        if (!"GET".equalsIgnoreCase(request.getMethod()) && !declaredPost) return true;
         String path=SecurityRequestPath.withinApplication(request);
         boolean count=flag(request,"includeCount"),facets=flag(request,"includeFacets"),totals=flag(request,"includeTotals");
         boolean reuse=flag(request,"metadataReuse",false);

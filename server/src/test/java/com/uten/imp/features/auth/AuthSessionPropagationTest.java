@@ -123,7 +123,7 @@ class AuthSessionPropagationTest {
                         current.getExpiresAt()));
         AuthSessionService sessions = mock(AuthSessionService.class);
         when(sessions.lockAndEvaluateForRefresh(sessionId, current.getUserId(), null))
-                .thenReturn(AuthSessionService.Verdict.ACTIVE);
+                .thenReturn(AuthSessionService.RefreshVerdict.active());
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
                 users, repository, tokenService, mock(RemoteAccessPolicy.class), sessions);
 

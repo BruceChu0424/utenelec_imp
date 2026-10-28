@@ -43,6 +43,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -304,9 +305,19 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
     @Transactional(readOnly = true)
     public PageResponse<WeightObservationRow> observations(UUID goodsId, int page, int size, String kind,
                                                            UUID supplierId, String stage) {
+        return observations(goodsId, page, size, kind, supplierId, stage, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<WeightObservationRow> observations(UUID goodsId, int page, int size, String kind,
+                                                           UUID supplierId, String stage,
+                                                           Map<String, String> columns, String sort, String order) {
         if (!facts.load(goodsId).exists()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "货品不存在");
         }
+        boolean namesVisible = canSeeCounterparties();
+        if (!namesVisible && (columns.containsKey("party") || "party".equals(sort)))
+            throw new ApiException(ErrorCode.FORBIDDEN, "无权按隐藏的供应商或车间名称检索");
         StringBuilder where = new StringBuilder("o.goods_id = :goods");
         MapSqlParameterSource args = new MapSqlParameterSource("goods", goodsId);
         if (kind != null && !kind.isBlank()) {
@@ -332,12 +343,11 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
             }
         }
         PageRequest pageable = Pageables.of(page, size);
-        Long total = db.queryForObject("SELECT count(*) FROM goods_weight_observations o WHERE " + where,
-                args, Long.class);
+        Long total = columns.isEmpty() ? db.queryForObject("SELECT count(*) FROM goods_weight_observations o WHERE " + where,
+                args, Long.class) : null;
         long count = total == null ? 0L : total;
         args.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        boolean namesVisible = canSeeCounterparties();
-        List<WeightObservationRow> items = db.query("""
+        String projection = """
                 SELECT o.id, o.observed_at, o.source_kind, o.role, o.qty_base, o.weight_kg, o.gross_kg, o.tare_kg,
                        o.warehouse_id, w.name AS warehouse_name, o.color_id, c.name AS color_name,
                        o.supplier_id, s.name AS supplier_name, o.counterpart_kind, o.counterpart_id,
@@ -396,10 +406,27 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
                     ) u
                     LIMIT 1
                 ) src ON true
-                """ + "WHERE " + where + "\n" + """
-                ORDER BY o.observed_at DESC, o.id DESC
-                LIMIT :limit OFFSET :offset
-                """, args, (rs, i) -> {
+                """ + "WHERE " + where;
+        String pageSql = projection + " ORDER BY o.observed_at DESC,o.id DESC LIMIT :limit OFFSET :offset";
+        if (!columns.isEmpty() || sort != null) {
+            var normalized = new LinkedHashMap<>(columns);
+            if (normalized.containsKey("unitWeight"))
+                normalized.put("unitWeight", normalizeUnitWeightSearch(normalized.get("unitWeight")));
+            var fields = observationColumns();
+            var headers = com.uten.imp.common.util.SqlColumnSearch.criteria(normalized, fields);
+            headers.parameters().forEach(args::addValue);
+            String source = " FROM (" + projection + ") observed WHERE " + headers.predicate();
+            if (!columns.isEmpty()) {
+                Long filtered = db.queryForObject("SELECT COUNT(*)" + source, args, Long.class);
+                count = filtered == null ? 0L : filtered;
+            }
+            var selected = fields.get(sort == null ? "" : sort);
+            String ordering = selected == null ? "observed.observed_at DESC,observed.id DESC"
+                    : selected.expression() + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC")
+                        + " NULLS LAST,observed.id DESC";
+            pageSql = "SELECT observed.*" + source + " ORDER BY " + ordering + " LIMIT :limit OFFSET :offset";
+        }
+        List<WeightObservationRow> items = db.query(pageSql, args, (rs, i) -> {
             BigDecimal qty = rs.getBigDecimal("qty_base");
             BigDecimal weight = rs.getBigDecimal("weight_kg");
             String sourceDocType = rs.getString("source_doc_type");
@@ -442,6 +469,42 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
         });
         int totalPages = (int) ((count + pageable.getPageSize() - 1) / pageable.getPageSize());
         return new PageResponse<>(items, pageable.getPageNumber() + 1, pageable.getPageSize(), count, totalPages);
+    }
+
+    private static Map<String, com.uten.imp.common.util.SqlColumnSearch.Field> observationColumns() {
+        String sourceName = "CASE WHEN observed.source_doc_id IS NOT NULL AND observed.source_doc_type IN ("
+                + "'PURCHASE_RECEIPT','SUBCONTRACT_RECEIPT','STOCK_DOC','SUBCONTRACT_MATERIAL_ISSUE','SALES_SHIPMENT','PRODUCTION_FINISHED_ARRIVAL') "
+                + "AND NOT coalesce(observed.source_hit,false) THEN '来源单据已清空' ELSE observed.bill_no END";
+        String ratio = "(observed.weight_kg/NULLIF(observed.qty_base,0))";
+        String scaled = "(" + ratio + "*1000000000000)";
+        // Match weight.divide(qty,12,HALF_EVEN), including exact halfway values.
+        String unitWeight = "CASE WHEN observed.qty_base>0 AND observed.weight_kg IS NOT NULL THEN "
+                + "CASE WHEN abs(" + scaled + "-trunc(" + scaled + "))=0.5 AND mod(abs(trunc(" + scaled + ")),2)=0 "
+                + "THEN trunc(" + ratio + ",12) ELSE round(" + ratio + ",12) END END";
+        return Map.of(
+                "observedAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("observed.observed_at"),
+                "billNo", com.uten.imp.common.util.SqlColumnSearch.Field.text(sourceName),
+                "party", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(observed.supplier_name,observed.counterpart_name)"),
+                "qty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("observed.qty_base"),
+                "weight", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("observed.weight_kg"),
+                "unitWeight", com.uten.imp.common.util.SqlColumnSearch.Field.decimal(unitWeight),
+                "deviation", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("observed.deviation_pct"),
+                "recordedBy", com.uten.imp.common.util.SqlColumnSearch.Field.text("observed.recorded_by_name"));
+    }
+
+    private static String normalizeUnitWeightSearch(String query) {
+        if (query == null || query.isBlank()) return query;
+        var suffix = java.util.regex.Pattern.compile("(?i)^(.*?)(kg|g|千克|公斤|克)$").matcher(query.strip());
+        BigDecimal factor = BigDecimal.ONE;
+        String number = query;
+        if (suffix.matches()) {
+            number = suffix.group(1).strip();
+            if (Set.of("g", "克").contains(suffix.group(2).toLowerCase(Locale.ROOT))) factor = new BigDecimal("0.001");
+        }
+        var parsed = com.uten.imp.common.util.NumericColumnFilter.parse(number);
+        String lower = parsed.lower().multiply(factor).toPlainString();
+        return parsed.upper() == null ? parsed.operator() + lower
+                : lower + ".." + parsed.upper().multiply(factor).toPlainString();
     }
 
     /** 核重后的库存维度 (数量、重量、是否估算)。 */

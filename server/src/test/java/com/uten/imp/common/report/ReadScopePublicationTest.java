@@ -16,6 +16,36 @@ class ReadScopePublicationTest {
     final SecurityContextCurrentUser users=mock(SecurityContextCurrentUser.class);
     ReportReadPlanInterceptor interceptor;
     @BeforeEach void setup() {when(users.get()).thenReturn(Optional.of(subject));interceptor=new ReportReadPlanInterceptor(authority,users);}
+    @Test void costVersionPagesUseTheCompositeGoodsAndCustomerPublicationProof() {
+        for(String suffix:List.of("","/versions","/00000000-0000-4000-8000-000000000001",
+                "/00000000-0000-4000-8000-000000000001/snapshots","/snapshots/00000000-0000-4000-8000-000000000001","/templates")) {
+        when(authority.scopeFor("master_goods_cost",subject)).thenReturn("a".repeat(64),"b".repeat(64));
+        var request=new MockHttpServletRequest("GET","/api/master/goods/cost-sheets"+suffix);
+        var response=new MockHttpServletResponse();
+        new MasterReadScopeInterceptor(authority,users).preHandle(request,response,null);
+        var error=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(Map.of("items",List.of()),
+                null,MediaType.APPLICATION_JSON,null,new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+        assertEquals(ErrorCode.READ_SCOPE_CHANGED,error.getCode());
+        }
+    }
+    @Test void aPrivatePostReadCapturesAndRechecksTheSameReportScope() throws Exception {
+        when(authority.scopeFor("finance",subject)).thenReturn("a".repeat(64),"b".repeat(64));
+        var request=new MockHttpServletRequest("POST","/api/finance/reports/ar-ap/overview/search");
+        request.setParameter("metadataReuse","true");request.setParameter("readScopeVersion","a".repeat(64));
+        for(String key:List.of("includeCount","includeFacets","includeTotals"))request.setParameter(key,"false");
+        var handler=new org.springframework.web.method.HandlerMethod(new ReportReadPlanInterceptorTest.PrivateQuery(),
+                ReportReadPlanInterceptorTest.PrivateQuery.class.getDeclaredMethod("search"));
+        var response=new MockHttpServletResponse();
+        try {
+            interceptor.preHandle(request,response,handler);
+            assertFalse(ReportReadPlan.current().includeCount());
+            assertEquals("a".repeat(64),ReportReadPlan.current().readScopeVersion());
+            var error=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(Map.of("rows",List.of()),
+                    null,MediaType.APPLICATION_JSON,null,new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+            assertEquals(ErrorCode.READ_SCOPE_CHANGED,error.getCode());
+        } finally {interceptor.afterCompletion(request,response,handler,null);}
+        assertEquals(ReportReadPlan.ALL,ReportReadPlan.current());
+    }
     @Test void aMatchingProofPermitsRowsOnlyAndAMismatchForcesAllMetadataWithoutChangingThePredicate() {
         for(boolean matches:List.of(true,false)) {
             when(authority.scopeFor("sales",subject)).thenReturn("a".repeat(64));
@@ -111,7 +141,7 @@ class ReadScopePublicationTest {
         }
     }
     @Test void synchronousExportFamiliesKeepTheirOwnAuthorityUntilTheLastBytePublication() {
-        var routes=Map.of("/api/master/goods/cost-sheets/actual/export","master_goods","/api/master/clients/export","client",
+        var routes=Map.of("/api/master/goods/cost-sheets/actual/export","master_goods","/api/master/goods/cost-sheets/export","master_goods_cost","/api/master/clients/export","client",
                 "/api/master/warehouses/export","master_warehouse","/api/sales/reports/export","sales",
                 "/api/admin/audit-logs/export","audit","/api/operations/workbench/purchase/export","native_purchase_owner",
                 "/api/operations/workbench/subcontract/export","native_subcontract_owner");

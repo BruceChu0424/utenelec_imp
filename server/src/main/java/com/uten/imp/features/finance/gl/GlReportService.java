@@ -5,7 +5,6 @@ import com.uten.imp.common.report.ReportReadPlan;
 import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.features.finance.report.ReportColumn;
-import com.uten.imp.features.finance.report.ReportFacet;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +50,7 @@ public class GlReportService {
 
     private final EntityManager em;
     private final GlReportLineSource lines;
+    private final com.uten.imp.features.finance.FinanceDocumentAccessPolicy access;
 
     /**
      * Uses the export worker's already established PostgreSQL snapshot. Self invocation here is
@@ -65,7 +65,20 @@ public class GlReportService {
         return exportSnapshot(report, dateTo, year, month, maximum);
     }
 
+    public ReportTableResponse exportInCurrentSnapshot(String report,LocalDate dateTo,int year,int month,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        return exportSnapshot(report,dateTo,year,month,null,options);
+    }
+    public ReportTableResponse exportInCurrentSnapshot(String report,LocalDate dateTo,int year,int month,int maximum,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        ReportQueryKit.requireExportRowCount(maximum,0);return exportSnapshot(report,dateTo,year,month,maximum,options);
+    }
+
     private ReportTableResponse exportSnapshot(String report, LocalDate dateTo, int year, int month, Integer maximum) {
+        return exportSnapshot(report,dateTo,year,month,maximum,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+    private ReportTableResponse exportSnapshot(String report,LocalDate dateTo,int year,int month,Integer maximum,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
         if (com.uten.imp.common.export.ExportPageSink.current() == null
                 || !org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
                 || !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()
@@ -81,15 +94,27 @@ public class GlReportService {
                 || (!user.isSuperAdmin() && !user.getPermissions().contains("finance:view:all"))) {
             throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN);
         }
+        if(options.filters().isEmpty()&&options.sort()==null&&options.order()==null) {
+            return switch(report) {
+                case "gl/balance-sheet"->balanceSheet(dateTo);
+                case "gl/profit-annual"->profitAnnual(year);
+                case "gl/profit-monthly"->profitMonthly(year,month);
+                case "gl/manufacturing-expense"->manufacturingExpense(year);
+                case "gl/admin-expense"->adminExpense(year);
+                case "gl/sales-expense"->salesExpense(year);
+                case "gl/operating-pl"->maximum==null?operatingPl(year,month):buildOperatingPl(year,month,1,500,maximum);
+                default->throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"总账报表类型不正确");
+            };
+        }
         return switch (report) {
-            case "gl/balance-sheet" -> balanceSheet(dateTo);
-            case "gl/profit-annual" -> profitAnnual(year);
-            case "gl/profit-monthly" -> profitMonthly(year, month);
-            case "gl/manufacturing-expense" -> manufacturingExpense(year);
-            case "gl/admin-expense" -> adminExpense(year);
-            case "gl/sales-expense" -> salesExpense(year);
-            case "gl/operating-pl" -> maximum == null ? operatingPl(year, month)
-                    : buildOperatingPl(year, month, 1, 500, maximum);
+            case "gl/balance-sheet" -> balanceSheet(dateTo,options);
+            case "gl/profit-annual" -> profitAnnual(year,options);
+            case "gl/profit-monthly" -> profitMonthly(year,month,options);
+            case "gl/manufacturing-expense" -> manufacturingExpense(year,options);
+            case "gl/admin-expense" -> adminExpense(year,options);
+            case "gl/sales-expense" -> salesExpense(year,options);
+            case "gl/operating-pl" -> maximum == null ? buildOperatingPl(year,month,1,50,null,options)
+                    : buildOperatingPl(year,month,1,500,maximum,options);
             default -> throw new com.uten.imp.common.web.ApiException(
                     com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "总账报表类型不正确");
         };
@@ -97,19 +122,25 @@ public class GlReportService {
 
     // ======================== ① 科目余额表 ========================
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ReportTableResponse trialBalance(LocalDate from, LocalDate to, int page, int size) {
+        return trialBalance(from,to,page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public ReportTableResponse trialBalance(LocalDate from,LocalDate to,int page,int size,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("styleCode", "科目编码", 90),
                 ReportColumn.text("styleName", "科目名称", 180),
                 ReportColumn.number("level", "级次"),
                 ReportColumn.text("category", "类别", 90),
-                ReportColumn.money("opening", "期初余额"),
-                ReportColumn.money("debit", "本期借方"),
-                ReportColumn.money("credit", "本期贷方"),
-                ReportColumn.money("closing", "期末余额"));
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(500, Math.max(1, size));
+                ReportColumn.money("opening", "期初余额").withUnitLabel("元"),
+                ReportColumn.money("debit", "本期借方").withUnitLabel("元").totaled("所列记录本期借方合计"),
+                ReportColumn.money("credit", "本期贷方").withUnitLabel("元").totaled("所列记录本期贷方合计"),
+                ReportColumn.money("closing", "期末余额").withUnitLabel("元"));
+        var projected=new ArrayList<>(cols);projected.add(ReportColumn.text("__styleId","",1));
         String sql = """
                 WITH agg AS (
                     SELECT style_id,
@@ -119,47 +150,26 @@ public class GlReportService {
                     FROM gl_entries WHERE is_deleted = false
                     GROUP BY style_id
                 )
-                SELECT ps.code, ps.name, ps.level, ps.category,
-                       CASE WHEN ps.category IN ('ACCOUNT','EXPENSE') THEN a.opening_net ELSE -a.opening_net END,
+                SELECT ps.code AS "styleCode", ps.name AS "styleName", ps.level, ps.category,
+                       CASE WHEN ps.category IN ('ACCOUNT','EXPENSE') THEN a.opening_net ELSE -a.opening_net END AS opening,
                        a.debit, a.credit,
                        CASE WHEN ps.category IN ('ACCOUNT','EXPENSE')
                             THEN a.opening_net + a.debit - a.credit
-                            ELSE -(a.opening_net + a.debit - a.credit) END
+                            ELSE -(a.opening_net + a.debit - a.credit) END AS closing,ps.id AS "__styleId"
                 FROM agg a JOIN payment_styles ps ON ps.id = a.style_id
                 """;
-        var q = com.uten.imp.common.report.ReportExportCursor.query(em, sql + " ORDER BY ps.category, ps.code, ps.name, ps.id LIMIT :__limit OFFSET :__offset")
-                .setParameter("__limit", safeSize)
-                .setParameter("__offset", (long) (safePage - 1) * safeSize);
-        q.setParameter("from", from);
-        q.setParameter("to", to);
-        List<Object[]> rs = com.uten.imp.common.report.ReportExportCursor.rows(em, q);
-        List<Map<String, Object>> all = new ArrayList<>(rs.size());
-        for (Object[] r : rs) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("styleCode", norm(r[0]));
-            m.put("styleName", norm(r[1]));
-            m.put("level", norm(r[2]));
-            m.put("category", norm(r[3]));
-            m.put("opening", norm(r[4]));
-            m.put("debit", norm(r[5]));
-            m.put("credit", norm(r[6]));
-            m.put("closing", norm(r[7]));
-            ReportQueryKit.includeDecimalTexts(m);
-            all.add(m);
-        }
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            total = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") balances")
-                    .setParameter("from", from).setParameter("to", to).getSingleResult()).longValue();
-        }
-        return new ReportTableResponse(cols, all, Map.of(), safePage, safeSize, total,
-                ReportReadPlan.totalPages(total, safeSize));
+        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,sql,
+                q->{q.setParameter("from",from);q.setParameter("to",to);},
+                "report.\"category\",report.\"styleCode\",report.\"styleName\",report.\"__styleId\"",
+                options.filters(),java.util.Set.of("category"),page,size,options.sort(),options.order(),false,
+                com.uten.imp.features.finance.report.FinanceProjectedReportTable.totalSpecs(cols,projected));
     }
 
     // ======================== ② 附 9 资产负债表 ========================
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse balanceSheet(LocalDate dateTo) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         GlReportSourceScopes.assertUnambiguous(em);
         LocalDate yearStart = dateTo.withDayOfYear(1);
         LocalDate yearOpen = yearStart.minusDays(1);
@@ -211,7 +221,13 @@ public class GlReportService {
         addBsRow(rows, "未分配利润", "负债和所有者权益", 50, profit1, profit0);
         addBsRow(rows, "所有者权益合计", "负债和所有者权益", 51, equity1, equity0);
         addBsRow(rows, "负债和所有者权益总计", "负债和所有者权益", 52, liab1.add(equity1), liab0.add(equity0));
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+        return GlComputedHeaders.apply("gl/balance-sheet",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
+    public ReportTableResponse balanceSheet(LocalDate dateTo,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/balance-sheet",balanceSheet(dateTo),options);
     }
 
     /** 经来源凭证确认的根分类净额；余额方向沿用根类别，显示编码不参与身份判断。 */
@@ -318,16 +334,24 @@ public class GlReportService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitAnnual(int year) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = new ArrayList<>();
         cols.add(ReportColumn.text("item", "项目", 200));
         for (int mi = 1; mi <= 12; mi++) cols.add(ReportColumn.money("m" + mi, String.format("%02d月", mi)));
         cols.add(ReportColumn.text("basis", "取数口径", 220));
         List<Map<String, Object>> rows = profitRows(year);
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+        return GlComputedHeaders.apply("gl/profit-annual",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
+    public ReportTableResponse profitAnnual(int year,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/profit-annual",profitAnnual(year),options);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitMonthly(int year, int month) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         requireMonth(month);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", "项目", 200),
@@ -349,7 +373,13 @@ public class GlReportService {
             m.put("basis", a.get("basis"));
             rows.add(m);
         }
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+        return GlComputedHeaders.apply("gl/profit-monthly",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
+    public ReportTableResponse profitMonthly(int year,int month,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/profit-monthly",profitMonthly(year,month),options);
     }
 
     /** 按真实分类树聚合月净额：收入贷净、费用借净，保留原类别与日期口径。 */
@@ -384,8 +414,9 @@ public class GlReportService {
 
     // ======================== ⑤⑥⑦ 附 12/13/14 费用明细（行=项目 × 列=月） ========================
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ReportTableResponse manufacturingExpense(int year) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         Map<String, BigDecimal[]> data = lineMonthly(GlReportLine.MANUFACTURING, year);
         data.put("MFG_OUTPUT", finishedInMonthly(year));
         data.put("MFG_SUBCONTRACT", subcontractMonthly(year));
@@ -393,20 +424,34 @@ public class GlReportService {
                 lines.bindings(keys(GlReportLine.MANUFACTURING)));
     }
 
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public ReportTableResponse manufacturingExpense(int year,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/manufacturing-expense",manufacturingExpense(year),options);
+    }
+
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse adminExpense(int year) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         GlReportSourceScopes.assertUnambiguous(em);
         Map<String, BigDecimal[]> data = lineMonthly(GlReportLine.ADMIN, year);
         data.put("ADM_SALES", monthlyByRoots(year, "INCOME", MAIN_REVENUE));
         return pivotTable("管理费用项目", GlReportLine.ADMIN, data, lines.bindings(keys(GlReportLine.ADMIN)));
     }
 
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
+    public ReportTableResponse adminExpense(int year,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/admin-expense",adminExpense(year),options);
+    }
+
     /**
      * 附 14 销售费用明细: 一行一个绑定到「销售费用」的科目(费用单据无业务员维度, 按科目出行);
      * 未绑定任何科目时只出一行并标注未配置科目。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public ReportTableResponse salesExpense(int year) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = pivotColumns("销售费用项目");
         List<Map<String, Object>> rows = new ArrayList<>();
         // 按科目主键分组: 科目名不唯一(只有编码唯一), 同名科目各出一行、各算各的, 不能互相覆盖。
@@ -448,7 +493,13 @@ public class GlReportService {
                 rows.add(pivotRow(label, months, "科目: " + codeAndName[0] + " " + codeAndName[1]));
             });
         }
-        return new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+        return GlComputedHeaders.apply("gl/sales-expense",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public ReportTableResponse salesExpense(int year,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+        return GlComputedHeaders.apply("gl/sales-expense",salesExpense(year),options);
     }
 
     private static BigDecimal[] zeroMonths() {
@@ -494,7 +545,7 @@ public class GlReportService {
             rows.add(pivotRow(line.label(), unconfigured ? null : zeroFilled(data.get(line.key())),
                     basis(line, bindings)));
         }
-        return new ReportTableResponse(pivotColumns(itemLabel), rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1);
+        return GlComputedHeaders.apply("gl/pivot",new ReportTableResponse(pivotColumns(itemLabel), rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
     }
 
     /** 已配置行(及业务事实行)没有发生额的月份记 0; 只有未配置的行整行留空。 */
@@ -577,7 +628,18 @@ public class GlReportService {
         return buildOperatingPl(year, month, page, size, null);
     }
 
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,propagation=Propagation.REQUIRES_NEW)
+    public ReportTableResponse operatingPlPage(int year,int month,int page,int size,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        return buildOperatingPl(year,month,page,size,null,options);
+    }
+
     private ReportTableResponse buildOperatingPl(int year, int month, int page, int size, Integer maximum) {
+        return buildOperatingPl(year,month,page,size,maximum,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+    private ReportTableResponse buildOperatingPl(int year,int month,int page,int size,Integer maximum,
+            com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         requireMonth(month);
         GlReportSourceScopes.assertUnambiguous(em);
         LocalDate from = LocalDate.of(year, month, 1);
@@ -601,7 +663,16 @@ public class GlReportService {
         var batches = maximum == null ? null : new com.uten.imp.common.export.ExportRowBatches(
                 cols.stream().map(c -> new com.uten.imp.common.export.ExportColumn(
                         c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(), maximum);
-        java.util.function.Consumer<Map<String,Object>> output = batches == null ? window : batches;
+        var condition=GlComputedHeaders.compile(cols,options);
+        java.util.function.Consumer<Map<String,Object>> destination = batches == null ? window : batches;
+        var matchedCategories=new java.util.HashSet<String>();
+        java.util.function.Consumer<Map<String,Object>> output = row -> {
+            String category=(String)row.get("category");
+            boolean matched=condition.matches(row);
+            boolean subtotal=Boolean.TRUE.equals(row.remove("__glSubtotal"));
+            if(matched || (subtotal && matchedCategories.contains(category)))destination.accept(row);
+            if(matched && !subtotal)matchedCategories.add(category);
+        };
         addOpRow(output, "应收账款", "", "", base, base, "主营与其他业务收入(031+032)");
 
         // COGS is an immutable value delta, including original-cost returns and later source adjustments.
@@ -630,7 +701,7 @@ public class GlReportService {
             }
             if (mats.size() < 500) break;
         }
-        addOpRow(output, "已知销售成本", "销售成本合计", "", matTotal, base, "本币价值过账；当期费用另列，不等于完整净利润");
+        addOpRow(output, "已知销售成本", "销售成本合计", "", matTotal, base, "本币价值过账；当期费用另列，不等于完整净利润",true);
 
         // 一张表的全部可配置行一次取数(科目/工资/折旧各一条语句)。
         List<GlReportLine> opLines = new ArrayList<>(List.of(
@@ -652,7 +723,7 @@ public class GlReportService {
             addOpRow(output, "工费", "劳务费", line.label(), amount, base, basis(line, bindings));
         }
         addOpRow(output, "工费", "劳务费", "委外加工费", sub, base, "委外进仓金额");
-        addOpRow(output, "工费", "工费合计", "", laborTotal, base, "");
+        addOpRow(output, "工费", "工费合计", "", laborTotal, base, "",true);
 
         // 一般管理费(模板行序; 未配置的行明确标注, 不计入合计)
         BigDecimal adminTotal = BigDecimal.ZERO;
@@ -661,14 +732,14 @@ public class GlReportService {
             adminTotal = adminTotal.add(nz(amount));
             addOpRow(output, "一般管理费", e.getValue(), e.getKey().label(), amount, base, basis(e.getKey(), bindings));
         }
-        addOpRow(output, "一般管理费", "管理费合计", "", adminTotal, base, "");
+        addOpRow(output, "一般管理费", "管理费合计", "", adminTotal, base, "",true);
         if (batches != null) {
             int total = batches.finish();
-            return new ReportTableResponse(cols, List.of(), Map.of(), 1, 500, total, ReportReadPlan.totalPages(total, 500));
+            return new ReportTableResponse(cols, List.of(), Map.of(), 1, 500, total, ReportReadPlan.totalPages(total, 500)).withColumnSearchKeys(condition.keys());
         }
         long total = ReportReadPlan.current().includeCount() ? window.count() : ReportReadPlan.UNKNOWN_TOTAL;
         return new ReportTableResponse(cols, window.rows(), Map.of(), window.page(), window.size(), total,
-                ReportReadPlan.totalPages(total, window.size()));
+                ReportReadPlan.totalPages(total, window.size())).withColumnSearchKeys(condition.keys());
     }
 
     /** 已配置行: 本月发生额(没有发生额为 0); 未配置行: 空, 由取数口径列标注。 */
@@ -693,6 +764,10 @@ public class GlReportService {
 
     private static void addOpRow(java.util.function.Consumer<Map<String, Object>> rows, String cat, String sub, String item,
                                  BigDecimal amount, BigDecimal base, String basis) {
+        addOpRow(rows,cat,sub,item,amount,base,basis,false);
+    }
+    private static void addOpRow(java.util.function.Consumer<Map<String,Object>> rows,String cat,String sub,String item,
+                                 BigDecimal amount,BigDecimal base,String basis,boolean subtotal) {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("category", cat);
         m.put("sub", sub);
@@ -703,6 +778,7 @@ public class GlReportService {
                 : MoneyPolicy.percentOf(amount, base));
         if(m.get("salesRatio") instanceof BigDecimal ratio)m.put("salesRatioExact",ratio.toPlainString());
         m.put("basis", basis);
+        if(subtotal)m.put("__glSubtotal",true);
         rows.accept(m);
     }
 

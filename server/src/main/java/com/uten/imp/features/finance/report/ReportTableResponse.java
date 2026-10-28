@@ -4,6 +4,7 @@ import com.uten.imp.common.report.ReportTotal;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 钱流报表通用响应（22 张报表共用）。与销售/采购/委外/仓库 report.ReportTableResponse 同型
@@ -23,7 +24,14 @@ public record ReportTableResponse(
         int totalPages,
         List<ReportTotal> totals,
         String readScopeVersion,
-        String statisticsGeneratedAt) {
+        String statisticsGeneratedAt,
+        Set<String> columnSearchKeys) {
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            List<ReportTotal> totals,String readScopeVersion,String statisticsGeneratedAt) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,
+                statisticsGeneratedAt,Set.of());
+    }
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
             Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
             List<ReportTotal> totals,String readScopeVersion) {
@@ -43,6 +51,12 @@ public record ReportTableResponse(
     /** Internal identity/unit metadata stays available in rows, never as a visible/exported column. */
     public ReportTableResponse {
         if (columns != null) columns = columns.stream().filter(column -> !column.key().startsWith("__")).toList();
+        columnSearchKeys = columnSearchKeys == null ? Set.of() : Set.copyOf(columnSearchKeys);
+    }
+
+    public ReportTableResponse withColumnSearchKeys(Set<String> keys) {
+        return new ReportTableResponse(columns,rows,facets,page,size,total,totalPages,totals,
+                readScopeVersion,statisticsGeneratedAt,keys);
     }
 
     /**

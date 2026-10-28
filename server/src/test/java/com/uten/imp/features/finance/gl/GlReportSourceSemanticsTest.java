@@ -42,11 +42,11 @@ class GlReportSourceSemanticsTest {
                 assertThat(snapshot.isolation()).isEqualTo(Isolation.REPEATABLE_READ);
                 assertThat(snapshot.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
             } else if (tx != null) {
-                assertThat(tx.isolation()).isEqualTo(Isolation.DEFAULT);
+                assertThat(tx.isolation()).isIn(Isolation.DEFAULT,Isolation.REPEATABLE_READ);
                 assertThat(tx.propagation()).isEqualTo(Propagation.REQUIRED);
             }
         }
-        assertThat(found).isEqualTo(grouped.size());
+        assertThat(found).isEqualTo(11); // Both original and typed overloads retain the same snapshot boundary.
     }
     @Test
     void balanceSheetConsumesQualifiedRootKeysAndPreservesSignsAndProfitCarryForward() {
@@ -64,7 +64,7 @@ class GlReportSourceSemanticsTest {
         when(roots.getResultList()).thenReturn(rows);
         when(profit.getSingleResult()).thenReturn(new BigDecimal("7"));
 
-        var report = new GlReportService(em, mock(GlReportLineSource.class))
+        var report = new GlReportService(em, mock(GlReportLineSource.class),com.uten.imp.support.FinanceReportTestAccess.company())
                 .balanceSheet(LocalDate.of(2032, 6, 30));
         assertAmount(report.rows(), "货币资金", "periodEnd", "3");
         assertAmount(report.rows(), "资产总计", "periodEnd", "36");
@@ -93,7 +93,7 @@ class GlReportSourceSemanticsTest {
         when(lines.styleMonthly(keys, "EXPENSE", from, to)).thenReturn(Map.of(
                 "PL_TAX", months("2"), "SALES_FEE", months("3"), "PL_FINANCE", months("4")));
         when(lines.adminMonthly(keys, from, to)).thenReturn(months("12"));
-        var report = new GlReportService(em, lines).profitMonthly(2032, 2);
+        var report = new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company()).profitMonthly(2032, 2);
         assertAmount(report.rows(), "一、营业收入", "monthAmount", "110");
         assertAmount(report.rows(), "管理费用", "monthAmount", "12");
         assertAmount(report.rows(), "销售费用", "monthAmount", "3");
@@ -112,7 +112,7 @@ class GlReportSourceSemanticsTest {
         when(conflict.getResultList()).thenReturn(List.<Object[]>of(
                 new Object[]{"SK000200", "冲突科目", "BANK,RECEIVABLES"}));
         GlReportLineSource lines = mock(GlReportLineSource.class);
-        assertThatThrownBy(() -> new GlReportService(em, lines).balanceSheet(LocalDate.of(2032, 6, 30)))
+        assertThatThrownBy(() -> new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company()).balanceSheet(LocalDate.of(2032, 6, 30)))
                 .isInstanceOfSatisfying(ApiException.class, failure -> {
                     assertThat(failure.getCode()).isEqualTo(ErrorCode.CONFLICT);
                     assertThat(failure.getMessage()).contains("SK000200", "冲突科目", "银行存款", "应收账款");

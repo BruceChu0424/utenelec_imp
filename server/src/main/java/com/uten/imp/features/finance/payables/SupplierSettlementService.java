@@ -134,6 +134,12 @@ public class SupplierSettlementService {
     @Transactional(readOnly = true)
     public BatchPage list(UUID supplierId, LocalDate periodStart, String status,
                           String keyword, int page, int size) {
+        return list(supplierId, periodStart, status, keyword, page, size, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public BatchPage list(UUID supplierId, LocalDate periodStart, String status,
+                          String keyword, int page, int size, Map<String, String> columnQuery) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 200);
         StringBuilder where = new StringBuilder(
@@ -153,11 +159,58 @@ public class SupplierSettlementService {
             add(where, params, TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS),
                     "keyword", KeywordSearch.phrase(keyword));
         }
+        var numericFields = Map.of(
+                "openingBalanceOriginal", "batch.opening_balance_original",
+                "periodPostedOriginal", "batch.period_posted_original",
+                "periodPaidOriginal", "batch.period_paid_original",
+                "periodOffsetOriginal", "batch.period_offset_original",
+                "closingBalanceOriginal", "batch.closing_balance_original",
+                "lineCount", "batch.line_count");
+        var textFields = Map.of(
+                "batchNo", new String[]{"batch.batch_no"},
+                "supplierName", new String[]{"supplier.code", "supplier.name"},
+                "currencyCode", new String[]{"currency.code", "currency.name"},
+                "periodStart", new String[]{"CAST(batch.period_start AS text)"},
+                "dueDate", new String[]{"CAST(batch.due_date AS text)"});
+        if (columnQuery != null) {
+            for (var field : textFields.entrySet()) {
+                String value = columnQuery.get("search." + field.getKey());
+                if (value == null || value.isBlank()) continue;
+                String parameter = "header_" + field.getKey();
+                add(where, params, TaskKeywordSearch.conditionParameter(parameter, field.getValue()),
+                        parameter, KeywordSearch.phrase(value));
+            }
+            for (var field : numericFields.entrySet()) {
+                String value = columnQuery.get("search." + field.getKey());
+                if (value == null || value.isBlank()) continue;
+                var filter = com.uten.imp.common.util.NumericColumnFilter.parse(value);
+                String parameter = "header_" + field.getKey();
+                where.append(" AND ").append(filter.sql(field.getValue(), parameter));
+                filter.bind(parameter, params::put);
+            }
+        }
         String from = batchFrom();
         String relevance = params.containsKey("keyword")
                 ? TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", " : "";
+        String orderBy = "batch.period_start DESC,batch.batch_no DESC,batch.id";
+        if (columnQuery != null) {
+            String sort = columnQuery.get("sort");
+            String expression = sort == null ? null : switch (sort) {
+                case "batchNo" -> "batch.batch_no";
+                case "supplierName" -> "supplier.name";
+                case "periodStart" -> "batch.period_start";
+                case "dueDate" -> "batch.due_date";
+                default -> numericFields.get(sort);
+            };
+            if (expression != null) {
+                orderBy = expression
+                        + ("asc".equalsIgnoreCase(columnQuery.get("order")) ? " ASC" : " DESC")
+                        + " NULLS LAST,batch.id";
+                relevance = "";
+            }
+        }
         Query data = em.createNativeQuery(batchSelect() + from + where
-                + " ORDER BY " + relevance + "batch.period_start DESC,batch.batch_no DESC,batch.id LIMIT :limit OFFSET :offset");
+                + " ORDER BY " + relevance + orderBy + " LIMIT :limit OFFSET :offset");
         bind(data, params);
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);

@@ -21,7 +21,7 @@ import java.util.*;
 @Service
 public class ReadScopeVersionAuthority {
     private static final Set<String> DOMAINS = Set.of("sales", "purchase", "subcontract", "production", "stock", "finance", "client", "supplier",
-            "master_goods", "master_account", "master_currency", "master_color", "master_unit", "master_mould", "master_warehouse", "master_settlement_method", "audit",
+            "master_goods", "master_goods_cost", "master_account", "master_currency", "master_color", "master_unit", "master_mould", "master_warehouse", "master_settlement_method", "audit",
             "native_feature","native_sales_owner","native_purchase_owner","native_subcontract_owner","native_production_owner",
             "native_fqc_records","native_workshop_tasks","native_warehouse_tasks");
     private final NamedParameterJdbcTemplate jdbc;
@@ -80,7 +80,7 @@ public class ReadScopeVersionAuthority {
                 || suppliedSubject.isSuperAdmin() != actual.isSuperAdmin()
                 || !actual.getPermissions().containsAll(suppliedSubject.getPermissions())) throw changed();
 
-        String generationDomain="native_sales_owner".equals(domain)?"sales":domain;
+        String generationDomain="native_sales_owner".equals(domain)?"sales":"master_goods_cost".equals(domain)?"master_goods":domain;
         Long generation = jdbc.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=:domain",
                 Map.of("domain", generationDomain), Long.class);
         if (generation == null || generation < 0) throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE, "读取范围版本不可用");
@@ -102,7 +102,7 @@ public class ReadScopeVersionAuthority {
                 case "native_purchase_owner" -> owners.evaluate("purchase", "purchase:view:all");
                 case "finance" -> owners.evaluate("finance", "finance:view:all");
                 case "client" -> owners.evaluate("client", "client:view:all");
-                case "master_goods" -> goodsReadScope.versionedReadScope();
+                case "master_goods", "master_goods_cost" -> goodsReadScope.versionedReadScope();
                 case "native_subcontract_owner" -> required(subcontractAccess).scope();
                 case "native_production_owner" -> required(productionAccess).scope();
                 case "native_fqc_records" -> required(qualityAccess).canAccessQualityPool()?null:required(productionAccess).scope();
@@ -121,6 +121,18 @@ public class ReadScopeVersionAuthority {
                 List<String> visible = scope.seeAll() ? List.of()
                         : scope.visibleOwners().stream().map(UUID::toString).sorted().toList();
                 atom(hash, visible.size()); visible.forEach(owner -> atom(hash, owner));
+            }
+            if("master_goods_cost".equals(domain)) {
+                // A cost version also belongs to its frozen customer. Both
+                // authorization dimensions must survive paging/publication.
+                Long clientGeneration=jdbc.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=:domain",
+                        Map.of("domain","client"),Long.class);
+                if(clientGeneration==null||clientGeneration<0)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围版本不可用");
+                var clientScope=owners.evaluate("client","client:view:all");
+                if(clientScope==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围不可用");
+                atom(hash,"COST_CLIENT");atom(hash,clientGeneration);atom(hash,clientScope.seeAll());
+                List<String> visible=clientScope.seeAll()?List.of():clientScope.visibleOwners().stream().map(UUID::toString).sorted().toList();
+                atom(hash,visible.size());visible.forEach(owner->atom(hash,owner));
             }
             if(domain.startsWith("native_")) {
                 atom(hash,businessTasks);

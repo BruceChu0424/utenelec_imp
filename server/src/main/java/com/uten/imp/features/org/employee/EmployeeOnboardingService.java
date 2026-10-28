@@ -64,6 +64,9 @@ public class EmployeeOnboardingService {
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
     private final EmployeePiiWriter piiWriter;
+    private final EmployeeExistingIdentityGuard existingIdentityGuard;
+    private final EmployeeCodeAllocator employeeCodeAllocator;
+    private final EmployeeNameReviewPolicy employeeNameReviewPolicy;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmergencyContactRepository emergencyRepo;
     private final EmployeeCredentialRepository credentialRepo;
@@ -129,10 +132,10 @@ public class EmployeeOnboardingService {
         }
         // 入职工号完全由服务端分配。profile.code 仅为旧客户端兼容字段，故意忽略，避免缓存客户端
         // 重放已使用的工号。将序列抬到历史最大后缀；循环只是迁移外数据的防御兜底。
-        String code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
-        while (empRepo.existsByCode(code)) {
-            code = masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE);
-        }
+        employeeNameReviewPolicy.requireNewIdentity(p.fullName(),p.idType(),p.idNumber(),false,null);
+        Employee e = new Employee();
+        // A released-code claim is bound to this exact new UUID in this transaction.
+        String code = employeeCodeAllocator.nextForNewEmployee(e.getId());
         // 身份证校验 + 派生
         LocalDate birthDate = p.birthDate();
         String gender = p.gender();
@@ -161,7 +164,6 @@ public class EmployeeOnboardingService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "直属上级不存在"));
 
         // 1. 员工主档（户籍/居住地址、邮箱、出生日期、婚姻/政治面貌、办公电话 走 sensitive 加密，见下）
-        Employee e = new Employee();
         e.setCode(code);
         e.setFullName(p.fullName());
         e.setGender(gender);
@@ -356,6 +358,7 @@ public class EmployeeOnboardingService {
         // 证件号密文解不开 (数据损坏、换密钥后没配旧密钥) 也不拦：按派生不出来处理，改用随机临时密码；
         // 解密在保存点里做，不会让本事务作废。返回的员工详情里 idNumberIssue 说明号码读取不出来。
         Optional<String> identity = tx.tryDecrypt(s.getIdCardEnc());
+        existingIdentityGuard.requireCanActivate(e,s);
         if (!isBlank(s.getIdCardEnc()) && identity.isEmpty()) {
             log.warn("Account provisioning: the stored identity number could not be decrypted; "
                     + "issued a random temporary password instead");

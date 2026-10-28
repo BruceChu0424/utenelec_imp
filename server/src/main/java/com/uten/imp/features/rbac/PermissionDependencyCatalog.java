@@ -36,8 +36,8 @@ public final class PermissionDependencyCatalog {
         actions(hard, catalog, "company_file", "download", "upload", "create", "edit", "move", "delete", "restore", "manage_permissions");
         add(hard, catalog, "company_file:upload", "attachment:view");
         add(hard, catalog, "company_file:upload", "attachment:upload");
-        add(hard, catalog, "company_file:download", "attachment:view");
-        add(hard, catalog, "company_file:download", "attachment:download");
+        // V958: company file downloads ride the company catalog alone (visible implies
+        // downloadable); business attachment authorities stay untouched.
         add(hard, catalog, "goods:price_analysis:view", "goods:view");
         add(hard, catalog, "goods:purchase:edit", "goods:view");
         add(hard, catalog, "goods:sales:edit", "goods:view");

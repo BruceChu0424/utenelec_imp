@@ -5,6 +5,9 @@ import com.uten.imp.features.finance.cost.FinanceCostService;
 import com.uten.imp.features.finance.statement.FinanceStatementService;
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportTableResponse;
+import com.uten.imp.features.finance.report.FinanceReportColumnOptions;
+import com.uten.imp.features.finance.FinanceDocumentAccessPolicy;
+import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.*;
@@ -54,14 +57,16 @@ class FinanceNativeSearchPostgresTest {
         });return em;
     }
     static ReportTableResponse cost(String keyword,int page,int size)throws Exception{
-        Method method=FinanceCostService.class.getDeclaredMethod("runPaged",List.class,String.class,String.class,String.class,LocalDate.class,LocalDate.class,int.class,int.class,Map.class);
-        method.setAccessible(true);return (ReportTableResponse)method.invoke(new FinanceCostService(manager()),COLS,CORE,"t.\"billNo\"",keyword,DATE,DATE,page,size,Map.of());
+        Method method=FinanceCostService.class.getDeclaredMethod("runPaged",List.class,String.class,String.class,String.class,LocalDate.class,LocalDate.class,int.class,int.class,Map.class,FinanceReportColumnOptions.class);
+        method.setAccessible(true);return (ReportTableResponse)method.invoke(new FinanceCostService(manager(),companyAccess()),COLS,CORE,"t.\"billNo\"",keyword,DATE,DATE,page,size,Map.of(),FinanceReportColumnOptions.NONE);
     }
     static ReportTableResponse statement(String keyword,int page,boolean timeline)throws Exception{
-        Method method=FinanceStatementService.class.getDeclaredMethod("runPaged",List.class,String.class,String.class,String.class,LocalDate.class,LocalDate.class,int.class,int.class,Map.class,boolean.class,String[].class);
-        method.setAccessible(true);return (ReportTableResponse)method.invoke(new FinanceStatementService(manager()),COLS,CORE,"t.\"billNo\"",keyword,DATE,DATE,page,1,Map.of(),timeline,
+        Method method=FinanceStatementService.class.getDeclaredMethod("runPaged",List.class,String.class,String.class,String.class,LocalDate.class,LocalDate.class,int.class,int.class,Map.class,boolean.class,FinanceReportColumnOptions.class,String[].class);
+        var columns=new ArrayList<>(COLS);columns.add(ReportColumn.text("__partyName",""));columns.add(ReportColumn.text("__partyCode",""));
+        method.setAccessible(true);return (ReportTableResponse)method.invoke(new FinanceStatementService(manager(),companyAccess()),columns,CORE,"t.\"billNo\"",keyword,DATE,DATE,page,1,Map.of(),timeline,FinanceReportColumnOptions.NONE,
                 new String[]{"t.\"goodsName\"","t.\"goodsCode\"","t.\"billNo\""});
     }
+    static FinanceDocumentAccessPolicy companyAccess(){var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));return access;}
     @Test void costSearchRanksCompleteNamesBeforeCodesAndPagesTheCompleteFilteredSet()throws Exception{
         assertThat(cost("Metric Screw",1,1).rows().getFirst()).containsEntry("billNo","C");
         assertThat(cost("Metric Screw",2,1).rows().getFirst()).containsEntry("billNo","B");
@@ -101,7 +106,7 @@ class FinanceNativeSearchPostgresTest {
         assertThat(db.queryForList(fixture+where(filter)+" ORDER BY a.id",values,UUID.class)).isEmpty();
     }
     static Object assetFilter(String text,String status,UUID category,UUID department)throws Exception{
-        Method method=FinanceAssetQueryService.class.getDeclaredMethod("filters",String.class,String.class,String.class,UUID.class,UUID.class);method.setAccessible(true);return method.invoke(null,"a",text,status,category,department);
+        Method method=FinanceAssetQueryService.class.getDeclaredMethod("filters",String.class,String.class,String.class,UUID.class,UUID.class,Map.class,boolean.class);method.setAccessible(true);return method.invoke(null,"a",text,status,category,department,Map.of(),false);
     }
     static Object part(Object filter,String name)throws Exception{Method method=filter.getClass().getDeclaredMethod(name);method.setAccessible(true);return method.invoke(filter);}
     @SuppressWarnings("unchecked") static Map<String,Object> parameters(Object f)throws Exception{return (Map<String,Object>)part(f,"parameters");}

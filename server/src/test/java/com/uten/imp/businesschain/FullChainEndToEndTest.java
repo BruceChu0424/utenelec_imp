@@ -4635,6 +4635,11 @@ class FullChainEndToEndTest {
         if (stage != null) releaseSubcontractKitStage(stage);
     }
 
+    /** Explicit pre-V961 history; never use this for tests of current supply-loss behaviour. */
+    void seedHistoricalSubcontractLossPlanBeforeExecution(UUID orderId) {
+        LegacySubcontractLossPlanFixture.seedBeforeAnyExecution(jdbc, transactionManager, orderId);
+    }
+
     private BatchDecisionItem claimFinanceDecision(BatchDecisionItem original) {
         var claim=reviewClaims.claim("PROCUREMENT_FINANCE_APPROVE",original.caseId().toString());
         return new BatchDecisionItem(original.caseId(),original.expectedVersion(),claim.claimId());

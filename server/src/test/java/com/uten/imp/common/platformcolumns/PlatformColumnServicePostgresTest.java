@@ -63,6 +63,56 @@ class PlatformColumnServicePostgresTest {
         assertThatThrownBy(()->sql.update("UPDATE platform_column_definitions SET name='改变历史' WHERE id=?",column.id())).isInstanceOf(Exception.class);
     }
 
+    @Test void savedLayoutResolutionOmitsOnlyUnavailableRootsAndPreservesStrictWritesAndDependencies() {
+        var valid=define("goods","有效说明","TEXT",false,null);
+        var foreign=define("sales_order","其它模块","TEXT",false,null);
+        var dependency=define("goods","原始数字","NUMBER",false,null);
+        var formula=define("goods","计算说明","CALCULATED",false,
+                new Formula(new Operand(dependency.id(),null,null),List.of()));
+        UUID missing=UUID.randomUUID();
+        assertThat(service.availableDefinitions("goods",List.of(valid.id(),foreign.id(),missing,formula.id())))
+                .extracting(Definition::id).containsExactlyInAnyOrder(valid.id(),formula.id(),dependency.id());
+        assertThatThrownBy(()->service.definitions("goods",List.of(valid.id(),missing)))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不存在");
+        assertThatThrownBy(()->read("goods",missing)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->tx(()->service.write("goods",record,
+                new Write(0,List.of(new CellInput(missing,"输入"))))))
+                .isInstanceOf(ApiException.class);
+        tx(()->{service.delete("goods",dependency.id());return null;});
+        assertThat(service.availableDefinitions("goods",List.of(formula.id())))
+                .extracting(Definition::id).containsExactlyInAnyOrder(formula.id(),dependency.id());
+        master.priceVisible=false;
+        var protectedColumn=define("sales_order","敏感金额","NUMBER",true,null);
+        document.priceVisible=false;
+        assertThatThrownBy(()->service.availableDefinitions("sales_order",List.of(protectedColumn.id())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("价格");
+    }
+
+    @Test void layoutResolutionNeverDisclosesAnotherAccountsPersonalColumn() {
+        var personal=define("stock_summary","本人计算列","CALCULATED",false,factFormula("qty","MULTIPLY","2"));
+        assertThat(service.availableDefinitions("stock_summary",List.of(personal.id()))).hasSize(1);
+        actor=UUID.randomUUID();
+        assertThat(service.availableDefinitions("stock_summary",List.of(personal.id()))).isEmpty();
+        assertThatThrownBy(()->service.definitions("stock_summary",List.of(personal.id()))).isInstanceOf(ApiException.class);
+    }
+
+    @Test void deletingCatalogEntryBetweenMetadataAndBatchReadPreservesTheSelectedProjection() {
+        var column=define("goods","读取中删除的显示列","CALCULATED",false,factFormula("qty","MULTIPLY","2"));
+        assertThat(service.availableDefinitions("goods",List.of(column.id())))
+                .extracting(Definition::id).containsExactly(column.id());
+        tx(()->{service.delete("goods",column.id());return null;});
+        assertThat(service.search("goods","")).isEmpty();
+        var row=read("goods",column.id());
+        assertThat(row.version()).isZero();
+        assertThat(row.cells()).singleElement().satisfies(cell->{
+            assertThat(cell.columnId()).isEqualTo(column.id());
+            assertThat(cell.value()).isEqualTo("6");
+            assertThat(cell.persisted()).isFalse();
+            assertThat(cell.definition().canDelete()).isFalse();
+        });
+        assertThat(sql.queryForObject("SELECT count(*) FROM platform_record_fields WHERE scope='goods' AND record_id=?",Integer.class,record)).isZero();
+    }
+
     @Test void creatorCanDeleteCatalogEntryIdempotentlyWithoutChangingStoredValuesFormulasOrHistory() {
         var number=define("goods","可删除数字","NUMBER",false,null);
         var calculated=define("goods","保留公式","CALCULATED",false,new Formula(new Operand(number.id(),null,null),List.of(new Step("MULTIPLY",new Operand(null,null,"2")))));

@@ -143,6 +143,40 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
                 WarehouseTaskCenterContracts.TaskView.ALL),
                 new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(false, Set.of(ACTOR))), scope, ACTOR.toString());
     }
+
+    @Test void typedHeadersKeepOwnerAndWarehouseScopeAndUseExactPhysicalNumbersBeforeAllPagesAndFacets() {
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        int index=0;
+        for(UUID id:List.of(first,second,UUID.randomUUID(),UUID.randomUUID())) {
+            index++;
+            execute("INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,maker_id,status,issue_status,is_closed,is_deleted,source_doc_no)"
+                    +" VALUES(:id,'OTHER_OUT',:bill,'2026-10-28',:warehouse,:owner,0,0,FALSE,FALSE,'SOURCE%_A')",
+                    "id",id,"bill","HEADER-"+index,"warehouse",index==3?outside:warehouse,"owner",index==4?UUID.randomUUID():ACTOR);
+            execute("INSERT INTO stock_document_items(id,doc_id,line_no,goods_name_snapshot,goods_code_snapshot,qty,is_deleted)"
+                    +" VALUES(:id,:document,1,:name,'CODE%_A',CAST(:quantity AS numeric),FALSE)",
+                    "id",UUID.randomUUID(),"document",id,"name",index==2?"物料%_扩展":"物料%_",
+                    "quantity",index==1?"99999999999999.0001":"99999999999999.0002");
+        }
+        var filter=new Filter("OTHER",null,"物料%_",null,null,null,warehouse,1,1,"quantity","desc",TaskView.ACTIVE)
+                .withColumnSearch(Map.of("goodsName","物料%_","goodsCode","CODE%_A","sourceDocNo","SOURCE%_A",
+                        "quantity",">99999999999999","businessDate","2026-10-01..2026-10-28"));
+        assertThat(WarehouseOutboundTaskCenterQueryService.normalize(filter).columnSearch()).isEqualTo(filter.columnSearch());
+        var plan=WarehouseOutboundTaskCenterSql.build(filter,
+                new WarehouseOutboundTaskCenterSql.Access(false,false,false,true,false,new OwnerScope(false,Set.of(ACTOR))),
+                new WarehouseTaskScope(true,List.of(warehouse),false),"");
+        assertThat(jdbc.queryForObject(plan.countSql(),parameters(plan),Long.class)).isEqualTo(2);
+        var one=jdbc.queryForList(plan.rowsSql(),parameters(plan).addValue("limit",1).addValue("offset",0L));
+        var two=jdbc.queryForList(plan.rowsSql(),parameters(plan).addValue("limit",1).addValue("offset",1L));
+        assertThat(one.getFirst().get("id")).isEqualTo(second);
+        assertThat(two.getFirst().get("id")).isEqualTo(first);
+        assertThat(jdbc.queryForList(plan.facetsSql(),parameters(plan)).getFirst().get("count")).isEqualTo(2L);
+        assertThat(jdbc.queryForList(plan.billNoFacetsSql(),parameters(plan))).hasSize(2);
+        var ownDrafts=WarehouseOutboundTaskCenterSql.build(filter,
+                new WarehouseOutboundTaskCenterSql.Access(false,false,false,true,false,new OwnerScope(false,Set.of(ACTOR))),
+                new WarehouseTaskScope(true,List.of(warehouse),false),ACTOR.toString());
+        assertThat(jdbc.queryForObject(ownDrafts.countSql(),parameters(ownDrafts),Long.class)).isEqualTo(3);
+    }
     private static MapSqlParameterSource parameters(WarehouseOutboundTaskCenterSql.Plan plan) {
         return new MapSqlParameterSource(plan.parameters());
     }

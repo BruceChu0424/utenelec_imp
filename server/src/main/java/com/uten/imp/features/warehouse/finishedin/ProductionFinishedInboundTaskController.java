@@ -46,9 +46,11 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(required = false) String planNo) {
         // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         // 2026-09-25 单号列统一：sort/order 表头排序 + 任务单号/生产计划号表头值筛选。
-        return service.list(keyword, taskStage, warehouseId, page, size,
-                warehouseScopes.current(scopeWarehouseId),
-                sort, order, taskNo, planNo);
+        var scope=warehouseScopes.current(scopeWarehouseId);
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(
+                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest());
+        return columns.isEmpty()?service.list(keyword,taskStage,warehouseId,page,size,scope,sort,order,taskNo,planNo)
+                :service.list(keyword,taskStage,warehouseId,page,size,scope,sort,order,taskNo,planNo,columns);
     }
 
     /** 产成品入库任务 facets（2026-09-25 单号列统一）：{taskNo/planNo:[各单号]}——
@@ -60,8 +62,12 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(required = false) String taskStage,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return service.facets(keyword, taskStage, warehouseId,
-                warehouseScopes.current(scopeWarehouseId));
+        var scope=warehouseScopes.current(scopeWarehouseId);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        String taskNo=request==null?null:request.getParameter("taskNo"),planNo=request==null?null:request.getParameter("planNo");
+        return columns.isEmpty()&&taskNo==null&&planNo==null?service.facets(keyword,taskStage,warehouseId,scope)
+                :service.facets(keyword,taskStage,warehouseId,scope,taskNo,planNo,columns);
     }
 
     /** 产成品待点收待办数(徽章来源 finishedInbound): 与列表同一仓库范围(ADR-149)。 */

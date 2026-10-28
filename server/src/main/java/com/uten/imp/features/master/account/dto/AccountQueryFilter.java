@@ -16,5 +16,14 @@ public record AccountQueryFilter(
         String name,
         String accountType,
         UUID currencyId,
-        String status) {
+        String status,
+        java.util.Map<String, String> columnSearch) {
+    public AccountQueryFilter(String keyword, Set<String> nullFields, String code, String name,
+                              String accountType, UUID currencyId, String status) {
+        this(keyword, nullFields, code, name, accountType, currencyId, status, java.util.Map.of());
+    }
+    public AccountQueryFilter withColumnSearch(java.util.Map<String, String> searches) {
+        return new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status,
+                searches == null ? java.util.Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(searches)));
+    }
 }

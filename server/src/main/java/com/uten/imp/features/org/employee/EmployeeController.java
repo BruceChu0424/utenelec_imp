@@ -30,6 +30,8 @@ import java.util.UUID;
 @RequestMapping("/api/org/employees")
 @RequiredArgsConstructor
 public class EmployeeController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final EmployeeQueryService queryService;
     private final EmployeeOnboardingService onboardingService;
@@ -52,7 +54,17 @@ public class EmployeeController {
             // sort 白名单见 EmployeeListQuery#orderBy：code / hireDate / workYears
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return queryService.list(page, size, search, statuses, departmentId, includeSubtree, sort, order);
+        var columns=new java.util.LinkedHashMap<>(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request));
+        var parameters=new java.util.LinkedHashMap<String,String>();
+        columns.forEach((key,value)->parameters.put("search."+key,value));
+        if(request!=null)for(String key:java.util.List.of("accountStatus","employmentStatus")) {
+            String[] values=request.getParameterValues(key);
+            if(values!=null) {
+                if(values.length!=1)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"同一人员状态只能提交一个条件");
+                parameters.put(key,values[0]);
+            }
+        }
+        return queryService.list(page, size, search, statuses, departmentId, includeSubtree, sort, order,parameters);
     }
 
     /** 「类似人员」：精确搜索 0 命中时前端追加调用（同 list 读权限）。 */

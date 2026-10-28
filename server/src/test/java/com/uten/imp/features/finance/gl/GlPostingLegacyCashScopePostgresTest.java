@@ -65,7 +65,7 @@ class GlPostingLegacyCashScopePostgresTest {
             assertThat(jdbc.queryForObject("SELECT sum(amount) FROM gl_entries WHERE source_doc_id=? AND direction=1",BigDecimal.class,NEW_EXPENSE)).isEqualByComparingTo("7");
         }
         try(var session=sessions.openSession()) {
-            var report=new GlReportService(session,new GlReportLineSource(session))
+            var report=new GlReportService(session,new GlReportLineSource(session),com.uten.imp.support.FinanceReportTestAccess.company())
                     .trialBalance(DATE.withDayOfMonth(1),DATE.withDayOfMonth(31),1,100);
             assertThat(report.rows()).anySatisfy(row->{
                 assertThat(row.get("styleCode")).isEqualTo("GL-NATIVE-COST");

@@ -211,10 +211,11 @@ public class SalesShipmentService {
     @PreAuthorize("hasAnyAuthority('sales_shipment:view','sales_other_shipment:view','sales_shipment_finance:view','warehouse_sales_outbound:view')")
     public PageResponse<ShipmentListItem> list(ShipmentQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ShipmentQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        HeaderColumnFilter.requireAmountSortVisible(sort,canViewCommercialData());
         Specification<SalesShipment> spec = shipmentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SalesShipment> p = shipmentRepo.findAll(searchPage.specification(), searchPage.pageable());
         boolean canEdit = hasObjectActionAuthority();
         boolean hasRejectAuthority = accessPolicy.hasAuthority(REJECT_AUTHORITY);
@@ -325,6 +326,8 @@ public class SalesShipmentService {
             f.headerFilters().apply(root, cb, ps, "totalLocal", canViewCommercialData(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "billDate",HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total",HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class)));
             return cb.and(ps.toArray(new Predicate[0]));
         };

@@ -163,15 +163,18 @@ class TopLevelWriteAuditContextArchitectureTest {
         // Both entry points must delegate to the same audited write transaction;
         // the remote entry adds only the already-verified MFA issuance branch.
         assertTrue(methodBody(source(LOGIN), "public TokenResponse complete(")
-                .contains("return complete(userId, verifiedPasswordHash, false);"));
+                .contains("return complete(userId, verifiedPasswordHash, false, deviceName);"));
         assertTrue(methodBody(source(LOGIN), "public TokenResponse completeRemote(")
-                .contains("return complete(userId, verifiedPasswordHash, true);"));
+                .contains("return complete(userId, verifiedPasswordHash, true, deviceName);"));
         assertBefore(LOGIN, "private TokenResponse complete(",
                 "tx.bindActor(user.getId(), user.getLoginAccount());",
                 "userRepo.save(");
         String successfulLoginAudit =
                 "audit.logCommitted(user.getId(), user.getLoginAccount(),";
-        String issuance = "TokenResponse response = mfaVerified ? tokenIssuer.issueTokensWithMfa(user) : tokenIssuer.issueTokens(user);";
+        String loginBody = methodBody(source(LOGIN), "private TokenResponse complete(");
+        assertTrue(loginBody.contains("tokenIssuer.issueTokensWithMfa(user, deviceName)"));
+        assertTrue(loginBody.contains("tokenIssuer.issueTokens(user, deviceName)"));
+        String issuance = "TokenResponse response = mfaVerified";
         assertBefore(LOGIN, "private TokenResponse complete(",
                 issuance,
                 successfulLoginAudit);

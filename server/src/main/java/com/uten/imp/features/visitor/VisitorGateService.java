@@ -151,9 +151,47 @@ public class VisitorGateService {
     /** 黑名单管理页列表（blocked 账号分页，批量装配操作人姓名，避免逐行查询）。 */
     @Transactional(readOnly = true)
     public PageResponse<BlacklistListItem> blacklistPage(int page, int size) {
+        return blacklistPage(page, size, Map.of(), null, null);
+    }
+
+    private static final Map<String, com.uten.imp.common.util.JpaColumnSearch.Field> BLACKLIST_COLUMNS = Map.of(
+            "visitorNo", com.uten.imp.common.util.JpaColumnSearch.Field.text("visitorNo"),
+            "name", com.uten.imp.common.util.JpaColumnSearch.Field.text("name"),
+            "blockedReason", com.uten.imp.common.util.JpaColumnSearch.Field.text("blockedReason"),
+            "blockedAt", com.uten.imp.common.util.JpaColumnSearch.Field.instant("blockedAt"),
+            "blockedByName", com.uten.imp.common.util.JpaColumnSearch.Field.text((root, query, cb) -> {
+                var operator = query.subquery(String.class);
+                var user = operator.from(com.uten.imp.features.auth.model.UserAccount.class);
+                operator.select(user.get("employee").get("fullName"))
+                        .where(cb.equal(user.get("id"), root.get("blockedBy")));
+                return operator;
+            }));
+
+    @Transactional(readOnly = true)
+    public PageResponse<BlacklistListItem> blacklistPage(int page, int size,
+            Map<String, String> columns, String sort, String order) {
         guard.requireStaff();
-        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
-        Page<VisitorAccount> result = accountRepo.findBlacklisted(pageable);
+        var remaining = new java.util.LinkedHashMap<String, String>(columns == null ? Map.of() : columns);
+        String phone = remaining.remove("phone");
+        final String phoneHash = phone == null || phone.isBlank() ? null
+                : tx.hmac(com.uten.imp.common.util.ChinaMobileNumber.normalize(phone)
+                        .orElseThrow(() -> new com.uten.imp.common.web.ApiException(
+                                com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                                "手机号按完整中国大陆手机号码精确检索")));
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(remaining, BLACKLIST_COLUMNS);
+        Pageable pageable = com.uten.imp.common.web.Pageables.of(page, size,
+                com.uten.imp.common.web.TableSort.resolve(sort, order,
+                        org.springframework.data.domain.Sort.by(
+                                org.springframework.data.domain.Sort.Order.desc("blockedAt").nullsLast(),
+                                org.springframework.data.domain.Sort.Order.desc("updatedAt")),
+                        Map.of("blockedAt", "blockedAt", "visitorNo", "visitorNo")));
+        Page<VisitorAccount> result = searches.isEmpty() && phoneHash == null && (sort == null || sort.isBlank())
+                ? accountRepo.findBlacklisted(pageable)
+                : accountRepo.findAll((root, query, cb) -> cb.and(
+                        cb.equal(root.get("status"), "blocked"),
+                        phoneHash == null ? cb.conjunction() : cb.equal(root.get("phoneHash"), phoneHash),
+                        com.uten.imp.common.util.JpaColumnSearch.predicate(
+                                root, query, cb, searches, BLACKLIST_COLUMNS)), pageable);
         Map<UUID, String> operatorNames = operatorNames(result.getContent());
         return new PageResponse<>(
                 result.getContent().stream()

@@ -38,6 +38,15 @@ public final class GoodsCostContracts {
     public record SheetSummary(UUID id, UUID goodsId, UUID clientId, String name, String status,
             long version, String batchQty, String knownTotal, String unitCost, String valueState,
             UUID confirmedSnapshotId, OffsetDateTime updatedAt) {}
+    public record VersionSummary(UUID id, UUID goodsId, UUID clientId, String name, String status,
+            long version, String batchQty, String knownTotal, String unitCost, String valueState,
+            UUID confirmedSnapshotId, OffsetDateTime updatedAt, UUID currencyId, String currencyName,
+            UUID unitId, String unitName) {
+        @com.fasterxml.jackson.annotation.JsonProperty("versionExact")
+        public String versionExact(){return Long.toString(version);}
+    }
+    public record VersionPage(List<VersionSummary> items,int page,int size,long total,int totalPages,
+            Map<String,List<com.uten.imp.common.web.FacetBucket>> facets,java.util.Set<String> columnSearchKeys) {}
     public record Sheet(UUID id, String sheetNo, String status, long version, DraftInput input,
             Calculation calculation, UUID confirmedSnapshotId, OffsetDateTime updatedAt,
             boolean canEdit, boolean canConfirm, boolean canExport) {}

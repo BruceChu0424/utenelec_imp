@@ -45,7 +45,21 @@ public class WhereUsedExportService {
     }
 
     @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ExportDocument document(UUID materialId,String source,LocalDate from,LocalDate to,String sort,String order,
+            Map<String,String> filters) {
+        Collector collector=new Collector();
+        emit(materialId,source,from,to,sort,order,false,collector,filters);
+        return collector.document();
+    }
+
+    @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
     public void streamDocument(UUID materialId,String source,LocalDate from,LocalDate to,String sort,String order) {
+        streamDocument(materialId,source,from,to,sort,order,Map.of());
+    }
+
+    @PreAuthorize("hasAuthority('production_where_used:view') and hasAuthority('production_where_used:export')")
+    public void streamDocument(UUID materialId,String source,LocalDate from,LocalDate to,String sort,String order,Map<String,String> filters) {
         if(DocumentPageSink.current()==null
                 || !org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
                 || !org.springframework.transaction.support.TransactionSynchronizationManager.isCurrentTransactionReadOnly()
@@ -60,19 +74,24 @@ public class WhereUsedExportService {
                 || !user.getPermissions().contains("production_where_used:export"))throw new ApiException(ErrorCode.FORBIDDEN);
         // Own this cursor even when a caller has another outer report cursor scope.
         try(var cursor=ReportExportCursor.open()) {
-            emit(materialId,source,from,to,sort,order,true,DocumentPageSink.current());
+            emit(materialId,source,from,to,sort,order,true,DocumentPageSink.current(),filters);
         }
     }
 
     private ReportTableResponse read(UUID material,String source,LocalDate from,LocalDate to,int page,
-                                     String sort,String order) {
-        return query.whereUsedExportPage(material,source,from,to,page,PAGE_ROWS,sort,order,page==1);
+                                     String sort,String order,Map<String,String> filters) {
+        return filters==null||filters.isEmpty()?query.whereUsedExportPage(material,source,from,to,page,PAGE_ROWS,sort,order,page==1)
+                :query.whereUsedExportPage(material,source,from,to,page,PAGE_ROWS,sort,order,page==1,filters);
     }
     private void emit(UUID material,String source,LocalDate from,LocalDate to,String sort,String order,
                       boolean streaming,DocumentPageSink.Consumer sink) {
+        emit(material,source,from,to,sort,order,streaming,sink,Map.of());
+    }
+    private void emit(UUID material,String source,LocalDate from,LocalDate to,String sort,String order,
+                      boolean streaming,DocumentPageSink.Consumer sink,Map<String,String> filters) {
         if(material==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择组件后导出");
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ALL)) {
-            ReportTableResponse response=read(material,source,from,to,1,sort,order);
+            ReportTableResponse response=read(material,source,from,to,1,sort,order,filters);
             long expected=response.total();
             int maximum=streaming?MAX_ROWS:SYNCHRONOUS_MAX_ROWS;
             if(expected<0)throw new IllegalStateException("The document source did not supply its primary row count");
@@ -88,7 +107,7 @@ public class WhereUsedExportService {
             for(int page=1;page<=pages;page++) {
                 LegacyExportBudget.checkpoint();
                 if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
-                if(page>1)response=read(material,source,from,to,page,sort,order);
+                if(page>1)response=read(material,source,from,to,page,sort,order,filters);
                 if(response.page()!=page || response.size()!=PAGE_ROWS || response.total()!=expected
                         || !response.columns().equals(columns) || response.rows().size()>PAGE_ROWS
                         || (response.rows().isEmpty()&&processed<expected))throw new IllegalStateException("Document pagination changed or ended early");

@@ -82,14 +82,15 @@ class AiUsageAuditControllerSecurityTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
         verifyNoInteractions(billing, sessions);
     }
-    @Test void aValidStepUpIsConsumedBeforeTheSingleConfigurationWrite() throws Exception {
+    @Test void aValidStepUpAllowsContinuousWritesAndAnExpiredProofIsRejected() throws Exception {
         login(true, null);
-        when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-use-token"))).thenReturn(true, false);
+        when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-use-token"))).thenReturn(true, true, false);
         var request = put("/api/admin/ai/providers/" + providerId + "/billing").header(StepUpInterceptor.HEADER, "one-use-token")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"version\":0,\"billingMode\":\"UNKNOWN\"}");
         mvc.perform(request).andExpect(status().isOk());
+        mvc.perform(request).andExpect(status().isOk());
         mvc.perform(request).andExpect(status().isForbidden());
-        verify(billing, times(1)).save(eq(providerId), any());
+        verify(billing, times(2)).save(eq(providerId), any());
     }
 
     // ------------------------------------------------ ADR-164 用量看板三端点
@@ -116,7 +117,7 @@ class AiUsageAuditControllerSecurityTest {
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
         verifyNoInteractions(dashboard, sessions);
     }
-    @Test void aValidStepUpIsConsumedBeforeTheSingleLimitsWrite() throws Exception {
+    @Test void aValidStepUpIsCheckedBeforeTheLimitsWriteAndExpirationIsRejected() throws Exception {
         login(true, null);
         when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("limits-token"))).thenReturn(true, false);
         when(dashboard.saveLimits(eq(actorId), any(), any()))

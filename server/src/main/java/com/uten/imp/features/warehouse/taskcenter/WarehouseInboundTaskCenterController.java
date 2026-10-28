@@ -40,7 +40,9 @@ public class WarehouseInboundTaskCenterController {
                      @RequestParam(defaultValue="1") int page,
                      @RequestParam(defaultValue="30") int size) {
         return service.list(new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,
-                WarehouseTaskCenterContracts.TaskView.requested(view)));
+                WarehouseTaskCenterContracts.TaskView.requested(view)).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(
+                                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest())));
     }
 
     @GetMapping("/{rowKey}/detail")
@@ -48,7 +50,11 @@ public class WarehouseInboundTaskCenterController {
             + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view','workshop_material:view')")
     public Map<String,Object> detail(@PathVariable String rowKey,@RequestParam(required=false) UUID scopeWarehouseId,
                                      @RequestParam(defaultValue="1") int linePage,@RequestParam(defaultValue="50") int lineSize) {
-        Map<String,Object> detail=service.detail(rowKey,scopeWarehouseId,linePage,lineSize);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        String sort=request==null?null:request.getParameter("sort"),order=request==null?null:request.getParameter("order");
+        Map<String,Object> detail=columns.isEmpty()&&sort==null&&order==null?service.detail(rowKey,scopeWarehouseId,linePage,lineSize)
+                :service.detail(rowKey,scopeWarehouseId,linePage,lineSize,columns,sort,order);
         Row row=(Row)detail.get("row");
         String table=switch(row.recordType()) {
             case "WORKSHOP_REQUISITION"->"workshop_material_requisitions";

@@ -51,8 +51,12 @@ public class ProfileChangeController {
     public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String status) {
-        return queryService.myList(page, size, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return queryService.myList(page, size, status,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     @GetMapping("/api/profile/me/changes/{batchId}")
@@ -77,8 +81,12 @@ public class ProfileChangeController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID employeeId,
-            @RequestParam(required = false) UUID departmentId) {
-        return queryService.hrList(page, size, status, employeeId, departmentId);
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return queryService.hrList(page, size, status, employeeId, departmentId,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     /** HR 队列表头筛选桶（部门），status 与列表分段同口径（空=待审）。 */

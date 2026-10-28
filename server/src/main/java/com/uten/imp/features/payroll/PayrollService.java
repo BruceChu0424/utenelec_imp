@@ -71,6 +71,12 @@ public class PayrollService {
             UUID departmentId,
             int page,
             int size) {
+        return listSlips(rawState, year, month, departmentId, page, size, null, null, java.util.Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<PayrollSlipDto> listSlips(String rawState, Integer year, Integer month,
+            UUID departmentId, int page, int size, String sort, String order, java.util.Map<String, String> parameters) {
         String state = normalizeSlipState(rawState);
         Short normalizedYear = normalizeYear(year);
         Short normalizedMonth = normalizeMonth(month);
@@ -85,6 +91,7 @@ public class PayrollService {
         if (departmentId != null && departmentIds.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "工资筛选部门不存在");
         }
+        var headers = new PayrollSlipHeaderQuery(sort, order, parameters);
 
         Specification<PayrollSlip> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -103,13 +110,10 @@ public class PayrollService {
             if (!departmentIds.isEmpty()) {
                 predicates.add(root.get("departmentIdSnapshot").in(departmentIds));
             }
+            headers.apply(root, cb, predicates);
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(
-                Sort.Order.desc("payrollYear"),
-                Sort.Order.desc("payrollMonth"),
-                Sort.Order.asc("employeeCodeSnapshot"),
-                Sort.Order.asc("id")));
+        Pageable pageable = Pageables.of(page, size, headers.sorting());
         Page<PayrollSlip> result = slipRepository.findAll(spec, pageable);
         return new PageResponse<>(
                 mapSlips(result.getContent()),
@@ -678,7 +682,7 @@ public class PayrollService {
         return normalized;
     }
 
-    private static Short normalizeYear(Integer year) {
+    static Short normalizeYear(Integer year) {
         if (year == null) {
             return null;
         }
@@ -688,7 +692,7 @@ public class PayrollService {
         return year.shortValue();
     }
 
-    private static Short normalizeMonth(Integer month) {
+    static Short normalizeMonth(Integer month) {
         if (month == null) {
             return null;
         }

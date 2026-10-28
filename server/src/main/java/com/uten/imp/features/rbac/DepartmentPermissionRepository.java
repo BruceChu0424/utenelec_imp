@@ -33,7 +33,7 @@ public interface DepartmentPermissionRepository extends JpaRepository<Department
                 JOIN ancestors a ON d.id = a.parent_id
             )
             SELECT DISTINCT p.code
-            FROM department_permissions dp
+            FROM authorization_department_permission_sources dp
             JOIN permissions p ON p.id = dp.permission_id
             JOIN ancestors a ON a.id = dp.department_id
             """, nativeQuery = true)
@@ -54,7 +54,7 @@ public interface DepartmentPermissionRepository extends JpaRepository<Department
                 JOIN ancestors a ON d.id = a.parent_id
             )
             SELECT DISTINCT p.code
-            FROM department_permissions dp
+            FROM authorization_department_permission_sources dp
             JOIN permissions p ON p.id = dp.permission_id
             JOIN ancestors a ON a.id = dp.department_id
             """, nativeQuery = true)

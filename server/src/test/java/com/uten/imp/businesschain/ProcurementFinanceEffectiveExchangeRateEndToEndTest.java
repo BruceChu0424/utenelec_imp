@@ -25,6 +25,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +53,7 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     @Autowired PurchaseReceiptService purchaseReceipts;
     @Autowired SubcontractReceiptService subcontractReceipts;
     @Autowired ProcurementFinanceApprovalService finance;
+    @Autowired PlatformTransactionManager transactions;
     @Autowired TaskClaimService claims;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired DocumentUnapprovalService unapproval;
@@ -62,6 +65,63 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     private static final BigDecimal LOCAL=new BigDecimal("292.138692596403125");
     @BeforeEach void prepare(){ harness=new FullChainEndToEndTest(); beans.autowireBean(harness); }
     @AfterEach void clear(){ SecurityContextHolder.clearContext(); }
+
+    @Test void pendingPurchaseQuantityRevisionRetainsCaseAndOnlyReservesUntilFreshFinanceDecision() {
+        Fixture f=fixture("PURCHASE","3.125",false);
+        var stale=submit(f);
+        String originalHash=db.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?",String.class,stale.caseId());
+        harness.loginAs(f.world().superAdminUserId());
+        purchaseOrders.changeQty(f.order(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("4.1256")))));
+        assertThat(decimal("SELECT status FROM purchase_orders WHERE id=?",f.order())).isZero();
+        assertThat(decimal("SELECT qty FROM purchase_order_items WHERE id=?",f.item())).isEqualByComparingTo("4.1256");
+        assertThat(decimal("SELECT ordered_qty FROM purchase_request_items WHERE id=?",f.purchaseSource())).isZero();
+        assertThat(decimal("SELECT alloc_qty FROM purchase_order_item_sources WHERE order_item_id=?",f.item())).isEqualByComparingTo("4.1256");
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_approval_cases WHERE order_type='PURCHASE' AND order_id=?",Long.class,f.order())).isEqualTo(1);
+        assertThat(decimal("SELECT version FROM procurement_order_approval_cases WHERE id=?",stale.caseId())).isEqualByComparingTo(BigDecimal.valueOf(stale.expectedVersion()+1));
+        assertThat(db.queryForObject("SELECT submission_snapshot #>> '{items,0,qty}' FROM procurement_order_approval_cases WHERE id=?",String.class,stale.caseId())).isEqualTo("4.1256");
+        assertThat(db.queryForObject("SELECT display_snapshot #>> '{items,0,qty}' FROM procurement_order_approval_cases WHERE id=?",String.class,stale.caseId())).isEqualTo("4.1256");
+        assertThat(db.queryForObject("SELECT event_snapshot->>'previousSnapshotHash' FROM procurement_order_approval_events WHERE case_id=? AND event_type='QUANTITY_CHANGED'",String.class,stale.caseId())).isEqualTo(originalHash);
+        assertThat(db.queryForObject("SELECT event_snapshot #>> '{previousSubmissionSnapshot,items,0,qty}' FROM procurement_order_approval_events WHERE case_id=? AND event_type='QUANTITY_CHANGED'",String.class,stale.caseId())).isEqualTo("3.125");
+        assertThat(db.queryForObject("SELECT count(*) FROM inbound_expectations WHERE order_type='PURCHASE' AND order_id=?",Long.class,f.order())).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM production_material_supply_pegs WHERE supply_type='PURCHASE_ORDER_ITEM' AND supply_item_id=?",Long.class,f.item())).isZero();
+        harness.loginAs(f.reviewer());
+        assertThatThrownBy(()->finance.approveBatch(List.of(stale),null,RATE)).isInstanceOf(ApiException.class);
+        var fresh=pending(f);
+        assertThat(fresh.caseId()).isEqualTo(stale.caseId());
+        finance.approveBatch(List.of(fresh),null,RATE);
+        assertThat(decimal("SELECT status FROM purchase_orders WHERE id=?",f.order())).isEqualByComparingTo("1");
+        assertThat(decimal("SELECT ordered_qty FROM purchase_request_items WHERE id=?",f.purchaseSource())).isEqualByComparingTo("4.1256");
+        assertThat(decimal("SELECT ordered_qty FROM inbound_expectation_items WHERE order_item_id=?",f.item())).isEqualByComparingTo("4.1256");
+        assertThat(db.queryForObject("SELECT count(*) FROM procurement_order_qty_change_logs WHERE order_id=? AND case_id=?",Long.class,f.order(),stale.caseId())).isEqualTo(1);
+    }
+
+    @Test void pendingQuantityProofRejectsMissingNullNonArrayAndDuplicateOrOmittedItemIdentities() {
+        Fixture base=fixture("PURCHASE","3.125",false);
+        UUID order=purchaseOrder(base.world(),base.purchaseSource(),base.currency(),"3.125",true);
+        UUID item=db.queryForObject("SELECT id FROM purchase_order_items WHERE order_id=? ORDER BY line_no LIMIT 1",UUID.class,order);
+        Fixture f=new Fixture(base.world(),base.reviewer(),base.currency(),"PURCHASE",order,item,base.purchaseSource());
+        var decision=submit(f);
+        harness.loginAs(f.world().superAdminUserId());
+        new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
+            String before=db.queryForObject("SELECT to_jsonb(c)::text FROM procurement_order_approval_cases c WHERE id=?",String.class,decision.caseId());
+            purchaseOrders.changeQty(order,new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(item,new BigDecimal("4.1256")))));
+            String after=db.queryForObject("SELECT to_jsonb(c)::text FROM procurement_order_approval_cases c WHERE id=?",String.class,decision.caseId());
+            assertThat(db.queryForObject("SELECT fn_is_pending_purchase_case_qty_revision(CAST(? AS jsonb),CAST(? AS jsonb))",Boolean.class,before,after)).isTrue();
+            for(String replacement:List.of("null","{}","[null]")) {
+                assertThat(db.queryForObject("SELECT fn_is_pending_purchase_case_qty_revision(CAST(? AS jsonb),jsonb_set(CAST(? AS jsonb),'{submission_snapshot,items}',CAST(? AS jsonb)))",Boolean.class,before,after,replacement)).isFalse();
+            }
+            assertThat(db.queryForObject("SELECT fn_is_pending_purchase_case_qty_revision(CAST(? AS jsonb),CAST(? AS jsonb) #- '{submission_snapshot,items}')",Boolean.class,before,after)).isFalse();
+            assertThat(db.queryForObject("""
+                    SELECT fn_is_pending_purchase_case_qty_revision(CAST(? AS jsonb),jsonb_set(CAST(? AS jsonb),
+                      '{submission_snapshot,items}',jsonb_build_array(CAST(? AS jsonb) #> '{submission_snapshot,items,0}',
+                                                                  CAST(? AS jsonb) #> '{submission_snapshot,items,0}')))
+                    """,Boolean.class,before,after,after,after)).isFalse();
+        });
+        assertThat(db.queryForObject("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname='trg_procurement_approval_display_snapshot_immutable'",String.class))
+                .contains("display_snapshot", "submission_snapshot", "snapshot_hash", "amount_snapshot");
+        assertThatThrownBy(()->db.update("UPDATE procurement_order_approval_cases SET submission_snapshot=jsonb_set(submission_snapshot,'{items}', 'null'::jsonb) WHERE id=?",decision.caseId()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
 
     @ParameterizedTest @ValueSource(strings={"PURCHASE","SUBCONTRACT"})
     void baseCurrencyRejectsNonIdentityFinancialRateBeforeAnyOrderEffect(String kind){
@@ -269,8 +329,15 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         return new Fixture(w,reviewer,currency,kind,order,item,purchaseSource);
     }
     private UUID purchaseOrder(FullChainEndToEndTest.World w,UUID source,UUID currency,String qty){
+        return purchaseOrder(w,source,currency,qty,false);
+    }
+    private UUID purchaseOrder(FullChainEndToEndTest.World w,UUID source,UUID currency,String qty,boolean twoLines){
         var r=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();r.setBillDate(BusinessTime.today());r.setSupplierId(w.supplierId());r.setWarehouseId(w.warehouseId());r.setCurrencyId(currency);r.setExchangeRate(BigDecimal.ONE);r.setTaxRate(BigDecimal.ZERO);r.setSettlementMethodId(settlement());
-        var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("13.123457"));line.setRequestItemId(source);r.setItems(List.of(line));return purchaseOrders.create(r).getId();
+        var lines=new java.util.ArrayList<com.uten.imp.features.purchase.order.dto.OrderItemLine>();
+        for(int i=0;i<(twoLines?2:1);i++) {
+            var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(new BigDecimal("13.123457"));line.setRequestItemId(source);lines.add(line);
+        }
+        r.setItems(lines);return purchaseOrders.create(r).getId();
     }
     private UUID settlement(){return db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1",UUID.class);}
     private BatchDecisionItem submit(Fixture f){harness.loginAs(f.world().superAdminUserId());finance.submit(f.kind(),f.order());harness.loginAs(f.reviewer());return pending(f);}

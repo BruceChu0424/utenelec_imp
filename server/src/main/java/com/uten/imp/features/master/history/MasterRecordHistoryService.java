@@ -93,7 +93,13 @@ public class MasterRecordHistoryService {
       String keyword,
       String dateFrom,
       String dateTo,
-      int size) {
+      int size,
+      String sourceType,
+      String summaryKeyword) {
+    public Filters(String action, UUID actorId, String actorKeyword, String keyword,
+        String dateFrom, String dateTo, int size) {
+      this(action, actorId, actorKeyword, keyword, dateFrom, dateTo, size, null, null);
+    }
     public static Filters defaults() {
       return new Filters(null, null, null, null, null, null, 50);
     }
@@ -492,6 +498,8 @@ public class MasterRecordHistoryService {
     if (filters.action() != null
         && !Set.of("CREATE", "EDIT", "DELETE", "STATUS", "RESTORE").contains(filters.action()))
       throw bad("不支持的历史动作");
+    if (present(filters.sourceType()) && !Set.of("CATEGORY", "BOM", "EXTENSION", "RECORD").contains(filters.sourceType()))
+      throw bad("不支持的历史修改范围");
     int size = Math.max(1, Math.min(100, filters.size()));
     String prefix =
         categoryId == null
@@ -514,6 +522,11 @@ public class MasterRecordHistoryService {
               + " FROM selected_categories) OR NULLIF(h.before_row->>'category_id','')::uuid"
               + " IN(SELECT id FROM selected_categories))");
     if (filters.action() != null) where.append(" AND h.action=:action");
+    if (present(filters.sourceType())) where.append(" AND CASE WHEN r.is_category THEN 'CATEGORY' "
+        + "WHEN h.source_table='goods_bom_items' THEN 'BOM' WHEN h.source_table='platform_record_fields' THEN 'EXTENSION' "
+        + "ELSE 'RECORD' END=:sourceType");
+    if (present(filters.summaryKeyword()))
+      where.append(" AND " + summarySql() + " ILIKE :summaryKeyword ESCAPE E'\\\\'");
     if (filters.actorId() != null) where.append(" AND h.actor_id=:actor");
     if (present(filters.actorKeyword()))
       where.append(" AND " + actorLabelSql() + " ILIKE :actorKeyword ESCAPE E'\\\\'");
@@ -577,6 +590,8 @@ public class MasterRecordHistoryService {
     if (recordId != null) query.setParameter("record", recordId);
     if (categoryId != null) query.setParameter("category", categoryId);
     if (filters.action() != null) query.setParameter("action", filters.action());
+    if (present(filters.sourceType())) query.setParameter("sourceType", filters.sourceType());
+    if (present(filters.summaryKeyword())) query.setParameter("summaryKeyword", pattern(filters.summaryKeyword()));
     if (filters.actorId() != null) query.setParameter("actor", filters.actorId());
     if (present(filters.actorKeyword()))
       query.setParameter("actorKeyword", pattern(filters.actorKeyword()));

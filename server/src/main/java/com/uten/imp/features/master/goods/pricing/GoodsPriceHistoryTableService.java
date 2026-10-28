@@ -24,7 +24,9 @@ public class GoodsPriceHistoryTableService {
     static final int INITIAL_FACET_SIZE=200;
     private static final Map<String,String> COLUMNS;
     private static final Set<String> NUMERIC=Set.of("unitPrice","quantity","amount");
-    private static final Set<String> LIFECYCLES=Set.of("ACTIVE","SOURCE_DELETED","SOURCE_REVERSED","SOURCE_CANCELLED","SUPERSEDED_APPROVED_VERSION","CONFIRMED_QUOTATION");
+    private static final Map<String,String> LIFECYCLE_LABELS=Map.of("ACTIVE","当前有效","SOURCE_DELETED","来源已删除","SOURCE_REVERSED","来源已红冲",
+            "SOURCE_CANCELLED","来源已取消","SUPERSEDED_APPROVED_VERSION","历史批准版本","CONFIRMED_QUOTATION","已确认报价");
+    private static final Set<String> LIFECYCLES=LIFECYCLE_LABELS.keySet();
     static {
         var columns=new LinkedHashMap<String,String>();
         columns.put("businessDate","business_date");columns.put("sourceNo","source_no");columns.put("partnerName","partner_name");
@@ -62,7 +64,8 @@ public class GoodsPriceHistoryTableService {
               FROM decimal128
             )
             """;
-    private record Prepared(String cte,MapSqlParameterSource parameters,Map<String,String> filters) {}
+    private record Prepared(String cte,MapSqlParameterSource parameters,Map<String,String> filters,
+            com.uten.imp.common.util.SqlColumnSearch.Criteria searches) {}
     private record Facets(Map<String,List<FacetBucket>> buckets,Map<String,Long> nulls,Map<String,Long> totals,Map<String,Boolean> more) {}
 
     public TablePage table(TableQuery request) {
@@ -112,7 +115,11 @@ public class GoodsPriceHistoryTableService {
         String expression=column(key),filter=filters(p,key),value=value(key);
         var parameters=new MapSqlParameterSource(p.parameters().getValues());
         String searchClause="";
-        if(search!=null&&!search.isEmpty()){searchClause=" AND position(lower(:facetSearch) IN lower(value))>0";parameters.addValue("facetSearch",search);}
+        if(search!=null&&!search.isEmpty()){
+            String label="lifecycle".equals(key)?lifecycleLabelSql("value"):"value";
+            searchClause=" AND (position(lower(:facetSearch) IN lower(value))>0 OR position(lower(:facetSearch) IN lower("+label+"))>0)";
+            parameters.addValue("facetSearch",search);
+        }
         parameters.addValue("facetLimit",size).addValue("facetRequestedPage",requestedPage);
         String sql=p.cte()+", buckets AS MATERIALIZED (SELECT "+expression+" ordering,"+value+" value,count(*) bucket_count FROM priced WHERE "+filter+" GROUP BY "+expression+")"
                 +", matching AS MATERIALIZED (SELECT * FROM buckets WHERE value IS NOT NULL"+searchClause+")"
@@ -145,8 +152,10 @@ public class GoodsPriceHistoryTableService {
         if(q.currencyId()!=null){where+=" AND currency_id=:currency";p.addValue("currency",q.currencyId());}
         if(q.taxRate()!=null){where+=" AND tax_rate=:tax";p.addValue("tax",GoodsPriceAnalysisService.decimal(q.taxRate(),"税率",false));}
         if(q.unitRate()!=null){where+=" AND unit_rate=:rate";p.addValue("rate",GoodsPriceAnalysisService.decimal(q.unitRate(),"换算率",true));}
-        Map<String,String> filters=request.filters()==null?Map.of():new LinkedHashMap<>(request.filters());
-        if(filters.size()>COLUMNS.size())throw GoodsPriceAnalysisService.invalid("历史筛选字段过多");
+        Map<String,String> supplied=request.filters()==null?Map.of():request.filters();
+        if(supplied.size()>2*COLUMNS.size())throw GoodsPriceAnalysisService.invalid("历史筛选字段过多");
+        Map<String,String> filters=new LinkedHashMap<>(),searches=new LinkedHashMap<>();
+        supplied.forEach((key,text)->{if(key!=null&&key.startsWith("search."))searches.put(key.substring(7),text);else filters.put(key,text);});
         for(var entry:filters.entrySet()){
             column(entry.getKey());String text=entry.getValue();
             if(text==null||text.isEmpty())continue;
@@ -156,10 +165,19 @@ public class GoodsPriceHistoryTableService {
             if(entry.getKey().equals("businessDate"))date(text);
             if(entry.getKey().equals("lifecycle")&&!LIFECYCLES.contains(text))throw GoodsPriceAnalysisService.invalid("历史状态筛选无效");
         }
-        return new Prepared("WITH authorized AS MATERIALIZED (SELECT * FROM v_goods_price_history WHERE "+where+")\n"+PRICED_CTE,p,filters);
+        var headerFields=new LinkedHashMap<String,com.uten.imp.common.util.SqlColumnSearch.Field>();
+        for(var entry:COLUMNS.entrySet()){
+            if(entry.getKey().equals("lifecycle"))continue; // finite lifecycle values retain their exact source contract
+            headerFields.put(entry.getKey(),NUMERIC.contains(entry.getKey())?com.uten.imp.common.util.SqlColumnSearch.Field.decimal(entry.getValue())
+                    :entry.getKey().equals("businessDate")?com.uten.imp.common.util.SqlColumnSearch.Field.calendarDate(entry.getValue())
+                    :com.uten.imp.common.util.SqlColumnSearch.Field.text(entry.getValue()));
+        }
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(searches,headerFields,"price_history_header_");
+        headers.parameters().forEach(p::addValue);
+        return new Prepared("WITH authorized AS MATERIALIZED (SELECT * FROM v_goods_price_history WHERE "+where+")\n"+PRICED_CTE,p,filters,headers);
     }
     private static String filters(Prepared p,String excluded) {
-        StringBuilder sql=new StringBuilder("1=1");
+        StringBuilder sql=new StringBuilder("("+p.searches().predicate()+")");
         int index=0;
         for(var column:COLUMNS.entrySet()){
             String key=column.getKey(),text=p.filters().get(key),parameter="filter_"+index++;
@@ -179,5 +197,9 @@ public class GoodsPriceHistoryTableService {
     private static int size(Integer value,int fallback,int maximum){int size=value==null?fallback:value;if(size<1||size>maximum)throw GoodsPriceAnalysisService.invalid("每页数量超出有效范围");return size;}
     private static int page(Integer value){int page=value==null?1:value;if(page<1||page>1000000)throw GoodsPriceAnalysisService.invalid("历史页码超出有效范围");return page;}
     private static int pages(long total,int size){return (int)Math.min(Integer.MAX_VALUE,(total+size-1)/size);}
-    private static String label(String key,String value){if(!key.equals("lifecycle"))return value;return switch(value){case "ACTIVE"->"当前有效";case "SOURCE_DELETED"->"来源已删除";case "SOURCE_REVERSED"->"来源已红冲";case "SOURCE_CANCELLED"->"来源已取消";case "SUPERSEDED_APPROVED_VERSION"->"历史批准版本";case "CONFIRMED_QUOTATION"->"已确认报价";default->value;};}
+    private static String label(String key,String value){return key.equals("lifecycle")?LIFECYCLE_LABELS.getOrDefault(value,value):value;}
+    private static String lifecycleLabelSql(String value){
+        return "CASE "+value+LIFECYCLE_LABELS.entrySet().stream().map(entry->" WHEN '"+entry.getKey()+"' THEN '"+entry.getValue()+"'")
+                .collect(java.util.stream.Collectors.joining())+" ELSE "+value+" END";
+    }
 }

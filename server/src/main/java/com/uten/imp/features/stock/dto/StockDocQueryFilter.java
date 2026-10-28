@@ -31,14 +31,28 @@ public record StockDocQueryFilter(
         boolean ownDraftsInScope,
         /** 仅 true 时收敛为未删除、status=0 且非生产自动来源的独立草稿；不放宽归属或仓库权限。 */
         Boolean standaloneDrafts,
-        String view) {
+        String view, com.uten.imp.common.web.HeaderColumnFilter headerFilters) {
     public StockDocQueryFilter {
+        headerFilters = headerFilters == null ? com.uten.imp.common.web.HeaderColumnFilter.EMPTY : headerFilters;
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
         view = view == null || view.isBlank() ? "ACTIVE" : view.strip().toUpperCase(java.util.Locale.ROOT);
         if (!java.util.Set.of("ACTIVE", "HISTORY").contains(view)) {
             throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
                     "单据视图不正确");
         }
+    }
+
+    public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
+                              LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
+                              Boolean productionReturnRequests, UUID toWarehouseId, WarehouseTaskScope warehouseScope,
+                              String billNo, boolean ownDraftsInScope, Boolean standaloneDrafts, String view) {
+        this(docType,keyword,warehouseId,status,dateFrom,dateTo,departmentId,issueStatus,productionReturnRequests,
+                toWarehouseId,warehouseScope,billNo,ownDraftsInScope,standaloneDrafts,view,com.uten.imp.common.web.HeaderColumnFilter.EMPTY);
+    }
+
+    public StockDocQueryFilter withHeaders(com.uten.imp.common.web.HeaderColumnFilter headers) {
+        return new StockDocQueryFilter(docType,keyword,warehouseId,status,dateFrom,dateTo,departmentId,issueStatus,
+                productionReturnRequests,toWarehouseId,warehouseScope,billNo,ownDraftsInScope,standaloneDrafts,view,headers);
     }
 
     public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,

@@ -1,7 +1,5 @@
 package com.uten.imp.features.warehouse.inbound;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionDecideRequest;
 import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionPassRequest;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
@@ -18,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,79 +38,22 @@ public class ProcurementInspectionController {
 
     private final ProcurementInspectionService service;
 
-    /** 待检单聚合行（IQC 工作台）。 */
-    public record PendingInspectionReceiptDto(
-            String receiptType,
-            @JsonSerialize(using = ToStringSerializer.class) UUID receiptId,
-            String billNo,
-            LocalDate billDate,
-            @JsonSerialize(using = ToStringSerializer.class) UUID supplierId,
-            String supplierName,
-            @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
-            long itemCount,
-            BigDecimal pendingBaseQty,
-            OffsetDateTime firstReceivedAt,
-            OffsetDateTime lastReceivedAt,
-            /** 先入库后检(V596)：已上架待检的明细行数；>0 时品质页顶部标红「货品已入库，需到库位检验」。 */
-            long preStockedItemCount,
-            /** 已上架行的去重仓名清单（2026-09-17）：待检队列「仓库」列直接给出到哪验货。 */
-            String preStockedWarehouseNames,
-            /** 已上架行的去重库位清单（2026-09-17）：待检队列「库位号」列。 */
-            String preStockedPlaces,
-            /** 待检货品摘要「名称 (编号 · 颜色)、…」（2026-10-08）：与 FQC 检查单 goodsSummary 同口径。 */
-            String goodsSummary,
-            /** 待检数量文本「qty 单位 · qty 单位」（2026-10-08）：按货品基本单位分组，跨单位不相加。 */
-            String pendingQtyText,
-            String goodsCodeSummary,
-            String colorNameSummary) {
-    }
-
     @GetMapping("/pending-receipts")
     @PreAuthorize("hasAuthority('procurement_inspection:view')")
-    public List<PendingInspectionReceiptDto> pendingReceipts() {
+    public List<com.uten.imp.features.warehouse.inbound.dto.PendingInspectionReceiptView> pendingReceipts() {
         return service.pendingReceiptSummaries().stream()
-                .map(row -> new PendingInspectionReceiptDto(
-                        (String) row[0],
-                        (UUID) row[1],
-                        (String) row[7],
-                        toLocalDate(row[8]),
-                        (UUID) row[9],
-                        (String) row[10],
-                        (UUID) row[6],
-                        ((Number) row[2]).longValue(),
-                        dec(row[3]),
-                        toOffsetDateTime(row[4]),
-                        toOffsetDateTime(row[5]),
-                        ((Number) row[11]).longValue(),
-                        (String) row[12],
-                        (String) row[13],
-                        (String) row[14],
-                        (String) row[15],
-                        (String) row[16],
-                        (String) row[17]))
+                .map(com.uten.imp.features.warehouse.inbound.dto.PendingInspectionReceiptView::from)
                 .toList();
     }
 
-    /** 原生查询 DATE 列安全转 LocalDate（驱动可能返回 java.sql.Date 或 LocalDate）。 */
-    private static LocalDate toLocalDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate localDate) return localDate;
-        if (value instanceof java.sql.Date sqlDate) return sqlDate.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
-    /**
-     * 原生查询 TIMESTAMPTZ 列安全转 OffsetDateTime。驱动/Hibernate 版本不同，
-     * 可能返回 OffsetDateTime、Instant、java.sql.Timestamp 或 java.util.Date，
-     * 直接强转会在部分环境抛 ClassCastException（如待检单列表 row[4]/row[5] 返回 Instant）。
-     */
-    private static OffsetDateTime toOffsetDateTime(Object value) {
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime odt) return odt;
-        if (value instanceof java.time.Instant instant) return instant.atOffset(java.time.ZoneOffset.UTC);
-        if (value instanceof java.sql.Timestamp ts) return ts.toInstant().atOffset(java.time.ZoneOffset.UTC);
-        if (value instanceof java.util.Date date) return date.toInstant().atOffset(java.time.ZoneOffset.UTC);
-        return OffsetDateTime.parse(value.toString());
+    @GetMapping("/pending-receipts/{receiptType}/{receiptId}")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public Object pendingReceipt(@PathVariable String receiptType,@PathVariable UUID receiptId) {
+        String type=receiptType.toUpperCase(java.util.Locale.ROOT);
+        if(!java.util.Set.of("PURCHASE","SUBCONTRACT").contains(type))throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"收货单类型无效");
+        Object value=service.pendingPayloads("IQC",java.util.Set.of("iqc:"+type+":"+receiptId)).get("iqc:"+type+":"+receiptId);
+        if(value==null)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND,"收货单当前没有待检明细");
+        return value;
     }
 
     @GetMapping

@@ -53,6 +53,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/accounts")
 @RequiredArgsConstructor
 public class AccountController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final AccountService service;
     private final XlsxExportService xlsxExport;
@@ -77,8 +79,33 @@ public class AccountController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.list(
-                new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status),
+                new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status)
+                        .withColumnSearch(headerSearches(null)),
                 page, size, sort, order);
+    }
+
+    /** Bank account terms and the broad keyword travel only in a read-only POST body. */
+    @PostMapping("/search")
+    @PreAuthorize("hasAuthority('account:view')")
+    public PageResponse<AccountListItem> search(
+            @RequestParam(required = false) Set<String> nullFields,
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String accountType,
+            @RequestParam(required = false) UUID currencyId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @Valid @RequestBody(required = false) com.uten.imp.common.web.ContactSensitiveFilter body) {
+        var sensitive = com.uten.imp.common.web.ContactSensitiveFilter.orNone(body);
+        return service.list(new AccountQueryFilter(sensitive.keyword(), nullFields, code, name, accountType, currencyId, status)
+                .withColumnSearch(headerSearches(sensitive.columnSearch())), page, size, sort, order);
+    }
+
+    private java.util.Map<String, String> headerSearches(java.util.Map<String, String> body) {
+        return com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body);
     }
 
     @GetMapping("/facets")
@@ -124,9 +151,11 @@ public class AccountController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @Valid @RequestBody ExportPasswordRequest body) {
+            @Valid @RequestBody com.uten.imp.features.master.dto.ContactExportRequest body) {
         ExportPayload payload = service.export(
-                new AccountQueryFilter(keyword, nullFields, code, name, accountType, currencyId, status),
+                new AccountQueryFilter(body.sensitive().keyword() == null ? keyword : body.sensitive().keyword(),
+                        nullFields, code, name, accountType, currencyId, status)
+                        .withColumnSearch(headerSearches(body.sensitive().columnSearch())),
                 sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_account");

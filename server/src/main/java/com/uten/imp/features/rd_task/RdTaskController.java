@@ -56,8 +56,12 @@ public class RdTaskController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID assignee,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.list(status, category, keyword, assignee, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return service.list(status, category, keyword, assignee, page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     /**

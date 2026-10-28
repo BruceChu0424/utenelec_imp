@@ -86,18 +86,91 @@ final class FinancePartyStatementSql {
                 .replace("currency.code", com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency"));
     }
 
-    static String running(String events) {
+    /**
+     * 滚动余额对账单（B2 三段式期初）：旧实现把全部历史事件装进
+     * UNBOUNDED PRECEDING 窗口现场重放；现改为
+     * 「已关月汇总（party_monthly_summaries）+ 当月尾段事件 + 展示窗前缀」，
+     * 与 V408 账户流水三段式同构。语义逐点保持：
+     * <ul>
+     *   <li>排序键仍是 (event_date,event_order,ref_no,event_id)，日期先于一切，
+     *       因此 {event_date &lt; :from} 恰为展示行前缀之外的全部前史；</li>
+     *   <li>net_* 逐行 (posted-settled) 求和、NULL 行整行跳过，与原窗口 SUM 一致；</li>
+     *   <li>原币「待核验」= 前史或前缀中存在 posted/settled/currency 为 NULL 的事件，
+     *       由 base_nulls（汇总列 null_original_count）+ 前缀 FILTER 计数共同判定；</li>
+     *   <li>:from 为空（全历史展开）时基数为 0，与旧行为等价。</li>
+     * </ul>
+     * 调用方必须先做该单位的脏键自愈（PartyMonthlySummaryService.reconcileNow）。
+     */
+    static String running(String events, String side) {
         return events + """
-                , windowed AS (
-                    SELECT event.*,
-                           CASE WHEN COUNT(*) FILTER(WHERE posted_original IS NULL OR settled_original IS NULL
-                                      OR currency_id IS NULL) OVER currency_history>0 THEN NULL
-                                ELSE SUM(posted_original-settled_original) OVER currency_history END AS running_original,
-                           SUM(posted_local-settled_local) OVER all_history AS running_local
+                , summary_opening AS (
+                    SELECT summary.currency_id,
+                           SUM(summary.net_original) AS base_original,
+                           SUM(summary.null_original_count) AS base_nulls,
+                           SUM(summary.net_local) AS base_local
+                    FROM party_monthly_summaries summary
+                    WHERE summary.side='@side@' AND summary.party_id=:pid
+                      AND CAST(:fromMonth AS date) IS NOT NULL
+                      AND summary.month_start<:fromMonth
+                    GROUP BY summary.currency_id
+                ), month_tail AS (
+                    SELECT event.currency_id,
+                           SUM(event.posted_original-event.settled_original) AS tail_original,
+                           COUNT(*) FILTER(WHERE event.posted_original IS NULL
+                               OR event.settled_original IS NULL OR event.currency_id IS NULL) AS tail_nulls,
+                           SUM(event.posted_local-event.settled_local) AS tail_local
                     FROM party_events event
-                    WHERE CAST(:to AS date) IS NULL OR event_date<=:to
-                    WINDOW currency_history AS (PARTITION BY currency_id ORDER BY event_date,event_order,ref_no,event_id ROWS UNBOUNDED PRECEDING),
-                           all_history AS (ORDER BY event_date,event_order,ref_no,event_id ROWS UNBOUNDED PRECEDING)
+                    WHERE CAST(:fromMonth AS date) IS NOT NULL
+                      AND event.event_date>=:fromMonth
+                      AND event.event_date<:from
+                    GROUP BY event.currency_id
+                ), opening AS (
+                    -- PostgreSQL 的 FULL JOIN 只支持可哈希/可归并的等值条件，
+                    -- 不能用 IS NOT DISTINCT FROM；改用并集聚合，语义逐点等价
+                    --（NULL 币种在 GROUP BY 下归为一组，与 NOT DISTINCT 相同）。
+                    SELECT bases.currency_id,
+                           SUM(bases.base_original) AS base_original,
+                           SUM(bases.base_nulls) AS base_nulls,
+                           SUM(bases.base_local) AS base_local
+                    FROM (
+                        SELECT currency_id,base_original,base_nulls,base_local FROM summary_opening
+                        UNION ALL
+                        SELECT currency_id,tail_original AS base_original,
+                               tail_nulls AS base_nulls,tail_local AS base_local FROM month_tail
+                    ) bases
+                    GROUP BY bases.currency_id
+                ), global_opening AS (
+                    -- running_local 是跨币种滚动余额：本币基数取全局合计而非按币基数。
+                    SELECT SUM(bases.base_local) AS global_base_local
+                    FROM (
+                        SELECT base_local FROM summary_opening
+                        UNION ALL
+                        SELECT tail_local AS base_local FROM month_tail
+                    ) bases
+                ), windowed AS (
+                    SELECT event.*,
+                           CASE WHEN COALESCE(opening.base_nulls,0)
+                                     +COUNT(*) FILTER(WHERE event.posted_original IS NULL
+                                          OR event.settled_original IS NULL
+                                          OR event.currency_id IS NULL) OVER currency_history>0
+                                THEN NULL
+                                ELSE COALESCE(opening.base_original,0)
+                                     +SUM(event.posted_original-event.settled_original)
+                                      OVER currency_history END AS running_original,
+                           COALESCE(global_opening.global_base_local,0)
+                                +SUM(event.posted_local-event.settled_local)
+                                 OVER all_history AS running_local
+                    FROM party_events event
+                    LEFT JOIN opening
+                      ON opening.currency_id IS NOT DISTINCT FROM event.currency_id
+                    CROSS JOIN global_opening
+                    WHERE (CAST(:from AS date) IS NULL OR event.event_date>=:from)
+                      AND (CAST(:to AS date) IS NULL OR event.event_date<=:to)
+                    WINDOW currency_history AS (PARTITION BY event.currency_id
+                            ORDER BY event.event_date,event.event_order,event.ref_no,event.event_id
+                            ROWS UNBOUNDED PRECEDING),
+                           all_history AS (ORDER BY event.event_date,event.event_order,
+                            event.ref_no,event.event_id ROWS UNBOUNDED PRECEDING)
                 )
                 SELECT event_date AS "billDate",ref_no AS "refNo",currency_code AS "currencyCode",
                        posted_original AS "salesOriginal",posted_rate AS "salesRate",posted_local AS "salesLocal",
@@ -107,28 +180,40 @@ final class FinancePartyStatementSql {
                        CASE WHEN running_original IS NULL THEN '待核验' ELSE '已核验' END AS "originalStatus",
                        currency_id AS "__currencyId"
                 FROM windowed WHERE CAST(:from AS date) IS NULL OR event_date>=:from
-                """;
+                """.replace("@side@", side);
     }
 
-    static String annual(String events) {
-        return events + """
-                , monthly AS (
-                    SELECT month AS ms,to_char(month,'YYYY-MM') AS ym,
-                           COALESCE(SUM(event.posted_local),0) AS posted,
-                           COALESCE(SUM(event.settled_local),0) AS settled
-                    FROM generate_series(CAST(:ys AS date),CAST(:ye AS date),INTERVAL '1 month') month
-                    LEFT JOIN party_events event ON event.event_date>=month
-                        AND event.event_date<month+INTERVAL '1 month'
-                    WHERE EXISTS(SELECT 1 FROM party_events known WHERE known.event_date<=:ye)
-                    GROUP BY month
+    /**
+     * 年度对账单（B2 汇总化）：期初/期末与月发生额全部来自
+     * party_monthly_summaries（读前自愈保证新鲜），不再对 party_events 做
+     * 逐月相关子查询全量重扫。:ys/:ye 恒为整年（1/1～12/31，均为月界），
+     * 「有已知事件才出行」的门槛因此可按汇总月精确表达。
+     */
+    static String annual(String side) {
+        return """
+                WITH summary_cells AS (
+                    SELECT month_start,SUM(posted_local_sum) AS posted_local_sum,
+                           SUM(settled_local_sum) AS settled_local_sum,SUM(net_local) AS net_local
+                    FROM party_monthly_summaries
+                    WHERE side='@side@' AND party_id=:pid
+                    GROUP BY month_start
+                ), monthly AS (
+                    SELECT month.ms,to_char(month.ms,'YYYY-MM') AS ym,
+                           COALESCE(cell.posted_local_sum,0) AS posted,
+                           COALESCE(cell.settled_local_sum,0) AS settled
+                    FROM generate_series(CAST(:ys AS date),CAST(:ye AS date),INTERVAL '1 month') AS month(ms)
+                    LEFT JOIN summary_cells cell ON cell.month_start=month.ms::date
+                    WHERE EXISTS(SELECT 1 FROM summary_cells known
+                                 WHERE known.month_start<=date_trunc('month',CAST(:ye AS date)))
                 )
-                SELECT month.ym,
-                       COALESCE((SELECT SUM(prior.posted_local-prior.settled_local)
-                           FROM party_events prior WHERE prior.event_date<month.ms),0),
-                       month.posted,month.settled,0,
-                       COALESCE((SELECT SUM(closing.posted_local-closing.settled_local)
-                           FROM party_events closing WHERE closing.event_date<month.ms+INTERVAL '1 month'),0)
+                SELECT month.ym AS "ym",
+                       COALESCE((SELECT SUM(prior.net_local)
+                           FROM summary_cells prior WHERE prior.month_start<month.ms),0) AS "prevBalance",
+                       month.posted AS "posted",month.settled AS "settled",0 AS "returned",
+                       COALESCE((SELECT SUM(closing.net_local)
+                           FROM summary_cells closing
+                           WHERE closing.month_start<month.ms+INTERVAL '1 month'),0) AS "balance"
                 FROM monthly month ORDER BY month.ym
-                """;
+                """.replace("@side@", side);
     }
 }

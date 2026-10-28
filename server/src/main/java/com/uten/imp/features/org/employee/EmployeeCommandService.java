@@ -62,6 +62,7 @@ public class EmployeeCommandService {
     private final EmployeeRepository empRepo;
     private final EmployeeSensitiveRepository sensitiveRepo;
     private final EmployeePiiWriter piiWriter;
+    private final EmployeeExistingIdentityGuard existingIdentityGuard;
     private final EmployeeCompensationRepository compensationRepo;
     private final EmployeeCredentialRepository credentialRepo;
     private final EmployeeEducationRepository educationRepo;
@@ -599,6 +600,7 @@ public class EmployeeCommandService {
         if (!"resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "仅离职员工可复职");
         }
+        existingIdentityGuard.requireCanActivate(e,sensitiveRepo.findByEmployeeId(id).orElse(null));
         EmploymentHistory h = new EmploymentHistory();
         h.setEmployee(e);
         h.setEventType("rehire");

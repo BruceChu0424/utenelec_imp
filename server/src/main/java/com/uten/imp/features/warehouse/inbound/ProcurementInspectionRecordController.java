@@ -47,9 +47,12 @@ public class ProcurementInspectionRecordController {
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String sourceNo,
             @RequestParam(required = false) String referenceNo) {
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        if(columns.isEmpty()) return service.list(decision,keyword,from,to,sourceType,effective,disposition,page,size,sort,order,sourceNo,referenceNo);
         return service.list(decision, keyword, from, to, sourceType,
                 effective, disposition, page, size, sort, order,
-                sourceNo, referenceNo);
+                sourceNo, referenceNo,columns);
     }
 
     /**
@@ -70,8 +73,11 @@ public class ProcurementInspectionRecordController {
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String effective,
             @RequestParam(required = false) String disposition) {
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        if(columns.isEmpty()) return service.facets(decision,keyword,from,to,sourceType,effective,disposition);
         return service.facets(decision, keyword, from, to, sourceType,
-                effective, disposition);
+                effective, disposition,columns);
     }
 
     @GetMapping("/{recordId}")

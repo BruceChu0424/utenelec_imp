@@ -146,6 +146,22 @@ public class StockCountRequestService {
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
             boolean stockedOnly,boolean sheet,int page,int size,boolean includeRelated) {
+        return candidates(warehouseId,keyword,ids,categoryId,stockedOnly,sheet,page,size,includeRelated,Map.of(),null,null);
+    }
+    private static final Map<String,com.uten.imp.common.util.SqlColumnSearch.Field> CANDIDATE_COLUMNS=Map.ofEntries(
+            Map.entry("name",com.uten.imp.common.util.SqlColumnSearch.Field.text("goods_name")),
+            Map.entry("goodsCode",com.uten.imp.common.util.SqlColumnSearch.Field.text("goods_code")),
+            Map.entry("color",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(color_name,'')")),
+            Map.entry("model",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(model,'')")),
+            Map.entry("spec",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(spec,'')")),
+            Map.entry("stockPlace",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(stock_place,'')")),
+            Map.entry("category",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(category_name,'—')")),
+            Map.entry("qty",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("qty")),
+            Map.entry("weight",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("weight_kg")));
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
+            boolean stockedOnly,boolean sheet,int page,int size,boolean includeRelated,
+            Map<String,String> columns,String sort,String order) {
         require(SUBMIT);var w=warehouse(warehouseId);
         if(ids!=null&&ids.size()>500)throw invalid("一次最多查询500种物料");
         var paging=Pageables.of(page,size);
@@ -153,8 +169,14 @@ public class StockCountRequestService {
                 .addValue("includeRelated",includeRelated)
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
         String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,sheet,params);
-        long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
-        var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY search_rank,goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,CANDIDATE_COLUMNS);
+        params.addValues(headers.parameters());
+        String filtered=" FROM snapshot WHERE "+headers.predicate();
+        var selected=CANDIDATE_COLUMNS.get(sort==null?"":sort);
+        String ordering=selected==null?"search_rank,goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST"
+                :selected.expression()+("desc".equalsIgnoreCase(order)?" DESC":" ASC")+" NULLS LAST,goods_id,color_id NULLS FIRST";
+        long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*)"+filtered,params,Long.class));
+        var rows=db.queryForList(eligible+"SELECT *"+filtered+" ORDER BY "+ordering+" LIMIT :limit OFFSET :offset",params)
                 .stream().map(this::snapshotView).toList();
         return new PageResponse<>(rows,paging.getPageNumber()+1,paging.getPageSize(),total,(int)((total+paging.getPageSize()-1)/paging.getPageSize()));
     }
@@ -545,6 +567,23 @@ public class StockCountRequestService {
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
                                                WarehouseTaskScope taskWarehouseScope,String keyword) {
+        return list(route,status,warehouseId,page,size,taskWarehouseScope,keyword,Map.of(),null,null);
+    }
+    private static final String REQUEST_FROM="""
+            FROM stock_count_requests r JOIN warehouses w ON w.id=r.warehouse_id
+            JOIN users u ON u.id=r.submitted_by LEFT JOIN employees e ON e.id=u.employee_id
+            """;
+    private static final Map<String,com.uten.imp.common.util.SqlColumnSearch.Field> REQUEST_COLUMNS=Map.of(
+            "requestNo",com.uten.imp.common.util.SqlColumnSearch.Field.text("r.request_no"),
+            "warehouse",com.uten.imp.common.util.SqlColumnSearch.Field.text("w.name"),
+            "reviewRoute",com.uten.imp.common.util.SqlColumnSearch.Field.text("r.review_route"),
+            "submittedBy",com.uten.imp.common.util.SqlColumnSearch.Field.text("COALESCE(e.full_name,u.login_account)"),
+            "submittedAt",com.uten.imp.common.util.SqlColumnSearch.Field.instant("r.submitted_at"),
+            "reason",com.uten.imp.common.util.SqlColumnSearch.Field.text("r.reason"));
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
+                                               WarehouseTaskScope taskWarehouseScope,String keyword,
+                                               Map<String,String> columns,String sort,String order) {
         if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属不正确");
         if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED","HISTORY").contains(status))throw invalid("盘点状态不正确");
         if(route!=null)require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
@@ -572,12 +611,14 @@ public class StockCountRequestService {
             String goodsNames="ARRAY(SELECT count_line.goods_name FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id)";
             relevance=TaskKeywordSearch.rankParameter("keyword",new String[]{"r.request_no"},codes,goodsNames,"ARRAY["+warehouseName+"]")+", ";
         }
-        long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM stock_count_requests r"+where,params,Long.class));
-        var rows=db.queryForList("""
-                SELECT r.*,w.name AS warehouse_name,COALESCE(e.full_name,u.login_account) AS submitted_by_name
-                FROM stock_count_requests r JOIN warehouses w ON w.id=r.warehouse_id
-                JOIN users u ON u.id=r.submitted_by LEFT JOIN employees e ON e.id=u.employee_id
-                """+where+" ORDER BY "+relevance+"r.submitted_at DESC,r.id DESC LIMIT :limit OFFSET :offset",params).stream().map(this::headerView).toList();
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,REQUEST_COLUMNS);
+        where+=" AND "+headers.predicate();params.addValues(headers.parameters());
+        var selected=REQUEST_COLUMNS.get(sort==null?"":sort);
+        String ordering=selected==null?relevance+"r.submitted_at DESC,r.id DESC"
+                :selected.expression()+("desc".equalsIgnoreCase(order)?" DESC":" ASC")+" NULLS LAST,r.id";
+        long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) "+REQUEST_FROM+where,params,Long.class));
+        var rows=db.queryForList("SELECT r.*,w.name AS warehouse_name,COALESCE(e.full_name,u.login_account) AS submitted_by_name "
+                +REQUEST_FROM+where+" ORDER BY "+ordering+" LIMIT :limit OFFSET :offset",params).stream().map(this::headerView).toList();
         return new PageResponse<>(rows,paging.getPageNumber()+1,paging.getPageSize(),total,(int)((total+paging.getPageSize()-1)/paging.getPageSize()));
     }
     @Transactional(readOnly=true)

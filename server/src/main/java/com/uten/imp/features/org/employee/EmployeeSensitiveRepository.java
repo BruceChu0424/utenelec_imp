@@ -26,6 +26,23 @@ public interface EmployeeSensitiveRepository extends JpaRepository<EmployeeSensi
     boolean existsByIdCardHashAndEmployeeIdNot(String idCardHash, UUID employeeId);
     boolean existsByIdCardHashAndEmployeeIdIn(String idCardHash, Collection<UUID> employeeIds);
 
+    @Query(value="""
+        SELECT EXISTS(SELECT 1 FROM employee_sensitive other WHERE other.id_card_hash=:hash
+          AND other.employee_id<>:employeeId
+          AND fn_canonical_employee_identity(other.employee_id)<>fn_canonical_employee_identity(:employeeId))
+        """,nativeQuery=true)
+    boolean existsByIdentityHashOutsidePerson(@Param("hash") String hash,@Param("employeeId") UUID employeeId);
+
+    @Query(value="""
+        SELECT EXISTS(SELECT 1 FROM employee_sensitive other WHERE other.phone_hash=:hash
+          AND other.employee_id<>:employeeId
+          AND fn_canonical_employee_identity(other.employee_id)<>fn_canonical_employee_identity(:employeeId))
+        """,nativeQuery=true)
+    boolean existsByPhoneHashOutsidePerson(@Param("hash") String hash,@Param("employeeId") UUID employeeId);
+
+    @Query(value="SELECT 1 FROM pg_advisory_xact_lock(hashtextextended('employee-identity:' || CAST(:hash AS text),0))",nativeQuery=true)
+    Integer lockIdentityHash(@Param("hash") String hash);
+
     /** 手机号 HMAC 查重，排除指定员工（更换手机号时）。 */
     boolean existsByPhoneHashAndEmployeeIdNot(String phoneHash, UUID employeeId);
 

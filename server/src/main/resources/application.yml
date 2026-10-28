@@ -132,6 +132,10 @@ uten:
     # corporate/VPN networks through UTEN_LOCAL_ALLOWED_CIDRS.
     local-allowed-cidrs: ${UTEN_LOCAL_ALLOWED_CIDRS:127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
   finance:
+    party-summary:
+      drain-interval-ms: ${UTEN_PARTY_SUMMARY_DRAIN_INTERVAL_MS:5000}
+      initial-delay-ms: ${UTEN_PARTY_SUMMARY_INITIAL_DELAY_MS:15000}
+      drain-batch: ${UTEN_PARTY_SUMMARY_DRAIN_BATCH:25}
     asset:
       # Fail closed until recognition/disposal/termination have dedicated maker-checker reversal workflows.
       posted-workflows-enabled: ${UTEN_FINANCE_ASSET_POSTED_WORKFLOWS_ENABLED:false}
@@ -301,6 +305,23 @@ uten:
       enabled: ${UTEN_REPORT_REFRESH_ENABLED:true}
       interval-ms: ${UTEN_REPORT_REFRESH_INTERVAL_MS:300000}
       initial-delay-ms: ${UTEN_REPORT_REFRESH_INITIAL_DELAY_MS:60000}
+  stock:
+    monthly-verification:
+      chunk-size: ${UTEN_STOCK_MONTHLY_VERIFICATION_CHUNK_SIZE:250}
+  outbox:
+    # 已送达事件大载荷分层(B3): 防重身份留热表, 完整载荷迁 business_outbox_payload_history。
+    payload-tiering:
+      enabled: ${UTEN_OUTBOX_PAYLOAD_TIERING_ENABLED:true}
+      min-age-days: ${UTEN_OUTBOX_PAYLOAD_TIERING_MIN_AGE_DAYS:90}
+      batch-size: ${UTEN_OUTBOX_PAYLOAD_TIERING_BATCH_SIZE:500}
+      max-rows-per-run: ${UTEN_OUTBOX_PAYLOAD_TIERING_MAX_ROWS_PER_RUN:5000}
+  archive:
+    # 归档资格试点(B3): 只登记与复制校验, 不搬移不删除; 结清满 N 个月只是候选门槛。
+    eligibility:
+      enabled: ${UTEN_ARCHIVE_ELIGIBILITY_ENABLED:true}
+      settled-months: ${UTEN_ARCHIVE_ELIGIBILITY_SETTLED_MONTHS:24}
+      scan-limit: ${UTEN_ARCHIVE_ELIGIBILITY_SCAN_LIMIT:200}
+      package-limit: ${UTEN_ARCHIVE_ELIGIBILITY_PACKAGE_LIMIT:20}
 
 app:
   legacy:

@@ -60,6 +60,25 @@ class GoodsQuoteHistoryPostgresTest {
         assertThat(service.list(UUID.randomUUID(), 1, 20).getItems()).isEmpty();
     }
 
+    @Test void columnQueriesUseExactSnapshotValuesAndChineseDatesBeforePagination() {
+        UUID goods = UUID.randomUUID(), quote = UUID.randomUUID(), client = UUID.randomUUID();
+        jdbc.update("INSERT INTO sales_quotes(id,bill_no,client_id) VALUES (?,'XB-COLUMN',?)", quote, client);
+        snapshot(quote, goods, 1, "SUBMIT", "9007199254740993.25", client, "原客户50%");
+        snapshot(quote, goods, 2, "FINANCE_EDIT", "9007199254740993.24", client, "原客户50%");
+        jdbc.update("UPDATE sales_quote_revision_logs SET created_at=TIMESTAMPTZ '2026-10-27 16:30:00Z' WHERE quote_id=?", quote);
+        var narrow = service.list(goods, 1, 1, java.util.Map.of("price", ">=9007199254740993.25",
+                "clientName", "50%", "occurredAt", "2026-10-28"), "price", "desc");
+        assertThat(narrow.getTotal()).isEqualTo(1);
+        assertThat(narrow.getItems().getFirst().price()).isEqualTo("9007199254740993.25");
+        var first = service.list(goods, 1, 1, java.util.Map.of("qty", "2"), "price", "desc");
+        var second = service.list(goods, 2, 1, java.util.Map.of("qty", "2"), "price", "desc");
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getItems().getFirst().id()).isNotEqualTo(second.getItems().getFirst().id());
+        assertThat(first.getItems().getFirst().price()).isEqualTo("9007199254740993.25");
+        assertThat(service.list(goods, 1, 20, java.util.Map.of("action", "FINANCE_EDIT"), null, null).getTotal()).isEqualTo(1);
+        assertThat(service.list(goods, 1, 20, java.util.Map.of("orderNo", "未关联订货单"), null, null).getTotal()).isEqualTo(2);
+    }
+
     @Test void legacySnapshotWithoutPartyIdentityNeverBorrowsCurrentCustomerSellerOrOrder() {
         UUID goods = UUID.randomUUID(), quote = UUID.randomUUID(), client = UUID.randomUUID(), seller = UUID.randomUUID();
         jdbc.update("INSERT INTO clients VALUES (?, '当前客户乙')", client);

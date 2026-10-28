@@ -61,8 +61,13 @@ public class EmployeeQueryService {
     public PageResponse<EmployeeListItem> list(int page, int size, String search,
                                                 Set<String> statuses, UUID departmentId, boolean includeSubtree,
                                                 String sort, String order) {
+        return list(page,size,search,statuses,departmentId,includeSubtree,sort,order,java.util.Map.of());
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<EmployeeListItem> list(int page,int size,String search,Set<String> statuses,
+            UUID departmentId,boolean includeSubtree,String sort,String order,java.util.Map<String,String> columns) {
         Collection<UUID> deptIds = resolveDeptIds(departmentId, includeSubtree);
-        EmployeeListQuery.Result result = employeeListQuery.query(
+        EmployeeListQuery.Result result = columns==null||columns.isEmpty()?employeeListQuery.query(
                 page,
                 size,
                 search,
@@ -70,7 +75,7 @@ public class EmployeeQueryService {
                 deptIds,
                 departmentId != null,
                 sort,
-                order);
+                order):employeeListQuery.query(page,size,search,statuses,deptIds,departmentId!=null,sort,order,columns);
         return new PageResponse<>(
                 result.items(),
                 result.page(),

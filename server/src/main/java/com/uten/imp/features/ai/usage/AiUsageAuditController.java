@@ -23,6 +23,16 @@ public class AiUsageAuditController {
             @RequestParam(required=false) UUID providerId) {
         access.require(); return usage.query(days, page, size, userId, providerId);
     }
+    @GetMapping(value="/usage-audit", params="headerQuery")
+    public AiUsageDtos.Audit headerUsage(@RequestParam(defaultValue="30") int days,
+            @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size,
+            @RequestParam(required=false) UUID userId, @RequestParam(required=false) UUID providerId,
+            @RequestParam(required=false) String sort, @RequestParam(required=false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        access.require();
+        return usage.query(days, page, size, userId, providerId,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
+    }
     @GetMapping("/providers/{id}/billing")
     public AiUsageDtos.Billing billing(@PathVariable UUID id) { access.require(); return billing.get(id); }
     @PutMapping("/providers/{id}/billing")

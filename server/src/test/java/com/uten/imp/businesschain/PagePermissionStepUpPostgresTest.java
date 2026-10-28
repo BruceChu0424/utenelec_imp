@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
-/** 高危页面授权必须与系统权限保存共用本人、本会话、一次性再认证门。 */
+/** 高危页面授权与系统权限保存共用本人、本会话、空闲五分钟失效的再认证。 */
 class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
     @Test
     void assetDeleteGrantCannotBypassStepUpThroughThePageScope() throws Exception {
@@ -57,7 +57,7 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         assertEquals("grant", effect(target));
         assertEquals(List.of("finance_asset:delete=grant", "finance_asset:view=grant"),
                 activeOverrideEffects(target));
-        assertEquals(0, jdbc.queryForObject(
+        assertEquals(1, jdbc.queryForObject(
                 "SELECT count(*) FROM auth_sessions WHERE step_up_token_hash=?", Integer.class,
                 com.uten.imp.common.util.HashUtil.sha256(proof)));
 

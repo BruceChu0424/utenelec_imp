@@ -8,6 +8,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -18,6 +19,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,10 +49,12 @@ class LocalRuntimePrivilegesPostgresTest {
                     .cleanDisabled(true).callbacks(new AppliedMigrationCompatibilityCallback(),
                             new AuditFreshStartGuardCallback(), new LocalRuntimePrivilegesCallback("uten")).load();
             assertThat(flyway.migrate().migrationsExecuted).isGreaterThan(800);
+            assertIdentityExtensionsRemainSealed(owner);
             var runtime = new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(), "uten", password));
             assertThat(runtime.queryForObject("SELECT count(*) FROM permission_surfaces", Integer.class)).isPositive();
             owner.execute("REVOKE SELECT ON permission_surfaces,permission_surface_permissions,permissions FROM uten");
             assertThat(flyway.migrate().migrationsExecuted).isZero();
+            assertIdentityExtensionsRemainSealed(owner);
             assertThat(runtime.queryForObject("SELECT count(*) FROM permission_surfaces", Integer.class)).isPositive();
             assertThat(admin.queryForObject("SELECT to_regprocedure('business_data_reset()') IS NULL", Boolean.class)).isTrue();
             assertThat(admin.queryForObject("SELECT count(*) FROM permissions WHERE code='system:business_data_reset'", Integer.class)).isZero();
@@ -79,6 +83,7 @@ class LocalRuntimePrivilegesPostgresTest {
                 assertThat(application.getEnvironment().getActiveProfiles()).containsExactly("dev");
                 assertThat(application.getBean(JdbcTemplate.class).queryForObject("SELECT current_user", String.class)).isEqualTo("uten");
                 assertThat(application.getBean(PermissionSurfaceRegistry.class).knownKeys()).isNotEmpty();
+                assertIdentityExtensionsRemainSealed(owner);
                 var mappings = application.getBean("requestMappingHandlerMapping", RequestMappingHandlerMapping.class);
                 assertThat(mappings.getHandlerMethods().keySet()).noneMatch(mapping ->
                         mapping.getPatternValues().stream().anyMatch(path -> path.contains("/system-test")));
@@ -90,5 +95,21 @@ class LocalRuntimePrivilegesPostgresTest {
                 assertThat(response.body()).contains("UP");
             }
         }
+    }
+
+    private static void assertIdentityExtensionsRemainSealed(JdbcTemplate owner) throws Exception {
+        // Re-run the actual immutable installers in adoption mode: they independently
+        // verify their catalog seals and must neither rewrite guards nor evidence.
+        for (String migration : new String[]{"V964__employee_identity_merge_extension_v1.sql",
+                "V965__employee_code_reuse_extension.sql"}) {
+            owner.execute(new ClassPathResource("db/migration/" + migration)
+                    .getContentAsString(StandardCharsets.UTF_8));
+        }
+        assertThat(owner.queryForObject("SELECT has_table_privilege('uten','employee_identity_merge_payloads','SELECT')", Boolean.class)).isFalse();
+        for (String signature : new String[]{"fn_merge_employee_identity(jsonb)",
+                "fn_employee_merge_source_snapshot(uuid)", "fn_release_merged_employee_code(uuid)"}) {
+            assertThat(owner.queryForObject("SELECT has_function_privilege('uten',?,'EXECUTE')", Boolean.class, signature)).isFalse();
+        }
+        assertThat(owner.queryForObject("SELECT has_function_privilege('uten','fn_claim_next_released_employee_code(uuid)','EXECUTE')", Boolean.class)).isTrue();
     }
 }

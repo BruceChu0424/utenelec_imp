@@ -21,7 +21,8 @@ public final class LegacyExportReadScopeInterceptor implements HandlerIntercepto
         else if(path.equals("/api/admin/audit-logs/export"))domain="audit";
         else if(ProcurementReadRoutes.workbenchExportScope(path)!=null)domain=ProcurementReadRoutes.workbenchExportScope(path);
         else if(path.equals("/api/production/reports/where-used/export"))domain="production";
-        else if(path.equals("/api/master/goods/cost-sheets/actual/export")||path.equals("/api/master/goods/cost-sheets/export")
+        else if(path.equals("/api/master/goods/cost-sheets/export"))domain="master_goods_cost";
+        else if(path.equals("/api/master/goods/cost-sheets/actual/export")
                 ||path.matches("^/api/master/goods/[0-9a-fA-F-]{36}/bom/export$"))domain="master_goods";
         if(domain!=null)ReadScopePublication.capture(request,scopes,users,domain,false);
         return true;

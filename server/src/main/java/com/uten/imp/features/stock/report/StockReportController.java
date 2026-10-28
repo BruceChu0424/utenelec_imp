@@ -5,7 +5,6 @@ import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.export.ExportPasswordRequest;
 import com.uten.imp.common.export.XlsxExportService;
-import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.DownloadContentDisposition;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
@@ -71,7 +70,7 @@ public class StockReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.detail(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                StockReportService.columnFiltersOf(allParams), page, size, sort, order);
     }
 
     /** 汇总报表（7 单据类型参数化；一行一单号）。 */
@@ -94,7 +93,7 @@ public class StockReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.summary(docType, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                StockReportService.columnFiltersOf(allParams), page, size, sort, order);
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

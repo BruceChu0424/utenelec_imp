@@ -1534,6 +1534,7 @@ public class AuditEventInterpreter {
         values.put("political_status_enc", "政治面貌");
         values.put("bank_account_enc", "银行账号");
         values.put("bank_branch_enc", "开户行");
+        values.put("snapshot_enc", "加密快照");
         values.put("login_account", "登录账号");
         values.put("employee_id", "关联员工");
         values.put("user_id", "用户");

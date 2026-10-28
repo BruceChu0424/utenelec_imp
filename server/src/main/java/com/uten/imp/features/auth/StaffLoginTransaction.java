@@ -36,17 +36,17 @@ public class StaffLoginTransaction {
     }
 
     @Transactional
-    public TokenResponse complete(UUID userId, String verifiedPasswordHash) {
-        return complete(userId, verifiedPasswordHash, false);
+    public TokenResponse complete(UUID userId, String verifiedPasswordHash, String deviceName) {
+        return complete(userId, verifiedPasswordHash, false, deviceName);
     }
 
     /** Invoked only from RemoteMfaService after consuming a TOTP inside the same transaction. */
     @Transactional
-    public TokenResponse completeRemote(UUID userId, String verifiedPasswordHash) {
-        return complete(userId, verifiedPasswordHash, true);
+    public TokenResponse completeRemote(UUID userId, String verifiedPasswordHash, String deviceName) {
+        return complete(userId, verifiedPasswordHash, true, deviceName);
     }
 
-    private TokenResponse complete(UUID userId, String verifiedPasswordHash, boolean mfaVerified) {
+    private TokenResponse complete(UUID userId, String verifiedPasswordHash, boolean mfaVerified, String deviceName) {
         UserAccount user = userRepo.findByIdForUpdate(userId)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.BAD_CREDENTIALS));
@@ -71,7 +71,9 @@ public class StaffLoginTransaction {
         }
         user.setLastLoginAt(OffsetDateTime.now());
         userRepo.save(user);
-        TokenResponse response = mfaVerified ? tokenIssuer.issueTokensWithMfa(user) : tokenIssuer.issueTokens(user);
+        TokenResponse response = mfaVerified
+                ? tokenIssuer.issueTokensWithMfa(user, deviceName)
+                : tokenIssuer.issueTokens(user, deviceName);
         audit.logCommitted(user.getId(), user.getLoginAccount(),
                 "login", "users", user.getId().toString(), "success");
         return response;

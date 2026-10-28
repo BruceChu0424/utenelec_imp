@@ -61,6 +61,10 @@ public class EmployeeListQuery {
             """;
 
     private final JdbcTemplate jdbc;
+    private static final EmployeeHeaderQuery.Columns HEADER_COLUMNS=new EmployeeHeaderQuery.Columns(
+            java.util.Map.of("name","e.full_name","employeeCode","e.code","department","d.name","position","p.name"),
+            "COALESCE(account.status,'notProvisioned')","e.status","e.id",
+            java.util.Set.of("active","probation","onLeave","resigned"));
 
     public Result query(
             int page,
@@ -71,11 +75,22 @@ public class EmployeeListQuery {
             boolean filterDepartments,
             String sort,
             String order) {
+        return query(page,requestedSize,search,statuses,departmentIds,filterDepartments,sort,order,java.util.Map.of());
+    }
+    public Result query(int page,int requestedSize,String search,Set<String> statuses,
+            Collection<UUID> departmentIds,boolean filterDepartments,String sort,String order,java.util.Map<String,String> columns) {
         int safePage = Math.max(1, page);
         int size = Math.min(Math.max(1, requestedSize), 100);
         boolean hasSearch = !KeywordSearch.terms(search).isEmpty();
         List<Object> parameters = new ArrayList<>();
-        String where = where(search, statuses, departmentIds, filterDepartments, parameters);
+        var headerValues=new java.util.LinkedHashMap<String,String>(columns==null?java.util.Map.of():columns);
+        if(sort!=null&&HEADER_COLUMNS.textFields().containsKey(sort)) {
+            headerValues.put("sort",sort);headerValues.put("order",order==null?"asc":order);
+        }
+        var headers=EmployeeHeaderQuery.read(headerValues,HEADER_COLUMNS);
+        StringBuilder filtered=new StringBuilder(where(search, statuses, departmentIds, filterDepartments, parameters));
+        headers.append(filtered,parameters);
+        String where=filtered.toString();
 
         // count 与主查询共用同一份 FROM：搜索条件引用了 d/p 的列，count 少了 JOIN 会炸。
         Long totalValue = jdbc.queryForObject(
@@ -96,8 +111,8 @@ public class EmployeeListQuery {
             terms.forEach(term -> pageParameters.add(KeywordSearch.containsPattern(term)));
         }
         pageParameters.addAll(parameters);
-        String ordering = orderBy(sort, order);
-        if (hasSearch) ordering = "ORDER BY " + relevance(search, pageParameters)
+        String ordering = headers.ordering()==null?orderBy(sort, order):"ORDER BY "+headers.ordering();
+        if (hasSearch && headers.sort()==null) ordering = "ORDER BY " + relevance(search, pageParameters)
                 + ", " + ordering.replaceFirst("(?s)^\\s*ORDER BY\\s*", "");
         pageParameters.add(size);
         pageParameters.add((safePage - 1) * size);

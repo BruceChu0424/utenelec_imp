@@ -30,4 +30,10 @@ public interface MaterialTraceabilityReadPort {
 
     PageResponse<Subject> subjects(String kind, String keyword, boolean exact, int page, int size);
     Result trace(String subjectType, UUID subjectId, String direction, LocalDate dateFrom, LocalDate dateTo, int page, int size);
+    default Result trace(String subjectType,UUID subjectId,String direction,LocalDate dateFrom,LocalDate dateTo,int page,int size,
+            java.util.Map<String,String> columns,String sort,String order) {
+        if(!columns.isEmpty()||sort!=null) throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"此追溯来源不支持列查询");
+        return trace(subjectType,subjectId,direction,dateFrom,dateTo,page,size);
+    }
 }

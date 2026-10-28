@@ -42,7 +42,12 @@ public class WhereUsedExportController {
         String format = request.format() == null ? "xlsx" : request.format();
         if (!format.equals("xlsx") && !format.equals("pdf"))
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "导出格式只能选择 Excel 或 PDF");
-        var document = service.document(materialGoodsId, source, dateFrom, dateTo, sort, order);
+        var servlet=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        java.util.Map<String,String> parameters=new java.util.LinkedHashMap<>();
+        if(servlet!=null)servlet.getParameterMap().forEach((key,values)->{if(values.length==1)parameters.put(key,values[0]);});
+        var headers=com.uten.imp.common.report.ReportQueryKit.facetsOf(parameters);
+        var document = headers.isEmpty()?service.document(materialGoodsId,source,dateFrom,dateTo,sort,order)
+                :service.document(materialGoodsId,source,dateFrom,dateTo,sort,order,headers);
         byte[] bytes = format.equals("pdf") ? pdf.build(document, request.password())
                 : protection.protect(excel.buildDocument(document), request.password());
         currentUser.get().ifPresent(user -> audit.logExplicit(user.getId(), user.getLoginAccount(),

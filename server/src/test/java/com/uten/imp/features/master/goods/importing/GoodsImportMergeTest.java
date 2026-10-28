@@ -25,6 +25,7 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -39,7 +40,7 @@ class GoodsImportMergeTest {
     @Test void detectsFillAndConflictCellsWithoutWriting() throws Exception {
         Fixture f = fixture();
         f.goods.setCNumber("111");
-        byte[] file = workbook("G1", "现有货品", "222", "新的客户品名", "");
+        byte[] file = workbook("G1", "现有货品", "222", "新的客户品名", "", f.goods.getId().toString());
 
         GoodsImportReport report = f.service.detect(file);
 
@@ -67,7 +68,7 @@ class GoodsImportMergeTest {
         f.goods.setMinOrderQty(new BigDecimal("50.0000"));
         f.goods.setNameEn("Existing name");
         f.goods.setClientGoodsName(null);
-        byte[] file = workbook("G1", "现有货品", "222", "新客户品名", "");
+        byte[] file = workbook("G1", "现有货品", "222", "新客户品名", "", f.goods.getId().toString());
         var report = f.service.detect(file);
 
         var result = f.service.commit(report.planId(), file, "goods.xlsx", Set.of());
@@ -97,7 +98,7 @@ class GoodsImportMergeTest {
         Fixture f = fixture();
         f.goods.setCNumber("111");
         f.goods.setSpec("原规格");
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var report = f.service.detect(file);
 
         var result = f.service.commit(report.planId(), file, "goods.xlsx", Set.of("goods:2"));
@@ -108,11 +109,59 @@ class GoodsImportMergeTest {
         assertEquals(0, result.ignoredCount());
     }
 
+    @Test void reviewedCategoryCellCorrectionMovesExistingGoodsToTheResolvedCategory() throws Exception {
+        Fixture f = fixture();
+        var target = category("转入分类");
+        var categories = (MaterialCategoryRepository) ReflectionTestUtils.getField(f.service, "categoryRepo");
+        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of(f.category, target));
+        byte[] file = workbook("G1", "现有货品", "", "", "", f.goods.getId().toString());
+        Map<Integer, Map<String, String>> cells = Map.of(2, Map.of("categoryPath", "转入分类"));
+
+        var report = f.service.detect(file, Map.of(), Set.of(), cells, GoodsImportMode.UPDATE_ONLY);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals("转入分类", report.previewRows().getFirst().categoryPath());
+        assertTrue(report.reviewRows().getFirst().changes().stream().anyMatch(change ->
+                change.field().equals("categoryId") && change.newValue().equals("转入分类")));
+        f.service.commit(report.planId(), file, "move.xlsx", Set.of("goods:2"), Map.of(), Set.of(), cells,
+                GoodsImportMode.UPDATE_ONLY);
+
+        assertEquals(target.getId(), captured(f).getCategoryId());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
+    @Test void reviewedNewCategoryCellCreatesOnlyTheMissingDescendantAndMovesTheSameGoodsIdentity() throws Exception {
+        Fixture f = fixture();
+        var categoryService = mock(com.uten.imp.features.master.materialcategory.MaterialCategoryService.class);
+        var detail = mock(com.uten.imp.features.master.materialcategory.dto.MaterialCategoryDetail.class);
+        UUID childId = UUID.randomUUID();
+        when(detail.getId()).thenReturn(childId);
+        when(categoryService.create(any())).thenReturn(detail);
+        ReflectionTestUtils.setField(f.service, "categoryService", categoryService);
+        byte[] file = workbook("G1", "现有货品", "", "", "", f.goods.getId().toString());
+        Map<Integer, Map<String, String>> cells = Map.of(2, Map.of("categoryPath", "成品 / 确认新分类"));
+
+        var report = f.service.detect(file, Map.of(), Set.of(), cells, GoodsImportMode.UPDATE_ONLY);
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(List.of("成品/确认新分类"), report.willCreateCategories());
+        var result = f.service.commit(report.planId(), file, "new-category.xlsx", Set.of("goods:2"),
+                Map.of(), Set.of(), cells, GoodsImportMode.UPDATE_ONLY);
+
+        var categoryRequest = org.mockito.ArgumentCaptor.forClass(
+                com.uten.imp.features.master.materialcategory.dto.MaterialCategorySaveRequest.class);
+        verify(categoryService).create(categoryRequest.capture());
+        assertEquals("确认新分类", categoryRequest.getValue().getName());
+        assertEquals(f.category.getId(), categoryRequest.getValue().getParentId());
+        assertEquals(childId, captured(f).getCategoryId());
+        assertEquals(1, result.createdCategories());
+        verify(f.goodsService, never()).saveImported(any());
+    }
+
     @Test void blankCellsAndEqualCellsNeverProduceAnUpdateOrUndoBatch() throws Exception {
         Fixture f = fixture();
         f.goods.setCNumber("111");
         f.goods.setSpec("原规格");
-        byte[] file = workbook("G1", "现有货品", "", "", "原规格");
+        byte[] file = workbook("G1", "现有货品", "", "", "原规格", f.goods.getId().toString());
         var report = f.service.detect(file);
 
         assertEquals(0, report.readyToImport());
@@ -127,7 +176,7 @@ class GoodsImportMergeTest {
     @Test void ignoringOnlyConflictsDoesNotRegisterAnEmptyUndoBatch() throws Exception {
         Fixture f = fixture();
         f.goods.setCNumber("111");
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var report = f.service.detect(file);
         var result = f.service.commit(report.planId(), file, "goods.xlsx");
         assertNull(result.batchId());
@@ -264,24 +313,15 @@ class GoodsImportMergeTest {
         }
     }
 
-    @Test void unknownExportUuidUsesCurrentCodeReviewWithoutSilentlyReplacingConflicts() throws Exception {
+    @Test void unknownExportUuidWithAClaimedCodeIsRejectedAsDuplicateCode() throws Exception {
         Fixture f = fixture();
-        byte[] file = workbookWithUuid("G1", UUID.randomUUID().toString());
         f.goods.setName("当前名称");
-        var report = f.service.detect(file);
+        var report = f.service.detect(workbookWithUuid("G1", UUID.randomUUID().toString()));
 
-        assertTrue(report.errors().isEmpty(), report.errors().toString());
-        assertEquals(0, report.addedRows());
-        assertEquals("CODE", report.reviewRows().getFirst().matchType());
-        var ignored = f.service.commit(report.planId(), file, "historical-export.xlsx");
-        assertEquals(1, ignored.ignoredCount());
+        assertNull(report.planId());
+        assertTrue(report.reviewRows().isEmpty());
+        assertTrue(report.errors().stream().anyMatch(error -> error.message().contains("编号重复")));
         verifyNoInteractions(f.goodsService);
-
-        report = f.service.detect(file);
-        var selected = f.service.commit(report.planId(), file, "reviewed-historical-export.xlsx", Set.of("goods:2"));
-        assertEquals(1, selected.updatedCount());
-        assertEquals("现有货品", captured(f).getName());
-        verify(f.goodsService, never()).saveImported(any());
     }
 
     @Test void unknownExportUuidCannotBypassCodeReuseOrDuplicateTargetGuards() throws Exception {
@@ -380,8 +420,9 @@ class GoodsImportMergeTest {
 
     @Test void aUuidCannotClaimAnotherDeletedGoodsCodeOrRestoreThatGoods() throws Exception {
         Fixture f = fixture();
-        UUID deletedId = UUID.randomUUID();
-        when(f.repo.findRestorableDeletedIdsByCode("DELETED-CODE")).thenReturn(List.of(deletedId));
+        var deletedHolder = new Goods();
+        deletedHolder.setId(UUID.randomUUID());
+        when(f.repo.findFirstByCodeAndDeletedTrueOrderByIdAsc("DELETED-CODE")).thenReturn(Optional.of(deletedHolder));
         var report = f.service.detect(workbookWithUuid("DELETED-CODE", f.goods.getId().toString()));
         assertNull(report.planId());
         assertEquals(0, report.restorableRows());
@@ -404,7 +445,7 @@ class GoodsImportMergeTest {
 
     @Test void detectedGoodsDriftRejectsTheEntireCommit() throws Exception {
         Fixture f = fixture();
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var report = f.service.detect(file);
         f.goods.setCNumber("他人补齐");
         var error = assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx"));
@@ -423,7 +464,7 @@ class GoodsImportMergeTest {
 
     @Test void unsupportedReplacementSelectionIsRejectedBeforeWriting() throws Exception {
         Fixture f = fixture();
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var report = f.service.detect(file);
         assertThrows(ApiException.class, () -> f.service.commit(report.planId(), file, "goods.xlsx", Set.of("goods:999")));
         verifyNoInteractions(f.goodsService);
@@ -432,7 +473,7 @@ class GoodsImportMergeTest {
     @Test void importPermissionAloneDoesNotAllowEditingExistingGoods() throws Exception {
         Fixture f = fixture();
         authorities("goods:import");
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var report = f.service.detect(file);
         assertNull(report.planId());
         assertEquals(List.of(2), report.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
@@ -445,7 +486,7 @@ class GoodsImportMergeTest {
         Fixture f = fixture();
         doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND, "货品不存在"))
                 .when(f.access).requireWritable(f.goods.getId());
-        var report = f.service.detect(workbook("G1", "现有货品", "222", "", ""));
+        var report = f.service.detect(workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString()));
         assertNull(report.planId());
         assertEquals(List.of(2), report.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
         assertTrue(report.reviewRows().isEmpty());
@@ -486,7 +527,7 @@ class GoodsImportMergeTest {
 
     @Test void reviewPlansAllowThirtyMinutesAndEvictTheOldestAfterThirtyTwoPlans() throws Exception {
         Fixture f = fixture();
-        byte[] file = workbook("G1", "现有货品", "222", "", "");
+        byte[] file = workbook("G1", "现有货品", "222", "", "", f.goods.getId().toString());
         var first = f.service.detect(file);
         @SuppressWarnings("unchecked")
         var plans = (java.util.Map<UUID, ?>) ReflectionTestUtils.getField(f.service, "plans");
@@ -506,7 +547,7 @@ class GoodsImportMergeTest {
         // Exercise the memory budget without relying on the database's shorter
         // field limit: even corrupt/legacy oversized values cannot fill the cache.
         f.goods.setSpec("X".repeat(17 * 1024 * 1024));
-        var error = assertThrows(ApiException.class, () -> f.service.detect(workbook("G1", "现有货品", "222", "", "small")));
+        var error = assertThrows(ApiException.class, () -> f.service.detect(workbook("G1", "现有货品", "222", "", "small", f.goods.getId().toString())));
         assertEquals(com.uten.imp.common.web.ErrorCode.PAYLOAD_TOO_LARGE, error.getCode());
         @SuppressWarnings("unchecked")
         var plans = (java.util.Map<UUID, ?>) ReflectionTestUtils.getField(f.service, "plans");
@@ -523,11 +564,12 @@ class GoodsImportMergeTest {
         f.goods.setOrderMultipleQty(new BigDecimal("2.3456"));
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
-            String[] titles = {"编号", "名称", "类别", "客户型号", "价格", "最小起订量", "订货倍数"};
+            String[] titles = {"编号", "名称", "类别", "客户型号", "价格", "最小起订量", "订货倍数", "系统标识"};
             for (int n = 0; n < titles.length; n++) header.createCell(n).setCellValue(titles[n]);
             var row = sheet.createRow(1);
             row.createCell(0).setCellValue("G1"); row.createCell(1).setCellValue("现有货品");
             row.createCell(2).setCellValue("成品"); row.createCell(3).setCellValue("222");
+            row.createCell(7).setCellValue(f.goods.getId().toString());
             var style = book.createCellStyle(); style.setDataFormat(book.createDataFormat().getFormat("0.00"));
             double[] numbers = {1.2345, 0.0001, 2.3456};
             for (int n = 0; n < numbers.length; n++) { var cell = row.createCell(n + 4); cell.setCellValue(numbers[n]); cell.setCellStyle(style); }
@@ -549,8 +591,8 @@ class GoodsImportMergeTest {
         when(f.repo.quantityUnitInUse(f.goods.getId())).thenReturn(true);
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
-            String[] titles = {"编号", "名称", "类别", "客户型号", "单位", "主颜色"};
-            String[] values = {"G1", "现有货品", "成品", "222", "个", "红色"};
+            String[] titles = {"编号", "名称", "类别", "客户型号", "单位", "主颜色", "系统标识"};
+            String[] values = {"G1", "现有货品", "成品", "222", "个", "红色", f.goods.getId().toString()};
             var row = sheet.createRow(1);
             for (int n = 0; n < titles.length; n++) { header.createCell(n).setCellValue(titles[n]); row.createCell(n).setCellValue(values[n]); }
             book.write(out); byte[] file = out.toByteArray(); var report = f.service.detect(file);
@@ -579,15 +621,9 @@ class GoodsImportMergeTest {
         assertEquals(1, report.unchangedRows());
     }
 
-    @Test void ambiguousDeletedIdentitiesNeedAnExplicitUuidInsteadOfTheLowestUuid() throws Exception {
+    @Test void aDeletedGoodsRestoresByItsOwnUuidRegardlessOfSiblingDeletedRowsSharingTheCode() throws Exception {
         Fixture f = fixture();
         f.goods.setDeleted(true);
-        when(f.repo.findByCodeAndDeletedFalse("G1")).thenReturn(Optional.empty());
-        when(f.repo.findRestorableDeletedIdsByCode("G1")).thenReturn(List.of(f.goods.getId(), UUID.randomUUID()));
-        var ambiguous = f.service.detect(workbook("G1", "现有货品", "222", "", ""));
-        assertNull(ambiguous.planId());
-        assertTrue(ambiguous.errors().stream().anyMatch(error -> error.message().contains("多个已删除")));
-        verify(f.repo, never()).findFirstByCodeAndDeletedTrueOrderByIdAsc("G1");
         var explicit = f.service.detect(workbookWithUuid(f.goods.getId().toString()));
         assertTrue(explicit.errors().isEmpty(), explicit.errors().toString());
         assertEquals(1, explicit.restorableRows());
@@ -647,14 +683,20 @@ class GoodsImportMergeTest {
                 goods.getCategory() == null ? null : goods.getCategory().getId(), goods.isDeleted(), goods.getOwnerEmployeeId());
     }
     private static byte[] workbook(String code, String name, String customerModel, String customerName, String spec) throws Exception {
+        return workbook(code, name, customerModel, customerName, spec, null);
+    }
+    private static byte[] workbook(String code, String name, String customerModel, String customerName, String spec,
+                                   String goodsId) throws Exception {
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品");
             var header = sheet.createRow(0);
-            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格"};
+            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格", "系统标识"};
             for (int i = 0; i < titles.length; i++) header.createCell(i).setCellValue(titles[i]);
             var row = sheet.createRow(1);
-            String[] values = {code, name, "成品", customerModel, customerName, spec};
-            for (int i = 0; i < values.length; i++) row.createCell(i).setCellValue(values[i]);
+            String[] values = {code, name, "成品", customerModel, customerName, spec, goodsId};
+            for (int i = 0; i < values.length; i++) {
+                if (values[i] != null && !values[i].isEmpty()) row.createCell(i).setCellValue(values[i]);
+            }
             book.write(out); return out.toByteArray();
         }
     }

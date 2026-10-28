@@ -55,7 +55,14 @@ public class VisitorHrApprovalService {
             UUID hostDepartmentId,
             int page,
             int size) {
+        return listForApproval(status, hostDepartmentId, page, size, java.util.Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<VisitorListItem> listForApproval(String status, UUID hostDepartmentId,
+            int page, int size, java.util.Map<String, String> columns, String sort, String order) {
         guard.requireStaff();
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(columns, VisitorColumnQueries.APPLICATION);
         Specification<VisitorApplication> spec = (root, q, cb) -> {
             Predicate p = cb.equal(root.get("deleted"), false);
             if (status == null || status.isBlank()) {
@@ -69,9 +76,10 @@ public class VisitorHrApprovalService {
             if (hostDepartmentId != null) {
                 p = cb.and(p, cb.equal(root.get("hostDepartmentId"), hostDepartmentId));
             }
-            return p;
+            return cb.and(p, com.uten.imp.common.util.JpaColumnSearch.predicate(
+                    root, q, cb, searches, VisitorColumnQueries.APPLICATION));
         };
-        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
+        Pageable pageable = VisitorColumnQueries.page(page, size, sort, order);
         Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
         return appService.toPageResponse(result, pageable);
     }

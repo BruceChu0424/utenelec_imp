@@ -53,6 +53,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/currencies")
 @RequiredArgsConstructor
 public class CurrencyController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final CurrencyService service;
     private final XlsxExportService xlsxExport;
@@ -74,7 +76,8 @@ public class CurrencyController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.list(new CurrencyQueryFilter(keyword, nullFields, code, name, status), page, size, sort, order);
+        return service.list(new CurrencyQueryFilter(keyword, nullFields, code, name, status)
+                .withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -118,7 +121,8 @@ public class CurrencyController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(
-                new CurrencyQueryFilter(keyword, nullFields, code, name, status), sort, order,
+                new CurrencyQueryFilter(keyword, nullFields, code, name, status)
+                        .withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_currency");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

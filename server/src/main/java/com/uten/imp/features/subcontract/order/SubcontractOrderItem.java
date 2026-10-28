@@ -112,8 +112,9 @@ public class SubcontractOrderItem extends com.uten.imp.common.columns.ExtraColum
     private String remark;
 
     /**
-     * 本行允许损耗百分比(ADR-098, V636)：保存即冻结; 回厂累计低于 qty*(1-pct/100) 即低于下限,
-     * 到货登记须仓库确认并通知委外判定。空 = 未设(短交只开中性案件)。
+     * 本行允许损耗百分比(ADR-098, V636)：保存即冻结; 回厂累计低于 qty*(1-pct/100) 即低于下限。
+     * V961 起，新批准计划同时把正常损耗加成冻结到供料单耗，成品目标 qty 不变；
+     * 已批准历史计划不追溯加料。空 = 无供料加成、未设短交下限。
      */
     @Column(name = "allowed_loss_pct", precision = 5, scale = 2)
     private BigDecimal allowedLossPct;

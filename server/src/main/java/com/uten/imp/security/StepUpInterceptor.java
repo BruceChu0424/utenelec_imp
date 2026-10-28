@@ -13,13 +13,13 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
- * {@link RequiresStepUp} 的执行者: 进入被标注的控制器方法时核销请求头里的再认证凭证 (ADR-110)。
+ * {@link RequiresStepUp} 的执行者: 进入被标注的控制器方法时校验并续期请求头里的再认证凭证 (ADR-110)。
  *
  * <p>以方法拦截器挂在控制器代理上 (见 {@link StepUpAdvisorConfig}), 顺序排在方法安全
  * ({@code @PreAuthorize}) 之后。因此一次请求依次经过: 参数绑定与 {@code @Valid} 校验 (不合法直接 400,
- * 凭证不动) → 权限判定 (无权直接 403 FORBIDDEN, 不会先弹密码框) → 核销凭证 → 业务。
- * 凭证缺失、过期、已用过或不属于当前会话一律 403 REAUTH_REQUIRED, 前端据此弹出统一的「重新输入密码」
- * 弹窗, 换到凭证后原样重发。核销是原子的一次性更新, 同一凭证并发重放只有一个成功。</p>
+ * 凭证不动) → 权限判定 (无权直接 403 FORBIDDEN, 不会先弹密码框) → 校验续期 → 业务。
+ * 凭证缺失、空闲过期或不属于当前会话一律 403 REAUTH_REQUIRED，前端据此弹出统一的密码框，
+ * 换到凭证后原样重发。连续操作共用当前会话凭证，业务自身的幂等与并发控制仍独立执行。</p>
  *
  * <p>再认证服务按需解析: 基础设施拦截器在容器早期创建, 不能提前实例化整套认证服务。</p>
  */
@@ -27,6 +27,7 @@ public class StepUpInterceptor implements MethodInterceptor {
 
     /** 携带再认证凭证的请求头。 */
     public static final String HEADER = "X-Uten-Step-Up";
+    public static final String RENEWAL_HEADER = "X-Uten-Step-Up-Idle-Seconds";
 
     private final ObjectProvider<StepUpService> stepUp;
 

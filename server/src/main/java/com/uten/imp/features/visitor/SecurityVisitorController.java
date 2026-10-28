@@ -66,7 +66,24 @@ public class SecurityVisitorController {
     @PreAuthorize("hasAuthority('visitor:blacklist')")
     public PageResponse<BlacklistListItem> blacklist(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return gateService.blacklistPage(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return gateService.blacklistPage(page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, null), sort, order);
+    }
+
+    @PostMapping("/blacklist/search")
+    @PreAuthorize("hasAuthority('visitor:blacklist')")
+    public PageResponse<BlacklistListItem> searchBlacklist(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestBody java.util.Map<String, String> columns,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return gateService.blacklistPage(page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, columns), sort, order);
     }
 }

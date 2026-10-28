@@ -141,6 +141,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = purchasePriceMasked();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
         Specification<PurchaseOrder> spec = orderSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
@@ -148,7 +150,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<PurchaseOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
@@ -167,6 +170,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter originalFilter) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(!purchasePriceMasked());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseOrder.class, orderSpec(f), "billNo"));
     }
@@ -256,6 +260,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseOrder(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class)));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -920,8 +926,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     }
 
     /**
-     * V486 财务批准后受控改量（对齐销售 V482）：立即生效 + 自动开财务复核 case
-     * 重回审批队列 + 逐行 old→new 事实账。最低量取精确实收、普通/IQC实退及
+     * 采购受控改量：待审时修订原 case 和来源预占；批准后立即生效并开财务复核。
+     * 两种路径均记录逐行 old→new 事实账。最低量取精确实收、普通/IQC实退及
      * 同收货行有效超到事实；来源份额与生产供给在同一受控变更中对账。
      * 预计到货同时处理OPEN/CLOSED，不把展示状态或过期accepted投影当物理事实。
      */
@@ -935,13 +941,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (order.getTerminationCaseId()!=null) throw new ApiException(ErrorCode.CONFLICT,"订单已取消剩余数量并结束，不能改量");
         access.requireWritable(order.getMakerId(), "只能操作本人负责的采购订货单");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_orders",order);
-        if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
+        boolean pendingInitialReview = order.getStatus() != null && order.getStatus() == STATUS_DRAFT;
+        if (!pendingInitialReview && (order.getStatus() == null || order.getStatus() != STATUS_APPROVED)) {
             throw new ApiException(
-                    ErrorCode.BUSINESS, "仅财务批准后的采购订货单可改量");
+                    ErrorCode.BUSINESS, "仅待财务审核或财务已批准的采购订货单可改量");
         }
         mutationGuard.verifyUnchanged();
-        requireNoPendingApprovalCase(id);
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        var pendingRevision = pendingInitialReview
+                ? reconfirmation.lockPendingQuantityRevision(snapshot(order, items)) : null;
+        if (!pendingInitialReview) requireNoPendingApprovalCase(id);
         Map<UUID, PurchaseOrderItem> byId = items.stream()
                 .collect(Collectors.toMap(
                         PurchaseOrderItem::getId, it -> it, (a, b) -> a,
@@ -1004,16 +1013,19 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         for(Object[] change:changes) {
             PurchaseOrderItem item=(PurchaseOrderItem)change[0];
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"purchase_order_items",item);
-            com.uten.imp.common.finance.ProcurementOrderQuantityBounds.synchronizeExpectation(em,orderType(),
+            if (!pendingInitialReview) com.uten.imp.common.finance.ProcurementOrderQuantityBounds.synchronizeExpectation(em,orderType(),
                     item.getId(),(BigDecimal)change[2],item.getUnitRate()==null ? BigDecimal.ONE : item.getUnitRate(),
                     (com.uten.imp.common.finance.ProcurementOrderQuantityBounds.ReceiptBound)change[3]);
         }
-        com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,orderType(),
-                ((PurchaseOrderItem)changes.getFirst()[0]).getId());
+        if (!pendingInitialReview) {
+            com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,orderType(),
+                    ((PurchaseOrderItem)changes.getFirst()[0]).getId());
+        }
         em.refresh(order);
         OrderSnapshot postChange = snapshot(order, items);
-        UUID caseId = reconfirmation.openReconfirmationCase(
-                postChange, changes.size());
+        UUID caseId = pendingInitialReview
+                ? reconfirmation.refreshPendingQuantityCase(postChange, pendingRevision, changes.size())
+                : reconfirmation.openReconfirmationCase(postChange, changes.size());
         UUID actorEmployee = currentUser.requireEmployeeId();
         for (Object[] change : changes) {
             PurchaseOrderItem item = (PurchaseOrderItem) change[0];

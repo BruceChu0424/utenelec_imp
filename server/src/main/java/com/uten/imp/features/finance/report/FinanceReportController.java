@@ -72,7 +72,33 @@ public class FinanceReportController {
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size);
+        var parameters = FinanceReportHeaderRequest.current();
+        FinanceReportHeaderRequest.requireBodyOnly(parameters);
+        var filters = FinanceReportHeaderRequest.filters(parameters);
+        return filters.isEmpty() && !parameters.containsKey("sort")
+                ? service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size)
+                : service.arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size,
+                    filters, parameters.get("sort"), parameters.get("order"));
+    }
+
+    @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PostMapping("/ar-ap/overview/search")
+    @com.uten.imp.common.report.ReadOnlyReportQuery
+    @PreAuthorize("hasAuthority('finance_report:view')")
+    public ReportTableResponse overviewSearch(
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String displayMode,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String categoryType,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size,
+            @Valid @RequestBody com.uten.imp.common.web.ContactSensitiveFilter body) {
+        var parameters = FinanceReportHeaderRequest.withContactBody(FinanceReportHeaderRequest.current(),body);
+        return service.arApOverview(dateFrom,dateTo,displayMode,
+                parameters.getOrDefault("keyword",keyword),categoryType,categoryId,page,size,
+                FinanceReportHeaderRequest.filters(parameters),parameters.get("sort"),parameters.get("order"));
     }
 
     /**
@@ -109,7 +135,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.arApDetail(direction, billNo, partyId, settled, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** 已审核销售订单待收计划（经营视图，不形成会计应收）。 */
@@ -127,7 +153,8 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.salesOrderReceivablePlan(
-                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order);
+                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order,
+                FinanceReportHeaderRequest.filters(FinanceReportHeaderRequest.current()));
     }
 
     /** B/D 应收/应付汇总（按往来单位）。 */
@@ -141,7 +168,9 @@ public class FinanceReportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.arApSummary(direction, dateFrom, dateTo, keyword, page, size);
+        var parameters=FinanceReportHeaderRequest.current();
+        return service.arApSummary(direction, dateFrom, dateTo, keyword, page, size,
+                FinanceReportHeaderRequest.filters(parameters),parameters.get("sort"),parameters.get("order"));
     }
 
     /** Customer advance arrival/application/reversal dated subledger; also the statement alias. */
@@ -155,7 +184,9 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.customerPrepaymentEvents(clientId,dateFrom,dateTo,page,size);
+        var parameters=FinanceReportHeaderRequest.current();
+        return service.customerPrepaymentEvents(clientId,dateFrom,dateTo,page,size,parameters.get("keyword"),
+                FinanceReportColumnOptions.from(parameters,parameters.get("sort"),parameters.get("order")));
     }
 
     // ======================== ② 收付款 E·F / G·H ========================
@@ -178,7 +209,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.receiptDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** F 销售收款汇总。 */
@@ -195,7 +226,8 @@ public class FinanceReportController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return service.receiptSummary(billNo, clientId, status, dateFrom, dateTo, keyword,
-                page, size);
+                page, size,FinanceReportHeaderRequest.filters(FinanceReportHeaderRequest.current()),
+                FinanceReportHeaderRequest.current().get("sort"),FinanceReportHeaderRequest.current().get("order"));
     }
 
     /** G 采购付款明细。 */
@@ -216,7 +248,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.paymentDetail(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** H 采购付款汇总。 */
@@ -236,7 +268,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.paymentSummary(billNo, supplierId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     // ======================== ③ 费用/收入 M·N / O·P + V ========================
@@ -259,7 +291,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.expenseDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** N 一般费用汇总。 */
@@ -279,7 +311,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.expenseSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** O 其它收入明细。 */
@@ -300,7 +332,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.incomeDetail(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** P 其它收入汇总。 */
@@ -320,7 +352,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.incomeSummary(billNo, departmentId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     /** V 费用冲销明细（收款侧 + AR 核销 + 其它费用）。 */
@@ -341,7 +373,7 @@ public class FinanceReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.feeOffsetDetail(billNo, clientId, accountId, status, dateFrom, dateTo, keyword,
-                ReportQueryKit.facetsOf(allParams), page, size, sort, order);
+                FinanceReportHeaderRequest.filters(allParams==null?Map.of():allParams), page, size, sort, order);
     }
 
     // ======================== ④ 往来对帐 I·J·K·L / X ========================
@@ -357,7 +389,12 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.partyStatementFlow(partyId, side, dateFrom, dateTo, page, size);
+        var parameters = FinanceReportHeaderRequest.current();
+        var filters = PartyStatementHeaderQuery.withKeyword(FinanceReportHeaderRequest.filters(parameters),parameters.get("keyword"));
+        return filters.isEmpty() && !parameters.containsKey("sort")
+                ? service.partyStatementFlow(partyId, side, dateFrom, dateTo, page, size)
+                : service.partyStatementFlow(partyId, side, dateFrom, dateTo, page, size,
+                    filters,parameters.get("sort"),parameters.get("order"));
     }
 
     /** J/L 单客户/供应商明细对帐。 */
@@ -371,7 +408,12 @@ public class FinanceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.partyStatementDetail(partyId, side, dateFrom, dateTo, page, size);
+        var parameters = FinanceReportHeaderRequest.current();
+        var filters = PartyStatementHeaderQuery.withKeyword(FinanceReportHeaderRequest.filters(parameters),parameters.get("keyword"));
+        return filters.isEmpty() && !parameters.containsKey("sort")
+                ? service.partyStatementDetail(partyId, side, dateFrom, dateTo, page, size)
+                : service.partyStatementDetail(partyId, side, dateFrom, dateTo, page, size,
+                    filters,parameters.get("sort"),parameters.get("order"));
     }
 
     /** X 客户/供应商年度对帐单（按月）。 */
@@ -384,7 +426,12 @@ public class FinanceReportController {
             @RequestParam(required = false, defaultValue = "0") int year,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.partyAnnualStatement(partyId, side, year, page, size);
+        var parameters = FinanceReportHeaderRequest.current();
+        var filters = FinanceReportHeaderRequest.filters(parameters);
+        return filters.isEmpty() && !parameters.containsKey("sort")
+                ? service.partyAnnualStatement(partyId, side, year, page, size)
+                : service.partyAnnualStatement(partyId, side, year, page, size,
+                    filters,parameters.get("sort"),parameters.get("order"));
     }
 
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
@@ -401,16 +448,18 @@ public class FinanceReportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String billNo) {
+            @RequestParam(required = false) String billNo,
+            @RequestParam Map<String, String> columnQuery) {
         // 2026-09-25 单号列统一：单号表头值筛选（等值精确匹配）。滚动余额顺序
         // 语义固定（bill_date, posting_seq），本报表不做表头排序。
-        return service.accountStatement(accountId, dateFrom, dateTo, keyword, page, size, billNo);
+        return service.accountStatement(accountId, dateFrom, dateTo, keyword, page, size, billNo, columnQuery);
     }
 
     /** 账户流水单号 facets（2026-09-25 单号列统一）：{billNo:[各单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @org.springframework.web.bind.annotation.RequestMapping(value="/account/statement/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
+    @com.uten.imp.common.report.ReadOnlyReportQuery
     @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
             + "and hasAuthority('account:flow:view')")
     public Map<String, List<Map<String, Object>>> accountStatementFacets(
@@ -440,8 +489,24 @@ public class FinanceReportController {
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(report, allParams, sort, order);
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_finance");
-        byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+        return exportResponse(report,payload,body.password(),body.columnProjection());
+    }
+
+    @PostMapping(value="/export",params="report=ar-ap/overview")
+    @PreAuthorize("hasAuthority('finance_report:export')")
+    public ResponseEntity<byte[]> overviewExport(@RequestParam String report,
+            @RequestParam(required=false) Map<String,String> allParams,
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            @Valid @RequestBody com.uten.imp.features.master.dto.ContactExportRequest body) {
+        var parameters=FinanceReportHeaderRequest.withContactBody(allParams,body.sensitive());
+        ExportPayload payload=service.export(report,parameters,sort,order);
+        return exportResponse(report,payload,body.password(),body.columnProjection());
+    }
+
+    private ResponseEntity<byte[]> exportResponse(String report,ExportPayload payload,String password,
+            com.uten.imp.common.export.TableColumnProjection projection) {
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), projection, "view_finance");
+        byte[] downloadBytes = workbookDownload.protect(xlsx, password);
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_finance_report", "finance_reports",

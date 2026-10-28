@@ -18,6 +18,10 @@ public final class PersonalPermissionOverrideLifecycle {
 
     /** Caller must hold the employee/account lifecycle locks in its existing transaction. */
     public static int deactivateForEmployee(EntityManager entityManager, UUID employeeId) {
+        entityManager.createNativeQuery("DELETE FROM user_permission_template_bindings WHERE user_id IN (SELECT id FROM users WHERE employee_id=:source)")
+                .setParameter("source",employeeId).executeUpdate();
+        entityManager.createNativeQuery("DELETE FROM permission_template_applies WHERE user_id IN (SELECT id FROM users WHERE employee_id=:source)")
+                .setParameter("source",employeeId).executeUpdate();
         return entityManager.createNativeQuery("""
                         UPDATE user_permission_overrides permission_override
                         SET active=false, row_version=row_version+1

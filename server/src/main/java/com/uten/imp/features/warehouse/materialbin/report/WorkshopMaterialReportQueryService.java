@@ -200,17 +200,17 @@ public class WorkshopMaterialReportQueryService {
     /** 流水视图 (按业务日期倒序), 带库存单据号、领料单号、操作人; 日期范围按真实业务日期。 */
     @Transactional(readOnly = true)
     public PageResponse<LedgerRow> ledger(UUID binId, LocalDate from, LocalDate to, int page, int size) {
+        return ledger(binId,from,to,page,size,Map.of(),null,null,null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<LedgerRow> ledger(UUID binId,LocalDate from,LocalDate to,int page,int size,
+            Map<String,String> searches,String kind,String sort,String order) {
         requireBin(binId);
         var pageable = Pageables.of(page, size);
         MapSqlParameterSource params = range(binId, from, to)
                 .addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        Long total = db.queryForObject("""
-                SELECT count(*) FROM v_workshop_material_bin_ledger ledger
-                WHERE ledger.bin_warehouse_id = :bin
-                  AND (CAST(:from AS date) IS NULL OR ledger.business_date >= CAST(:from AS date))
-                  AND (CAST(:to AS date) IS NULL OR ledger.business_date <= CAST(:to AS date))
-                """, params, Long.class);
-        List<LedgerRow> rows = db.query("""
+        String scopedRows="""
                 SELECT ledger.source_row_id, ledger.source_kind, ledger.business_date, ledger.period_id,
                        period.period_no, ledger.goods_id, goods.code AS goods_code, goods.name AS goods_name,
                        ledger.color_id, color.name AS color_name, unit.name AS unit_name, ledger.signed_qty,
@@ -238,7 +238,7 @@ public class WorkshopMaterialReportQueryService {
                 JOIN workshop_material_periods period ON period.id = ledger.period_id
                 JOIN goods ON goods.id = ledger.goods_id
                 LEFT JOIN colors color ON color.id = ledger.color_id
-                LEFT JOIN units unit ON unit.id = goods.unit_id
+                LEFT JOIN units unit ON unit.id = %s
                 LEFT JOIN workshop_material_requisition_postings posting
                   ON ledger.source_kind IN ('ISSUE', 'RETURN') AND posting.id = ledger.source_row_id
                 LEFT JOIN workshop_material_requisition_lines requisition_line ON requisition_line.id = posting.line_id
@@ -263,9 +263,38 @@ public class WorkshopMaterialReportQueryService {
                 WHERE ledger.bin_warehouse_id = :bin
                   AND (CAST(:from AS date) IS NULL OR ledger.business_date >= CAST(:from AS date))
                   AND (CAST(:to AS date) IS NULL OR ledger.business_date <= CAST(:to AS date))
-                ORDER BY ledger.business_date DESC, created_at DESC, ledger.source_row_id
-                LIMIT :limit OFFSET :offset
-                """, params, (rs, index) -> new LedgerRow(uuid(rs, "source_row_id"), rs.getString("source_kind"),
+                """.formatted(com.uten.imp.common.report.WorkshopMaterialQuantityUnits.ledgerUnitId("ledger"));
+        String kindLabel="(CASE q.source_kind WHEN 'OPENING' THEN '已审核期初盘点' WHEN 'ADJUSTMENT' THEN '已审核账面修正'"
+                +" WHEN 'ISSUE' THEN '领入' WHEN 'RETURN' THEN '退回仓库' WHEN 'OTHER_ISSUE' THEN '试模清机等用料'"
+                +" WHEN 'CONSUME' THEN '盘点耗用' WHEN 'CONSUME_REVERSE' THEN '盘点耗用冲回' WHEN 'GAIN' THEN '盘盈'"
+                +" WHEN 'GAIN_REVERSE' THEN '盘盈冲回' ELSE '' END || CASE WHEN q.is_supplement THEN ' (补录)' ELSE '' END)";
+        String sourceLabel="CASE WHEN q.doc_no IS NOT NULL OR q.request_no IS NOT NULL THEN concat_ws(' / ',q.doc_no,q.request_no)"
+                +" WHEN q.source_kind IN ('CONSUME','CONSUME_REVERSE','GAIN','GAIN_REVERSE') THEN '盘点'"
+                +" WHEN q.source_kind IN ('OPENING','ADJUSTMENT') THEN '盘点审核' ELSE '' END";
+        var fields=Map.of("date",com.uten.imp.common.util.SqlColumnSearch.Field.calendarDate("q.business_date"),
+                "kind",com.uten.imp.common.util.SqlColumnSearch.Field.text(kindLabel),
+                "material",com.uten.imp.common.util.SqlColumnSearch.Field.text("q.goods_name"),
+                "materialColor",com.uten.imp.common.util.SqlColumnSearch.Field.text("q.color_name"),
+                "qty",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("q.signed_qty"),
+                "docNo",com.uten.imp.common.util.SqlColumnSearch.Field.text("("+sourceLabel+")"),
+                "operator",com.uten.imp.common.util.SqlColumnSearch.Field.text("q.operator_name"),
+                "period",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("q.period_no"));
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(searches,fields,"wm_ledger_header_");
+        headers.parameters().forEach(params::addValue);
+        String predicate=headers.predicate();
+        if(kind!=null&&!kind.isBlank()) {
+            var allowed=java.util.Set.of("已审核期初盘点","已审核账面修正","领入","领入 (补录)","退回仓库","退回仓库 (补录)",
+                    "试模清机等用料","盘点耗用","盘点耗用冲回","盘盈","盘盈冲回");
+            if(!allowed.contains(kind))throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"收发类型无效");
+            predicate+=" AND "+kindLabel+"=:header_kind";
+            params.addValue("header_kind",kind);
+        }
+        String base=" FROM ("+scopedRows+") q WHERE "+predicate;
+        Long total=db.queryForObject("SELECT count(*)"+base,params,Long.class);
+        String sortExpression=sort==null?null:fields.containsKey(sort)?fields.get(sort).expression():null;
+        String effectiveOrder=sortExpression==null?"q.business_date DESC,q.created_at DESC NULLS LAST,q.source_row_id":
+                sortExpression+("desc".equalsIgnoreCase(order)?" DESC":" ASC")+" NULLS LAST,q.source_row_id";
+        List<LedgerRow> rows = db.query("SELECT q.*"+base+" ORDER BY "+effectiveOrder+" LIMIT :limit OFFSET :offset", params, (rs, index) -> new LedgerRow(uuid(rs, "source_row_id"), rs.getString("source_kind"),
                 date(rs, "business_date"), uuid(rs, "period_id"), rs.getInt("period_no"), uuid(rs, "goods_id"),
                 rs.getString("goods_code"), rs.getString("goods_name"), uuid(rs, "color_id"),
                 rs.getString("color_name"), rs.getString("unit_name"), rs.getBigDecimal("signed_qty"),

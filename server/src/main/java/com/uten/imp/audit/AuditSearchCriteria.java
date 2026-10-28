@@ -21,7 +21,20 @@ public record AuditSearchCriteria(
         LocalDate dateTo,
         Long snapshotId,
         UUID actorId,
-        boolean activityOnly) {
+        boolean activityOnly,
+        java.util.Map<String, String> columnSearch) {
+
+    public AuditSearchCriteria {
+        columnSearch = AuditEventHeaderQuery.validate(columnSearch);
+    }
+
+    public AuditSearchCriteria(String action, String actorAccount, String actorScope, String riskLevel,
+            String eventCategory, String outcome, String keyword, String targetType, String targetId,
+            String eventSource, String requestId, String operationKind, LocalDate dateFrom, LocalDate dateTo,
+            Long snapshotId, UUID actorId, boolean activityOnly) {
+        this(action,actorAccount,actorScope,riskLevel,eventCategory,outcome,keyword,targetType,targetId,
+                eventSource,requestId,operationKind,dateFrom,dateTo,snapshotId,actorId,activityOnly,java.util.Map.of());
+    }
 
     /**
      * Compatibility constructor for internal callers that predate the
@@ -53,6 +66,11 @@ public record AuditSearchCriteria(
         return new AuditSearchCriteria(
                 action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
-                dateFrom, dateTo, value, actorId, activityOnly);
+                dateFrom, dateTo, value, actorId, activityOnly, columnSearch);
+    }
+
+    AuditSearchCriteria withHeaderFilters(java.util.Map<String, String> values) {
+        return new AuditSearchCriteria(action,actorAccount,actorScope,riskLevel,eventCategory,outcome,keyword,
+                targetType,targetId,eventSource,requestId,operationKind,dateFrom,dateTo,snapshotId,actorId,activityOnly,values);
     }
 }

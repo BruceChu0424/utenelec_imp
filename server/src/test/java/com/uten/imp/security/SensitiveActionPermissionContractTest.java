@@ -61,9 +61,14 @@ class SensitiveActionPermissionContractTest {
         assertGate(AttachmentController.class, "confirm", "attachment:upload");
         assertGate(AttachmentController.class, "uploadRaw", "attachment:upload");
         assertGate(AttachmentController.class, "list", "attachment:view");
-        assertGate(AttachmentController.class, "downloadGrant", "attachment:download");
-        assertGate(AttachmentController.class, "downloadRaw", "attachment:download");
-        assertGate(AttachmentController.class, "preview", "attachment:download");
+        // V958：公司资料原件随资料库入口授权（可见即可下载），业务附件仍按通用附件权限，
+        // 服务端 requireDownloadAuthority 按 owner 类型分流，两类授权互不扩面。
+        assertGateWithAlternative(AttachmentController.class, "downloadGrant",
+                "attachment:download", "company_file:view");
+        assertGateWithAlternative(AttachmentController.class, "downloadRaw",
+                "attachment:download", "company_file:view");
+        assertGateWithAlternative(AttachmentController.class, "preview",
+                "attachment:download", "company_file:view");
         // 上传后标注分类：属于「整理自己传的文件」，不借用删除权限，也不额外新增权限码。
         assertGate(AttachmentController.class, "setCategory", "attachment:upload");
         assertGate(AttachmentController.class, "delete", "attachment:delete");
@@ -129,7 +134,11 @@ class SensitiveActionPermissionContractTest {
                 .contains("require(user, \"attachment:view\")")
                 .contains("require(user, \"attachment:upload\")")
                 .contains("require(user, \"attachment:delete\")")
-                .contains("require(user, \"attachment:download\")")
+                // V958：下载授权按 owner 分流——公司资料原件随 company_file:view，
+                // 业务附件保持 attachment:download。
+                .contains("requireDownloadAuthority(user, attachment)")
+                .contains("requireDownloadAuthority(user, metadata)")
+                .contains("? \"company_file:view\" : \"attachment:download\"")
                 .contains("requireCanSelectAvatar(ownerId, user)")
                 .doesNotContain("require(user, \"attachment:manage\")");
 
@@ -172,6 +181,17 @@ class SensitiveActionPermissionContractTest {
     }
 
     private static void assertGate(Class<?> type, String methodName, String permission) {
+        assertGateExpression(type, methodName, "hasAuthority('" + permission + "')");
+    }
+
+    /** V958：资料库入口与通用附件权限并行的下载/预览前置门。 */
+    private static void assertGateWithAlternative(
+            Class<?> type, String methodName, String permission, String alternative) {
+        assertGateExpression(type, methodName,
+                "hasAuthority('" + permission + "') or hasAuthority('" + alternative + "')");
+    }
+
+    private static void assertGateExpression(Class<?> type, String methodName, String expression) {
         List<Method> matches = Arrays.stream(type.getDeclaredMethods())
                 .filter(method -> Modifier.isPublic(method.getModifiers()))
                 .filter(method -> method.getName().equals(methodName))
@@ -181,7 +201,7 @@ class SensitiveActionPermissionContractTest {
         assertThat(gate)
                 .as(type.getSimpleName() + "." + methodName + " @PreAuthorize")
                 .isNotNull();
-        assertThat(gate.value()).isEqualTo("hasAuthority('" + permission + "')");
+        assertThat(gate.value()).isEqualTo(expression);
     }
 
     private static AuthorizationResult authorize(

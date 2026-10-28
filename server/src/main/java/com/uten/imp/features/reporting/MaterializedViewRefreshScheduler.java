@@ -37,12 +37,16 @@ import java.util.List;
         matchIfMissing = true)
 public class MaterializedViewRefreshScheduler {
 
+    /**
+     * 周期刷新的白名单。stock_monthly_mv / finance_ar_ap_mv 自 V951(B2) 起退役：
+     * 应用内无读取方，月度口径分别由 stock_monthly_summaries（V949 触发器增量）
+     * 与 party_monthly_summaries（V950 脏期间重算）承接；两张视图对象保留为
+     * 冻结诊断快照（遗留导入/封存重置入口自行刷新）。
+     */
     static final List<String> REPORT_VIEWS = List.of(
-            "finance_ar_ap_mv",
             "production_monthly_mv",
             "purchase_monthly_mv",
             "sales_monthly_mv",
-            "stock_monthly_mv",
             "subcontract_monthly_mv");
 
     private static final long ADVISORY_LOCK_ID = 0x5554454E52455054L;

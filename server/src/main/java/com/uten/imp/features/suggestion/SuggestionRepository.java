@@ -11,7 +11,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface SuggestionRepository extends JpaRepository<Suggestion, UUID> {
+public interface SuggestionRepository extends JpaRepository<Suggestion, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Suggestion> {
 
     Page<Suggestion> findBySubmitterId(UUID submitterId, Pageable pageable);
 

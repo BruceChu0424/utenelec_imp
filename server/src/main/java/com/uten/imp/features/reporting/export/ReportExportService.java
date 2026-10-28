@@ -72,7 +72,8 @@ public class ReportExportService {
         if("where_used".equals(request.domain()) && request.columnProjection()!=null)
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"物料反查证据使用原始多表结构，不接收单表投影");
         if("where_used".equals(request.domain()) && (!"where-used".equals(request.report())
-                || !Set.of("materialGoodsId","source","dateFrom","dateTo").containsAll(request.parameters().keySet())))
+                || request.parameters().keySet().stream().anyMatch(key->!Set.of("materialGoodsId","source","dateFrom","dateTo").contains(key)
+                    &&!com.uten.imp.features.production.report.ProductionWhereUsedQueryService.supportsHeaderParameter(key))))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"物料反查导出条件无效");
         if("master".equals(request.domain())) {
             if(master==null)throw new IllegalStateException("Master export adapter is unavailable");

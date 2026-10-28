@@ -4,6 +4,7 @@ import com.uten.imp.common.report.ReportTotal;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 委外报表通用响应（9 张报表共用：进仓/退货/材料出/材料退 各明细+汇总 + 出入状况表）。
@@ -21,7 +22,18 @@ public record ReportTableResponse(
         int totalPages,
         List<ReportTotal> totals,
         String readScopeVersion,
-        String statisticsGeneratedAt) {
+        String statisticsGeneratedAt,
+        Set<String> columnSearchKeys) {
+    public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
+            List<ReportTotal> totals,String readScopeVersion,String statisticsGeneratedAt) {
+        this(columns,rows,facets,page,size,total,totalPages,totals,readScopeVersion,statisticsGeneratedAt,Set.of());
+    }
+
+    public ReportTableResponse withColumnSearchKeys(Set<String> keys) {
+        return new ReportTableResponse(columns,rows,facets,page,size,total,totalPages,totals,
+                readScopeVersion,statisticsGeneratedAt,Set.copyOf(keys));
+    }
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
             Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
             List<ReportTotal> totals,String readScopeVersion) {

@@ -146,13 +146,20 @@ public class PermissionResolver {
                                 List<String> legacyUnknownRevokes,
                                 List<String> managerGrants,
                                 boolean contextualDelegationPresent,
-                                List<String> revokes, Set<String> effective) {
+                                List<String> revokes, Set<String> effective, List<String> templatePermissions) {
+        public PermBreakdown(UUID departmentId,String departmentName,Set<String> departmentPermissions,Set<String> baselinePermissions,
+                List<String> grants,List<String> confirmedGrants,List<String> legacyUnknownGrants,List<String> legacyUnknownRevokes,
+                List<String> managerGrants,boolean contextualDelegationPresent,List<String> revokes,Set<String> effective) {
+            this(departmentId,departmentName,departmentPermissions,baselinePermissions,grants,confirmedGrants,
+                    legacyUnknownGrants,legacyUnknownRevokes,managerGrants,contextualDelegationPresent,revokes,effective,List.of());
+        }
         /** Source grants before operation-dependency normalization; explicit revokes still win. */
         public Set<String> configuredPermissions() {
             Set<String> configured = new LinkedHashSet<>(baselinePermissions);
             configured.addAll(departmentPermissions);
             configured.addAll(grants);
             configured.addAll(managerGrants);
+            configured.addAll(templatePermissions);
             configured.removeAll(revokes);
             return Set.copyOf(configured);
         }
@@ -381,8 +388,10 @@ public class PermissionResolver {
         List<String> legacyUnknownGrants = new ArrayList<>();
         List<String> legacyUnknownRevokes = new ArrayList<>();
         List<String> revokes = new ArrayList<>();
+        List<String> templatePermissions=permissionRepo.findUserTemplateCodes(userId);
         Set<String> effective = new HashSet<>(baseline);
         effective.addAll(deptPerms);
+        effective.addAll(templatePermissions);
         for (Object[] row : overrideRepo.findCodeAndEffectByUserId(userId)) {
             String code = (String) row[0];
             boolean confirmed = row.length > 2
@@ -411,7 +420,7 @@ public class PermissionResolver {
                 deptId, deptName, Set.copyOf(deptPerms), Set.copyOf(baseline),
                 List.copyOf(grants), List.copyOf(confirmedGrants),
                 List.copyOf(legacyUnknownGrants), List.copyOf(legacyUnknownRevokes),
-                List.copyOf(revokes), Set.copyOf(effective));
+                List.copyOf(revokes), Set.copyOf(effective), List.copyOf(templatePermissions));
     }
 
     private PermBreakdown asBreakdown(
@@ -431,7 +440,7 @@ public class PermissionResolver {
                 List.copyOf(managerGrants),
                 contextualDelegationPresent,
                 base.revokes(),
-                dependencies.usablePermissions(effective));
+                dependencies.usablePermissions(effective), base.templatePermissions());
     }
 
     private ManagerGrantResolution resolveManagerGrants(
@@ -563,6 +572,7 @@ public class PermissionResolver {
                 : new HashSet<>(base.departmentPermissions());
         if (!superAdmin) {
             ceiling.addAll(base.confirmedGrants());
+            ceiling.addAll(base.templatePermissions());
         }
         ceiling.removeAll(base.baselinePermissions());
         ceiling.removeAll(base.revokes());
@@ -624,8 +634,12 @@ public class PermissionResolver {
                 JOIN departments parent ON parent.id=ancestor.parent_id
             ), department_codes AS MATERIALIZED (
                 SELECT DISTINCT ancestor.user_id, permission.code FROM ancestors ancestor
-                JOIN department_permissions allocation ON allocation.department_id=ancestor.department_id
+                JOIN authorization_department_permission_sources allocation ON allocation.department_id=ancestor.department_id
                 JOIN requested permission ON permission.id=allocation.permission_id
+            ), template_codes AS MATERIALIZED (
+                SELECT source.user_id,source.code FROM authorization_user_template_permission_sources source
+                JOIN accounts account ON account.id=source.user_id
+                JOIN requested permission ON permission.code=source.code
             ), overrides AS MATERIALIZED (
                 SELECT allocation.user_id, permission.code, allocation.effect, allocation.authority_source
                 FROM user_permission_overrides allocation
@@ -635,6 +649,8 @@ public class PermissionResolver {
             ), base_codes(user_id, code) AS (
                 SELECT account.id, permission.code FROM requested_accounts account
                 CROSS JOIN requested permission WHERE permission.baseline
+                UNION SELECT template.user_id,template.code FROM template_codes template
+                JOIN requested_accounts account ON account.id=template.user_id
                 UNION
                 SELECT department.user_id, department.code FROM department_codes department
                 JOIN requested_accounts account ON account.id=department.user_id
@@ -647,6 +663,7 @@ public class PermissionResolver {
                     SELECT account.id AS user_id, permission.code FROM accounts account
                     CROSS JOIN requested permission WHERE permission.baseline
                     UNION SELECT department.user_id, department.code FROM department_codes department
+                    UNION SELECT template.user_id,template.code FROM template_codes template
                     UNION SELECT allocation.user_id, allocation.code FROM overrides allocation
                           WHERE allocation.effect IS DISTINCT FROM 'revoke'
                 ) raw
@@ -684,7 +701,9 @@ public class PermissionResolver {
                       OR EXISTS (SELECT 1 FROM overrides allocation
                           WHERE allocation.user_id=grantor.id AND allocation.code=permission.code
                             AND allocation.effect IS DISTINCT FROM 'revoke'
-                            AND allocation.authority_source='SUPER_ADMIN_CONFIRMED'))
+                            AND allocation.authority_source='SUPER_ADMIN_CONFIRMED')
+                      OR EXISTS(SELECT 1 FROM template_codes template
+                          WHERE template.user_id=grantor.id AND template.code=permission.code))
                   AND NOT EXISTS (SELECT 1 FROM overrides allocation
                       WHERE allocation.user_id=grantor.id AND allocation.code=permission.code
                         AND allocation.effect='revoke')
@@ -753,7 +772,7 @@ public class PermissionResolver {
             List<String> legacyUnknownGrants,
             List<String> legacyUnknownRevokes,
             List<String> revokes,
-            Set<String> effective) {
+            Set<String> effective, List<String> templatePermissions) {
     }
 
     private record GrantorContext(

@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 /**
  * 敏感操作再认证的 HTTP 契约 (ADR-110; security-04/05/06/02/01), 真库 + 完整安全过滤链:
- * 每个点名端点不带凭证一律 403 REAUTH_REQUIRED; 凭证 5 分钟、绑定本人本会话、只能用一次;
+ * 每个点名端点不带凭证一律 403 REAUTH_REQUIRED; 连续操作复用凭证、空闲 5 分钟失效、绑定本人本会话;
  * 连续输错 5 次暂停 15 分钟并踢掉当前会话; 改密原密码共享同一份计数。
  */
 class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
@@ -110,6 +110,7 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
                 "SELECT id::text FROM departments WHERE code = 'DEPT_HR' AND NOT is_deleted", String.class);
         String users = "/api/admin/users/" + target.userId();
         List<MockHttpServletRequestBuilder> calls = List.of(
+                json(post("/api/auth/step-up/activity"), Map.of(), admin),
                 json(put(users + "/super-admin"), Map.of("superAdmin", true), admin),
                 json(put(users + "/remote-access"), Map.of("remoteAccess", true), admin),
                 json(put(users + "/permission-overrides"), Map.of("grants", List.of(), "revokes", List.of()), admin),
@@ -143,7 +144,7 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
     }
 
     @Test
-    void stepUpTokenIsOneTimeAndBoundToTheIssuingSession() throws Exception {
+    void stepUpTokenSlidesWhileActiveAndIsBoundToTheIssuingSession() throws Exception {
         String admin = adminToken();
         String token = stepUp(admin, ADMIN_PASSWORD);
         MockHttpServletRequestBuilder save = json(put("/api/admin/system-settings"), Map.of("changes", List.of(
@@ -154,12 +155,13 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         assertEquals("16", jdbc.queryForObject(
                 "SELECT value FROM system_settings WHERE key = 'lockout_minutes'", String.class));
 
-        // 同一凭证第二次使用: 已核销
+        // 四分钟后连续操作仍复用同一凭证，并从本次操作重新计空闲。
+        clock.advance(Duration.ofMinutes(4));
         MvcResult reused = mvc.perform(json(put("/api/admin/system-settings"), Map.of("changes", List.of(
-                Map.of("key", "lockout_minutes", "value", "15", "expectedValue", "16"))), admin)
+                Map.of("key", "lockout_minutes", "value", "17", "expectedValue", "16"))), admin)
                 .header(STEP_UP_HEADER, token)).andReturn();
-        assertEquals(403, reused.getResponse().getStatus());
-        assertEquals("REAUTH_REQUIRED", json(reused).path("code").asText());
+        assertEquals(200, reused.getResponse().getStatus(), body(reused));
+        assertEquals("300", reused.getResponse().getHeader("X-Uten-Step-Up-Idle-Seconds"));
 
         // 换一个会话 (重新登录) 拿别的会话签发的凭证: 不认
         String otherSessionToken = stepUp(admin, ADMIN_PASSWORD);
@@ -179,9 +181,35 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
 
         String fresh = stepUp(secondSession, ADMIN_PASSWORD);
         MvcResult restored = mvc.perform(json(put("/api/admin/system-settings"), Map.of("changes", List.of(
-                Map.of("key", "lockout_minutes", "value", "15", "expectedValue", "16"))), secondSession)
+                Map.of("key", "lockout_minutes", "value", "15", "expectedValue", "17"))), secondSession)
                 .header(STEP_UP_HEADER, fresh)).andReturn();
         assertEquals(200, restored.getResponse().getStatus(), body(restored));
+    }
+
+    @Test
+    void realInputActivityExtendsAnExistingProofButAutomaticPollingAndExpiredProofsCannot() throws Exception {
+        String admin = adminToken();
+        String proof = stepUp(admin, ADMIN_PASSWORD);
+        clock.advance(Duration.ofMinutes(4));
+        MvcResult automatic = mvc.perform(json(post("/api/auth/step-up/activity"), Map.of(), admin)
+                .header(STEP_UP_HEADER, proof).header("X-Uten-Automatic", "1")).andReturn();
+        assertEquals(403, automatic.getResponse().getStatus(), body(automatic));
+        assertEquals("REAUTH_REQUIRED", json(automatic).path("code").asText());
+
+        MvcResult activity = mvc.perform(json(post("/api/auth/step-up/activity"), Map.of(), admin)
+                .header(STEP_UP_HEADER, proof)).andReturn();
+        assertEquals(200, activity.getResponse().getStatus(), body(activity));
+        assertEquals(300, json(activity).path("expiresInSeconds").asLong());
+        clock.advance(Duration.ofMinutes(4));
+        MvcResult stillActive = mvc.perform(json(post("/api/auth/step-up/activity"), Map.of(), admin)
+                .header(STEP_UP_HEADER, proof)).andReturn();
+        assertEquals(200, stillActive.getResponse().getStatus(), "八分钟连续编辑仍可复用已验证凭证");
+
+        clock.advance(Duration.ofMinutes(5));
+        MvcResult expired = mvc.perform(json(post("/api/auth/step-up/activity"), Map.of(), admin)
+                .header(STEP_UP_HEADER, proof)).andReturn();
+        assertEquals(403, expired.getResponse().getStatus(), body(expired));
+        assertEquals("REAUTH_REQUIRED", json(expired).path("code").asText());
     }
 
     @Test

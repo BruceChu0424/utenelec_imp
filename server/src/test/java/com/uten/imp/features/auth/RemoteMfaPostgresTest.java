@@ -126,7 +126,7 @@ class RemoteMfaPostgresTest {
 
     @Test void pendingExpiresAndCannotBeConfirmedFromAnotherSession() {
         var enrollment=mfa.beginEnrollment();
-        var replacement=transaction.execute(s->sessions.openStaffSession(principal.getId()));
+        var replacement=transaction.execute(s->sessions.openStaffSession(principal.getId(),null));
         principal=withSession(principal,replacement.sid());authenticate(principal);
         assertError(()->mfa.confirmEnrollment(code(enrollment.secret())),ErrorCode.MFA_ENROLLMENT_EXPIRED);
         var next=mfa.beginEnrollment();
@@ -193,7 +193,7 @@ class RemoteMfaPostgresTest {
         var enrollment=enroll();
         assertThat(sessions.loadStaff(principal.getId(),principal.getSessionId(),principal.getId()).orElseThrow().session().mfaVerifiedAt()).isEqualTo(clock.instant());
         sessions.requireMfaForRefresh(principal.getSessionId(),principal.getId());
-        var replacement=transaction.execute(s->sessions.openStaffSession(principal.getId()));
+        var replacement=transaction.execute(s->sessions.openStaffSession(principal.getId(),null));
         assertError(()->sessions.requireMfaForRefresh(replacement.sid(),principal.getId()),ErrorCode.MFA_REQUIRED);
         principal=withSession(principal,replacement.sid());authenticate(principal);clock.advance(Duration.ofSeconds(30));
         mfa.verifySession(code(enrollment.secret()));clock.advance(Duration.ofHours(8));
@@ -262,7 +262,7 @@ class RemoteMfaPostgresTest {
         authenticate(pendingUser);
         assertError(()->mfa.confirmEnrollment(code(pendingEnrollment.secret())),ErrorCode.UNAUTHORIZED);
 
-        var activeReplacement=transaction.execute(s->sessions.openStaffSession(active.getId()));
+        var activeReplacement=transaction.execute(s->sessions.openStaffSession(active.getId(),null));
         authenticate(withSession(active,activeReplacement.sid()));
         assertThat(mfa.status().enabled()).isTrue();
         assertThat(mfa.status().sessionVerified()).isFalse();
@@ -270,7 +270,7 @@ class RemoteMfaPostgresTest {
         clock.advance(Duration.ofSeconds(60));
         assertThat(mfa.verifySession(code(activeEnrollment.secret())).verifiedUntil()).isNotNull();
 
-        var pendingReplacement=transaction.execute(s->sessions.openStaffSession(pendingUser.getId()));
+        var pendingReplacement=transaction.execute(s->sessions.openStaffSession(pendingUser.getId(),null));
         authenticate(withSession(pendingUser,pendingReplacement.sid()));
         assertError(()->mfa.confirmEnrollment(code(pendingEnrollment.secret())),ErrorCode.MFA_ENROLLMENT_EXPIRED);
         var restarted=mfa.beginEnrollment();
@@ -285,7 +285,7 @@ class RemoteMfaPostgresTest {
         AtomicReference<UUID> newSession=new AtomicReference<>();
         try(var pool=Executors.newFixedThreadPool(2)) {
             var login=pool.submit(()->mfa.remoteLogin(target,otp,()->{
-                var session=sessions.openStaffSession(target);
+                var session=sessions.openStaffSession(target,null);
                 sessions.markMfaVerified(session.sid(),target,clock.instant());
                 newSession.set(session.sid());issued.countDown();
                 try { if(!finishIssue.await(10,TimeUnit.SECONDS))throw new IllegalStateException("Test issuance timed out"); }
@@ -316,7 +316,7 @@ class RemoteMfaPostgresTest {
                 INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin,remote_access)
                 VALUES(?,?,?,'test-only',false,'active',?,true)
                 """,id,employee,"mfa-"+label,admin);
-        var session=transaction.execute(s->sessions.openStaffSession(id));
+        var session=transaction.execute(s->sessions.openStaffSession(id,null));
         return new AuthUser(id,employee,"mfa-"+label,admin?Set.of("authorization:manage"):Set.of(),false,true,admin,true,null,session.sid());
     }
     private static AuthUser withSession(AuthUser user,UUID sid){return new AuthUser(user.getId(),user.getEmployeeId(),user.getLoginAccount(),user.getPermissions(),false,true,user.isSuperAdmin(),true,null,sid);}

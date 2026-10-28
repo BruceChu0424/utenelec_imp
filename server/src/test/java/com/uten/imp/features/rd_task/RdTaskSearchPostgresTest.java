@@ -100,6 +100,34 @@ class RdTaskSearchPostgresTest {
         assertThat(service.list("open",null,null,null,1,20).getTotal()).isEqualTo(6);
     }
 
+    @Test void ordinaryHeadersFilterCompleteScopeAndPreserveLocalDueDatesBeforePaging() {
+        db.update("INSERT INTO employees(id,full_name,is_deleted) VALUES(?,'列查询工程师',FALSE)",assignee);
+        UUID first=task("HEADER-01","P%_A","列查询物料","URGENT","BOM",assignee);
+        UUID second=task("HEADER-02","P%_B","列查询物料","URGENT","BOM",assignee);
+        UUID nextDay=task("HEADER-03","P%_C","列查询物料","URGENT","BOM",assignee);
+        UUID canceled=task("HEADER-04","P%_D","列查询物料","URGENT","BOM",assignee);
+        task("HEADER-PRIVATE","P%_E","列查询物料","URGENT","BOM",UUID.randomUUID());
+        db.update("UPDATE rd_tasks SET due_date='2026-10-28',created_at='2026-10-27T16:00:00Z',status='DONE' WHERE id IN (?,?,?)",
+                first,second,canceled);
+        db.update("UPDATE rd_tasks SET status='CANCELED' WHERE id=?",canceled);
+        db.update("UPDATE rd_tasks SET due_date='2026-10-29',created_at='2026-10-28T16:00:00Z',status='DONE' WHERE id=?",nextDay);
+        var columns=java.util.Map.of("taskNo","HEADER", "goodsCode","P%_", "goods","列查询",
+                "assignee","列查询工程师", "dueDate","2026-10-28", "createdAt","2026-10-28",
+                "status","DONE", "priority","URGENT");
+        var page1=service.list("done","BOM",null,assignee,1,1,columns,"taskNo","asc");
+        var page2=service.list("done","BOM",null,assignee,2,1,columns,"taskNo","asc");
+        assertThat(page1.getTotal()).isEqualTo(2);
+        assertThat(page1.getTotalPages()).isEqualTo(2);
+        assertThat(page1.getItems()).extracting(RdTaskContracts.RdTaskRow::id).containsExactly(first);
+        assertThat(page2.getItems()).extracting(RdTaskContracts.RdTaskRow::id).containsExactly(second);
+        assertThat(page1.getItems().getFirst().dueDate()).isEqualTo(java.time.LocalDate.of(2026,10,28));
+        assertThat(service.list("done",null,null,assignee,1,20,java.util.Map.of("status","CANCELED"),null,null).getItems())
+                .extracting(RdTaskContracts.RdTaskRow::id).containsExactly(canceled);
+        assertThat(service.list("pending",null,null,null,1,20,java.util.Map.of("status","DONE"),null,null).getTotal()).isZero();
+        assertThat(service.list("done",null,null,assignee,1,20,java.util.Map.of("createdAt","2026-10-29"),null,null).getItems())
+                .extracting(RdTaskContracts.RdTaskRow::id).containsExactly(nextDay);
+    }
+
     @Test void bomMaintainersDoNotAcquireManualResolveAuthority() {
         UUID id=task("RD-BOM-EDIT","BE","BOM edit only","NORMAL","BOM",assignee);
         actor(Set.of("rd_task:view","goods:view","goods:bom:edit"));

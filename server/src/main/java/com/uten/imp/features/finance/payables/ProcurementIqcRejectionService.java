@@ -319,9 +319,15 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             }
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public CasePage list(
             String rawReceiptType, String rawStatus, String keyword, int page, int size) {
+        return list(rawReceiptType, rawStatus, keyword, page, size, Map.of());
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public CasePage list(String rawReceiptType, String rawStatus, String keyword, int page, int size,
+                         Map<String, String> columnQuery) {
         String receiptType = optionalType(rawReceiptType);
         String status = upper(rawStatus);
         if (status != null && !FILTER_STATUSES.contains(status)) {
@@ -350,11 +356,14 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             add(where, params, "rejection.owner_user_id=:currentUserId",
                     "currentUserId", currentUser.requireId());
         }
-        String relevance = params.containsKey("keyword")
+        var headers = ProcurementIqcRejectionColumnQuery.read(columnQuery, has("procurement_iqc_rejection:amount:view"));
+        where.append(" AND (").append(headers.criteria().predicate()).append(')');
+        params.putAll(headers.criteria().parameters());
+        String relevance = !headers.explicitOrder() && params.containsKey("keyword")
                 ? TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"goods.name"},
                         new String[]{}, SEARCH_FIELDS) + ", " : "";
         Query data = em.createNativeQuery(select() + from() + where
-                + " ORDER BY " + relevance + "rejection.created_at DESC,rejection.id LIMIT :limit OFFSET :offset");
+                + " ORDER BY " + relevance + headers.orderBy() + " LIMIT :limit OFFSET :offset");
         bind(data, params);
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);
@@ -369,6 +378,11 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     @Transactional(readOnly = true)
     public CaseCounts counts(String rawReceiptType, String keyword) {
+        return counts(rawReceiptType, keyword, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public CaseCounts counts(String rawReceiptType, String keyword, Map<String, String> columnQuery) {
         String receiptType = optionalType(rawReceiptType);
         StringBuilder where = new StringBuilder(
                 " WHERE COALESCE(rejection.is_deleted,FALSE)=FALSE");
@@ -385,6 +399,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             add(where, params, "rejection.owner_user_id=:currentUserId",
                     "currentUserId", currentUser.requireId());
         }
+        var headers = ProcurementIqcRejectionColumnQuery.read(columnQuery, has("procurement_iqc_rejection:amount:view"));
+        where.append(" AND (").append(headers.criteria().predicate()).append(')');
+        params.putAll(headers.criteria().parameters());
         // 可办桶（待退回/待确认贷项等 FILTER 计数）按会话主体直通（browsingRead）判定：
         // 本计数直连页面分段徽章，须与列表、工作台徽章汇总同一口径；read() 会剥掉
         // 超管镜像权限，把超管看到的可办分段数全算成 0（2026-10-19 同修）。

@@ -1,4 +1,4 @@
-package com.uten.imp.features.master.dto;
+package com.uten.imp.common.web;
 
 import jakarta.validation.constraints.Size;
 

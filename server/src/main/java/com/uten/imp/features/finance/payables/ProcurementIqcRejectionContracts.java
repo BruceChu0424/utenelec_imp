@@ -57,6 +57,11 @@ public final class ProcurementIqcRejectionContracts {
             String holdReason,
             List<String> allowedActions,
             boolean priceMasked) {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="displayReason",
+                access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String displayReason() {
+            return ProcurementIqcRejectionColumnQuery.displayReason(status, financeExceptionMessage, holdReason);
+        }
     }
 
     public record CasePage(

@@ -78,7 +78,13 @@ public class AccountService {
             Set.of("code", "bankAccountNo", "currencyId", "parentLegacyId", "styleId");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（金额列；命中才排序，否则默认 code ASC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("balanceCurrent", "balanceCurrent");
+    private static final Map<String, String> ALLOWED_SORT = Map.of(
+            "code", "code", "name", "name", "bankAccountNo", "bankAccountNo", "balanceCurrent", "balanceCurrent");
+    private static final Map<String, com.uten.imp.common.util.JpaColumnSearch.Field> HEADER_FIELDS = Map.of(
+            "code", com.uten.imp.common.util.JpaColumnSearch.Field.text("code"),
+            "name", com.uten.imp.common.util.JpaColumnSearch.Field.text("name"),
+            "bankAccountNo", com.uten.imp.common.util.JpaColumnSearch.Field.text("bankAccountNo"),
+            "balanceCurrent", com.uten.imp.common.util.JpaColumnSearch.Field.decimal("balanceCurrent"));
 
     /** facet 截断阈值。 */
     private static final int FACET_LIMIT = 50;
@@ -120,6 +126,11 @@ public class AccountService {
         if ("balanceCurrent".equals(sort) && !canViewBalance) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少账户余额查看权限，不能按余额排序");
         }
+        String balanceSearch = f.columnSearch() == null ? null : f.columnSearch().get("balanceCurrent");
+        if (!canViewBalance && balanceSearch != null && !balanceSearch.isBlank()) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少账户余额查看权限，不能按余额筛选");
+        }
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(f.columnSearch(), HEADER_FIELDS);
         Specification<Account> spec = (Root<Account> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                        CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -132,6 +143,7 @@ public class AccountService {
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "accountType", f.accountType());
             addEq(ps, cb, root, "status", f.status());
+            ps.add(com.uten.imp.common.util.JpaColumnSearch.predicate(root, q, cb, searches, HEADER_FIELDS));
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
@@ -142,7 +154,8 @@ public class AccountService {
         };
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort != null && ALLOWED_SORT.containsKey(sort) ? null : f.keyword());
         Page<Account> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Account.class, searchPage.specification(), searchPage.pageable(), f);
         Map<UUID, CurrencyMeta> currencyMeta = currencyMetaFor(p.getContent());
         return new PageResponse<>(
@@ -243,7 +256,7 @@ public class AccountService {
                         )
                         SELECT field_name, facet_value, item_count, bucket_rank
                         FROM ranked
-                        WHERE bucket_rank<=:facetLimit
+                        WHERE bucket_rank<=:facetLimit OR field_name='currencyId'
                         UNION ALL
                         SELECT field_name, NULL, item_count, 2147483647::BIGINT
                         FROM null_counts
@@ -796,7 +809,7 @@ public class AccountService {
         Map<String, String> labels = new LinkedHashMap<>();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT id, code, name FROM currencies
-                WHERE COALESCE(is_deleted,FALSE)=FALSE
+                WHERE id IN (SELECT currency_id FROM accounts WHERE is_deleted=FALSE)
                 """));
         for (Object[] row : rows) {
             String code = row[1] == null ? "" : row[1].toString().trim();

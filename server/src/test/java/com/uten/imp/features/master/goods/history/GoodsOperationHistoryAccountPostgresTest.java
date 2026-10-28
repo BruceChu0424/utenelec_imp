@@ -191,7 +191,7 @@ class GoodsOperationHistoryAccountPostgresTest {
         SystemSettingsService settings=mock(SystemSettingsService.class);
         when(settings.readLong(SystemSettingKey.JWT_REFRESH_TTL_DAYS)).thenReturn(7L);
         var sessions=new AuthSessionService(new NamedParameterJdbcTemplate(dataSource),settings,Clock.systemUTC());
-        UUID old=sessions.openStaffSession(a.account()).sid();UUID fresh=sessions.openStaffSession(a.account()).sid();
+        UUID old=sessions.openStaffSession(a.account(),null).sid();UUID fresh=sessions.openStaffSession(a.account(),null).sid();
         assertEquals("true",text("SELECT (revoked_at IS NOT NULL)::text FROM auth_sessions WHERE sid=:id",old));
         assertEquals("false",text("SELECT (revoked_at IS NOT NULL)::text FROM auth_sessions WHERE sid=:id",fresh));
         principal=user(a,EDIT,false,false,true,null,fresh);

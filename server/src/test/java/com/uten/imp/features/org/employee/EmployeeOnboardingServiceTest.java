@@ -56,6 +56,9 @@ class EmployeeOnboardingServiceTest {
     @Mock private EmployeeRepository empRepo;
     @Mock private EmployeeSensitiveRepository sensitiveRepo;
     @Mock private EmployeePiiWriter piiWriter;
+    @Mock private EmployeeExistingIdentityGuard existingIdentityGuard;
+    @Mock private EmployeeCodeAllocator employeeCodeAllocator;
+    @Mock private EmployeeNameReviewPolicy employeeNameReviewPolicy;
     @Mock private EmployeeCompensationRepository compensationRepo;
     @Mock private EmployeeContractRepository contractRepo;
     @Mock private EmergencyContactRepository emergencyRepo;
@@ -79,6 +82,8 @@ class EmployeeOnboardingServiceTest {
     @Mock private com.uten.imp.features.auth.AuthSessionService sessions;
     @Mock private Query positionNameLockQuery;
     @Mock private Query dataScopesQuery;
+    @Mock private Query templateBindingsQuery;
+    @Mock private Query templateAppliesQuery;
 
     @InjectMocks
     private EmployeeOnboardingService service;
@@ -153,7 +158,7 @@ class EmployeeOnboardingServiceTest {
     void aValidPhoneAndExplicitCustomLoginStillProvisionTheRequestedAccount() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0008");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0008");
         OnboardingRequest valid = request(center.getId(), null, null, "IGNORED");
         OnboardingRequest input = new OnboardingRequest(
                 valid.profile(), valid.employment(), valid.compensation(), valid.contract(),
@@ -168,13 +173,11 @@ class EmployeeOnboardingServiceTest {
     }
 
     @Test
-    void alwaysAllocatesEmployeeCodeOnServerAndSkipsHistoricalCollision() {
+    void alwaysUsesUuidBoundSharedAllocationAndIgnoresClientCode() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE))
-                .thenReturn("UT0001", "UT0002");
-        when(empRepo.existsByCode("UT0001")).thenReturn(true);
-        when(empRepo.existsByCode("UT0002")).thenReturn(false);
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class)))
+                .thenReturn("UT0002");
 
         EmployeeOnboardingResult result = service.onboard(
                 request(center.getId(), null, null, "CLIENT-SUPPLIED-CODE"));
@@ -182,6 +185,7 @@ class EmployeeOnboardingServiceTest {
         ArgumentCaptor<Employee> employee = ArgumentCaptor.forClass(Employee.class);
         verify(empRepo).save(employee.capture());
         assertEquals("UT0002", employee.getValue().getCode());
+        verify(employeeCodeAllocator).nextForNewEmployee(employee.getValue().getId());
         assertEquals("13800000000", result.loginAccount());
     }
 
@@ -189,7 +193,7 @@ class EmployeeOnboardingServiceTest {
     void onboardingUsesNormalizedIdLastSixWithExpiryAndForcedChange() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0006");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0006");
         when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
                 .thenReturn(72);
         when(passwordEncoder.encode("31002X")).thenReturn("argon2-encoded");
@@ -274,7 +278,7 @@ class EmployeeOnboardingServiceTest {
         Department center = managementCenter();
         UUID foreignPositionId = UUID.randomUUID();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0003");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0003");
         when(positionRepo.findByIdAndDepartmentIdAndDeletedFalse(
                 foreignPositionId, center.getId())).thenReturn(Optional.empty());
 
@@ -294,7 +298,7 @@ class EmployeeOnboardingServiceTest {
         Position existing = position(center, "ZW0042", "Engineer");
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0004");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0004");
         when(positionRepo.findFirstActiveByNormalizedName(center.getId(), "engineer"))
                 .thenReturn(Optional.of(existing));
 
@@ -311,7 +315,7 @@ class EmployeeOnboardingServiceTest {
         Department center = managementCenter();
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0005");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0005");
         when(masterCodeService.nextCode(MasterCodePrefix.POSITION)).thenReturn("ZW0137");
         when(positionRepo.findFirstActiveByNormalizedName(center.getId(), "数据分析师"))
                 .thenReturn(Optional.empty());
@@ -333,7 +337,7 @@ class EmployeeOnboardingServiceTest {
         // 角色体系已删除(ADR-109)：入职只建登录账号，权限只来自全员基础包与所在部门配置。
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0007");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0007");
 
         service.onboard(request(center.getId(), null, null, "IGNORED"));
 
@@ -406,6 +410,12 @@ class EmployeeOnboardingServiceTest {
         when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
                 .thenReturn(72);
         when(passwordEncoder.encode("123456")).thenReturn("argon2-reopened");
+        when(entityManager.createNativeQuery("DELETE FROM user_permission_template_bindings WHERE user_id IN (SELECT id FROM users WHERE employee_id=:source)"))
+                .thenReturn(templateBindingsQuery);
+        when(templateBindingsQuery.setParameter("source",employee.getId())).thenReturn(templateBindingsQuery);
+        when(entityManager.createNativeQuery("DELETE FROM permission_template_applies WHERE user_id IN (SELECT id FROM users WHERE employee_id=:source)"))
+                .thenReturn(templateAppliesQuery);
+        when(templateAppliesQuery.setParameter("source",employee.getId())).thenReturn(templateAppliesQuery);
         when(entityManager.createNativeQuery(org.mockito.ArgumentMatchers.contains("UPDATE user_permission_overrides")))
                 .thenReturn(positionNameLockQuery);
         when(positionNameLockQuery.setParameter("source", employee.getId())).thenReturn(positionNameLockQuery);
@@ -438,6 +448,8 @@ class EmployeeOnboardingServiceTest {
         order.verify(credentialIssuance).requireCanIssueCredentials(retained);
         verify(refreshTokenRepo).revokeAllByUserId(originalId);
         verify(positionNameLockQuery).executeUpdate();
+        verify(templateBindingsQuery).executeUpdate();
+        verify(templateAppliesQuery).executeUpdate();
         verify(dataScopesQuery).executeUpdate();
         verify(sessions).revokeAllForUser(originalId,
                 com.uten.imp.features.auth.AuthSessionService.REASON_ACCOUNT_STATUS);
@@ -585,7 +597,7 @@ class EmployeeOnboardingServiceTest {
     void onboardingWithShortNonResidentDocumentUsesRandomPassword() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0008");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0008");
         when(passwordGenerator.generate()).thenReturn("Onboard-Random-20ch!");
 
         EmployeeOnboardingResult result = service.onboard(request(

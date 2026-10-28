@@ -94,9 +94,9 @@ class GoodsImportHistoryPostgresTest {
         when(goods.findByCodeAndDeletedFalse(anyString())).thenAnswer(call -> em.createQuery(
                 "from Goods g where g.code=:code and g.deleted=false", Goods.class)
                 .setParameter("code", call.getArgument(0)).getResultStream().findFirst());
-        when(goods.findRestorableDeletedIdsByCode(anyString())).thenAnswer(call -> em.createQuery(
-                "select g.id from Goods g where g.code=:code and g.deleted=true",UUID.class)
-                .setParameter("code",call.getArgument(0)).getResultList());
+        when(goods.findFirstByCodeAndDeletedTrueOrderByIdAsc(anyString())).thenAnswer(call -> em.createQuery(
+                        "from Goods g where g.code=:code and g.deleted=true order by g.id", Goods.class)
+                .setParameter("code", call.getArgument(0)).setMaxResults(1).getResultStream().findFirst());
         when(goods.findImportIdentities()).thenAnswer(call -> em.createQuery("""
                 select new com.uten.imp.features.master.goods.importing.GoodsImportIdentity(
                   g.id,g.version,g.code,g.name,c.id,g.deleted,g.ownerEmployeeId)
@@ -376,7 +376,7 @@ class GoodsImportHistoryPostgresTest {
         assertEquals("111", scalar("SELECT c_number FROM goods WHERE id=:id", existingId));
     }
 
-    @Test void historicalUuidMayRestoreByUnambiguousCodeWhileIgnoredConflictsRemainUntouched() {
+    @Test void identityUuidRestoreLeavesUnselectedConflictsUntouched() {
         UUID otherId = UUID.randomUUID();
         inTx(() -> {
             em.createNativeQuery("UPDATE goods SET is_deleted=true,deleted_at=now(),version=version+1 WHERE id=:id")
@@ -393,8 +393,8 @@ class GoodsImportHistoryPostgresTest {
                 new com.uten.imp.common.export.ExportColumn("category", "类别", "text"),
                 new com.uten.imp.common.export.ExportColumn("id", "系统标识", "text"));
         byte[] file = new com.uten.imp.common.export.XlsxExportService().build(columns, List.of(
-                Map.of("code", existingCode, "name", "现有货品", "category", categoryName(), "id", UUID.randomUUID().toString()),
-                Map.of("code", newCode, "name", "未选择的新名称", "category", categoryName(), "id", "")));
+                Map.of("code", existingCode, "name", "现有货品", "category", categoryName(), "id", existingId.toString()),
+                Map.of("code", newCode, "name", "未选择的新名称", "category", categoryName(), "id", otherId.toString())));
         var detected = inTx(() -> importer.detect(file));
         assertTrue(detected.errors().isEmpty(), detected.errors().toString());
         assertEquals(1, detected.restorableRows());
@@ -679,6 +679,9 @@ class GoodsImportHistoryPostgresTest {
                 header.createCell(i).setCellValue(titles.get(i));
                 row.createCell(i).setCellValue(i<required.length?required[i]:"  \t  ");
             }
+            // 恢复只认系统标识：核对文件必须携带被恢复货品的 UUID。
+            header.createCell(titles.size()).setCellValue("系统标识");
+            row.createCell(titles.size()).setCellValue(existingId.toString());
             book.write(out);return out.toByteArray();
         }
     }
@@ -691,7 +694,7 @@ class GoodsImportHistoryPostgresTest {
     private byte[] fieldWorkbook(String field,String value) throws Exception {
         try(var book=new XSSFWorkbook();var out=new ByteArrayOutputStream()) {
             var sheet=book.createSheet("货品");var header=sheet.createRow(0);var row=sheet.createRow(1);
-            String[] titles={"编号","名称","类别",field},values={existingCode,"现有货品",categoryName(),value};
+            String[] titles={"编号","名称","类别",field,"系统标识"},values={existingCode,"现有货品",categoryName(),value,existingId.toString()};
             for(int i=0;i<titles.length;i++) {header.createCell(i).setCellValue(titles[i]);row.createCell(i).setCellValue(values[i]);}
             book.write(out);return out.toByteArray();
         }
@@ -701,10 +704,10 @@ class GoodsImportHistoryPostgresTest {
     private byte[] workbook(String customerModel) throws Exception {
         try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             var sheet = book.createSheet("货品"); var header = sheet.createRow(0);
-            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格"};
+            String[] titles = {"编号", "名称", "类别", "客户型号", "客户品名", "规格", "系统标识"};
             for (int n = 0; n < titles.length; n++) header.createCell(n).setCellValue(titles[n]);
-            String[][] values = {{existingCode, "现有货品", categoryName(), customerModel, "客户新名", ""},
-                    {newCode, "新货品", categoryName(), "新客户型号", "", ""}};
+            String[][] values = {{existingCode, "现有货品", categoryName(), customerModel, "客户新名", "", existingId.toString()},
+                    {newCode, "新货品", categoryName(), "新客户型号", "", "", ""}};
             for (int n = 0; n < values.length; n++) { var row = sheet.createRow(n + 1); for (int c = 0; c < titles.length; c++) row.createCell(c).setCellValue(values[n][c]); }
             book.write(out); return out.toByteArray();
         }

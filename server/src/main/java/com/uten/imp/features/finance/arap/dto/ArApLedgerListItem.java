@@ -50,6 +50,21 @@ public class ArApLedgerListItem {
     private List<String> salesOrderNos;
     private List<UUID> salesOrderIds;
     private UUID authoritativeSalesOrderId;
+    @Getter(lombok.AccessLevel.NONE)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final ArApLedgerReadFacts readFacts=new ArApLedgerReadFacts();
+
+    public ArApLedgerListItem withReadFacts(String kind,java.util.Map<String,Object> resolution) {
+        readFacts.openItemKind=kind;
+        readFacts.resolutionStatus=resolution!=null&&resolution.get("status") instanceof String text?text:null;
+        return this;
+    }
+    public String getOpenItemKind(){return readFacts.openItemKind;}
+    /** Lists need only the classification; full immutable evidence remains on the detail endpoint. */
+    public java.util.Map<String,Object> getLegacySourceResolution(){return readFacts.resolutionStatus==null?null:java.util.Map.of("status",readFacts.resolutionStatus);}
+    public String getSettlementStyleLabel(){return com.uten.imp.features.finance.arap.ArApLedgerHeaderQuery.settlementLabel(settlementStyleLegacy);}
+    public String getPrepaymentAppliedOriginalExact(){return "AR".equals(direction)?com.uten.imp.common.util.DecimalText.of(amountOffsetOriginal):null;}
+    public String getPrepaymentAppliedLocalExact(){return "AR".equals(direction)?com.uten.imp.common.util.DecimalText.of(amountOffsetLocal):null;}
 
     // Additive exact text never passes through a binary floating-point value.
     public String getAmountOriginalLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginalLocal); }

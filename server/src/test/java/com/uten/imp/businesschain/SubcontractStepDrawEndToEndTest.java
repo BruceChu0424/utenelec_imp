@@ -156,6 +156,8 @@ class SubcontractStepDrawEndToEndTest {
     @Autowired SubcontractMaterialIssueService materialIssues;
     @Autowired SubcontractMaterialReturnService materialReturns;
     @Autowired SubcontractReceiptService subcontractReceipts;
+    @Autowired com.uten.imp.features.subcontract.waste.SubcontractWasteService materialWaste;
+    @Autowired com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryService shortDelivery;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired ProcurementArrivalControlService arrivalControl;
     @Autowired ProcurementInspectionService inspections;
@@ -335,6 +337,165 @@ class SubcontractStepDrawEndToEndTest {
                     .createProductionDraft("SOURCE-SCOPE", null, BusinessTime.today().plusDays(5),
                             w.warehouseId(), items, w.employeeId(), w.employeeId());
         });
+    }
+
+    @Test
+    void normalLossAddsSupplyOnceKeepsFinishedTargetAndClosesAllMaterialOnBatchReceipts() {
+        String tag = "scstep-normal-loss";
+        var w = fixture.seedWorld(tag);
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
+        fixture.loginAs(w.superAdminUserId());
+        UUID p = goods(w, tag, "P", "委外");
+        UUID a = goods(w, tag, "A", "自制");
+        UUID b = goods(w, tag, "B", "采购");
+        fixture.insertBom(p, a, "1");
+        fixture.insertBom(p, b, "2");
+        UUID orderId = subcontractOrder(w, p, "100", BusinessTime.today().plusDays(5), new BigDecimal("10"));
+        UUID reviewer = approveSubcontract(w, orderId);
+        UUID item = itemOf(orderId);
+        var lines = planLines(item);
+        qty("1", lines.get(a).get("base_bom_unit_qty"), "A 原始 BOM 快照");
+        qty("10", lines.get(a).get("material_loss_pct"), "正常损耗快照");
+        qty("1.1", lines.get(a).get("bom_unit_qty"), "A 含损耗供料单耗");
+        qty("110", lines.get(a).get("planned_qty"), "目标100、损耗10%，A计划110");
+        qty("220", lines.get(b).get("planned_qty"), "B 基准200加成10%");
+        qty("100", db.queryForObject("SELECT qty FROM subcontract_order_items WHERE id=?", BigDecimal.class, item),
+                "成品目标仍为100");
+
+        // Approved quantity increases still require enough real material for the
+        // enlarged frozen supply plan; the allowance never bypasses kit checks.
+        otherIn(w, w.warehouseId(), a, null, "132", "10");
+        otherIn(w, w.warehouseId(), b, null, "264", "5");
+        changeQty(orderId, item, "120");
+        reconfirm(reviewer, w, orderId);
+        qty("132", planLines(item).get(a).get("planned_qty"), "改量沿用冻结供料单耗");
+        changeQty(orderId, item, "100");
+        reconfirm(reviewer, w, orderId);
+        qty("110", planLines(item).get(a).get("planned_qty"), "再次改量不重复叠加损耗");
+
+        assertRow(taskRow(orderId), "0", "0", "100", "0", "DRAWABLE");
+        var drawn = drawCommands.submit(new DrawSubmitRequest(
+                List.of(new DrawItemRequest(item, null)), "normal-loss-draw-" + item));
+        assertEquals(1, drawn.documentCount());
+        UUID issue = drawn.issueIds().getFirst();
+        assertDraftLine(issue, a, "110", "110");
+        assertDraftLine(issue, b, "220", "220");
+        assertTrue(drawCommands.submit(new DrawSubmitRequest(
+                List.of(new DrawItemRequest(item, null)), "normal-loss-draw-" + item)).replayed(),
+                "重放不重复增加损耗或发料");
+        materialIssues.approve(issue);
+        qty("100", returnable(item), "110/220材料可回厂100件");
+        Receipt first = registerReturn(w, item, p, "90", tag + "-first");
+        qty("99", consumed(item, a), "首批90件核销含正常损耗材料99");
+        qty("198", consumed(item, b), "第二种物料独立按单耗核销");
+        stockIn("SUBCONTRACT", first.receiptId(), passIqc("SUBCONTRACT", first.receiptId(), tag + "-pass1"),
+                tag + "-stock1", w.warehouseId());
+        assertFalse(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId),
+                "损耗已加料，回厂90不能按原10%容差自动结案");
+        qty("0", db.queryForObject("SELECT fn_subcontract_settled_loss_qty(?)", BigDecimal.class, item),
+                "未有人受控确认时不生成成品损耗履约");
+        Receipt last = registerReturn(w, item, p, "10", tag + "-last");
+        stockIn("SUBCONTRACT", last.receiptId(), passIqc("SUBCONTRACT", last.receiptId(), tag + "-pass2"),
+                tag + "-stock2", w.warehouseId());
+        qty("110", consumed(item, a), "100件累计核销110材料，含正常损耗");
+        qty("220", consumed(item, b), "B累计核销220材料");
+        qty("0", supplierEnding(item), "正常损耗包含核销，供应商处不遗留占用");
+        qty("100", onHand(p, w.warehouseId()), "实际成品回厂目标100全部入库");
+        qty("22", onHand(a, w.warehouseId()), "仓库只扣本单含损耗所需110，不多发");
+        qty("44", onHand(b, w.warehouseId()), "第二种物料仓库只扣220");
+        assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId));
+        for (Receipt receipt : List.of(first, last)) {
+            assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(?)", Boolean.class,
+                    receipt.receiptItemId()), "含损耗材料核销满足数据库成本完整性守卫");
+        }
+        var loss = new com.uten.imp.features.subcontract.waste.dto.WasteItemLine();
+        loss.setGoodsId(a); loss.setUnitId(w.unitId()); loss.setUnitRate(BigDecimal.ONE);
+        loss.setQty(new BigDecimal("10"));
+        loss.setMaterialIssueItemId(db.queryForObject(
+                "SELECT id FROM subcontract_material_issue_items WHERE issue_id=? AND goods_id=? AND NOT is_deleted",
+                UUID.class, issue, a));
+        var request = new com.uten.imp.features.subcontract.waste.dto.WasteSaveRequest();
+        request.setBillDate(BusinessTime.today()); request.setSupplierId(w.supplierId());
+        request.setWarehouseId(w.warehouseId()); request.setItems(List.of(loss));
+        var wasteDraft = materialWaste.create(request);
+        assertThrows(ApiException.class, () -> materialWaste.approve(wasteDraft.getId()),
+                "已包含在估算核销中的10材料不能重复报损");
+        qty("0", supplierEnding(item), "重复报损失败后库存事实不变");
+    }
+
+    @Test
+    void tinyBomAndHundredthPercentLossRemainExactInPlanIssueAndCumulativeBatchConsumption() {
+        for (String loss : List.of("10", "0.01")) {
+            String tag = "scstep-tiny-" + loss.replace(".", "");
+            var w = fixture.seedWorld(tag);
+            grantAuthorities(w.superAdminUserId(),
+                    "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
+            fixture.loginAs(w.superAdminUserId());
+            UUID p = goods(w, tag, "P", "委外");
+            UUID a = goods(w, tag, "A", "采购");
+            // BOM stores five fractional places; order-unit conversion produces
+            // the permitted six-place frozen base without truncating the source BOM.
+            fixture.insertBom(p, a, "0.00001");
+            UUID orderUnit = UUID.randomUUID();
+            db.update("INSERT INTO units(id,code,name,status) VALUES (?,?,'十分之一件','使用')",
+                    orderUnit, "TENTH-" + UUID.randomUUID());
+            var request = orderRequest(w, p, "10000", BusinessTime.today().plusDays(5), new BigDecimal(loss));
+            request.getItems().getFirst().setUnitId(orderUnit);
+            request.getItems().getFirst().setUnitRate(new BigDecimal("0.1"));
+            var staged = fixture.stageSubcontractKit(w, Map.of(p, "10000"));
+            UUID order = orders.create(request).getId();
+            fixture.stageSubcontractKitUntilApproval(order, staged);
+            approveSubcontract(w, order);
+            UUID item = itemOf(order);
+            String supplyUnit = "10".equals(loss) ? "0.0000011" : "0.0000010001";
+            String total = "10".equals(loss) ? "0.0110" : "0.0101";
+            String firstUsed = "10".equals(loss) ? "0.0055" : "0.0051";
+            var line = planLines(item).get(a);
+            qty("0.000001", line.get("base_bom_unit_qty"), "最小原始BOM单耗不变");
+            qty(supplyUnit, line.get("bom_unit_qty"), "损耗加成保留第7至10位");
+            qty(total, line.get("planned_qty"), "先保留精确供料单耗，再按总量向上保留4位");
+            otherIn(w, w.warehouseId(), a, null, total, "10");
+            var draw = drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item, null)),
+                    tag + "-draw-" + item));
+            UUID issue = draw.issueIds().getFirst();
+            assertDraftLine(issue, a, total, total);
+            materialIssues.approve(issue);
+            qty(supplyUnit, db.queryForObject("""
+                    SELECT frozen_unit_qty FROM subcontract_material_issue_items
+                    WHERE issue_id=? AND goods_id=? AND NOT is_deleted
+                    """, BigDecimal.class, issue, a), "发料快照不能截断精确供料单耗");
+            var firstResult = arrivals.register(new WarehouseArrivalRegisterRequest(
+                    tag + "-first-" + item, "SUBCONTRACT", BusinessTime.today(), w.supplierId(), w.warehouseId(),
+                    null,w.employeeId(),null,List.of(new ArrivalLine(p,new BigDecimal("5000"),item,null,
+                            orderUnit,new BigDecimal("0.1"),null,null)),null,true));
+            assertEquals("SUBMITTED_FOR_INSPECTION", firstResult.outcome());
+            Receipt first = new Receipt(firstResult.receiptId(), receiptItem(firstResult.receiptId()));
+            var partialCase = db.queryForMap("""
+                    SELECT id,version FROM subcontract_short_delivery_cases WHERE order_item_id=?
+                    ORDER BY detected_at DESC LIMIT 1
+                    """, item);
+            shortDelivery.decide((UUID) partialCase.get("id"),
+                    new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                            "WAIT_MORE", BusinessTime.today().plusDays(1), "分两批回厂，继续补齐10000目标",
+                            ((Number) partialCase.get("version")).longValue()));
+            qty(firstUsed, consumed(item, a), "首批按累积5000件向上核销");
+            stockIn("SUBCONTRACT", first.receiptId(), passIqc("SUBCONTRACT", first.receiptId(), tag + "-pass1"),
+                    tag + "-stock1", w.warehouseId());
+            var lastResult = arrivals.register(new WarehouseArrivalRegisterRequest(
+                    tag + "-last-" + item,"SUBCONTRACT",BusinessTime.today(),w.supplierId(),w.warehouseId(),
+                    null,w.employeeId(),null,List.of(new ArrivalLine(p,new BigDecimal("5000"),item,null,
+                            orderUnit,new BigDecimal("0.1"),null,null))));
+            assertEquals("SUBMITTED_FOR_INSPECTION",lastResult.outcome());
+            Receipt last = new Receipt(lastResult.receiptId(),receiptItem(lastResult.receiptId()));
+            qty(total, consumed(item, a), "第二批补到累积目标，不能逐批ceil多扣0.0001");
+            stockIn("SUBCONTRACT", last.receiptId(), passIqc("SUBCONTRACT", last.receiptId(), tag + "-pass2"),
+                    tag + "-stock2", w.warehouseId());
+            qty("0", supplierEnding(item), "最小单耗两批回厂在外料清零");
+            qty("1000", onHand(p, w.warehouseId()), "10000订货单位按0.1换算，成品基本量1000完整入库");
+            assertTrue(db.queryForObject("SELECT fn_subcontract_receipt_material_complete(?)", Boolean.class,
+                    last.receiptItemId()), "精确损耗单耗满足数据库累计核销守卫");
+        }
     }
 
     @Test
@@ -672,14 +833,14 @@ class SubcontractStepDrawEndToEndTest {
         fixture.insertBom(p, b, "2");
         UUID wh = w.warehouseId();
         Set<UUID> mine = new LinkedHashSet<>(List.of(p, a, b));
-        otherIn(w, wh, a, null, "10", "10");
-        otherIn(w, wh, b, null, "19", "5");
+        otherIn(w, wh, a, null, "11", "10");
+        otherIn(w, wh, b, null, "20.9", "5");
         UUID orderId = subcontractOrder(w, p, "10", BusinessTime.today().plusDays(5), new BigDecimal("10"));
         approveSubcontract(w, orderId);
         UUID item = itemOf(orderId);
         mine.add(item);
 
-        // 发 9.5 套(B 只够 19 → 9.5 套), 回厂 9 并入库: 料没发完不判短交。
+        // 发 9.5 套(B 只够 20.9（含损耗单耗 2.2）→ 9.5 套), 回厂 9 并入库: 料没发完不判短交。
         DrawTaskRow row = taskRow(orderId);
         assertRow(row, "0", "0", "9.5", "0.5", "DRAWABLE_PARTIAL");
         DrawSubmitResult issued = drawCommands.submit(new DrawSubmitRequest(
@@ -691,8 +852,8 @@ class SubcontractStepDrawEndToEndTest {
         assertEquals(0, count("SELECT COUNT(*) FROM subcontract_short_delivery_cases WHERE order_item_id=?", item),
                 "料没发完(9.5/10)不开短交案件");
 
-        // B 再到 1: 又够 0.5 套。提交后撤回: 草稿作废、占用释放、可领恢复、通知仓库已撤回。
-        otherIn(w, wh, b, null, "1", "5");
+        // B 再到 1.1: 又够 0.5 套。提交后撤回: 草稿作废、占用释放、可领恢复、通知仓库已撤回。
+        otherIn(w, wh, b, null, "1.1", "5");
         row = taskRow(orderId);
         assertRow(row, "9.5", "0", "0.5", "0", "DRAWABLE");
         DrawSubmitResult pending = drawCommands.submit(new DrawSubmitRequest(
@@ -753,20 +914,29 @@ class SubcontractStepDrawEndToEndTest {
         Map<String, Object> summary = db.queryForMap("SELECT * FROM fn_subcontract_draw_summary(?)", item);
         assertEquals(Boolean.FALSE, summary.get("any_open"));
         qty("0", (BigDecimal) summary.get("drawable_qty"), "结束领料后可领 0");
-        Map<String, Object> shortCase = db.queryForMap("""
-                SELECT status, severity, loss_qty, waste_id FROM subcontract_short_delivery_cases
+        Map<String, Object> pendingShortCase = db.queryForMap("""
+                SELECT id, status, version FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? ORDER BY detected_at DESC LIMIT 1
                 """, item);
+        assertEquals("PENDING_OWNER", pendingShortCase.get("status"), "新计划已加损耗用料，短交须人工明确接受");
+        shortDelivery.decide((UUID) pendingShortCase.get("id"),
+                new com.uten.imp.features.subcontract.short_delivery.SubcontractShortDeliveryContracts.DecisionRequest(
+                        "ACCEPT_LOSS", null, "供应商确认不再交付，经负责人确认接受本次成品短交",
+                        ((Number) pendingShortCase.get("version")).longValue()));
+        Map<String, Object> shortCase = db.queryForMap("""
+                SELECT status, severity, loss_qty, waste_id FROM subcontract_short_delivery_cases
+                WHERE id=?
+                """, pendingShortCase.get("id"));
         assertEquals("ACCEPTED_LOSS", shortCase.get("status"),
-                "结束领料后按「料已发完」重评: 回厂 9 ≥ 下限 9, 按约定损耗自动结案");
+                "负责人显式接受成品损耗后结案，仍保留原订货目标");
         qty("1", (BigDecimal) shortCase.get("loss_qty"), "损耗 1 套");
         UUID wasteId = (UUID) shortCase.get("waste_id");
         assertNotNull(wasteId, "结案开损耗单");
         Map<UUID, BigDecimal> wasted = new HashMap<>();
         db.queryForList("SELECT goods_id, SUM(qty) AS qty FROM subcontract_waste_items WHERE waste_id=? GROUP BY goods_id",
                 wasteId).forEach(r -> wasted.put((UUID) r.get("goods_id"), (BigDecimal) r.get("qty")));
-        qty("0.5", wasted.get(a), "整单结损耗记委外商处 A 的全部剩余");
-        qty("1", wasted.get(b), "整单结损耗记委外商处 B 的全部剩余(不按短交量 × 单耗重算)");
+        qty("0.55", wasted.get(a), "整单结损耗记委外商处 A 的全部剩余");
+        qty("1.1", wasted.get(b), "整单结损耗记委外商处 B 的全部剩余(不按短交量 × 单耗重算)");
         qty("0", supplierEnding(item), "委外商处结存清零");
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?", Boolean.class, orderId),
                 "合格回厂 9 + 损耗 1 = 订货 10, 关单");
@@ -1777,7 +1947,7 @@ class SubcontractStepDrawEndToEndTest {
     private Map<UUID, Map<String, Object>> planLines(UUID orderItemId) {
         Map<UUID, Map<String, Object>> lines = new HashMap<>();
         for (Map<String, Object> line : db.queryForList("""
-                SELECT goods_id, color_id, bom_unit_qty, planned_qty, issued_qty, draw_closed_at
+                SELECT goods_id, color_id, base_bom_unit_qty, material_loss_pct, bom_unit_qty, planned_qty, issued_qty, draw_closed_at
                 FROM subcontract_material_plan_items WHERE order_item_id=? AND NOT is_deleted
                 """, orderItemId)) {
             assertNull(lines.put((UUID) line.get("goods_id"), line), "同一物料只有一条计划行");

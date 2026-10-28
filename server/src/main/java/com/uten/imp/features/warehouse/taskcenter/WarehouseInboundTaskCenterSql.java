@@ -49,6 +49,9 @@ final class WarehouseInboundTaskCenterSql {
     }
 
     static String base(Access access, WarehouseTaskScope scope, String keyword) {
+        return base(access, scope, keyword, "TRUE");
+    }
+    static String base(Access access, WarehouseTaskScope scope, String keyword, String headers) {
         List<String> branches = new ArrayList<>();
         if (access.workshop().enabled()) branches.add(WarehouseWorkshopMaterialTaskProjection.inbound(access.workshop()));
         String ctes = "WITH " + WarehouseQualityResultService.taskCenterFactCtes() + ",\n"
@@ -77,7 +80,7 @@ final class WarehouseInboundTaskCenterSql {
                         new String[]{"bill_no", "source_doc_no"}, "goods_codes")
                 + " AS keyword_rank FROM inbound_source_rows WHERE "
                 + TaskKeywordSearch.condition(keyword, "search_text", "warehouse_name", "responsible_name", "party_name")
-                + ")\n";
+                + " AND (" + headers + "))\n";
     }
 
     static String predicate(boolean includeStatus) {
@@ -99,10 +102,10 @@ final class WarehouseInboundTaskCenterSql {
     }
 
     static String rows(String base,String sort,String order,String identityFilter) {
-        String column=sort==null || sort.isBlank()?"business_date":sort.equals("billNo")?"bill_no":"business_date";
+        String column=WarehouseTaskHeaderQuery.orderExpression(sort,true);
         String direction="asc".equalsIgnoreCase(order)?"ASC":"DESC";
         return base+" SELECT * FROM inbound_rows "+predicate(true)+identityFilter
-                +" ORDER BY keyword_rank, "+column+" "+direction+" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id, CAST(line_data->>'lineNo' AS integer) NULLS LAST, line_data->>'key'"
+                +" ORDER BY "+(sort==null||sort.isBlank()?"keyword_rank, ":"")+column+" "+direction+" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id, CAST(line_data->>'lineNo' AS integer) NULLS LAST, line_data->>'key'"
                 +" LIMIT :limit OFFSET :offset";
     }
 

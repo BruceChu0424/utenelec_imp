@@ -74,7 +74,13 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
           CREATE TABLE flyway_schema_history(id int PRIMARY KEY);
           CREATE TABLE audit_log(id int,created_month int) PARTITION BY RANGE(created_month);
           CREATE TABLE audit_log_p202610 PARTITION OF audit_log FOR VALUES FROM(202610) TO(202611);
-          CREATE TABLE audit_log_archive(id int);
+          CREATE TABLE audit_log_archive(id int,created_month int);
+          CREATE VIEW business_rows_v AS SELECT * FROM business_rows;
+          CREATE VIEW v_audit_log_all AS SELECT * FROM audit_log UNION ALL SELECT * FROM audit_log_archive;
+          CREATE FUNCTION fn_audit_log_all_insert() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN INSERT INTO audit_log VALUES(NEW.id,NEW.created_month); RETURN NEW; END $$;
+          CREATE TRIGGER trg_audit_log_all_insert INSTEAD OF INSERT ON v_audit_log_all
+            FOR EACH ROW EXECUTE FUNCTION fn_audit_log_all_insert();
           CREATE FUNCTION normal_business_read() RETURNS int LANGUAGE sql AS $$ SELECT 7 $$;
           CREATE FUNCTION fn_require_runtime_refresh() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
           CREATE FUNCTION fn_register_legacy_probe() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
@@ -120,6 +126,19 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
         self.psql('SELECT * FROM legacy_finance_import_sources;', user='uten')
         self.psql('INSERT INTO audit_log VALUES(1,202610);', user='uten')
         self.psql('SELECT * FROM stock_measurement_holds;', user='uten')
+
+    def test_audit_unified_view_keeps_only_its_runtime_insert_channel(self):
+        self.apply()
+        self.assertEqual(self.scalar("SELECT has_table_privilege('uten','v_audit_log_all','SELECT,INSERT');"), 't')
+        self.psql('INSERT INTO v_audit_log_all(id,created_month) VALUES(9,202610);', user='uten')
+        self.assertEqual(self.scalar('SELECT count(*) FROM audit_log;'), '1')
+        for sql in ("UPDATE v_audit_log_all SET id=id WHERE false",
+                    'DELETE FROM v_audit_log_all',
+                    "INSERT INTO business_rows_v(value) VALUES('view write')"):
+            self.assertNotEqual(self.psql(sql, user='uten', check=False).returncode, 0, sql)
+        self.assertEqual(self.scalar("SELECT has_table_privilege('uten','business_rows_v','INSERT');"), 'f')
+        self.apply()
+        self.assertEqual(self.scalar("SELECT has_table_privilege('uten','v_audit_log_all','INSERT');"), 't')
 
     def test_future_tables_sequences_and_functions_get_runtime_permissions(self):
         self.apply()
@@ -225,6 +244,59 @@ class LocalRuntimePrivilegesTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.psql(undo)
             self.assertEqual(self.scalar("SELECT has_table_privilege('uten','permission_surfaces','SELECT');"), 'f')
+
+    def test_employee_identity_extension_seals_survive_repeated_runtime_acl_reconciliation(self):
+        relations = ('employee_identity_merges', 'employee_identity_merge_payloads',
+                     'employee_legacy_identity_aliases', 'employee_identity_historical_claims',
+                     'employee_identity_user_tombstones', 'employee_identity_legacy_roles',
+                     'employee_identity_review_certificates', 'employee_identity_merge_installation',
+                     'employee_code_reuse_installation', 'employee_code_reuse_releases', 'employee_code_reuse_claims')
+        self.psql(''.join('CREATE TABLE public.' + name + '(id integer PRIMARY KEY);'
+                          'REVOKE ALL ON public.' + name + ' FROM PUBLIC,uten;' for name in relations)
+                  + '''GRANT SELECT ON employee_identity_merges,employee_identity_historical_claims,
+                           employee_legacy_identity_aliases TO uten;
+                  CREATE FUNCTION fn_employee_merge_source_snapshot(uuid) RETURNS text LANGUAGE sql
+                    SECURITY DEFINER AS $$ SELECT 'synthetic-private-ciphertext' $$;
+                  CREATE FUNCTION fn_merge_employee_identity(jsonb) RETURNS jsonb LANGUAGE sql
+                    SECURITY DEFINER AS $$ SELECT $1 $$;
+                  CREATE FUNCTION fn_release_merged_employee_code(uuid) RETURNS text LANGUAGE sql
+                    SECURITY DEFINER AS $$ SELECT 'synthetic-retired-code' $$;
+                  CREATE FUNCTION fn_employee_merge_completed(uuid,uuid,text) RETURNS boolean LANGUAGE sql
+                    SECURITY DEFINER AS $$ SELECT true $$;
+                  CREATE FUNCTION fn_claim_next_released_employee_code(uuid) RETURNS text LANGUAGE sql
+                    SECURITY DEFINER AS $$ SELECT 'synthetic-next-code' $$;
+                  CREATE FUNCTION fn_claim_global_business_identifier() RETURNS text LANGUAGE sql
+                    AS $$ SELECT 'synthetic-reservation' $$;
+                  CREATE FUNCTION fn_employee_code_reuse_evidence_immutable() RETURNS trigger LANGUAGE plpgsql
+                    AS $$ BEGIN RETURN NULL; END $$;
+                  GRANT EXECUTE ON FUNCTION fn_employee_code_reuse_evidence_immutable() TO PUBLIC;
+                  REVOKE ALL ON FUNCTION fn_employee_merge_source_snapshot(uuid),fn_merge_employee_identity(jsonb),
+                    fn_release_merged_employee_code(uuid),fn_employee_merge_completed(uuid,uuid,text),
+                    fn_claim_next_released_employee_code(uuid),fn_claim_global_business_identifier() FROM PUBLIC,uten;
+                  GRANT EXECUTE ON FUNCTION fn_employee_merge_completed(uuid,uuid,text),
+                    fn_claim_next_released_employee_code(uuid),fn_claim_global_business_identifier() TO uten;''',
+                  user='uten_migrator')
+        def seal():
+            return self.scalar('''SELECT jsonb_build_object(
+                'relations',(SELECT jsonb_agg(jsonb_build_array(relname,relacl::text) ORDER BY relname)
+                  FROM pg_class WHERE relnamespace='public'::regnamespace AND relname LIKE 'employee_%'),
+                'functions',(SELECT jsonb_agg(jsonb_build_array(proname,proacl::text) ORDER BY proname)
+                  FROM pg_proc WHERE pronamespace='public'::regnamespace
+                    AND (proname LIKE 'fn_employee_%' OR proname IN('fn_merge_employee_identity',
+                      'fn_release_merged_employee_code','fn_claim_next_released_employee_code','fn_claim_global_business_identifier'))));''')
+        before = seal()
+        for _ in range(2):
+            self.apply()
+            self.assertEqual(self.scalar("SELECT has_table_privilege('uten','employee_identity_merge_payloads','SELECT');"), 'f')
+            self.assertEqual(self.scalar("SELECT has_function_privilege('uten','fn_merge_employee_identity(jsonb)','EXECUTE');"), 'f')
+            self.assertEqual(self.scalar("SELECT has_function_privilege('uten','fn_release_merged_employee_code(uuid)','EXECUTE');"), 'f')
+            self.assertEqual(self.scalar("SELECT has_function_privilege('uten','fn_claim_next_released_employee_code(uuid)','EXECUTE');"), 't')
+            self.assertEqual(seal(), before, 'ACL reconciliation changed the frozen extension catalog')
+        self.psql('GRANT SELECT ON employee_identity_merge_payloads TO PUBLIC;', user='uten_migrator')
+        result = self.psql('BEGIN;\n' + POLICY.read_text(encoding='utf-8') + '\nCOMMIT;',
+                           user='uten_migrator', check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Sealed employee identity', result.stderr)
 
     def test_failed_retirement_is_not_bypassed_and_no_acl_is_written(self):
         self.psql('CREATE FUNCTION business_data_reset() RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;',

@@ -81,6 +81,20 @@ class WhereUsedExportServiceTest {
         verifyNoMoreInteractions(query);
     }
 
+    @Test void customHeaderCriteriaRemainIdenticalAcrossAllDocumentPages(){
+        UUID material=UUID.randomUUID();var user=principal(Set.of("production_where_used:view","production_where_used:export"));
+        identities(material,user);
+        var filters=Map.of("search.goodsName","产品_%","search.legacyRequiredQty",">=0.0001","search.lastUsed","2026-10");
+        var columns=List.of(ReportColumn.text("goodsName","产品名称"));
+        for(int page=1;page<=2;page++)when(query.whereUsedExportPage(material,"history",null,null,page,200,"goodsName","asc",page==1,filters))
+                .thenReturn(new ReportTableResponse(columns,rows((page-1)*200,Math.min(page*200,250)),Map.of(),page,200,250,2));
+        var document=service.document(material,"history",null,null,"goodsName","asc",filters);
+        assertEquals(250,document.sections().getFirst().rows().size());
+        verify(query).whereUsedExportPage(material,"history",null,null,1,200,"goodsName","asc",true,filters);
+        verify(query).whereUsedExportPage(material,"history",null,null,2,200,"goodsName","asc",false,filters);
+        verifyNoMoreInteractions(query);
+    }
+
     @Test void synchronousCompatibilityRefusesLargeResultsInsteadOfMaterializingOrTruncating() {
         UUID material=UUID.randomUUID();
         when(query.whereUsedExportPage(material,"all",null,null,1,200,null,null,true)).thenReturn(new ReportTableResponse(

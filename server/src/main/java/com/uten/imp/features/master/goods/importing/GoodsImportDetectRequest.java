@@ -5,11 +5,15 @@ import java.util.Set;
 
 /** The original workbook remains intact; corrections identify source rows and permitted import fields. */
 public record GoodsImportDetectRequest(byte[] file, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
-                                       Map<Integer, Map<String, String>> cellCorrections) {
+                                       Map<Integer, Map<String, String>> cellCorrections, String mode) {
     public GoodsImportDetectRequest(byte[] file, Map<Integer, String> codeCorrections) {
-        this(file, codeCorrections, null, null);
+        this(file, codeCorrections, null, null, null);
     }
     public GoodsImportDetectRequest(byte[] file, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums) {
-        this(file, codeCorrections, excludedRowNums, null);
+        this(file, codeCorrections, excludedRowNums, null, null);
+    }
+    public GoodsImportDetectRequest(byte[] file, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
+                                    Map<Integer, Map<String, String>> cellCorrections) {
+        this(file, codeCorrections, excludedRowNums, cellCorrections, null);
     }
 }

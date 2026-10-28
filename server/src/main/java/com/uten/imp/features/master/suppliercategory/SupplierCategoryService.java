@@ -9,6 +9,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.SystemMasterCategoryRegistry;
+import com.uten.imp.features.master.CategorySiblingNameGuard;
 import com.uten.imp.features.master.suppliercategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -29,9 +30,6 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class SupplierCategoryService {
-
-    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
-            "SELECT pg_advisory_xact_lock(hashtextextended('SUPPLIER_CATEGORY_HIERARCHY',0))";
 
     private final SupplierCategoryRepository repo;
     private final EntityManager em;
@@ -78,11 +76,15 @@ public class SupplierCategoryService {
     @Transactional
     public SupplierCategoryDetail create(SupplierCategorySaveRequest req) {
         tx.bind();
+        lockCategoryHierarchy();
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.SUPPLIER,
+                name, req.getParentId(), null);
         SupplierCategory c = new SupplierCategory();
         c.setCode(masterCodeService.nextCode(MasterCodePrefix.SUPPLIER_CATEGORY));
         c.setRemark(cleanRemark(req.getRemark()));
         c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
-        c.setName(req.getName());
+        c.setName(name);
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
             SupplierCategory parent = requireCategory(req.getParentId());
@@ -106,15 +108,21 @@ public class SupplierCategoryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "不能同时选择上级分类和移到顶层");
         }
-        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
-            lockCategoryHierarchy();
-        }
+        lockCategoryHierarchy();
         SupplierCategory c = requireCategory(id);
         rejectSystemCategoryMutation(c);
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        UUID nameParentId = moveToRoot ? null : req.getParentId() != null
+                ? req.getParentId() : c.getParent() == null ? null : c.getParent().getId();
+        UUID oldNameParentId = c.getParent() == null ? null : c.getParent().getId();
+        if (!Objects.equals(c.getName(), name) || !Objects.equals(oldNameParentId, nameParentId)) {
+            CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.SUPPLIER,
+                    name, nameParentId, id);
+        }
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.SUPPLIER, id);
-        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+        boolean editChanged = !Objects.equals(c.getName(), name)
                 || (req.getRemark() != null
                     && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
                 || (req.getCodePrefix() != null
@@ -123,7 +131,7 @@ public class SupplierCategoryService {
         if (editChanged) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("supplier_category:edit");
         }
-        c.setName(req.getName());
+        c.setName(name);
         if (req.getRemark() != null) c.setRemark(cleanRemark(req.getRemark()));
         if (req.getCodePrefix() != null) {
             c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
@@ -219,7 +227,7 @@ public class SupplierCategoryService {
     }
 
     private void lockCategoryHierarchy() {
-        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
+        CategorySiblingNameGuard.lockHierarchy(em, CategorySiblingNameGuard.Kind.SUPPLIER);
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

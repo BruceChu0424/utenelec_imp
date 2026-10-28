@@ -110,7 +110,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         verify(rows).setParameter("limit", 2);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(f.em, times(4)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY keyword_rank,bill_no ASC", "source_type,record_type,id", "OFFSET :offset");
+        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,id", "OFFSET :offset")
+                .doesNotContain("ORDER BY keyword_rank,bill_no ASC");
         assertThat(sql.getAllValues().get(3)).contains("GROUP BY bill_no", "LIMIT 500");
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
         assertThat(json).doesNotContain("amountLocal", "totalOriginal", "price", "currency", "cost");

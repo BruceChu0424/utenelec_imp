@@ -48,6 +48,7 @@ public class PermissionConfigurationTransferService {
     private final DataScopeAdminService scopeAdmin;
     private final DataScopeCatalogService scopeCatalog;
     private final PermissionChangeAudit audit;
+    private final PermissionTemplateBindingService templateBindings;
     private final TxSessionVars tx;
 
     @Transactional(readOnly=true, isolation=Isolation.REPEATABLE_READ)
@@ -55,7 +56,7 @@ public class PermissionConfigurationTransferService {
         requireActor();
         List<DepartmentConfiguration> departments = rows("SELECT id,code,name FROM departments WHERE NOT is_deleted ORDER BY code,id")
                 .stream().map(row -> new DepartmentConfiguration(row[0].toString(), string(row[1]), string(row[2]),
-                        sorted(departmentGrants.findPermissionCodesByDepartmentId((UUID) row[0])))).toList();
+                        sorted(departmentConfigurationCodes((UUID) row[0])))).toList();
         List<UserConfiguration> users = new ArrayList<>();
         Map<String, ScopeOwner> owners = new TreeMap<>();
         for (Object[] row : rows("""
@@ -104,8 +105,11 @@ public class PermissionConfigurationTransferService {
         Plan plan = importPlan(commit.request());
         confirm(plan.preview(),commit.expectedFingerprint(),commit.sensitiveConfirmations());
         tx.bind();
-        boolean changed=false;
-        if (plan.baseline != null) changed=!departmentAdmin.restoreExactBaseline(sorted(plan.baseline)).isEmpty();
+        boolean changed=templateBindings.list().stream().anyMatch(binding->binding.kind().equals("user")
+                ? plan.users.containsKey(binding.targetId()):plan.departments.containsKey(binding.targetId()));
+        if (plan.baseline != null) changed=!departmentAdmin.restoreExactBaseline(sorted(plan.baseline)).isEmpty() || changed;
+        templateBindings.clearForDepartments(plan.departments.keySet());
+        templateBindings.clearForUsers(plan.users.keySet());
         for (var item : plan.departments.entrySet()) changed=!departmentAdmin.restoreExactDepartmentPermissions(item.getKey(),sorted(item.getValue())).isEmpty() || changed;
         // Department/baseline changes may invalidate contextual delegations; resolve after those writes.
         em.flush(); em.clear();
@@ -130,6 +134,8 @@ public class PermissionConfigurationTransferService {
                         "departmentCount",plan.departments.size(),"userCount",plan.users.size(),"dataScopes",commit.request().importDataScopes(),
                         "departmentMappings",list(commit.request().departments()),"userMappings",list(commit.request().users()),
                         "ownerMappings",commit.request().importDataScopes() ? list(commit.request().owners()) : List.of(),"changes",plan.preview().changes()));
+        // 恢复为备份快照后，这些账号的配置不再源于模板：解除持续绑定。
+        templateBindings.clearForUsers(plan.users.keySet());
         return new Result(changed,plan.preview().changes());
     }
 
@@ -157,57 +163,14 @@ public class PermissionConfigurationTransferService {
         confirm(plan.preview(),commit.expectedFingerprint(),commit.sensitiveConfirmations());
         tx.bind();
         OverrideConfiguration raw=plan.overrides.get(targetId);
+        boolean detached=templateBindings.list().stream().anyMatch(binding->binding.kind().equals("user") && binding.targetId().equals(targetId));
+        templateBindings.clearForUsers(List.of(targetId));
         var change = overrideAdmin.restoreExactPermissionOverrides(targetId,raw.grants(),raw.revokes(),plan.users.get(targetId));
-        if (!change.isEmpty()) audit.record("permission_configuration_copy", "users",targetId.toString(),change.added(),change.removed(),
+        // 整份复制后配置不再源于模板：解除持续绑定，模板后续修改不再同步到该账号。
+        if (!change.isEmpty()) templateBindings.clearForUsers(List.of(targetId));
+        if (!change.isEmpty() || detached) audit.record("permission_configuration_copy", "users",targetId.toString(),change.added(),change.removed(),
                 Map.of("sourceUserId",commit.request().sourceUserId().toString(),"previewFingerprint",commit.expectedFingerprint()));
-        return new Result(!change.isEmpty(),plan.preview().changes());
-    }
-
-    /** The template store supplies trusted, versioned codes; the authorization planner remains shared. */
-    Preview previewTemplate(UUID targetId, UUID templateId, long version, Collection<String> codes, boolean merge) {
-        requireActor();
-        return templatePlan(targetId,templateId,version,codes,merge).preview();
-    }
-
-    Result applyTemplate(UUID targetId, UUID templateId, long version, Collection<String> codes, boolean merge,
-                         String expectedFingerprint, List<String> confirmations) {
-        requireActor();
-        Plan plan=templatePlan(targetId,templateId,version,codes,merge);
-        confirm(plan.preview(),expectedFingerprint,confirmations);
-        tx.bind();
-        OverrideConfiguration raw=plan.overrides.get(targetId);
-        var change=overrideAdmin.restoreExactPermissionOverrides(targetId,raw.grants(),raw.revokes(),plan.users.get(targetId));
-        if(!change.isEmpty()) audit.record("permission_template_apply","users",targetId.toString(),change.added(),change.removed(),
-                Map.of("templateId",templateId.toString(),"templateVersion",version,"mode",merge?"MERGE":"REPLACE",
-                        "previewFingerprint",expectedFingerprint,"changes",plan.preview().changes()));
-        return new Result(!change.isEmpty(),plan.preview().changes());
-    }
-
-    private Plan templatePlan(UUID targetId,UUID templateId,long version,Collection<String> codes,boolean merge) {
-        Plan plan=new Plan();
-        plan.notes=List.of(
-                "模板只保存操作权限；不改变数据范围、员工部门、账号身份或外网访问资格。编辑或删除模板不改已应用账号。",
-                merge?"补充模式保留当前有效能力；为保留有效的负责人委派，本次可能将其转换为中央个人授权，请核对个人覆盖与授权来源变化及敏感项。"
-                        :"覆盖模式将目标有效操作权限设置为模板集合，模板外的继承权限会被个人收回；请核对全部新增及收回。",
-                "个人策略变化也会影响该账号授给别人的有效委派；间接影响另列。提交后按当前授权配置重新核对。");
-        try {
-            UserAccount target=eligibleUser(targetId);
-            support.requireAuthorizationTarget(target);
-            var current=resolver.breakdownOf(target);
-            Set<String> desired=new TreeSet<>(codes);
-            Set<String> grants=new TreeSet<>(current.grants()),revokes=new TreeSet<>(current.revokes());
-            if(merge) {
-                for(String code:codes) if(revokes.contains(code)) plan.issues.add("模板包含已明确收回的权限 "+code+"，补充模式不会恢复它；请核对后使用覆盖模式");
-                desired.addAll(current.effective());
-            } else {
-                grants.retainAll(desired);
-                revokes.removeAll(desired);
-            }
-            addUser(plan,templateId.toString(),target,desired,grants,revokes,catalog());
-        } catch(ApiException exception) { plan.issues.add(exception.getMessage()); }
-        addDelegationImpacts(plan);
-        plan.fingerprint=hash(List.of("template",templateId,version,targetId,sorted(codes),merge,stateFingerprint()));
-        return plan;
+        return new Result(!change.isEmpty() || detached,plan.preview().changes());
     }
 
     private Plan copyPlan(UUID targetId, CopyRequest request) {
@@ -389,6 +352,11 @@ public class PermissionConfigurationTransferService {
         }
     }
 
+    private Set<String> departmentConfigurationCodes(UUID id) {
+        Set<String> codes=new TreeSet<>(departmentGrants.findPermissionCodesByDepartmentId(id));
+        codes.addAll(permissions.findDepartmentTemplateCodes(id));return codes;
+    }
+
     private Set<String> inheritedWithoutDelegations(UserAccount target,Plan plan) {
         Set<String> result = new TreeSet<>(plan.baseline == null ? permissions.findBaselineCodes() : plan.baseline);
         @SuppressWarnings("unchecked")
@@ -400,7 +368,7 @@ public class PermissionConfigurationTransferService {
                     UNION SELECT d.id,d.parent_id FROM departments d JOIN ancestors a ON d.id=a.parent_id
                 ) SELECT id FROM ancestors
                 """).setParameter("id",target.getEmployeeId()).getResultList();
-        for (UUID id : ancestors) result.addAll(plan.departments.containsKey(id) ? plan.departments.get(id) : departmentGrants.findPermissionCodesByDepartmentId(id));
+        for (UUID id : ancestors) result.addAll(plan.departments.containsKey(id) ? plan.departments.get(id) : departmentConfigurationCodes(id));
         return result;
     }
 
@@ -424,21 +392,80 @@ public class PermissionConfigurationTransferService {
 
     private List<Suggestion> suggestions(Backup backup) {
         List<Suggestion> result = new ArrayList<>();
+        SuggestionIdentitySupport identitySupport=suggestionIdentitySupport();
         for (var source : backup.departments()) {
             List<Object[]> matches = rows("SELECT id,code,name FROM departments WHERE NOT is_deleted AND code=:code",source.code());
             result.add(suggestion("department",source.key(),matches));
         }
         for (var source : backup.users()) {
-            List<Object[]> matches = rows("""
-                    SELECT u.id,e.code,e.full_name FROM users u JOIN employees e ON e.id=u.employee_id
-                    WHERE NOT u.is_deleted AND NOT u.is_super_admin AND u.status='active' AND NOT e.is_deleted
-                    AND e.status IN ('active','probation','onLeave') AND e.code=:code
-                    """,source.employeeCode());
-            result.add(suggestion("user",source.key(),matches));
+            List<Object[]> matches=List.of();
+            UUID original=sourceUuid(source.key());
+            if(original!=null && identitySupport.retainedUser()) {
+                UUID retained=(UUID)em.createNativeQuery("SELECT public.fn_employee_merge_retained_user(:id)")
+                        .setParameter("id",original).getSingleResult();
+                if(retained!=null) {
+                    List<Object[]> byIdentity=rowsById(USER_SUGGESTION_SQL+" AND u.id=:id",retained);
+                    // Portable source keys remain hints: a live, unmerged UUID
+                    // must also match its current employee code. A retired UUID
+                    // may resolve to its verified retained person at another code.
+                    if(!retained.equals(original) || sameSuggestionCode(byIdentity,source.employeeCode())) matches=byIdentity;
+                }
+            }
+            boolean identityRequired=matches.isEmpty() && retiredSuggestionCode(identitySupport,source.employeeCode());
+            if(matches.isEmpty() && !identityRequired)
+                matches=rows(USER_SUGGESTION_SQL+" AND e.code=:code",source.employeeCode());
+            result.add(identityRequired?new Suggestion("user",source.key(),null,"该工号已释放或复用，请按原人员身份手动选择")
+                    :suggestion("user",source.key(),matches));
         }
-        for (var source : backup.scopeOwners()) result.add(suggestion("owner",source.key(),
-                rows("SELECT id,code,full_name FROM employees WHERE NOT is_deleted AND code=:code",source.code())));
+        for (var source : backup.scopeOwners()) {
+            List<Object[]> matches=List.of();
+            UUID original=sourceUuid(source.key());
+            if(original!=null && identitySupport.canonicalEmployee()) {
+                UUID retained=(UUID)em.createNativeQuery("SELECT public.fn_canonical_employee_identity(:id)")
+                        .setParameter("id",original).getSingleResult();
+                if(retained!=null) {
+                    List<Object[]> byIdentity=rowsById("SELECT id,code,full_name FROM employees WHERE NOT is_deleted AND id=:id",retained);
+                    if(!retained.equals(original) || sameSuggestionCode(byIdentity,source.code())) matches=byIdentity;
+                }
+            }
+            boolean identityRequired=matches.isEmpty() && retiredSuggestionCode(identitySupport,source.code());
+            if(matches.isEmpty() && !identityRequired)
+                matches=rows("SELECT id,code,full_name FROM employees WHERE NOT is_deleted AND code=:code",source.code());
+            result.add(identityRequired?new Suggestion("owner",source.key(),null,"该工号已释放或复用，请按原人员身份手动选择")
+                    :suggestion("owner",source.key(),matches));
+        }
         return result;
+    }
+
+    private static final String USER_SUGGESTION_SQL="""
+            SELECT u.id,e.code,e.full_name FROM users u JOIN employees e ON e.id=u.employee_id
+            WHERE NOT u.is_deleted AND NOT u.is_super_admin AND u.status='active' AND NOT e.is_deleted
+            AND e.status IN ('active','probation','onLeave')
+            """;
+    private record SuggestionIdentitySupport(boolean canonicalEmployee,boolean retainedUser,boolean retiredCode,boolean mergeTable) { }
+    private SuggestionIdentitySupport suggestionIdentitySupport() {
+        Object[] flags=(Object[])em.createNativeQuery("""
+            SELECT to_regprocedure('public.fn_canonical_employee_identity(uuid)') IS NOT NULL,
+                   to_regprocedure('public.fn_employee_merge_retained_user(uuid)') IS NOT NULL,
+                   to_regprocedure('public.fn_employee_code_requires_identity_mapping(text)') IS NOT NULL,
+                   to_regclass('public.employee_identity_merges') IS NOT NULL
+            """).getSingleResult();
+        return new SuggestionIdentitySupport(Boolean.TRUE.equals(flags[0]),Boolean.TRUE.equals(flags[1]),
+                Boolean.TRUE.equals(flags[2]),Boolean.TRUE.equals(flags[3]));
+    }
+    private boolean retiredSuggestionCode(SuggestionIdentitySupport support,String code) {
+        if(support.retiredCode()) return Boolean.TRUE.equals(em.createNativeQuery("SELECT public.fn_employee_code_requires_identity_mapping(:code)")
+                .setParameter("code",code).getSingleResult());
+        if(support.mergeTable()) return Boolean.TRUE.equals(em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM public.employee_identity_merges WHERE upper(btrim(source_code))=upper(btrim(CAST(:code AS text))))")
+                .setParameter("code",code).getSingleResult());
+        return false;
+    }
+    private static UUID sourceUuid(String key) {
+        try{return key==null?null:UUID.fromString(key);}catch(IllegalArgumentException ignored){return null;}
+    }
+    private static boolean sameSuggestionCode(List<Object[]> matches,String sourceCode) {
+        return matches.size()==1 && Objects.equals(string(matches.getFirst()[1]).strip().toUpperCase(Locale.ROOT),
+                string(sourceCode).strip().toUpperCase(Locale.ROOT));
     }
 
     private Suggestion suggestion(String kind,String key,List<Object[]> matches) {
@@ -494,7 +521,9 @@ public class PermissionConfigurationTransferService {
                     public.employees,public.employee_secondary_departments,public.employment_history,
                     public.manager_permission_delegations,public.organization_permission_leader_assignments,
                     public.permissions,public.permission_surfaces,public.permission_surface_permissions,
-                    public.system_settings,public.users,public.user_permission_overrides,public.user_data_scopes
+                    public.system_settings,public.users,public.user_permission_overrides,public.user_data_scopes,
+                    public.permission_templates,public.permission_template_applies,
+                    public.user_permission_template_bindings,public.department_permission_template_bindings
                     IN EXCLUSIVE MODE NOWAIT
                     """).executeUpdate();
         } catch (RuntimeException exception) {
@@ -547,7 +576,7 @@ public class PermissionConfigurationTransferService {
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT,message); }
 
     /** Digest only authorization inputs; credentials and session activity never leave the database or enter the file. */
-    private String stateFingerprint() {
+    String stateFingerprint() {
         return string(em.createNativeQuery("""
                 SELECT md5(jsonb_build_object(
                   'epoch',(SELECT to_jsonb(a) FROM authorization_state a WHERE singleton_id=1),
@@ -564,6 +593,10 @@ public class PermissionConfigurationTransferService {
                   'leaders',(SELECT jsonb_agg(to_jsonb(l) ORDER BY to_jsonb(l)::text) FROM organization_permission_leader_assignments l),
                   'scopes',(SELECT jsonb_agg(to_jsonb(s) ORDER BY s.user_id,s.scope,s.owner_employee_id) FROM user_data_scopes s),
                   'rehire',(SELECT jsonb_agg(jsonb_build_array(h.employee_id,h.id) ORDER BY h.id) FROM employment_history h WHERE h.event_type='rehire'),
+                  'templates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY t.id) FROM permission_templates t),
+                  'userTemplates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY t.user_id) FROM user_permission_template_bindings t),
+                  'departmentTemplates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY t.department_id) FROM department_permission_template_bindings t),
+                  'legacyTemplates',(SELECT jsonb_agg(to_jsonb(t) ORDER BY t.user_id) FROM permission_template_applies t),
                   'settings',(SELECT jsonb_agg(jsonb_build_array(s.key,s.value) ORDER BY s.key) FROM system_settings s WHERE s.key LIKE '%permission%')
                 )::text)
                 """).getSingleResult());

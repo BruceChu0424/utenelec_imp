@@ -68,5 +68,7 @@ public final class WorkshopMaterialReportDtos {
                             int periodNo, UUID goodsId, String goodsCode, String goodsName, UUID colorId,
                             String colorName, String unitName, BigDecimal signedQty, boolean supplement,
                             String docNo, String requestNo, String operatorName, OffsetDateTime createdAt,
-                            String remark) {}
+                            String remark) {
+        public String getSignedQtyExact(){return signedQty==null?null:signedQty.toPlainString();}
+    }
 }

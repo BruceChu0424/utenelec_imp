@@ -227,11 +227,13 @@ class GoodsClientGoodsNameServiceTest {
                 .when(exporting).list(isNull(), anyInt(), anyInt(), anyString(), anyString());
 
         var result = exporting.export(null, "code", "asc", 100);
+        // 2026-10-28 列序：系统标识、组装信息ID 固定前两列，随后编号、名称组
+        // （与表格默认列序一致），客户型号仍紧跟自有型号之后。
         assertThat(result.columns()).extracting(ExportColumn::key)
-                .startsWith("name", "clientGoodsName", "nameEn", "code");
+                .startsWith("goodsId", "bomRef", "code", "name", "clientGoodsName", "nameEn");
         var keys = result.columns().stream().map(ExportColumn::key).toList();
         assertThat(keys.indexOf("cNumber")).isEqualTo(keys.indexOf("model") + 1);
-        assertThat(result.columns().get(1).label()).isEqualTo("客户货品名称");
+        assertThat(result.columns().get(4).label()).isEqualTo("客户货品名称");
         assertThat(result.rows()).singleElement().satisfies(row -> {
             assertThat(row).containsEntry("name", "内部货品名称")
                     .containsEntry("clientGoodsName", "客户面板名称")

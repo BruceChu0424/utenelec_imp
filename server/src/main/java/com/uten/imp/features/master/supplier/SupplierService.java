@@ -114,9 +114,11 @@ public class SupplierService {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         var keyword = keywordPlan(f.keyword());
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
-        Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
-        Specification<Supplier> spec = supplierSpec(f, subtreeIds, keyword, requestedSort);
-        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
+        boolean lossSort="lossRate".equals(sort);
+        Sort requestedSort = TableSort.resolve(lossSort?null:sort, order, defaultSort, ALLOWED_SORT);
+        Specification<Supplier> spec = supplierSpec(f, subtreeIds, keyword, requestedSort,
+                lossSort?!"desc".equalsIgnoreCase(order):null);
+        Pageable pageable = Pageables.of(page, size, keyword.active()||lossSort ? Sort.unsorted() : requestedSort);
         Page<Supplier> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Supplier.class, spec, pageable, f);
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
         Map<UUID, String> ownerNames = p.isEmpty() ? Map.of() : employeeNameResolver.namesOf(
@@ -132,6 +134,10 @@ public class SupplierService {
 
     private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
             CategoryKeywordSearch.Plan keyword, Sort requestedSort) {
+        return supplierSpec(f,subtreeIds,keyword,requestedSort,null);
+    }
+    private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
+            CategoryKeywordSearch.Plan keyword, Sort requestedSort, Boolean lossAscending) {
         return (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -185,8 +191,19 @@ public class SupplierService {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
                 }
             }
+            if(lossAscending!=null&&q!=null&&q.getResultType()!=Long.class) {
+                var rate=lossRateExpression(cb,root);
+                q.orderBy(cb.asc(cb.<Integer>selectCase().when(cb.isNull(rate),1).otherwise(0)),
+                        lossAscending?cb.asc(rate):cb.desc(rate),cb.asc(root.get("id")));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
+    }
+
+    /** Same two-place weighted read model as the visible column; absent settlement history remains null. */
+    private static jakarta.persistence.criteria.Expression<java.math.BigDecimal> lossRateExpression(CriteriaBuilder cb,Root<Supplier> root) {
+        return com.uten.imp.features.master.search.MasterColumnSearch.numericValue(cb,root.get("id"),
+                com.uten.imp.features.master.search.MasterColumnSearch.Domain.SUPPLIER,"lossRate");
     }
 
     private CategoryKeywordSearch.Plan keywordPlan(String query) {
@@ -386,7 +403,7 @@ public class SupplierService {
     }
 
     private static void validateReadFilter(SupplierQueryFilter filter) {
-        com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+        com.uten.imp.common.web.ContactSensitiveFilter.requireBoundedReadValues(
                 filter.keyword(), filter.mobile(), filter.phone(), filter.phone2(), filter.bankAccount());
     }
 

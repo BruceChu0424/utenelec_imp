@@ -10,8 +10,9 @@ import java.util.UUID;
  *
  * <p>The finance feature owns approval cases but never imports procurement feature classes.
  * Implementations lock and validate their aggregate before returning a canonical snapshot.
- * Submitted commercial inputs are read-only in finance review; corrections use the business
- * draft after rejection. Approval changes lifecycle state and keeps the submitted inputs intact.
+ * Finance review reads submitted commercial inputs. An owner-controlled pending purchase
+ * quantity revision replaces that review's current snapshot with a new version and preserves
+ * its prior facts in the approval event history. Approval applies only the current version.
  */
 public interface ProcurementOrderApprovalPort {
 

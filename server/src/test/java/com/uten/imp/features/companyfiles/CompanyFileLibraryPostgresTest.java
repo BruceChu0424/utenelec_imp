@@ -78,15 +78,18 @@ class CompanyFileLibraryPostgresTest {
     }
     Entry create(UUID parent,String name){return run(()->service.createFolder(new Create(parent,name,null)));}
     Entry file(UUID parent,String name){
+        return file(parent,name,12);
+    }
+    Entry file(UUID parent,String name,long bytes){
         Entry pending=run(()->service.reserveFile(new Create(parent,name,null)));
         UUID attachment=UUID.randomUUID();
         update("""
                 INSERT INTO attachments(id,owner_type,owner_id,storage_provider,storage_key,original_name,
                     content_type,size_bytes,sha256,lifecycle_state,stored_size_bytes,storage_encoding,scan_engine,scanned_at,promoted_at)
-                VALUES(?,'COMPANY_FILE',?,'local',?,?,'text/plain',12,repeat('a',64),'CLEAN',12,'IDENTITY','private-fixture',now(),now())
-                """,attachment,pending.id(),UUID.randomUUID()+".txt",name);
+                VALUES(?,'COMPANY_FILE',?,'local',?,?,'text/plain',?,repeat('a',64),'CLEAN',?,'IDENTITY','private-fixture',now(),now())
+                """,attachment,pending.id(),UUID.randomUUID()+".txt",name,bytes,bytes);
         when(attachments.listVisible(CompanyFileService.OWNER_TYPE,pending.id())).thenReturn(List.of(
-                new AttachmentAccessPort.AttachmentView(attachment,CompanyFileService.OWNER_TYPE,pending.id(),"test-only",name,"text/plain",12,Instant.now(),actor,null,null,false)));
+                new AttachmentAccessPort.AttachmentView(attachment,CompanyFileService.OWNER_TYPE,pending.id(),"test-only",name,"text/plain",bytes,Instant.now(),actor,null,null,false)));
         return run(()->service.complete(pending.id(),new Complete(attachment,pending.version())));
     }
 
@@ -112,6 +115,13 @@ class CompanyFileLibraryPostgresTest {
         assertThat(last.canReorder()).isFalse();
         Listing descending=run(()->service.list(null,prefix,"name","desc",true,0,1));
         assertThat(descending.entries()).singleElement().satisfies(e->assertThat(e.name()).isEqualTo(prefix+"0501"));
+        Listing headerMatch=run(()->service.list(null,prefix,"name","asc",true,0,1,
+                Map.of("name","0499","kind","folder","updatedBy","资料库 测试人")));
+        assertThat(headerMatch.total()).isEqualTo(1);
+        assertThat(headerMatch.entries()).singleElement().satisfies(e->assertThat(e.name()).isEqualTo(prefix+"0499"));
+        Listing deniedHeader=run(()->service.list(null,prefix,"name","asc",true,0,1,Map.of("name","0002")));
+        assertThat(deniedHeader.total()).isZero();
+        assertThat(deniedHeader.entries()).isEmpty();
         UUID archived=folder(null,"archived-directory-"+UUID.randomUUID());
         update("UPDATE company_file_nodes SET deleted=true,deleted_at=now(),deleted_by=?,deletion_batch=gen_random_uuid() WHERE id=?",actor,archived);
         update("""
@@ -123,6 +133,37 @@ class CompanyFileLibraryPostgresTest {
         assertThat(archivedPage.folder().id()).isEqualTo(archived);
         assertThat(archivedPage.total()).isEqualTo(501);
         assertThat(archivedPage.entries()).hasSize(101);
+    }
+
+    @Test void metadataHeadersFilterAllAuthorizedChildrenBeforePagingAndNeverTreatUnknownSizeAsZero() {
+        UUID parent=folder(null,"header-directory-"+UUID.randomUUID());
+        update("""
+                INSERT INTO company_file_nodes(id,parent_id,kind,name,created_by,updated_by)
+                SELECT gen_random_uuid(),?,'FOLDER','before-'||lpad(i::text,4,'0'),?,?
+                FROM generate_series(1,150) i
+                """,parent,actor,actor);
+        Entry target=file(parent,"采购内部模板.PDF");
+        Entry smallest=file(parent,"最小文件.PDF",1);
+        Entry pending=run(()->service.reserveFile(new Create(parent,"未完成.PDF",null)));
+        Entry hidden=file(parent,"隐藏采购模板.PDF");
+        update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,'USER',?,'DENY',ARRAY['view'])",hidden.id(),actor);
+        update("UPDATE company_file_nodes SET updated_at='2026-10-27T16:15:00Z' WHERE id=?",target.id());
+        Listing first=run(()->service.list(parent,null,"name","asc",false,0,1));
+        assertThat(first.entries()).noneMatch(e->e.id().equals(target.id()));
+        Listing filtered=run(()->service.list(parent,null,"name","asc",false,0,1,
+                Map.of("name","采购 模板","kind","file","type","PDF","size",">=12",
+                        "updatedBy","资料库 测试人","updated","2026-10-28")));
+        assertThat(filtered.total()).isEqualTo(1);
+        assertThat(filtered.entries()).singleElement().satisfies(e->assertThat(e.id()).isEqualTo(target.id()));
+        assertThat(filtered.canReorder()).isFalse();
+        Listing knownNonzero=run(()->service.list(parent,null,"size","asc",false,0,200,Map.of("size","!=0")));
+        assertThat(knownNonzero.entries()).extracting(Entry::id).containsExactly(smallest.id(),target.id());
+        Listing knownZero=run(()->service.list(parent,null,"size","asc",false,0,200,Map.of("size","0")));
+        assertThat(knownZero.total()).isZero();
+        assertThat(knownZero.entries()).isEmpty();
+        Listing ordered=run(()->service.list(parent,null,"size","asc",false,0,200,Map.of("kind","file")));
+        assertThat(ordered.entries()).extracting(Entry::id).containsExactly(smallest.id(),target.id(),pending.id());
+        assertThat(run(()->service.list(parent,null,"name","asc",false,0,10,Map.of("name","隐藏"))).total()).isZero();
     }
 
     @Test void costlyPasswordHashDoesNotHoldTheGlobalTreeWriteLock() throws Exception {
@@ -168,13 +209,12 @@ class CompanyFileLibraryPostgresTest {
         Entry resolved=run(()->controller.detail(original.id()));
 
         assertThat(resolved.id()).isEqualTo(original.id());
-        assertThat(resolved.allowedActions()).containsExactly("view");
+        assertThat(resolved.allowedActions()).containsExactly("view","download");
         assertThat(viewer).isNotEqualTo(actor);
         verify(detailAudit).logSuccessfulDetailView(viewer,account,"view_company_file_detail",
                 "company_file_nodes",original.id(),"公司资料",null,null);
         verifyNoMoreInteractions(detailAudit);
-        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(original.id(),reader);return null;}))
-                .isInstanceOf(ApiException.class);
+        run(()->{service.requireAttachmentDownload(original.id(),reader);return null;});
     }
 
     @Test void detailAuditDoesNotRecordAuthenticationPermissionOrMissingObjectRejections() {
@@ -222,7 +262,7 @@ class CompanyFileLibraryPostgresTest {
         verifyNoInteractions(detailAudit);
 
         run(()->service.unlock(parent.id(),new Unlock("detail-password")));
-        assertThat(run(()->controller.detail(child.id())).allowedActions()).containsExactly("view");
+        assertThat(run(()->controller.detail(child.id())).allowedActions()).containsExactly("view","download");
         verify(detailAudit).logSuccessfulDetailView(actor,"library-security","view_company_file_detail",
                 "company_file_nodes",child.id(),"公司资料",null,null);
         clearInvocations(detailAudit);
@@ -233,11 +273,11 @@ class CompanyFileLibraryPostgresTest {
 
     @Test void actualCatalogContainsIndependentActionsAndOneSynchronizedSurface() {
         assertThat(db.queryForList("SELECT code FROM permissions WHERE code LIKE 'company_file:%' ORDER BY code",String.class))
-                .containsExactly("company_file:create","company_file:delete","company_file:download","company_file:edit",
+                .containsExactly("company_file:create","company_file:delete","company_file:edit",
                         "company_file:manage_permissions","company_file:move","company_file:restore","company_file:upload","company_file:view");
         assertThat(db.queryForObject("SELECT count(*) FROM permission_surface_permissions p JOIN permission_surfaces s ON s.id=p.surface_id "
-                +"WHERE s.surface_key='common.company-files'",Integer.class)).isEqualTo(9);
-        assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:view'",Boolean.class)).isFalse();
+                +"WHERE s.surface_key='common.company-files'",Integer.class)).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:view'",Boolean.class)).isTrue();
         assertThat(db.queryForObject("SELECT baseline FROM permissions WHERE code='company_file:manage_permissions'",Boolean.class)).isFalse();
     }
 
@@ -305,12 +345,24 @@ class CompanyFileLibraryPostgresTest {
         assertThatThrownBy(()->run(()->service.createFolder(new Create(child.id(),"bypass",null)))).isInstanceOf(ApiException.class);
     }
 
-    @Test void isolatedFolderNeedsExplicitActionAllowInAdditionToModulePermission() {
+    @Test void isolatedFolderGrantsOnlyItsAclActionsAndGlobalAdministrationCodesStillApply() {
         Entry folder=create(null,"restricted-"+UUID.randomUUID());
         run(()->service.setPermissions(folder.id(),new Permissions(false,List.of(new Rule("USER",actor,null,"ALLOW",List.of("view"))),folder.version())));
+        // 只有入口时，目录 ACL 之外没有任何写动作。
+        login(Set.of("company_file:view"),session);
         assertThat(run(()->service.detail(folder.id())).allowedActions()).containsExactly("view");
         assertThatThrownBy(()->run(()->service.createFolder(new Create(folder.id(),"no-create",null)))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->run(()->service.reserveFile(new Create(folder.id(),"no-upload.txt",null)))).isInstanceOf(ApiException.class);
+        // 全局资料管理码是全库授权，仅在目录拒绝规则面前让位。
+        login(ALL,session);
+        assertThat(run(()->service.detail(folder.id())).allowedActions())
+                .contains("create","upload","edit","move","delete","manage_permissions");
+        run(()->service.setPermissions(folder.id(),new Permissions(false,List.of(
+                new Rule("USER",actor,null,"ALLOW",List.of("view")),
+                new Rule("USER",actor,null,"DENY",List.of("delete"))),folder.version()+1)));
+        assertThat(run(()->service.detail(folder.id())).allowedActions()).doesNotContain("delete");
+        assertThatThrownBy(()->run(()->{service.delete(folder.id(),folder.version());return null;}))
+                .isInstanceOf(ApiException.class);
     }
 
     @Test void passwordUnlockIsBoundToSessionAndKnownDescendantCannotLeakProtectedMetadata() {
@@ -346,7 +398,7 @@ class CompanyFileLibraryPostgresTest {
         Entry folder=create(null,"actions-"+UUID.randomUUID());Entry file=file(folder.id(),"official.txt");
         login(Set.of("company_file:view","company_file:upload","attachment:view","attachment:upload"),session);
         run(()->{service.requireAttachmentView(file.id(),principal);return null;});
-        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(file.id(),principal);return null;})).isInstanceOf(ApiException.class);
+        run(()->{service.requireAttachmentDownload(file.id(),principal);return null;});
         assertThatThrownBy(()->run(()->{service.requireAttachmentUpload(file.id(),principal,true);return null;})).isInstanceOf(ApiException.class);
     }
 
@@ -354,8 +406,8 @@ class CompanyFileLibraryPostgresTest {
         Entry folder=create(null,"generic-dependencies-"+UUID.randomUUID());Entry file=file(folder.id(),"dependency.txt");
         login(Set.of("company_file:view","company_file:upload","company_file:download"),session);
         assertThatThrownBy(()->run(()->service.reserveFile(new Create(folder.id(),"no-generic-upload.txt",null)))).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(file.id(),principal);return null;})).isInstanceOf(ApiException.class);
-        assertThat(run(()->service.detail(file.id())).allowedActions()).doesNotContain("upload","download");
+        run(()->{service.requireAttachmentDownload(file.id(),principal);return null;});
+        assertThat(run(()->service.detail(file.id())).allowedActions()).doesNotContain("upload");
     }
 
     @Test void deletingSubtreeIsAtomicWhenAnyDescendantDeniesDeletion() {
@@ -428,7 +480,7 @@ class CompanyFileLibraryPostgresTest {
         login(Set.of("company_file:view","company_file:restore","attachment:view"),session);
         Entry restored=run(()->service.restore(file.id(),new Version(file.version()+1)));
         assertThat(restored.deleted()).isFalse();assertThat(restored.attachmentId()).isEqualTo(file.attachmentId());
-        assertThat(restored.allowedActions()).doesNotContain("upload","create","download");
+        assertThat(restored.allowedActions()).doesNotContain("upload","create");
     }
 
     @Test void ordinaryAuthorizedLibraryManagerCanRecycleAnInactiveCreatorsPendingReservationWithoutBypassingAclOrPassword() {

@@ -38,8 +38,11 @@ public class ReportExportSource {
         try {
             var parameters=request.parameters();
             String material=parameters.get("materialGoodsId");
-            whereUsed.streamDocument(material==null?null:java.util.UUID.fromString(material),parameters.getOrDefault("source","all"),
+            var headers=com.uten.imp.common.report.ReportQueryKit.facetsOf(parameters);
+            if(headers.isEmpty())whereUsed.streamDocument(material==null?null:java.util.UUID.fromString(material),parameters.getOrDefault("source","all"),
                     date(parameters.get("dateFrom")),date(parameters.get("dateTo")),request.sort(),request.order());
+            else whereUsed.streamDocument(material==null?null:java.util.UUID.fromString(material),parameters.getOrDefault("source","all"),
+                    date(parameters.get("dateFrom")),date(parameters.get("dateTo")),request.sort(),request.order(),headers);
         } catch(IllegalArgumentException invalid) {
             throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"物料反查导出条件无效");
         }

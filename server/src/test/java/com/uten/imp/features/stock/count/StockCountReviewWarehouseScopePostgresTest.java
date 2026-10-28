@@ -198,6 +198,25 @@ class StockCountReviewWarehouseScopePostgresTest {
     private List<UUID> subtree(UUID warehouse) {
         return db.queryForList("SELECT unnest(fn_warehouse_scope_ids(ARRAY[CAST(? AS uuid)]))",UUID.class,warehouse);
     }
+
+    @Test void headerQueriesKeepWarehouseAndOwnScopeBeforeCountAndChineseDatePaging() {
+        defaultScope=new WarehouseTaskScope(true,subtree(parentA),false);
+        db.update("UPDATE stock_count_requests SET submitted_by=? WHERE id=?",actorA,secondA);
+        db.update("UPDATE stock_count_requests SET reason='表头%_盘点',submitted_at='2026-10-27T16:00:00Z' WHERE id IN (?,?,?)",firstA,secondA,firstB);
+        var columns=Map.of("requestNo","PK-", "warehouse","A内料仓", "submittedBy","甲",
+                "submittedAt","2026-10-28", "reason","表头%_", "reviewRoute","WAREHOUSE");
+        var scope=defaultScope;
+        var page1=service.list("WAREHOUSE","PENDING",null,1,1,scope,null,columns,"requestNo","asc");
+        var page2=service.list("WAREHOUSE","PENDING",null,2,1,scope,null,columns,"requestNo","asc");
+        assertThat(page1.getTotal()).isEqualTo(2);
+        assertThat(page1.getItems()).extracting(row->row.get("id")).containsExactly(firstA);
+        assertThat(page2.getItems()).extracting(row->row.get("id")).containsExactly(secondA);
+        assertThat(service.list("WAREHOUSE","PENDING",null,1,20,scope,null,Map.of("warehouse","B内料仓"),null,null).getTotal()).isZero();
+        assertThat(service.list(null,"PENDING",null,1,20,WarehouseTaskScope.ALL,null,columns,null,null).getItems())
+                .extracting(row->row.get("id")).containsExactlyInAnyOrder(firstA,secondA);
+        assertThat(service.list("WAREHOUSE","PENDING",null,1,20,scope,null,Map.of("submittedAt","2026-10-27"),null,null).getTotal()).isZero();
+        assertThat(service.list("WAREHOUSE","PENDING",null,1,20,scope,null,Map.of("reviewRoute","FINANCE"),null,null).getTotal()).isZero();
+    }
     private void as(UUID actor,String... permissions) {
         when(user.get()).thenReturn(Optional.of(new AuthUser(actor,actor.equals(actorA)?employeeA:employeeB,"scope",
                 Set.of(permissions),false,true,false)));

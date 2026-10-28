@@ -1,14 +1,11 @@
 package com.uten.imp.features.finance.asset;
 
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.report.ReportReadPlan;
-import com.uten.imp.common.report.ReportQueryKit;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.security.TxSessionVars;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.finance.report.ReportColumn;
-import com.uten.imp.features.finance.report.ReportFacet;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import jakarta.persistence.EntityManager;
@@ -41,6 +38,7 @@ public class FixedAssetService {
 
     private final EntityManager em;
     private final TxSessionVars tx;
+    private final com.uten.imp.features.finance.FinanceDocumentAccessPolicy access;
 
     // ======================== 固定资产 CRUD ========================
 
@@ -218,140 +216,95 @@ public class FixedAssetService {
     // ======================== 报表 ========================
 
     /** 固定资产折旧清单。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse depreciationSchedule() { return depreciationSchedule(1, 50); }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse depreciationSchedule(int page, int size) {
+        return depreciationSchedule(page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReportTableResponse depreciationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "资产编号", 100),
                 ReportColumn.text("name", "资产名称", 180),
                 ReportColumn.text("dept", "部门", 110),
-                ReportColumn.money("originalValue", "原值"),
+                ReportColumn.money("originalValue", "原值").withUnitLabel("元").totaled("所列记录原值合计"),
                 ReportColumn.number("salvageRate", "残值率"),
                 ReportColumn.number("usefulMonths", "年限(月)"),
                 ReportColumn.text("startPeriod", "开始期间", 90),
-                ReportColumn.money("monthlyDep", "月折旧"),
+                ReportColumn.money("monthlyDep", "月折旧").withUnitLabel("元"),
                 ReportColumn.number("postedMonths", "已提月数"),
-                ReportColumn.money("accumDep", "累计折旧"),
-                ReportColumn.money("netValue", "净值"),
+                ReportColumn.money("accumDep", "累计折旧").withUnitLabel("元").totaled("所列记录累计折旧合计"),
+                ReportColumn.money("netValue", "净值").withUnitLabel("元").totaled("所列记录净值合计"),
                 ReportColumn.text("status", "状态", 80));
-        List<Map<String, Object>> rows = queryMaps("""
-                SELECT a.code, a.name, COALESCE(d.name,'') AS dept, a.original_value, a.salvage_rate,
-                       a.useful_months, a.start_period,
-                       ROUND(a.original_value * (1 - a.salvage_rate) / a.useful_months, 2) AS monthly_dep,
-                       book.posted_months,
-                       book.accum_dep,
-                       ROUND(a.original_value - book.accum_dep, 2) AS net_value,
-                       a.status
-                FROM (SELECT * FROM fixed_assets WHERE is_deleted=false
-                      ORDER BY code,id LIMIT :__limit OFFSET :__offset) a
+        var projected=new ArrayList<>(cols);projected.add(ReportColumn.text("__assetId","",1));
+        String source="""
+                SELECT a.code, a.name, COALESCE(d.name,'') AS dept, a.original_value AS "originalValue", a.salvage_rate AS "salvageRate",
+                       a.useful_months AS "usefulMonths", a.start_period AS "startPeriod",
+                       ROUND(a.original_value * (1 - a.salvage_rate) / a.useful_months, 2) AS "monthlyDep",
+                       book.posted_months AS "postedMonths",book.accum_dep AS "accumDep",
+                       ROUND(a.original_value - book.accum_dep, 2) AS "netValue",a.status,a.id AS "__assetId"
+                FROM fixed_assets a
                 LEFT JOIN departments d ON d.id = a.department_id
                 LEFT JOIN LATERAL (
                     SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_dep
                     FROM fa_depreciation_log l WHERE l.asset_id=a.id
                       AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
                 ) book ON TRUE
-                ORDER BY a.code,a.id
-                """, page, size, "code", "name", "dept", "original_value", "salvage_rate", "useful_months",
-                "start_period", "monthly_dep", "posted_months", "accum_dep", "net_value", "status").stream().map(m -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("code", m.get("code"));
-            r.put("name", m.get("name"));
-            r.put("dept", m.get("dept"));
-            r.put("originalValue", m.get("original_value"));
-            r.put("salvageRate", m.get("salvage_rate"));
-            r.put("usefulMonths", m.get("useful_months"));
-            r.put("startPeriod", m.get("start_period"));
-            r.put("monthlyDep", m.get("monthly_dep"));
-            r.put("postedMonths", m.get("posted_months"));
-            r.put("accumDep", m.get("accum_dep"));
-            r.put("netValue", m.get("net_value"));
-            r.put("status", m.get("status"));
-            return r;
-        }).toList();
-        return scheduleResponse(cols, rows, page, size, "fixed_assets");
+                WHERE a.is_deleted=false
+                """;
+        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->{},
+                "report.\"code\",report.\"__assetId\"",options.filters(),java.util.Set.of("status","dept"),page,size,
+                options.sort(),options.order(),false,
+                com.uten.imp.features.finance.report.FinanceProjectedReportTable.totalSpecs(cols,projected));
     }
 
     /** 长期待摊摊销清单。 */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse amortizationSchedule() { return amortizationSchedule(1, 50); }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse amortizationSchedule(int page, int size) {
+        return amortizationSchedule(page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReportTableResponse amortizationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "编号", 100),
                 ReportColumn.text("name", "项目名称", 180),
-                ReportColumn.money("totalAmount", "待摊总额"),
+                ReportColumn.money("totalAmount", "待摊总额").withUnitLabel("元").totaled("所列记录待摊总额合计"),
                 ReportColumn.number("usefulMonths", "摊销月数"),
                 ReportColumn.text("startPeriod", "开始期间", 90),
-                ReportColumn.money("monthlyAmt", "月摊销"),
+                ReportColumn.money("monthlyAmt", "月摊销").withUnitLabel("元"),
                 ReportColumn.number("postedMonths", "已摊月数"),
-                ReportColumn.money("accumAmt", "累计摊销"),
-                ReportColumn.money("remain", "待摊余额"),
+                ReportColumn.money("accumAmt", "累计摊销").withUnitLabel("元").totaled("所列记录累计摊销合计"),
+                ReportColumn.money("remain", "待摊余额").withUnitLabel("元").totaled("所列记录待摊余额合计"),
                 ReportColumn.text("status", "状态", 90));
-        List<Map<String, Object>> rows = queryMaps("""
-                SELECT a.code, a.name, a.total_amount, a.useful_months, a.start_period,
-                       ROUND(a.total_amount / a.useful_months, 2) AS monthly_amt,
-                       book.posted_months,
-                       book.accum_amt,
-                       ROUND(a.total_amount - book.accum_amt, 2) AS remain,
-                       a.status
-                FROM (SELECT * FROM deferred_expenses WHERE is_deleted=false
-                      ORDER BY code,id LIMIT :__limit OFFSET :__offset) a
+        var projected=new ArrayList<>(cols);projected.add(ReportColumn.text("__deferredId","",1));
+        String source="""
+                SELECT a.code,a.name,a.total_amount AS "totalAmount",a.useful_months AS "usefulMonths",a.start_period AS "startPeriod",
+                       ROUND(a.total_amount / a.useful_months,2) AS "monthlyAmt",book.posted_months AS "postedMonths",
+                       book.accum_amt AS "accumAmt",ROUND(a.total_amount-book.accum_amt,2) AS remain,a.status,a.id AS "__deferredId"
+                FROM deferred_expenses a
                 LEFT JOIN LATERAL (
                     SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_amt
                     FROM da_amortization_log l WHERE l.deferred_id=a.id
                       AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
                 ) book ON TRUE
-                ORDER BY a.code,a.id
-                """, page, size, "code", "name", "total_amount", "useful_months", "start_period", "monthly_amt",
-                "posted_months", "accum_amt", "remain", "status").stream().map(m -> {
-            Map<String, Object> r = new LinkedHashMap<>();
-            r.put("code", m.get("code"));
-            r.put("name", m.get("name"));
-            r.put("totalAmount", m.get("total_amount"));
-            r.put("usefulMonths", m.get("useful_months"));
-            r.put("startPeriod", m.get("start_period"));
-            r.put("monthlyAmt", m.get("monthly_amt"));
-            r.put("postedMonths", m.get("posted_months"));
-            r.put("accumAmt", m.get("accum_amt"));
-            r.put("remain", m.get("remain"));
-            r.put("status", m.get("status"));
-            return r;
-        }).toList();
-        return scheduleResponse(cols, rows, page, size, "deferred_expenses");
+                WHERE a.is_deleted=false
+                """;
+        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->{},
+                "report.\"code\",report.\"__deferredId\"",options.filters(),java.util.Set.of("status"),page,size,
+                options.sort(),options.order(),false,
+                com.uten.imp.features.finance.report.FinanceProjectedReportTable.totalSpecs(cols,projected));
     }
 
     // ======================== 工具 ========================
-
-    private ReportTableResponse scheduleResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
-                                                  int page, int size, String table) {
-        int safePage = Math.max(1, page), safeSize = Math.min(500, Math.max(1, size));
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            total = ((Number) em.createNativeQuery("SELECT COUNT(*) FROM " + table + " WHERE is_deleted=false")
-                    .getSingleResult()).longValue();
-        }
-        rows.forEach(ReportQueryKit::includeDecimalTexts);
-        return new ReportTableResponse(columns, rows, Map.of(), safePage, safeSize, total,
-                ReportReadPlan.totalPages(total, safeSize));
-    }
-
-    private List<Map<String, Object>> queryMaps(String sql, int page, int size, String... colNames) {
-        int safePage = Math.max(1, page), safeSize = Math.min(500, Math.max(1, size));
-        var q = em.createNativeQuery(sql).setParameter("__limit", safeSize)
-                .setParameter("__offset", (long) (safePage - 1) * safeSize);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rs = q.getResultList();
-        List<Map<String, Object>> out = new ArrayList<>(rs.size());
-        for (Object[] r : rs) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < r.length && i < colNames.length; i++) m.put(colNames[i], r[i]);
-            out.add(m);
-        }
-        return out;
-    }
 
     private PageResponse<Map<String, Object>> queryPageMaps(
             String dataSql,

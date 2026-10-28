@@ -45,7 +45,8 @@ public class FinanceStatementController {
             @RequestParam(required = false) BigDecimal lossRate,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.subcontractStatement(keyword, dateFrom, dateTo, lossRate, page, size);
+        return service.subcontractStatement(keyword, dateFrom, dateTo, lossRate, page, size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     /** 附件 2 · 供应商对账单。 */
@@ -57,7 +58,8 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.supplierStatement(keyword, dateFrom, dateTo, page, size);
+        return service.supplierStatement(keyword, dateFrom, dateTo, page, size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     /** 附件 4 · 其他应收款对账单（铜材加工）。 */
@@ -69,7 +71,8 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.otherReceivableStatement(keyword, dateFrom, dateTo, page, size);
+        return service.otherReceivableStatement(keyword, dateFrom, dateTo, page, size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     /** 附件 5 · 应收账款客户对账单。 */
@@ -81,6 +84,7 @@ public class FinanceStatementController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.clientStatement(keyword, dateFrom, dateTo, page, size);
+        return service.clientStatement(keyword, dateFrom, dateTo, page, size,
+                com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 }

@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.Map;
 
 /** Immutable submitted and finance-priced snapshots, never reconstructed from current goods prices. */
 @Service
@@ -41,14 +42,45 @@ public class GoodsQuoteHistoryService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('goods:view') and hasAuthority('sales_quote_finance:view')")
     public PageResponse<Row> list(UUID goodsId, int page, int size) {
+        return list(goodsId, page, size, Map.of(), null, null);
+    }
+
+    private static com.uten.imp.common.util.SqlColumnSearch.Field number(String key) {
+        String value = "line->>'" + key + "'";
+        return com.uten.imp.common.util.SqlColumnSearch.Field.decimal("CASE WHEN " + value
+                + " ~ '^[+-]?[0-9]+([.][0-9]+)?([eE][+-]?[0-9]+)?$' THEN CAST(" + value + " AS numeric) END");
+    }
+
+    private static final Map<String, com.uten.imp.common.util.SqlColumnSearch.Field> COLUMNS = Map.ofEntries(
+            Map.entry("billNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("quote.bill_no")),
+            Map.entry("occurredAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("log.created_at")),
+            Map.entry("clientName", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(nullif(log.snapshot->>'clientName',''),'历史未记录')")),
+            Map.entry("sellerName", com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(nullif(log.snapshot->>'sellerName',''),'历史未记录')")),
+            Map.entry("revision", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("log.revision")),
+            Map.entry("action", com.uten.imp.common.util.SqlColumnSearch.Field.text("log.action")),
+            Map.entry("qty", number("qty")), Map.entry("price", number("price")),
+            Map.entry("discount", number("discount")), Map.entry("amount", number("amount")),
+            Map.entry("orderNo", com.uten.imp.common.util.SqlColumnSearch.Field.text(
+                    "coalesce(linked_order.bill_no,'未关联订货单') || CASE WHEN linked_order.is_deleted THEN '（已删除）' ELSE '' END")));
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('goods:view') and hasAuthority('sales_quote_finance:view')")
+    public PageResponse<Row> list(UUID goodsId, int page, int size, Map<String, String> columns, String sort, String order) {
         int limit = Math.clamp(size, 1, 100);
         var params = new MapSqlParameterSource("goodsId", goodsId.toString());
         params.addValue("goodsFilter", "{\"lines\":[{\"goodsId\":\"" + goodsId + "\"}]}");
-        Long count = jdbc.queryForObject("SELECT COUNT(*) " + FROM, params, Long.class);
+        var criteria = com.uten.imp.common.util.SqlColumnSearch.criteria(columns, COLUMNS);
+        criteria.parameters().forEach(params::addValue);
+        String from = FROM + " AND " + criteria.predicate();
+        Long count = jdbc.queryForObject("SELECT COUNT(*) " + from, params, Long.class);
         long total = count == null ? 0 : count;
         int pages = (int) Math.min(Integer.MAX_VALUE, (total + limit - 1) / limit);
         int current = Math.max(1, Math.min(page, Math.max(1, pages)));
         params.addValue("limit", limit).addValue("offset", (long) (current - 1) * limit);
+        var selected = COLUMNS.get(sort == null ? "" : sort);
+        String ordering = selected == null ? "log.created_at DESC,log.id DESC,line->>'id'"
+                : selected.expression() + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC")
+                    + " NULLS LAST,log.id DESC,line->>'id'";
         var rows = jdbc.query("""
                 SELECT log.id::text || ':' || COALESCE(line->>'id', line->>'lineNo', '') AS id,
                        quote.id AS quote_id, quote.bill_no, log.revision, log.action, log.created_at,
@@ -58,7 +90,7 @@ public class GoodsQuoteHistoryService {
                        line->>'discount' AS discount, line->>'amount' AS amount,
                        linked_order.id AS order_id, linked_order.bill_no AS order_no,
                        COALESCE(linked_order.is_deleted, false) AS order_deleted
-                """ + FROM + " ORDER BY log.created_at DESC, log.id DESC, line->>'id' LIMIT :limit OFFSET :offset",
+                """ + from + " ORDER BY " + ordering + " LIMIT :limit OFFSET :offset",
                 params, (rs, index) -> new Row(rs.getString("id"), rs.getObject("quote_id", UUID.class),
                         rs.getString("bill_no"), rs.getInt("revision"), rs.getString("action"),
                         rs.getObject("created_at", OffsetDateTime.class), rs.getString("client_name"),

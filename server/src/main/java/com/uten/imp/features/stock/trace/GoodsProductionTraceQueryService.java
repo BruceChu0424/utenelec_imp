@@ -64,6 +64,9 @@ public class GoodsProductionTraceQueryService {
             """;
 
     public PageResponse<TraceRow> query(UUID goodsId,String direction,int page,int size) {
+        return query(goodsId,direction,page,size,Map.of(),null,null);
+    }
+    public PageResponse<TraceRow> query(UUID goodsId,String direction,int page,int size,Map<String,String> columns,String sort,String order) {
         if(!has("stock:view"))throw new ApiException(ErrorCode.FORBIDDEN,"没有库存查看权限");
         if(!"usage".equals(direction)&&!"materials".equals(direction))throw new ApiException(ErrorCode.VALIDATION_FAILED,"追溯方向不正确");
         materialAccess.queryReadScope("plan","segment");
@@ -74,10 +77,13 @@ public class GoodsProductionTraceQueryService {
         physical.parameters.put("goods",goodsId);
         var selected=new Selection("usage".equals(direction)?"trace.material_goods_id=:goods":"segment.product_goods_id=:goods",
                 Map.copyOf(physical.parameters),posting,document,periodic,receipt,"FALSE",report,false,null,null,null,null);
-        return querySelected(selected,page,size);
+        return querySelected(selected,page,size,columns,sort,order,direction);
     }
 
     PageResponse<TraceRow> querySelected(Selection selection,int page,int size) {
+        return querySelected(selection,page,size,Map.of(),null,null,"usage");
+    }
+    PageResponse<TraceRow> querySelected(Selection selection,int page,int size,Map<String,String> columns,String sort,String order,String direction) {
         if(!has("stock:view"))throw new ApiException(ErrorCode.FORBIDDEN,"没有库存查看权限");
         var scope=materialAccess.queryReadScope("plan","segment");
         int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
@@ -86,12 +92,74 @@ public class GoodsProductionTraceQueryService {
         String physical="((trace.demand_id IS NOT NULL AND EXISTS(SELECT 1 FROM production_material_stock_postings posting "
                 +"WHERE posting.demand_id=trace.demand_id AND ("+selection.postingPredicate()+"))) OR "
                 +"(trace.allocation_id IS NOT NULL AND ("+selection.periodicPredicate()+")))";
-        return load(TRACE_SQL.formatted("("+selection.predicate()+") AND "+physical,scope.predicate()),params,p,s,selection);
+        return load(TRACE_SQL.formatted("("+selection.predicate()+") AND "+physical,scope.predicate()),params,p,s,selection,columns,sort,order,direction);
     }
 
-    private PageResponse<TraceRow> load(String sql,MapSqlParameterSource params,int p,int s,Selection selection) {
-        long total=Objects.requireNonNull(db.queryForObject(sql+"SELECT count(*) FROM visible",params,Long.class));
-        List<Map<String,Object>> rows=db.queryForList(sql+"SELECT * FROM visible ORDER BY plan_no DESC,segment_code,kind,id LIMIT :limit OFFSET :offset",params);
+    private static final Map<String,com.uten.imp.common.util.SqlColumnSearch.Field> HEADER_FIELDS=Map.ofEntries(
+            Map.entry("goods",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_goods")),
+            Map.entry("code",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_code")),
+            Map.entry("color",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_color")),
+            Map.entry("workshop",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(workshop_name,'—')")),
+            Map.entry("plan",com.uten.imp.common.util.SqlColumnSearch.Field.text("coalesce(plan_no,segment_code,'—')")),
+            Map.entry("productionBatches",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_batches")),
+            Map.entry("reports",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_reports")),
+            Map.entry("workers",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_workers")),
+            Map.entry("sources",com.uten.imp.common.util.SqlColumnSearch.Field.text("header_sources")),
+            Map.entry("basis",com.uten.imp.common.util.SqlColumnSearch.Field.text("kind")),
+            Map.entry("issued",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("header_issued")),
+            Map.entry("returned",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("header_returned")),
+            Map.entry("consumed",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("header_consumed")),
+            Map.entry("allocated",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("header_allocated")));
+
+    private String headerProjection(String sql,Selection selection,MapSqlParameterSource params,String direction,Set<String> fields) {
+        boolean quantities=!selection.narrowQuantities()&&fields.stream().anyMatch(Set.of("issued","returned","consumed","allocated")::contains);
+        boolean reportText=has("production_daily_report:view")&&fields.stream().anyMatch(Set.of("productionBatches","reports","workers")::contains);
+        boolean batches=reportText&&fields.contains("productionBatches");
+        String prefix="usage".equals(direction)?"product":"material";
+        String source=sql;
+        if(quantities) source+=", trace_stock AS ("+stockFactsSql("demand_id IN (SELECT demand_id FROM visible WHERE demand_id IS NOT NULL)",selection)+")"
+                +", trace_settlement AS ("+settlementFactsSql("demand.id IN (SELECT demand_id FROM visible WHERE demand_id IS NOT NULL)",selection,params)+")";
+        if(reportText) source+=", trace_reports AS ("+reportRowsSql("SELECT id,segment_id AS execution_segment_id,allocation_id FROM visible",selection,params)+")";
+        if(batches) source+=", trace_batches AS ("+outputBatchRowsSql("item.report_id IN (SELECT id FROM trace_reports)",selection)+")";
+        List<String> receiptSql=new ArrayList<>();
+        if(fields.contains("sources")) {
+            String demands="allocation.demand_id IN (SELECT demand_id FROM visible WHERE demand_id IS NOT NULL)";
+            if(has("purchase_receipt:view"))receiptSql.add("SELECT demand_id,bill_no FROM ("+purchaseReceiptRowsSql(demands,selection,params)+") authorized_purchase");
+            if(!"FALSE".equals(selection.subcontractReceiptPredicate()))receiptSql.add("SELECT demand_id,bill_no FROM ("+subcontractReceiptRowsSql(demands,selection)+") authorized_subcontract");
+        }
+        if(!receiptSql.isEmpty())source+=", trace_receipts AS ("+String.join(" UNION ALL ",receiptSql)+")";
+        String reportDates=reportText?"(SELECT string_agg(DISTINCT report.bill_date::text,'、') FROM trace_reports report WHERE report.trace_id=visible.id)":"NULL::text";
+        String workers=reportText?"(SELECT string_agg(DISTINCT employee.full_name,'、') FROM trace_reports report JOIN production_daily_report_workers worker ON worker.report_id=report.id JOIN employees employee ON employee.id=worker.employee_id WHERE report.trace_id=visible.id)":"NULL::text";
+        String batchNames=batches?"(SELECT string_agg(DISTINCT batch.batch_label,'、') FROM trace_reports report JOIN trace_batches batch ON batch.report_id=report.id AND batch.execution_segment_id=report.execution_segment_id WHERE report.trace_id=visible.id)":"NULL::text";
+        String receipts=receiptSql.isEmpty()?"NULL::text":"(SELECT string_agg(DISTINCT coalesce(receipt.bill_no,'—'),'、') FROM trace_receipts receipt WHERE receipt.demand_id=visible.demand_id)";
+        return source+", header_rows AS (SELECT visible.*,coalesce(header_good.name,'—') AS header_goods,coalesce(header_good.code,'—') AS header_code,"
+                +"coalesce(header_color.name,'—') AS header_color,coalesce("+reportDates+",'—') AS header_reports,coalesce("+workers+",'—') AS header_workers,"
+                +"coalesce(nullif(concat_ws(' · ',coalesce(plan_no,segment_code),"+batchNames+"),''),'—') AS header_batches,"
+                +"coalesce("+receipts+",'暂无可显示来源') AS header_sources,"
+                +(!quantities?"NULL::numeric AS header_issued,NULL::numeric AS header_returned,NULL::numeric AS header_consumed,NULL::numeric AS header_allocated "
+                    :"CASE WHEN visible.demand_id IS NOT NULL THEN coalesce(trace_stock.issued,0) END AS header_issued,"
+                    +"CASE WHEN visible.demand_id IS NOT NULL THEN coalesce(trace_stock.returned,0) END AS header_returned,"
+                    +"CASE WHEN visible.demand_id IS NOT NULL THEN trace_settlement.consumed END AS header_consumed,visible.allocated_qty AS header_allocated ")
+                +"FROM visible LEFT JOIN goods header_good ON header_good.id=visible."+prefix+"_goods_id "
+                +"LEFT JOIN colors header_color ON header_color.id=visible."+prefix+"_color_id "
+                +(!quantities?"":"LEFT JOIN trace_stock ON trace_stock.demand_id=visible.demand_id LEFT JOIN trace_settlement ON trace_settlement.demand_id=visible.demand_id ")+") ";
+    }
+
+    private PageResponse<TraceRow> load(String sql,MapSqlParameterSource params,int p,int s,Selection selection,
+            Map<String,String> columns,String sort,String order,String direction) {
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,HEADER_FIELDS);
+        params.addValues(headers.parameters());
+        boolean headerQuery=!columns.isEmpty()||sort!=null;
+        if(headerQuery) {
+            Set<String> fields=new HashSet<>(columns.keySet());if(sort!=null)fields.add(sort);
+            sql=headerProjection(sql,selection,params,direction,fields);
+        }
+        String from=" FROM "+(headerQuery?"header_rows":"visible")+" WHERE "+headers.predicate();
+        var selected=HEADER_FIELDS.get(sort==null?"":sort);
+        String ordering=selected==null?"plan_no DESC,segment_code,kind,id":selected.expression()
+                +("desc".equalsIgnoreCase(order)?" DESC":" ASC")+" NULLS LAST,plan_no DESC,segment_code,kind,id";
+        long total=Objects.requireNonNull(db.queryForObject(sql+" SELECT count(*)"+from,params,Long.class));
+        List<Map<String,Object>> rows=db.queryForList(sql+" SELECT *"+from+" ORDER BY "+ordering+" LIMIT :limit OFFSET :offset",params);
         Set<UUID> goods=new LinkedHashSet<>(),colors=new LinkedHashSet<>(),units=new LinkedHashSet<>();
         for(var row:rows) {
             goods.add(id(row,"product_goods_id"));goods.add(id(row,"material_goods_id"));
@@ -110,37 +178,43 @@ public class GoodsProductionTraceQueryService {
         List<TraceRow> result=new ArrayList<>();
         for(var row:rows) {
             UUID demand=id(row,"demand_id"),segment=id(row,"segment_id");
-            boolean order=demand!=null;
+            boolean byOrder=demand!=null;
             BigDecimal issued=null,returned=null,consumed=null,loss=null;
-            if(order&&!selection.narrowQuantities()) {
+            if(byOrder&&!selection.narrowQuantities()) {
                 var stock=stockFacts.getOrDefault(demand,Map.of());
                 issued=zero(number(stock,"issued"));returned=zero(number(stock,"returned"));
                 var settlement=settlementFacts.getOrDefault(demand,Map.of());
                 consumed=number(settlement,"consumed");loss=number(settlement,"loss");
             }
             result.add(new TraceRow(row.get("kind")+":"+row.get("id"),(String)row.get("kind"),
-                    selection.narrowQuantities()?"仅确认单据/批次关联；未逐批分摊用量":order?"实际领退料与核销":"期间盘点耗用分摊",id(row,"plan_id"),(String)row.get("plan_no"),segment,
+                    selection.narrowQuantities()?"仅确认单据/批次关联；未逐批分摊用量":byOrder?"实际领退料与核销":"期间盘点耗用分摊",id(row,"plan_id"),(String)row.get("plan_no"),segment,
                     (String)row.get("segment_code"),(String)row.get("workshop_name"),
                     identity(row,"product",identities,colorNames,unitNames),identity(row,"material",identities,colorNames,unitNames),
-                    issued,returned,consumed,loss,selection.narrowQuantities()?null:number(row,"allocated_qty"),order?documents.getOrDefault(demand,List.of()):List.of(),
-                    reports.getOrDefault(id(row,"id"),List.of()),order?receipts.getOrDefault(demand,List.of()):List.of()));
+                    issued,returned,consumed,loss,selection.narrowQuantities()?null:number(row,"allocated_qty"),byOrder?documents.getOrDefault(demand,List.of()):List.of(),
+                    reports.getOrDefault(id(row,"id"),List.of()),byOrder?receipts.getOrDefault(demand,List.of()):List.of()));
         }
         return new PageResponse<>(List.copyOf(result),p,s,total,(int)((total+s-1)/s));
     }
 
     private Map<UUID,Map<String,Object>> stockFacts(Set<UUID> demands,Selection selection) {
         if(demands.isEmpty())return Map.of();
-        return keyed(db.queryForList("""
+        return keyed(db.queryForList(stockFactsSql("demand_id IN (:demands)",selection),
+                selectionParams(demands,selection)),"demand_id");
+    }
+    private String stockFactsSql(String demands,Selection selection) {
+        return """
                 SELECT demand_id,COALESCE(sum(CASE posting_type WHEN 'ISSUE' THEN qty_base WHEN 'ISSUE_REVERSE' THEN -qty_base ELSE 0 END),0) AS issued,
                        COALESCE(sum(CASE posting_type WHEN 'GOOD_RETURN' THEN qty_base WHEN 'GOOD_RETURN_REVERSE' THEN -qty_base ELSE 0 END),0) AS returned
-                FROM production_material_stock_postings posting WHERE demand_id IN (:demands) AND
-                """+selection.postingPredicate()+" GROUP BY demand_id",
-                selectionParams(demands,selection)),"demand_id");
+                FROM production_material_stock_postings posting WHERE
+                """+demands+" AND "+selection.postingPredicate()+" GROUP BY demand_id";
     }
 
     private Map<UUID,Map<String,Object>> scopedSettlementFacts(Set<UUID> demands,Selection selection) {
         if(demands.isEmpty()||selection.narrowQuantities())return Map.of();
         var params=selectionParams(demands,selection);
+        return keyed(db.queryForList(settlementFactsSql("demand.id IN (:demands)",selection,params),params),"demand_id");
+    }
+    private String settlementFactsSql(String demandPredicate,Selection selection,MapSqlParameterSource params) {
         String recordedZero="FALSE";
         if(has("production_daily_report:view")) {
             var reportScope=productionDocuments.nativeReadScope("report.maker_id","zeroReportOwners",
@@ -154,7 +228,8 @@ public class GoodsProductionTraceQueryService {
                     " AND NOT EXISTS(SELECT 1 FROM production_material_settlement_postings unresolved WHERE unresolved.demand_id=demand.id AND unresolved.settlement_type='CONSUMED' AND unresolved.issue_posting_id IS NULL)";
         }
         // Historical NULL issue_posting_id has no defensible warehouse/document attribution.
-        return keyed(db.queryForList("""
+        String demandIds="SELECT demand.id FROM production_material_demands demand WHERE "+demandPredicate;
+        return """
                 WITH settled AS (
                 SELECT settled.demand_id,
                   sum(CASE event.event_type WHEN 'POST' THEN settled.qty_base ELSE -settled.qty_base END)
@@ -164,10 +239,10 @@ public class GoodsProductionTraceQueryService {
                 FROM production_material_settlement_postings settled
                 JOIN production_material_settlement_events event ON event.id=settled.event_id
                 JOIN production_material_stock_postings posting ON posting.id=settled.issue_posting_id
-                WHERE settled.demand_id IN (:demands) AND
-                """+selection.postingPredicate()+" GROUP BY settled.demand_id) SELECT demand.id AS demand_id,"+
+                WHERE settled.demand_id IN (
+                """+demandIds+") AND "+selection.postingPredicate()+" GROUP BY settled.demand_id) SELECT demand.id AS demand_id,"+
                 "COALESCE(settled.consumed,CASE WHEN "+recordedZero+" THEN 0::numeric END) AS consumed,settled.loss "+
-                "FROM production_material_demands demand LEFT JOIN settled ON settled.demand_id=demand.id WHERE demand.id IN (:demands)",params),"demand_id");
+                "FROM production_material_demands demand LEFT JOIN settled ON settled.demand_id=demand.id WHERE "+demandPredicate;
     }
 
     private MapSqlParameterSource selectionParams(Set<UUID> demands,Selection selection) {
@@ -201,18 +276,45 @@ public class GoodsProductionTraceQueryService {
         // An empty bound collection has no SQL meaning; the sentinel is never a real UUID.
         if(demands.isEmpty())demands.add(new UUID(0,0));
         if(allocations.isEmpty())allocations.add(new UUID(0,0));
-        var reportScope=productionDocuments.nativeReadScope("report.maker_id","reportOwners",
-                "production_daily_report:approve","production_daily_report:reverse");
         var params=new MapSqlParameterSource("demands",demands).addValue("allocations",allocations);
         if(selection!=null)params.addValues(selection.parameters());
-        if(reportScope.parameterName()!=null)params.addValue(reportScope.parameterName(),reportScope.owners());
-        List<Map<String,Object>> rows=db.queryForList("""
-                WITH targets AS (
+        String targetSql="""
                     SELECT demand.id,demand.execution_segment_id,NULL::uuid AS allocation_id
                     FROM production_material_demands demand WHERE demand.id IN (:demands)
                     UNION ALL
                     SELECT allocation.id,allocation.cost_scope_segment_id,allocation.id
-                    FROM workshop_material_close_allocations allocation WHERE allocation.id IN (:allocations))
+                    FROM workshop_material_close_allocations allocation WHERE allocation.id IN (:allocations)
+                """;
+        List<Map<String,Object>> rows=db.queryForList(reportRowsSql(targetSql,selection,params)
+                +" ORDER BY report.bill_date,report.id,item.execution_segment_id",params);
+        Set<UUID> reportIds=new LinkedHashSet<>();for(var row:rows)reportIds.add(id(row,"id"));
+        Map<UUID,List<Worker>> participants=new HashMap<>();
+        if(!reportIds.isEmpty())for(var worker:db.queryForList("""
+                SELECT worker.report_id,worker.employee_id,employee.full_name AS name FROM production_daily_report_workers worker
+                JOIN employees employee ON employee.id=worker.employee_id WHERE worker.report_id IN (:reports)
+                ORDER BY worker.report_id,worker.sort_order
+                """,Map.of("reports",reportIds))) {
+            participants.computeIfAbsent(id(worker,"report_id"),ignored->new ArrayList<>()).add(
+                    new Worker(id(worker,"employee_id"),(String)worker.get("name")));
+        }
+        Map<UUID,List<ProductionReport>> result=new HashMap<>();
+        Map<String,List<OutputBatch>> batches=outputBatches(reportIds,selection);
+        for(var row:rows) {
+            UUID report=id(row,"id");
+            result.computeIfAbsent(id(row,"trace_id"),ignored->new ArrayList<>()).add(
+                    new ProductionReport(report,(String)row.get("bill_no"),date(row.get("bill_date")),
+                    id(row,"execution_segment_id"),number(row,"product_qty"),(String)row.get("unit_name"),participants.getOrDefault(report,List.of()),
+                    batches.getOrDefault(report+":"+id(row,"execution_segment_id"),List.of())));
+        }
+        return result;
+    }
+
+    /** One report-grain query for original evidence and full-scope header text projections. */
+    private String reportRowsSql(String targets,Selection selection,MapSqlParameterSource params) {
+        var reportScope=productionDocuments.nativeReadScope("report.maker_id","reportOwners",
+                "production_daily_report:approve","production_daily_report:reverse");
+        if(reportScope.parameterName()!=null)params.addValue(reportScope.parameterName(),reportScope.owners());
+        return "WITH targets AS ("+targets+") "+"""
                 SELECT target.id AS trace_id,report.id,report.bill_no,report.bill_date,item.execution_segment_id,
                        sum(item.qty*COALESCE(item.unit_rate,1))/NULLIF(segment.product_unit_rate,0) AS product_qty,unit.name AS unit_name
                 FROM targets target
@@ -239,49 +341,17 @@ public class GoodsProductionTraceQueryService {
                        JOIN production_material_settlement_postings posting ON posting.event_id=event.id
                        WHERE event.daily_report_id=report.id AND posting.demand_id=target.id))
                 GROUP BY target.id,report.id,item.execution_segment_id,segment.product_unit_rate,unit.name
-                ORDER BY report.bill_date,report.id,item.execution_segment_id
-                """,params);
-        Set<UUID> reportIds=new LinkedHashSet<>();for(var row:rows)reportIds.add(id(row,"id"));
-        Map<UUID,List<Worker>> participants=new HashMap<>();
-        if(!reportIds.isEmpty())for(var worker:db.queryForList("""
-                SELECT worker.report_id,worker.employee_id,employee.full_name AS name FROM production_daily_report_workers worker
-                JOIN employees employee ON employee.id=worker.employee_id WHERE worker.report_id IN (:reports)
-                ORDER BY worker.report_id,worker.sort_order
-                """,Map.of("reports",reportIds))) {
-            participants.computeIfAbsent(id(worker,"report_id"),ignored->new ArrayList<>()).add(
-                    new Worker(id(worker,"employee_id"),(String)worker.get("name")));
-        }
-        Map<UUID,List<ProductionReport>> result=new HashMap<>();
-        Map<String,List<OutputBatch>> batches=outputBatches(reportIds,selection);
-        for(var row:rows) {
-            UUID report=id(row,"id");
-            result.computeIfAbsent(id(row,"trace_id"),ignored->new ArrayList<>()).add(
-                    new ProductionReport(report,(String)row.get("bill_no"),date(row.get("bill_date")),
-                    id(row,"execution_segment_id"),number(row,"product_qty"),(String)row.get("unit_name"),participants.getOrDefault(report,List.of()),
-                    batches.getOrDefault(report+":"+id(row,"execution_segment_id"),List.of())));
-        }
-        return result;
+                """;
     }
 
     private Map<UUID,List<ReceiptSource>> receipts(Set<UUID> demands,Selection selection) {
         if(demands.isEmpty())return Map.of();
         Map<UUID,List<ReceiptSource>> result=new HashMap<>();
         if(has("purchase_receipt:view")) {
-        var scope=purchaseDocuments.nativeReadScope("receipt.maker_id","receiptOwners");
         var params=selectionParams(demands,selection);
-        if(scope.parameterName()!=null)params.addValue(scope.parameterName(),scope.owners());
         boolean suppliers=has("supplier:view");
-        var rows=db.queryForList("""
-                SELECT allocation.demand_id,receipt.id,receipt.bill_no,allocation.receipt_item_id,receipt.bill_date,receipt.supplier_id,
-                       supplier.name AS supplier_name,allocation.allocated_qty AS qty
-                FROM production_material_receipt_allocations allocation
-                JOIN purchase_receipts receipt ON receipt.id=allocation.receipt_id
-                LEFT JOIN suppliers supplier ON supplier.id=receipt.supplier_id
-                WHERE allocation.demand_id IN (:demands) AND allocation.status='EFFECTIVE'
-                  AND EXISTS(SELECT 1 FROM production_material_stock_postings posting
-                      WHERE posting.demand_id=allocation.demand_id AND posting.reservation_id=allocation.reservation_id
-                        AND posting.stock_document_item_id=allocation.draw_item_id AND posting.posting_type='ISSUE') AND
-                """+scope.predicate()+(selection==null?"":" AND ("+selection.receiptPredicate()+")")+" ORDER BY receipt.bill_date,receipt.id,allocation.id",params);
+        var rows=db.queryForList(purchaseReceiptRowsSql("allocation.demand_id IN (:demands)",selection,params)
+                +" ORDER BY receipt.bill_date,receipt.id,allocation.id",params);
         for(var row:rows)result.computeIfAbsent(id(row,"demand_id"),ignored->new ArrayList<>()).add(
                 new ReceiptSource(id(row,"id"),(String)row.get("bill_no"),id(row,"receipt_item_id"),date(row.get("bill_date")),
                         suppliers?id(row,"supplier_id"):null,suppliers?(String)row.get("supplier_name"):null,
@@ -289,20 +359,43 @@ public class GoodsProductionTraceQueryService {
         }
         if(selection!=null&&!"FALSE".equals(selection.subcontractReceiptPredicate())) {
             boolean suppliers=has("supplier:view");
-            var rows=db.queryForList("""
-                    SELECT allocation.demand_id,receipt.id,receipt.bill_no,allocation.receipt_item_id,receipt.bill_date,receipt.supplier_id,
-                           supplier.name AS supplier_name,allocation.allocated_qty AS qty
-                    FROM production_material_subcontract_receipt_allocations allocation
-                    JOIN subcontract_receipts receipt ON receipt.id=allocation.receipt_id
-                    LEFT JOIN suppliers supplier ON supplier.id=receipt.supplier_id
-                    WHERE allocation.demand_id IN (:demands) AND allocation.status='EFFECTIVE' AND
-                    """+selection.subcontractReceiptPredicate()+" ORDER BY receipt.bill_date,receipt.id,allocation.id",selectionParams(demands,selection));
+            var rows=db.queryForList(subcontractReceiptRowsSql("allocation.demand_id IN (:demands)",selection)
+                    +" ORDER BY receipt.bill_date,receipt.id,allocation.id",selectionParams(demands,selection));
             for(var row:rows)result.computeIfAbsent(id(row,"demand_id"),ignored->new ArrayList<>()).add(
                     new ReceiptSource(id(row,"id"),(String)row.get("bill_no"),id(row,"receipt_item_id"),date(row.get("bill_date")),
                             suppliers?id(row,"supplier_id"):null,suppliers?(String)row.get("supplier_name"):null,
                             number(row,"qty"),"委外回厂入库预留分配来源（非逐批实耗）",StockLedgerSource.SUBCONTRACT_RECEIPT.code(),null));
         }
         return result;
+    }
+
+    private String purchaseReceiptRowsSql(String demands,Selection selection,MapSqlParameterSource params) {
+        var scope=purchaseDocuments.nativeReadScope("receipt.maker_id","receiptOwners");
+        if(scope.parameterName()!=null)params.addValue(scope.parameterName(),scope.owners());
+        return """
+                SELECT allocation.demand_id,receipt.id,receipt.bill_no,allocation.receipt_item_id,receipt.bill_date,receipt.supplier_id,
+                       supplier.name AS supplier_name,allocation.allocated_qty AS qty
+                FROM production_material_receipt_allocations allocation
+                JOIN purchase_receipts receipt ON receipt.id=allocation.receipt_id
+                LEFT JOIN suppliers supplier ON supplier.id=receipt.supplier_id
+                WHERE
+                """+demands+"""
+                  AND allocation.status='EFFECTIVE'
+                  AND EXISTS(SELECT 1 FROM production_material_stock_postings posting
+                      WHERE posting.demand_id=allocation.demand_id AND posting.reservation_id=allocation.reservation_id
+                        AND posting.stock_document_item_id=allocation.draw_item_id AND posting.posting_type='ISSUE') AND
+                """+scope.predicate()+(selection==null?"":" AND ("+selection.receiptPredicate()+")");
+    }
+
+    private String subcontractReceiptRowsSql(String demands,Selection selection) {
+        return """
+                SELECT allocation.demand_id,receipt.id,receipt.bill_no,allocation.receipt_item_id,receipt.bill_date,receipt.supplier_id,
+                       supplier.name AS supplier_name,allocation.allocated_qty AS qty
+                FROM production_material_subcontract_receipt_allocations allocation
+                JOIN subcontract_receipts receipt ON receipt.id=allocation.receipt_id
+                LEFT JOIN suppliers supplier ON supplier.id=receipt.supplier_id
+                WHERE
+                """+demands+" AND allocation.status='EFFECTIVE' AND "+selection.subcontractReceiptPredicate();
     }
 
     private String reportFilter(Selection selection) {
@@ -317,19 +410,23 @@ public class GoodsProductionTraceQueryService {
         if(reportIds.isEmpty())return Map.of();
         var params=new MapSqlParameterSource("batchReports",reportIds);
         if(selection!=null)params.addValues(selection.parameters());
-        var rows=db.queryForList("""
-                SELECT item.report_id,item.execution_segment_id,item.output_lot_id,item.id,item.qty,item.line_no,report.bill_no,unit.name AS unit_name
-                FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
-                LEFT JOIN units unit ON unit.id=item.unit_id
-                LEFT JOIN production_fqc_recovery_authorizations recovery ON recovery.id=item.fqc_recovery_authorization_id
-                WHERE item.report_id IN (:batchReports) AND NOT item.is_deleted AND item.output_lot_id IS NOT NULL
-                  AND COALESCE(recovery.disposition_code,'')<>'REWORK'
-                """+reportFilter(selection)+" ORDER BY item.report_id,item.execution_segment_id,item.line_no,item.id",params);
+        var rows=db.queryForList(outputBatchRowsSql("item.report_id IN (:batchReports)",selection)
+                +" ORDER BY item.report_id,item.execution_segment_id,item.line_no,item.id",params);
         Map<String,List<OutputBatch>> result=new HashMap<>();
         for(var row:rows)result.computeIfAbsent(id(row,"report_id")+":"+id(row,"execution_segment_id"),ignored->new ArrayList<>())
                 .add(new OutputBatch(id(row,"output_lot_id"),null,id(row,"id"),number(row,"qty"),(String)row.get("unit_name"),
-                        (Integer)row.get("line_no"),row.get("bill_no")+(row.get("line_no")==null?" · 产出批次未编号":" · 第"+row.get("line_no")+"行产出批次")));
+                        (Integer)row.get("line_no"),(String)row.get("batch_label")));
         return result;
+    }
+    private String outputBatchRowsSql(String reports,Selection selection) {
+        return """
+                SELECT item.report_id,item.execution_segment_id,item.output_lot_id,item.id,item.qty,item.line_no,report.bill_no,unit.name AS unit_name,
+                       report.bill_no||CASE WHEN item.line_no IS NULL THEN ' · 产出批次未编号' ELSE ' · 第'||item.line_no||'行产出批次' END AS batch_label
+                FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
+                LEFT JOIN units unit ON unit.id=item.unit_id
+                LEFT JOIN production_fqc_recovery_authorizations recovery ON recovery.id=item.fqc_recovery_authorization_id
+                WHERE
+                """+reports+" AND NOT item.is_deleted AND item.output_lot_id IS NOT NULL AND COALESCE(recovery.disposition_code,'')<>'REWORK'"+reportFilter(selection);
     }
 
     private Map<UUID,Map<String,Object>> identities(String table,Set<UUID> ids) {

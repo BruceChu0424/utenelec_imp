@@ -86,12 +86,18 @@ public class AuthController {
     }
 
     /**
-     * 敏感操作再认证: 输入当前登录密码, 换取本会话专用、5 分钟、一次性的凭证 (ADR-110)。
+     * 敏感操作再认证: 输入当前登录密码，换取本会话专用、空闲 5 分钟失效的凭证 (ADR-110)。
      * 之后把凭证放进请求头 X-Uten-Step-Up 调用标了 {@code @RequiresStepUp} 的接口。
      * 输错 422 REAUTH_FAILED; 连续输错达上限 429 REAUTH_LOCKED 并吊销当前会话。
      */
     @PostMapping("/step-up")
     public StepUpService.Grant stepUp(@Valid @RequestBody StepUpRequest req) {
         return stepUpService.issue(req.password());
+    }
+
+    /** 只延长已验证且尚未过期的本会话凭证；服务内校验请求头和真实活动声明。 */
+    @PostMapping("/step-up/activity")
+    public StepUpService.Activity stepUpActivity() {
+        return stepUpService.activity();
     }
 }

@@ -59,6 +59,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -122,16 +123,19 @@ public class PurchaseReceiptService {
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
-        Specification<PurchaseReceipt> spec = receiptSpec(f);
         // 无商业查看权时金额排序同样属于侧信道：即使响应金额为 null，排序次序仍会泄露高低。
         // 2026-09-25 单号列统一：billNo 进两分支白名单（单据号排序不泄露商业信息）。
-        boolean priceMasked = !priceMasker.canViewPurchaseReceipt();
+        boolean priceMasked = priceMasker==null||!priceMasker.canViewPurchaseReceipt();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
+        Specification<PurchaseReceipt> spec = receiptSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&Set.of("billDate","billNo","total").contains(sort)?null:f.keyword());
         Page<PurchaseReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return retainedRecords.page(result, "purchase_receipts", p.getContent());
@@ -141,6 +145,7 @@ public class PurchaseReceiptService {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter originalFilter) {
         final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(priceMasker!=null&&priceMasker.canViewPurchaseReceipt());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReceipt.class, receiptSpec(f), "billNo"));
     }
@@ -183,6 +188,8 @@ public class PurchaseReceiptService {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canViewPurchaseReceipt(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
@@ -472,7 +479,7 @@ public class PurchaseReceiptService {
             'cases',(SELECT jsonb_agg(to_jsonb(rejection) ORDER BY rejection.id) FROM procurement_iqc_rejection_cases rejection WHERE rejection.receipt_type='PURCHASE' AND rejection.receipt_id=:id),
             'allocations',(SELECT jsonb_agg(to_jsonb(allocation) ORDER BY allocation.id) FROM production_material_receipt_allocations allocation WHERE allocation.receipt_id=:id),
             'reservations',(SELECT jsonb_agg(to_jsonb(reservation) ORDER BY reservation.id) FROM stock_reservations reservation WHERE reservation.source_doc_id=:id OR reservation.demand_id IN(SELECT demand.id FROM production_material_demands demand JOIN production_material_receipt_allocations allocation ON allocation.demand_id=demand.id WHERE allocation.receipt_id=:id)),
-            'outbox',(SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id) FROM business_outbox event WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.payload->>'receiptId'=CAST(:id AS text)),
+            'outbox',(SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id) FROM v_business_outbox_full event WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.payload->>'receiptId'=CAST(:id AS text)),
             'poolHeads',(SELECT jsonb_agg(to_jsonb(pool) ORDER BY pool.id) FROM stock_value_pools pool WHERE (pool.goods_id,pool.color_id) IN(SELECT goods_id,color_id FROM purchase_receipt_items WHERE receipt_id=:id)))::text
         """).setParameter("id",id).getSingleResult());}
 

@@ -100,46 +100,64 @@ public class AuthSessionService {
         return clock.instant().truncatedTo(ChronoUnit.MICROS);
     }
 
-    public OpenedSession openStaffSession(UUID userId) {
-        OpenedSession session = open("user_id", userId);
+    public OpenedSession openStaffSession(UUID userId, String deviceInfo) {
+        String device = normalizeDevice(deviceInfo);
+        OpenedSession session = open("user_id", userId, device);
         // 单设备登录（2026-10-03 实装）：同一账号在新处登录即顶号——新会话落库后
         // 撤销该账号其余未撤销会话，旧设备的访问令牌随会话失效被过滤为 401、刷新
         // 令牌同时作废。踢号严格按 user_id 定向：同一台设备上其它账号的会话不受
         // 影响。改密/停用/管理端踢下线等全量撤销语义不变。
-        revokeOthers("user_id", userId, session.sid(), REASON_REPLACED_BY_LOGIN);
+        // replaced_by_device 记录顶号来源设备（2026-10-27），刷新接口据此向被顶
+        // 设备返回 SESSION_REPLACED 与「在哪台设备登录」的明确原因。
+        revokeOthers("user_id", userId, session.sid(), REASON_REPLACED_BY_LOGIN, device);
         return session;
     }
 
     public OpenedSession openVisitorSession(UUID visitorId) {
-        return open("visitor_id", visitorId);
+        return open("visitor_id", visitorId, null);
     }
 
-    /** 单设备顶号：撤销同一主体的其余会话，保留刚开的这台。 */
-    private void revokeOthers(String subjectColumn, UUID subjectId, UUID keepSid, String reason) {
+    /** 单设备顶号：撤销同一主体的其余会话，保留刚开的这台，并记录顶号来源设备。 */
+    private void revokeOthers(String subjectColumn, UUID subjectId, UUID keepSid, String reason, String device) {
         jdbc.update("""
-                UPDATE auth_sessions SET revoked_at = :now, revoked_reason = :reason
+                UPDATE auth_sessions SET revoked_at = :now, revoked_reason = :reason,
+                       replaced_by_device = :device
                 WHERE %s = :subject AND sid <> :keep AND revoked_at IS NULL
                 """.formatted(subjectColumn),
                 new MapSqlParameterSource()
                         .addValue("subject", subjectId)
                         .addValue("keep", keepSid)
                         .addValue("now", ts(now()))
-                        .addValue("reason", reason));
+                        .addValue("reason", reason)
+                        .addValue("device", device));
     }
 
-    private OpenedSession open(String subjectColumn, UUID subjectId) {
+    private OpenedSession open(String subjectColumn, UUID subjectId, String deviceInfo) {
         Instant now = now();
         Instant absolute = now.plus(Duration.ofDays(settings.readLong(SystemSettingKey.JWT_REFRESH_TTL_DAYS)));
         UUID sid = UUID.randomUUID();
         jdbc.update("INSERT INTO auth_sessions (sid, " + subjectColumn
-                        + ", created_at, last_seen_at, absolute_expires_at)"
-                        + " VALUES (:sid, :subject, :now, :now, :absolute)",
+                        + ", device_info, created_at, last_seen_at, absolute_expires_at)"
+                        + " VALUES (:sid, :subject, :device, :now, :now, :absolute)",
                 new MapSqlParameterSource()
                         .addValue("sid", sid)
                         .addValue("subject", subjectId)
+                        .addValue("device", normalizeDevice(deviceInfo))
                         .addValue("now", ts(now))
                         .addValue("absolute", ts(absolute)));
         return new OpenedSession(sid, OffsetDateTime.ofInstant(absolute, ZoneOffset.UTC));
+    }
+
+    /** 客户端自报的设备名只作提示用途: 清洗空白、截到列宽, 空串归一为 NULL。 */
+    static String normalizeDevice(String deviceInfo) {
+        if (deviceInfo == null) {
+            return null;
+        }
+        String stripped = deviceInfo.strip();
+        if (stripped.isEmpty()) {
+            return null;
+        }
+        return stripped.length() > 64 ? stripped.substring(0, 64) : stripped;
     }
 
     /**
@@ -218,10 +236,30 @@ public class AuthSessionService {
         return rows.stream().findFirst();
     }
 
+    /** 刷新轮换的会话判定结果: 判定值 + 被顶号时的吊销原因与顶号来源设备。 */
+    public record RefreshVerdict(Verdict verdict, String revokedReason, String replacedByDevice) {
+        public static RefreshVerdict active() {
+            return new RefreshVerdict(Verdict.ACTIVE, null, null);
+        }
+
+        public boolean replacedByLogin() {
+            return verdict == Verdict.REVOKED && REASON_REPLACED_BY_LOGIN.equals(revokedReason);
+        }
+
+        /** 给被顶设备看的完整说明; 设备名缺失时退化为不带设备名的说法。 */
+        public String replacedNotice() {
+            String device = replacedByDevice;
+            return device == null
+                    ? "账号已在其他设备登录，本设备已自动下线"
+                    : "账号已在「" + device + "」登录，本设备已自动下线";
+        }
+    }
+
     /** 刷新轮换用: 锁住会话行再判定, 与登出/吊销串行。会话不属于该主体时视为不存在。 */
-    public Verdict lockAndEvaluateForRefresh(UUID sid, UUID userId, UUID visitorId) {
-        List<SessionFacts> rows = jdbc.query("""
-                SELECT sid AS session_sid, last_seen_at, absolute_expires_at, revoked_at, mfa_verified_at
+    public RefreshVerdict lockAndEvaluateForRefresh(UUID sid, UUID userId, UUID visitorId) {
+        List<RefreshVerdict> rows = jdbc.query("""
+                SELECT revoked_reason, replaced_by_device,
+                       last_seen_at, absolute_expires_at, revoked_at
                 FROM auth_sessions
                 WHERE sid = :sid
                   AND user_id IS NOT DISTINCT FROM :userId
@@ -232,11 +270,18 @@ public class AuthSessionService {
                         .addValue("sid", sid)
                         .addValue("userId", userId, java.sql.Types.OTHER)
                         .addValue("visitorId", visitorId, java.sql.Types.OTHER),
-                (rs, rowNum) -> sessionFacts(rs));
-        SessionFacts facts = rows.stream().findFirst().orElse(null);
+                (rs, rowNum) -> new RefreshVerdict(
+                        evaluate(new SessionFacts(
+                                instant(rs.getObject("last_seen_at", OffsetDateTime.class)),
+                                instant(rs.getObject("absolute_expires_at", OffsetDateTime.class)),
+                                instant(rs.getObject("revoked_at", OffsetDateTime.class)),
+                                null), idleTimeoutMinutes(), now()),
+                        rs.getString("revoked_reason"),
+                        rs.getString("replaced_by_device")));
         // 只判定不写: 非 ACTIVE 时调用方抛 401, 刷新事务整体回滚, 在这里落吊销原因也会被一并撤销。
         // 空闲超时的吊销原因由过滤器 (事务外) 在下一次带访问令牌的请求时落库。
-        return evaluate(facts, idleTimeoutMinutes(), now());
+        return rows.stream().findFirst()
+                .orElse(new RefreshVerdict(Verdict.MISSING, null, null));
     }
 
     /** 判定: 不存在 / 已吊销 / 超绝对期限 / 空闲超时 / 有效。 */
@@ -396,7 +441,7 @@ public class AuthSessionService {
                         .addValue("reason", reason));
     }
 
-    /** 为本会话登记一张新的一次性再认证凭证 (覆盖旧的)。会话已失效时返回 false。 */
+    /** 为本会话登记新的再认证凭证 (覆盖旧的)。会话已失效时返回 false。 */
     public boolean storeStepUp(UUID sid, UUID userId, String tokenHash, Instant expiresAt) {
         return jdbc.update("""
                 UPDATE auth_sessions
@@ -410,14 +455,16 @@ public class AuthSessionService {
                         .addValue("expires", ts(expiresAt))) == 1;
     }
 
-    /** 原子地核销再认证凭证: 属于本人本会话、未过期、未用过才成功, 成功即清空 (一次性)。 */
+    /** 校验并原子续期: 本人、本会话、未吊销且未过期才成功；并发操作不缩短已有期限。 */
     public boolean consumeStepUp(UUID sid, UUID userId, String tokenHash) {
+        Instant checkedAt = now();
         return jdbc.update("""
                 UPDATE auth_sessions
-                SET step_up_token_hash = NULL, step_up_expires_at = NULL
+                SET step_up_expires_at = GREATEST(step_up_expires_at, :expires)
                 WHERE sid = :sid
                   AND user_id = :userId
                   AND revoked_at IS NULL
+                  AND absolute_expires_at > :now
                   AND step_up_token_hash = :hash
                   AND step_up_expires_at > :now
                 """,
@@ -425,7 +472,8 @@ public class AuthSessionService {
                         .addValue("sid", sid)
                         .addValue("userId", userId)
                         .addValue("hash", tokenHash)
-                        .addValue("now", ts(now()))) == 1;
+                        .addValue("now", ts(checkedAt))
+                        .addValue("expires", ts(checkedAt.plus(StepUpService.TOKEN_TTL)))) == 1;
     }
 
     private static SessionFacts sessionFacts(ResultSet rs) throws SQLException {

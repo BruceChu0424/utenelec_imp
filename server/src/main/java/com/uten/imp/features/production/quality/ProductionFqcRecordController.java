@@ -48,9 +48,12 @@ public class ProductionFqcRecordController {
             @RequestParam(required = false) String sourceNo,
             @RequestParam(required = false) String referenceNo,
             @RequestParam(required = false) String sheetNo) {
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        if(columns.isEmpty()) return service.list(decision,keyword,from,to,sourceType,effective,disposition,page,size,sort,order,sourceNo,referenceNo,sheetNo);
         return service.list(decision, keyword, from, to, sourceType,
                 effective, disposition, page, size, sort, order,
-                sourceNo, referenceNo, sheetNo);
+                sourceNo, referenceNo, sheetNo,columns);
     }
 
     /**
@@ -71,8 +74,11 @@ public class ProductionFqcRecordController {
             @RequestParam(required = false) String sourceType,
             @RequestParam(required = false) String effective,
             @RequestParam(required = false) String disposition) {
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        var columns=com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request);
+        if(columns.isEmpty()) return service.facets(decision,keyword,from,to,sourceType,effective,disposition);
         return service.facets(decision, keyword, from, to, sourceType,
-                effective, disposition);
+                effective, disposition,columns);
     }
 
     @GetMapping("/{recordId}")

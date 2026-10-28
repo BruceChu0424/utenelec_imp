@@ -38,6 +38,21 @@ public final class ReportQueryKit {
         row.putAll(exact);
     }
 
+    /**
+     * Add an explicitly supported numerical header query to the main predicate,
+     * so rows, counts, candidate lists, totals and exports use the same result set.
+     * The caller supplies the existing authoritative projection expression.
+     */
+    public static void addNumericColumnFilter(WhereBuilder where, Map<String, String> filters,
+                                             String key, String expression) {
+        String input = filters == null ? null : filters.get("search." + key);
+        if (input == null || input.isBlank()) return;
+        var filter = com.uten.imp.common.util.NumericColumnFilter.parse(input);
+        String parameter = "column_numeric_" + key;
+        where.add(filter.sql("(" + expression + ")", parameter), null, null);
+        filter.bind(parameter, (name, value) -> where.add(null, name, value));
+    }
+
     private ReportQueryKit() {}
 
     /**

@@ -324,10 +324,10 @@ public class AttachmentService implements AttachmentAccessPort {
     public AttachmentDownloadResponse downloadGrant(UUID id) {
         requireStorageEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:download");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
+        requireDownloadAuthority(user, attachment);
         policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
 
         StorageService.PresignedDownload grant = storageProviders.require(attachment.getStorageProvider()).presignDownload(
@@ -339,17 +339,17 @@ public class AttachmentService implements AttachmentAccessPort {
     }
 
     /**
-     * 在线预览的授权入口（与 download-grant 同门槛：attachment:download + owner 策略可读），
+     * 在线预览的授权入口（与 download-grant 同门槛：下载授权 + owner 策略可读），
      * 返回可延迟打开的原件流；转换与缓存由 {@link AttachmentPreviewService} 负责。
      */
     @Transactional(readOnly = true)
     public PreviewSource openPreviewSource(UUID id) {
         requireStorageEnabled();
         AuthUser user = requireStaff();
-        require(user, "attachment:download");
         Attachment attachment = repository.findById(id)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
+        requireDownloadAuthority(user, attachment);
         policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_preview", "attachments", id.toString(), "success");
@@ -471,10 +471,10 @@ public class AttachmentService implements AttachmentAccessPort {
     @Transactional(readOnly = true)
     public RawDownload openRaw(String storageKey) {
         AuthUser user = requireStaff();
-        require(user, "attachment:download");
         Attachment metadata = repository.findByStorageKey(storageKey)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(metadata);
+        requireDownloadAuthority(user, metadata);
         policy(metadata.getOwnerType()).requireCanDownload(metadata.getOwnerId(), user);
 
         InputStream input = downloadVerifier.open(metadata);
@@ -638,5 +638,14 @@ public class AttachmentService implements AttachmentAccessPort {
         if (!has(user, permission)) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
+    }
+
+    /**
+     * V958：公司资料库原件随资料库入口与目录范围授权（可见即可下载），业务附件保持
+     * 通用附件权限，两类授权互不扩面；owner 策略仍逐一复检。
+     */
+    private static void requireDownloadAuthority(AuthUser user, Attachment attachment) {
+        require(user, "COMPANY_FILE".equals(attachment.getOwnerType())
+                ? "company_file:view" : "attachment:download");
     }
 }

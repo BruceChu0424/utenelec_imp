@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/procurement/iqc-rejections")
@@ -30,6 +31,11 @@ public class ProcurementIqcRejectionController {
     private final ProcurementIqcRejectionService service;
     private final AuditDetailViewRecorder detailViewAudit;
 
+    @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')")
+    public CasePage list(String receiptType, String status, String keyword, int page, int size) {
+        return list(receiptType, status, keyword, page, size, Map.of());
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')")
     public CasePage list(
@@ -37,16 +43,23 @@ public class ProcurementIqcRejectionController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return service.list(receiptType, status, keyword, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam Map<String, String> columnQuery) {
+        return service.list(receiptType, status, keyword, page, size, columnQuery);
     }
 
     @GetMapping("/counts")
     @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')")
     public CaseCounts counts(
             @RequestParam(required = false) String receiptType,
-            @RequestParam(required = false) String keyword) {
-        return service.counts(receiptType, keyword);
+            @RequestParam(required = false) String keyword,
+            @RequestParam Map<String, String> columnQuery) {
+        return service.counts(receiptType, keyword, columnQuery);
+    }
+
+    @PreAuthorize("hasAuthority('procurement_iqc_rejection:view')")
+    public CaseCounts counts(String receiptType, String keyword) {
+        return counts(receiptType, keyword, Map.of());
     }
 
     @GetMapping("/{id}")

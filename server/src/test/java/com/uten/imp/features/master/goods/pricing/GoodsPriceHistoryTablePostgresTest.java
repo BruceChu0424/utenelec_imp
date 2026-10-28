@@ -148,6 +148,36 @@ class GoodsPriceHistoryTablePostgresTest {
         assertThat(table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("sourceNo","x' OR TRUE; DROP TABLE goods;--"))).total()).isZero();
         assertThat(db.queryForObject("SELECT count(*) FROM goods",Long.class)).isEqualTo(1L);
     }
+    @Test void customHeadersFilterTheWholeAuthorizedDecimal128ProjectionAndKeepExactFacetsAcrossPages(){
+        var match=order("purchase",owner,"0.3333333333","3","1");
+        db.update("UPDATE purchase_orders SET bill_no='HEADER_% A' WHERE id=?",match[0]);
+        order("purchase",owner,"0.34","1",null);
+        order("purchase",UUID.randomUUID(),"0.3333333333","3","1");
+        var filters=Map.of("search.businessDate",BusinessTime.today().toString(),"search.sourceNo","HEADER_% A",
+                "search.partnerName","Supplier","search.unitPrice",">=0.3333333333333333333333333333333333",
+                "search.quantity","3","search.amount","1");
+        var result=table.table(query(Kind.PURCHASE,1,1,"unitPrice",true,filters));
+        assertThat(result.total()).isEqualTo(1);assertThat(result.observations()).extracting(Observation::sourceItemId).containsExactly(match[1]);
+        assertThat(result.observations().getFirst().unitPrice()).isEqualTo(BigDecimal.ONE.divide(new BigDecimal("3"),MathContext.DECIMAL128).toPlainString());
+        assertThat(result.facets().get("sourceNo")).extracting(com.uten.imp.common.web.FacetBucket::value).containsExactly("HEADER_% A");
+        assertThat(table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("search.unitPrice","<0.3333333333333333333333333333333333"))).total()).isZero();
+        var ranged=table.table(query(Kind.PURCHASE,2,1,"unitPrice",true,Map.of("search.unitPrice","0.33..0.34")));
+        assertThat(ranged.total()).isEqualTo(2);assertThat(ranged.observations()).hasSize(1);
+        var candidates=table.facets(new FacetQuery(query(Kind.PURCHASE,1,10,null,false,filters),"sourceNo","_%",1,1));
+        assertThat(candidates.buckets()).extracting(com.uten.imp.common.web.FacetBucket::value).containsExactly("HEADER_% A");
+        for(String unsupported:List.of("search.comparable","search.lifecycle","search.unknown"))
+            assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of(unsupported,"1")))).isInstanceOf(ApiException.class);
+        doThrow(new ApiException(ErrorCode.FORBIDDEN,"revoked")).when(access).requireHistory(Kind.PURCHASE);clearInvocations(named);
+        assertThatThrownBy(()->table.table(query(Kind.PURCHASE,1,10,null,false,Map.of("search.unitPrice","invalid")))).hasMessageContaining("revoked");
+        verifyNoInteractions(named);
+    }
+    @Test void lifecycleCandidateSearchMatchesItsVisibleChineseMeaningAndRetainsSourceVersionCounts() throws Exception {
+        var ids=order("purchase",owner,"10","1",null);approve(ids,1);db.update("UPDATE purchase_order_items SET qty=2,amount_original=20 WHERE id=?",ids[1]);approve(ids,2);
+        var result=table.facets(new FacetQuery(query(Kind.PURCHASE,1,10,null,false,Map.of()),"lifecycle","批准",1,50));
+        assertThat(result.buckets()).singleElement().satisfies(bucket->{
+            assertThat(bucket.value()).isEqualTo("SUPERSEDED_APPROVED_VERSION");assertThat(bucket.label()).isEqualTo("历史批准版本");assertThat(bucket.count()).isEqualTo(1);
+        });
+    }
     private TableQuery query(Kind kind,int page,int size,String sort,boolean asc,Map<String,String> filters){return new TableQuery(context(kind),null,null,page,size,sort,asc,filters);}
     private Query context(Kind kind){return new Query(goods,kind,null,null,null,null,null,null,null,null,null,null,null,null);}
     private UUID[] order(String kind,UUID maker,String price,String qty,String total){

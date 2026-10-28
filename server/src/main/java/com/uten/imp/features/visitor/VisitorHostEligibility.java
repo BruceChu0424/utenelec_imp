@@ -37,7 +37,7 @@ class VisitorHostEligibility {
                 SELECT id, baseline FROM permissions WHERE code = ?
             ), granted_departments(id) AS (
                 SELECT allocation.department_id
-                FROM department_permissions allocation
+                FROM authorization_department_permission_sources allocation
                 JOIN host_permission permission ON permission.id = allocation.permission_id
                 UNION
                 SELECT child.id
@@ -61,6 +61,9 @@ class VisitorHostEligibility {
                               JOIN host_permission permission ON permission.id = allocation.permission_id
                               WHERE allocation.user_id = account.id
                                 AND allocation.active = TRUE AND allocation.effect = 'grant')
+                   OR EXISTS (SELECT 1 FROM authorization_user_template_permission_sources source
+                              JOIN host_permission permission ON permission.id=source.permission_id
+                              WHERE source.user_id=account.id)
                    OR EXISTS (SELECT 1 FROM manager_permission_delegations delegation
                               JOIN host_permission permission ON permission.id = delegation.permission_id
                               WHERE delegation.user_id = account.id AND delegation.enabled = TRUE))

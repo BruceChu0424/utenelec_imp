@@ -247,7 +247,7 @@ class InventoryCostPostingBridgePostgresTest {
         db.update("UPDATE stock_value_events SET occurred_at='2026-08-10T00:00:00Z' WHERE id=(SELECT event_id FROM stock_value_postings WHERE id=?)",data.sale());
         db.update("UPDATE stock_value_events SET occurred_at='2026-10-10T00:00:00Z' WHERE id=(SELECT event_id FROM stock_value_postings WHERE id=?)",data.late());
         db.update("INSERT INTO ar_ap_ledger(client_id,direction,source_doc_type,bill_date,amount_original_local,amount_original,currency_id) VALUES(?,'AR','SALES_RETURN','2026-09-10',-80,-5,?)",client,UUID.randomUUID());
-        var report=new FinanceCostService(em).salesCostSummary(null,LocalDate.of(2026,9,1),LocalDate.of(2026,9,30),1,50);
+        var report=financeCosts().salesCostSummary(null,LocalDate.of(2026,9,1),LocalDate.of(2026,9,30),1,50);
         assertThat(report.rows()).hasSize(1);var row=report.rows().getFirst();
         assertThat((BigDecimal)row.get("saleAmount")).isEqualByComparingTo("-80");
         assertThat((BigDecimal)row.get("saleCost")).isEqualByComparingTo("-40");
@@ -259,7 +259,7 @@ class InventoryCostPostingBridgePostgresTest {
         Cogs data=cogs();UUID client=db.queryForObject("SELECT client_id FROM sales_shipments WHERE id=?",UUID.class,data.shipment());
         db.update("INSERT INTO clients(id,code,name) VALUES(?,'CLIENT','multi-currency client')",client);
         db.update("INSERT INTO ar_ap_ledger(client_id,direction,source_doc_type,bill_date,amount_original_local,amount_original,currency_id) VALUES(?,'AR','SALES_SHIPMENT','2026-09-10',100,10,?),(?,'AR','SALES_SHIPMENT','2026-09-10',100,20,?)",client,UUID.randomUUID(),client,UUID.randomUUID());
-        var costs=new FinanceCostService(em);
+        var costs=financeCosts();
         assertThat((BigDecimal)costs.salesCostSummary(null,LocalDate.of(2026,9,1),LocalDate.of(2026,9,30),1,50).rows().getFirst().get("saleAmount")).isEqualByComparingTo("200");
         Case production=production();db.update("UPDATE stock_value_nodes SET basis_value_local=0 WHERE id IN(?,?,?)",production.input(),production.output1(),production.output2());
         var row=costs.productCost("P",LocalDate.of(2026,9,1),LocalDate.of(2026,9,30),1,50).rows().getFirst();
@@ -267,6 +267,11 @@ class InventoryCostPostingBridgePostgresTest {
         db.update("UPDATE stock_value_production_cost_outputs SET withdrawn_movement_id=? WHERE source_node_id=?",UUID.randomUUID(),production.output1());
         row=costs.productCost("P",LocalDate.of(2026,9,1),LocalDate.of(2026,9,30),1,50).rows().getFirst();
         assertThat(row.get("actualCost")).isNull();assertThat(row.get("actualState")).isEqualTo("WITHDRAWN");
+    }
+    private static FinanceCostService financeCosts(){
+        var access=org.mockito.Mockito.mock(com.uten.imp.features.finance.FinanceDocumentAccessPolicy.class);
+        org.mockito.Mockito.when(access.scope()).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));
+        return new FinanceCostService(em,access);
     }
     private int post(String period){return tx.execute(status->{em.createNativeQuery("SELECT set_config('app.actor_id',:actor,true)").setParameter("actor",ACTOR.toString()).getSingleResult();return ActualInventoryCostGlProjection.postReady(em,period);});}
     private record Case(UUID goods,UUID scope,UUID input,UUID output1,UUID output2,UUID movement1,UUID movement2,UUID revision){}

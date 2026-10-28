@@ -75,7 +75,8 @@ class SubcontractApplicationKitPostgresTest {
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
-                    line_no integer, goods_id uuid, color_id uuid, bom_unit_qty numeric(18,6), planned_qty numeric(18,4),
+                    base_bom_unit_qty numeric, material_loss_pct numeric(5,2) NOT NULL DEFAULT 0,
+                    line_no integer, goods_id uuid, color_id uuid, bom_unit_qty numeric, planned_qty numeric(18,4),
                     issued_qty numeric(18,4) DEFAULT 0, is_deleted boolean DEFAULT false, draw_closed_at timestamptz);
                 CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, plan_item_id uuid,

@@ -19,6 +19,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /** Actual MATERIAL candidate SQL/security/controller against the fully migrated schema; report calculations are unchanged. */
 @TestPropertySource(properties="uten.features.goods-owner-scope-enabled=true")
 class WhereUsedMaterialSearchPostgresTest extends AuthSessionPostgresTestSupport {
+    @org.springframework.beans.factory.annotation.Autowired com.uten.imp.common.docnumber.DocNumberService numbering;
+    @org.springframework.beans.factory.annotation.Autowired com.uten.imp.features.production.plan.ProductionProductNoAllocator productNumbers;
+    @org.springframework.beans.factory.annotation.Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Test void historyAndUncategorizedCandidatesRemainEligibleWhileRelatedAreOptionalAndEvidenceIsPaged() throws Exception {
         String token=adminToken(), marker="WM"+UUID.randomUUID().toString().replace("-","");
         UUID root=category(null,"反查范围"),screws=category(root,"螺丝类"),sockets=category(root,"插座"),notes=category(root,"说明关联类");
@@ -69,6 +72,48 @@ class WhereUsedMaterialSearchPostgresTest extends AuthSessionPostgresTestSupport
         JsonNode browsed=search(token," \u3000\t ",category.toString(),true,1,50);
         assertEquals(2,browsed.path("total").asInt());
         browsed.path("items").forEach(row->{assertFalse(row.has("searchRank"));assertFalse(row.has("searchMatchKind"));});
+    }
+
+    @Test void relationshipHeadersFilterCompleteProductAggregatesWithoutFilteringIndividualHistoricalEvidence() throws Exception {
+        String token=adminToken(),marker="HEADER_%"+UUID.randomUUID();
+        UUID category=category(null,"表头分类"),material=goods(category,"表头原料",null,null);
+        for(int product=0;product<3;product++){
+            UUID parent=goods(category,marker+product,null,null),plan=UUID.randomUUID(),item=UUID.randomUUID();
+            jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES (?,?,?,1)",UUID.randomUUID(),parent,material);
+            int evidenceCount=product==2?1:2;
+            new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->{
+                String bill=numbering.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PRODUCTION_PLAN);
+                jdbc.update("INSERT INTO production_plans(id,bill_no,bill_date,status) VALUES (?,?,'2026-10-31',1)",plan,bill);
+                String productNo=productNumbers.allocate(plan,Set.of());
+                jdbc.update("INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,product_no,goods_id,qty) VALUES (?,?,?,'2026-10-31',?,?,1)",item,plan,bill,productNo,parent);
+                // Historical expansion snapshots retain the same migration-only guard as the existing worker oracle.
+                jdbc.queryForObject("SELECT set_config('app.legacy_import','on',true)",String.class);
+                for(int evidence=0;evidence<evidenceCount;evidence++)
+                    jdbc.update("INSERT INTO production_plan_costs(id,legacy_id,bill_item_id,bill_no,bill_date,goods_id,master_goods_id,node_class,qty) SELECT ?,COALESCE(MAX(legacy_id),1500000000)+1,?,?,'2026-10-31',?,?,0,.5 FROM production_plan_costs",UUID.randomUUID(),item,bill,material,parent);
+            });
+        }
+        var base=get("/api/production/reports/where-used").param("materialGoodsId",material.toString())
+                .param("f.search.goodsName",marker).param("f.search.legacyRequiredQty",">=0.75")
+                .param("f.search.lastUsed","2026-10-01..2026-10-31").param("sort","goodsCode").param("size","1").param("page","2");
+        JsonNode second=request(token,base);
+        assertEquals(2,second.path("total").asInt(),second.toPrettyString());
+        assertEquals(1,second.path("rows").size());
+        assertEquals(0,second.path("rows").get(0).path("legacyRequiredQty").decimalValue().compareTo(java.math.BigDecimal.ONE));
+        assertEquals(1,second.path("rows").get(0).path("__legacyProductionLineCount").asInt());
+        assertEquals(13,second.path("columnSearchKeys").size());
+        JsonNode sample=second.path("rows").get(0);
+        for(JsonNode column:second.path("columns")){
+            String key=column.path("key").asText(),type=column.path("type").asText();
+            JsonNode value=sample.get(key);
+            String input=value==null||value.isNull()?(type.equals("date")?"1999-01":type.equals("number")?">999999":"missing_%")
+                    :value.asText();
+            JsonNode filtered=request(token,get("/api/production/reports/where-used").param("materialGoodsId",material.toString())
+                    .param("f.search."+key,input).param("size","1").param("sort",key));
+            if(value!=null&&!value.isNull())assertTrue(filtered.path("total").asInt()>0,key+" "+filtered.toPrettyString());
+        }
+        JsonNode overflow=request(token,get("/api/production/reports/where-used").param("materialGoodsId",material.toString())
+                .param("f.search.goodsName",marker).param("f.search.legacyRequiredQty",">=0.75").param("size","1").param("page","999"));
+        assertEquals(2,overflow.path("total").asInt());assertTrue(overflow.path("rows").isEmpty());
     }
 
     private JsonNode search(String token,String keyword,String category,boolean related,int page,int size)throws Exception{

@@ -32,38 +32,49 @@ public class AiUsageAuditService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, timeout = 20)
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public AiUsageDtos.Audit query(int days, int page, int size, UUID userId, UUID providerId) {
+        return query(days, page, size, userId, providerId, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, timeout = 20)
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public AiUsageDtos.Audit query(int days, int page, int size, UUID userId, UUID providerId,
+                                  Map<String, String> columnSearch, String sort, String order) {
         var actor = access.require();
         if (days < 1 || days > 366 || page < 0 || page > 100_000 || size < 1 || size > 100)
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请调整查询时间或页数");
         var params = new MapSqlParameterSource("days", days).addValue("user", userId)
                 .addValue("provider", providerId).addValue("limit", size).addValue("offset", (long) page * size);
+        final String cte = CTE + ", selected_events AS (SELECT e.* FROM named_events e WHERE "
+                + AiUsageAuditHeaderQuery.conditions(columnSearch, params) + "), selected_calls AS ("
+                + "SELECT c.* FROM period_calls c JOIN selected_events e ON e.id=c.event_id) ";
+        final String ordering = AiUsageAuditHeaderQuery.order(sort, order);
         // Every query in this read sees the same database snapshot and the same now() boundary.
-        final List<AiUsageDtos.Cost> totalCosts = jdbc.query(CTE + COST_TOTAL, params, (rs, row) -> cost(rs));
-        AiUsageDtos.Summary summary = jdbc.queryForObject(CTE + """
+        final List<AiUsageDtos.Cost> totalCosts = jdbc.query(cte + COST_TOTAL, params, (rs, row) -> cost(rs));
+        AiUsageDtos.Summary summary = jdbc.queryForObject(cte + """
                 SELECT count(*) AS uses,coalesce(sum(calls),0) AS calls,coalesce(sum(ok_calls),0) AS ok_calls,
                   count(*) FILTER(WHERE local_use) AS local_uses,
                   CASE WHEN coalesce(sum(unknown_input),0)>0 THEN NULL ELSE coalesce(sum(input_tokens),0) END AS input_tokens,
                   CASE WHEN coalesce(sum(unknown_output),0)>0 THEN NULL ELSE coalesce(sum(output_tokens),0) END AS output_tokens,
                   coalesce(sum(unknown_tokens),0) AS unknown_tokens,coalesce(sum(unknown_cost),0) AS unknown_cost
-                FROM events
+                FROM selected_events
                 """, params, (rs, row) -> new AiUsageDtos.Summary(rs.getLong("uses"), rs.getLong("calls"), rs.getLong("ok_calls"),
                 rs.getLong("local_uses"), nullableLong(rs,"input_tokens"), nullableLong(rs,"output_tokens"),
                 rs.getLong("unknown_tokens"), rs.getLong("unknown_cost"), totalCosts));
 
-        Map<UUID,List<AiUsageDtos.Cost>> userCosts = groupedCosts(CTE + """
+        Map<UUID,List<AiUsageDtos.Cost>> userCosts = groupedCosts(cte + """
                 SELECT user_id AS owner,billing_currency AS currency,basis,sum(amount) AS amount
-                FROM period_calls WHERE amount IS NOT NULL AND user_id IS NOT NULL
+                FROM selected_calls WHERE amount IS NOT NULL AND user_id IS NOT NULL
                 GROUP BY user_id,billing_currency,basis ORDER BY billing_currency,basis
                 """, params);
-        var users = jdbc.query(CTE + """
+        var users = jdbc.query(cte + """
                 SELECT e.user_id,max(e.name) AS name,max(e.code) AS code,count(*) AS uses,sum(e.calls) AS calls,
                        sum(e.unknown_cost) AS unknown_cost
-                FROM named_events e WHERE user_id IS NOT NULL GROUP BY e.user_id
+                FROM selected_events e WHERE user_id IS NOT NULL GROUP BY e.user_id
                 ORDER BY count(*) DESC,e.user_id
                 """, params, (rs, row) -> new AiUsageDtos.User(rs.getObject("user_id",UUID.class),rs.getString("name"),rs.getString("code"),
                 rs.getLong("uses"),rs.getLong("calls"),rs.getLong("unknown_cost"),userCosts.getOrDefault(rs.getObject("user_id",UUID.class),List.of())));
 
-        var records = jdbc.query(CTE + "SELECT * FROM named_events ORDER BY created_at DESC,id DESC LIMIT :limit OFFSET :offset", params,
+        var records = jdbc.query(cte + "SELECT e.* FROM selected_events e ORDER BY " + ordering + " LIMIT :limit OFFSET :offset", params,
                 (rs,row) -> new AiUsageDtos.Use(rs.getObject("id",UUID.class),rs.getObject("job_id",UUID.class),
                         rs.getObject("created_at",OffsetDateTime.class),rs.getObject("finished_at",OffsetDateTime.class),
                         rs.getObject("user_id",UUID.class),rs.getObject("employee_id",UUID.class),rs.getString("name"),rs.getString("code"),
@@ -72,9 +83,9 @@ public class AiUsageAuditService {
                         rs.getLong("unknown_tokens"),rs.getLong("unknown_cost"),List.of(),strings(rs,"provider_names"),strings(rs,"models")));
         if (!records.isEmpty()) {
             params.addValue("ids",records.stream().map(AiUsageDtos.Use::id).toList());
-            Map<UUID,List<AiUsageDtos.Cost>> recordCosts = groupedCosts(CTE + """
+            Map<UUID,List<AiUsageDtos.Cost>> recordCosts = groupedCosts(cte + """
                     SELECT event_id AS owner,billing_currency AS currency,basis,sum(amount) AS amount
-                    FROM period_calls WHERE amount IS NOT NULL AND event_id IN (:ids)
+                    FROM selected_calls WHERE amount IS NOT NULL AND event_id IN (:ids)
                     GROUP BY event_id,billing_currency,basis ORDER BY billing_currency,basis
                     """, params);
             records = records.stream().map(r -> new AiUsageDtos.Use(r.id(),r.jobId(),r.createdAt(),r.finishedAt(),r.userId(),r.employeeId(),
@@ -106,7 +117,7 @@ public class AiUsageAuditService {
     }
 
     private static final String COST_TOTAL = """
-            SELECT billing_currency AS currency,basis,sum(amount) AS amount FROM period_calls
+            SELECT billing_currency AS currency,basis,sum(amount) AS amount FROM selected_calls
             WHERE amount IS NOT NULL GROUP BY billing_currency,basis ORDER BY billing_currency,basis
             """;
     private static final String CTE = """

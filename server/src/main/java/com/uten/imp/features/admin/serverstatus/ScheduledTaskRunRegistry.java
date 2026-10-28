@@ -1,5 +1,7 @@
 package com.uten.imp.features.admin.serverstatus;
 
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.support.ScheduledMethodRunnable;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +17,11 @@ import java.util.regex.Pattern;
  * In-memory record of the last run of every {@code @Scheduled} method.
  *
  * <p>Populated by {@code ObservedTaskScheduler} around each execution; nothing is
- * persisted and the registry restarts empty with the JVM. Names are derived from the
+ * persisted by default and the registry restarts empty with the JVM — except for
+ * the governance tasks listed in {@link ScheduledTaskCatalog#durableEvidenceTasks()},
+ * whose completed runs are also appended to {@code scheduled_task_runs} (V954) so
+ * the status page keeps its evidence across restarts. A persistence failure is
+ * logged and never propagates into the observed task. Names are derived from the
  * declaring class and method only (no arguments, messages, SQL or paths).</p>
  *
  * <p>Spring 6.2 hands the scheduler a package-private {@code Task$OutcomeTrackingRunnable}
@@ -24,6 +30,7 @@ import java.util.regex.Pattern;
  * therefore accepts both the runnable itself and that wrapper, and ignores plain lambdas
  * (verified against spring-context 6.2.19 bytecode, 2026-09-10).</p>
  */
+@Slf4j
 @Component
 public class ScheduledTaskRunRegistry {
 
@@ -37,6 +44,10 @@ public class ScheduledTaskRunRegistry {
             Pattern.compile("^(?:[A-Za-z_$][\\w$]*\\.)*([A-Z][\\w$]*)\\.([a-z_$][\\w$]*)$");
 
     private final Map<String, Run> runs = new ConcurrentHashMap<>();
+
+    /** 治理任务完成回执的持久层; 直接 new 本类的测试保持纯内存语义。 */
+    @Autowired(required = false)
+    private transient ScheduledTaskRunStore runStore;
 
     /** Registers the task if it is a scheduled method; returns its name or null for lambdas. */
     public String register(Runnable task, Duration period) {
@@ -60,7 +71,7 @@ public class ScheduledTaskRunRegistry {
 
     public void finished(String name, Instant at, Throwable failure) {
         if (name == null) return;
-        runs.compute(name, (key, previous) -> {
+        Run completed = runs.compute(name, (key, previous) -> {
             Run base = previous == null ? new Run(name, null, at, null, null, null, 0, 0) : previous;
             Long duration = base.lastStart() == null ? null
                     : Math.max(0, Duration.between(base.lastStart(), at).toMillis());
@@ -69,6 +80,26 @@ public class ScheduledTaskRunRegistry {
             return new Run(name, base.period(), base.lastStart(), at, duration, errorType,
                     failures, base.runs() + 1);
         });
+        persistDurableEvidence(completed, failure);
+    }
+
+    /** 治理类低频任务的完成回执写穿到 scheduled_task_runs; 失败绝不影响任务本身。 */
+    private void persistDurableEvidence(Run completed, Throwable failure) {
+        if (runStore == null
+                || !ScheduledTaskCatalog.durableEvidenceTasks().contains(completed.name())
+                || completed.lastStart() == null) {
+            return;
+        }
+        try {
+            runStore.append(
+                    completed.name(),
+                    completed.lastStart(),
+                    completed.lastEnd(),
+                    completed.lastDurationMs(),
+                    failure == null ? null : failure.getClass().getSimpleName());
+        } catch (RuntimeException persistenceFailure) {
+            log.warn("后台任务完成回执写入失败(不影响任务执行): {}", persistenceFailure.toString());
+        }
     }
 
     /** Stable, name-sorted copy for the status page. */

@@ -19,12 +19,16 @@ import java.util.UUID;
  * 审计日志(按月分区、只追加)。数据变更由 DB 触发器按三清单写入; 登录/改密/业务事件/
  * 语义写事件由 {@link AuditService} 写入。before/after 为 jsonb: 新增/删除存整行, 修改只存变化键;
  * 数据变更场景由数据库函数先剔除凭证、PII、薪资与自由文本。
+ *
+ * <p>映射到统一读取视图 {@code v_audit_log_all}(在线 audit_log UNION ALL 冷归档
+ * audit_log_archive, V952): 全部审计读面(事件列表/汇总/导出/会话中心)天然跨层一致;
+ * INSERT 经视图的 INSTEAD OF 触发器落回在线表, 分类触发器(V556)与只追加守卫不变。
  */
 @Getter
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "audit_log")
+@Table(name = "v_audit_log_all")
 public class AuditLog {
 
     @Id

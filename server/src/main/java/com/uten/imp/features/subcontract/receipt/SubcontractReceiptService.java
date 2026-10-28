@@ -136,16 +136,19 @@ public class SubcontractReceiptService {
     @Transactional(readOnly = true)
     public PageResponse<ReceiptListItem> list(ReceiptQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
-        Specification<SubcontractReceipt> spec = receiptSpec(f);
         // 金额被裁剪时也必须关闭金额排序，否则结果顺序会泄露商业金额高低。
         // 2026-09-25 单号列统一：billNo 进两分支白名单（单据号排序不泄露商业信息）。
-        boolean priceMasked = !priceMasker.canViewSubcontractReceipt();
+        boolean priceMasked = priceMasker==null||!priceMasker.canViewSubcontractReceipt();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
+        Specification<SubcontractReceipt> spec = receiptSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return retainedRecords.page(result, "subcontract_receipts", p.getContent());
@@ -155,6 +158,7 @@ public class SubcontractReceiptService {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReceiptQueryFilter originalFilter) {
         final ReceiptQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(priceMasker!=null&&priceMasker.canViewSubcontractReceipt());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractReceipt.class, receiptSpec(f), "billNo"));
     }
@@ -187,6 +191,8 @@ public class SubcontractReceiptService {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canViewSubcontractReceipt(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "amount", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class)));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -488,7 +494,7 @@ public class SubcontractReceiptService {
             'cases',(SELECT jsonb_agg(to_jsonb(rejection) ORDER BY rejection.id) FROM procurement_iqc_rejection_cases rejection WHERE rejection.receipt_type='SUBCONTRACT' AND rejection.receipt_id=:id),
             'allocations',(SELECT jsonb_agg(to_jsonb(allocation) ORDER BY allocation.id) FROM production_material_subcontract_receipt_allocations allocation WHERE allocation.receipt_id=:id),
             'reservations',(SELECT jsonb_agg(to_jsonb(reservation) ORDER BY reservation.id) FROM stock_reservations reservation WHERE reservation.source_doc_id=:id OR reservation.demand_id IN(SELECT demand.id FROM production_material_demands demand JOIN production_material_subcontract_receipt_allocations allocation ON allocation.demand_id=demand.id WHERE allocation.receipt_id=:id)),
-            'outbox',(SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id) FROM business_outbox event WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.payload->>'receiptId'=CAST(:id AS text)),
+            'outbox',(SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id) FROM v_business_outbox_full event WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.payload->>'receiptId'=CAST(:id AS text)),
             'costObjects',(SELECT jsonb_agg(to_jsonb(object) ORDER BY object.execution_segment_id) FROM stock_value_production_cost_objects object WHERE object.execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id)),
             'costInputs',(SELECT jsonb_agg(jsonb_build_object('input',to_jsonb(input),'node',to_jsonb(node)) ORDER BY input.input_node_id) FROM stock_value_production_cost_inputs input JOIN stock_value_nodes node ON node.id=input.input_node_id WHERE input.execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id)),
             'costShares',(SELECT jsonb_agg(to_jsonb(share) ORDER BY share.input_node_id,share.output_source_node_id) FROM stock_value_production_cost_shares share WHERE share.output_source_node_id IN(SELECT source_node_id FROM stock_value_production_cost_outputs WHERE execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id))),

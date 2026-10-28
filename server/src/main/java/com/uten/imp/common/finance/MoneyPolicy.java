@@ -283,6 +283,11 @@ public final class MoneyPolicy {
         return value == null ? null : value.setScale(QUANTITY_SCALE, RoundingMode.HALF_UP);
     }
 
+    /** 数量或重量的展示取位；原始精度仍由数量事实保留，不用于金额或回写。 */
+    public static BigDecimal quantityDisplay(BigDecimal value, int scale) {
+        return value == null ? null : value.setScale(scale, RoundingMode.HALF_UP);
+    }
+
     /**
      * 金额的统一表示: 数值不变, 只把小数位补到至少 4 位(与旧金额列、界面显示对齐),
      * 更多位数原样保留。这是格式, 不是舍入。

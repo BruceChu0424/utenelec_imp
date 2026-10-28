@@ -27,12 +27,10 @@ class PermissionChainReachabilityContractTest {
     // V886 deliberately adds no department/user grant. Reusing the retired plan action would
     // hide the feature; assigning a department merely to satisfy this test would invent authority.
     private static final Map<String, String> EXPLICIT_CONFIGURATION_ACTIONS = Map.of(
-            "production_material_analysis:forward_rd", "production.material-analysis",
-            // V925: company-library writes are deliberately opt-in. The view-only baseline
-            // must not give every department file creation, upload or restoration authority.
-            "company_file:create", "common.company-files",
-            "company_file:upload", "common.company-files",
-            "company_file:restore", "common.company-files");
+            "production_material_analysis:forward_rd", "production.material-analysis");
+    // V958: company-library write endpoints now gate on the entrance code; their
+    // action authority (folder ACL or a global administration code) lives in the
+    // service, so these codes no longer appear on write guards.
 
     @Test
     void everyWriteEndpointActionCodeHasAHolder() throws Exception {

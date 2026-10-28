@@ -132,6 +132,18 @@ class SubcontractShortDeliveryAutoSettleTest {
     }
 
     @Test
+    void supplyLossAllowanceDoesNotAutomaticallyAcceptASecondFinishedGoodsShortfall() {
+        jdbc.openStatus = "PENDING_OWNER";
+        jdbc.delivered = new BigDecimal("900");
+        jdbc.normalLossSupplied = true;
+
+        service.settleAfterStockIn(RECEIPT_ID);
+
+        assertNull(jdbc.find("SET status = 'ACCEPTED_LOSS'"), "已为损耗加料的1000目标不能到900自动结案");
+        verify(waste, never()).recordShortDeliveryLoss(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
     void waitingMoreCaseStillBelowFloorStaysOpen() {
         jdbc.openStatus = "WAITING_MORE";
         jdbc.delivered = new BigDecimal("890");
@@ -183,6 +195,7 @@ class SubcontractShortDeliveryAutoSettleTest {
         String openStatus;
         BigDecimal delivered = BigDecimal.ZERO;
         boolean factsLoaded;
+        boolean normalLossSupplied;
         final List<String> updates = new ArrayList<>();
         final List<Object[]> updateArgs = new ArrayList<>();
 
@@ -286,6 +299,7 @@ class SubcontractShortDeliveryAutoSettleTest {
             when(rs.getBigDecimal(18)).thenReturn(delivered);
             when(rs.getBoolean(19)).thenReturn(true);
             when(rs.getBigDecimal(20)).thenReturn(BigDecimal.ZERO);
+            when(rs.getBoolean(21)).thenReturn(normalLossSupplied);
             return rs;
         }
 

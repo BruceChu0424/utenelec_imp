@@ -133,13 +133,17 @@ owner 权限。保留该迁移和校验，使用独立的本地开发 PostgreSQL
 
 该回调仅适用于回环地址的 `uten_imp` 和上述开发账号组合。迁移历史、审计分区、历史来源凭证、
 导入及维护专用函数继续封闭，旧业务清空函数和权限不能借此恢复。
+V964/V965 员工身份合并与工号复用扩展的表及函数已封存权限：公共补权入口保留其原始 ACL，
+只校验公开只读/领号入口与私密快照、合并、释放工号的边界；发现权限漂移直接拒绝，不覆盖扩展封存指纹。
+视图对运行账号默认只读；唯一例外是 V952 审计统一视图 `v_audit_log_all`——JPA 写通道经其
+INSTEAD OF INSERT 触发器落 `audit_log`，故保留运行账号 SELECT+INSERT（UPDATE/DELETE 仍禁）。
 生产环境不注册该开发回调；现有角色初始化脚本仍只用于其明确允许的新隔离实例，不能为修复一次
 运行权限错误而对正在使用的库重跑账号/密码初始化。
 
 回归包括 `python -m unittest server.ops.test_local_runtime_privileges -v`、
 `LocalRuntimePrivilegesCallbackTest` 和启用 `UTEN_RUN_DB_TESTS=true` 的
 `LocalRuntimePrivilegesPostgresTest`。后者在新建隔离 PostgreSQL 中执行完整迁移、故意撤销权限后的
-零迁移修复、正常开发后端 HTTP readiness，以及旧清空路由不存在的检查。
+零迁移修复、正常开发后端 HTTP readiness、两组扩展原始安装器严格采纳，以及旧清空路由不存在的检查。
 
 本机开发在 `.env` 中显式设置 `UTEN_PROFILE=dev`。当前公司内网版本的目标配置为 `prod`，使用
 专用内部附件目录、回环后端、HTTPS反向代理和独立迁移；必须配齐数据库、JWT issuer、CORS及密钥。
@@ -342,8 +346,10 @@ Argon2id 密码 · access JWT（源码默认 15 分钟，运行值可由系统�
 账号、员工、权限和 `mustChangePassword` 均由服务端在版本校验后解析(角色体系已删除)。权限快照缓存固定为
 30 秒、最多 2048 项且以 user/employee/superAdmin/authVersion/epoch 为键; 账号状态和版本不缓存。
 
-**敏感操作再认证**: `POST /api/auth/step-up` 用本人密码换取 5 分钟内一次性凭证, 挂在 `@RequiresStepUp`
+**敏感操作再认证**: `POST /api/auth/step-up` 用本人密码换取本会话专用凭证，连续操作复用、空闲 5 分钟失效，挂在 `@RequiresStepUp`
 的端点上(设/撤超管、授权与数据范围、重置密码、模拟身份、系统设置写、改手机号姓名、补开账号等)。
+真实输入通过 `/api/auth/step-up/activity` 最多每 30 秒保活，后台轮询不续期；服务端校验本人、会话、未吊销和未过期后原子续期，过期凭证不能恢复。
+客户端仅在内存保存随机凭证，不存密码；身份、会话、模拟状态或服务器变化即清理。修改密码仍逐次验证原密码，远程 MFA/OTP 与模拟模式凭证的独立边界不变。
 临时密码由系统生成 20 位随机且限时; 带高危权限(`permissions.high_risk`)的账号只能由超管重置。
 
 服务端权限解析发生数据库/缓存依赖故障时，`JwtAuthFilter` 返回结构化 `503 SERVICE_UNAVAILABLE`，

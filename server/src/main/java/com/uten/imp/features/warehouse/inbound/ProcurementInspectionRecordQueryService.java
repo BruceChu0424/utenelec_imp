@@ -58,17 +58,27 @@ public class ProcurementInspectionRecordQueryService {
             String rawOrder,
             String rawSourceNo,
             String rawReferenceNo) {
+        return list(rawDecision,rawKeyword,from,to,rawSourceType,rawEffective,rawDisposition,requestedPage,requestedSize,
+                rawSort,rawOrder,rawSourceNo,rawReferenceNo,Map.of());
+    }
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public InspectionDecisionRecordPage list(String rawDecision,String rawKeyword,OffsetDateTime from,OffsetDateTime to,
+            String rawSourceType,String rawEffective,String rawDisposition,int requestedPage,int requestedSize,
+            String rawSort,String rawOrder,String rawSourceNo,String rawReferenceNo,Map<String,String> columns) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
                 rawSourceType, rawEffective, rawDisposition,
                 requestedPage, requestedSize);
         DocNoFilter docNo = DocNoFilter.of(rawSourceNo, rawReferenceNo);
-        String predicate = filteredPredicate(filter, docNo, true);
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,com.uten.imp.common.util.QualityRecordHeaders.fields(false));
+        String predicate = filteredPredicate(filter, docNo, true)+" AND "+headers.predicate();
         String records = "(" + recordSql() + ") record";
 
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(*) FROM " + records + " WHERE " + predicate);
         bindFilters(countQuery, filter, docNo, true);
+        headers.bind(countQuery);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query pageQuery = em.createNativeQuery(
@@ -80,6 +90,7 @@ public class ProcurementInspectionRecordQueryService {
                                         new String[]{"record.goods_code", "record.source_no", "record.reference_no"}) + ", ")
                         + " OFFSET :offset LIMIT :limit");
         bindFilters(pageQuery, filter, docNo, true);
+        headers.bind(pageQuery);
         pageQuery.setParameter("offset", filter.offset());
         pageQuery.setParameter("limit", filter.size());
         List<InspectionDecisionRecord> items =
@@ -87,7 +98,7 @@ public class ProcurementInspectionRecordQueryService {
                         .map(ProcurementInspectionRecordQueryService::toView)
                         .toList();
 
-        Map<String, Long> metrics = metrics(filter, docNo, records);
+        Map<String, Long> metrics = metrics(filter, docNo, records,headers);
         int totalPages = total == 0
                 ? 0 : (int) Math.min(Integer.MAX_VALUE,
                 (total + filter.size() - 1) / filter.size());
@@ -111,11 +122,18 @@ public class ProcurementInspectionRecordQueryService {
             String rawSourceType,
             String rawEffective,
             String rawDisposition) {
+        return facets(rawDecision,rawKeyword,from,to,rawSourceType,rawEffective,rawDisposition,Map.of());
+    }
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public Map<String,List<Map<String,Object>>> facets(String rawDecision,String rawKeyword,OffsetDateTime from,OffsetDateTime to,
+            String rawSourceType,String rawEffective,String rawDisposition,Map<String,String> columns) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
                 rawSourceType, rawEffective, rawDisposition,
                 1, 40);
-        String predicate = filteredPredicate(filter, DocNoFilter.EMPTY, true);
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,com.uten.imp.common.util.QualityRecordHeaders.fields(false));
+        String predicate = filteredPredicate(filter, DocNoFilter.EMPTY, true)+" AND "+headers.predicate();
         String records = "(" + recordSql() + ") record";
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (String column : List.of("sourceNo", "referenceNo")) {
@@ -132,6 +150,7 @@ public class ProcurementInspectionRecordQueryService {
                             + ", '') <> '' ORDER BY 1")
                     .setMaxResults(500);
             bindFilters(query, filter, DocNoFilter.EMPTY, true);
+            headers.bind(query);
             result.put(column, NativeFacets.rowsOf(query));
         }
         result.put("sheetNo", List.of());
@@ -154,13 +173,14 @@ public class ProcurementInspectionRecordQueryService {
     private Map<String, Long> metrics(
             NormalizedFilter filter,
             DocNoFilter docNo,
-            String records) {
-        String predicate = filteredPredicate(filter, docNo, false);
+            String records,com.uten.imp.common.util.SqlColumnSearch.Criteria headers) {
+        String predicate = filteredPredicate(filter, docNo, false)+" AND "+headers.predicate();
         Query query = em.createNativeQuery(
                 "SELECT record.decision, COUNT(*) FROM " + records
                         + " WHERE " + predicate
                         + " GROUP BY record.decision");
         bindFilters(query, filter, docNo, false);
+        headers.bind(query);
         LinkedHashMap<String, Long> metrics = emptyMetrics();
         long all = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
@@ -197,6 +217,8 @@ public class ProcurementInspectionRecordQueryService {
     /** 排序白名单（2026-09-25 单号列统一）：sourceNo/referenceNo；未知/空回落默认
      *  「决定时间倒序 + 记录 id」；稳定键固定追加默认两段。 */
     private static String orderBy(String rawSort, String rawOrder) {
+        if(rawSort!=null&&List.of("passQty","failQty","decidedAt").contains(rawSort))
+            return com.uten.imp.common.util.QualityRecordHeaders.orderBy(rawSort,rawOrder,false);
         String direction = "desc".equalsIgnoreCase(rawOrder) ? "DESC" : "ASC";
         return switch (rawSort == null ? "" : rawSort.strip()) {
             case "sourceNo" -> "ORDER BY record.source_no " + direction

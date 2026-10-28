@@ -60,7 +60,8 @@ class CategoryHierarchyMoveContractTest {
         assertThat(callCount(scenario.repo, "isDescendant")).isZero();
         assertThat(callCount(scenario.repo, "rebuildSubtreeHierarchy")).isZero();
         assertThat(callCount(scenario.repo, "findSubtree")).isZero();
-        assertThat(callCount(scenario.em, "createNativeQuery")).isEqualTo(1);
+        // A rename still checks its siblings under the hierarchy lock.
+        assertThat(callCount(scenario.em, "createNativeQuery")).isEqualTo(2);
     }
 
     @ParameterizedTest

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.uten.imp.features.finance.payables.SupplierSettlementContracts.*;
@@ -34,8 +35,9 @@ public class SupplierSettlementController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "30") int size) {
-        return service.list(supplierId, periodStart, status, keyword, page, size);
+            @RequestParam(defaultValue = "30") int size,
+            @RequestParam Map<String, String> columnQuery) {
+        return service.list(supplierId, periodStart, status, keyword, page, size, columnQuery);
     }
 
     @GetMapping("/{id}")

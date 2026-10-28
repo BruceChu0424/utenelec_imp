@@ -1,6 +1,7 @@
 package com.uten.imp.features.companyfiles;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.util.ColumnKeywordSearch;
 import com.uten.imp.features.companyfiles.CompanyFileDtos.*;
 import com.uten.imp.security.RequiresStepUp;
 
@@ -32,11 +33,14 @@ public class CompanyFileController {
             @RequestParam(defaultValue = "false") boolean trash,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "100") int size) {
-        return service.list(parentId, search, sort, direction, trash, page, size);
+        var searches = ColumnKeywordSearch.requestValues(ColumnKeywordSearch.currentRequest());
+        return searches.isEmpty() ? service.list(parentId, search, sort, direction, trash, page, size)
+                : service.list(parentId, search, sort, direction, trash, page, size, searches);
     }
 
     @GetMapping("/principals")
-    @PreAuthorize("hasAuthority('company_file:view') and (hasAuthority('company_file:manage_permissions') or hasAuthority('company_file:create') or hasAuthority('company_file:upload'))")
+    // V958: action authority is folder ACL or a global administration code.
+    @PreAuthorize("hasAuthority('company_file:view')")
     public List<Principal> principals(
             @RequestParam(defaultValue = "USER") String type,
             @RequestParam(defaultValue = "") String search) {
@@ -54,72 +58,72 @@ public class CompanyFileController {
     }
 
     @PostMapping("/folders")
-    @PreAuthorize("hasAuthority('company_file:create')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @ResponseStatus(HttpStatus.CREATED)
     public Entry createFolder(@Valid @RequestBody Create request) {
         return service.createFolder(request);
     }
 
     @PostMapping("/files")
-    @PreAuthorize("hasAuthority('company_file:upload')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @ResponseStatus(HttpStatus.CREATED)
     public Entry reserveFile(@Valid @RequestBody Create request) {
         return service.reserveFile(request);
     }
 
     @PostMapping("/{id}/complete")
-    @PreAuthorize("hasAuthority('company_file:upload')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     public Entry complete(@PathVariable UUID id, @Valid @RequestBody Complete request) {
         return service.complete(id, request);
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAuthority('company_file:edit')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     public Entry edit(@PathVariable UUID id, @Valid @RequestBody Edit request) {
         return service.edit(id, request);
     }
 
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasAuthority('company_file:move')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     public Entry move(@PathVariable UUID id, @Valid @RequestBody Move request) {
         return service.move(id, request);
     }
 
     @PostMapping("/reorder")
-    @PreAuthorize("hasAuthority('company_file:move')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void reorder(@Valid @RequestBody Reorder request) {
         service.reorder(request);
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('company_file:delete') or hasAuthority('company_file:upload')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable UUID id, @RequestParam long version) {
         service.delete(id, version);
     }
 
     @PostMapping("/{id}/restore")
-    @PreAuthorize("hasAuthority('company_file:restore')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     public Entry restore(@PathVariable UUID id, @Valid @RequestBody Version request) {
         return service.restore(id, request);
     }
 
     @GetMapping("/{id}/permissions")
-    @PreAuthorize("hasAuthority('company_file:manage_permissions')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     public Permissions permissions(@PathVariable UUID id) {
         return service.permissions(id);
     }
 
     @PutMapping("/{id}/permissions")
-    @PreAuthorize("hasAuthority('company_file:manage_permissions')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @RequiresStepUp
     public Entry setPermissions(@PathVariable UUID id, @Valid @RequestBody Permissions request) {
         return service.setPermissions(id, request);
     }
 
     @PutMapping("/{id}/password")
-    @PreAuthorize("hasAuthority('company_file:manage_permissions')")
+    @PreAuthorize("hasAuthority('company_file:view')")
     @RequiresStepUp
     public Entry setPassword(@PathVariable UUID id, @Valid @RequestBody Password request) {
         return service.setPassword(id, request);

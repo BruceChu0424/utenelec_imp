@@ -75,6 +75,7 @@ public class FinanceReportService {
     private final com.uten.imp.features.finance.cost.FinanceCostService costService;
     private final com.uten.imp.features.finance.gl.GlReportService glReportService;
     private final com.uten.imp.features.finance.asset.FixedAssetService fixedAssetService;
+    private final PartyMonthlySummaryService partySummaries;
 
     // ======================== 通用执行器（镜像销售/采购） ========================
 
@@ -82,80 +83,22 @@ public class FinanceReportService {
                                         FinanceWhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                         Map<String, String> activeFacets, int page, int size,
                                         String sort, String order) {
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
-        long offset = (long) (safePage - 1) * safeSize;
-
-        List<FinanceWhereBuilder.Clause> facetClauses = new ArrayList<>();
-        if (activeFacets != null) {
-            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
-                FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
-                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
-                    facetClauses.add(facetClause(spec, e.getValue()));
-                }
-            }
-        }
-        FinanceWhereBuilder.Built full = mainWhere.build(facetClauses);
-        FinanceWhereBuilder.Built baseB = mainWhere.build(null);
-
-        // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
-        var sortKeys = new java.util.HashSet<String>();
-        for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
-
-        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
-                + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
-        full.params().forEach(dataQ::setParameter);
-        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
-        dataQ.setParameter("__limit", safeSize);
-        dataQ.setParameter("__offset", offset);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
-        List<Map<String, Object>> items = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i]));
-            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
-            items.add(m);
-        }
-
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            var countQ = em.createNativeQuery("SELECT COUNT(*) " + fromJoin + " " + full.sql());
-            full.params().forEach(countQ::setParameter);
-            total = ((Number) countQ.getSingleResult()).longValue();
-        }
-        int totalPages = ReportReadPlan.totalPages(total, safeSize);
-
-        Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
-        for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
-            var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
-                    + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
-            baseB.params().forEach(fq::setParameter);
-            @SuppressWarnings("unchecked")
-            List<Object[]> frs = fq.getResultList();
-            List<ReportFacet> buckets = new ArrayList<>();
-            for (Object[] fr : frs) {
-                Object v = fr[0];
-                String val = (v == null) ? ReportTableResponse.NULL_FACET : Objects.toString(v);
-                String lbl = (v == null) ? "(空)" : (fr[1] == null ? null : fr[1].toString());
-                long cnt = ((Number) fr[2]).longValue();
-                buckets.add(new ReportFacet(val, lbl, cnt));
-            }
-            facets.put(spec.key(), buckets);
-        }
-
-        // 隐藏元数据列（key 以 "__" 开头，如 __srcId）：不进返回的 columns（前端不渲染、导出不含），但行 Map 已 put 其值。
-        // 表格下方合计：与列表用同一份 full（日期/facet/关键字 + 对象级授权谓词）在**整个结果集**
-        // 上聚合，与翻到第几页无关；派生表不带 LIMIT/OFFSET，所以绝不会出现「只合计当前页」。
-        List<com.uten.imp.common.report.ReportTotal> totals =
-                ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                        em, dataSelect, fromJoin, full.sql(), full.params(),
-                        reportTotalSpecs(columns, columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
-
-        totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
-        List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+        return execute(columns,dataSelect,fromJoin,mainWhere,orderBy,specs,activeFacets,page,size,sort,order,java.util.Set.of());
+    }
+    private ReportTableResponse execute(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            FinanceWhereBuilder mainWhere,String orderBy,List<FacetSpec> specs,Map<String,String> activeFacets,
+            int page,int size,String sort,String order,java.util.Set<String> nonQueryableKeys) {
+        var source=mainWhere.build(null);
+        // Complete the original row/window first. Header predicates must not move the
+        // one-per-receipt fee allocation or change the business row represented here.
+        String projected=dataSelect+",ROW_NUMBER() OVER (ORDER BY "+mainWhere.orderBy(orderBy)+") AS \"__headerOrdinal\" "
+                +fromJoin+" "+source.sql();
+        String aliased=FinanceProjectedReportTable.aliasProjection(projected,columns,"finance_source","__headerOrdinal");
+        return FinanceProjectedReportTable.query(em,columns,aliased,query->{
+            source.params().forEach(query::setParameter);mainWhere.searchOrderParameters().forEach(query::setParameter);
+        },"report.\"__headerOrdinal\"",activeFacets,
+                specs.stream().map(FacetSpec::key).collect(java.util.stream.Collectors.toSet()),
+                page,size,sort,order,false,reportTotalSpecs(columns,columns),nonQueryableKeys);
     }
 
     /**
@@ -169,20 +112,7 @@ public class FinanceReportService {
      */
     private static List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> reportTotalSpecs(
             List<ReportColumn> emitted, List<ReportColumn> projected) {
-        java.util.Set<String> present = new java.util.HashSet<>();
-        for (ReportColumn c : projected) present.add(c.key());
-        List<com.uten.imp.common.report.ReportTotalsCalculator.Spec> specs = new ArrayList<>();
-        for (ReportColumn c : emitted) {
-            String label = c.totalLabel();
-            if (label == null || label.isBlank()) continue;
-            String g = c.totalGroupKey();
-            if (g != null && !present.contains(g)) continue;
-            String identity = c.totalGroupIdentityKey();
-            if (identity != null && !present.contains(identity)) continue;
-            specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                    c.key(), label, c.type(), g, identity));
-        }
-        return specs;
+        return FinanceProjectedReportTable.totalSpecs(emitted,projected);
     }
 
     private static Object norm(Object v) {
@@ -219,21 +149,34 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse arApOverview(LocalDate dateFrom, LocalDate dateTo, String displayMode,
                                            String keyword, String categoryType, UUID categoryId, int page, int size) {
+        return arApOverview(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse arApOverview(LocalDate dateFrom, LocalDate dateTo, String displayMode,
+            String keyword, String categoryType, UUID categoryId, int page, int size,
+            Map<String, String> filters, String sort, String order) {
         requireCompanyWideReportAccess();
         return arApOverviewAuthorized(
-                dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size);
+                dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size, filters, sort, order);
     }
 
     private ReportTableResponse arApOverviewAuthorized(
             LocalDate dateFrom, LocalDate dateTo, String displayMode,
             String keyword, String categoryType, UUID categoryId, int page, int size) {
+        return arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, page, size, Map.of(), null, null);
+    }
+
+    private ReportTableResponse arApOverviewAuthorized(LocalDate dateFrom, LocalDate dateTo, String displayMode,
+            String keyword, String categoryType, UUID categoryId, int page, int size,
+            Map<String, String> filters, String sort, String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyName", "往来单位", 220),
                 ReportColumn.text("partyType", "类型", 80),
                 // 一行一往来单位，金额取 ar_ap_ledger.amount_balance（= 立账本币 − 已核销，恒为人民币），
                 // 跨单位相加得到的正是「全部客户应收合计 / 全部供应商应付合计」，无币种维度。
-                ReportColumn.money("receivable", "应收金额").totaled("合计应收金额"),
-                ReportColumn.money("payable", "应付金额").totaled("合计应付金额"),
+                ReportColumn.money("receivable", "应收金额").withUnitLabel("元").totaled("合计应收金额"),
+                ReportColumn.money("payable", "应付金额").withUnitLabel("元").totaled("合计应付金额"),
                 ReportColumn.text("phone", "电话", 130),
                 ReportColumn.text("address", "联系地址", 220));
         // 客户类别/供应商类别按 category_id 下溯（递归 CTE）；categoryType 决定查 clients 还是 suppliers。
@@ -293,9 +236,12 @@ public class FinanceReportService {
         String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode, partyCategoryId, partyId FROM ("
                 + union + ") z";
         String fromJoin = "";
+        ArApOverviewHeaderQuery headers = new ArApOverviewHeaderQuery(filters);
+        headers.apply(w);
         // arApOverview 用独立查询（带 category 递归 CTE 参数），不走通用 execute 的 facet；这里手写计数+分页
         return executeOverview(cols, dataSelect, fromJoin, w, dateFrom, dateTo, keyword,
-                onlyClient || onlySupplier ? categoryId : null, page, size);
+                onlyClient || onlySupplier ? categoryId : null, page, size, headers.ordering(sort, order))
+                .withColumnSearchKeys(headers.keys());
     }
 
     /**
@@ -362,7 +308,7 @@ public class FinanceReportService {
     /** arApOverview 专用：带 category 递归 CTE 参数 + 计数 + 分页（无 facet）。 */
     private ReportTableResponse executeOverview(List<ReportColumn> cols, String dataSelect, String fromJoin,
                                                 FinanceWhereBuilder w, LocalDate dateFrom, LocalDate dateTo,
-                                                String keyword, UUID catParam, int page, int size) {
+                                                String keyword, UUID catParam, int page, int size, String ordering) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -373,9 +319,9 @@ public class FinanceReportService {
                 + " ELSE " + CategoryKeywordSearch.nativeRank(keyword, "kw", "supplier_categories",
                         "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName") + " END, ";
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + full.sql()
-                + " ORDER BY " + relevance + "partyType, partyName, partyId LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + (ordering == null ? relevance + "partyType, partyName, partyId" : ordering) + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
-        CategoryKeywordSearch.bindRank(dataQ, keyword, "kw");
+        if (ordering == null) CategoryKeywordSearch.bindRank(dataQ, keyword, "kw");
         dataQ.setParameter("fromDate", dateFrom);
         dataQ.setParameter("toDate", dateTo);
         if (catParam != null) dataQ.setParameter("catId", catParam);
@@ -519,14 +465,25 @@ public class FinanceReportService {
     public ReportTableResponse salesOrderReceivablePlan(
             String billNo, UUID clientId, LocalDate dateFrom, LocalDate dateTo,
             String keyword, int page, int size, String sort, String order) {
+        return salesOrderReceivablePlan(billNo,clientId,dateFrom,dateTo,keyword,page,size,sort,order,Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse salesOrderReceivablePlan(String billNo,UUID clientId,LocalDate dateFrom,LocalDate dateTo,
+            String keyword,int page,int size,String sort,String order,Map<String,String> headers) {
         requireCompanyWideReportAccess();
         return salesOrderReceivablePlanAuthorized(
-                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order);
+                billNo, clientId, dateFrom, dateTo, keyword, page, size, sort, order,headers);
     }
 
     private ReportTableResponse salesOrderReceivablePlanAuthorized(
             String billNo, UUID clientId, LocalDate dateFrom, LocalDate dateTo,
             String keyword, int page, int size, String sort, String order) {
+        return salesOrderReceivablePlanAuthorized(billNo,clientId,dateFrom,dateTo,keyword,page,size,sort,order,Map.of());
+    }
+
+    private ReportTableResponse salesOrderReceivablePlanAuthorized(String billNo,UUID clientId,LocalDate dateFrom,LocalDate dateTo,
+            String keyword,int page,int size,String sort,String order,Map<String,String> headers) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("orderNo", "销售订单号", 160),
                 ReportColumn.date("orderDate", "订单日期"),
@@ -599,27 +556,38 @@ public class FinanceReportService {
             w.search(keyword, "sales_order.bill_no", "client.name", "client.full_name");
         }
         return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no,sales_order.id",
-                List.of(), Map.of(), page, size, sort, order);
+                List.of(), headers, page, size, sort, order);
     }
 
     /** B/D 应收/应付汇总（按往来单位 GROUP BY，含期初/本期立帐/核销/期末余额）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse arApSummary(String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
                                           int page, int size) {
+        return arApSummary(direction,dateFrom,dateTo,keyword,page,size,Map.of(),null,null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse arApSummary(String direction,LocalDate dateFrom,LocalDate dateTo,String keyword,
+            int page,int size,Map<String,String> headers,String sort,String order) {
         requireCompanyWideReportAccess();
         return arApSummaryAuthorized(
-                direction, dateFrom, dateTo, keyword, page, size);
+                direction, dateFrom, dateTo, keyword, page, size,headers,sort,order);
     }
 
     private ReportTableResponse arApSummaryAuthorized(
             String direction, LocalDate dateFrom, LocalDate dateTo, String keyword,
             int page, int size) {
+        return arApSummaryAuthorized(direction,dateFrom,dateTo,keyword,page,size,Map.of(),null,null);
+    }
+
+    private ReportTableResponse arApSummaryAuthorized(String direction,LocalDate dateFrom,LocalDate dateTo,String keyword,
+            int page,int size,Map<String,String> headers,String sort,String order) {
         String dir = normalizeDirection(direction);
         LocalDate from = dateFrom != null ? dateFrom : LocalDate.of(2010, 1, 1);
         LocalDate to = dateTo != null ? dateTo : BusinessTime.today();
         return "AR".equals(dir)
-                ? receivableSummaryAuthorized(keyword, from, to, page, size)
-                : payableSummaryAuthorized(keyword, from, to, page, size);
+                ? receivableSummaryAuthorized(keyword, from, to, page, size,headers,sort,order)
+                : payableSummaryAuthorized(keyword, from, to, page, size,headers,sort,order);
     }
 
     /** B 应收款汇总（按客户；期初/发货/回款/退货/期末 用「立帐 − 收款」时序一致口径，保证 期初+发货+退货−回款=期末）。
@@ -633,6 +601,11 @@ public class FinanceReportService {
 
     private ReportTableResponse receivableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to, int page, int size) {
+        return receivableSummaryAuthorized(keyword,from,to,page,size,Map.of(),null,null);
+    }
+
+    private ReportTableResponse receivableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+            Map<String,String> headers,String sort,String order) {
         assertOpeningWindowReplayable("AR", keyword, from, to);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "客户编号", 110),
@@ -754,7 +727,7 @@ public class FinanceReportService {
                               WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
                               THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
-        return executeRawPaged(cols, core, "c.name,c.id", keyword, from, to, page, size, "c", documentScope);
+        return executeRawPaged(cols, core, "c.name,c.id", keyword, from, to, page, size, "c", documentScope,headers,sort,order,java.util.Set.of("materialAmount"));
     }
 
     /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
@@ -771,6 +744,11 @@ public class FinanceReportService {
     private ReportTableResponse payableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to,
             int page, int size) {
+        return payableSummaryAuthorized(keyword,from,to,page,size,Map.of(),null,null);
+    }
+
+    private ReportTableResponse payableSummaryAuthorized(String keyword,LocalDate from,LocalDate to,int page,int size,
+            Map<String,String> headers,String sort,String order) {
         assertOpeningWindowReplayable("AP", keyword, from, to);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("partyCode", "供应商编号", 110),
@@ -956,7 +934,7 @@ public class FinanceReportService {
                 LEFT JOIN paid pa ON pa.supplier_id=s.id
                 LEFT JOIN offsets o ON o.supplier_id=s.id
                 """;
-        return executeRawPaged(cols, core, "s.name,s.id", keyword, from, to, page, size, "s", documentScope);
+        return executeRawPaged(cols, core, "s.name,s.id", keyword, from, to, page, size, "s", documentScope,headers,sort,order);
     }
 
     private void assertOpeningWindowReplayable(String direction, String keyword, LocalDate from, LocalDate to) {
@@ -998,43 +976,19 @@ public class FinanceReportService {
      *  [partyAlias] 外层主表别名（应收=客户 c / 应付=供应商 s），keyword 走 {alias}.name/{alias}.code。 */
     private ReportTableResponse executeRawPaged(List<ReportColumn> cols, String coreSql, String orderBy,
                                                  String keyword, LocalDate from, LocalDate to, int page, int size,
-                                                 String partyAlias, NativeReadScope documentScope) {
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
-        long offset = (long) (safePage - 1) * safeSize;
+                                                 String partyAlias, NativeReadScope documentScope,
+                                                 Map<String,String> headers,String sort,String order) {
+        return executeRawPaged(cols,coreSql,orderBy,keyword,from,to,page,size,partyAlias,documentScope,headers,sort,order,java.util.Set.of());
+    }
+    private ReportTableResponse executeRawPaged(List<ReportColumn> cols,String coreSql,String orderBy,String keyword,LocalDate from,LocalDate to,
+            int page,int size,String partyAlias,NativeReadScope documentScope,Map<String,String> headers,String sort,String order,
+            java.util.Set<String> nonQueryableKeys) {
         var search = new FinanceWhereBuilder("WHERE TRUE");
         search.search(keyword, partyAlias + ".name", partyAlias + ".code");
         String where = search.build(null).sql();
-        var dq = ReportExportCursor.query(em, coreSql + " " + where + " ORDER BY " + search.orderBy(orderBy) + " LIMIT :__l OFFSET :__o");
-        bindRaw(dq, keyword, from, to);
-        search.searchOrderParameters().forEach(dq::setParameter);
-        documentScope.bind(dq);
-        dq.setParameter("__l", safeSize);
-        dq.setParameter("__o", offset);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = ReportExportCursor.rows(em, dq);
-        List<Map<String, Object>> items = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i]));
-            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
-            items.add(m);
-        }
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            var cq = em.createNativeQuery("SELECT COUNT(*) FROM (" + coreSql + " " + where + ") zz");
-            bindRaw(cq, keyword, from, to);
-            documentScope.bind(cq);
-            total = ((Number) cq.getSingleResult()).longValue();
-        }
-        int totalPages = ReportReadPlan.totalPages(total, safeSize);
-        // 合计：把整段 CTE 原样包成派生表再聚合（Postgres 允许子查询里带 WITH），
-        // 用的是同一份 where 与同一套绑定（:from/:to/:kw + 对象级授权谓词），覆盖整个结果集。
-        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                em, coreSql, "", where,
-                q -> { bindRaw(q, keyword, from, to); documentScope.bind(q); },
-                reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
+        String source=FinanceProjectedReportTable.aliasProjection(coreSql+" "+where,cols,"finance_summary");
+        return FinanceProjectedReportTable.query(em,cols,source,query->{bindRaw(query,keyword,from,to);documentScope.bind(query);},
+                "report.\"partyName\",report.\"partyCode\"",headers,java.util.Set.of(),page,size,sort,order,false,reportTotalSpecs(cols,cols),nonQueryableKeys);
     }
 
     private static void bindRaw(jakarta.persistence.Query q, String keyword, LocalDate from, LocalDate to) {
@@ -1149,13 +1103,24 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse receiptSummary(String billNo, UUID clientId, Short status, LocalDate dateFrom,
                                               LocalDate dateTo, String keyword, int page, int size) {
+        return receiptSummary(billNo,clientId,status,dateFrom,dateTo,keyword,page,size,Map.of(),null,null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse receiptSummary(String billNo,UUID clientId,Short status,LocalDate dateFrom,
+            LocalDate dateTo,String keyword,int page,int size,Map<String,String> headers,String sort,String order) {
         return receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo,
-                keyword, page, size, access.scope());
+                keyword, page, size, access.scope(),headers,sort,order);
     }
 
     private ReportTableResponse receiptSummaryAuthorized(
             String billNo, UUID clientId, Short status, LocalDate dateFrom,
             LocalDate dateTo, String keyword, int page, int size, OwnerScope readScope) {
+        return receiptSummaryAuthorized(billNo,clientId,status,dateFrom,dateTo,keyword,page,size,readScope,Map.of(),null,null);
+    }
+
+    private ReportTableResponse receiptSummaryAuthorized(String billNo,UUID clientId,Short status,LocalDate dateFrom,
+            LocalDate dateTo,String keyword,int page,int size,OwnerScope readScope,Map<String,String> headers,String sort,String order) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("clientCode", "客户编号", 110), ReportColumn.text("clientName", "客户名称", 160),
                 ReportColumn.text("clientFull", "客户全称", 200), ReportColumn.text("address", "客户地址", 200),
@@ -1205,7 +1170,7 @@ public class FinanceReportService {
         addFinanceDocFilters(w, billNo, clientId, null, status, dateFrom, dateTo, keyword,
                 "t.client_id", "t.bill_no", "t.bill_date", "c.name");
         return executeGrouped(cols, dataSelect, fromJoin, w, "c.name,currency.code,c.id,currency.id",
-                "c.id,c.code,c.name,c.full_name,c.address,c.place_id,currency.id,currency.code", page, size);
+                "c.id,c.code,c.name,c.full_name,c.address,c.place_id,currency.id,currency.code", page, size,headers,sort,order);
     }
 
     /** G 采购付款明细（finance_payments + suppliers + accounts + 人员）。 */
@@ -1226,16 +1191,16 @@ public class FinanceReportService {
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("supplierName", "供应商", 180), ReportColumn.text("operatorName", "付款人", 100),
                 ReportColumn.text("accountName", "付款帐户", 130),
-                // 一行一付款单：实付原币按币别分组（本表不展示币别列，靠隐藏列 __currencyCode 分组），
+                // 一行一付款单：实付原币按真实币别分组，币别候选同时限定原币检索。
                 // 实付人民币不分组。付款总额与实付金额(外)是同一个 SQL 表达式的重复列，只出一项合计。
-                ReportColumn.money("amountOriginal", "实付金额(外)").withUnitKey("__currencyCode").totaled("合计实付金额(外)", "__currencyCode", "__currencyId"),
-                ReportColumn.money("amountTotal", "付款总额").withUnitKey("__currencyCode"),
+                ReportColumn.money("amountOriginal", "实付金额(外)").withUnitKey("currencyCode").totaled("合计实付金额(外)", "currencyCode", "__currencyId"),
+                ReportColumn.money("amountTotal", "付款总额").withUnitKey("currencyCode"),
                 ReportColumn.money("amountLocal", "实付金额").withUnitLabel("元").totaled("合计实付金额"),
                 ReportColumn.text("incomeItem", "收入项目名称", 130), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("handlerName", "经手人", 100), ReportColumn.text("remark", "备注", 160),
                 // 隐藏分组列：本报表不展示币别，但原币合计必须按币别分组（绝不跨币种相加），
                 // 故把币别码投进派生表、不进前端 columns（"__" 前缀由 execute 过滤）。
-                ReportColumn.text("__currencyCode", ""),
+                ReportColumn.text("currencyCode", "币别",90),
                 ReportColumn.text("__srcId", ""),
                 ReportColumn.text("__currencyId", ""));  // 隐藏：行点击跳付款单编辑页
         String dataSelect = """
@@ -1246,7 +1211,7 @@ public class FinanceReportService {
                        t.amount_local AS "amountLocal", NULL AS "incomeItem", ca.name AS "counterpartAccount",
                        COALESCE(em_op.full_name, t.operator_name, '') AS "handlerName", t.remark AS "remark",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("cur") + """
-                       AS "__currencyCode", t.id AS "__srcId", t.currency_id AS "__currencyId"
+                       AS "currencyCode", t.id AS "__srcId", t.currency_id AS "__currencyId"
                 """;
         String fromJoin = """
                 FROM finance_payments t
@@ -1261,7 +1226,7 @@ public class FinanceReportService {
                 "WHERE COALESCE(t.is_deleted,false)=false", "t.maker_id", readScope);
         addFinanceDocFilters(w, billNo, supplierId, accountId, status, dateFrom, dateTo, keyword,
                 "t.supplier_id", "t.bill_no", "t.bill_date", "s.name");
-        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no, t.id", List.of(facetBillNo()), facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "t.bill_date DESC, t.bill_no, t.id", List.of(facetBillNo()), facets, page, size, sort, order,java.util.Set.of("incomeItem"));
     }
 
     /** H 采购付款汇总（一行一付款单 + 关联 AP 立帐单/已付/未付/本次付款/本次余额）。 */
@@ -1366,7 +1331,7 @@ public class FinanceReportService {
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("summary", "摘要", 160),
                 // 序号是行号，不是量。
                 ReportColumn.number("lineNo", "序号"),
-                ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳费用单编辑页
+                ReportColumn.text("__srcId", ""),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
@@ -1376,7 +1341,7 @@ public class FinanceReportService {
                        ps.name AS "styleName", i.qty AS "qty", i.price AS "price", i.amount_local AS "lineAmount",
                        COALESCE(i.counterpart_name,'') AS "counterpartName", d.name AS "departmentName",
                        ca.name AS "counterpartAccount", t.remark AS "remark", i.summary AS "summary", i.line_no AS "lineNo",
-                       t.id AS "__srcId"
+                       t.id AS "__srcId",t.currency_id AS "__currencyId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -1416,11 +1381,11 @@ public class FinanceReportService {
                 ReportColumn.text("approverName", "审核员", 100), ReportColumn.text("remark", "备注", 160),
                 // 数量无随行单位列、单价是比率，均不声明合计。
                 ReportColumn.text("styleName", "费用项目名称", 130), ReportColumn.number("qty", "数量"),
-                ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
+                ReportColumn.money("price", "单价").withUnitKey("currencyCode"),
                 ReportColumn.money("lineAmount", "支出金额").withUnitLabel("元").totaled("合计支出金额"),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账户", 140),
                 ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("__currencyName", ""));  // 隐藏：行点击跳费用单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳费用单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
@@ -1430,7 +1395,7 @@ public class FinanceReportService {
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "__currencyName"
+                       AS "currencyCode",t.currency_id AS "__currencyId"
                 """;
         String fromJoin = """
                 FROM finance_expense_items i
@@ -1470,10 +1435,10 @@ public class FinanceReportService {
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
                 // 收款总额是收入单<b>单头</b>金额，一张单有几条收入明细就在几行上重复出现，相加即重复计数；
                 // 本明细表没有投影行级金额列，所以整张表没有可加的列，不出合计条。
-                ReportColumn.money("amountTotal", "收款总额").withUnitKey("__currencyName"), ReportColumn.text("styleName", "收入项目名称", 130),
+                ReportColumn.money("amountTotal", "收款总额").withUnitKey("currencyCode"), ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账号", 140),
                 ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("__currencyName", ""));  // 隐藏：行点击跳收入单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
@@ -1483,7 +1448,7 @@ public class FinanceReportService {
                        i.summary AS "summary", t.remark AS "remark",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "__currencyName"
+                       AS "currencyCode",t.currency_id AS "__currencyId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -1518,14 +1483,14 @@ public class FinanceReportService {
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
                 // 收款总额/实付金额是单头金额，按收入项目展开后在多行重复，不声明合计。
-                ReportColumn.money("amountTotal", "收款总额").withUnitKey("__currencyName"), ReportColumn.money("amountLocal", "实付金额").withUnitLabel("元"),
+                ReportColumn.money("amountTotal", "收款总额").withUnitKey("currencyCode"), ReportColumn.money("amountLocal", "实付金额").withUnitLabel("元"),
                 ReportColumn.text("makerName", "制单员", 100), ReportColumn.text("approverName", "审核员", 100),
                 ReportColumn.text("remark", "备注", 160), ReportColumn.text("styleName", "收入项目名称", 130),
                 // 收入金额是本行自身的人民币金额，可加。
                 ReportColumn.money("incomeAmount", "收入金额").withUnitLabel("元").totaled("合计收入金额"),
                 ReportColumn.text("counterpartName", "对方", 120),
                 ReportColumn.text("counterpartAccount", "对方账户", 140), ReportColumn.text("summary", "摘要", 160),
-                ReportColumn.text("__srcId", ""), ReportColumn.text("__currencyName", ""));  // 隐藏：行点击跳收入单编辑页
+                ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳收入单编辑页
         String dataSelect = """
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name,'') AS "operatorName", a.name AS "accountName",
@@ -1536,7 +1501,7 @@ public class FinanceReportService {
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount", i.summary AS "summary",
                        t.id AS "__srcId",
                        """ + com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency") + """
-                       AS "__currencyName"
+                       AS "currencyCode",t.currency_id AS "__currencyId"
                 """;
         String fromJoin = """
                 FROM finance_other_income_items i
@@ -1657,28 +1622,46 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse partyStatementFlow(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
                                                   int page, int size) {
+        return partyStatementFlow(partyId, side, dateFrom, dateTo, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse partyStatementFlow(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
+            int page, int size, Map<String, String> filters, String sort, String order) {
         requireCompanyWideReportAccess();
-        return partyStatementFlowAuthorized(partyId, side, dateFrom, dateTo, page, size);
+        return partyStatement(partyId, side, dateFrom, dateTo, page, size, true, filters, sort, order);
     }
 
     private ReportTableResponse partyStatementFlowAuthorized(
             UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
-        return partyStatement(partyId, side, dateFrom, dateTo, page, size, true);
+        return partyStatement(partyId, side, dateFrom, dateTo, page, size, true, Map.of(), null, null);
     }
 
     private ReportTableResponse partyStatement(UUID partyId, String side, LocalDate dateFrom,
-                                                LocalDate dateTo, int page, int size, boolean simple) {
+            LocalDate dateTo, int page, int size, boolean simple, Map<String, String> filters, String sort, String order) {
         boolean isAR="AR".equalsIgnoreCase(side);
         List<ReportColumn> columns=new ArrayList<>(partyStatementFlowCols(isAR));
         if (!simple) {
             columns.add(2,ReportColumn.text("type","类型",100));
             columns.add(ReportColumn.text("remark","摘要",160));
         }
-        if (partyId==null) return empty(columns);
+        PartyStatementHeaderQuery headers = new PartyStatementHeaderQuery(filters, false, simple);
+        String ordering = headers.orderBy(sort, order);
+        if (partyId==null) return empty(columns).withColumnSearchKeys(headers.keys());
+        healPartySummaries(isAR, partyId);
         assertPartyOpeningWindowReplayable(partyId,isAR,dateFrom,dateTo);
         NativeReadScope scope=COMPANY_WIDE_DOCUMENT_SCOPE;
         return buildRunningBalance(columns,FinancePartyStatementSql.running(
-                FinancePartyStatementSql.events(isAR,scope.predicate())),partyId,dateFrom,dateTo,page,size,scope);
+                FinancePartyStatementSql.events(isAR,scope.predicate()),isAR?"AR":"AP"),
+                partyId,dateFrom,dateTo,page,size,scope,headers,ordering,simple);
+    }
+
+    /**
+     * 三段式期初依赖 party_monthly_summaries（V950 投影）：读取前同步重算该单位的
+     * 脏键（通常 0～少数单元），保证对账单/年表永远读精确值，不存在过期汇总。
+     */
+    private void healPartySummaries(boolean isAR, UUID partyId) {
+        partySummaries.reconcileNow(isAR ? "AR" : "AP", partyId);
     }
 
     private void assertPartyOpeningWindowReplayable(UUID partyId,boolean isAR,LocalDate from,LocalDate to) {
@@ -1724,45 +1707,65 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse partyStatementDetail(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
                                                     int page, int size) {
+        return partyStatementDetail(partyId, side, dateFrom, dateTo, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse partyStatementDetail(UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo,
+            int page, int size, Map<String, String> filters, String sort, String order) {
         requireCompanyWideReportAccess();
-        return partyStatementDetailAuthorized(partyId, side, dateFrom, dateTo, page, size);
+        return partyStatement(partyId,side,dateFrom,dateTo,page,size,false,filters,sort,order);
     }
 
     private ReportTableResponse partyStatementDetailAuthorized(
             UUID partyId, String side, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
-        return partyStatement(partyId,side,dateFrom,dateTo,page,size,false);
+        return partyStatement(partyId,side,dateFrom,dateTo,page,size,false,Map.of(),null,null);
     }
 
     /** X 客户/供应商年度对帐单（按月：期初/立帐(发货)/收款(回款)/退货/期末；一年 12 行 + 汇总）。 */
     @Transactional(readOnly = true)
     public ReportTableResponse partyAnnualStatement(UUID partyId, String side, int year,
                                                     int page, int size) {
+        return partyAnnualStatement(partyId, side, year, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse partyAnnualStatement(UUID partyId, String side, int year,
+            int page, int size, Map<String, String> filters, String sort, String order) {
         requireCompanyWideReportAccess();
-        return partyAnnualStatementAuthorized(partyId, side, year, page, size);
+        return partyAnnualStatementAuthorized(partyId, side, year, page, size, filters, sort, order);
     }
 
     private ReportTableResponse partyAnnualStatementAuthorized(
             UUID partyId, String side, int year, int page, int size) {
+        return partyAnnualStatementAuthorized(partyId, side, year, page, size, Map.of(), null, null);
+    }
+
+    private ReportTableResponse partyAnnualStatementAuthorized(UUID partyId, String side, int year, int page, int size,
+            Map<String, String> filters, String sort, String order) {
         boolean isAR = "AR".equalsIgnoreCase(side);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("ym", "月份", 100),
                 // 期初/期末是每个月的滚动余额，12 行相加不是任何一个账上的数，不声明合计。
-                ReportColumn.money("prevBalance", "期初" + (isAR ? "应收" : "应付")),
+                ReportColumn.money("prevBalance", "期初" + (isAR ? "应收" : "应付")).withUnitLabel("元"),
                 // 立账/核销是当月发生额（人民币口径），逐月相加正好是所选年度的全年合计。
-                ReportColumn.money("posted", isAR ? "发货金额" : "收货金额")
+                ReportColumn.money("posted", isAR ? "发货金额" : "收货金额").withUnitLabel("元")
                         .totaled(isAR ? "合计发货金额" : "合计收货金额"),
-                ReportColumn.money("settled", isAR ? "回款金额" : "付款金额")
+                ReportColumn.money("settled", isAR ? "回款金额" : "付款金额").withUnitLabel("元")
                         .totaled(isAR ? "合计回款金额" : "合计付款金额"),
                 // 退货金额当前恒投影为 0（退货已合并进 posted），合计只会显示一个误导性的 0，不声明。
                 ReportColumn.money("returned", "退货金额"),
-                ReportColumn.money("balance", "期末" + (isAR ? "应收" : "应付")));
-        if (partyId == null || year <= 0) return empty(cols);
+                ReportColumn.money("balance", "期末" + (isAR ? "应收" : "应付")).withUnitLabel("元"));
+        PartyStatementHeaderQuery headers = new PartyStatementHeaderQuery(filters, true, false);
+        String ordering = headers.orderBy(sort, order);
+        if (partyId == null || year <= 0) return empty(cols).withColumnSearchKeys(headers.keys());
         LocalDate yearStart = LocalDate.of(year, 1, 1);
         LocalDate yearEnd = LocalDate.of(year, 12, 31);
+        healPartySummaries(isAR, partyId);
         assertPartyOpeningWindowReplayable(partyId,isAR,yearStart,yearEnd);
         NativeReadScope scope=COMPANY_WIDE_DOCUMENT_SCOPE;
-        return executeRawGrouped(cols,FinancePartyStatementSql.annual(
-                FinancePartyStatementSql.events(isAR,scope.predicate())),partyId,yearStart,yearEnd,page,size,scope);
+        return executeRawGrouped(cols,FinancePartyStatementSql.annual(isAR?"AR":"AP"),
+                partyId,yearStart,yearEnd,page,size,scope,headers,ordering);
     }
 
     // ======================== ⑤ 账户流水 S / 银行存取 Q·R ========================
@@ -1782,11 +1785,18 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
                                                 String keyword, int page, int size, String billNo) {
+        return accountStatement(accountId, dateFrom, dateTo, keyword, page, size, billNo, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse accountStatement(UUID accountId, LocalDate dateFrom, LocalDate dateTo,
+                                                String keyword, int page, int size, String billNo,
+                                                Map<String, String> columnQuery) {
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "开始日期不能晚于结束日期");
         }
         requireAccountStatementAccess();
-        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size, billNo);
+        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size, billNo, columnQuery);
     }
 
     /** 账户流水单号 facets（2026-09-25 单号列统一）：{billNo:[各单号]}——与列表同一
@@ -1830,6 +1840,12 @@ public class FinanceReportService {
     private ReportTableResponse accountStatementAuthorized(
             UUID accountId, LocalDate dateFrom, LocalDate dateTo,
             String keyword, int page, int size, String billNo) {
+        return accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, page, size, billNo, Map.of());
+    }
+
+    private ReportTableResponse accountStatementAuthorized(
+            UUID accountId, LocalDate dateFrom, LocalDate dateTo,
+            String keyword, int page, int size, String billNo, Map<String, String> columnQuery) {
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "日期"), ReportColumn.text("billNo", "单号", 140),
                 ReportColumn.text("checkNo", "支票号", 120), ReportColumn.text("summary", "摘要", 160),
@@ -1852,6 +1868,7 @@ public class FinanceReportService {
         java.time.OffsetDateTime toExclusive=dateTo==null?null:BusinessTime.startOfDay(dateTo.plusDays(1));
         String normalizedKeyword=keyword==null||keyword.isBlank()
                 ?null:KeywordSearch.phrase(keyword);
+        var columnCriteria = AccountStatementColumnQuery.criteria(columnQuery);
         String sql="""
                 WITH account_base AS (
                   SELECT id,currency_id,init_balance
@@ -1917,6 +1934,7 @@ public class FinanceReportService {
                     -- 只筛展示行，余额仍按完整日期窗滚动，不破坏滚动余额语义）。
                     AND (CAST(:billNoFilter AS text) IS NULL
                          OR bill_no = CAST(:billNoFilter AS text))
+                """ + " AND (" + columnCriteria.predicate() + ")\n" + """
                 )
                 SELECT bill_date,bill_no,check_no,summary,counterpart_name,source,
                        settled_date,in_amount,out_amount,balance,
@@ -1947,6 +1965,7 @@ public class FinanceReportService {
                 .setParameter("billNoFilter",billNo==null||billNo.isBlank()?null:billNo.trim())
                 .setParameter("limit",safeSize)
                 .setParameter("offset",offset);
+        columnCriteria.bind(query);
         @SuppressWarnings("unchecked")
         List<Object[]> rows=ReportExportCursor.rows(em, query);
         Object[] emptyPageMetadata = null;
@@ -1967,6 +1986,7 @@ public class FinanceReportService {
                     .setParameter("fromMonthAt", fromMonthAt).setParameter("toExclusive", toExclusive)
                     .setParameter("keyword", normalizedKeyword)
                     .setParameter("billNoFilter", billNo == null || billNo.isBlank() ? null : billNo.trim());
+            columnCriteria.bind(metadata);
             @SuppressWarnings("unchecked") List<Object[]> metadataRows = metadata.getResultList();
             if (!metadataRows.isEmpty()) emptyPageMetadata = metadataRows.getFirst();
         }
@@ -2046,6 +2066,12 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse customerPrepaymentEvents(
             UUID clientId, LocalDate dateFrom, LocalDate dateTo, int page, int size) {
+        return customerPrepaymentEvents(clientId,dateFrom,dateTo,page,size,null,FinanceReportColumnOptions.NONE);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse customerPrepaymentEvents(UUID clientId,LocalDate dateFrom,LocalDate dateTo,int page,int size,
+            String keyword,FinanceReportColumnOptions options) {
         requireCompanyWideReportAccess();
         if (!access.hasAuthority("customer_prepayment:view")) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少客户预收查看权限");
@@ -2141,69 +2167,31 @@ public class FinanceReportService {
                 JOIN currencies currency ON currency.id=event.currency_id
                 WHERE 1=1
                 """ + filter + " ORDER BY event.event_date,event.event_order,event.event_no";
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(500, Math.max(1, size));
-        var query = ReportExportCursor.query(em, sql + " LIMIT :__limit OFFSET :__offset")
-                .setParameter("__limit", safeSize)
-                .setParameter("__offset", (long) (safePage - 1) * safeSize);
-        if (clientId != null) query.setParameter("clientId", clientId);
-        if (dateFrom != null) query.setParameter("dateFrom", dateFrom);
-        if (dateTo != null) query.setParameter("dateTo", dateTo);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = ReportExportCursor.rows(em, query);
-        List<Map<String,Object>> mapped = new ArrayList<>(rows.size());
-        for (Object[] row : rows) {
-            Map<String,Object> item = new LinkedHashMap<>();
-            item.put("eventDate", norm(row[0])); item.put("eventNo", norm(row[1]));
-            item.put("eventType", norm(row[2])); item.put("eventTypeLabel", norm(row[3]));
-            item.put("salesOrderNos", norm(row[4]));
-            // UUID truth is returned for drill-down/API consumers but intentionally not a visible report column.
-            item.put("salesOrderIds", norm(row[5]));
-            item.put("clientCode", norm(row[6])); item.put("clientName", norm(row[7]));
-            item.put("currencyCode", norm(row[8]));
-            item.put("prepaymentCashOriginal", norm(row[9]));
-            item.put("prepaymentCashLocal", norm(row[10]));
-            item.put("appliedOriginal", norm(row[11])); item.put("sourceBookLocal", norm(row[12]));
-            item.put("targetBookLocal", norm(row[13]));
-            item.put("exchangeDifferenceLocal", norm(row[14])); item.put("reason", norm(row[15]));
-            item.put("__currencyId", norm(row[16]));
-            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(item);
-            mapped.add(item);
-        }
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            var count = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") events");
-            if (clientId != null) count.setParameter("clientId", clientId);
-            if (dateFrom != null) count.setParameter("dateFrom", dateFrom);
-            if (dateTo != null) count.setParameter("dateTo", dateTo);
-            total = ((Number) count.getSingleResult()).longValue();
-        }
         // The aliases describe the existing authority projection, including hidden identities.
         String source = "SELECT * FROM (" + sql + ") events(\"eventDate\",\"eventNo\",\"eventType\","
                 + "\"eventTypeLabel\",\"salesOrderNos\",\"salesOrderIds\",\"clientCode\",\"clientName\","
                 + "\"currencyCode\",\"prepaymentCashOriginal\",\"prepaymentCashLocal\",\"appliedOriginal\","
                 + "\"sourceBookLocal\",\"targetBookLocal\",\"exchangeDifferenceLocal\",\"reason\",\"__currencyId\")";
-        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals()
-                ? com.uten.imp.common.report.ReportTotalsCalculator.compute(em, source, "", "", q -> {
-                    if (clientId != null) q.setParameter("clientId", clientId);
-                    if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
-                    if (dateTo != null) q.setParameter("dateTo", dateTo);
-                }, reportTotalSpecs(columns, columns)) : List.of();
-        return new ReportTableResponse(columns, mapped, Map.of(), safePage, safeSize,
-                total, ReportReadPlan.totalPages(total, safeSize),
-                com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns));
+        var projectedColumns=new ArrayList<>(columns);projectedColumns.add(ReportColumn.text("__salesOrderIds",""));
+        String projection=columns.stream().map(column->"event_scope.\""+column.key()+"\"").collect(java.util.stream.Collectors.joining(","));
+        String projected="SELECT "+projection+",event_scope.\"salesOrderIds\" AS \"__salesOrderIds\",ROW_NUMBER() OVER (ORDER BY event_scope.\"eventDate\","
+                +" CASE event_scope.\"eventType\" WHEN 'CUSTOMER_PREPAYMENT_RECEIPT' THEN 1 WHEN 'CUSTOMER_PREPAYMENT_APPLIED' THEN 2"
+                +" WHEN 'CUSTOMER_PREPAYMENT_APPLICATION_REVERSED' THEN 3 ELSE 4 END,event_scope.\"eventNo\") AS \"__headerOrdinal\" FROM ("+source+") event_scope";
+        boolean searching=!KeywordSearch.terms(keyword).isEmpty();
+        if(searching)projected+=" WHERE "+TaskKeywordSearch.conditionParameter("prepaymentKeyword","event_scope.\"eventNo\"","event_scope.\"salesOrderNos\"","event_scope.\"clientCode\"","event_scope.\"clientName\"","event_scope.\"reason\"");
+        var result=FinanceProjectedReportTable.query(em,projectedColumns,projected,q->{
+            if(clientId!=null)q.setParameter("clientId",clientId);if(dateFrom!=null)q.setParameter("dateFrom",dateFrom);if(dateTo!=null)q.setParameter("dateTo",dateTo);
+            if(searching)q.setParameter("prepaymentKeyword",KeywordSearch.phrase(keyword));
+        },"report.\"__headerOrdinal\"",options.filters(),java.util.Set.of(),page,size,options.sort(),options.order(),true,reportTotalSpecs(columns,columns));
+        result.rows().forEach(row->row.put("salesOrderIds",row.remove("__salesOrderIds")));
+        return result;
     }
 
     // ======================== 通用辅助 ========================
 
     /** 公司级账簿不能按单据 maker 切片，否则会同时泄露事实并产生错误余额。 */
     private void requireCompanyWideReportAccess() {
-        var scope = access.scope();
-        if (!scope.seeAll()) {
-            throw new ApiException(
-                    ErrorCode.FORBIDDEN,
-                    "该报表包含公司级完整财务事实，仅超级管理员或具有 finance:view:all 权限的用户可访问");
-        }
+        com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
     }
 
     private void requireAccountStatementAccess() {
@@ -2296,17 +2284,24 @@ public class FinanceReportService {
                 total, ReportReadPlan.totalPages(total, 50));
     }
 
-    /** PostgreSQL computes balance before filtering/paging; only one page crosses JDBC. */
+    /** PostgreSQL computes balance before filtering/paging; only one page crosses JDBC.
+     * B2 三段式期初：绑定 :fromMonth（起始月一号）供已关月汇总/当月尾段两段基数。 */
     private ReportTableResponse buildRunningBalance(List<ReportColumn> columns,String core,UUID party,
-                                                     LocalDate from,LocalDate to,int page,int size,NativeReadScope scope) {
+            LocalDate from,LocalDate to,int page,int size,NativeReadScope scope,
+            PartyStatementHeaderQuery headers, String ordering, boolean simple) {
         int safePage=Math.max(1,page),safeSize=Math.min(500,Math.max(1,size));
+        LocalDate fromMonth=from==null?null:from.withDayOfMonth(1);
         String selected=columns.stream().map(column->"\""+column.key()+"\"")
                 .collect(java.util.stream.Collectors.joining(","));
-        var data=ReportExportCursor.query(em, "SELECT "+selected+" FROM ("+core+") report"
-                +" ORDER BY \"billDate\",\"eventOrder\",\"refNo\",\"eventId\" LIMIT :__limit OFFSET :__offset")
+        var conditions = headers.criteria();
+        String filtered = "SELECT * FROM (" + core + ") report WHERE " + conditions.predicate();
+        var data=ReportExportCursor.query(em, "SELECT "+selected+" FROM ("+core+") report WHERE " + conditions.predicate()
+                +" ORDER BY " + ordering + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid",party).setParameter("from",from).setParameter("to",to)
+                .setParameter("fromMonth",fromMonth)
                 .setParameter("__limit",safeSize).setParameter("__offset",(long)(safePage-1)*safeSize);
         scope.bind(data);
+        conditions.bind(data);
         @SuppressWarnings("unchecked") List<Object[]> records=ReportExportCursor.rows(em, data);
         List<Map<String,Object>> items=new ArrayList<>(records.size());
         for (Object[] row:records) {
@@ -2317,9 +2312,11 @@ public class FinanceReportService {
         }
         long total = ReportReadPlan.UNKNOWN_TOTAL;
         if (ReportReadPlan.current().includeCount()) {
-            var count=em.createNativeQuery("SELECT count(*) FROM ("+core+") report")
-                    .setParameter("pid",party).setParameter("from",from).setParameter("to",to);
+            var count=em.createNativeQuery("SELECT count(*) FROM ("+filtered+") selected_statement")
+                    .setParameter("pid",party).setParameter("from",from).setParameter("to",to)
+                    .setParameter("fromMonth",fromMonth);
             scope.bind(count);
+            conditions.bind(count);
             total = ((Number)count.getSingleResult()).longValue();
         }
         // A missing original amount makes that currency's original total unknown;
@@ -2331,12 +2328,29 @@ public class FinanceReportService {
                        CASE WHEN BOOL_OR("receiptOriginal" IS NULL) OVER(PARTITION BY "__currencyId")
                             THEN NULL ELSE "receiptOriginal" END AS "receiptOriginal"
                 FROM (
-                """+core+") report";
+                """+filtered+") selected_statement";
         var totals=ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(em,totalSource,"","",
-                query->{query.setParameter("pid",party).setParameter("from",from).setParameter("to",to);scope.bind(query);},
+                query->{query.setParameter("pid",party).setParameter("from",from).setParameter("to",to)
+                        .setParameter("fromMonth",fromMonth);scope.bind(query);conditions.bind(query);},
                 reportTotalSpecs(columns,columns)) : List.<com.uten.imp.common.report.ReportTotal>of();
-        return new ReportTableResponse(columns.stream().filter(c -> !c.key().startsWith("__")).toList(),items,new LinkedHashMap<>(),safePage,safeSize,total,
-                ReportReadPlan.totalPages(total, safeSize),com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns));
+        Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
+        if (ReportReadPlan.current().includeFacets()) {
+            for (String key : simple ? List.of("currencyCode", "originalStatus") : List.of("currencyCode", "originalStatus", "type")) {
+                var facetConditions = headers.withoutFacet(key, simple).criteria();
+                String value = key.equals("currencyCode") ? "report.\"__currencyId\"" : "report.\"" + key + "\"";
+                String label = "report.\"" + key + "\"";
+                var query = em.createNativeQuery("SELECT " + value + "," + label + ",count(*) FROM (" + core + ") report WHERE "
+                        + facetConditions.predicate() + " GROUP BY " + value + "," + label + " ORDER BY " + label + " NULLS LAST")
+                        .setParameter("pid",party).setParameter("from",from).setParameter("to",to).setParameter("fromMonth",fromMonth);
+                scope.bind(query); facetConditions.bind(query);
+                @SuppressWarnings("unchecked") List<Object[]> buckets = query.getResultList();
+                facets.put(key,buckets.stream().map(row -> new ReportFacet(row[0] == null ? "__null__" : row[0].toString(),
+                        Objects.toString(row[1],"待核验"), ((Number)row[2]).longValue())).toList());
+            }
+        }
+        return new ReportTableResponse(columns.stream().filter(c -> !c.key().startsWith("__")).toList(),items,facets,safePage,safeSize,total,
+                ReportReadPlan.totalPages(total, safeSize),com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns))
+                .withColumnSearchKeys(headers.keys());
     }
 
     /** 安全 BigDecimal：null→0，BigDecimal/Number→BigDecimal，否则解析字符串。 */
@@ -2385,14 +2399,17 @@ public class FinanceReportService {
     /** X 年度对帐（GROUP BY 月，无滚动；直接分页）。 */
     private ReportTableResponse executeRawGrouped(List<ReportColumn> cols, String sql, UUID pid,
                                                   LocalDate yearStart, LocalDate yearEnd, int page, int size,
-                                                  NativeReadScope documentScope) {
+            NativeReadScope documentScope, PartyStatementHeaderQuery headers, String ordering) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        var dataQ = ReportExportCursor.query(em, sql + " LIMIT :__limit OFFSET :__offset")
+        var conditions = headers.criteria();
+        String filtered = "SELECT * FROM (" + sql + ") report WHERE " + conditions.predicate();
+        var dataQ = ReportExportCursor.query(em, filtered + " ORDER BY " + ordering + " LIMIT :__limit OFFSET :__offset")
                 .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd)
                 .setParameter("__limit", safeSize).setParameter("__offset", offset);
         documentScope.bind(dataQ);
+        conditions.bind(dataQ);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
         List<Map<String, Object>> items = new ArrayList<>(rows.size());
@@ -2404,60 +2421,38 @@ public class FinanceReportService {
         }
         long total = ReportReadPlan.UNKNOWN_TOTAL;
         if (ReportReadPlan.current().includeCount()) {
-            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql + ") zz")
+            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + filtered + ") zz")
                     .setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
             documentScope.bind(countQ);
+            conditions.bind(countQ);
             total = ((Number) countQ.getSingleResult()).longValue();
         }
         int totalPages = ReportReadPlan.totalPages(total, safeSize);
         // 合计：整段按月 CTE 包成派生表再聚合（不带 LIMIT/OFFSET），所以是整年 12 个月的合计，
         // 而不是当前这一页的几个月。
         List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                em, sql, "", "",
+                em, filtered, "", "",
                 q -> {
                     q.setParameter("pid", pid).setParameter("ys", yearStart).setParameter("ye", yearEnd);
                     documentScope.bind(q);
+                    conditions.bind(q);
                 },
                 reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
+        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols))
+                .withColumnSearchKeys(headers.keys());
     }
 
     /** 按 GROUP BY 的聚合报表（如 F 销售收款汇总按客户）。 */
     private ReportTableResponse executeGrouped(List<ReportColumn> cols, String dataSelect, String fromJoin,
-                                               FinanceWhereBuilder w, String orderBy, String groupExpr, int page, int size) {
-        int safePage = Math.max(1, page);
-        int safeSize = Math.min(Math.max(1, size), 500);
-        long offset = (long) (safePage - 1) * safeSize;
+                                               FinanceWhereBuilder w, String orderBy, String groupExpr, int page, int size,
+                                               Map<String,String> headers,String sort,String order) {
         FinanceWhereBuilder.Built full = w.build(null);
         String groupBy = " GROUP BY " + groupExpr;
-        var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql() + groupBy
-                + " ORDER BY " + w.groupedOrderBy(orderBy) + " LIMIT :__limit OFFSET :__offset");
-        full.params().forEach(dataQ::setParameter);
-        w.searchOrderParameters().forEach(dataQ::setParameter);
-        dataQ.setParameter("__limit", safeSize);
-        dataQ.setParameter("__offset", offset);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = ReportExportCursor.rows(em, dataQ);
-        List<Map<String, Object>> items = new ArrayList<>(rows.size());
-        for (Object[] r : rows) {
-            Map<String, Object> m = new LinkedHashMap<>();
-            for (int i = 0; i < cols.size(); i++) m.put(cols.get(i).key(), norm(r[i]));
-            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
-            items.add(m);
-        }
-        long total = ReportReadPlan.UNKNOWN_TOTAL;
-        if (ReportReadPlan.current().includeCount()) {
-            var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + dataSelect + " " + fromJoin + " " + full.sql() + groupBy + ") zz");
-            full.params().forEach(countQ::setParameter);
-            total = ((Number) countQ.getSingleResult()).longValue();
-        }
-        int totalPages = ReportReadPlan.totalPages(total, safeSize);
-        // 合计：派生表里必须连 GROUP BY 一起包进去（每行是一个分组的小计），
-        // 外层再对全部分组求和 —— 即「全部客户×币别」的总计，与当前页无关。
-        List<com.uten.imp.common.report.ReportTotal> totals = ReportReadPlan.current().includeTotals() ? com.uten.imp.common.report.ReportTotalsCalculator.compute(
-                em, dataSelect, fromJoin, full.sql() + groupBy,
-                full.params(), reportTotalSpecs(cols, cols)) : List.<com.uten.imp.common.report.ReportTotal>of();
-        return new ReportTableResponse(cols, items, new LinkedHashMap<>(), safePage, safeSize, total, totalPages, com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, cols));
+        String projected=dataSelect+",ROW_NUMBER() OVER (ORDER BY "+w.groupedOrderBy(orderBy)+") AS \"__headerOrdinal\" "
+                +fromJoin+" "+full.sql()+groupBy;
+        return FinanceProjectedReportTable.query(em,cols,FinanceProjectedReportTable.aliasProjection(projected,cols,"finance_group","__headerOrdinal"),
+                query->{full.params().forEach(query::setParameter);w.searchOrderParameters().forEach(query::setParameter);},
+                "report.\"__headerOrdinal\"",headers,java.util.Set.of(),page,size,sort,order,false,reportTotalSpecs(cols,cols));
     }
 
     private static String normalizeDirection(String direction) {
@@ -2513,21 +2508,21 @@ public class FinanceReportService {
         String categoryType = p == null ? null : p.get("categoryType");
         Boolean settled = parseBool(p == null ? null : p.get("settled"));
         int year = parseIntOrZero(p == null ? null : p.get("year"));
-        Map<String, String> facets = ReportQueryKit.facetsOf(p);
+        Map<String, String> facets = FinanceReportHeaderRequest.filters(p==null?Map.of():p);
         if ("gl/operating-pl".equals(report) && com.uten.imp.common.export.ExportPageSink.current() != null) {
             var result = glReportService.exportInCurrentSnapshot(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo),
-                    settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS));
+                    settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS),FinanceReportColumnOptions.from(p,sort,order));
             return new ExportPayload(result.columns().stream().map(c ->
                     new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
                     List.of(), Math.toIntExact(result.total()));
         }
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
-            case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz);
+            case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz, facets, sort, order);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
-            case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order);
-            case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, pg, sz);
+            case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order,facets);
+            case "ar-ap/summary"     -> (pg, sz) -> arApSummaryAuthorized(direction, dateFrom, dateTo, keyword, pg, sz,facets,sort,order);
             case "receipt/detail"    -> (pg, sz) -> receiptDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
-            case "receipt/summary"   -> (pg, sz) -> receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo, keyword, pg, sz, exportDocumentScope);
+            case "receipt/summary"   -> (pg, sz) -> receiptSummaryAuthorized(billNo, clientId, status, dateFrom, dateTo, keyword, pg, sz, exportDocumentScope,facets,sort,order);
             case "payment/detail"    -> (pg, sz) -> paymentDetailAuthorized(billNo, supplierId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "payment/summary"   -> (pg, sz) -> paymentSummaryAuthorized(billNo, supplierId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "expense/detail"    -> (pg, sz) -> expenseDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
@@ -2535,36 +2530,37 @@ public class FinanceReportService {
             case "income/detail"     -> (pg, sz) -> incomeDetailAuthorized(billNo, accountId, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "income/summary"    -> (pg, sz) -> incomeSummaryAuthorized(billNo, departmentId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
             case "fee-offset/detail" -> (pg, sz) -> feeOffsetDetailAuthorized(billNo, clientId, accountId, status, dateFrom, dateTo, keyword, facets, pg, sz, sort, order, exportDocumentScope);
-            case "statement/flow"    -> (pg, sz) -> partyStatementFlowAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
-            case "statement/detail"  -> (pg, sz) -> partyStatementDetailAuthorized(partyId, side, dateFrom, dateTo, pg, sz);
-            case "statement/annual"  -> (pg, sz) -> partyAnnualStatementAuthorized(partyId, side, year, pg, sz);
-            case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz, billNo);
+            case "statement/flow"    -> (pg, sz) -> partyStatement(partyId, side, dateFrom, dateTo, pg, sz, true, PartyStatementHeaderQuery.withKeyword(facets,keyword), sort, order);
+            case "statement/detail"  -> (pg, sz) -> partyStatement(partyId, side, dateFrom, dateTo, pg, sz, false, PartyStatementHeaderQuery.withKeyword(facets,keyword), sort, order);
+            case "statement/annual"  -> (pg, sz) -> partyAnnualStatementAuthorized(partyId, side, year, pg, sz, facets, sort, order);
+            case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz, billNo, p);
+            case "customer-prepayment/events", "statement/customer-prepayments" -> (pg,sz) -> customerPrepaymentEvents(clientId,dateFrom,dateTo,pg,sz,keyword,FinanceReportColumnOptions.from(p,sort,order));
             // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
             case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(
-                    keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz);
-            case "statements/supplier" -> (pg, sz) -> statementService.supplierStatement(keyword, dateFrom, dateTo, pg, sz);
-            case "statements/other-receivable" -> (pg, sz) -> statementService.otherReceivableStatement(keyword, dateFrom, dateTo, pg, sz);
-            case "statements/client" -> (pg, sz) -> statementService.clientStatement(keyword, dateFrom, dateTo, pg, sz);
+                    keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/supplier" -> (pg, sz) -> statementService.supplierStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/other-receivable" -> (pg, sz) -> statementService.otherReceivableStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/client" -> (pg, sz) -> statementService.clientStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             // C4 成本核算（FinanceCostService）
-            case "cost/product" -> (pg, sz) -> costService.productCost(keyword, dateFrom, dateTo, pg, sz);
-            case "cost/sales-summary" -> (pg, sz) -> costService.salesCostSummary(keyword, dateFrom, dateTo, pg, sz);
-            case "cost/copper-fee" -> (pg, sz) -> costService.copperFee(keyword, dateFrom, dateTo, pg, sz);
-            case "cost/copper-pickling" -> (pg, sz) -> costService.copperPickling(keyword, dateFrom, dateTo, pg, sz);
-            case "cost/plastic" -> (pg, sz) -> costService.plasticUsage(keyword, dateFrom, dateTo, pg, sz);
+            case "cost/product" -> (pg, sz) -> costService.productCost(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "cost/sales-summary" -> (pg, sz) -> costService.salesCostSummary(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "cost/copper-fee" -> (pg, sz) -> costService.copperFee(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "cost/copper-pickling" -> (pg, sz) -> costService.copperPickling(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "cost/plastic" -> (pg, sz) -> costService.plasticUsage(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             case "cost/plastic-detail" -> (pg, sz) -> costService.plasticDetail(
-                    p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz);
+                    p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
-            case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom, dateTo, pg, sz);
-            case "gl/balance-sheet" -> (pg, sz) -> glSnapshotReport(report, dateTo, 0, 1, () -> glReportService.balanceSheet(dateTo));
-            case "gl/profit-annual" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.profitAnnual(yearOf(p, dateTo)));
-            case "gl/profit-monthly" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo), () -> glReportService.profitMonthly(yearOf(p, dateTo), monthOf(p, dateTo)));
-            case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.manufacturingExpense(yearOf(p, dateTo)));
-            case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.adminExpense(yearOf(p, dateTo)));
-            case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), 1, () -> glReportService.salesExpense(yearOf(p, dateTo)));
-            case "gl/operating-pl" -> (pg, sz) -> glSnapshotReport(report, dateTo, yearOf(p, dateTo), monthOf(p, dateTo), () -> glReportService.operatingPlPage(yearOf(p, dateTo), monthOf(p, dateTo), pg, sz));
+            case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "gl/balance-sheet" -> (pg, sz) -> glSnapshotReport(report,dateTo,0,1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.balanceSheet(dateTo,FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/profit-annual" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitAnnual(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/profit-monthly" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitMonthly(yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.manufacturingExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.adminExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.salesExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/operating-pl" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.operatingPlPage(yearOf(p,dateTo),monthOf(p,dateTo),pg,sz,FinanceReportColumnOptions.from(p,sort,order)));
             // C5 固定资产/长期待摊清单
-            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg, sz);
-            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg, sz);
+            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order));
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
@@ -2575,9 +2571,10 @@ public class FinanceReportService {
     }
 
     private ReportTableResponse glSnapshotReport(String report, LocalDate dateTo, int year, int month,
+                                                 FinanceReportColumnOptions options,
                                                  java.util.function.Supplier<ReportTableResponse> synchronous) {
         return com.uten.imp.common.export.ExportPageSink.current() == null ? synchronous.get()
-                : glReportService.exportInCurrentSnapshot(report, dateTo, year, month);
+                : glReportService.exportInCurrentSnapshot(report,dateTo,year,month,options);
     }
 
     /**

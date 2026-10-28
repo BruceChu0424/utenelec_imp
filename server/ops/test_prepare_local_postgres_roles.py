@@ -101,7 +101,10 @@ class PrepareLocalPostgresRolesTest(unittest.TestCase):
         self.assertEqual(launched.returncode, 0, self.output(launched))
         # Register only after successful creation, and remove only our exact name.
         self.addCleanup(self.remove_own_container)
-        deadline = time.monotonic() + 45
+        # Docker Desktop can spend longer than 45s initializing a disposable
+        # instance while the complete Java/Flutter suites are running. This
+        # bounds fixture provisioning only; the role/ACL assertions stay exact.
+        deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             ready = self.docker("exec", self.container, "pg_isready", "-U", "uten_dev_admin",
                                 "-d", "uten_imp")
@@ -112,7 +115,9 @@ class PrepareLocalPostgresRolesTest(unittest.TestCase):
                     break
             time.sleep(0.25)
         else:
-            self.fail("Disposable PostgreSQL did not become ready")
+            diagnostic = self.docker("logs", "--tail", "30", self.container)
+            self.fail("Disposable PostgreSQL did not become ready within 120s:\n"
+                      + self.output(diagnostic))
         self.psql("\\getenv fixture_runtime_password UTEN_LOCAL_RUNTIME_PASSWORD\n"
                   "SELECT format('CREATE ROLE uten SUPERUSER LOGIN PASSWORD %L', "
                   ":'fixture_runtime_password') \\gexec\n"

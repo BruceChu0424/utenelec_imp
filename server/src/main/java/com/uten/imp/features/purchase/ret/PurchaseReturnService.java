@@ -56,6 +56,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -111,6 +112,8 @@ public class PurchaseReturnService {
     public PageResponse<ReturnListItem> list(ReturnQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = purchasePriceMasked();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
         Specification<PurchaseReturn> spec = returnSpec(f);
         // 列排序：sort 命中白名单(日期/金额/单据号)才按实体属性排序，否则默认 billDate DESC。
         // 2026-09-25 单号列统一：billNo 进两分支白名单（价格遮蔽只挡金额排序）。
@@ -119,7 +122,8 @@ public class PurchaseReturnService {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&Set.of("billDate","billNo","total").contains(sort)?null:f.keyword());
         Page<PurchaseReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
@@ -130,6 +134,7 @@ public class PurchaseReturnService {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter originalFilter) {
         final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(!purchasePriceMasked());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, PurchaseReturn.class, returnSpec(f), "billNo"));
     }
@@ -171,6 +176,8 @@ public class PurchaseReturnService {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewPurchaseReturn(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));

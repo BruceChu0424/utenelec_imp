@@ -114,12 +114,14 @@ public class LoginService {
         rejectUnusableAccount(user);
 
         // ③ 短写事务: 行锁复核 + 清失败计数 + 开会话签发令牌 + 登录审计
+        // deviceName 随会话落库: 单设备顶号时被顶设备能知道「账号在哪台设备登录」。
+        String deviceName = req.deviceName();
         if (remoteAccessPolicy.isRemoteRequest()) {
             if (mfa == null) throw new ApiException(ErrorCode.MFA_UNAVAILABLE);
             return mfa.remoteLogin(user.getId(), req.otpCode(),
-                    () -> loginTransaction.completeRemote(user.getId(), user.getPasswordHash()));
+                    () -> loginTransaction.completeRemote(user.getId(), user.getPasswordHash(), deviceName));
         }
-        return loginTransaction.complete(user.getId(), user.getPasswordHash());
+        return loginTransaction.complete(user.getId(), user.getPasswordHash(), deviceName);
     }
 
     private void rejectUnusableAccount(UserAccount user) {

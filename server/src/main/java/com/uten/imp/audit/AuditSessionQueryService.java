@@ -59,7 +59,14 @@ public class AuditSessionQueryService {
             int page,
             int size,
             Long requestedSnapshotAuditId) {
-        return sessionPage(actorId,dateFrom,dateTo,page,size,requestedSnapshotAuditId,null,false);
+        return sessionPage(actorId,dateFrom,dateTo,page,size,requestedSnapshotAuditId,null,false,AuditSessionHeaderQuery.EMPTY);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public AuditSessionPageResponse sessions(UUID actorId, LocalDate dateFrom, LocalDate dateTo,
+            int page, int size, Long snapshot, AuditSessionHeaderQuery headers) {
+        return sessionPage(actorId,dateFrom,dateTo,page,size,snapshot,null,false,headers);
     }
 
     /** Internal export pagination: RR is the snapshot, not an inferred maximum ID. */
@@ -67,32 +74,44 @@ public class AuditSessionQueryService {
     @PreAuthorize("hasAuthority('audit_log:view')")
     public AuditSessionPageResponse sessionsForExport(UUID actorId,LocalDate dateFrom,LocalDate dateTo,
             int page,int size,Long explicitSnapshotAuditId,Long knownTotal) {
-        return sessionPage(actorId,dateFrom,dateTo,page,size,explicitSnapshotAuditId,knownTotal,true);
+        return sessionPage(actorId,dateFrom,dateTo,page,size,explicitSnapshotAuditId,knownTotal,true,AuditSessionHeaderQuery.EMPTY);
+    }
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public AuditSessionPageResponse sessionsForExport(UUID actorId, LocalDate dateFrom, LocalDate dateTo,
+            int page, int size, Long snapshot, Long knownTotal, AuditSessionHeaderQuery headers) {
+        return sessionPage(actorId,dateFrom,dateTo,page,size,snapshot,knownTotal,true,headers);
     }
     private AuditSessionPageResponse sessionPage(UUID actorId,LocalDate dateFrom,LocalDate dateTo,
-            int page,int size,Long requestedSnapshotAuditId,Long knownTotal,boolean exporting) {
+            int page,int size,Long requestedSnapshotAuditId,Long knownTotal,boolean exporting,AuditSessionHeaderQuery headers) {
         validateSessionScope(actorId,dateFrom,dateTo,page,exporting?Math.min(size,MAX_SESSION_PAGE_SIZE):size);
         if(exporting&&(size<1||size>100))throw malformed("导出读取批次必须在1到100之间");
         long snapshotAuditId = exporting&&requestedSnapshotAuditId==null?Long.MAX_VALUE
                 : exporting&&knownTotal!=null?requestedSnapshotAuditId:snapshot(requestedSnapshotAuditId);
         OffsetDateTime from = BusinessTime.startOfDay(dateFrom);
         OffsetDateTime toExclusive = BusinessTime.startOfDay(dateTo.plusDays(1));
+        OffsetDateTime queryNow = headers.active() ? headers.evaluatedAt() : OffsetDateTime.now(BusinessTime.ZONE);
 
-        if (knownTotal==null && hasArchivedSessions(actorId, from, toExclusive)) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "所选日期范围包含已转入冷归档的登录会话；"
-                            + "当前审计中心只提供在线日志，请缩小到在线留存日期");
+        long total;
+        if (knownTotal != null) total = knownTotal;
+        else if (headers.values().isEmpty()) total = sessionCount(actorId, from, toExclusive, snapshotAuditId);
+        else {
+            Query count = entityManager.createNativeQuery("SELECT COUNT(*) FROM (" + unpagedSessionSql() + ") h WHERE " + headers.where());
+            bindSessionScope(count, actorId, from, toExclusive, snapshotAuditId);
+            headers.bind(count, queryNow);
+            total = ((Number) count.getSingleResult()).longValue();
         }
-
-        long total = knownTotal==null?sessionCount(actorId, from, toExclusive, snapshotAuditId):knownTotal;
         if (total == 0) {
             return new AuditSessionPageResponse(
                     List.of(), page, size, 0, 0, snapshotAuditId);
         }
 
-        Query query = entityManager.createNativeQuery(SESSION_PAGE_SQL);
+        Query query = entityManager.createNativeQuery(headers.active()
+                ? "SELECT h.* FROM (" + unpagedSessionSql() + ") h WHERE " + headers.where()
+                    + " ORDER BY " + headers.order() + " LIMIT :pageSize OFFSET :pageOffset"
+                : SESSION_PAGE_SQL);
         bindSessionScope(query, actorId, from, toExclusive, snapshotAuditId);
+        if (headers.active()) headers.bind(query, queryNow);
         query.setParameter("pageOffset", offset(page, size));
         query.setParameter("pageSize", size);
 
@@ -114,7 +133,7 @@ public class AuditSessionQueryService {
         AuditActorDirectory.Resolution actors = actorDirectory.resolve(
                 actorIds, actorAccounts);
         List<AuditSessionRow> items = aggregates.stream()
-                .map(value -> toRow(value, actors, snapshotAuditId))
+                .map(value -> toRow(value, actors, snapshotAuditId, queryNow))
                 .toList();
         int totalPages = (int) ((total + size - 1) / size);
         return new AuditSessionPageResponse(
@@ -288,27 +307,6 @@ public class AuditSessionQueryService {
         return ((Number) query.getSingleResult()).longValue();
     }
 
-    private boolean hasArchivedSessions(
-            UUID actorId,
-            OffsetDateTime from,
-            OffsetDateTime toExclusive) {
-        Query query = entityManager.createNativeQuery("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM audit_log_archive archived
-                    WHERE archived.session_id IS NOT NULL
-                      AND archived.actor_id = :actorId
-                      AND archived.created_at >= :dateFrom
-                      AND archived.created_at < :dateToExclusive
-                      AND LOWER(COALESCE(archived.event_source, '')) <> 'database'
-                )
-                """);
-        query.setParameter("actorId", actorId);
-        query.setParameter("dateFrom", from);
-        query.setParameter("dateToExclusive", toExclusive);
-        return toBoolean(query.getSingleResult());
-    }
-
     private void bindSessionScope(
             Query query,
             UUID actorId,
@@ -323,7 +321,7 @@ public class AuditSessionQueryService {
 
     private long snapshot(Long requested) {
         Object value = entityManager.createNativeQuery(
-                "SELECT COALESCE(MAX(id), 0) FROM audit_log")
+                "SELECT COALESCE(MAX(id), 0) FROM v_audit_log_all")
                 .getSingleResult();
         long currentHighWater = ((Number) value).longValue();
         if (requested == null) {
@@ -347,9 +345,6 @@ public class AuditSessionQueryService {
             case NEWER_THAN_SNAPSHOT -> new ApiException(
                     ErrorCode.CONFLICT,
                     "登录会话晚于当前查询快照，请返回审计中心重新打开");
-            case ARCHIVED -> new ApiException(
-                    ErrorCode.NOT_FOUND,
-                    "登录会话已转入冷归档，当前页面只提供在线审计记录");
             case MISSING -> new ApiException(
                     ErrorCode.NOT_FOUND,
                     "登录会话不存在");
@@ -365,23 +360,17 @@ public class AuditSessionQueryService {
                 SELECT CASE
                     WHEN EXISTS (
                         SELECT 1
-                        FROM audit_log hot
+                        FROM v_audit_log_all hot
                         WHERE hot.session_id = :sessionId
                           AND hot.id <= :snapshotAuditId
                           AND LOWER(COALESCE(hot.event_source, '')) <> 'database'
                     ) THEN 'online_at_snapshot'
                     WHEN EXISTS (
                         SELECT 1
-                        FROM audit_log hot
+                        FROM v_audit_log_all hot
                         WHERE hot.session_id = :sessionId
                           AND LOWER(COALESCE(hot.event_source, '')) <> 'database'
                     ) THEN 'newer_than_snapshot'
-                    WHEN EXISTS (
-                        SELECT 1
-                        FROM audit_log_archive archived
-                        WHERE archived.session_id = :sessionId
-                          AND LOWER(COALESCE(archived.event_source, '')) <> 'database'
-                    ) THEN 'archived'
                     ELSE 'missing'
                 END
                 """);
@@ -390,7 +379,6 @@ public class AuditSessionQueryService {
         return switch (toText(query.getSingleResult())) {
             case "online_at_snapshot" -> SessionAvailability.ONLINE_AT_SNAPSHOT;
             case "newer_than_snapshot" -> SessionAvailability.NEWER_THAN_SNAPSHOT;
-            case "archived" -> SessionAvailability.ARCHIVED;
             default -> SessionAvailability.MISSING;
         };
     }
@@ -425,6 +413,10 @@ public class AuditSessionQueryService {
             SessionAggregate value,
             AuditActorDirectory.Resolution actors,
             long snapshotAuditId) {
+        return toRow(value, actors, snapshotAuditId, OffsetDateTime.now(BusinessTime.ZONE));
+    }
+    private AuditSessionRow toRow(SessionAggregate value, AuditActorDirectory.Resolution actors,
+            long snapshotAuditId, OffsetDateTime evaluatedAt) {
         AuditActorDirectory.ActorProfile profile = actors.forActor(
                 value.actorId(), value.actorAccount());
         String actorDisplay = profile == null
@@ -432,7 +424,7 @@ public class AuditSessionQueryService {
                 : blankToFallback(profile.displayName(),
                 fallbackActorDisplay(value.actorId(), value.actorAccount()));
         String status = sessionStatus(value);
-        String credentialStatus = credentialStatus(value);
+        String credentialStatus = credentialStatus(value, evaluatedAt);
         return new AuditSessionRow(
                 value.sessionId(),
                 value.actorId(),
@@ -461,7 +453,7 @@ public class AuditSessionQueryService {
                 value.refreshRevokedAt(),
                 credentialStatus,
                 credentialStatusLabel(credentialStatus),
-                value.timelinePartial(),
+                value.timelineSpansArchive(),
                 snapshotAuditId);
     }
 
@@ -497,7 +489,7 @@ public class AuditSessionQueryService {
         };
     }
 
-    private String credentialStatus(SessionAggregate value) {
+    private String credentialStatus(SessionAggregate value, OffsetDateTime evaluatedAt) {
         if (value.refreshExpiresAt() == null && value.refreshRevokedAt() == null) {
             return "no_record";
         }
@@ -506,7 +498,7 @@ public class AuditSessionQueryService {
         }
         if (value.refreshExpiresAt() != null
                 && !value.refreshExpiresAt().isAfter(
-                OffsetDateTime.now(BusinessTime.ZONE))) {
+                evaluatedAt)) {
             return "expired";
         }
         if (value.refreshExpiresAt() != null) {
@@ -650,13 +642,12 @@ public class AuditSessionQueryService {
             String lastIp,
             OffsetDateTime refreshExpiresAt,
             OffsetDateTime refreshRevokedAt,
-            boolean timelinePartial) {
+            boolean timelineSpansArchive) {
     }
 
     private enum SessionAvailability {
         ONLINE_AT_SNAPSHOT,
         NEWER_THAN_SNAPSHOT,
-        ARCHIVED,
         MISSING
     }
 
@@ -671,7 +662,7 @@ public class AuditSessionQueryService {
 
     private static final String SESSION_COUNT_SQL = """
             SELECT COUNT(DISTINCT a.session_id)
-            FROM audit_log a
+            FROM v_audit_log_all a
             WHERE
             """ + SESSION_SCOPE;
 
@@ -688,7 +679,7 @@ public class AuditSessionQueryService {
                         MIN(event.created_at) FILTER (WHERE event.action IN (
                             'login', 'visitor_login', 'session_start_after_password_change')),
                         MIN(event.created_at)) AS started_at
-                    FROM audit_log event
+                    FROM v_audit_log_all event
                     WHERE event.session_id = matched.session_id
                       AND event.id <= :snapshotAuditId
                       AND LOWER(COALESCE(event.event_source, '')) <> 'database'
@@ -701,7 +692,7 @@ public class AuditSessionQueryService {
     private static final String SESSION_PAGE_SQL = """
             WITH matched_sessions AS (
                 SELECT DISTINCT a.session_id
-                FROM audit_log a
+                FROM v_audit_log_all a
                 WHERE
                 """ + SESSION_SCOPE + """
             ),
@@ -711,7 +702,7 @@ public class AuditSessionQueryService {
                        a.created_at, a.id, a.result, a.status_code,
                        a.device_installation_id, a.device_name, a.device_model,
                        a.device_platform, a.ip
-                FROM audit_log a
+                FROM v_audit_log_all a
                 JOIN paged_sessions matched ON matched.session_id = a.session_id
                 WHERE a.id <= :snapshotAuditId
                   AND LOWER(COALESCE(a.event_source, '')) <> 'database'
@@ -850,7 +841,7 @@ public class AuditSessionQueryService {
                    grouped.last_ip,
                    token.expires_at AS refresh_expires_at,
                    token.revoked_at AS refresh_revoked_at,
-                   (archived.session_id IS NOT NULL) AS timeline_partial
+                   (archived.session_id IS NOT NULL) AS spans_archive
             FROM grouped
             LEFT JOIN latest_token token ON token.session_id = grouped.session_id
             LEFT JOIN archive_presence archived
@@ -864,6 +855,15 @@ public class AuditSessionQueryService {
             AND a.id <= :snapshotAuditId
             AND LOWER(COALESCE(a.event_source, '')) <> 'database'
             """;
+
+    private static String unpagedSessionSql() {
+        String sql = SESSION_PAGE_SQL.replace(PAGED_SESSIONS_CTE,
+                "paged_sessions AS (SELECT session_id FROM matched_sessions),\n");
+        // The complete existing evidence projection remains the only source of
+        // numeric facts. Conditions/order are applied after grouping but before
+        // either count or limit; keep the indexed default path for no conditions.
+        return sql.substring(0, sql.lastIndexOf("ORDER BY COALESCE(grouped.login_at"));
+    }
 
     private static final String SESSION_DETAIL_SQL =
             SESSION_PAGE_SQL.replace(SESSION_SCOPE, SESSION_DETAIL_SCOPE)

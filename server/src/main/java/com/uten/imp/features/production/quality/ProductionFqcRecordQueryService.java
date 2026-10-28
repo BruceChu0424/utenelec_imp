@@ -67,6 +67,14 @@ public class ProductionFqcRecordQueryService {
             String rawSourceNo,
             String rawReferenceNo,
             String rawSheetNo) {
+        return list(rawDecision,rawKeyword,from,to,rawSourceType,rawEffective,rawDisposition,requestedPage,requestedSize,
+                rawSort,rawOrder,rawSourceNo,rawReferenceNo,rawSheetNo,Map.of());
+    }
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public InspectionDecisionRecordPage list(String rawDecision,String rawKeyword,OffsetDateTime from,OffsetDateTime to,
+            String rawSourceType,String rawEffective,String rawDisposition,int requestedPage,int requestedSize,
+            String rawSort,String rawOrder,String rawSourceNo,String rawReferenceNo,String rawSheetNo,Map<String,String> columns) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
                 rawSourceType, rawEffective, rawDisposition,
@@ -74,11 +82,13 @@ public class ProductionFqcRecordQueryService {
         DocNoFilter docNo = DocNoFilter.of(rawSourceNo, rawReferenceNo, rawSheetNo);
         NativeReadScope ownerScope = ownerScope();
         String records = "(" + recordSql() + ") record";
-        String predicate = scopedPredicate(filter, docNo, ownerScope, true);
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,com.uten.imp.common.util.QualityRecordHeaders.fields(true));
+        String predicate = scopedPredicate(filter, docNo, ownerScope, true)+" AND "+headers.predicate();
 
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(*) FROM " + records + " WHERE " + predicate);
         bindFilters(countQuery, filter, docNo, ownerScope, true);
+        headers.bind(countQuery);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query pageQuery = em.createNativeQuery(
@@ -90,6 +100,7 @@ public class ProductionFqcRecordQueryService {
                                         new String[]{"record.goods_code", "record.source_no", "record.reference_no", "record.sheet_no"}) + ", ")
                         + " OFFSET :offset LIMIT :limit");
         bindFilters(pageQuery, filter, docNo, ownerScope, true);
+        headers.bind(pageQuery);
         pageQuery.setParameter("offset", filter.offset());
         pageQuery.setParameter("limit", filter.size());
         List<InspectionDecisionRecord> items =
@@ -97,7 +108,7 @@ public class ProductionFqcRecordQueryService {
                         .map(ProductionFqcRecordQueryService::toView)
                         .toList();
 
-        Map<String, Long> metrics = metrics(filter, docNo, records, ownerScope);
+        Map<String, Long> metrics = metrics(filter, docNo, records, ownerScope,headers);
         int totalPages = total == 0
                 ? 0 : (int) Math.min(Integer.MAX_VALUE,
                 (total + filter.size() - 1) / filter.size());
@@ -120,13 +131,20 @@ public class ProductionFqcRecordQueryService {
             String rawSourceType,
             String rawEffective,
             String rawDisposition) {
+        return facets(rawDecision,rawKeyword,from,to,rawSourceType,rawEffective,rawDisposition,Map.of());
+    }
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public Map<String,List<Map<String,Object>>> facets(String rawDecision,String rawKeyword,OffsetDateTime from,OffsetDateTime to,
+            String rawSourceType,String rawEffective,String rawDisposition,Map<String,String> columns) {
         NormalizedFilter filter = normalizeFilter(
                 rawDecision, rawKeyword, from, to,
                 rawSourceType, rawEffective, rawDisposition,
                 1, 40);
         NativeReadScope ownerScope = ownerScope();
         String records = "(" + recordSql() + ") record";
-        String predicate = scopedPredicate(filter, DocNoFilter.EMPTY, ownerScope, true);
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(columns,com.uten.imp.common.util.QualityRecordHeaders.fields(true));
+        String predicate = scopedPredicate(filter, DocNoFilter.EMPTY, ownerScope, true)+" AND "+headers.predicate();
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (String column : List.of("sourceNo", "referenceNo", "sheetNo")) {
             // API field names are not database identifiers. Keep SQL on the
@@ -144,6 +162,7 @@ public class ProductionFqcRecordQueryService {
                             + ", '') <> '' ORDER BY 1")
                     .setMaxResults(500);
             bindFilters(query, filter, DocNoFilter.EMPTY, ownerScope, true);
+            headers.bind(query);
             result.put(column, NativeFacets.rowsOf(query));
         }
         return result;
@@ -171,13 +190,14 @@ public class ProductionFqcRecordQueryService {
             NormalizedFilter filter,
             DocNoFilter docNo,
             String records,
-            NativeReadScope ownerScope) {
-        String predicate = scopedPredicate(filter, docNo, ownerScope, false);
+            NativeReadScope ownerScope,com.uten.imp.common.util.SqlColumnSearch.Criteria headers) {
+        String predicate = scopedPredicate(filter, docNo, ownerScope, false)+" AND "+headers.predicate();
         Query query = em.createNativeQuery(
                 "SELECT record.decision, COUNT(*) FROM " + records
                         + " WHERE " + predicate
                         + " GROUP BY record.decision");
         bindFilters(query, filter, docNo, ownerScope, false);
+        headers.bind(query);
         LinkedHashMap<String, Long> metrics = emptyMetrics();
         long all = 0;
         for (Object[] row : NativeQueryResults.objectArrayRows(query)) {
@@ -213,6 +233,8 @@ public class ProductionFqcRecordQueryService {
     /** 排序白名单（2026-09-25 单号列统一）：sourceNo/referenceNo/sheetNo；
      *  未知/空回落默认「决定时间倒序 + 记录 id」；稳定键固定追加默认两段。 */
     private static String orderBy(String rawSort, String rawOrder) {
+        if(rawSort!=null&&List.of("passQty","failQty","decidedAt").contains(rawSort))
+            return com.uten.imp.common.util.QualityRecordHeaders.orderBy(rawSort,rawOrder,true);
         String direction = "desc".equalsIgnoreCase(rawOrder) ? "DESC" : "ASC";
         return switch (rawSort == null ? "" : rawSort.strip()) {
             case "sourceNo" -> "ORDER BY record.source_no " + direction

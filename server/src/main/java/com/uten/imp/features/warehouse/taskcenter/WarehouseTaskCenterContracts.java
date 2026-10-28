@@ -61,7 +61,9 @@ public final class WarehouseTaskCenterContracts {
     /** Stable physical item identity; repeated goods on one document remain separate lines. */
     public record Line(String key, UUID itemId, Integer lineNo, String goodsCode, String goodsName,
                        String specification, String colorName, String unitName,
-                       BigDecimal quantity, BigDecimal weight) {}
+                       BigDecimal quantity, BigDecimal weight) {
+        public String getQuantityText() { return quantity == null ? null : quantity.toPlainString(); }
+    }
 
     public record StatusFacet(String value, String label, long count) {}
 
@@ -75,9 +77,18 @@ public final class WarehouseTaskCenterContracts {
 
     public record Filter(String source, String status, String keyword, String billNo,
                          LocalDate dateFrom, LocalDate dateTo, UUID scopeWarehouseId,
-                         int page, int size, String sort, String order, TaskView view) {
+                         int page, int size, String sort, String order, TaskView view, Map<String, String> columnSearch) {
         public Filter {
             view = view == null ? TaskView.ACTIVE : view;
+            columnSearch = columnSearch == null ? Map.of() : Map.copyOf(columnSearch);
+        }
+        public Filter(String source, String status, String keyword, String billNo,
+                      LocalDate dateFrom, LocalDate dateTo, UUID scopeWarehouseId,
+                      int page, int size, String sort, String order, TaskView view) {
+            this(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,view,Map.of());
+        }
+        public Filter withColumnSearch(Map<String, String> columns) {
+            return new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,view,columns);
         }
 
         public Filter(String source, String status, String keyword, String billNo,

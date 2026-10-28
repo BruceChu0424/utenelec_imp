@@ -38,6 +38,6 @@ public record AuditSessionRow(
         OffsetDateTime refreshRevokedAt,
         String refreshCredentialStatus,
         String refreshCredentialStatusLabel,
-        boolean timelinePartial,
+        boolean spansArchive,
         long snapshotAuditId) {
 }

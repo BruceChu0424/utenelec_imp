@@ -51,7 +51,8 @@ class SubcontractStepDrawMigrationPostgresTest {
     private static final AtomicInteger SEQUENCE = new AtomicInteger();
     private static MigratedSchemaBaseline.ScopedDatabase database;
 
-    private Connection db;
+    // Shared with the focused V960 -> V961 upgrade fixture; execution tests still own their connections.
+    Connection db;
 
     @BeforeAll
     static void openDatabase() throws SQLException {
@@ -1017,11 +1018,11 @@ class SubcontractStepDrawMigrationPostgresTest {
 
     // ===================== 夹具 =====================
 
-    private record Fixture(String tag, UUID department, UUID employee, UUID user, UUID unit, UUID warehouse) {
+    record Fixture(String tag, UUID department, UUID employee, UUID user, UUID unit, UUID warehouse) {
     }
 
     /** 主档按真实触发器写入(与 FullChainEndToEndTest.seedWorld 同一组 SQL)。 */
-    private Fixture fixture(String label) throws SQLException {
+    Fixture fixture(String label) throws SQLException {
         String tag = "v798-" + label + "-" + SEQUENCE.incrementAndGet() + "-" + UUID.randomUUID().toString().substring(0, 8);
         UUID department = UUID.randomUUID(), employee = UUID.randomUUID(), user = UUID.randomUUID();
         UUID unit = UUID.randomUUID(), warehouse = UUID.randomUUID();
@@ -1043,7 +1044,7 @@ class SubcontractStepDrawMigrationPostgresTest {
         return new Fixture(tag, department, employee, user, unit, warehouse);
     }
 
-    private UUID goods(Fixture f, String code, String sourceType) throws SQLException {
+    UUID goods(Fixture f, String code, String sourceType) throws SQLException {
         UUID id = UUID.randomUUID();
         exec("""
                 INSERT INTO goods(id, code, name, source_type, status, unit_id, price, code_sequence)
@@ -1052,7 +1053,7 @@ class SubcontractStepDrawMigrationPostgresTest {
         return id;
     }
 
-    private void bom(UUID parent, UUID component, String qty) throws SQLException {
+    void bom(UUID parent, UUID component, String qty) throws SQLException {
         exec("INSERT INTO goods_bom_items(goods_id, component_goods_id, qty) VALUES (?, ?, ?)",
                 parent, component, new BigDecimal(qty));
     }

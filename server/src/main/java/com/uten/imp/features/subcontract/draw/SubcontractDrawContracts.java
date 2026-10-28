@@ -1,6 +1,7 @@
 package com.uten.imp.features.subcontract.draw;
 
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.web.FacetBucket;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -77,9 +78,18 @@ public final class SubcontractDrawContracts {
     public record DrawTaskPage(
             PageResponse<DrawTaskRow> page,
             Map<String, Long> statusCounts,
-            DrawCapabilities capabilities) {
+            DrawCapabilities capabilities,
+            Map<String, List<FacetBucket>> facets,
+            Map<String, Long> nullCounts) {
+        public DrawTaskPage(PageResponse<DrawTaskRow> page, Map<String, Long> statusCounts,
+                            DrawCapabilities capabilities) {
+            this(page, statusCounts, capabilities, Map.of(), Map.of());
+        }
+
         public DrawTaskPage {
             statusCounts = java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(statusCounts));
+            facets = Map.copyOf(facets);
+            nullCounts = Map.copyOf(nullCounts);
         }
     }
 

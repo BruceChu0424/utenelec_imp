@@ -44,4 +44,16 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     int updateBaseline(@Param("codes") Collection<String> codes,
                        @Param("baseline") boolean baseline,
                        @Param("actor") UUID actor);
+    @Query(value="SELECT code FROM authorization_user_template_permission_sources WHERE user_id=:userId",nativeQuery=true)
+    List<String> findUserTemplateCodes(@Param("userId") java.util.UUID userId);
+
+    @Query(value="""
+            SELECT permission.code FROM department_permission_template_bindings binding
+            JOIN permission_templates template ON template.id=binding.template_id AND NOT template.is_deleted
+            CROSS JOIN LATERAL jsonb_array_elements_text(template.permission_codes) code(value)
+            JOIN permissions permission ON permission.code=code.value
+            WHERE binding.department_id=:departmentId
+              AND NOT (permission.grant_policy && ARRAY['INDIVIDUAL_ONLY','SUPERADMIN_ONLY']::text[])
+            """,nativeQuery=true)
+    List<String> findDepartmentTemplateCodes(@Param("departmentId") java.util.UUID departmentId);
 }

@@ -177,17 +177,22 @@ public class TokenIssuer {
 
     /** Issue a fresh token pair after login or password change. */
     public TokenResponse issueTokens(UserAccount user) {
-        return issueTokens(user, null);
+        return issueTokens(user, null, null);
+    }
+
+    /** 登录入口: 带客户端自报的设备名开会话 (单设备顶号提示用)。 */
+    public TokenResponse issueTokens(UserAccount user, String deviceInfo) {
+        return issueTokens(user, null, deviceInfo);
     }
 
     /** RemoteMfaService has already verified the factor in this transaction. */
-    public TokenResponse issueTokensWithMfa(UserAccount user) {
-        return issueTokens(user, sessions.now());
+    public TokenResponse issueTokensWithMfa(UserAccount user, String deviceInfo) {
+        return issueTokens(user, sessions.now(), deviceInfo);
     }
 
-    private TokenResponse issueTokens(UserAccount user, java.time.Instant mfaVerifiedAt) {
+    private TokenResponse issueTokens(UserAccount user, java.time.Instant mfaVerifiedAt, String deviceInfo) {
         RefreshTokenService.IssuedRefreshToken refresh =
-                refreshTokenService.issueNewSession(user.getId(), null);
+                refreshTokenService.issueNewSession(user.getId(), deviceInfo);
         if (mfaVerifiedAt != null) sessions.markMfaVerified(refresh.sessionId(), user.getId(), mfaVerifiedAt);
         AuditRequestContext.bindCurrentSessionId(refresh.sessionId());
         return responseFactory.build(
@@ -202,7 +207,7 @@ public class TokenIssuer {
                 && user.getId().equals(principal.getId()) && principal.getImpersonatedBy() == null
                 ? sessions.mfaAfterPasswordChange(principal.getSessionId(), user.getId()) : null;
         // A password change preserves only the unexpired remainder, never grants another eight hours.
-        TokenResponse response = issueTokens(user, previousMfa);
+        TokenResponse response = issueTokens(user, previousMfa, null);
         UUID sessionId = AuditRequestContext.currentSessionId();
         audit.logCommitted(
                 user.getId(),

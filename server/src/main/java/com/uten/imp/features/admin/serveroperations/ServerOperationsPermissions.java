@@ -6,8 +6,7 @@ public final class ServerOperationsPermissions {
 
     public static final String UPDATE = "server:update";
     public static final String CLEANUP = "server:cleanup";
-    public static final String READ_EXPRESSION = "!principal.visitor and !principal.mustChangePassword and "
-            + "(principal.superAdmin or hasAnyAuthority('server_status:view','server:update','server:cleanup'))";
+    public static final String READ_EXPRESSION = com.uten.imp.security.ServerOperationsReadAccess.EXPRESSION;
     public static final String UPDATE_EXPRESSION = "!principal.visitor and !principal.mustChangePassword and "
             + "principal.impersonatedBy == null and (principal.superAdmin or hasAuthority('server:update'))";
     public static final String CLEANUP_EXPRESSION = "!principal.visitor and !principal.mustChangePassword and "

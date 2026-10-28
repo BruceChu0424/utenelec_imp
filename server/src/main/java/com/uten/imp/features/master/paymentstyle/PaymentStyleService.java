@@ -5,6 +5,7 @@ import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.features.master.CategorySiblingNameGuard;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleDetail;
 import com.uten.imp.features.master.paymentstyle.dto.PaymentStyleNode;
@@ -124,12 +125,13 @@ public class PaymentStyleService {
             throw new ApiException(ErrorCode.BUSINESS, "类别不正确：" + req.getCategory());
         }
         requireNameDoesNotClaimSystemIdentity(req.getCategory(), null, req.getName());
-        if (req.getParentId() != null) {
-            lockStyleHierarchy();
-        }
+        lockStyleHierarchy();
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.PAYMENT_STYLE,
+                name, req.getParentId(), null, req.getCategory());
         PaymentStyle s = new PaymentStyle();
         s.setCode(masterCodeService.nextCode(CODE_PREFIX));
-        s.setName(req.getName());
+        s.setName(name);
         s.setCategory(req.getCategory());
         s.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         s.setDepartmental(req.isDepartmental());
@@ -168,10 +170,7 @@ public class PaymentStyleService {
         // concurrent hierarchy or status change.
         lockStyleHierarchy();
         PaymentStyle s = requireStyle(id);
-        String requestedName = req.getName();
-        if (requestedName != null && requestedName.isBlank()) {
-            throw new ApiException(ErrorCode.BUSINESS, "类别名称不能为空");
-        }
+        String requestedName = req.getName() == null ? null : CategorySiblingNameGuard.normalize(req.getName());
         String requestedStatus = normalizeUpdateStatus(req.getStatus());
         UUID currentParentId = s.getParent() == null ? null : s.getParent().getId();
         UUID requestedParentId = moveToRoot ? null : req.getParentId();
@@ -260,6 +259,11 @@ public class PaymentStyleService {
             requireActiveAncestors(requestedParent);
         }
 
+        if ((requestedName != null && !Objects.equals(s.getName(), requestedName)) || parentChanged) {
+            CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.PAYMENT_STYLE,
+                    requestedName == null ? s.getName() : requestedName,
+                    parentChanged ? requestedParentId : currentParentId, id, s.getCategory());
+        }
         if (requestedName != null) s.setName(requestedName);
         if (req.getSortOrder() != null) s.setSortOrder(req.getSortOrder());
         if (req.getDepartmental() != null) s.setDepartmental(req.getDepartmental());

@@ -48,8 +48,11 @@ public class PayrollController {
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.listSlips(status, year, month, departmentId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam java.util.Map<String, String> parameters) {
+        return service.listSlips(status, year, month, departmentId, page, size, sort, order, parameters);
     }
 
     @GetMapping("/slips/{id}")

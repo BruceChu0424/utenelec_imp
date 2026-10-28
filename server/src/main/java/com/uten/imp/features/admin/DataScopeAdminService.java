@@ -63,6 +63,13 @@ public class DataScopeAdminService {
                 .setParameter("uid", userId).setParameter("scope", scope), UUID.class);
     }
 
+    /** 批量保存条目：一个范围的期望集合与 CAS 基线。 */
+    public record ScopeReplacement(String scope, List<UUID> ownerEmployeeIds,
+                                   List<UUID> expectedOwnerEmployeeIds) {}
+
+    /** 批量保存结果：有改动的范围数与新增/移除负责人总数。 */
+    public record BatchResult(int changedScopes, int addedOwners, int removedOwners) {}
+
     /**
      * 保存某用户在某范围的授权归属人(期望的完整集合，服务端按差量落库)。
      * 只删本次取消的、只插本次新增的；没有改动时 0 行写入、0 行审计，
@@ -74,18 +81,58 @@ public class DataScopeAdminService {
         tx.bind();
         var target = support.require(userId);
         support.requireAuthorizationTarget(target);
+        replaceScope(userId, target.getEmployeeId(), scope, ownerEmployeeIds, expectedOwnerEmployeeIds);
+    }
+
+    /**
+     * 批量保存多个范围（一次再认证覆盖一次批量编辑）。同一事务内逐范围按
+     * {@link #setDataScopes} 相同的差量/CAS/审计口径写入；任一范围校验或
+     * CAS 失败整批回滚，客户端刷新后重试，不会落一半。
+     */
+    @Transactional
+    public BatchResult setDataScopesBatch(UUID userId, List<ScopeReplacement> entries) {
+        tx.bind();
+        var target = support.require(userId);
+        support.requireAuthorizationTarget(target);
+        if (entries == null || entries.isEmpty() || entries.size() > SCOPES.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量数据范围条目无效");
+        }
+        Set<String> seen = new LinkedHashSet<>();
+        for (ScopeReplacement entry : entries) {
+            if (entry == null || entry.scope() == null || !seen.add(entry.scope())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量数据范围条目无效或范围重复");
+            }
+        }
+        int changedScopes = 0;
+        int addedOwners = 0;
+        int removedOwners = 0;
+        for (ScopeReplacement entry : entries) {
+            int[] delta = replaceScope(userId, target.getEmployeeId(), entry.scope(),
+                    entry.ownerEmployeeIds(), entry.expectedOwnerEmployeeIds());
+            if (delta[0] > 0 || delta[1] > 0) {
+                changedScopes++;
+                addedOwners += delta[0];
+                removedOwners += delta[1];
+            }
+        }
+        return new BatchResult(changedScopes, addedOwners, removedOwners);
+    }
+
+    /** 单范围差量写入；返回 [added, removed] 数量。 */
+    private int[] replaceScope(UUID userId, UUID targetEmployeeId, String scope,
+                               List<UUID> ownerEmployeeIds, List<UUID> expectedOwnerEmployeeIds) {
         requireScope(scope);
         List<UUID> requestedOwnerIds = normalizeOwnerIds(ownerEmployeeIds);
         casGuard.lockAndVerify(userId, scope, expectedOwnerEmployeeIds);
         lockOwnersAndRecipient(
-                target.getEmployeeId(), userId, requestedOwnerIds, !requestedOwnerIds.isEmpty());
+                targetEmployeeId, userId, requestedOwnerIds, !requestedOwnerIds.isEmpty());
         Set<UUID> current = new LinkedHashSet<>(getDataScopes(userId, scope));
         Set<UUID> added = new LinkedHashSet<>(requestedOwnerIds);
         added.removeAll(current);
         Set<UUID> removed = new LinkedHashSet<>(current);
         removed.removeAll(requestedOwnerIds);
         if (added.isEmpty() && removed.isEmpty()) {
-            return;
+            return new int[]{0, 0};
         }
         // 取消的行，以及新增负责人名下复职前留下的旧代次行(主键相同，先清再插)。
         Set<UUID> cleared = new LinkedHashSet<>(removed);
@@ -105,6 +152,7 @@ public class DataScopeAdminService {
                 added.stream().map(UUID::toString).toList(),
                 removed.stream().map(UUID::toString).toList(),
                 Map.of("scope", scope));
+        return new int[]{added.size(), removed.size()};
     }
 
     private static List<UUID> normalizeOwnerIds(List<UUID> ownerEmployeeIds) {

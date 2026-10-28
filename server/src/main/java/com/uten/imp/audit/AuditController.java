@@ -47,6 +47,8 @@ public class AuditController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private jakarta.servlet.http.HttpServletRequest request;
 
     /**
      * 分页查询审计日志（按 createdAt DESC, id DESC）。
@@ -170,7 +172,7 @@ public class AuditController {
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = body.columnProjection()!=null &&
                 AuditSessionTableExportService.TABLE_KEY.equals(body.columnProjection().tableKey())
-                ? sessionTableExport.export(parseOptionalActorId(actorId),dateFrom,dateTo,snapshotId,runtimeSettings.exportMaxRows())
+                ? exportSessions(parseOptionalActorId(actorId),dateFrom,dateTo,snapshotId)
                 : auditQuery.export(validated(new AuditSearchCriteria(
                 action, actorAccount, actorScope, riskLevel, eventCategory, outcome,
                 keyword, targetType, targetId, eventSource, requestId, operationKind,
@@ -194,6 +196,13 @@ public class AuditController {
                         "Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(downloadBytes);
+    }
+
+    private ExportPayload exportSessions(UUID actorId, LocalDate from, LocalDate to, Long snapshotId) {
+        var headers = AuditSessionHeaderQuery.from(request);
+        return headers.active()
+                ? sessionTableExport.export(actorId,from,to,snapshotId,runtimeSettings.exportMaxRows(),headers)
+                : sessionTableExport.export(actorId,from,to,snapshotId,runtimeSettings.exportMaxRows());
     }
 
     /** Records that an investigator checked this event against its local device receipt. */
@@ -318,7 +327,7 @@ public class AuditController {
 
     private AuditSearchCriteria validated(AuditSearchCriteria criteria) {
         AuditQueryService.validateFilterValues(criteria);
-        return criteria;
+        return criteria.withHeaderFilters(AuditEventHeaderQuery.from(request));
     }
 
     private String filterScope(

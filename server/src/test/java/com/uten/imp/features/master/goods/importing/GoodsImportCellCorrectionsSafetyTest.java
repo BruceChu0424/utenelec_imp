@@ -140,7 +140,8 @@ class GoodsImportCellCorrectionsSafetyTest {
     }
 
     @Test void systemIdentifiersAndNonEditableFieldsCannotBeCorrected() throws Exception {
-        for (String field : List.of("goodsId", "id", "UUID", "categoryId", "ownerEmployeeId", "isDeleted")) {
+        for (String field : List.of("goodsId", "bomRef", "owningWarehouseName", "productionWorkshopName",
+                "mouldCode", "mouldName", "id", "UUID", "categoryId", "ownerEmployeeId", "isDeleted")) {
             Fixture f = fixture();
             byte[] file = workbook(row("NEW", "货品", "规格", "自制", "1"));
 
@@ -148,6 +149,56 @@ class GoodsImportCellCorrectionsSafetyTest {
                     Map.of(2, Map.of(field, UUID.randomUUID().toString()))), field);
             verifyNoInteractions(f.goodsService);
         }
+    }
+
+    @Test void allRecognizedReadOnlyUploadColumnsRemainVisibleForCellErrorsWithoutBecomingEditable() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook(row("NEW", "待核对货品", "规格", "自制", "1"));
+        var withoutIdentities = f.importer.detect(file);
+        assertTrue(withoutIdentities.previewRows().getFirst().cells().keySet().stream()
+                .noneMatch(Set.of("goodsId", "bomRef", "owningWarehouseName", "productionWorkshopName", "mouldCode", "mouldName")::contains),
+                "Columns absent from the workbook must not be invented as empty preview columns");
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(file));
+             var out = new ByteArrayOutputStream()) {
+            var header = book.getSheetAt(0).getRow(0);
+            var data = book.getSheetAt(0).getRow(1);
+            String[] labels = {"系统标识", "组装信息ID", "所属仓库", "生产车间", "模具编号", "模具名称"};
+            String[] values = {"not-a-uuid", "invalid link", "来源仓库", "来源车间", "M-001", "壳体模具"};
+            for (int index = 0; index < labels.length; index++) {
+                header.createCell(index + 6).setCellValue(labels[index]);
+                data.createCell(index + 6).setCellValue(values[index]);
+            }
+            book.write(out); file = out.toByteArray();
+        }
+        var report = f.importer.detect(file);
+        var preview = report.previewRows().getFirst();
+        assertEquals("not-a-uuid", preview.cells().get("goodsId"));
+        assertEquals("invalid link", preview.cells().get("bomRef"));
+        assertEquals("来源仓库", preview.cells().get("owningWarehouseName"));
+        assertEquals("来源车间", preview.cells().get("productionWorkshopName"));
+        assertEquals("M-001", preview.cells().get("mouldCode"));
+        assertEquals("壳体模具", preview.cells().get("mouldName"));
+        assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == 2 && error.column().equals("货品UUID")));
+        assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == 2 && error.column().equals("组装信息ID")));
+        assertNull(report.planId());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void excelIdentityErrorsDoNotBecomeBlankNewGoodsIdentifiers() throws Exception {
+        Fixture f = fixture();
+        byte[] file = workbook(row("NEW", "待核对货品", "规格", "自制", "1"));
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(file));
+             var out = new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(0).createCell(6).setCellValue("系统标识");
+            book.getSheetAt(0).getRow(1).createCell(6)
+                    .setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.REF.getCode());
+            book.write(out); file = out.toByteArray();
+        }
+        var report = f.importer.detect(file);
+        assertEquals("#REF!", report.previewRows().getFirst().cells().get("goodsId"));
+        assertTrue(report.errors().stream().anyMatch(error -> error.column().equals("货品UUID")));
+        assertNull(report.planId());
+        verifyNoInteractions(f.goodsService);
     }
 
     @Test void legacyCodeCorrectionsAndCellCodeCorrectionsUseOneCanonicalPlan() throws Exception {
@@ -189,6 +240,77 @@ class GoodsImportCellCorrectionsSafetyTest {
         assertEquals(1, result.createdCount());
         assertEquals("合计连接件", f.saved.getFirst().getName());
         assertEquals("保留规格", f.saved.getFirst().getSpec());
+    }
+
+    @Test void everyModeKeepsRowsWithOtherBusinessInputWhenCodeAndNameAreBothEmpty() throws Exception {
+        for (GoodsImportMode mode : GoodsImportMode.values()) {
+            Fixture f = fixture();
+            var report = f.importer.detect(membershipWorkbook(), Map.of(), Set.of(), Map.of(), mode);
+            assertEquals(List.of(2, 3, 4, 5, 6, 10, 11, 12),
+                    report.previewRows().stream().map(GoodsImportProblemRow::rowNum).toList(), mode.toString());
+            assertEquals(8, report.dataRows(), mode.toString());
+            for (int row : List.of(3, 4, 5, 6, 10, 11, 12)) {
+                assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == row
+                        && error.column().equals("货品名称")), mode + " must retain the missing-name error at row " + row);
+            }
+            assertEquals("#DIV/0!", report.previewRows().stream().filter(row -> row.rowNum() == 6)
+                    .findFirst().orElseThrow().cells().get("price"));
+            assertTrue(report.errors().stream().anyMatch(error -> error.rowNum() == 6 && error.column().equals("价格")));
+            assertTrue(report.previewRows().stream().filter(row -> row.rowNum() == 4)
+                    .findFirst().orElseThrow().cells().containsKey("goodsId"));
+            assertEquals("invalid link", report.previewRows().stream().filter(row -> row.rowNum() == 5)
+                    .findFirst().orElseThrow().cells().get("bomRef"));
+            verifyNoInteractions(f.goodsService);
+        }
+    }
+
+    @Test void aRetainedMissingNameRowCanBeCorrectedAndCommittedWithoutReplayingOrInventingRows() throws Exception {
+        Fixture f = fixture();
+        byte[] file = membershipWorkbook();
+        byte[] original = file.clone();
+        Set<Integer> excluded = Set.of(2, 4, 5, 6, 10, 11, 12);
+        var invalid = f.importer.detect(file, Map.of(), excluded, Map.of(), GoodsImportMode.CREATE_ONLY);
+        assertEquals(List.of(3), invalid.previewRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertNull(invalid.planId());
+        Map<Integer, Map<String, String>> edits = Map.of(3, Map.of("name", "已修正名称"));
+        var corrected = f.importer.detect(file, Map.of(), excluded, edits, GoodsImportMode.CREATE_ONLY);
+        assertTrue(corrected.errors().isEmpty(), corrected.errors().toString());
+        assertEquals(List.of(3), corrected.readyRowNums());
+        var result = f.importer.commit(corrected.planId(), file, "missing-name.xlsx", Set.of(), Map.of(),
+                excluded, edits, GoodsImportMode.CREATE_ONLY);
+        assertEquals(1, result.createdCount());
+        assertEquals("已修正名称", f.saved.getFirst().getName());
+        assertEquals("保留该行备注", f.saved.getFirst().getPaper());
+        assertArrayEquals(original, file);
+        assertThrows(ApiException.class, () -> f.importer.detect(file, Map.of(), Set.of(),
+                Map.of(7, Map.of("name", "不能发明空白行")), GoodsImportMode.CREATE_ONLY));
+    }
+
+    private static byte[] membershipWorkbook() throws Exception {
+        try (var book = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
+            var sheet = book.createSheet("货品");
+            var header = sheet.createRow(0);
+            String[] labels = {"编号", "货品名称", "类别", "备注", "系统标识", "组装信息ID", "价格", "来源", "文件说明"};
+            for (int index = 0; index < labels.length; index++) header.createCell(index).setCellValue(labels[index]);
+            var normal = sheet.createRow(1);
+            normal.createCell(0).setCellValue("NORMAL");
+            normal.createCell(1).setCellValue("正常货品");
+            normal.createCell(2).setCellValue("成品");
+            var missing = sheet.createRow(2);
+            missing.createCell(2).setCellValue("成品");
+            missing.createCell(3).setCellValue("保留该行备注");
+            sheet.createRow(3).createCell(4).setCellValue(UUID.randomUUID().toString());
+            sheet.createRow(4).createCell(5).setCellValue("invalid link");
+            sheet.createRow(5).createCell(6).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());
+            var blank = sheet.createRow(6);
+            for (int index = 0; index < 8; index++) blank.createCell(index).setCellValue(" \t ");
+            sheet.createRow(7);
+            sheet.createRow(8).createCell(8).setCellValue("仅未识别说明列有内容，不是业务行");
+            sheet.createRow(9).createCell(6).setCellValue(0);
+            sheet.createRow(10).createCell(7).setCellValue(false);
+            sheet.createRow(11).createCell(1).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.REF.getCode());
+            book.write(out); return out.toByteArray();
+        }
     }
 
     private static Set<Integer> errorRows(GoodsImportReport report) {

@@ -3,6 +3,7 @@ package com.uten.imp.features.stock;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
 import com.uten.imp.common.util.GoodsSearchPolicy;
+import com.uten.imp.common.util.JpaColumnSearch;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -44,7 +45,13 @@ public class StockQueryService {
 
     /** 余额列排序白名单：前端列 key → JPA 实体属性名（数量/重量可排序；否则默认 lastMovementDate DESC）。 */
     private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of(
-            "qty", "qty", "weight", "weight");
+            "qty", "qty", "weight", "weight", "lastMovementDate", "lastMovementDate");
+    private static final Map<String, JpaColumnSearch.Field> BALANCE_COLUMNS = Map.of(
+            "warehouse", JpaColumnSearch.Field.referenceText("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class, "name"),
+            "color", JpaColumnSearch.Field.referenceText("colorId", com.uten.imp.features.master.color.Color.class, "name"),
+            "qty", JpaColumnSearch.Field.decimal("qty"),
+            "weight", JpaColumnSearch.Field.decimal("weight"),
+            "lastMovementDate", JpaColumnSearch.Field.instant("lastMovementDate"));
 
     private final StockBalanceRepository balanceRepo;
     private final EntityManager em;
@@ -60,9 +67,18 @@ public class StockQueryService {
     public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, UUID colorId, boolean colorNull,
                                              boolean inventoryOnly, boolean includeDefective, boolean includeLineSide,
                                              int page, int size, String sort, String order) {
+        return balances(warehouseId, goodsId, colorId, colorNull, inventoryOnly, includeDefective, includeLineSide,
+                page, size, sort, order, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<BalanceRow> balances(UUID warehouseId, UUID goodsId, UUID colorId, boolean colorNull,
+                                             boolean inventoryOnly, boolean includeDefective, boolean includeLineSide,
+                                             int page, int size, String sort, String order, Map<String, String> columns) {
         new com.uten.imp.features.stock.dto.StockInventoryScope(warehouseId, colorId, colorNull,
                 inventoryOnly, includeDefective, includeLineSide);
         if (goodsId != null) requireActiveGoods(goodsId);
+        var searches = JpaColumnSearch.validate(columns, BALANCE_COLUMNS);
         // V476：选父仓=自身+全部后代聚合；叶子仓为单元素集合，等价旧精确匹配。
         Set<UUID> warehouseScope = StockWarehouseScope.queryScopeOf(em, warehouseId, inventoryOnly,
                 includeDefective, includeLineSide);
@@ -75,6 +91,7 @@ public class StockQueryService {
             if (goodsId != null) ps.add(cb.equal(root.get("goodsId"), goodsId));
             if (colorId != null) ps.add(cb.equal(root.get("colorId"), colorId));
             else if (colorNull) ps.add(cb.isNull(root.get("colorId")));
+            ps.add(JpaColumnSearch.predicate(root, q, cb, searches, BALANCE_COLUMNS));
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size,

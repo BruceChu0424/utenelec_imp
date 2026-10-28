@@ -42,6 +42,11 @@ class NoticePermissionCandidatePostgresTest {
                 CREATE TABLE employee_secondary_departments(employee_id uuid,department_id uuid);
                 CREATE TABLE user_permission_overrides(user_id uuid,permission_id uuid,active boolean,effect text);
                 CREATE TABLE manager_permission_delegations(user_id uuid,permission_id uuid,enabled boolean);
+                CREATE TABLE fixture_user_template_sources(user_id uuid,permission_id uuid);
+                CREATE TABLE fixture_department_template_sources(department_id uuid,permission_id uuid);
+                CREATE VIEW authorization_user_template_permission_sources AS SELECT * FROM fixture_user_template_sources;
+                CREATE VIEW authorization_department_permission_sources AS
+                    SELECT * FROM department_permissions UNION SELECT * FROM fixture_department_template_sources;
                 """);
         jdbc.update("INSERT INTO permissions(id,code,baseline) VALUES (?,'procurement_iqc_rejection:confirm_credit',false)", action);
         jdbc.update("INSERT INTO departments VALUES (?,null),(?,?)", parent, child, parent);
@@ -177,6 +182,19 @@ class NoticePermissionCandidatePostgresTest {
         UUID administrator = user(true), grant = user(false);
         jdbc.update("INSERT INTO user_permission_overrides VALUES (?,?,true,'grant')", grant, action);
         assertEquals(Set.of(administrator, grant), candidates());
+    }
+
+    @Test void liveTemplateSourcesAreIncludedAndRemovedFreshWithoutScanningUnrelatedEmployees() {
+        UUID direct=user(false),departmentUser=user(false),unrelated=user(false),department=UUID.randomUUID();
+        jdbc.update("INSERT INTO departments VALUES (?,null)",department);
+        jdbc.update("UPDATE employees SET department_id=? WHERE id=?",department,departmentUser);
+        jdbc.update("INSERT INTO fixture_user_template_sources VALUES (?,?)",direct,action);
+        jdbc.update("INSERT INTO fixture_department_template_sources VALUES (?,?)",department,action);
+        assertEquals(Set.of(direct,departmentUser),candidates());
+        jdbc.update("DELETE FROM fixture_user_template_sources");
+        jdbc.update("DELETE FROM fixture_department_template_sources");
+        assertTrue(candidates().isEmpty());
+        assertFalse(candidates().contains(unrelated));
     }
 
     private Set<UUID> candidates() {

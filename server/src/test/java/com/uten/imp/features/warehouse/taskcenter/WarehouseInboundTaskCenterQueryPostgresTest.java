@@ -152,6 +152,31 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(service.detail("OTHER:STOCK_DOCUMENT:"+document,null).get("total")).isEqualTo(2L);
     }
 
+    @Test void ordinaryHeadersUseVisiblePhysicalLinesAndExactQuantitiesBeforeCountFacetsAndExplicitPaging() {
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID first=searchStock("HEADER-1","CODE%_1","物料%_","2026-10-01",warehouse);
+        UUID second=searchStock("HEADER-2","CODE%_2","物料%_扩展","2026-10-28",warehouse);
+        UUID hidden=searchStock("HEADER-SECRET","CODE%_3","物料%_","2026-10-28",outside);
+        for(var id:List.of(first,second,hidden)) execute("UPDATE stock_documents SET source_doc_no='ORIGIN%_A' WHERE id=:id","id",id);
+        execute("UPDATE stock_document_items SET qty=99999999999999.0001 WHERE doc_id=:id","id",first);
+        execute("UPDATE stock_document_items SET qty=99999999999999.0002 WHERE doc_id=:id","id",second);
+        execute("UPDATE stock_document_items SET qty=99999999999999.0003 WHERE doc_id=:id","id",hidden);
+        var columns=java.util.Map.of("goodsName","物料%_","goodsCode","CODE%_", "sourceDocNo","ORIGIN%_A",
+                "businessDate","2026-10-01..2026-10-28","quantity",">99999999999999");
+        var service=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(warehouse),false),false);
+        var filter=new Filter("OTHER","","物料%_",null,null,null,null,1,1,"quantity","desc",TaskView.ACTIVE).withColumnSearch(columns);
+        var page=service.list(filter);
+        assertThat(page.total()).isEqualTo(2);
+        assertThat(page.items()).extracting(Row::id).containsExactly(second);
+        assertThat(page.facets().get("status").getFirst().count()).isEqualTo(2);
+        assertThat(page.facets().get("billNo")).hasSize(2);
+        var next=service.list(new Filter("OTHER","","物料%_",null,null,null,null,2,1,"quantity","desc",TaskView.ACTIVE).withColumnSearch(columns));
+        assertThat(next.items()).extracting(Row::id).containsExactly(first);
+        assertThat(next.items().getFirst().line().getQuantityText()).isEqualTo("99999999999999.0001");
+        assertThat(service.list(filter.withColumnSearch(java.util.Map.of("goodsCode","CODE%_3"))).total()).isZero();
+        assertThatThrownBy(()->service.list(filter.withColumnSearch(java.util.Map.of("amount",">0")))).isInstanceOf(ApiException.class);
+    }
+
     @Test void sameDocumentOtherWarehouseItemsCannotLeakThroughRowsSearchFacetsOrDetails() {
         UUID document=UUID.randomUUID(),warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
         UUID shown=UUID.randomUUID(),hidden=UUID.randomUUID();

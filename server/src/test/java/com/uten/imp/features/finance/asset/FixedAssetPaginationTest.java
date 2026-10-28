@@ -30,7 +30,7 @@ class FixedAssetPaginationTest {
         entityManager = mock(EntityManager.class);
         countQuery = mock(Query.class);
         dataQuery = mock(Query.class);
-        service = new FixedAssetService(entityManager, mock(TxSessionVars.class));
+        service = new FixedAssetService(entityManager, mock(TxSessionVars.class),com.uten.imp.support.FinanceReportTestAccess.company());
 
         when(entityManager.createNativeQuery(argThat(
                 sql -> sql != null && sql.toUpperCase().contains("COUNT(*)"))))

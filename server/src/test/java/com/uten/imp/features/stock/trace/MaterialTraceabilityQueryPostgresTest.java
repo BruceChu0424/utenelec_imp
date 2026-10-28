@@ -3,6 +3,7 @@ package com.uten.imp.features.stock.trace;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.ActiveOperatorPort;
 import com.uten.imp.application.port.MaterialTraceabilityReadPort.Result;
+import com.uten.imp.application.port.MaterialTraceabilityReadPort;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
@@ -85,6 +86,37 @@ class MaterialTraceabilityQueryPostgresTest {
     @AfterEach void rollback() throws Exception {
         SecurityContextHolder.clearContext();
         if (f != null) f.close();
+    }
+
+    @Test void traceHeadersUseTheSameScopedFactsBeforeCountAndPagingIncludingCompoundEvidence() {
+        var first=f.segment("HEADER-A",f.owner,f.warehouse,f.product,"8");
+        var second=f.segment("HEADER-B",f.owner,f.warehouse,f.product,"12");
+        f.segment("HEADER-HIDDEN",f.otherOwner,f.otherWarehouse,f.product,"999");
+        var firstReport=f.report(first,"HEADER-REPORT-A","2","2",true);
+        f.report(second,"HEADER-REPORT-B","3","3",true);
+        f.allocate(f.purchase("HEADER-SOURCE-A",f.owner,f.warehouse,"8"),first,"8");
+        f.allocate(f.purchase("HEADER-SOURCE-B",f.owner,f.warehouse,"12"),second,"12");
+        var headers=Map.ofEntries(Map.entry("goods","Finished product"),Map.entry("code","PRODUCT-TRACE"),
+                Map.entry("workshop","Injection workshop"),Map.entry("plan","PLAN-HEADER"),Map.entry("basis","ORDER"),
+                Map.entry("issued",">=8"),Map.entry("returned","0"),Map.entry("consumed","2..3"),
+                Map.entry("reports",DAY.toString()),Map.entry("workers","Visible owner"),
+                Map.entry("productionBatches","HEADER-REPORT"),Map.entry("sources","RECEIPT-HEADER-SOURCE"));
+        var page1=query.trace("GOODS",f.material,"usage",null,null,1,1,headers,"issued","desc");
+        var page2=query.trace("GOODS",f.material,"usage",null,null,2,1,headers,"issued","desc");
+        assertThat(page1.total()).isEqualTo(2);
+        assertThat(page1.items()).extracting(MaterialTraceabilityReadPort.TraceItem::id).containsExactly("ORDER:"+second.demand());
+        assertThat(page2.items()).extracting(MaterialTraceabilityReadPort.TraceItem::id).containsExactly("ORDER:"+first.demand());
+        assertThat(((TraceRow)page1.items().getFirst()).issuedQty()).isEqualByComparingTo("12");
+        assertThat(((TraceRow)page2.items().getFirst()).consumedQty()).isEqualByComparingTo("2");
+        assertThat(canonical.query(f.product,"materials",1,20,Map.of("goods","Raw material","issued",">=8"),"issued","asc").getItems())
+                .extracting(TraceRow::id).containsExactly("ORDER:"+first.demand(),"ORDER:"+second.demand());
+        assertThat(query.trace("GOODS",f.material,"usage",null,null,1,20,Map.of("plan","HEADER-HIDDEN"),null,null).total()).isZero();
+        assertThat(query.trace("GOODS",f.material,"usage",null,null,1,20,Map.of("allocated","0"),null,null).total()).isZero();
+        assertThat(query.trace("PRODUCTION_REPORT",firstReport.report(),"materials",null,null,1,20,Map.of("issued",">=0"),null,null).total()).isZero();
+        Set<String> restricted=new java.util.HashSet<>(FULL);restricted.remove("purchase_receipt:view");restricted.remove("production_daily_report:view");
+        login(restricted);
+        assertThat(query.trace("GOODS",f.material,"usage",null,null,1,20,Map.of("sources","HEADER-SOURCE"),null,null).total()).isZero();
+        assertThat(query.trace("GOODS",f.material,"usage",null,null,1,20,Map.of("workers","Visible owner"),null,null).total()).isZero();
     }
 
     @Test void independentGoodsPickerDoesNotGrantPhysicalOrDocumentTraceAccess() {

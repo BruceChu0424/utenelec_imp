@@ -38,7 +38,8 @@ final class NoticePermissionCandidateQuery {
             WITH expected(relation_name,column_name,kind) AS (VALUES
                 ('permissions','id','uuid'),('permissions','code','text'),('permissions','baseline','bool'),
                 ('departments','id','uuid'),('departments','parent_id','uuid'),
-                ('department_permissions','department_id','uuid'),('department_permissions','permission_id','uuid'),
+                ('authorization_department_permission_sources','department_id','uuid'),('authorization_department_permission_sources','permission_id','uuid'),
+                ('authorization_user_template_permission_sources','user_id','uuid'),('authorization_user_template_permission_sources','permission_id','uuid'),
                 ('users','id','uuid'),('users','employee_id','uuid'),('users','is_super_admin','bool'),
                 ('users','is_deleted','bool'),('users','status','text'),
                 ('employees','id','uuid'),('employees','department_id','uuid'),
@@ -66,7 +67,7 @@ final class NoticePermissionCandidateQuery {
             WITH RECURSIVE requested AS MATERIALIZED (
                 SELECT id, baseline FROM permissions WHERE code IN (:codes)
             ), delegated_departments(id) AS (
-                SELECT allocation.department_id FROM department_permissions allocation
+                SELECT allocation.department_id FROM authorization_department_permission_sources allocation
                 JOIN requested permission ON permission.id=allocation.permission_id
                 UNION
                 SELECT child.id FROM departments child
@@ -88,6 +89,9 @@ final class NoticePermissionCandidateQuery {
                 SELECT allocation.user_id FROM user_permission_overrides allocation
                 JOIN requested permission ON permission.id=allocation.permission_id
                 WHERE allocation.active=TRUE AND allocation.effect IS DISTINCT FROM 'revoke'
+                UNION
+                SELECT source.user_id FROM authorization_user_template_permission_sources source
+                JOIN requested permission ON permission.id=source.permission_id
                 UNION
                 SELECT delegation.user_id FROM manager_permission_delegations delegation
                 JOIN requested permission ON permission.id=delegation.permission_id

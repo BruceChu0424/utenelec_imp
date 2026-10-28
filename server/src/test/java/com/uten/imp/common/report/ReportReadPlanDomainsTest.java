@@ -40,9 +40,15 @@ class ReportReadPlanDomainsTest {
             Query query = mock(Query.class);
             when(query.setParameter(anyString(), any())).thenReturn(query);
             when(query.getSingleResult()).thenReturn(7L);
-            List<?> result = statement.contains("COUNT(*) AS cnt")
-                    ? List.<Object[]>of(new Object[]{"a", "供应商", 3L})
-                    : List.<Object[]>of(new Object[]{exact});
+            List<?> result;
+            if (statement.contains("GROUP BY") && statement.contains("COUNT(*)")) {
+                result = List.<Object[]>of(new Object[]{"selected", "供应商", 3L});
+            } else if (statement.startsWith("SELECT SUM(t.")) {
+                result = List.<Object[]>of(new Object[]{exact});
+            } else {
+                result = List.<Object[]>of("finance".equals(domain)
+                        ? new Object[]{exact, "selected", 1L} : new Object[]{exact, "selected"});
+            }
             when(query.getResultList()).thenReturn(result);
             return query;
         });
@@ -54,7 +60,8 @@ class ReportReadPlanDomainsTest {
                 .map(type -> type == EntityManager.class ? em : mock(type)).toArray();
         Object service = constructor.newInstance(dependencies);
         Method execute = Arrays.stream(serviceType.getDeclaredMethods())
-                .filter(method -> method.getName().equals("execute")).findFirst().orElseThrow();
+                .filter(method -> method.getName().equals("execute") && method.getParameterCount() == 11)
+                .findFirst().orElseThrow();
         execute.setAccessible(true);
         Class<?> whereType = execute.getParameterTypes()[3];
         Constructor<?> whereConstructor = whereType.getDeclaredConstructor(String.class);
@@ -66,25 +73,34 @@ class ReportReadPlanDomainsTest {
         Class<?> columnType = Class.forName(prefix + "ReportColumn");
         Object column = columnType.getMethod("number", String.class, String.class).invoke(null, "qty", "数量");
         column = columnType.getMethod("totaled", String.class).invoke(column, "合计");
+        Object kind = columnType.getMethod("text", String.class, String.class).invoke(null, "kind", "类别");
         var spec = new ReportQueryKit.FacetSpec("kind", "o.kind AS v,o.kind AS lbl", "o.kind", "o.kind", "text");
         var plan = new ReportReadPlan((mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0);
         Object response;
         try (var ignored = ReportReadPlan.open(plan)) {
-            response = execute.invoke(service, List.of(column), "SELECT o.qty AS \"qty\"", "FROM facts o",
+            response = execute.invoke(service, List.of(column, kind), "SELECT o.qty AS \"qty\",o.kind AS \"kind\"", "FROM facts o",
                     where, "o.id", List.of(spec), Map.of("kind", "selected"), 2, 50, "qty", "desc");
         }
         assertThat(ReportReadPlan.current()).isEqualTo(ReportReadPlan.ALL);
         assertThat(sql).hasSize(1 + (plan.includeCount() ? 1 : 0)
                 + (plan.includeFacets() ? 1 : 0) + (plan.includeTotals() ? 1 : 0));
         assertThat(sql).allSatisfy(statement -> assertThat(statement).contains("o.allowed=true", "o.owner_id=:owner"));
-        assertThat(sql.getFirst()).contains("ORDER BY \"qty\" DESC, o.id", "LIMIT :__limit OFFSET :__offset");
+        assertThat(sql.getFirst()).contains("LIMIT :__limit OFFSET :__offset");
+        if ("finance".equals(domain)) {
+            assertThat(sql.getFirst()).contains("ROW_NUMBER() OVER (ORDER BY o.id)",
+                    "ORDER BY report.\"qty\" DESC NULLS LAST,report.\"__headerOrdinal\"");
+        } else {
+            assertThat(sql.getFirst()).contains("ORDER BY \"qty\" DESC, o.id");
+        }
         Class<?> responseType = response.getClass();
         assertThat(responseType.getMethod("total").invoke(response)).isEqualTo(plan.includeCount() ? 7L : -1L);
         assertThat(responseType.getMethod("totalPages").invoke(response)).isEqualTo(plan.includeCount() ? 1 : -1);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) responseType.getMethod("rows").invoke(response);
+        List<?> rows = (List<?>) responseType.getMethod("rows").invoke(response);
         assertThat(rows).hasSize(1);
-        assertThat(rows.getFirst()).containsEntry("qty", exact).containsEntry("qtyExact", exact.toPlainString());
+        Map<?, ?> row = (Map<?, ?>) rows.getFirst();
+        assertThat(row.get("qty")).isEqualTo(exact);
+        assertThat(row.get("qtyExact")).isEqualTo(exact.toPlainString());
+        assertThat(row.get("kind")).isEqualTo("selected");
         Map<?, ?> facets = (Map<?, ?>) responseType.getMethod("facets").invoke(response);
         assertThat(facets.size()).isEqualTo(plan.includeFacets() ? 1 : 0);
         List<?> totals = (List<?>) responseType.getMethod("totals").invoke(response);

@@ -81,7 +81,7 @@ public class StockDocController {
         // standaloneDrafts=true 仅取未删除的独立草稿；与 includeDeleted/onlyDeleted 相交，不放宽历史或权限。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.current(scopeWarehouseId), billNo, scopeWarehouseId == null, standaloneDrafts, view),
+                warehouseScopes.current(scopeWarehouseId), billNo, scopeWarehouseId == null, standaloneDrafts, view).withHeaders(headerFilters()),
                 page, size, sort, order, includeDeleted, onlyDeleted);
     }
 
@@ -106,7 +106,13 @@ public class StockDocController {
             @RequestParam(defaultValue = "ACTIVE") String view) {
         return service.facets(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.current(scopeWarehouseId), null, scopeWarehouseId == null, standaloneDrafts, view), includeDeleted, onlyDeleted);
+                warehouseScopes.current(scopeWarehouseId), null, scopeWarehouseId == null, standaloneDrafts, view).withHeaders(headerFilters()), includeDeleted, onlyDeleted);
+    }
+
+    private static com.uten.imp.common.web.HeaderColumnFilter headerFilters() {
+        return new com.uten.imp.common.web.HeaderColumnFilter(
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest())
+                        .entrySet().stream().collect(java.util.stream.Collectors.toMap(entry->"search."+entry.getKey(),java.util.Map.Entry::getValue)));
     }
 
     @GetMapping("/{id}")

@@ -13,6 +13,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MoneyPolicyTest {
 
     @Test
+    void quantityDisplayRoundsAtTheRequestedScaleWithoutChangingTheExactQuantity() {
+        BigDecimal exact = new BigDecimal("1.2345");
+        assertThat(MoneyPolicy.quantityDisplay(exact, 3).toPlainString()).isEqualTo("1.235");
+        assertThat(MoneyPolicy.quantityDisplay(new BigDecimal("1.2344"), 3).toPlainString()).isEqualTo("1.234");
+        assertThat(MoneyPolicy.quantityDisplay(BigDecimal.ONE, 3).toPlainString()).isEqualTo("1.000");
+        assertThat(MoneyPolicy.quantityDisplay(null, 3)).isNull();
+        assertThat(exact.toPlainString()).isEqualTo("1.2345");
+    }
+
+    @Test
     void productsKeepEveryDigitAndNeverRound() {
         // Dart double 下 3 × 0.1 = 0.30000000000000004; 服务端十进制乘积必须恰好 0.3。
         assertThat(MoneyPolicy.exactProduct(new BigDecimal("3"), new BigDecimal("0.1")))

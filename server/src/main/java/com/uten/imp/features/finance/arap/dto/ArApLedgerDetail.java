@@ -54,6 +54,12 @@ public class ArApLedgerDetail {
     private List<UUID> salesOrderIds;
     private UUID authoritativeSalesOrderId;
     private java.util.Map<String, Object> legacySourceResolution;
+    @Getter(lombok.AccessLevel.NONE)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private final ArApLedgerReadFacts readFacts=new ArApLedgerReadFacts();
+    public ArApLedgerDetail withOpenItemKind(String kind){readFacts.openItemKind=kind;return this;}
+    public String getOpenItemKind(){return readFacts.openItemKind;}
+    public String getSettlementStyleLabel(){return com.uten.imp.features.finance.arap.ArApLedgerHeaderQuery.settlementLabel(settlementStyleLegacy);}
 
     // Additive exact text never passes through a binary floating-point value.
     public String getExchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }

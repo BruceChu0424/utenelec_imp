@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AuditEventInterpreterTest {
@@ -305,6 +306,13 @@ class AuditEventInterpreterTest {
                 + "通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对 → 通过"), corrected);
         assertTrue(corrected.contains("证件号码后四位："), corrected);
         assertTrue(corrected.contains("敏感信息已修改(内容不记录)：证件号码、证件号码查重值"), corrected);
+
+        AuditLog encryptedSnapshot = sensitiveUpdate(
+                "{\"snapshot_enc\":\"old-private-employee-ciphertext\"}",
+                "{\"snapshot_enc\":\"new-private-employee-ciphertext\"}");
+        var snapshotEvent = interpreter.interpret(encryptedSnapshot);
+        assertEquals("敏感信息已修改(内容不记录)：加密快照", snapshotEvent.changeSummary());
+        assertFalse(snapshotEvent.summary().contains("private-employee-ciphertext"));
 
         // 改对证件号会连带改出生日期密文 (触发器不剔除 *_enc)：只列名字，不显示密文。
         AuditLog derivedBirthDate = sensitiveUpdate(

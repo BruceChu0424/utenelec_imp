@@ -92,10 +92,14 @@ public class MouldService {
 
     @Transactional(readOnly = true)
     public PageResponse<MouldListItem> list(MouldQueryFilter f, int page, int size) {
+        return list(f,page,size,null,null);
+    }
+    @Transactional(readOnly = true)
+    public PageResponse<MouldListItem> list(MouldQueryFilter f, int page, int size,String sort,String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         var keyword = keywordPlan(f.keyword());
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
-        Sort requestedSort = defaultSort;
+        Sort requestedSort = com.uten.imp.common.web.TableSort.resolve(sort,order,defaultSort,Map.of("tqty","tqty"));
         Specification<Mould> spec = (Root<Mould> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -166,6 +170,10 @@ public class MouldService {
      */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(MouldQueryFilter f, int maxRows) {
+        return export(f,maxRows,null,null);
+    }
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ExportPayload export(MouldQueryFilter f, int maxRows,String sort,String order) {
         List<ExportColumn> cols = List.of(
                 new ExportColumn("code", "模具编号", ExportColumn.TEXT),
                 new ExportColumn("name", "模具名称", ExportColumn.TEXT),
@@ -179,7 +187,7 @@ public class MouldService {
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
         return com.uten.imp.common.export.MasterExportSource.exportEntities(em, cols,
-                maxRows, (p, size) -> list(f, p, size), m -> {
+                maxRows, (p, size) -> list(f, p, size,sort,order), m -> {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("_platformRecordId", m.getId());
                     row.put("code", m.getCode());

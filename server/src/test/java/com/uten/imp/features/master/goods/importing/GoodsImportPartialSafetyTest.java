@@ -48,6 +48,9 @@ class GoodsImportPartialSafetyTest {
 
         assertEquals(Set.of(3, 4), errorRows(report));
         assertEquals(List.of(3, 4), report.problemRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        assertEquals(List.of(2, 3, 4), report.previewRows().stream().map(GoodsImportProblemRow::rowNum).toList(),
+                "Confirmation must include normal rows together with the rows requiring repair");
+        assertEquals("正常规格", report.previewRows().getFirst().cells().get("spec"));
         assertEquals(List.of(2), report.readyRowNums());
         assertEquals(1, report.readyToImport());
         assertEquals(1, report.addedRows());
@@ -77,6 +80,8 @@ class GoodsImportPartialSafetyTest {
 
         assertTrue(repaired.errors().isEmpty(), repaired.errors().toString());
         assertEquals(List.of(3, 4), repaired.readyRowNums());
+        assertEquals(List.of(3, 4), repaired.previewRows().stream().map(GoodsImportProblemRow::rowNum).toList(),
+                "Successful/excluded rows must not reappear in confirmation");
         assertEquals(2, repaired.addedRows());
         assertTrue(repaired.reviewRows().isEmpty());
         var result = f.importer.commit(repaired.planId(), file, "mixed.xlsx", Set.of(), corrections, completed);
@@ -199,6 +204,12 @@ class GoodsImportPartialSafetyTest {
         f.localGoods.put(existing.getId(), existing);
         byte[] file = workbook(row("CURRENT", "当前货品", ""),
                 row("DUP", "问题一", ""), row("DUP", "问题二", ""));
+        // 匹配只认系统标识：未变化行需携带 UUID 才能对上在库货品。
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(file));
+             var out = new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(1).createCell(4).setCellValue(existing.getId().toString());
+            book.write(out); file = out.toByteArray();
+        }
         var report = f.importer.detect(file, Map.of(), Set.of());
 
         assertEquals(List.of(2), report.readyRowNums());
@@ -211,6 +222,60 @@ class GoodsImportPartialSafetyTest {
         assertEquals(0, result.importedCount());
         assertEquals(1, result.unchangedCount());
         assertNull(result.batchId());
+        verifyNoInteractions(f.goodsService);
+    }
+
+    @Test void everyImportModeReturnsNormalRowsForConfirmationBeforeAnyWrite() throws Exception {
+        for (GoodsImportMode mode : GoodsImportMode.values()) {
+            Fixture f = fixture();
+            byte[] file = workbook(row("NORMAL", "待确认货品", "文件规格"));
+            if (mode == GoodsImportMode.UPDATE_ONLY) {
+                var existing = new Goods();
+                existing.setId(UUID.randomUUID()); existing.setVersion(1); existing.setCode("NORMAL");
+                existing.setName("待确认货品"); existing.setSpec("文件规格"); existing.setCategory(f.category);
+                existing.setStatus("使用"); existing.setMinOrderQty(BigDecimal.ONE);
+                f.localGoods.put(existing.getId(), existing);
+                try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(file));
+                     var out = new ByteArrayOutputStream()) {
+                    book.getSheetAt(0).getRow(1).getCell(4).setCellValue(existing.getId().toString());
+                    book.write(out); file = out.toByteArray();
+                }
+            }
+            var report = f.importer.detect(file, Map.of(), Set.of(), Map.of(), mode);
+
+            assertTrue(report.errors().isEmpty(), mode + ": " + report.errors());
+            assertEquals(List.of(2), report.readyRowNums(), mode.toString());
+            assertEquals(1, report.previewRows().size(), mode.toString());
+            var preview = report.previewRows().getFirst();
+            assertEquals("NORMAL", preview.code());
+            assertEquals("待确认货品", preview.name());
+            assertEquals("成品", preview.categoryPath());
+            assertEquals("文件规格", preview.cells().get("spec"));
+            assertNotNull(report.planId());
+            verifyNoInteractions(f.goodsService);
+        }
+    }
+
+    @Test void selectedPreviewUsesEffectiveCategoryNameAndEnglishNameCorrections() throws Exception {
+        Fixture f = fixture();
+        byte[] file = mixedWorkbook();
+        Map<Integer, Map<String, String>> cells = Map.of(3, Map.of("code", "FIXED",
+                "name", "确认后名称", "nameEn", "Reviewed name", "categoryPath", "成品 / 新系列"));
+
+        var report = f.importer.detect(file, Map.of(), Set.of(2, 4), cells, GoodsImportMode.CREATE_ONLY);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(List.of(3), report.readyRowNums());
+        assertEquals(List.of(3), report.previewRows().stream().map(GoodsImportProblemRow::rowNum).toList());
+        var preview = report.previewRows().getFirst();
+        assertEquals("FIXED", preview.code());
+        assertEquals("确认后名称", preview.name());
+        assertEquals("成品 / 新系列", preview.categoryPath());
+        assertEquals("Reviewed name", preview.cells().get("nameEn"));
+        assertEquals("问题规格一", preview.cells().get("spec"));
+        assertEquals(List.of("成品/新系列"), report.willCreateCategories());
+        assertThrows(UnsupportedOperationException.class, () -> preview.cells().put("name", "changed"));
+        assertThrows(UnsupportedOperationException.class, () -> report.previewRows().clear());
         verifyNoInteractions(f.goodsService);
     }
 

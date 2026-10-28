@@ -42,7 +42,7 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.productCost(keyword, dateFrom, dateTo, page, size);
+        return service.productCost(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     @GetMapping("/sales-summary")
@@ -53,7 +53,7 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.salesCostSummary(keyword, dateFrom, dateTo, page, size);
+        return service.salesCostSummary(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     @GetMapping("/copper-fee")
@@ -64,7 +64,7 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.copperFee(keyword, dateFrom, dateTo, page, size);
+        return service.copperFee(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     @GetMapping("/copper-pickling")
@@ -75,7 +75,7 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.copperPickling(keyword, dateFrom, dateTo, page, size);
+        return service.copperPickling(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     @GetMapping("/plastic")
@@ -86,7 +86,7 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.plasticUsage(keyword, dateFrom, dateTo, page, size);
+        return service.plasticUsage(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 
     @GetMapping("/plastic-detail")
@@ -98,6 +98,6 @@ public class FinanceCostController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.plasticDetail(kind, keyword, dateFrom, dateTo, page, size);
+        return service.plasticDetail(kind, keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
     }
 }

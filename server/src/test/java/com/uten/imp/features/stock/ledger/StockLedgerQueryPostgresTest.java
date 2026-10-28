@@ -115,6 +115,114 @@ class StockLedgerQueryPostgresTest {
     }
 
     @Test
+    void weightRecordHeadersRespectUnitsHalfEvenPrecisionAndNameVisibility() throws Exception {
+        World world = seed(dataSource);
+        try (StockReadSideSeed seed = new StockReadSideSeed(dataSource)) {
+            for (var values : List.of(new String[]{"1000", "2.312000"}, new String[]{"500", "1.156000"},
+                    new String[]{"400000", "0.000001"})) {
+                seed.jdbc().update("""
+                    INSERT INTO goods_weight_observations(goods_id,supplier_id,source_kind,role,qty_base,weight_kg,observed_at,capture_key)
+                    VALUES (?,?,'SAMPLE','REFERENCE',CAST(? AS numeric),CAST(? AS numeric),TIMESTAMPTZ '2026-10-27 16:30:00Z',?)
+                    """, world.goods(), world.supplier(), values[0], values[1], UUID.randomUUID().toString());
+            }
+        }
+        var first = weightService(world.goods(), true).observations(world.goods(), 1, 1, null, null, null,
+                java.util.Map.of("unitWeight", "2.312 g", "observedAt", "2026-10-28"), "unitWeight", "asc");
+        var second = weightService(world.goods(), true).observations(world.goods(), 2, 1, null, null, null,
+                java.util.Map.of("unitWeight", "2.312 g", "observedAt", "2026-10-28"), "unitWeight", "asc");
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getItems().getFirst().id()).isNotEqualTo(second.getItems().getFirst().id());
+        assertThat(first.getItems().getFirst().unitWeightKg()).isEqualByComparingTo("0.002312");
+        var halfway = weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
+                java.util.Map.of("unitWeight", "0.000000000002"), null, null);
+        assertThat(halfway.getTotal()).isEqualTo(1);
+        assertThat(halfway.getItems().getFirst().unitWeightKg()).isEqualByComparingTo("0.000000000002");
+        assertThat(weightService(world.goods(), true).observations(world.goods(), 1, 20, null, null, null,
+                java.util.Map.of("unitWeight", "0.000000000003"), null, null).getTotal()).isZero();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> weightService(world.goods(), false)
+                .observations(world.goods(), 1, 1, null, null, null,
+                        java.util.Map.of("party", "流水供应商"), null, null))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
+    private com.uten.imp.features.stock.weight.GoodsWeightEstimateService weightService(UUID goods, boolean names) {
+        var facts = mock(com.uten.imp.features.stock.weight.GoodsWeightFactsStore.class);
+        when(facts.load(goods)).thenReturn(new com.uten.imp.features.stock.weight.GoodsWeightFacts(
+                goods, true, null, null, null, null, null, null, null, null));
+        var current = mock(SecurityContextCurrentUser.class);
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(), null, "header",
+                names ? Set.of("stock:view", "stock_report:view") : Set.of("stock:view"), false, false, false)));
+        return new com.uten.imp.features.stock.weight.GoodsWeightEstimateService(
+                new NamedParameterJdbcTemplate(dataSource), facts, current, new com.fasterxml.jackson.databind.ObjectMapper(),
+                mock(org.springframework.transaction.PlatformTransactionManager.class), 0.00005);
+    }
+
+    @Test
+    void balanceHeadersApplyReferencesNumbersAndDatesBeforeJpaPagination() throws Exception {
+        World world = seed(dataSource);
+        var factory = new org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setJpaVendorAdapter(new org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter());
+        factory.setManagedTypes(org.springframework.orm.jpa.persistenceunit.PersistenceManagedTypes.of(
+                com.uten.imp.features.stock.StockBalance.class.getName(),
+                com.uten.imp.features.master.warehouse.Warehouse.class.getName(),
+                com.uten.imp.features.master.color.Color.class.getName()));
+        factory.setJpaPropertyMap(java.util.Map.of("hibernate.hbm2ddl.auto", "none", "hibernate.jdbc.time_zone", "UTC"));
+        factory.afterPropertiesSet();
+        var emf = factory.getObject();
+        try {
+            var em = org.springframework.orm.jpa.SharedEntityManagerCreator.createSharedEntityManager(emf);
+            var repository = new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(em)
+                    .getRepository(com.uten.imp.features.stock.StockBalanceRepository.class);
+            var transactions = new org.springframework.transaction.support.TransactionTemplate(new org.springframework.orm.jpa.JpaTransactionManager(emf));
+            var query = new com.uten.imp.features.stock.StockQueryService(repository, em, mock(StockCostMasker.class));
+            var first = transactions.execute(ignored -> query.balances(null, world.goods(), null, false,
+                    false, true, false, 1, 1, "qty", "desc", java.util.Map.of("qty", ">=0")));
+            var second = transactions.execute(ignored -> query.balances(null, world.goods(), null, false,
+                    false, true, false, 2, 1, "qty", "desc", java.util.Map.of("qty", ">=0")));
+            assertThat(first.getTotal()).isEqualTo(2);
+            assertThat(first.getItems().getFirst().getId()).isNotEqualTo(second.getItems().getFirst().getId());
+            assertThat(first.getItems().getFirst().getQty()).isEqualByComparingTo("75");
+            var narrow = transactions.execute(ignored -> query.balances(null, world.goods(), null, false,
+                    false, true, false, 1, 1, "lastMovementDate", "asc", java.util.Map.of(
+                            "warehouse", "流水子仓一", "lastMovementDate", "2026-09-01", "weight", ">=9")));
+            assertThat(narrow.getTotal()).isEqualTo(1);
+            assertThat(narrow.getItems().getFirst().getWarehouseId()).isEqualTo(world.c1());
+            assertThat(narrow.getItems().getFirst().getAmountLocal()).isNull();
+        } finally {
+            if (emf != null) emf.close();
+        }
+    }
+
+    @Test
+    void headerQueriesKeepRunningBalancesAndCannotProbeMaskedCounterparts() throws Exception {
+        World world = seed(dataSource);
+        StockLedgerQueryService allowed = service(false, Set.of("stock_doc:view", "sales_shipment:view"));
+        var baseline = allowed.ledger(world.goods(), null, null, false, null, null, null, null, false, 1, 50);
+        var expected = baseline.getItems().stream().collect(java.util.stream.Collectors.toMap(
+                StockLedgerRow::id, StockLedgerRow::balanceQtyAfter));
+        var first = allowed.ledger(world.goods(), null, null, false, null, null, null, null,
+                false, 1, 1, false, true, false, java.util.Map.of("balanceQty", ">=90"), "balanceQty", "desc");
+        var second = allowed.ledger(world.goods(), null, null, false, null, null, null, null,
+                false, 2, 1, false, true, false, java.util.Map.of("balanceQty", ">=90"), "balanceQty", "desc");
+        assertThat(first.getTotal()).isEqualTo(4);
+        assertThat(first.getItems().getFirst().id()).isNotEqualTo(second.getItems().getFirst().id());
+        for (var row : List.of(first.getItems().getFirst(), second.getItems().getFirst()))
+            assertThat(row.balanceQtyAfter()).isEqualByComparingTo(expected.get(row.id()));
+        assertThat(first.getSummary().closingQty()).isEqualByComparingTo("95");
+        var source = allowed.ledger(world.goods(), null, null, false, null, null, null, null,
+                false, 1, 50, false, true, false, java.util.Map.of("billNo", world.shipmentBill()), null, null);
+        assertThat(source.getTotal()).isEqualTo(2);
+        assertThat(source.getItems()).allSatisfy(row -> assertThat(row.billNo()).isEqualTo(world.shipmentBill()));
+        assertThat(allowed.ledger(world.goods(), null, null, false, null, null, null, null,
+                false, 1, 50, false, true, false, java.util.Map.of("counterpart", "流水客户"), null, null).getTotal()).isEqualTo(2);
+        assertThat(service(false, Set.of()).ledger(world.goods(), null, null, false, null, null, null, null,
+                false, 1, 50, false, true, false, java.util.Map.of("counterpart", "流水客户"), null, null).getTotal()).isZero();
+        assertThat(allowed.ledger(world.exactGoods(), null, null, false, null, null, null, null,
+                false, 1, 50, false, true, false, java.util.Map.of("balanceWeight", "12.3457"), null, null).getTotal()).isEqualTo(1);
+    }
+
+    @Test
     void runningBalancesStartFromCurrentBalancesAndReachZeroBeforeTheFirstRow() throws Exception {
         World world = seed(dataSource);
         StockLedgerPage page = service(false, Set.of()).ledger(world.goods(), null, null, false, null, null, null,

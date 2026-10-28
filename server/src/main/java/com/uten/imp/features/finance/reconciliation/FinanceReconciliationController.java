@@ -30,6 +30,8 @@ import java.util.UUID;
 @RequestMapping("/api/finance/reconciliations")
 @RequiredArgsConstructor
 public class FinanceReconciliationController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final FinanceReconciliationService service;
 
@@ -49,9 +51,19 @@ public class FinanceReconciliationController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String billNo) {
+            @RequestParam(required = false) String billNo,
+            @RequestParam(name="search.reversalOfId",required=false) UUID reversalOfId) {
         return service.list(new FinanceReconciliationQueryFilter(
-                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, billNo), page, size, sort, order);
+                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, billNo)
+                .withColumns(columns(),reversalOfId), page, size, sort, order);
+    }
+
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
+    public PageResponse<FinanceReconciliationListItem> list(String keyword,UUID accountId,String sourceDocType,
+            UUID sourceDocId,String checkNo,String entryKind,OffsetDateTime dateFrom,OffsetDateTime dateTo,
+            int page,int size,String sort,String order,String billNo) {
+        return list(keyword,accountId,sourceDocType,sourceDocId,checkNo,entryKind,dateFrom,dateTo,page,size,sort,order,billNo,null);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -66,8 +78,23 @@ public class FinanceReconciliationController {
             @RequestParam(required = false) String checkNo,
             @RequestParam(required = false) String entryKind,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime dateTo,
+            @RequestParam(name="search.reversalOfId",required=false) UUID reversalOfId) {
         return service.facets(new FinanceReconciliationQueryFilter(
-                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, null));
+                keyword, accountId, sourceDocType, sourceDocId, checkNo, dateFrom, dateTo, entryKind, null)
+                .withColumns(columns(),reversalOfId));
+    }
+
+    @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
+            + "and hasAuthority('account:flow:view')")
+    public java.util.Map<String,java.util.List<java.util.Map<String,Object>>> facets(String keyword,UUID accountId,
+            String sourceDocType,UUID sourceDocId,String checkNo,String entryKind,OffsetDateTime dateFrom,OffsetDateTime dateTo) {
+        return facets(keyword,accountId,sourceDocType,sourceDocId,checkNo,entryKind,dateFrom,dateTo,null);
+    }
+
+    private java.util.Map<String,String> columns() {
+        var values=new java.util.LinkedHashMap<>(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request));
+        values.remove("reversalOfId"); // Spring's UUID converter owns the exact identity contract.
+        return values;
     }
 }

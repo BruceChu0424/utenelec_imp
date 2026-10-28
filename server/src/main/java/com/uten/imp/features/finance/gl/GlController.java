@@ -68,7 +68,9 @@ public class GlController {
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return reports.trialBalance(dateFrom, dateTo, page, size);
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.trialBalance(dateFrom,dateTo,page,size)
+                :reports.trialBalance(dateFrom,dateTo,page,size,options);
     }
 
     /** 附 9 资产负债表（dateTo=报表日；年初列=该年 1 月 1 日前）。 */
@@ -76,7 +78,8 @@ public class GlController {
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse balanceSheet(
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.balanceSheet(dateTo);
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.balanceSheet(dateTo):reports.balanceSheet(dateTo,options);
     }
 
     /** 附 10 年度利润汇总（行=项目 × 列=12 月）。year 缺省取 dateTo 年（通用报表页只传日期）。 */
@@ -85,7 +88,8 @@ public class GlController {
     public ReportTableResponse profitAnnual(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.profitAnnual(yearOf(year, dateTo));
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.profitAnnual(yearOf(year,dateTo)):reports.profitAnnual(yearOf(year,dateTo),options);
     }
 
     /** 附 11 月度利润表（本月+本年累计）。year/month 缺省取 dateTo 年/月。 */
@@ -95,7 +99,8 @@ public class GlController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.profitMonthly(yearOf(year, dateTo), monthOf(month, dateTo));
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo)):reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo),options);
     }
 
     /** 附 12 制造费用明细。 */
@@ -104,7 +109,8 @@ public class GlController {
     public ReportTableResponse manufacturingExpense(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.manufacturingExpense(yearOf(year, dateTo));
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.manufacturingExpense(yearOf(year,dateTo)):reports.manufacturingExpense(yearOf(year,dateTo),options);
     }
 
     /** 附 13 管理费用明细。 */
@@ -113,7 +119,8 @@ public class GlController {
     public ReportTableResponse adminExpense(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.adminExpense(yearOf(year, dateTo));
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.adminExpense(yearOf(year,dateTo)):reports.adminExpense(yearOf(year,dateTo),options);
     }
 
     /** 附 14 销售费用明细（按费用科目；费用单据无业务员维度，按人拆分不可推导）。 */
@@ -122,7 +129,8 @@ public class GlController {
     public ReportTableResponse salesExpense(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
-        return reports.salesExpense(yearOf(year, dateTo));
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.salesExpense(yearOf(year,dateTo)):reports.salesExpense(yearOf(year,dateTo),options);
     }
 
     /** 附 16 经营损益表（占销售比口径）。 */
@@ -134,7 +142,8 @@ public class GlController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return reports.operatingPlPage(yearOf(year, dateTo), monthOf(month, dateTo), page, size);
+        var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
+        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.operatingPlPage(yearOf(year,dateTo),monthOf(month,dateTo),page,size):reports.operatingPlPage(yearOf(year,dateTo),monthOf(month,dateTo),page,size,options);
     }
 
     // ======================== 报表设置: 报表行 → 科目/部门 ========================

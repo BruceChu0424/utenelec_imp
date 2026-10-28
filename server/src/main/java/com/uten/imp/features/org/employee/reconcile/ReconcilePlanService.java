@@ -104,15 +104,21 @@ public class ReconcilePlanService {
 
         // 证据查重底表：全部非空证件号哈希（几千行规模一次全读；本人当前哈希不排除——存量号
         // 本身校验不过，不会成为候选，剔除无意义）。
-        Set<String> takenHashes = Set.copyOf(jdbc.queryForList(
-                "SELECT id_card_hash FROM employee_sensitive WHERE id_card_hash IS NOT NULL", String.class));
+        // Claim ownership follows the same verified identity groups as the writer/DB guard.
+        var claims = jdbc.query("SELECT id_card_hash,fn_canonical_employee_identity(employee_id) FROM employee_sensitive WHERE id_card_hash IS NOT NULL",
+                (rs,index) -> java.util.Map.entry(rs.getString(1),rs.getObject(2,UUID.class)));
+        Set<String> takenHashes = claims.stream().map(java.util.Map.Entry::getKey).collect(Collectors.toSet());
+        var ownedHashes = claims.stream().collect(Collectors.groupingBy(java.util.Map.Entry::getValue,
+                Collectors.mapping(java.util.Map.Entry::getKey,Collectors.toSet())));
 
         List<DraftRow> drafts = new ArrayList<>(employees.size());
         int rowNo = 0;
         for (Employee employee : employees) {
+            var otherPersonsHashes = new java.util.HashSet<>(takenHashes);
+            otherPersonsHashes.removeAll(ownedHashes.getOrDefault(employee.getId(),Set.of()));
             DraftRow draft = draftRow(++rowNo, employee,
                     sensitive.get(employee.getId()), superAdminBound.contains(employee.getId()),
-                    plain, takenHashes);
+                    plain, otherPersonsHashes);
             drafts.add(draft);
         }
 

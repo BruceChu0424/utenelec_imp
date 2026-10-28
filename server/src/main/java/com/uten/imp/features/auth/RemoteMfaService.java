@@ -289,7 +289,8 @@ public class RemoteMfaService {
     }
 
     private void requireCurrentSession(AuthUser user) {
-        if (sessions.lockAndEvaluateForRefresh(user.getSessionId(), user.getId(), null) != AuthSessionService.Verdict.ACTIVE)
+        if (sessions.lockAndEvaluateForRefresh(user.getSessionId(), user.getId(), null).verdict()
+                != AuthSessionService.Verdict.ACTIVE)
             throw new ApiException(ErrorCode.UNAUTHORIZED);
     }
 

@@ -42,7 +42,10 @@ class EmployeeNameResolverBatchPostgresTest {
         var source = new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         db = new JdbcTemplate(source);
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
-                db, "employees", "users", "procurement_order_approval_cases");
+                db, "employees", "users", "procurement_order_approval_cases", "employee_identity_aliases",
+                "employee_identity_user_tombstones", "employee_legacy_identity_aliases", "purchase_requests");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,"fn_canonical_employee_identity",
+                "fn_employee_merge_retained_user","fn_employee_identity_from_legacy_worker");
         var measured = new DelegatingDataSource(source) {
             @Override public Connection getConnection() throws java.sql.SQLException {
                 Connection connection = super.getConnection();
@@ -72,7 +75,8 @@ class EmployeeNameResolverBatchPostgresTest {
     }
 
     @BeforeEach void reset() {
-        db.execute("TRUNCATE employees, users, procurement_order_approval_cases");
+        db.execute("TRUNCATE employees, users, procurement_order_approval_cases, employee_identity_aliases,"
+                + "employee_identity_user_tombstones,employee_legacy_identity_aliases,purchase_requests");
         em = factory.createEntityManager();
         names = new EmployeeNameResolver(em);
         STATEMENTS.clear();
@@ -127,6 +131,44 @@ class EmployeeNameResolverBatchPostgresTest {
         assertThat(STATEMENTS).hasSize(1);
         assertThat(db.queryForObject("SELECT count(*) FROM employees", Integer.class)).isEqualTo(100);
         System.out.println("EMPLOYEE-NAMES ids=100 singleStatements=" + singleStatements + " batchStatements=" + STATEMENTS.size());
+    }
+
+    @Test void retiredEmployeeAndUserResolveCanonicalAfterOldCodeIsReusedByAnotherPerson() {
+        UUID canonical=employee("UT0001","保留人员",false);
+        UUID retired=UUID.randomUUID();
+        UUID retiredUser=UUID.randomUUID();
+        UUID retainedUser=user(UUID.randomUUID(),canonical,false);
+        db.update("UPDATE users SET status='active' WHERE id=?",retainedUser);
+        UUID newcomer=employee("UT0171","新入职人员",false);
+        db.update("INSERT INTO employee_identity_aliases(alias_employee_id,canonical_employee_id,reason,evidence_reference) VALUES(?,?,'verified','fixture')",retired,canonical);
+        db.update("INSERT INTO employee_identity_user_tombstones(source_user_id,source_employee_id,canonical_employee_id,retained_user_id,evidence_reference) VALUES(?,?,?,?,'fixture')",
+                retiredUser,retired,canonical,retainedUser);
+        STATEMENTS.clear();
+        assertThat(names.namesWithCodeOf(List.of(retired,retiredUser,canonical,newcomer)))
+                .containsEntry(retired,"保留人员(UT0001)")
+                .containsEntry(retiredUser,"保留人员(UT0001)")
+                .containsEntry(newcomer,"新入职人员(UT0171)");
+        assertThat(STATEMENTS).hasSize(1);
+        assertThat(names.nameWithCodeOf(retired)).isEqualTo("保留人员(UT0001)");
+        assertThat(names.nameOf(retiredUser)).isEqualTo("保留人员");
+        assertThat(db.queryForObject("SELECT count(*) FROM employees WHERE id=?",Integer.class,retired)).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM users WHERE id=?",Integer.class,retiredUser)).isZero();
+    }
+
+    @Test void typedHistoricalWorkerKeepsOldIntegerMappingWithoutAssigningItToNewCodeHolder() {
+        UUID canonical=employee("UT0001","原负责人员",false);
+        db.update("UPDATE employees SET legacy_id=231 WHERE id=?",canonical);
+        UUID newcomer=employee("UT0171","复用工号人员",false);
+        UUID retired=UUID.randomUUID();
+        db.update("INSERT INTO employee_legacy_identity_aliases(namespace_key,legacy_id,canonical_employee_id,source_employee_id,evidence_reference) VALUES('B_WORKER',362,?,?,'fixture')",canonical,retired);
+        UUID doc=UUID.randomUUID();
+        db.update("INSERT INTO purchase_requests(id,legacy_id,applicant_legacy_id) VALUES(?,777,362)",doc);
+        assertThat(names.historicalWorkerNameWithCodeOf(null,doc,777,EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_REQUEST_APPLICANT))
+                .isEqualTo("原负责人员(UT0001)");
+        assertThat(names.historicalWorkerNameWithCodeOf(newcomer,doc,777,EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_REQUEST_APPLICANT))
+                .isEqualTo("复用工号人员(UT0171)");
+        assertThat(names.historicalWorkerNameWithCodeOf(null,doc,778,EmployeeNameResolver.HistoricalWorkerRole.PURCHASE_REQUEST_APPLICANT)).isNull();
+        assertThat(db.queryForObject("SELECT applicant_id IS NULL AND applicant_legacy_id=362 FROM purchase_requests WHERE id=?",Boolean.class,doc)).isTrue();
     }
 
     @Test void largeCollectionsUseBoundedBatchesAndDoNotRepeatDuplicates() {

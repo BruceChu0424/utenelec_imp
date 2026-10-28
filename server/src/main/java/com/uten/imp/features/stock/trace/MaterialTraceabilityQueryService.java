@@ -65,6 +65,11 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
 
     @Override
     public Result trace(String subjectType,UUID subjectId,String direction,LocalDate dateFrom,LocalDate dateTo,int page,int size) {
+        return trace(subjectType,subjectId,direction,dateFrom,dateTo,page,size,Map.of(),null,null);
+    }
+    @Override
+    public Result trace(String subjectType,UUID subjectId,String direction,LocalDate dateFrom,LocalDate dateTo,int page,int size,
+            Map<String,String> columns,String sort,String order) {
         require("production_where_used:view");require("stock:view");
         if(subjectId==null)throw invalid("请选择追溯对象");
         SubjectType type=parseType(subjectType);
@@ -96,7 +101,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
         String reportRead=warehouse("report.warehouse_id",context);
         var selection=new GoodsProductionTraceQueryService.Selection(predicate,Map.copyOf(context.params),
                 posting,document,periodic,receipt,subReceipt,reportRead,narrow,report,lot,dateFrom,dateTo);
-        PageResponse<GoodsProductionTraceContracts.TraceRow> rows=canonical.querySelected(selection,page,size);
+        PageResponse<GoodsProductionTraceContracts.TraceRow> rows=canonical.querySelected(selection,page,size,columns,sort,order,direction);
         List<Source> sources=sourceFacts(type,direction,context,dateFrom,dateTo);
         boolean truncated=sources.size()>SOURCE_LIMIT;
         if(truncated)sources=sources.subList(0,SOURCE_LIMIT);

@@ -132,10 +132,12 @@ public class DepartmentPermissionAdminService {
         Set<String> inherited = departmentInheritedPermissions(departmentId);
         Set<String> configured = new LinkedHashSet<>(inherited);
         configured.addAll(codes);
+        List<String> templateCodes=permissionRepo.findDepartmentTemplateCodes(departmentId);
+        configured.addAll(templateCodes);
         List<Permission> catalog = permissionRepo.findAll();
         return new DepartmentPermissionsDto(codes, inherited.stream().sorted().toList(),
                 PermissionDependencyGrantPlanner.requirements(catalog, configured),
-                PermissionDependencyGrantPlanner.missing(catalog, configured));
+                PermissionDependencyGrantPlanner.missing(catalog, configured), templateCodes);
     }
 
     /**
@@ -166,6 +168,7 @@ public class DepartmentPermissionAdminService {
         Set<String> removedDependencies = new LinkedHashSet<>(current);
         removedDependencies.removeAll(desired);
         Set<String> inherited = departmentInheritedPermissions(departmentId);
+        inherited.addAll(permissionRepo.findDepartmentTemplateCodes(departmentId));
         removedDependencies.removeAll(inherited);
         Set<String> enabledConfiguration = new LinkedHashSet<>(desired);
         enabledConfiguration.removeAll(current);
@@ -323,7 +326,7 @@ public class DepartmentPermissionAdminService {
                 target.isSuperAdmin(),
                 PermissionDependencyGrantPlanner.requirements(permissionRepo.findAll(), b.configuredPermissions()),
                 target.isSuperAdmin() ? Map.of() : PermissionDependencyGrantPlanner.missing(permissionRepo.findAll(),
-                        b.configuredPermissions()));
+                        b.configuredPermissions()), b.templatePermissions());
     }
 
     private Set<String> departmentInheritedPermissions(UUID departmentId) {

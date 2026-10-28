@@ -164,7 +164,8 @@ class FinanceReportTotalsTest {
 
     private FinanceReportService service() {
         return new FinanceReportService(em, access, settings, statementService,
-                costService, glReportService, fixedAssetService);
+                costService, glReportService, fixedAssetService,
+                mock(PartyMonthlySummaryService.class));
     }
 
     private Query emptyQuery() {

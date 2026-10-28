@@ -39,7 +39,7 @@ public class RefreshTokenService {
 
     /** Starts one new login session and issues its first refresh token. */
     public IssuedRefreshToken issueNewSession(UUID userId, String deviceInfo) {
-        AuthSessionService.OpenedSession session = sessions.openStaffSession(userId);
+        AuthSessionService.OpenedSession session = sessions.openStaffSession(userId, deviceInfo);
         return issueInSession(userId, deviceInfo, session.sid(), session.absoluteExpiresAt());
     }
 

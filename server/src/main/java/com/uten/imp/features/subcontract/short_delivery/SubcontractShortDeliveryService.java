@@ -142,7 +142,12 @@ public class SubcontractShortDeliveryService
                          AND plan_item.issued_qty < fn_subcontract_draw_needed_qty(
                              oi.id, plan_item.planned_qty, plan_item.bom_unit_qty)
                    ) AS material_fully_issued,
-                   fn_subcontract_settled_loss_qty(oi.id) AS settled_loss_qty
+                   fn_subcontract_settled_loss_qty(oi.id) AS settled_loss_qty,
+                   EXISTS (SELECT 1 FROM subcontract_material_plan_items loss_plan
+                           JOIN subcontract_material_plans loss_head ON loss_head.id = loss_plan.plan_id
+                             AND NOT loss_head.is_deleted AND loss_head.status <> 'CANCELED'
+                           WHERE loss_plan.order_item_id = oi.id AND NOT loss_plan.is_deleted
+                             AND loss_plan.material_loss_pct > 0) AS normal_loss_supplied
             FROM subcontract_order_items oi
             JOIN subcontract_orders order_doc ON order_doc.id = oi.order_id
             JOIN goods ON goods.id = oi.goods_id
@@ -584,8 +589,9 @@ public class SubcontractShortDeliveryService
      * 的「交到这个数就算交完」，所以它就是 ADR-098 当初说缺的那个「供应商说交完了」的信号；
      * 再要人去判定页点一次，只是把一件已经谈好的事又挂起来等人。
      *
-     * <p>只自动结 WITHIN_TOLERANCE 一档：没填允许损耗(UNSET_TOLERANCE)时没有约定可依，
-     * 低于下限的两档本来就要委外自己判分批还是认损耗，都保持人工。
+     * <p>只对历史/零正常加成计划自动结 WITHIN_TOLERANCE 一档。V961 正常损耗已经增加供料的
+     * 新计划不能再自动接受成品短交；保持目标数量，接受损耗须由负责人通过 decide 明确确认。
+     * 没填允许损耗与低于下限的两档继续保持人工。
      *
      * <p>ADR-103 §2.5：开放案件不分 PENDING_OWNER 还是 WAITING_MORE。「分批到货」判定只是
      * 委外说「后面还有」, 最后一批把累计送进允许损耗范围时, 与一次到齐进容差是同一件事,
@@ -653,6 +659,9 @@ public class SubcontractShortDeliveryService
                 if (open == null) continue;
             }
             if (SubcontractShortDeliveryPolicy.WITHIN_TOLERANCE.equals(severity)
+                    // 正常损耗已经加料：成品仍须交足，不能再把同一比例自动认作成品损耗。
+                    // 旧计划的损耗快照为0，保留原自动结案规则；人工受控认损耗仍由decide处理。
+                    && !fact.normalLossSupplied()
                     && (STATUS_PENDING.equals(open.status()) || STATUS_WAITING.equals(open.status()))
                     && fact.deliveredQty().signum() > 0
                     && autoCloseWouldSucceed(fact)) {
@@ -694,6 +703,14 @@ public class SubcontractShortDeliveryService
     public PageResponse<CaseRow> list(String segment, String keyword, UUID supplierId, UUID orderId,
                                       LocalDate dateFrom, LocalDate dateTo, int page, int size,
                                       String sort, String order, String orderBillNo) {
+        return list(segment, keyword, supplierId, orderId, dateFrom, dateTo, page, size, sort, order, orderBillNo, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CaseRow> list(String segment, String keyword, UUID supplierId, UUID orderId,
+                                      LocalDate dateFrom, LocalDate dateTo, int page, int size,
+                                      String sort, String order, String orderBillNo, Map<String, String> parameters) {
+        var headers = new SubcontractShortDeliveryTableQuery(parameters);
         String normalized = normalizeSegment(segment);
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 200);
@@ -701,7 +718,7 @@ public class SubcontractShortDeliveryService
         String predicate = segmentPredicate(normalized);
         // 列表 / 计数 / facets 同一过滤基座（2026-09-25 单号列统一）。
         String where = predicate + " AND "
-                + shortDeliveryWhere(scope, orderBillNo);
+                + shortDeliveryWhere(scope, orderBillNo) + headers.sql(null);
         Query rows = em.createNativeQuery(ROW_SELECT + " WHERE " + where
                 + " ORDER BY " + (KeywordSearch.terms(keyword).isEmpty() ? "" :
                     TaskKeywordSearch.rankNamesFirstParameter("keyword",
@@ -712,6 +729,7 @@ public class SubcontractShortDeliveryService
         Query count = em.createNativeQuery("SELECT COUNT(*) " + ROW_FROM + " WHERE " + where);
         for (Query query : List.of(rows, count)) {
             bindShortDeliveryFilters(query, scope, supplierId, orderId, keyword, dateFrom, dateTo, orderBillNo);
+            headers.bind(query, null);
         }
         rows.setParameter("offset", (long) (safePage - 1) * safeSize);
         rows.setParameter("limit", safeSize);
@@ -731,14 +749,22 @@ public class SubcontractShortDeliveryService
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> facets(String segment, String keyword,
             UUID supplierId, UUID orderId, LocalDate dateFrom, LocalDate dateTo) {
+        return facets(segment, keyword, supplierId, orderId, dateFrom, dateTo, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, List<Map<String, Object>>> facets(String segment, String keyword,
+            UUID supplierId, UUID orderId, LocalDate dateFrom, LocalDate dateTo, Map<String, String> parameters) {
+        var headers = new SubcontractShortDeliveryTableQuery(parameters);
         String normalized = normalizeSegment(segment);
         var scope = access.nativeReadScope("c.owner_employee_id", "owners", VIEW_AUTHORITY);
         String where = segmentPredicate(normalized) + " AND "
-                + shortDeliveryWhere(scope, null);
+                + shortDeliveryWhere(scope, null) + headers.sql("orderBillNo");
         Query query = NativeFacets.query(em, "orderBillNo", "SELECT COALESCE(c.order_bill_no_snapshot, ''), COUNT(*) "
                 + ROW_FROM + " WHERE " + where + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
         bindShortDeliveryFilters(query, scope, supplierId, orderId, keyword, dateFrom, dateTo, null);
+        headers.bind(query, "orderBillNo");
         return Map.of("orderBillNo",
                 NativeFacets.rowsOf(query));
     }
@@ -811,12 +837,7 @@ public class SubcontractShortDeliveryService
         if (sort == null || sort.isBlank()) {
             return segmentOrder;
         }
-        String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        return switch (sort) {
-            // 订货单号快照（2026-09-25 单号列统一），其后保持分段默认序做稳定键。
-            case "orderBillNo" -> "c.order_bill_no_snapshot " + dir + " NULLS LAST, " + segmentOrder;
-            default -> segmentOrder;
-        };
+        return SubcontractShortDeliveryTableQuery.orderBy(sort, order, segmentOrder);
     }
 
     @Transactional(readOnly = true)
@@ -953,6 +974,9 @@ public class SubcontractShortDeliveryService
             LEFT JOIN colors color ON color.id = c.color_id
             LEFT JOIN units unit ON unit.id = c.unit_id
             LEFT JOIN subcontract_wastes waste ON waste.id = c.waste_id
+            LEFT JOIN employees header_owner ON header_owner.id=c.owner_employee_id
+            LEFT JOIN users header_legacy_user ON header_legacy_user.id=c.owner_employee_id
+            LEFT JOIN employees header_legacy_owner ON header_legacy_owner.id=header_legacy_user.employee_id
             """;
     private static final String ROW_SELECT = """
             SELECT c.id, c.order_id, c.order_bill_no_snapshot, c.order_item_id, oi.line_no,
@@ -1006,7 +1030,7 @@ public class SubcontractShortDeliveryService
             String unitName, Integer lineNo, BigDecimal orderedQty, BigDecimal allowedLossPct,
             BigDecimal orderUnitRate, BigDecimal deliveredQty,
             /** 本行每一种直属物料是不是都已发足计划量或已结束领料(ADR-143 §二.13)。 */
-            boolean materialFullyIssued, BigDecimal settledLossQty) {
+            boolean materialFullyIssued, BigDecimal settledLossQty, boolean normalLossSupplied) {
         ItemFacts {
             settledLossQty = settledLossQty == null ? BigDecimal.ZERO : settledLossQty;
         }
@@ -1088,7 +1112,7 @@ public class SubcontractShortDeliveryService
                 rs.getString(10), rs.getString(11), rs.getString(12), rs.getString(13),
                 rs.getObject(14) == null ? null : rs.getInt(14),
                 rs.getBigDecimal(15), rs.getBigDecimal(16), rs.getBigDecimal(17), rs.getBigDecimal(18),
-                rs.getBoolean(19), rs.getBigDecimal(20)),
+                rs.getBoolean(19), rs.getBigDecimal(20), rs.getBoolean(21)),
                 ids.toArray());
     }
 

@@ -24,6 +24,8 @@ import java.util.UUID;
 @RequestMapping("/api/department-staff-permissions")
 @RequiredArgsConstructor
 public class PagePermissionWorkspaceController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final PagePermissionWorkspaceService workspace;
 
@@ -35,7 +37,20 @@ public class PagePermissionWorkspaceController {
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "30") @Min(1) @Max(50) int size) {
         return workspace.staff(
-                surfaceKey, departmentId, search, page, size);
+                surfaceKey, departmentId, search, page, size, headerParameters());
+    }
+
+    private java.util.Map<String,String> headerParameters() {
+        if(request==null)return java.util.Map.of();
+        var values=new java.util.LinkedHashMap<String,String>();
+        request.getParameterMap().forEach((key,items)->{
+            if(key.startsWith("search.")||java.util.Set.of("accountStatus","employmentStatus","sort","order").contains(key)) {
+                if(items.length!=1)throw new com.uten.imp.common.web.ApiException(
+                        com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"同一人员列只能提交一个条件");
+                values.put(key,items[0]);
+            }
+        });
+        return values;
     }
 
     @GetMapping("/employees/{employeeId}/permissions")

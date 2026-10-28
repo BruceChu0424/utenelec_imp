@@ -58,7 +58,11 @@ public class CurrencyService {
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of("code", "name", "status");
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（数值列；命中才排序，否则默认 code ASC）。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("exchangeRate", "exchangeRate");
+    private static final Map<String, String> ALLOWED_SORT = Map.of("code", "code", "name", "name", "exchangeRate", "exchangeRate");
+    private static final Map<String, com.uten.imp.common.util.JpaColumnSearch.Field> HEADER_FIELDS = Map.of(
+            "code", com.uten.imp.common.util.JpaColumnSearch.Field.text("code"),
+            "name", com.uten.imp.common.util.JpaColumnSearch.Field.text("name"),
+            "exchangeRate", com.uten.imp.common.util.JpaColumnSearch.Field.decimal("exchangeRate"));
 
     /** facet 截断阈值。 */
     private static final int FACET_LIMIT = 50;
@@ -80,6 +84,7 @@ public class CurrencyService {
 
     @Transactional(readOnly = true)
     public PageResponse<CurrencyListItem> list(CurrencyQueryFilter f, int page, int size, String sort, String order) {
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(f.columnSearch(), HEADER_FIELDS);
         Specification<Currency> spec = (Root<Currency> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -90,6 +95,7 @@ public class CurrencyService {
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());
+            ps.add(com.uten.imp.common.util.JpaColumnSearch.predicate(root, q, cb, searches, HEADER_FIELDS));
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -99,7 +105,8 @@ public class CurrencyService {
         };
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort != null && ALLOWED_SORT.containsKey(sort) ? null : f.keyword());
         Page<Currency> p = com.uten.imp.common.export.MasterExportSource.page(repo, em, Currency.class, searchPage.specification(), searchPage.pageable(), f);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), p);

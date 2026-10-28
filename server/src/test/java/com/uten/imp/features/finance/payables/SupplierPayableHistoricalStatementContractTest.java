@@ -35,12 +35,18 @@ class SupplierPayableHistoricalStatementContractTest {
         String report = read("finance", "report", "FinanceReportService.java").replace("\r\n", "\n");
         String statementSql = read("finance", "report", "FinancePartyStatementSql.java").replace("\r\n", "\n");
         String cashSql = read("finance", "report", "FinanceCashEventSql.java").replace("\r\n", "\n");
+        String summaryService = read("finance", "report", "PartyMonthlySummaryService.java").replace("\r\n", "\n");
 
-        // 流水/明细共用一条私有路径，年度另走一个入口，但事件流必须同出一份权威 SQL。
+        // B2 三段式：流水/明细仍直接走事件权威；年度改读 party_monthly_summaries 投影，
+        // 投影重算必须调用同一份 events 权威 SQL——四处同源，不允许另写一份事件流。
         assertThat(count(report, "FinancePartyStatementSql.events(isAR,scope.predicate())"))
-                .as("statement flow/detail and annual must call the same event authority")
-                .isEqualTo(2);
+                .as("statement flow/detail must call the shared event authority")
+                .isEqualTo(1);
+        assertThat(summaryService)
+                .as("the monthly projection must be recomputed from the same event authority")
+                .contains("FinancePartyStatementSql.events(\"AR\".equals(side), \"1=1\")");
         assertThat(statementSql)
+                .contains("party_monthly_summaries")
                 .contains("(ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::date")
                 .contains("(allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::date")
                 .contains("offset_facts AS (")

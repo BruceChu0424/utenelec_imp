@@ -48,7 +48,7 @@ class EmployeeCommandServiceChangeIdentityTest {
     @BeforeEach
     void setUp() {
         // 真实的唯一写入口：校验、查重与校验结果都走生产代码。
-        ReflectionTestUtils.setField(service, "piiWriter", new EmployeePiiWriter(tx, sensitiveRepo));
+        ReflectionTestUtils.setField(service, "piiWriter", new EmployeePiiWriter(tx, sensitiveRepo,org.mockito.Mockito.mock(EmployeeExistingIdentityGuard.class)));
         employee = new Employee();
         employee.setCode("UT0011");
         employee.setFullName("证件测试员工");

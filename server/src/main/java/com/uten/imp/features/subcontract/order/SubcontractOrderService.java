@@ -176,6 +176,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
         Specification<SubcontractOrder> spec = orderSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
@@ -183,7 +185,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
@@ -202,6 +205,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(OrderQueryFilter originalFilter) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(!subcontractPriceMasked());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractOrder.class, orderSpec(f), "billNo"));
     }
@@ -285,6 +289,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractOrder(), null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "amount", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class)));
             return cb.and(ps.toArray(new Predicate[0]));

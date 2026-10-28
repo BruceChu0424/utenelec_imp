@@ -52,6 +52,9 @@ class VisitorAdmissionConcurrencyPostgresTest {
     private VisitorGateService gate;
     private VisitorHrApprovalService approvals;
     private VisitorHostConfirmService host;
+    private VisitorApplicationService columnQueries;
+    private SecurityContextCurrentUser columnCurrent;
+    private VisitorApplicationMapper columnMapper;
     private UUID accountId;
     private UUID applicationId;
     private final UUID employeeId = UUID.randomUUID();
@@ -90,10 +93,12 @@ class VisitorAdmissionConcurrencyPostgresTest {
         var tx = mock(TxSessionVars.class);
         when(tx.hmac(anyString())).thenReturn("a".repeat(64));
         var current = mock(SecurityContextCurrentUser.class);
+        columnCurrent = current;
         UUID actor = UUID.randomUUID();
         when(current.id()).thenReturn(Optional.of(actor));
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employeeId, "test", Set.of("visitor:approve", "visitor:host_confirm", "visitor:check_in"), false, true, false)));
         var mapper = mock(VisitorApplicationMapper.class);
+        columnMapper = mapper;
         when(mapper.hostInfo(any())).thenReturn(new String[]{"Host", "Department"});
         // 2026-09-10：HrNoticeService 与业务同事务且不再吞异常，裸 null 依赖会让
         // 申请/审批因 NPE 回滚；本测试只验证准入并发，通知用 mock 隔离。
@@ -101,6 +106,7 @@ class VisitorAdmissionConcurrencyPostgresTest {
         var service = new VisitorApplicationService(applications, steps, accounts,
                 mock(EmployeeRepository.class), mapper, tx, hrNotice, current,
                 mock(VisitorHostEligibility.class));
+        columnQueries = service;
         var guard = new VisitorGuard(current);
         gate = new VisitorGateService(applications, accounts, service, mapper, guard, tx, current, new ObjectMapper(),
                 mock(AuditService.class), mock(UserAccountRepository.class), mock(EmployeeRepository.class));
@@ -116,6 +122,51 @@ class VisitorAdmissionConcurrencyPostgresTest {
             app.setPlannedVisitAt(OffsetDateTime.now().plusHours(1)); app.setHostEmployeeId(employeeId);
             applications.saveAndFlush(app); applicationId = app.getId();
         });
+    }
+
+    @Test
+    void typedHeadersKeepTheOwnerAndChineseDayBeforePagination() {
+        UUID matching = transactions.execute(ignored -> {
+            VisitorApplication row = columnApplication(accountId, "50%_literal", "2026-10-27T16:30:00Z");
+            UUID id = applications.saveAndFlush(row).getId();
+            applications.saveAndFlush(columnApplication(accountId, "50X_literal", "2026-10-27T16:30:00Z"));
+            applications.saveAndFlush(columnApplication(accountId, "50%_literal", "2026-10-27T15:59:59Z"));
+            applications.saveAndFlush(columnApplication(UUID.randomUUID(), "50%_literal", "2026-10-27T16:30:00Z"));
+            return id;
+        });
+        when(columnCurrent.id()).thenReturn(Optional.of(accountId));
+        when(columnMapper.toListItems(any())).thenReturn(java.util.List.of());
+        var page = transactions.execute(ignored -> columnQueries.listMine("pending", 1, 1,
+                java.util.Map.of("visitorName", "50%", "plannedVisitAt", "2026-10-28"), "plannedVisitAt", "asc"));
+        assertThat(page.getTotal()).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<java.util.List<VisitorApplication>> captured = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        verify(columnMapper).toListItems(captured.capture());
+        assertThat(captured.getValue()).extracting(VisitorApplication::getId).containsExactly(matching);
+    }
+
+    @Test
+    void blacklistHeadersKeepBlockedStatusAndUseExactPhoneHashBeforePagination() {
+        UUID blocked = transactions.execute(ignored -> {
+            var account = new VisitorAccount();
+            account.setPhoneEnc("test-phone"); account.setPhoneHash("a".repeat(64));
+            account.setName("精确号码黑名单"); account.setVisitorNo(UUID.randomUUID().toString());
+            account.setStatus("blocked");
+            account.setBlockedAt(OffsetDateTime.parse("2026-10-27T16:30:00Z"));
+            return accounts.saveAndFlush(account).getId();
+        });
+        var page = transactions.execute(ignored -> gate.blacklistPage(1, 1,
+                java.util.Map.of("phone", "13800138000", "name", "精确号码", "blockedAt", "2026-10-28"),
+                "blockedAt", "desc"));
+        assertThat(page.getTotal()).isEqualTo(1);
+        assertThat(page.getItems()).extracting(item -> item.id()).containsExactly(blocked);
+    }
+
+    private VisitorApplication columnApplication(UUID visitor, String name, String plannedAt) {
+        var row = new VisitorApplication();
+        row.setVisitorAccountId(visitor); row.setVisitorName(name); row.setVisitPurpose("header test");
+        row.setPlannedVisitAt(OffsetDateTime.parse(plannedAt));
+        return row;
     }
 
     @Test

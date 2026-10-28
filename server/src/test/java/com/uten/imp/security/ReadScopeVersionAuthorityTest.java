@@ -34,6 +34,29 @@ class ReadScopeVersionAuthorityTest {
     }
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
 
+    @Test void costVersionsBindBothGoodsAndCustomerGenerationsAndOwnerScopes() {
+        subject=user(Set.of("goods:view","goods:cost:view"));
+        var goodsPolicy=mock(GoodsReadScopePolicy.class);
+        when(goodsPolicy.versionedReadScope()).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(employee)));
+        when(owners.evaluate("client","client:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(employee)));
+        var goodsGeneration=new java.util.concurrent.atomic.AtomicLong();
+        var clientGeneration=new java.util.concurrent.atomic.AtomicLong();
+        when(jdbc.queryForObject(contains("read_scope_generations"),anyMap(),eq(Long.class))).thenAnswer(call->
+                "client".equals(((Map<?,?>)call.getArgument(1)).get("domain"))?clientGeneration.get():goodsGeneration.get());
+        var costs=new ReadScopeVersionAuthority(jdbc,restorer,owners,goodsPolicy);
+        String first=costs.scopeFor("master_goods_cost",subject);
+        clientGeneration.incrementAndGet();String changedClient=costs.scopeFor("master_goods_cost",subject);
+        goodsGeneration.incrementAndGet();String changedGoods=costs.scopeFor("master_goods_cost",subject);
+        assertThat(first).isNotEqualTo(changedClient);assertThat(changedClient).isNotEqualTo(changedGoods);
+        when(owners.evaluate("client","client:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(granted)));
+        assertThat(costs.scopeFor("master_goods_cost",subject)).isNotEqualTo(changedGoods);
+    }
+    @Test void missingCustomerGenerationCannotBorrowTheGoodsVersionForCosts() {
+        when(jdbc.queryForObject(contains("read_scope_generations"),org.mockito.ArgumentMatchers.<Map<String,?>>argThat(parameters->"client".equals(parameters.get("domain"))),eq(Long.class))).thenReturn(null);
+        assertThatThrownBy(()->authority.scopeFor("master_goods_cost",subject)).isInstanceOfSatisfying(ApiException.class,
+                failure->assertThat(failure.getCode()).isEqualTo(ErrorCode.PRIMARY_UNAVAILABLE));
+    }
+
     @Test void unknownOrNoncanonicalDomainCannotSelectAnAuthorizationPolicy() {
         for (String domain : Arrays.asList(null, "sales ", "SALES", "native_unknown", "sales/../stock")) {
             assertThatThrownBy(() -> authority.scopeFor(domain, subject)).isInstanceOfSatisfying(ApiException.class,
@@ -131,7 +154,7 @@ class ReadScopeVersionAuthorityTest {
         subject = user(Set.of("production_where_used:view"));
         assertThat(authority.scopeFor("production", subject)).matches("[0-9a-f]{64}");
         String accountGuard = com.uten.imp.features.finance.report.FinanceReportController.class.getMethod("accountStatement",
-                UUID.class, java.time.LocalDate.class, java.time.LocalDate.class, String.class, int.class, int.class, String.class)
+                UUID.class, java.time.LocalDate.class, java.time.LocalDate.class, String.class, int.class, int.class, String.class, Map.class)
                 .getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value();
         assertThat(accountGuard).contains("account:view", "account:balance:view", "account:flow:view").doesNotContain("finance_report:view");
         String whereUsedGuard = com.uten.imp.features.production.report.ProductionReportController.class.getMethod("whereUsed",

@@ -42,7 +42,7 @@ class StaffRefreshReuseClassificationTest {
         transaction = new StaffRefreshTransaction(
                 users, tokens, tokenService, new RemoteAccessPolicy(deployment), sessions);
         when(sessions.lockAndEvaluateForRefresh(any(), any(), any()))
-                .thenReturn(AuthSessionService.Verdict.ACTIVE);
+                .thenReturn(AuthSessionService.RefreshVerdict.active());
     }
 
     @Test

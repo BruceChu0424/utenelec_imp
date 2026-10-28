@@ -204,12 +204,14 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     ErrorCode.FORBIDDEN,
                     "仓库实物单据不提供成本排序，请在财务或库存价值报表中查看");
         }
+        f.headerFilters().requireAmountVisible(false);
         Specification<StockDocument> spec = docSpec(f, includeDeleted, onlyDeleted);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         // 2026-09-25 单号列统一：billNo 可排序（单据号不泄露成本）。
                         Map.of("billDate", "billDate", "billNo", "billNo")));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                java.util.Set.of("billNo","billDate").contains(sort == null ? "" : sort) ? null : f.keyword());
         Page<StockDocument> p = docRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<StockDocListItem> result = new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
@@ -226,6 +228,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(StockDocQueryFilter originalFilter, boolean includeDeleted, boolean onlyDeleted) {
         final StockDocQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(false);
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, StockDocument.class, docSpec(f, includeDeleted, onlyDeleted), "billNo"));
     }
@@ -249,6 +252,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                                              jakarta.persistence.criteria.CriteriaQuery<?> q,
                                              CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
+            f.headerFilters().apply(root,cb,ps,null,false,null,false,null,false);
+            var headerFields = new java.util.LinkedHashMap<String, com.uten.imp.common.web.HeaderColumnFilter.SearchField>();
+            headerFields.put("billNo",com.uten.imp.common.web.HeaderColumnFilter.SearchField.text("billNo"));
+            headerFields.put("billDate",com.uten.imp.common.web.HeaderColumnFilter.SearchField.calendarDate("billDate"));
+            headerFields.put("warehouse",com.uten.imp.common.web.HeaderColumnFilter.SearchField.reference(
+                    "warehouseId",com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId"));
+            if("DRAW".equals(f.docType())) headerFields.put("department",com.uten.imp.common.web.HeaderColumnFilter.SearchField.reference(
+                    "departmentId",com.uten.imp.features.org.department.Department.class));
+            if("TRANSFER".equals(f.docType())) headerFields.put("toWarehouse",com.uten.imp.common.web.HeaderColumnFilter.SearchField.reference(
+                    "toWarehouseId",com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId"));
+            f.headerFilters().applySearch(root,q,cb,ps,headerFields);
             ps.add(com.uten.imp.common.history.ImportedBusinessDocumentScope.predicate(root, cb));
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));

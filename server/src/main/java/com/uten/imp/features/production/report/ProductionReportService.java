@@ -76,9 +76,21 @@ public class ProductionReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        return execute(columns,dataSelect,fromJoin,mainWhere,orderBy,specs,activeFacets,page,size,sort,order,Map.of());
+    }
+
+    private ReportTableResponse execute(List<ReportColumn> columns,String dataSelect,String fromJoin,
+            WhereBuilder mainWhere,String orderBy,List<FacetSpec> specs,Map<String,String> activeFacets,
+            int page,int size,String sort,String order,Map<String,String> expressions) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
+        Map<String,String> types=new LinkedHashMap<>();
+        for(var column:columns)types.put(column.key(),column.type());
+        Map<String,com.uten.imp.common.util.JpaColumnSearch.Kind> dates=new LinkedHashMap<>();
+        for(String key:List.of("billDate","shipmentDate","orderDate","deliveryDate","planBeginDate","planEndDate"))
+            dates.put(key,com.uten.imp.common.util.JpaColumnSearch.Kind.DATE);
+        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(mainWhere,activeFacets,types,expressions,dates);
 
         List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
         if (activeFacets != null) {
@@ -96,12 +108,14 @@ public class ProductionReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
+        boolean explicitSort=sort!=null&&sortKeys.contains(sort);
+        String resolved=ReportSort.resolveOrderBy(sort,order,orderBy,sortKeys);
+        String effectiveOrderBy = explicitSort?resolved:mainWhere.orderBy(resolved);
 
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
-        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
+        if(!explicitSort)mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -153,7 +167,7 @@ public class ProductionReportService {
 
         totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, Map.of(), totals);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, Map.of(), totals).withColumnSearchKeys(searchKeys);
     }
 
     /**
@@ -303,7 +317,15 @@ public class ProductionReportService {
                 new FacetSpec("closed", "p.is_closed AS v, CASE WHEN p.is_closed THEN '已完成' ELSE '未完成' END AS lbl", "p.is_closed", "p.is_closed", "bool"),
                 new FacetSpec("workshop", "p.workshop_name AS v, p.workshop_name AS lbl", "p.workshop_name", "p.workshop_name", "text"),
                 new FacetSpec("categoryName", "CAST(g.category_id AS text) AS v, mc.name AS lbl", "g.category_id, mc.name", "g.category_id", "uuid"));
-        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "i.bill_date DESC, i.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order,
+                Map.ofEntries(Map.entry("billNo","i.bill_no"),Map.entry("billDate","i.bill_date"),
+                        Map.entry("workshop","p.workshop_name"),Map.entry("seller","p.seller_name"),Map.entry("fStyle","p.f_style"),
+                        Map.entry("shipmentDate","p.delivery_date"),Map.entry("salesOrderNo","i.sales_order_no"),Map.entry("clientName","i.client_name"),
+                        Map.entry("orderDate","i.order_date"),Map.entry("deliveryDate","i.outbound_date"),Map.entry("productNo","i.product_no"),
+                        Map.entry("categoryName","mc.name"),Map.entry("series","g.series"),Map.entry("goodsName","g.name"),Map.entry("goodsCode","g.code"),
+                        Map.entry("colorName","col.name"),Map.entry("model","g.model"),Map.entry("customerModel","i.customer_model"),Map.entry("spec","g.spec"),
+                        Map.entry("oqty","i.oqty"),Map.entry("qty","i.qty"),Map.entry("planBeginDate","i.plan_begin_date"),
+                        Map.entry("planEndDate","i.plan_end_date"),Map.entry("iqty","i.iqty"),Map.entry("requestNote","i.request_note"),Map.entry("summary","i.remark")));
     }
 
     // ======================== ② 生产计划汇总（单据级，一行一单，不走 MV） ========================
@@ -344,7 +366,9 @@ public class ProductionReportService {
         ReportQueryKit.addSummaryKw(w, kw, "p.bill_no");
         List<FacetSpec> specs = List.of(
                 new FacetSpec("approved", "(p.status = 1) AS v, CASE WHEN (p.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(p.status = 1)", "p.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no, p.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "p.bill_date DESC, p.bill_no, p.id", specs, facets, page, size, sort, order,
+                Map.of("billNo","p.bill_no","billDate","p.bill_date","fStyle","p.f_style","shipmentDate","p.delivery_date",
+                        "makerName","COALESCE(em_mk.full_name,p.maker_name)","approverName","COALESCE(em_ap.full_name,p.approver_name)","remark","p.remark"));
     }
 
     // ======================== 旧版 PPC-only 反查快照（仅保留迁移核对） ========================

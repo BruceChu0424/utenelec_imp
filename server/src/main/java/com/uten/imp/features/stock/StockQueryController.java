@@ -41,9 +41,11 @@ public class StockQueryController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
         return service.balances(warehouseId, goodsId, colorId, colorNull, inventoryOnly, includeDefective,
-                includeLineSide, page, size, sort, order);
+                includeLineSide, page, size, sort, order,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request));
     }
 
     @GetMapping("/goods/{goodsId}/inventory-context")

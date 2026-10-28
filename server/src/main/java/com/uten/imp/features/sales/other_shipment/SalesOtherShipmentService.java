@@ -79,7 +79,7 @@ public class SalesOtherShipmentService {
         Specification<SalesOtherShipment> spec = otherShipmentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SalesOtherShipment> p = shipmentRepo.findAll(searchPage.specification(), searchPage.pageable());
         boolean canEdit = hasObjectActionAuthority();
         PageResponse<OtherShipmentListItem> result = new PageResponse<>(p.map(s -> toList(s,
@@ -140,6 +140,8 @@ public class SalesOtherShipmentService {
             f.headerFilters().apply(root, cb, ps, "totalLocal", true, null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "billDate",HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "total",HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
             return cb.and(ps.toArray(new Predicate[0]));

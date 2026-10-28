@@ -386,6 +386,7 @@ public class FulfillmentWorkbenchQueryService {
             LocalDate dateFrom, LocalDate dateTo, int page, int size,
             FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope,
             boolean exportAll) {
+        if(table!=null)table=table.forOperationsProjection();
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
@@ -435,7 +436,7 @@ public class FulfillmentWorkbenchQueryService {
                 new String[]{"production_product_name", "CASE WHEN goods_count=1 THEN goods_name END"},
                 new String[]{"search_goods_names"},
                 new String[]{"goods_code", "production_product_code", "action_doc_no", "plan_no", "material_request_no"}, "search_goods_codes") + ", ";
-        String orderBy = relevance + priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql())
+        String orderBy = (table!=null&&table.explicitSort()?"":relevance+priority) + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql())
                 + ", department, action_doc_type, action_doc_id, action_item_id";
 
         if (!exportAll) {

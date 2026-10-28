@@ -55,8 +55,9 @@ class SubcontractComponentEntitledLotsPostgresTest {
                     analysis_item_id uuid, node_key text, parent_node_key text, node_role text DEFAULT 'BOM_COMPONENT',
                     depth integer, goods_id uuid, color_id uuid, active boolean DEFAULT true);
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN', is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid, line_no integer,
-                    goods_id uuid, color_id uuid, bom_unit_qty numeric(18,6), is_deleted boolean DEFAULT false,
+                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
+                    base_bom_unit_qty numeric, material_loss_pct numeric(5,2) NOT NULL DEFAULT 0, line_no integer,
+                    goods_id uuid, color_id uuid, bom_unit_qty numeric, is_deleted boolean DEFAULT false,
                     draw_closed_at timestamptz);
                 CREATE TABLE stock_reservations(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid,
                     owner_type text, status smallint DEFAULT 0, is_deleted boolean DEFAULT false,

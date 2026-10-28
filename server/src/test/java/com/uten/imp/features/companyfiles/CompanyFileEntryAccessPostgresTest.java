@@ -79,7 +79,8 @@ class CompanyFileEntryAccessPostgresTest {
         Entry created=folder(null,access(false,null,allow(viewer)));
         assertThat(created.allowedActions()).containsExactly("view","create");
         assertThatThrownBy(()->run(()->service.permissions(created.id()))).isInstanceOf(ApiException.class);
-        login(viewer,viewerEmployee,ALL,UUID.randomUUID());
+        // 只有入口的阅读人按目录 ACL 取得可见性，拿不到任何写动作。
+        login(viewer,viewerEmployee,Set.of("company_file:view"),UUID.randomUUID());
         assertThat(run(()->service.detail(created.id())).allowedActions()).containsExactly("view");
         assertThatThrownBy(()->run(()->service.createFolder(new Create(created.id(),"not-authorized",null)))).isInstanceOf(ApiException.class);
         login(viewer,viewerEmployee,Set.of("company_file:download"),UUID.randomUUID());
@@ -213,6 +214,78 @@ class CompanyFileEntryAccessPostgresTest {
         assertThatThrownBy(()->run(()->service.detail(original.id()))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(original.id(),principal);return null;})).isInstanceOf(ApiException.class);
     }
+    @Test void everyoneMarkerOpensViewAndDownloadForAnyEntrantAndDenyStillCarvesExceptions() {
+        UUID stranger=UUID.randomUUID(),strangerEmployee=UUID.randomUUID();insertUser(stranger,strangerEmployee,department);
+        Entry publicFolder=folder(null,access(true,null,new Rule("ALL",CompanyFileService.EVERYONE_SUBJECT_ID,"所有人","ALLOW",List.of("view","download"))));
+        Entry pending=reserve(publicFolder.id(),access(true,null));
+        Entry denied=run(()->service.setPermissions(pending.id(),new Permissions(true,List.of(
+                new Rule("USER",stranger,null,"DENY",List.of("download"))),pending.version())));
+        Entry published=publish(denied);
+        login(stranger,strangerEmployee,Set.of("company_file:view"),UUID.randomUUID());
+        assertThat(run(()->service.detail(publicFolder.id())).allowedActions()).containsExactly("view");
+        assertThat(run(()->service.detail(published.id())).allowedActions()).containsExactly("view");
+        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(published.id(),principal);return null;}))
+                .isInstanceOf(ApiException.class);
+        // 没有拒绝例外时，可见即可下载。（清规则回到创建人身份执行。）
+        login(actor,employee,ALL,session);
+        run(()->service.setPermissions(published.id(),new Permissions(true,List.<Rule>of(),published.version())));
+        login(stranger,strangerEmployee,Set.of("company_file:view"),UUID.randomUUID());
+        assertThat(run(()->service.detail(published.id())).allowedActions()).containsExactly("view","download");
+        run(()->{service.requireAttachmentDownload(published.id(),principal);return null;});
+    }
+
+    @Test void folderAclGrantsWriteActionsWithoutAnyGlobalAdministrationCode() {
+        UUID stranger=UUID.randomUUID(),strangerEmployee=UUID.randomUUID();insertUser(stranger,strangerEmployee,department);
+        login(actor,employee,Set.of("company_file:view","company_file:create","company_file:manage_permissions"),session);
+        Entry managed=folder(null,null);
+        Entry open=folder(null,access(true,null));
+        run(()->service.setPermissions(managed.id(),new Permissions(true,List.of(new Rule("USER",stranger,null,"ALLOW",
+                List.of("view","download","create","upload","edit","delete","restore","move","manage_permissions"))),managed.version())));
+        login(stranger,strangerEmployee,Set.of("company_file:view"),UUID.randomUUID());
+        Entry strangerFolder=run(()->service.createFolder(new Create(managed.id(),"stranger-"+UUID.randomUUID(),null)));
+        Entry renamed=run(()->service.edit(strangerFolder.id(),new Edit("renamed-"+strangerFolder.id(),null,strangerFolder.version())));
+        assertThat(renamed.name()).startsWith("renamed-");
+        run(()->{service.delete(strangerFolder.id(),renamed.version());return null;});
+        // 同一人在未授予写动作的开放目录仍只能看和下载。
+        assertThat(run(()->service.detail(open.id())).allowedActions()).containsExactly("view");
+        assertThatThrownBy(()->run(()->service.createFolder(new Create(open.id(),"not-granted",null))))
+                .isInstanceOf(ApiException.class);
+        // 根目录没有目录 ACL，只有全局管理码能建。
+        assertThatThrownBy(()->run(()->service.createFolder(new Create(null,"not-at-root",null))))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test void denyRuleStillOverridesGlobalAdministrationCodes() {
+        UUID admin=UUID.randomUUID(),adminEmployee=UUID.randomUUID();insertUser(admin,adminEmployee,department);
+        Entry shared=folder(null,access(true,null));
+        run(()->service.setPermissions(shared.id(),new Permissions(true,List.of(
+                new Rule("USER",admin,null,"DENY",List.of("delete"))),shared.version())));
+        login(admin,adminEmployee,Set.of("company_file:view","company_file:delete","company_file:edit"),UUID.randomUUID());
+        assertThat(run(()->service.detail(shared.id())).allowedActions()).contains("view","edit").doesNotContain("delete");
+        assertThatThrownBy(()->run(()->{service.delete(shared.id(),shared.version());return null;}))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test void everyoneSubjectOnlyEverAllowsViewAndDownload() {
+        Rule denyEveryone=new Rule("ALL",CompanyFileService.EVERYONE_SUBJECT_ID,null,"DENY",List.of("view"));
+        Rule editEveryone=new Rule("ALL",CompanyFileService.EVERYONE_SUBJECT_ID,null,"ALLOW",List.of("view","edit"));
+        Rule wrongId=new Rule("ALL",UUID.randomUUID(),null,"ALLOW",List.of("view","download"));
+        for(Rule rule:List.of(denyEveryone,editEveryone,wrongId)) {
+            assertThatThrownBy(()->run(()->service.createFolder(
+                    new Create(null,"invalid-everyone-"+UUID.randomUUID(),null,UUID.randomUUID(),access(true,null,rule)))))
+                    .isInstanceOf(ApiException.class);
+        }
+        // 读出的规则把「所有人」还原成可读名称。
+        Entry publicFolder=folder(null,access(true,null,
+                new Rule("ALL",CompanyFileService.EVERYONE_SUBJECT_ID,"所有人","ALLOW",List.of("view","download"))));
+        assertThat(run(()->service.permissions(publicFolder.id())).rules())
+                .singleElement()
+                .satisfies(rule->{
+                    assertThat(rule.subjectName()).isEqualTo("所有人");
+                    assertThat(rule.actions()).containsExactly("download","view");
+                });
+    }
+
     void assertMinimalReceipt(Entry receipt,UUID id,long version) {
         assertThat(receipt.id()).isEqualTo(id);assertThat(receipt.version()).isEqualTo(version);
         assertThat(receipt.name()).isEmpty();assertThat(receipt.description()).isNull();assertThat(receipt.kind()).isEmpty();

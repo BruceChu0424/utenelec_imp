@@ -322,6 +322,26 @@ class StockCountCandidateCategoriesPostgresTest {
         when(user.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"count-categories",
                 Set.of(permissions),false,true,false)));
     }
+
+    @Test void bookHeadersFilterAllCandidateRowsBeforeCountAndPageWithoutChangingEligibility() {
+        UUID group=category("HEADERS","表头分类",null),red=color("红%_色");
+        UUID first=goods("H-01","表头物料一",group,pieces,null);
+        UUID second=goods("H-02","表头物料二",group,pieces,null);
+        UUID other=goods("H-03","表头物料三",group,pieces,null);
+        db.update("UPDATE goods SET owning_warehouse_id=?,model='M%_',spec='规格一',stock_place='A-01' WHERE id IN (?,?,?)",leaf,first,second,other);
+        db.update("INSERT INTO stock_balances VALUES (?,?,?,12,2.5,false),(?,?,?,15,3,true),(?,?,?,4,NULL,false)",
+                leaf,first,red,leaf,second,red,leaf,other,red);
+        var columns=Map.of("name","表头物料", "goodsCode","H-", "color","红%_色", "model","M%_",
+                "spec","规格一", "stockPlace","A-01", "category","表头分类", "qty",">=10", "weight","2..3");
+        var page1=service.candidates(leaf,"",null,group,false,true,1,1,false,columns,"goodsCode","asc");
+        var page2=service.candidates(leaf,"",null,group,false,true,2,1,false,columns,"goodsCode","asc");
+        assertThat(page1.getTotal()).isEqualTo(2);
+        assertThat(page1.getItems()).extracting(row->row.get("goodsId")).containsExactly(first);
+        assertThat(page2.getItems()).extracting(row->row.get("goodsId")).containsExactly(second);
+        assertThat(page2.getItems().getFirst()).containsEntry("weightEstimated",true);
+        assertThat(service.candidates(leaf,"",null,group,false,true,1,20,false,Map.of("weight","0"),null,null).getTotal()).isZero();
+        assertThat(service.candidates(bin,"",null,null,false,false,1,20,false,Map.of("name","表头物料"),null,null).getTotal()).isZero();
+    }
     private UUID category(String code,String name,UUID parent) {
         UUID id=UUID.randomUUID();db.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES (?,?,?,?)",id,code,name,parent);return id;
     }

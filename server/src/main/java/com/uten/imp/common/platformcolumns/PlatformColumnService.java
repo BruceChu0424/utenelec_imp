@@ -191,6 +191,24 @@ public class PlatformColumnService {
         return definitions.values().stream().sorted(Comparator.comparing(Definition::id)).toList();
     }
 
+    /** Resolve saved display preferences without letting one obsolete id block the whole table.
+     * Only absent/foreign roots are omitted. Dependency and permission failures remain strict;
+     * writes, exports and immutable record snapshots still use definitions/loadDefinitions.
+     */
+    @Transactional(readOnly=true)
+    public List<Definition> availableDefinitions(String scope,List<UUID> requested) {
+        var adapter=resource(scope);adapter.requireDefinitionAccess(false);
+        Set<UUID> selected=ids(requested,MAX_COLUMNS,"列");
+        if(selected.isEmpty())return List.of();
+        Map<String,Object> parameters=params(scope);parameters.put("ids",selected);
+        List<UUID> available=jdbc.queryForList("""
+                SELECT id FROM platform_column_definitions
+                WHERE scope=:scope AND (owner_user_id=:owner OR (value_type='RELATED' AND owner_user_id=:actor))
+                  AND id IN(:ids)
+                """,parameters,UUID.class);
+        return definitions(scope,available);
+    }
+
     /** Export-friendly alias; includes authorized dependencies without fuzzy-search limits. */
     @Transactional(readOnly=true)
     public List<Definition> definitionsByIds(String scope,List<UUID> requested) { return definitions(scope,requested); }

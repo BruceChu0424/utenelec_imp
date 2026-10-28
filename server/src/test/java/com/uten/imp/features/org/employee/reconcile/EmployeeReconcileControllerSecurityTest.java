@@ -180,7 +180,7 @@ class EmployeeReconcileControllerSecurityTest {
     }
 
     @Test
-    void aValidStepUpReceiptReachesTheBusinessExactlyOnce() throws Exception {
+    void validProofReachesBusinessAndAnExpiredProofIsRejectedBeforeBusiness() throws Exception {
         login(staff(Set.of("employee:view", "employee:pii:edit")));
         when(sessions.consumeStepUp(eq(sessionId), eq(actorId), eq(HashUtil.sha256("one-time-reconcile"))))
                 .thenReturn(true, false);

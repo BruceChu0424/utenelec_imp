@@ -60,17 +60,17 @@ public class VisitorRefreshTransaction {
                 .findAndLockByTokenHash(HashUtil.sha256(rawRefresh))
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED));
         // 与员工同口径: 会话已吊销/超绝对期限/空闲超时一律不能再换新令牌 (ADR-110)。
-        AuthSessionService.Verdict session = sessions.lockAndEvaluateForRefresh(
+        var session = sessions.lockAndEvaluateForRefresh(
                 token.getSessionId(), null, token.getVisitorAccountId());
         if (token.getRevokedAt() != null) {
             // 与员工同口径: 只有已被轮换出新令牌的旧令牌再次出现才算重放。
-            if (token.getReplacedBy() == null || session != AuthSessionService.Verdict.ACTIVE) {
+            if (token.getReplacedBy() == null || session.verdict() != AuthSessionService.Verdict.ACTIVE) {
                 throw new ApiException(ErrorCode.UNAUTHORIZED);
             }
             return Outcome.reuse(
                     token.getVisitorAccountId(), token.getId(), token.getSessionId());
         }
-        if (!token.isValid() || session != AuthSessionService.Verdict.ACTIVE) {
+        if (!token.isValid() || session.verdict() != AuthSessionService.Verdict.ACTIVE) {
             throw new ApiException(ErrorCode.UNAUTHORIZED);
         }
 

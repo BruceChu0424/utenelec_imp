@@ -605,6 +605,34 @@ class FulfillmentWorkbenchQueryServiceTest {
     }
 
     @Test
+    void differenceHeaderUsesExactBoundComparisonsAndKeepsUnknownFactsUnknown() {
+        var table = FulfillmentWorkbenchTableQuery.from("differenceQty", "asc", java.util.Map.of(
+                "search.differenceQty", "-9007199254740993.0001..0"), null, null, null, null);
+        String sql = table.filterSql(null);
+        assertTrue(sql.contains("visible_doc_no IS NOT NULL"));
+        assertTrue(sql.contains("COALESCE(goods_count,0)<=1"));
+        assertTrue(sql.contains("COALESCE(open_line_count,0)<=1"));
+        assertTrue(sql.contains("COALESCE(cardinality(action_item_ids),0)<=1"));
+        assertTrue(sql.contains("THEN difference_qty END) BETWEEN :numeric_differenceQty_lower AND :numeric_differenceQty_upper"));
+        assertFalse(sql.contains("-9007199254740993.0001"));
+        assertFalse(sql.contains("COALESCE(difference_qty"));
+        Query query = mock(Query.class);
+        table.bind(query);
+        verify(query).setParameter("numeric_differenceQty_lower", new BigDecimal("-9007199254740993.0001"));
+        verify(query).setParameter("numeric_differenceQty_upper", BigDecimal.ZERO);
+        assertEquals("", table.filterSql("differenceQty"));
+        for (String value : List.of("-1", "!=0", ">=0.0001")) {
+            var comparison = FulfillmentWorkbenchTableQuery.from("differenceQty", "asc", java.util.Map.of(
+                    "search.differenceQty", value), null, null, null, null);
+            assertTrue(comparison.filterSql(null).contains(":numeric_differenceQty"));
+        }
+        for (String invalid : List.of("1..-1", "abc", "1;SELECT 1", "1".repeat(129)))
+            org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                    () -> FulfillmentWorkbenchTableQuery.from("differenceQty", "asc",
+                            java.util.Map.of("search.differenceQty", invalid), null, null, null, null));
+    }
+
+    @Test
     void columnTextSearchesRemainBoundAndIndependentFromExactFacetValues() {
         var table = FulfillmentWorkbenchTableQuery.from("supplierName", "asc", java.util.Map.of(
                 "f.goods", "goods-uuid", "search.goods", "开关 面板", "search.goodsCode", "M3_20%",

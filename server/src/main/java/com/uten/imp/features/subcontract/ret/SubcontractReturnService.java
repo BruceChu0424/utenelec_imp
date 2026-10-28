@@ -131,6 +131,8 @@ public class SubcontractReturnService {
     public PageResponse<ReturnListItem> list(ReturnQueryFilter originalFilter, int page, int size, String sort, String order) {
         final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         boolean priceMasked = subcontractPriceMasked();
+        f.headerFilters().requireAmountVisible(!priceMasked);
+        HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked);
         Specification<SubcontractReturn> spec = returnSpec(f);
         // 2026-09-25 单号列统一：billNo 进两分支白名单（价格遮蔽只挡金额排序）。
         Pageable pageable = Pageables.of(page, size,
@@ -138,7 +140,8 @@ public class SubcontractReturnService {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
@@ -149,6 +152,7 @@ public class SubcontractReturnService {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(ReturnQueryFilter originalFilter) {
         final ReturnQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        f.headerFilters().requireAmountVisible(!subcontractPriceMasked());
         return java.util.Map.of("billNo",
                 com.uten.imp.common.web.TableFacets.groupCount(em, SubcontractReturn.class, returnSpec(f), "billNo"));
     }
@@ -180,6 +184,8 @@ public class SubcontractReturnService {
             }
             f.headerFilters().apply(root, cb, ps, "totalLocal", commercialPriceVisibility != null && commercialPriceVisibility.canViewSubcontractReturn(), null, true, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "amount", HeaderColumnFilter.SearchField.decimal("totalLocal"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));

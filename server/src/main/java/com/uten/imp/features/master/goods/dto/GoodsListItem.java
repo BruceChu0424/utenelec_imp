@@ -19,6 +19,10 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class GoodsListItem {
+    /** Decimal display text matches the two-place header predicate without client binary rounding. */
+    public String getPriceDisplayText() { return price==null?null:price.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
+    public String getDiscountDisplayText() { return discount==null?null:discount.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
+    public String getStockQtyDisplayText() { return stockQty==null?null:stockQty.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
     private UUID id;
     private String code;
     private String name;

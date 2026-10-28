@@ -21,7 +21,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 
-/** Exact source accounting for an approved quantity change. Original demand and transfer facts stay intact. */
+/** Exact accounting for pending reservations and approved quantity changes; original demand stays intact. */
 @Service
 @RequiredArgsConstructor
 public class ProcurementOrderSourceRevisionService implements ProcurementOrderSourceRevisionPort {
@@ -70,35 +70,41 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
                 WHERE s.id IN (:ids) ORDER BY r.id,s.id FOR UPDATE OF r,s
                 """.formatted(kind.prefix,kind.sourceType,kind.sourceColumn),args("ids",sources.stream().map(source->id(source,"id")).toList()));
         Map<UUID,BigDecimal> workingOrdered = new HashMap<>();
+        Map<UUID,BigDecimal> workingPending = new HashMap<>();
         for (Line line : sorted) {
             Objects.requireNonNull(line.changeLogId(),"changeLogId");
             BigDecimal oldQty=positive(line.oldQty()),newQty=positive(line.newQty());
             Map<String,Object> item=byId.get(line.orderItemId());
-            if (number(item,"header_status").intValue()!=1 || Boolean.TRUE.equals(item.get("header_deleted"))
+            boolean pendingRevision=kind==Kind.PURCHASE && number(item,"header_status").intValue()==0;
+            if ((!pendingRevision && number(item,"header_status").intValue()!=1) || Boolean.TRUE.equals(item.get("header_deleted"))
                     || Boolean.TRUE.equals(item.get("is_deleted")) || amount(item,"qty").compareTo(oldQty)!=0
                     || rate(item).compareTo(line.unitRate())!=0 || oldQty.compareTo(newQty)==0) throw conflict("只能按已批准订单的当前数量和原单位改量");
-            if (Boolean.TRUE.equals(db.queryForObject("""
+            boolean hasPending = Boolean.TRUE.equals(db.queryForObject("""
                     SELECT EXISTS(SELECT 1 FROM procurement_order_approval_cases
-                    WHERE order_type=:type AND order_id=:order AND status='PENDING')
-                    """,args("type",orderType,"order",orderId),Boolean.class))) throw conflict("订单正在财务复核，不能再次改量");
+                    WHERE order_type=:type AND order_id=:order AND status='PENDING' AND request_type='ORDER')
+                    """,args("type",orderType,"order",orderId),Boolean.class));
+            if (pendingRevision != hasPending) throw conflict("订单财务审核状态已变化，请刷新后重试");
             var receiptBound=ProcurementOrderQuantityBounds.receipts(em,orderType,line.orderItemId());
             if(newQty.compareTo(receiptBound.minimumOrderedQty(line.unitRate()))<0)
                 throw conflict("新数量不能低于原订单当前保留的实收量，请先处理实际退货");
             db.update("""
                     INSERT INTO procurement_order_source_revisions(id,order_type,order_id,order_item_id,old_qty,new_qty,
-                        unit_rate,before_item,approval_attempt_before,actor_user_id,actor_employee_id)
+                        unit_rate,before_item,approval_attempt_before,actor_user_id,actor_employee_id,pending_case_id,pending_case_version)
                     SELECT :id,:type,:order,i.id,:old,:new,:rate,to_jsonb(i),
-                        (SELECT COALESCE(MAX(attempt),0) FROM procurement_order_approval_cases WHERE order_type=:type AND order_id=:order),:user,:employee
+                        (SELECT COALESCE(MAX(attempt),0) FROM procurement_order_approval_cases WHERE order_type=:type AND order_id=:order),:user,:employee,
+                        (SELECT c.id FROM procurement_order_approval_cases c WHERE :pending AND c.order_type=:type AND c.order_id=:order AND c.status='PENDING' AND c.request_type='ORDER'),
+                        (SELECT c.version FROM procurement_order_approval_cases c WHERE :pending AND c.order_type=:type AND c.order_id=:order AND c.status='PENDING' AND c.request_type='ORDER')
                     FROM %s_order_items i WHERE i.id=:item
                     """.formatted(kind.prefix),args("id",line.changeLogId(),"type",orderType,"order",orderId,
                     "item",line.orderItemId(),"old",oldQty,"new",newQty,"rate",line.unitRate(),
-                    "user",currentUser.requireId(),"employee",currentUser.requireEmployeeId()));
-            prepareAllocations(kind,line,item,workingOrdered,receiptBound);
+                    "user",currentUser.requireId(),"employee",currentUser.requireEmployeeId(),"pending",pendingRevision));
+            prepareAllocations(kind,line,item,workingOrdered,workingPending,receiptBound,pendingRevision);
         }
     }
 
     private void prepareAllocations(Kind kind, Line line, Map<String,Object> item, Map<UUID,BigDecimal> workingOrdered,
-                                    ProcurementOrderQuantityBounds.ReceiptBound bound) {
+                                    Map<UUID,BigDecimal> workingPending, ProcurementOrderQuantityBounds.ReceiptBound bound,
+                                    boolean pendingRevision) {
         List<Map<String,Object>> rows=db.queryForList("""
                 SELECT s.id,s.%2$s AS source_item_id,s.alloc_qty,s.line_no,r.qty AS requested_qty,
                     COALESCE(r.ordered_qty,0) AS ordered_qty,r.unit_id,COALESCE(r.unit_rate,1) AS unit_rate,
@@ -140,6 +146,7 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
             prefix=prefix.add(base);
             BigDecimal minimum=receivedShare.max(amount(row,"consumed_base")).divide(line.unitRate(),4,RoundingMode.CEILING);
             workingOrdered.putIfAbsent(source,amount(row,"ordered_qty"));
+            workingPending.putIfAbsent(source,amount(row,"pending_qty"));
             allocations.add(new Allocation(row,before,before,minimum));
         }
         List<Allocation> selection=new ArrayList<>(allocations);
@@ -147,7 +154,7 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
         for (Allocation a:selection) {
             BigDecimal capacity=delta.signum()<0 ? a.before.subtract(a.minimum).max(BigDecimal.ZERO)
                     : amount(a.row,"requested_qty").subtract(workingOrdered.get(a.source()))
-                        .subtract(amount(a.row,"pending_qty")).max(BigDecimal.ZERO);
+                        .subtract(workingPending.get(a.source())).max(BigDecimal.ZERO);
             BigDecimal part=remaining.min(capacity);
             a.after=a.before.add(delta.signum()<0?part.negate():part);
             remaining=remaining.subtract(part);
@@ -158,22 +165,24 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
                 :"原申请剩余可订数量不足；需要追加需求时请另行确认来源，不能自动增加BOM需求或公共超量");
         for (Allocation a:allocations) {
             BigDecimal beforeOrdered=workingOrdered.get(a.source());
-            BigDecimal afterOrdered=beforeOrdered.add(a.after.subtract(a.before));
+            BigDecimal afterOrdered=pendingRevision ? beforeOrdered : beforeOrdered.add(a.after.subtract(a.before));
             if(afterOrdered.signum()<0)throw conflict("来源已订数量不足以按原份额退回");
             BigDecimal beforePeg=amount(a.row,"peg_base");
             BigDecimal beforeBase=base(a.before,line.unitRate()),afterBase=base(a.after,line.unitRate());
             if(beforePeg.compareTo(beforeBase)>0)throw conflict("历史生产订货挂接超过原来源份额，不能继续改量");
-            BigDecimal afterPeg=afterBase.compareTo(beforeBase)<0 ? beforePeg.min(afterBase)
+            if(pendingRevision && beforePeg.signum()!=0)throw conflict("待审订单存在已生效供给，需先核对实际流程");
+            BigDecimal afterPeg=pendingRevision ? BigDecimal.ZERO : afterBase.compareTo(beforeBase)<0 ? beforePeg.min(afterBase)
                     : Boolean.TRUE.equals(a.row.get("production_source")) ? beforePeg.add(afterBase.subtract(beforeBase)) : beforePeg;
             db.update("""
                     INSERT INTO procurement_order_source_revision_allocations(revision_id,source_row_id,source_item_id,
                         line_no,before_alloc_qty,after_alloc_qty,before_ordered_qty,after_ordered_qty,protected_base_qty,
-                        before_peg_qty_base,after_peg_qty_base)
-                    VALUES (:revision,:row,:source,:line,:before,:after,:oldOrdered,:newOrdered,:protected,:beforePeg,:afterPeg)
+                        before_peg_qty_base,after_peg_qty_base,pending_reservation)
+                    VALUES (:revision,:row,:source,:line,:before,:after,:oldOrdered,:newOrdered,:protected,:beforePeg,:afterPeg,:pending)
                     """,args("revision",line.changeLogId(),"row",id(a.row,"id"),"source",a.source(),
                     "line",a.row.get("line_no"),"before",a.before,"after",a.after,"oldOrdered",beforeOrdered,
-                    "newOrdered",afterOrdered,"protected",base(a.minimum,line.unitRate()),"beforePeg",beforePeg,"afterPeg",afterPeg));
+                    "newOrdered",afterOrdered,"protected",base(a.minimum,line.unitRate()),"beforePeg",beforePeg,"afterPeg",afterPeg,"pending",pendingRevision));
             workingOrdered.put(a.source(),afterOrdered);
+            if(pendingRevision)workingPending.compute(a.source(),(ignored,current)->current.add(a.after.subtract(a.before)));
         }
     }
 
@@ -192,6 +201,7 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
         for(Map<String,Object> revision:revisions){
             if(amount(revision,"current_qty").compareTo(amount(revision,"new_qty"))!=0)throw conflict("请先保存对应的新订单数量再对账来源");
             UUID revisionId=id(revision,"id");
+            boolean pendingRevision=revision.get("pending_case_id")!=null;
             List<Map<String,Object>> allocations=db.queryForList("""
                     SELECT * FROM procurement_order_source_revision_allocations WHERE revision_id=:id ORDER BY allocation_sequence
                     """,args("id",revisionId));
@@ -200,11 +210,13 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
                 if(before.compareTo(after)==0)continue;
                 int sourceUpdated=db.update("UPDATE "+kind.prefix+"_order_item_sources SET alloc_qty=:after WHERE id=:row AND alloc_qty=:before",
                         args("row",id(a,"source_row_id"),"before",before,"after",after));
-                int orderedUpdated=db.update("UPDATE "+kind.prefix+"_"+kind.sourceType+"_items SET ordered_qty=:after WHERE id=:source AND COALESCE(ordered_qty,0)=:before",
+                int orderedUpdated=pendingRevision ? 1 : db.update("UPDATE "+kind.prefix+"_"+kind.sourceType+"_items SET ordered_qty=:after WHERE id=:source AND COALESCE(ordered_qty,0)=:before",
                         args("source",id(a,"source_item_id"),"before",a.get("before_ordered_qty"),"after",a.get("after_ordered_qty")));
                 if(sourceUpdated!=1||orderedUpdated!=1)throw conflict("来源数量并发变化，整次改量已撤回");
-                reconcilePegs(kind,revision,a,touched);
-                sourceHeaders.add(id(a,"source_item_id"));
+                if(!pendingRevision) {
+                    reconcilePegs(kind,revision,a,touched);
+                    sourceHeaders.add(id(a,"source_item_id"));
+                }
             }
         }
         for(UUID source:sourceHeaders)db.update("""

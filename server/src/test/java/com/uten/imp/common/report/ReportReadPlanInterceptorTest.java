@@ -12,6 +12,20 @@ class ReportReadPlanInterceptorTest {
     private final ReportReadPlanInterceptor interceptor = new ReportReadPlanInterceptor();
     private final MockHttpServletResponse response = new MockHttpServletResponse();
 
+    static class PrivateQuery {
+        @ReadOnlyReportQuery public void search() { }
+    }
+    @Test void explicitlyDeclaredPostReadsHonorRowsOnlyAndCloseTheirScope() throws Exception {
+        var request=new MockHttpServletRequest("POST","/api/finance/reports/ar-ap/overview/search");
+        for(String key:java.util.List.of("includeCount","includeFacets","includeTotals")) request.setParameter(key,"false");
+        var handler=new org.springframework.web.method.HandlerMethod(new PrivateQuery(),PrivateQuery.class.getDeclaredMethod("search"));
+        try {
+            interceptor.preHandle(request,response,handler);
+            assertThat(ReportReadPlan.current()).isEqualTo(ReportReadPlan.ROWS_ONLY);
+        } finally {interceptor.afterCompletion(request,response,handler,null);}
+        assertThat(ReportReadPlan.current()).isEqualTo(ReportReadPlan.ALL);
+    }
+
     @Test
     void independentSwitchesAndFailureCompletionRestoreTheThread() {
         var request = new MockHttpServletRequest("GET", "/api/sales/reports/ORDER/detail");

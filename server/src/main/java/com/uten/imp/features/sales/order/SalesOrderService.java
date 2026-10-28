@@ -103,7 +103,7 @@ public class SalesOrderService {
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of(
-            "billDate", "billDate", "total", "totalOriginal",
+            "billDate", "billDate", "deliverDate", "deliverDate", "deliver", "deliverDate", "total", "totalOriginal",
             "billNo", "billNo"); // 2026-09-25 单号列统一
 
     private final SalesOrderRepository orderRepo;
@@ -144,6 +144,8 @@ public class SalesOrderService {
     @PreAuthorize("hasAuthority('sales_order:view')")
     public PageResponse<OrderListItem> list(OrderQueryFilter originalFilter, int page, int size, String sort, String order) {
         final OrderQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
+        HeaderColumnFilter.requireAmountSortVisible(sort,priceMasker!=null&&priceMasker.canView());
+        if("total".equals(sort)&&f.currencyId()==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"原币订单金额排序须先选择币种");
         // 可发货置顶（工作台小项）：sort=shippable 走专用排序——有预留（可发）的单排前，
         // 次按交货日升序（临近在前）、再按开单日期倒序；此时忽略列排序。
         boolean shippableFirst = "shippable".equals(sort);
@@ -152,7 +154,8 @@ public class SalesOrderService {
         Pageable pageable = Pageables.of(page, size,
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                shippableFirst||sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SalesOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, String> sellerNames = p.isEmpty() ? Map.of() : nameResolver.namesOf(
                 p.getContent().stream().map(SalesOrder::getSellerId).toList());
@@ -261,6 +264,9 @@ public class SalesOrderService {
             f.headerFilters().apply(root, cb, ps, "totalOriginal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "billDate",HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "deliver",HeaderColumnFilter.SearchField.calendarDate("deliverDate"),
+                    "total",HeaderColumnFilter.SearchField.decimal("totalOriginal"),
                     "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class)));
             return cb.and(ps.toArray(new Predicate[0]));
         };

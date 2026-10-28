@@ -84,6 +84,29 @@ class SubcontractShortDeliveryNameBatchTest {
         verifyNoInteractions(names, jdbc);
     }
 
+    @Test void headersFilterRowsAndTotalBeforePagingWithoutChangingTheOwnerBoundary() {
+        Query rows = query(), count = query();
+        when(em.createNativeQuery(anyString())).thenAnswer(call -> call.<String>getArgument(0).startsWith("SELECT COUNT(*)") ? count : rows);
+        when(rows.getResultList()).thenReturn(List.of());
+        when(count.getSingleResult()).thenReturn(201L);
+        var result = service.list("PENDING", "", null, null, null, null, 2, 50,
+                "shortfallQty", "desc", null, Map.of("search.shortfallQty", ">=0.0001", "search.goodsName", "毛坯", "f.severity", "SEVERE"));
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(em, times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).allSatisfy(value -> assertThat(value).contains(
+                "c.owner_employee_id IN (:owners)", "c.shortfall_qty >= :short_header_shortfallQty",
+                "short_header_goodsName", "c.severity = :short_header_severity"));
+        assertThat(sql.getAllValues().getFirst()).contains("ORDER BY c.shortfall_qty DESC NULLS LAST", "OFFSET :offset LIMIT :limit");
+        for (Query query : List.of(rows, count)) {
+            verify(query).setParameter("owners", Set.of(owner));
+            verify(query).setParameter("short_header_shortfallQty", new BigDecimal("0.0001"));
+            verify(query).setParameter("short_header_goodsName", "毛坯");
+        }
+        verify(rows).setParameter("offset", 50L);
+        assertThat(result.getTotal()).isEqualTo(201L);
+        assertThat(result.getTotalPages()).isEqualTo(5);
+    }
+
     @Test @SuppressWarnings({"unchecked", "rawtypes"})
     void detailBatchesEventActorsTogetherWithHeaderNamesAndPreservesEverySnapshot() {
         UUID decider = UUID.randomUUID(), actor = UUID.randomUUID(), caseId = UUID.randomUUID();

@@ -31,8 +31,9 @@ public class HrTaskController {
     public com.uten.imp.common.web.PageResponse<HrCelebrationHistoryService.Publication> celebrationHistory(
             @org.springframework.web.bind.annotation.RequestParam String type,
             @org.springframework.web.bind.annotation.RequestParam(defaultValue = "1") int page,
-            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
-        return celebrationHistory.list(type, page, size);
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size,
+            @org.springframework.web.bind.annotation.RequestParam java.util.Map<String, String> parameters) {
+        return celebrationHistory.list(type, page, size, parameters);
     }
 
     @GetMapping("/summary")

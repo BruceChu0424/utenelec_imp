@@ -9,6 +9,7 @@ import com.uten.imp.features.master.color.dto.ColorDetail;
 import com.uten.imp.features.master.color.dto.ColorSaveRequest;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.Goods;
+import com.uten.imp.features.master.goods.GoodsBomItem;
 import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.features.master.materialcategory.MaterialCategory;
@@ -73,13 +74,27 @@ import java.util.concurrent.ConcurrentMap;
  *
  * <p>规则（与用户锁定）：
  * <ul>
- *   <li>分类分隔符只认标准 {@code -}（两侧空格 trim）；其它「横杠样」字符不切 → 自然匹配不上报错。</li>
+ *   <li>导入模式（2026-10-28）：入口先选「新建货品 / 修改货品 / 混合导入」，
+ *         {@link GoodsImportMode}。新建=不看系统标识全部新建；修改=只按系统标识匹配
+ *         在库货品走差异核对（无标识/未匹配/已删除一律报错）；混合=既有行为。
+ *         模式随计划固化，commit 模式不一致即拒绝。</li>
+ *   <li>分类分隔符：整串优先按标准 {@code /} 切分（2026-10-28 起与导出「 / 」显示同口径）；
+ *         不含 {@code /} 的老导出文件仍按 {@code -} 兜底切分；其它「横杠样」字符不切 →
+ *         自然匹配不上报错。</li>
  *   <li>空格：匹配键（编号/分类/颜色/单位/系列）全删空白含全角/NBSP + 全角转半角；
  *         货品名 trim + 内部多空格合并一个。</li>
- *   <li>编号：允许留空或缺列；匹配原货品时保留原号，新建时按目标分类自动分配。
- *       显式编号须文件内唯一；已有编号进入差异核对，占用、历史复用与歧义按原规则复核。</li>
- *   <li>系统标识：当前库存在的 UUID 保留原身份，改号须核对确认；当前库不存在的历史 UUID
- *       按编号匹配或新增规则处理，新建使用新的本地 UUID，不沿用文件 UUID。</li>
+ *   <li>编号：允许留空或缺列；留空时新建按目标分类自动分配。显式编号须文件内唯一，
+ *         且不得与在用货品重复——无（或当前库不存在的）系统标识一律按新建处理，
+ *         显式编号占用即报「编号重复」整行拦下，不再按编号匹配进入差异核对/替换
+ *         （2026-10-28 用户口径）。</li>
+ *   <li>系统标识：匹配只认系统标识。当前库存在的 UUID 保留原身份，改号须核对确认；
+ *         指向已软删货品的 UUID 按原 UUID 原编号恢复；当前库不存在的历史 UUID 一律
+ *         新建（新的本地 UUID，不沿用文件 UUID）。</li>
+ *   <li>组装信息ID（2026-10-28）：导出列为「货品编号-BOM」（有组装信息才有值），
+ *         导入有值即把该编号货品的整棵组装信息复制到本行货品下（新建货品=追加复制，
+ *         已有货品且来源≠自身=整棵替换，需要 goods:bom:delete）；=自身（回导默认值）
+ *         不写。格式错/货品不存在/没有组装信息/含停用或不可见组件在检测期报错。
+ *         BOM 写入走 {@link GoodsBomPasteService}，随导入同事务进操作历史，撤回连带恢复。</li>
  *   <li>缺失分类/颜色/单位：自动新建（登记录撤回）。</li>
  *   <li>仅收 .xlsx；跳过空行/合计/总计/小计/标题行；公式错误单元格当空。</li>
  * </ul>
@@ -103,6 +118,13 @@ public class GoodsImportService {
     private com.uten.imp.features.master.goods.history.GoodsOperationHistoryService operationHistory;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.port.GoodsMasterWriteAccessPort writeAccess;
+    // 组装信息ID 复制（2026-10-28）专用依赖：字段注入保持构造器稳定，测试用 ReflectionTestUtils 打桩。
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.goods.GoodsBomItemRepository bomRepo;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.goods.GoodsBomPasteService bomPaste;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.lifecycle.MasterObjectAccess bomAccess;
 
     /**
      * detect -> commit is deliberately a short-lived, single-node capability.
@@ -122,11 +144,16 @@ public class GoodsImportService {
             "cNumber", "series", "model", "spec", "material", "rearInsertCode", "paper", "nameEn",
             "colorName", "unitName", "sourceType", "status", "price", "minOrderQty", "orderMultipleQty");
     private static final Set<String> NUMERIC_IMPORT_FIELDS = Set.of("price", "minOrderQty", "orderMultipleQty");
+    /** Recognized source columns shown in preview without allowing relationship/identity edits. */
+    private static final Set<String> READ_ONLY_FIELDS = Set.of("goodsId", "bomRef", "owningWarehouseName",
+            "productionWorkshopName", "mouldCode", "mouldName");
 
     private static final Map<String, String> HEADER_ALIASES = new HashMap<>();
     static {
         for (String a : new String[]{"编号", "编码", "货品编号", "物料编码", "number", "code"}) putAlias(a, "code");
         for (String a : new String[]{"系统标识", "货品UUID", "货品ID", "goodsId", "UUID", "uuid", "id"}) putAlias(a, "goodsId");
+        // 组装信息ID（2026-10-28）：值=「货品编号-BOM」，导入时按编号反查源货品复制整棵组装信息。
+        for (String a : new String[]{"组装信息ID", "组装信息id", "组装信息Id"}) putAlias(a, "bomRef");
         for (String a : new String[]{"类别", "分类", "分类路径", "物料分类"}) putAlias(a, "categoryPath");
         for (String a : new String[]{"系列", "物料系列"}) putAlias(a, "series");
         putAlias("型号", "model");
@@ -163,17 +190,19 @@ public class GoodsImportService {
         // 备注（2026-09-25 导入导出格式对齐）：GoodsSaveRequest.paper 本就可编辑，
         // 此前登记为 ignored → 导出里的备注列改完再导入会被静默丢弃。接线落库。
         for (String a : new String[]{"备注", "纸样"}) putAlias(a, "paper");
-        // 导出有但 DTO 未开放编辑——识别但忽略其值（不报「无法识别」）。
+        // 导出有但 DTO 未开放编辑——预览原文，仍不导入其值。
         //
         // 所属仓库 (V587) / 生产车间 (V590, 2026-09-29 前表头叫「归属车间」) / 模具编号、模具名称
         // (2026-10-19 起导出携带模具名称列)：导出写这些列，
         // 但导入侧只拿得到「名称/编号」，而在线关系只认 UUID（本文件的 UUID-only 契约），
-        // 按名反查会重蹈按名猜关系的老路，故登记为 ignored 只识别不落值——导出改完再导入，
+        // 按名反查会重蹈按名猜关系的老路，故仅供只读预览，不落值——导出改完再导入，
         // 这些列的值不会写进新货品。必须登记：把「刻意丢弃」写成明账，避免后来人把它
         // 当成又一个 V457 式的漏登记去补，也避免别处误把它接成别的字段。真要支持编辑，
         // 得先给导入一条 UUID 口径的选择通道。
-        for (String a : new String[]{"所属仓库", "归属仓库", "归属车间", "生产车间", "车间",
-                "模具编号", "模具名称", "模具"}) putAlias(a, "ignored");
+        for (String a : new String[]{"所属仓库", "归属仓库"}) putAlias(a, "owningWarehouseName");
+        for (String a : new String[]{"归属车间", "生产车间", "车间"}) putAlias(a, "productionWorkshopName");
+        putAlias("模具编号", "mouldCode");
+        for (String a : new String[]{"模具名称", "模具"}) putAlias(a, "mouldName");
     }
 
     private static void putAlias(String alias, String key) {
@@ -190,6 +219,9 @@ public class GoodsImportService {
     private static final Set<String> VALID_STATUSES = Set.of("使用", "禁用");
     private static final Set<String> TOTAL_KEYWORDS = Set.of("合计", "总计", "小计");
 
+    /** 组装信息ID 的值形态：货品编号 + 该后缀（导出写、导入剥），常量在 {@link GoodsExportProjection}。 */
+    private static final String BOM_REF_SUFFIX = com.uten.imp.features.master.goods.GoodsExportProjection.BOM_REF_SUFFIX;
+
     // ============================================================
     // 检测（只读）
     // ============================================================
@@ -198,42 +230,51 @@ public class GoodsImportService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportReport detect(byte[] xlsx) {
-        return detect(xlsx, Map.of());
+        return detect(xlsx, Map.of(), Set.of(), Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections) {
-        return detect(xlsx, codeCorrections, Set.of());
+        return detect(xlsx, codeCorrections, Set.of(), Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums) {
-        return detect(xlsx, codeCorrections, excludedRowNums, Map.of());
+        return detect(xlsx, codeCorrections, excludedRowNums, Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional(readOnly = true)
     public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
                                    Map<Integer, Map<String, String>> cellCorrections) {
+        return detect(xlsx, codeCorrections, excludedRowNums, cellCorrections, GoodsImportMode.MIXED);
+    }
+
+    /** 带导入模式的检测（全参形态；短重载默认 MIXED，见 {@link GoodsImportMode}）。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional(readOnly = true)
+    public GoodsImportReport detect(byte[] xlsx, Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
+                                    Map<Integer, Map<String, String>> cellCorrections, GoodsImportMode mode) {
         Map<Integer, Map<String, String>> corrections = normalizeCellCorrections(codeCorrections, cellCorrections);
         Parsed parsed = parse(xlsx, corrections);
         validateCorrectionRows(parsed, corrections);
         Set<Integer> excluded = validateExcludedRows(parsed, excludedRowNums);
-        return detectParsed(xlsx, new Parsed(parsed.rows.stream()
+        return detectParsed(mode, xlsx, new Parsed(parsed.rows.stream()
                 .filter(row -> !excluded.contains(row.rowNum)).toList(),
                 parsed.headerErrors.stream().filter(error -> !excluded.contains(error.rowNum())).toList(),
                 parsed.totalRows), corrections, excluded, true);
     }
 
-    private GoodsImportReport detectParsed(byte[] xlsx, Parsed parsed, Map<Integer, Map<String, String>> corrections,
+    private GoodsImportReport detectParsed(GoodsImportMode mode, byte[] xlsx, Parsed parsed,
+                                           Map<Integer, Map<String, String>> corrections,
                                            Set<Integer> excluded, boolean partitionErrors) {
         List<GoodsImportError> errors = new ArrayList<>(parsed.headerErrors);
         if (parsed.headerErrors.stream().anyMatch(error -> error.rowNum() <= 1)) {
             return new GoodsImportReport(
                     parsed.totalRows, 0, errors, List.of(), List.of(), List.of(), 0, 0, null,
-                    List.of(), 0, 0, 0, 0, problemRows(parsed, errors));
+                    List.of(), 0, 0, 0, 0, problemRows(parsed, errors), List.of(), previewRows(parsed));
         }
 
         MasterSnapshot masters = loadMasterSnapshot();
@@ -250,7 +291,20 @@ public class GoodsImportService {
         Map<UUID, Integer> firstGoodsRows = new HashMap<>();
         Set<UUID> reportedDuplicateFirstGoods = new HashSet<>();
         List<GoodsImportIdentity> goodsSnapshot = goodsRepo.findImportIdentities();
+        boolean bomCreateAllowed = com.uten.imp.security.CurrentAuthorityGuard.hasAll("goods:bom:create");
+        boolean bomDeleteAllowed = com.uten.imp.security.CurrentAuthorityGuard.hasAll("goods:bom:delete");
+        // 组装信息ID 源货品解析缓存：同编号多行只查一次；行快照缓存同理。
+        Map<String, java.util.Optional<Goods>> bomSourceByCode = new HashMap<>();
+        Map<UUID, List<GoodsBomItem>> bomSourceRows = new HashMap<>();
+        // 修改/混合模式下带组装信息ID 的行：目标是否已有组装行决定提交是否走 REPLACE（需 goods:bom:delete）。
+        Set<UUID> bomRefTargetIds = mode == GoodsImportMode.CREATE_ONLY ? Set.of()
+                : parsed.rows.stream()
+                        .filter(row -> row.bomRef != null && !row.bomRef.isBlank() && row.goodsId != null)
+                        .map(row -> row.goodsId).collect(java.util.stream.Collectors.toSet());
+        Set<UUID> bomRefTargetsWithRows = bomRefTargetIds.isEmpty()
+                ? Set.of() : new HashSet<>(bomRepo.findGoodsWithOperationalRows(bomRefTargetIds));
         List<PlannedRow> plannedRows = new ArrayList<>();
+        Map<Integer, List<String>> resolvedCategorySegments = new HashMap<>();
         List<GoodsImportReviewRow> reviewRows = new ArrayList<>();
         int dataRows = 0;
         int restorableRows = 0;
@@ -259,15 +313,18 @@ public class GoodsImportService {
         for (ParsedRow r : parsed.rows) {
             dataRows++;
             try {
-            Goods byId = r.goodsId == null ? null : goodsRepo.findById(r.goodsId).orElse(null);
+            // 新建模式不看系统标识（身份上）；修改/混合按系统标识解析身份。
+            Goods byId = mode == GoodsImportMode.CREATE_ONLY || r.goodsId == null
+                    ? null : goodsRepo.findById(r.goodsId).orElse(null);
             // An export can come from a previous dataset. Its UUID is useful
-            // only when it resolves locally; otherwise use the ordinary code
-            // review/new-record rules and allocate a fresh local UUID on save.
-            // Keep the source UUID on the parsed row, never reuse it as a key.
-            UUID localGoodsId = byId == null ? null : byId.getId();
+            // only when it resolves locally; otherwise the row is a new record
+            // and save allocates a fresh local UUID. Matching is identity-only:
+            // a row without a resolvable system identifier never merges by code
+            // (2026-10-28 用户口径：无系统标识就是新建，编号重复报编号重复，不替换).
             UUID restoreGoodsId = null;
             Goods existingGoods = null;
             String matchType = null;
+            boolean identityBlocked = false;
             if (r.code != null && !r.code.isEmpty()) {
                 Integer firstRow = firstCodeRows.putIfAbsent(r.code, r.rowNum);
                 if (firstRow != null) {
@@ -275,42 +332,62 @@ public class GoodsImportService {
                         errors.add(new GoodsImportError(firstRow, "编号", "编号「" + r.code + "」在本文件内重复"));
                     }
                     errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在本文件内重复"));
-                } else {
-                    existingGoods = goodsRepo.findByCodeAndDeletedFalse(r.code).orElse(null);
-                    if (existingGoods != null) {
-                        matchType = "CODE";
-                    } else if (goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
-                        errors.add(new GoodsImportError(r.rowNum, "编号", "编号「" + r.code + "」在系统中已存在，但无法确定唯一货品"));
-                    } else {
-                    // 同编号命中已软删行：不再当冲突拦下，导入时以原 UUID 原编号恢复该行
-                    //（2026-10-19「删除后同编号不能导入」根因修复，见 [commit]）。
-                    List<UUID> deletedIds = goodsRepo.findRestorableDeletedIdsByCode(r.code);
-                    if (deletedIds.size() > 1 && localGoodsId == null) {
-                        errors.add(new GoodsImportError(r.rowNum, "系统标识", "同编号对应多个已删除货品，请填写原货品系统标识后核对恢复"));
-                    } else if (!deletedIds.isEmpty()) {
-                        if (localGoodsId != null && !deletedIds.contains(localGoodsId)) {
-                            errors.add(new GoodsImportError(r.rowNum, "系统标识", "系统标识与已删除货品编号不一致，请核对原货品"));
-                        } else restoreGoodsId = localGoodsId == null ? deletedIds.getFirst() : localGoodsId;
-                    }
-                    if (restoreGoodsId != null) {
-                        goodsService.requireRestoreImportedWriteAccess(restoreGoodsId);
-                        restorableRows++;
-                    }
-                    }
                 }
             }
-            if (byId != null) {
-                if (byId.isDeleted() && !Objects.equals(restoreGoodsId, byId.getId())) {
-                    errors.add(new GoodsImportError(r.rowNum, "货品UUID", "货品 UUID 不存在或已删除，请重新导出后导入"));
-                } else if (existingGoods != null && !existingGoods.getId().equals(byId.getId())) {
-                    errors.add(new GoodsImportError(r.rowNum, "编号", "货品 UUID 与编号指向不同货品，请核对后重传"));
-                } else if (!byId.isDeleted()) {
+            if (byId != null && !byId.isDeleted()) {
+                // 系统标识命中在用货品：编号列若指到别的在用/已删除货品才报错；
+                // 改成本库未占用的编号属于改号，走差异核对确认。
+                if (r.code != null && !r.code.isEmpty() && !r.code.equals(normCode(byId.getCode()))) {
+                    Goods codeHolder = goodsRepo.findByCodeAndDeletedFalse(r.code).orElse(null);
+                    if (codeHolder != null && !codeHolder.getId().equals(byId.getId())) {
+                        errors.add(new GoodsImportError(r.rowNum, "编号", "货品 UUID 与编号指向不同货品，请核对后重传"));
+                        identityBlocked = true;
+                    } else if (codeHolder == null
+                            && goodsRepo.findFirstByCodeAndDeletedTrueOrderByIdAsc(r.code).isPresent()) {
+                        errors.add(new GoodsImportError(r.rowNum, "系统标识", "系统标识与已删除货品编号不一致，请核对原货品"));
+                        identityBlocked = true;
+                    }
+                }
+                if (!identityBlocked) {
                     existingGoods = byId;
                     matchType = "UUID";
                 }
+            } else if (byId != null) {
+                // 指向已软删货品的系统标识：按原 UUID 原编号恢复（恢复口径自
+                // 2026-10-28 起只认系统标识，编号不再单独触发恢复）。
+                if (mode == GoodsImportMode.UPDATE_ONLY) {
+                    errors.add(new GoodsImportError(r.rowNum, "系统标识",
+                            "系统标识指向已删除货品，修改导入不能恢复；请改用「混合导入」"));
+                    identityBlocked = true;
+                } else if (r.code != null && !r.code.isEmpty() && !r.code.equals(normCode(byId.getCode()))) {
+                    errors.add(new GoodsImportError(r.rowNum, "系统标识", "系统标识与已删除货品编号不一致，请核对原货品"));
+                    identityBlocked = true;
+                } else {
+                    restoreGoodsId = byId.getId();
+                    goodsService.requireRestoreImportedWriteAccess(restoreGoodsId);
+                    restorableRows++;
+                }
+            } else if (mode == GoodsImportMode.UPDATE_ONLY) {
+                // 修改导入只认「系统标识匹配到在库货品」：无标识/未匹配一律报错，不允许混入新建。
+                errors.add(new GoodsImportError(r.rowNum, "系统标识",
+                        r.goodsId == null
+                                ? "修改导入要求每行都带系统标识；要新建请改用「新建货品」或「混合导入」"
+                                : "系统标识未匹配到在库货品，修改导入不能新建；请核对系统标识或改用「混合导入」"));
+                identityBlocked = true;
             }
-            if (localGoodsId == null && r.code != null && !r.code.isEmpty() && goodsRepo.codeHasReuseHistory(r.code)) {
-                errors.add(new GoodsImportError(r.rowNum, "系统标识", "该编号曾复用，请重新导出并保留系统标识，核对当前货品后导入"));
+            if (!identityBlocked && existingGoods == null && restoreGoodsId == null
+                    && r.code != null && !r.code.isEmpty()) {
+                // 新建行（无系统标识或标识在当前库不存在；新建模式恒为新建行）：历史复用编号先拦下复核，
+                // 显式编号占用在用货品即整行报「编号重复」，不进入差异核对/替换。
+                if (goodsRepo.codeHasReuseHistory(r.code)) {
+                    errors.add(new GoodsImportError(r.rowNum, "系统标识", "该编号曾复用，请重新导出并保留系统标识，核对当前货品后导入"));
+                } else if (goodsRepo.findByCodeAndDeletedFalse(r.code).isPresent()
+                        || goodsRepo.existsByCodeAndDeletedFalse(r.code)) {
+                    errors.add(new GoodsImportError(r.rowNum, "编号",
+                            mode == GoodsImportMode.CREATE_ONLY
+                                    ? "编号重复：编号「" + r.code + "」在系统中已存在；新建导入请清空或修改该编号"
+                                    : "编号重复：编号「" + r.code + "」在系统中已存在；如需修改该货品，请在文件中保留其系统标识"));
+                }
             }
             if (r.name == null || r.name.isEmpty()) {
                 errors.add(new GoodsImportError(r.rowNum, "货品名称", "货品名称不能为空"));
@@ -335,7 +412,10 @@ public class GoodsImportService {
             } else {
                 category = categoryIndex.plan(r.categoryPath, r.categorySegments, willCreateCat);
                 if (category == null) {
-                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义（同父同名或名称含 - 导致路径重合），请先区分分类名称后重新导出"));
+                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义（同父同名或名称含「-」「/」导致路径重合），请先区分分类名称后重新导出"));
+                } else {
+                    resolvedCategorySegments.put(r.rowNum,
+                            category.segments().stream().map(PlannedCategorySegment::name).toList());
                 }
             }
             if (r.sourceType != null && !r.sourceType.isEmpty() && !VALID_SOURCE_TYPES.contains(r.sourceType)) {
@@ -386,8 +466,10 @@ public class GoodsImportService {
                             categoryPath(existingGoods.getCategory()), matchType, changes));
                 }
             } else if (restoreGoodsId == null) addedRows++;
+            UUID bomSourceGoodsId = planBomCopy(mode, r, existingGoods, restoreGoodsId, bomSourceByCode,
+                    bomSourceRows, bomRefTargetsWithRows, bomCreateAllowed, bomDeleteAllowed, errors);
             plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId,
-                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes));
+                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId));
             } catch (ApiException failure) {
                 String message = failure.getCode() == ErrorCode.FORBIDDEN || failure.getCode() == ErrorCode.NOT_FOUND
                         ? "该行货品当前不可查看或编辑，请联系管理员核对权限后重新检测"
@@ -403,19 +485,19 @@ public class GoodsImportService {
             // unit tokens, counts or stored review values from rejected rows escape.
             GoodsImportReport normal = ready.isEmpty()
                     ? new GoodsImportReport(parsed.totalRows, 0, List.of(), List.of(), List.of(), List.of(), 0, 0, null)
-                    : detectParsed(xlsx, new Parsed(ready, List.of(), parsed.totalRows), corrections, excluded, false);
+                    : detectParsed(mode, xlsx, new Parsed(ready, List.of(), parsed.totalRows), corrections, excluded, false);
             List<GoodsImportError> combined = new ArrayList<>(errors);
             combined.addAll(normal.errors());
             return new GoodsImportReport(parsed.totalRows, dataRows, List.copyOf(combined),
                     normal.willCreateCategories(), normal.willCreateColors(), normal.willCreateUnits(),
                     normal.readyToImport(), normal.restorableRows(), normal.planId(), normal.reviewRows(),
                     normal.addedRows(), normal.unchangedRows(), normal.fillRows(), normal.conflictRows(),
-                    problemRows(parsed, combined), normal.readyRowNums());
+                    problemRows(parsed, combined), normal.readyRowNums(), previewRows(parsed, resolvedCategorySegments));
         }
         int errorRows = (int) errors.stream().map(GoodsImportError::rowNum).distinct().count();
         UUID planId = null;
         if (errors.isEmpty()) {
-            planId = rememberPlan(
+            planId = rememberPlan(mode,
                     sha256(xlsx), masters.fingerprint(), identityFingerprint(goodsSnapshot), currentActorId(), plannedRows,
                     corrections, excluded);
         }
@@ -423,7 +505,8 @@ public class GoodsImportService {
                 new ArrayList<>(willCreateCat), new ArrayList<>(willCreateColor),
                 new ArrayList<>(willCreateUnit), Math.max(0, dataRows - errorRows - unchangedRows),
                 restorableRows, planId, List.copyOf(reviewRows), addedRows, unchangedRows, fillRows, conflictRows,
-                problemRows(parsed, errors), planId == null ? List.of() : parsed.rows.stream().map(row -> row.rowNum).toList());
+                problemRows(parsed, errors), planId == null ? List.of() : parsed.rows.stream().map(row -> row.rowNum).toList(),
+                previewRows(parsed, resolvedCategorySegments));
     }
 
     // ============================================================
@@ -434,27 +517,28 @@ public class GoodsImportService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename) {
-        return commit(planId, xlsx, filename, Set.of());
+        return commit(planId, xlsx, filename, Set.of(), Map.of(), Set.of(), Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys) {
-        return commit(planId, xlsx, filename, replaceRowKeys, Map.of());
+        return commit(planId, xlsx, filename, replaceRowKeys, Map.of(), Set.of(), Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
                                     Map<Integer, String> codeCorrections) {
-        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, Set.of());
+        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, Set.of(), Map.of(), GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
     @Transactional
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
                                     Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums) {
-        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, excludedRowNums, Map.of());
+        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, excludedRowNums, Map.of(),
+                GoodsImportMode.MIXED);
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
@@ -462,9 +546,19 @@ public class GoodsImportService {
     public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
                                     Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
                                     Map<Integer, Map<String, String>> cellCorrections) {
+        return commit(planId, xlsx, filename, replaceRowKeys, codeCorrections, excludedRowNums, cellCorrections,
+                GoodsImportMode.MIXED);
+    }
+
+    /** 带导入模式的提交（全参形态；短重载默认 MIXED，模式须与检测计划一致）。 */
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('goods:import')")
+    @Transactional
+    public GoodsImportResult commit(UUID planId, byte[] xlsx, String filename, Set<String> replaceRowKeys,
+                                    Map<Integer, String> codeCorrections, Set<Integer> excludedRowNums,
+                                    Map<Integer, Map<String, String>> cellCorrections, GoodsImportMode mode) {
         Map<Integer, Map<String, String>> corrections = normalizeCellCorrections(codeCorrections, cellCorrections);
         Set<Integer> excluded = normalizeExcludedRows(excludedRowNums);
-        ImportPlan plan = requireAndConsumePlan(planId, xlsx, corrections, excluded);
+        ImportPlan plan = requireAndConsumePlan(planId, xlsx, corrections, excluded, mode);
         Set<String> replacements = replaceRowKeys == null ? Set.of() : Set.copyOf(replaceRowKeys);
         Set<String> allowedKeys = plan.rows().stream()
                 .filter(row -> row.changes().stream().anyMatch(change -> "CONFLICT".equals(change.kind())))
@@ -488,6 +582,11 @@ public class GoodsImportService {
         // Serialize with master edits/deletes and with competing imports, including
         // insertion of a same-path/name goods after detection. NOWAIT fails closed.
         try {
+            // Category CRUD acquires this hierarchy lock before its INSERT/UPDATE.
+            // Use the same order before table serialization to avoid an inverse
+            // table -> hierarchy dependency when reviewed paths create categories.
+            com.uten.imp.features.master.CategorySiblingNameGuard.lockHierarchy(em,
+                    com.uten.imp.features.master.CategorySiblingNameGuard.Kind.MATERIAL);
             em.createNativeQuery("LOCK TABLE colors,units,material_categories,goods IN SHARE ROW EXCLUSIVE MODE NOWAIT").executeUpdate();
         } catch (RuntimeException busy) {
             throw new ApiException(ErrorCode.CONFLICT, "基础资料正在更新，请稍后重新检测后导入");
@@ -529,6 +628,7 @@ public class GoodsImportService {
         }
 
         boolean hasWork = plan.rows().stream().anyMatch(row -> row.existingGoodsId() == null
+                || row.bomSourceGoodsId() != null
                 || row.changes().stream().anyMatch(change -> "FILL".equals(change.kind())
                         || replacements.contains(rowKey(row.rowNum()))));
         if (!hasWork) {
@@ -584,7 +684,13 @@ public class GoodsImportService {
             if (merging && planned.changes().stream().anyMatch(change -> "CONFLICT".equals(change.kind()))
                     && !replacing) ignored++;
             if (merging && applied.isEmpty()) {
-                if (planned.changes().isEmpty()) unchanged++;
+                if (planned.bomSourceGoodsId() == null) {
+                    if (planned.changes().isEmpty()) unchanged++;
+                    continue;
+                }
+                // 只有「组装信息ID」复制、没有字段改动的行：货品不动，只整棵复制/替换组装信息。
+                copyBomOnImport(planned.existingGoodsId(), planned.bomSourceGoodsId());
+                merged++;
                 continue;
             }
             int[] catCnt = new int[1];
@@ -607,6 +713,9 @@ public class GoodsImportService {
                 // The existing history trigger captures before/after for UPDATE;
                 // creations is the legacy batch-to-history link, not a delete list.
                 recordCreation(batchId, "GOODS", goods.getId());
+                if (planned.bomSourceGoodsId() != null) {
+                    copyBomOnImport(planned.existingGoodsId(), planned.bomSourceGoodsId());
+                }
                 merged++;
                 if (applied.stream().anyMatch(change -> "CONFLICT".equals(change.kind()))) updated++;
                 if (applied.stream().anyMatch(change -> "FILL".equals(change.kind()))) filled++;
@@ -619,6 +728,9 @@ public class GoodsImportService {
                 GoodsSaveRequest request = mergeRequest(deleted, r, restoreChanges, categoryId, colorId, unitId);
                 UUID goodsId = goodsService.restoreImported(deleted.getId(), request);
                 recordCreation(batchId, "GOODS", goodsId);
+                if (planned.bomSourceGoodsId() != null) {
+                    copyBomOnImport(goodsId, planned.bomSourceGoodsId());
+                }
                 restored++;
                 continue;
             }
@@ -646,6 +758,9 @@ public class GoodsImportService {
             if (unitId != null) req.setUnitId(unitId);
             UUID goodsId = goodsService.saveImported(req);
             recordCreation(batchId, "GOODS", goodsId);
+            if (planned.bomSourceGoodsId() != null) {
+                copyBomOnImport(goodsId, planned.bomSourceGoodsId());
+            }
             created++;
         }
 
@@ -699,7 +814,7 @@ public class GoodsImportService {
                 createdHolder[0]++;
                 List<String> fullPath = new ArrayList<>(pathSoFar);
                 fullPath.add(segment.name());
-                createdPaths.add(String.join("-", fullPath));
+                createdPaths.add(String.join("/", fullPath));
             }
             pathSoFar.add(segment.name());
             parentId = childId;
@@ -756,6 +871,126 @@ public class GoodsImportService {
                 .setParameter("t", entityType)
                 .setParameter("e", entityId)
                 .executeUpdate();
+    }
+
+    // ============================================================
+    // 组装信息ID（2026-10-28）：值=「货品编号-BOM」，导入有值即复制整棵组装信息
+    // ============================================================
+
+    /**
+     * 检测期解析并校验本行「组装信息ID」；返回提交时要复制组装信息的源货品 UUID。
+     * 空 / 指向自身（回导默认值，复制给自身=无变化）返回 null；校验失败记行错误并返回 null。
+     * 校验口径与 {@link GoodsBomPasteService} 提交期一致：源货品存在且可见、有可运营组装行、
+     * 组件未删除未停用且可见、权限（goods:bom:create；替换已有组装另需 goods:bom:delete）。
+     */
+    private UUID planBomCopy(GoodsImportMode mode, ParsedRow r, Goods existingGoods, UUID restoreGoodsId,
+                             Map<String, java.util.Optional<Goods>> sourceByCode,
+                             Map<UUID, List<GoodsBomItem>> sourceRows,
+                             Set<UUID> targetsWithRows,
+                             boolean bomCreateAllowed, boolean bomDeleteAllowed,
+                             List<GoodsImportError> errors) {
+        String raw = r.bomRef;
+        if (raw == null || raw.isBlank()) return null;
+        UUID targetId = existingGoods == null ? restoreGoodsId : existingGoods.getId();
+        String trimmed = raw.trim();
+        if (!trimmed.toUpperCase(java.util.Locale.ROOT).endsWith(BOM_REF_SUFFIX)) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "组装信息ID格式不正确：应为「货品编号" + BOM_REF_SUFFIX + "」"));
+            return null;
+        }
+        String sourceCode = normCode(trimmed.substring(0, trimmed.length() - BOM_REF_SUFFIX.length()));
+        if (sourceCode == null || sourceCode.isEmpty()) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "组装信息ID格式不正确：应为「货品编号" + BOM_REF_SUFFIX + "」"));
+            return null;
+        }
+        Goods source = sourceByCode.computeIfAbsent(sourceCode,
+                code -> goodsRepo.findByCodeAndDeletedFalse(code)).orElse(null);
+        if (source == null) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "组装信息ID指向的货品「" + sourceCode + "」不存在或已删除，无法复制组装信息"));
+            return null;
+        }
+        if (targetId != null && targetId.equals(source.getId())) return null;
+        if (!bomCreateAllowed) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "复制组装信息需要「goods:bom:create」权限，请联系管理员开通或清空该列"));
+            return null;
+        }
+        if (!bomAccess.visibleGoodsOwner().test(source.getOwnerEmployeeId())) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "组装信息ID指向的货品「" + sourceCode + "」你看不到，无法复制组装信息"));
+            return null;
+        }
+        List<GoodsBomItem> rows = sourceRows.computeIfAbsent(source.getId(),
+                        id -> bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(id)).stream()
+                .filter(row -> !row.getGoods().isAutoCreated() && !row.getComponent().isAutoCreated())
+                .toList();
+        if (rows.isEmpty()) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "组装信息ID指向的货品「" + sourceCode + "」没有可复制的组装信息"));
+            return null;
+        }
+        for (GoodsBomItem row : rows) {
+            Goods component = row.getComponent();
+            String label = java.util.Objects.toString(component.getCode(), "") + " "
+                    + java.util.Objects.toString(component.getName(), "");
+            if (component.isDeleted() || component.isAutoCreated()) {
+                errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                        "货品「" + sourceCode + "」的组装信息包含已删除或占位组件，不能复制"));
+                return null;
+            }
+            if (!bomAccess.visibleGoodsOwner().test(component.getOwnerEmployeeId())) {
+                errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                        "货品「" + sourceCode + "」的组装信息包含你看不到的组件，不能复制"));
+                return null;
+            }
+            if ("禁用".equals(component.getStatus())) {
+                errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                        "货品「" + sourceCode + "」的组装信息包含已停用组件「" + label.trim()
+                                + "」，不能复制；请先启用该组件或清空该列"));
+                return null;
+            }
+        }
+        if (targetId != null && targetsWithRows.contains(targetId) && !bomDeleteAllowed) {
+            errors.add(new GoodsImportError(r.rowNum, "组装信息ID",
+                    "替换该货品已有组装信息需要「goods:bom:delete」权限，请联系管理员开通或清空该列"));
+            return null;
+        }
+        return source.getId();
+    }
+
+    /**
+     * 提交期把源货品的整棵组装信息复制到目标货品下（同事务，随导入进操作历史、撤回连带恢复）。
+     * 目标已有组装行→REPLACE（goods:bom:delete 由粘贴服务内部校验）；否则 APPEND。
+     * 复制行带 copiedFromBomItemId 保留源行内容（颜色/供应商/生产控制规则/单价）。
+     */
+    private void copyBomOnImport(UUID targetGoodsId, UUID sourceGoodsId) {
+        List<GoodsBomItem> source = bomRepo.findByGoods_IdAndDeletedFalseOrderBySortOrderAscIdAsc(sourceGoodsId)
+                .stream().filter(row -> !row.getGoods().isAutoCreated() && !row.getComponent().isAutoCreated())
+                .toList();
+        if (source.isEmpty()) {
+            throw stalePlan("组装信息ID指向的货品已没有可复制的组装信息");
+        }
+        List<UUID> currentIds = new ArrayList<>();
+        for (Object[] edge : bomRepo.findOperationalEdges(List.of(targetGoodsId))) {
+            currentIds.add((UUID) edge[0]);
+        }
+        boolean replace = !currentIds.isEmpty();
+        List<com.uten.imp.features.master.goods.dto.BomItemSaveRequest> items = new ArrayList<>();
+        for (GoodsBomItem row : source) {
+            var item = new com.uten.imp.features.master.goods.dto.BomItemSaveRequest();
+            item.setComponentGoodsId(row.getComponent().getId());
+            item.setQty(row.getQty());
+            item.setCopiedFromBomItemId(row.getId());
+            items.add(item);
+        }
+        bomPaste.paste(new com.uten.imp.features.master.goods.dto.BomPasteRequest(
+                replace ? com.uten.imp.features.master.goods.dto.BomPasteRequest.Mode.REPLACE
+                        : com.uten.imp.features.master.goods.dto.BomPasteRequest.Mode.APPEND,
+                List.of(new com.uten.imp.features.master.goods.dto.BomPasteRequest.Target(
+                        targetGoodsId, replace ? currentIds : null)),
+                items));
     }
 
     // ============================================================
@@ -830,9 +1065,9 @@ public class GoodsImportService {
             for (int ri = 1; ri <= sheet.getLastRowNum(); ri++) {
                 Row row = sheet.getRow(ri);
                 if (row == null) continue;
+                if (!hasOriginalBusinessInput(row, col)) continue;
                 String code = normCode(str(row, col.get("code")));
                 String name = normName(str(row, col.get("name")));
-                if ((code == null || code.isEmpty()) && (name == null || name.isEmpty())) continue;
                 if (isTotalMarker(code) || isTotalMarker(name)) continue;
                 totalRows++;
                 ParsedRow pr = new ParsedRow();
@@ -850,8 +1085,20 @@ public class GoodsImportService {
                 }
                 Map<String, String> edited = corrections.getOrDefault(pr.rowNum, Map.of());
                 values.putAll(edited);
+                // Keep uploaded identity/relationship text visible even when it
+                // is invalid. These keys never enter CORRECTABLE_FIELDS or a save DTO.
+                for (String field : READ_ONLY_FIELDS) {
+                    if (col.containsKey(field)) {
+                        Cell source = row.getCell(col.get(field));
+                        // An Excel error in an identity column must remain an
+                        // invalid visible identity, never become a blank/new row.
+                        values.put(field, source == null ? "" : new DataFormatter().formatCellValue(source));
+                    }
+                }
                 pr.cells = Map.copyOf(values);
-                String rawGoodsId = trim(str(row, col.get("goodsId")));
+                // 组装信息ID 不参与单元格修正（要改请改源文件），检测期整体校验。
+                pr.bomRef = trim(values.get("bomRef"));
+                String rawGoodsId = trim(values.get("goodsId"));
                 if (rawGoodsId != null && !rawGoodsId.isEmpty()) {
                     try {
                         pr.goodsId = UUID.fromString(rawGoodsId);
@@ -913,15 +1160,19 @@ public class GoodsImportService {
             if ("clientGoodsName".equals(key) && col.containsKey(key)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户货品名称与客户品名只保留一列，避免来源冲突");
             }
-            if (key != null && !"ignored".equals(key) && !col.containsKey(key)) col.put(key, c);
+            if (key != null && !col.containsKey(key)) col.put(key, c);
         }
         return col;
     }
 
-    /** 分类路径：仅按标准 {@code -} 切分，每段 normKey；空段丢弃。 */
+    /**
+     * 分类路径切分：整串含 {@code /} 按标准 {@code /} 切（与导出「 / 」同口径）；
+     * 不含 {@code /} 的老导出文件按 {@code -} 兜底切。每段 normKey；空段丢弃。
+     */
     private List<String> splitCategory(String raw) {
         if (raw == null || raw.isBlank()) return List.of();
-        String[] parts = raw.trim().split("-", -1);
+        String separator = raw.contains("/") ? "/" : "-";
+        String[] parts = raw.trim().split(separator, -1);
         List<String> segs = new ArrayList<>();
         for (String p : parts) {
             String s = normKey(p);
@@ -985,6 +1236,9 @@ public class GoodsImportService {
             return cell instanceof org.apache.poi.xssf.usermodel.XSSFCell xssf
                     ? xssf.getRawValue() : BigDecimal.valueOf(cell.getNumericCellValue()).toPlainString();
         }
+        if (type == org.apache.poi.ss.usermodel.CellType.ERROR) {
+            return org.apache.poi.ss.usermodel.FormulaError.forInt(cell.getErrorCellValue()).getString();
+        }
         return str(row, column);
     }
 
@@ -1021,6 +1275,22 @@ public class GoodsImportService {
         v = v.replace("﻿", "");
         if (v.startsWith("#") && v.contains("!")) return ""; // 公式错误当空
         return v;
+    }
+
+    /** Original physical row membership cannot depend on whether required fields are valid. */
+    private static boolean hasOriginalBusinessInput(Row row, Map<String, Integer> columns) {
+        for (Integer index : columns.values()) {
+            Cell cell = row.getCell(index);
+            if (cell == null || cell.getCellType() == org.apache.poi.ss.usermodel.CellType.BLANK) continue;
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING) {
+                if (!cell.getStringCellValue().replace("\uFEFF", "").isBlank()) return true;
+            } else {
+                // Numeric zero, boolean false, formulas and Excel error cells
+                // all contain business input, even if their display text is empty.
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String emptyToNull(String s) {
@@ -1185,7 +1455,19 @@ public class GoodsImportService {
                 .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, row.cells)).toList();
     }
 
-    private UUID rememberPlan(String workbookHash,
+    /** Preserve every participating file row for confirmation, without exposing saved master values. */
+    private static List<GoodsImportProblemRow> previewRows(Parsed parsed) {
+        return previewRows(parsed, Map.of());
+    }
+
+    private static List<GoodsImportProblemRow> previewRows(Parsed parsed, Map<Integer, List<String>> resolvedSegments) {
+        return parsed.rows.stream()
+                .map(row -> new GoodsImportProblemRow(row.rowNum, row.code, row.name, row.categoryPath, row.cells,
+                        resolvedSegments.getOrDefault(row.rowNum, List.of()))).toList();
+    }
+
+    private UUID rememberPlan(GoodsImportMode mode,
+                              String workbookHash,
                               String masterFingerprint,
                               String goodsFingerprint,
                               UUID actorId,
@@ -1210,7 +1492,7 @@ public class GoodsImportService {
             }
             UUID id = UUID.randomUUID();
             plans.put(id, new ImportPlan(
-                    id, actorId, workbookHash, masterFingerprint, goodsFingerprint,
+                    id, mode, actorId, workbookHash, masterFingerprint, goodsFingerprint,
                     List.copyOf(rows), Map.copyOf(corrections), Set.copyOf(excluded), now.plus(PLAN_TTL), estimatedBytes));
             return id;
         }
@@ -1238,7 +1520,7 @@ public class GoodsImportService {
     }
 
     private ImportPlan requireAndConsumePlan(UUID planId, byte[] workbook, Map<Integer, Map<String, String>> corrections,
-                                             Set<Integer> excluded) {
+                                             Set<Integer> excluded, GoodsImportMode mode) {
         if (planId == null) {
             throw stalePlan("缺少检测计划");
         }
@@ -1251,6 +1533,9 @@ public class GoodsImportService {
         }
         if (!Objects.equals(plan.actorId(), currentActorId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "检测计划不属于当前用户，请重新检测");
+        }
+        if (plan.mode() != mode) {
+            throw stalePlan("导入模式与检测时不一致");
         }
         String actualHash = sha256(workbook);
         if (!MessageDigest.isEqual(
@@ -1307,6 +1592,7 @@ public class GoodsImportService {
                 ? null : category.segments().getLast().existingId();
     }
 
+    /** 差异核对/展示用路径：与导出「类别」列同格式（「 / 」连接，含根）。 */
     private static String categoryPath(MaterialCategory category) {
         var names = new java.util.ArrayDeque<String>();
         var seen = new HashSet<UUID>();
@@ -1314,7 +1600,7 @@ public class GoodsImportService {
             names.addFirst(Objects.toString(category.getName(), ""));
             category = category.getParent();
         }
-        return String.join("-", names);
+        return String.join(" / ", names);
     }
 
     private List<GoodsImportReviewRow.Change> changes(ParsedRow row, Goods old,
@@ -1352,7 +1638,7 @@ public class GoodsImportService {
         UUID oldCategoryId = old.getCategory() == null ? null : old.getCategory().getId();
         if (category != null && (existingCategoryId(category) == null
                 || !Objects.equals(oldCategoryId, existingCategoryId(category)))) {
-            change(result, "categoryId", "类别", categoryPath(old.getCategory()), normKey(row.categoryPath));
+            change(result, "categoryId", "类别", categoryPath(old.getCategory()), trim(row.categoryPath));
         }
         UUID oldColorId = old.getColor() == null ? null : old.getColor().getId();
         if (color != null && (color.newToken() != null || !Objects.equals(oldColorId, color.existingId()))) {
@@ -1452,7 +1738,10 @@ public class GoodsImportService {
     private static final class CategoryPlanIndex {
         final Map<String, List<UUID>> existingChildren = new HashMap<>();
         final Map<String, PlannedCategorySegment> plannedChildren = new HashMap<>();
-        final Map<String, List<CategoryPathPlan>> existingPaths = new HashMap<>();
+        /** 「/」整串路径 → 计划（2026-10-28 起与导出「 / 」同口径）。 */
+        final Map<String, List<CategoryPathPlan>> slashPaths = new HashMap<>();
+        /** 「-」整串路径 → 计划（不含 / 的老导出文件兜底）。 */
+        final Map<String, List<CategoryPathPlan>> dashPaths = new HashMap<>();
 
         CategoryPlanIndex(List<MaterialCategory> all) {
             Map<UUID, MaterialCategory> byId = new HashMap<>();
@@ -1471,34 +1760,46 @@ public class GoodsImportService {
                     current = current.getParent() == null ? null : byId.get(current.getParent().getId());
                 }
                 if (current == null) {
-                    String path = chain.stream().map(PlannedCategorySegment::name)
-                            .collect(java.util.stream.Collectors.joining("-"));
-                    existingPaths.computeIfAbsent(path, ignored -> new ArrayList<>())
-                            .add(new CategoryPathPlan(List.copyOf(chain)));
+                    List<String> names = chain.stream().map(PlannedCategorySegment::name).toList();
+                    CategoryPathPlan plan = new CategoryPathPlan(List.copyOf(chain));
+                    slashPaths.computeIfAbsent(String.join("/", names), ignored -> new ArrayList<>()).add(plan);
+                    dashPaths.computeIfAbsent(String.join("-", names), ignored -> new ArrayList<>()).add(plan);
                 }
             }
         }
 
         CategoryPathPlan plan(String rawPath, List<String> segments, Set<String> willCreate) {
-            // Exported paths use '-' but names may contain it. Resolve the whole
-            // path against authoritative UUID chains before interpreting separators.
-            var matches = existingPaths.getOrDefault(normKey(rawPath), List.of());
+            // 分隔符以文件为准：含 / 走新口径；纯「-」老导出按老口径。整串匹配两个
+            // 索引都查——老文件的分类名本身可能含「/」（如 20A/45A开关功能件），
+            // 新文件的名称也可能含「-」，都先按权威 UUID 链整串对上再谈切分。
+            boolean slashForm = rawPath.contains("/");
+            String separator = slashForm ? "/" : "-";
+            var wholePaths = slashForm ? slashPaths : dashPaths;
+            var otherPaths = slashForm ? dashPaths : slashPaths;
+            // 同一条链在两个索引里各有一条目；单段路径两种 join 结果相同，先去重再判歧义。
+            List<CategoryPathPlan> matches = new ArrayList<>();
+            for (CategoryPathPlan candidate : wholePaths.getOrDefault(normKey(rawPath), List.of())) {
+                if (!matches.contains(candidate)) matches.add(candidate);
+            }
+            for (CategoryPathPlan candidate : otherPaths.getOrDefault(normKey(rawPath), List.of())) {
+                if (!matches.contains(candidate)) matches.add(candidate);
+            }
             if (matches.size() > 1) return null;
             if (matches.size() == 1) return matches.getFirst();
             String parentRef = "ROOT";
             List<PlannedCategorySegment> result = new ArrayList<>();
             List<String> path = new ArrayList<>();
             String normalizedPath = normKey(rawPath);
-            String longestExisting = existingPaths.keySet().stream()
-                    .filter(existing -> normalizedPath.startsWith(existing + "-"))
+            String longestExisting = wholePaths.keySet().stream()
+                    .filter(existing -> normalizedPath.startsWith(existing + separator))
                     .max(Comparator.comparingInt(String::length)).orElse(null);
             if (longestExisting != null) {
-                var parents = existingPaths.get(longestExisting);
+                var parents = wholePaths.get(longestExisting);
                 if (parents.size() != 1) return null;
                 result.addAll(parents.getFirst().segments());
                 result.forEach(segment -> path.add(segment.name()));
                 parentRef = existingParent(result.getLast().existingId());
-                segments = java.util.Arrays.stream(normalizedPath.substring(longestExisting.length() + 1).split("-"))
+                segments = java.util.Arrays.stream(normalizedPath.substring(longestExisting.length() + 1).split(separator))
                         .filter(segment -> !segment.isEmpty()).toList();
             }
             for (String name : segments) {
@@ -1515,7 +1816,8 @@ public class GoodsImportService {
                             key,
                             ignored -> new PlannedCategorySegment(null, UUID.randomUUID(), name));
                     parentRef = tokenParent(segment.newToken());
-                    willCreate.add(String.join("-", path));
+                    // 展示统一走「/」口径，与导出列同格式。
+                    willCreate.add(String.join("/", path));
                 }
                 result.add(segment);
             }
@@ -1601,10 +1903,12 @@ public class GoodsImportService {
         BigDecimal orderMultipleQty; // 订货倍数（V575）
         List<String> categorySegments;
         String categoryPath;
+        String bomRef;               // 组装信息ID（2026-10-28）：值=「货品编号-BOM」，空=不复制
     }
 
     private record ImportPlan(
             UUID id,
+            GoodsImportMode mode,
             UUID actorId,
             String workbookHash,
             String masterFingerprint,
@@ -1623,7 +1927,8 @@ public class GoodsImportService {
             UUID restoreGoodsId,
             UUID existingGoodsId,
             String goodsFingerprint,
-            List<GoodsImportReviewRow.Change> changes) {}
+            List<GoodsImportReviewRow.Change> changes,
+            UUID bomSourceGoodsId) {}
 
     private record CategoryPathPlan(List<PlannedCategorySegment> segments) {}
 

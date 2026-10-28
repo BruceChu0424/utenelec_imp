@@ -42,17 +42,92 @@ public class GoodsCostSheetService {
 
     public List<SheetSummary> list(UUID goodsId) {
         require(VIEW);references.requireVisibleGoods(goodsId);
-        List<SheetSummary> result=new ArrayList<>();
-        for(var row:db.queryForList("SELECT * FROM goods_cost_sheets WHERE goods_id=:goods ORDER BY updated_at DESC,id LIMIT 250",Map.of("goods",goodsId))) {
-            if(!canClient((UUID)row.get("client_id")))continue;
-            Sheet sheet=sheet(row);assertScope(sheet.input(),sheet.calculation());
-            result.add(new SheetSummary(sheet.id(),sheet.input().goodsId(),sheet.input().clientId(),sheet.input().name(),sheet.status(),sheet.version(),
-                    sheet.input().batchQty(),sheet.calculation().totals().knownTotal(),sheet.calculation().totals().unitCost(),
-                    sheet.calculation().totals().valueState(),sheet.confirmedSnapshotId(),sheet.updatedAt()));
-        }
-        return List.copyOf(result);
+        var source=versionReadSource(goodsId,"s.updated_at DESC,s.id");
+        var mapper=new org.springframework.jdbc.core.ColumnMapRowMapper();
+        return db.execute(source.sql(),source.parameters(),(org.springframework.jdbc.core.PreparedStatementCallback<List<SheetSummary>>) statement->{
+            statement.setFetchSize(100);
+            List<SheetSummary> result=new ArrayList<>();
+            try(var rows=statement.executeQuery()) {
+                while(result.size()<250&&rows.next()) {
+                    if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
+                    Sheet sheet=sheet(mapper.mapRow(rows,0));if(!visibleVersion(sheet))continue;
+                    result.add(new SheetSummary(sheet.id(),sheet.input().goodsId(),sheet.input().clientId(),sheet.input().name(),sheet.status(),sheet.version(),
+                            sheet.input().batchQty(),sheet.calculation().totals().knownTotal(),sheet.calculation().totals().unitCost(),
+                            sheet.calculation().totals().valueState(),sheet.confirmedSnapshotId(),sheet.updatedAt()));
+                }
+            }
+            return List.copyOf(result);
+        });
     }
     public Sheet get(UUID id) {require(VIEW);Sheet s=load(id,false);assertScope(s.input(),s.calculation());return s;}
+
+    /** The version table reads every authorized summary before count/page; the
+     * bootstrap's recent-choice list remains a separate, bounded contract. */
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ,timeout=60)
+    public VersionPage versions(UUID goodsId,int page,int size,String status,String currencyId,
+            Map<String,String> searches,String sort,String order) {
+        require(VIEW);references.requireVisibleGoods(goodsId);
+        var query=new GoodsCostVersionQuery(searches,status,currencyId,sort,order);
+        var source=versionReadSource(goodsId,query.ordering());
+        int currentPage=Math.max(1,page),limit=Math.clamp(size,1,100);
+        long start=(long)(currentPage-1)*limit;
+        var rowMapper=new org.springframework.jdbc.core.ColumnMapRowMapper();
+        return db.execute(source.sql(),source.parameters(),(org.springframework.jdbc.core.PreparedStatementCallback<VersionPage>) statement->{
+            statement.setFetchSize(100);
+            long total=0;
+            List<VersionSummary> selected=new ArrayList<>();
+            Map<UUID,CurrencyVersionFacet> currencies=new LinkedHashMap<>();
+            try(var records=statement.executeQuery()) {
+                while(records.next()) {
+                    if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException();
+                    Sheet original=sheet(rowMapper.mapRow(records,0));
+                    // Preserve full input/material authorization before any price predicate.
+                    if(!visibleVersion(original))continue;
+                    var input=original.input();var calculation=original.calculation();var totals=calculation.totals();
+                    var summary=new VersionSummary(original.id(),input.goodsId(),input.clientId(),input.name(),original.status(),original.version(),
+                            input.batchQty(),totals.knownTotal(),totals.unitCost(),totals.valueState(),original.confirmedSnapshotId(),original.updatedAt(),
+                            input.currencyId(),calculation.currencyName(),calculation.unitId(),calculation.unitName());
+                    if(query.matches(summary,true)) {
+                        var previous=currencies.get(summary.currencyId());
+                        boolean newer=previous==null||summary.updatedAt()!=null&&(previous.at()==null||summary.updatedAt().isAfter(previous.at()));
+                        currencies.put(summary.currencyId(),new CurrencyVersionFacet(previous==null?1:previous.count()+1,
+                                newer?summary.currencyName():previous.label(),newer?summary.updatedAt():previous.at()));
+                    }
+                    if(!query.matches(summary,false))continue;
+                    if(total>=start&&selected.size()<limit)selected.add(summary);
+                    total++;
+                }
+            }
+            List<com.uten.imp.common.web.FacetBucket> buckets=new ArrayList<>();
+            currencies.forEach((id,facet)->buckets.add(new com.uten.imp.common.web.FacetBucket(id==null?"__null__":id.toString(),facet.count(),
+                    facet.label()==null||facet.label().isBlank()?"待核验":facet.label())));
+            buckets.sort(Comparator.comparing(com.uten.imp.common.web.FacetBucket::label).thenComparing(com.uten.imp.common.web.FacetBucket::value));
+            return new VersionPage(List.copyOf(selected),currentPage,limit,total,(int)Math.min(Integer.MAX_VALUE,(total+limit-1)/limit),
+                    Map.of("currencyName",List.copyOf(buckets)),GoodsCostVersionQuery.KEYS);
+        });
+    }
+    private VersionReadSource versionReadSource(UUID goodsId,String ordering) {
+        var clientScope=clients.evaluate();
+        if(clientScope==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围不可用");
+        var visibility=clients.nativeReadScope("version_client",clientScope);
+        if(visibility==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"客户读取范围不可用");
+        var parameters=new MapSqlParameterSource("goods",goodsId);
+        if(visibility.ownerParameter()!=null)parameters.addValue(visibility.ownerParameter(),visibility.ownerEmployees());
+        if(visibility.viewerParameter()!=null)parameters.addValue(visibility.viewerParameter(),visibility.viewerEmployeeId());
+        String sql="SELECT s.* FROM goods_cost_sheets s WHERE s.goods_id=:goods AND (s.client_id IS NULL OR EXISTS"
+                +" (SELECT 1 FROM clients version_client WHERE version_client.id=s.client_id AND NOT version_client.is_deleted AND "
+                +visibility.predicate()+")) ORDER BY "+ordering;
+        return new VersionReadSource(sql,parameters);
+    }
+    private boolean visibleVersion(Sheet original) {
+        try {assertScope(original.input(),original.calculation());return true;}
+        catch(ApiException denied) {
+            if(denied.getCode()==ErrorCode.FORBIDDEN||denied.getCode()==ErrorCode.NOT_FOUND)return false;
+            throw denied;
+        }
+    }
+    private record VersionReadSource(String sql,MapSqlParameterSource parameters) { }
+    private record CurrencyVersionFacet(long count,String label,OffsetDateTime at) { }
     @Transactional
     public Sheet create(SaveRequest request) {
         require(EDIT);tx.bind();

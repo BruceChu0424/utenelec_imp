@@ -30,5 +30,12 @@ public record ProductionFinishedInboundTask(
         /** 其中实际超产数量(服务端合计)。 */
         BigDecimal actualSurplusQty,
         /** 「其中实际超产 N」；没有实际超产时为空。 */
-        String actualSurplusNote) {
+        String actualSurplusNote, String pendingQtyText) {
+    public ProductionFinishedInboundTask(String taskStage,UUID taskId,UUID reportId,UUID documentId,String documentNo,
+            LocalDate documentDate,UUID warehouseId,String warehouseName,UUID planId,String planNo,String reportNos,
+            String goodsSummary,int lineCount,BigDecimal pendingQty,OffsetDateTime createdAt,boolean residualTask,
+            BigDecimal publicQty,BigDecimal actualSurplusQty,String actualSurplusNote) {
+        this(taskStage,taskId,reportId,documentId,documentNo,documentDate,warehouseId,warehouseName,planId,planNo,reportNos,
+                goodsSummary,lineCount,pendingQty,createdAt,residualTask,publicQty,actualSurplusQty,actualSurplusNote,null);
+    }
 }

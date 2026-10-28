@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -77,10 +78,29 @@ public class SubcontractReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        return execute(columns, dataSelect, fromJoin, mainWhere, orderBy, specs,
+                activeFacets, page, size, sort, order, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse execute(List<ReportColumn> columns, String dataSelect, String fromJoin,
+                                       WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
+                                       Map<String, String> activeFacets, int page, int size,
+                                       String sort, String order, Map<String, String> searchOverrides) {
         UnitProjection unitProjection=unitProjection(columns,dataSelect,fromJoin);
         columns=unitProjection.columns();dataSelect=unitProjection.select();fromJoin=unitProjection.from();
         boolean priceMasked = subcontractPriceMasked();
+        var hiddenSearchKeys=priceMasked?columns.stream().filter(SubcontractReportService::isCommercialColumn)
+                .map(ReportColumn::key).collect(java.util.stream.Collectors.toSet()):java.util.Set.<String>of();
+        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(activeFacets,hiddenSearchKeys::contains);
         List<ReportColumn> safeColumns = responseColumns(columns, priceMasked);
+        Map<String, String> searchableTypes = new LinkedHashMap<>();
+        for (ReportColumn column : safeColumns) searchableTypes.put(column.key(), column.type());
+        Map<String, String> expressions = new LinkedHashMap<>(Map.of(
+                "receiverName", "COALESCE(em_rec.full_name,o.receiver_name)", "amount", "i.amount_local"));
+        expressions.putAll(searchOverrides);
+        var columnSearchKeys = com.uten.imp.common.report.ProcurementReportColumnSearch.apply(
+                mainWhere, activeFacets, searchableTypes, expressions);
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
@@ -157,7 +177,8 @@ public class SubcontractReportService {
         totals=com.uten.imp.common.report.ReportTotal.withColumnUnits(totals,columns);
 
         List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
-        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+        return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals)
+                .withColumnSearchKeys(columnSearchKeys);
     }
 
     private record UnitProjection(List<ReportColumn> columns,String select,String from) { }
@@ -292,6 +313,8 @@ public class SubcontractReportService {
                 ReportColumn.number("differenceQty", "差异数").withUnitKey("__unitName"),
                 ReportColumn.bool("closed", "是否结束"), ReportColumn.text("remark", "摘要", 200),
                 ReportColumn.text("__srcId", ""));
+        String differenceQuantity = com.uten.imp.common.finance.ProcurementDeliveryDifference.sql(
+                "i.qty", "i.received_qty", "i.returned_qty");
         String select = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
                        COALESCE(i.deliver_date,o.deliver_date) AS "deliverDate",
@@ -299,7 +322,7 @@ public class SubcontractReportService {
                        col.name AS "colorName", g.spec AS "spec", i.qty AS "qty",
                        i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
                        %s AS "differenceQty", o.is_closed AS "closed", i.remark AS "remark", o.id AS "__srcId"
-                """.formatted(com.uten.imp.common.finance.ProcurementDeliveryDifference.sql("i.qty", "i.received_qty", "i.returned_qty"));
+                """.formatted(differenceQuantity);
         String from = """
                 FROM subcontract_order_items i JOIN subcontract_orders o ON o.id=i.order_id
                 LEFT JOIN suppliers sup ON sup.id=o.supplier_id
@@ -307,7 +330,10 @@ public class SubcontractReportService {
                 """;
         WhereBuilder w = new WhereBuilder("WHERE NOT COALESCE(i.is_deleted,false) AND NOT COALESCE(o.is_deleted,false)");
         ReportQueryKit.addCommonDocFilters(w,billNo,supplierId,null,status,dateFrom,dateTo,kw,"o.bill_no","i.bill_date");
-        return execute(cols,select,from,w,"o.bill_date DESC,o.bill_no,i.line_no",List.of(facetBillNo(),facetSupplier()),facets,page,size,sort,order);
+        return execute(cols,select,from,w,"o.bill_date DESC,o.bill_no,i.line_no",List.of(facetBillNo(),facetSupplier(),
+                new FacetSpec("closed", "o.is_closed AS v, CASE WHEN o.is_closed THEN '已结束' ELSE '未结束' END AS lbl",
+                        "o.is_closed", "o.is_closed", "bool")),facets,page,size,sort,order,
+                Map.of("deliverDate", "COALESCE(i.deliver_date,o.deliver_date)", "remark", "i.remark"));
     }
 
     // ======================== ① 委外进仓明细 ========================
@@ -385,7 +411,8 @@ public class SubcontractReportService {
                 facetSupplier(), facetWarehouse(),
                 new FacetSpec("settlementStyle", "o.settlement_style_legacy AS v, CAST(o.settlement_style_legacy AS text) AS lbl", "o.settlement_style_legacy", "o.settlement_style_legacy", "style"),
                 new FacetSpec("approved", "(o.status = 1) AS v, CASE WHEN (o.status = 1) THEN '已审' ELSE '未审' END AS lbl", "(o.status = 1)", "o.status = 1", "bool"));
-        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order);
+        return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", specs, facets, page, size, sort, order,
+                Map.of("returnedAmount", "COALESCE(i.return_amount,returned.amount_local)"));
     }
 
     // ======================== ② 委外进仓汇总 ========================
@@ -622,7 +649,7 @@ public class SubcontractReportService {
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
-        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
+        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse(), facetApproved());
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
@@ -714,7 +741,7 @@ public class SubcontractReportService {
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         ReportQueryKit.addSummaryKw(w, kw, "o.bill_no");
-        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse());
+        List<FacetSpec> specs = List.of(facetSupplier(), facetWarehouse(), facetApproved());
         return execute(cols, dataSelect, fromJoin, w, "o.bill_date DESC, o.bill_no, o.id", specs, facets, page, size, sort, order);
     }
 
@@ -732,6 +759,12 @@ public class SubcontractReportService {
     @Transactional(readOnly = true)
     public ReportTableResponse inOutStatus(UUID supplierId, LocalDate dateFrom, LocalDate dateTo, String kw,
                                            int page, int size) {
+        return inOutStatus(supplierId, dateFrom, dateTo, kw, page, size, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse inOutStatus(UUID supplierId, LocalDate dateFrom, LocalDate dateTo, String kw,
+                                           int page, int size, Map<String, String> filters, String sort, String order) {
         boolean priceMasked = subcontractPriceMasked();
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
@@ -752,13 +785,27 @@ public class SubcontractReportService {
                 ReportColumn.money("price", "单价").withUnitKey("__currencyName"), ReportColumn.money("amount", "金额").withUnitLabel("元"),
                 ReportColumn.number("closingQty", "期末结存").withUnitKey("__unitName"),
                 ReportColumn.text("__currencyName",""),ReportColumn.text("__unitName",""));
+        var hiddenSearchKeys=priceMasked?cols.stream().filter(SubcontractReportService::isCommercialColumn)
+                .map(ReportColumn::key).collect(java.util.stream.Collectors.toSet()):java.util.Set.<String>of();
+        com.uten.imp.common.report.ReportColumnSearch.requireVisibleSearches(filters,hiddenSearchKeys::contains);
         List<ReportColumn> safeCols = responseColumns(cols, priceMasked);
 
         // flow：5 类源明细 UNION，带 signed_qty（方向）+ movement_type + 日期 + 单价/金额
         WhereBuilder search = new WhereBuilder("WHERE TRUE");
         search.search(kw, "a.goods_code_snapshot", "a.goods_name_snapshot", "sup.name", "gg.model", "gg.spec", "gg.series", "col.name");
+        Map<String, String> types = new LinkedHashMap<>();
+        safeCols.forEach(column -> types.put(column.key(), column.type()));
+        var columnSearchKeys = com.uten.imp.common.report.ProcurementReportColumnSearch.apply(search, filters, types,
+                Map.ofEntries(
+                        Map.entry("goodsName", "a.goods_name_snapshot"), Map.entry("goodsCode", "a.goods_code_snapshot"),
+                        Map.entry("spec", "gg.spec"), Map.entry("model", "gg.model"), Map.entry("series", "gg.series"),
+                        Map.entry("openingQty", "a.opening"), Map.entry("orderQty", "COALESCE(od.order_qty,0)"),
+                        Map.entry("issueQty", "a.issue_qty"), Map.entry("returnQty", "a.return_qty"),
+                        Map.entry("mReturnQty", "a.m_return_qty"), Map.entry("wasteQty", "a.waste_qty"),
+                        Map.entry("receiptQty", "a.receipt_qty"), Map.entry("price", "a.price"),
+                        Map.entry("amount", "a.amount"), Map.entry("closingQty", "(a.opening+a.net_qty)")));
         WhereBuilder.Built searchFilter = search.build(null);
-        String sql = """
+        String baseSql = """
                 WITH flow AS (
                     SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
                            i.color_id, i.bill_date AS d, ROUND(i.qty*COALESCE(i.unit_rate,1),4) AS signed_qty,
@@ -815,14 +862,14 @@ public class SubcontractReportService {
                     GROUP BY o.supplier_id, oi.goods_id, oi.goods_code_snapshot,
                              oi.goods_name_snapshot, oi.color_id
                 )
-                SELECT sup.name AS supplierName,
-                       a.goods_name_snapshot AS goodsName, a.goods_code_snapshot AS goodsCode, col.name AS colorName,
-                       gg.spec AS spec, gg.model AS model, gg.series AS series,
-                       a.opening AS openingQty, COALESCE(od.order_qty, 0) AS orderQty,
-                       a.issue_qty AS issueQty, a.return_qty AS returnQty, a.m_return_qty AS mReturnQty,
-                       a.waste_qty AS wasteQty, a.receipt_qty AS receiptQty,
-                       a.price AS price, a.amount AS amount,
-                       a.opening + a.net_qty AS closingQty,
+                SELECT sup.name AS "supplierName",
+                       a.goods_name_snapshot AS "goodsName", a.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       gg.spec AS "spec", gg.model AS "model", gg.series AS "series",
+                       a.opening AS "openingQty", COALESCE(od.order_qty, 0) AS "orderQty",
+                       a.issue_qty AS "issueQty", a.return_qty AS "returnQty", a.m_return_qty AS "mReturnQty",
+                       a.waste_qty AS "wasteQty", a.receipt_qty AS "receiptQty",
+                       a.price AS "price", a.amount AS "amount",
+                       a.opening + a.net_qty AS "closingQty",
                 """+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency")+"""
                        AS "__currencyName",report_unit.name AS "__unitName"
                 FROM agg a
@@ -835,10 +882,13 @@ public class SubcontractReportService {
                      AND od.goods_code_snapshot IS NOT DISTINCT FROM a.goods_code_snapshot
                      AND od.goods_name_snapshot IS NOT DISTINCT FROM a.goods_name_snapshot
                      AND COALESCE(od.color_id,'00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(a.color_id,'00000000-0000-0000-0000-000000000000'::uuid)
-                """ + searchFilter.sql() + "\n ORDER BY "
-                + search.orderBy("sup.name NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot, a.supplier_id, a.goods_id, a.color_id NULLS FIRST") + "\n" + """
-                LIMIT :__limit OFFSET :__offset
-                """;
+                """ + searchFilter.sql();
+        Set<String> sortKeys = safeCols.stream().map(ReportColumn::key).filter(key -> !key.startsWith("__"))
+                .collect(java.util.stream.Collectors.toSet());
+        String fallback = "sup.name NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot, a.supplier_id, a.goods_id, a.color_id NULLS FIRST";
+        String orderBy = ReportSort.resolveOrderBy(sort, order, fallback, sortKeys);
+        if (sort == null || !sortKeys.contains(sort)) orderBy = search.orderBy(orderBy);
+        String sql = baseSql + "\n ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset";
         var q = ReportExportCursor.query(em, sql);
         q.setParameter("supplierId", supplierId);
         q.setParameter("from", dateFrom);
@@ -854,54 +904,20 @@ public class SubcontractReportService {
             items.add(responseRow(cols, r, priceMasked));
         }
 
-        String countSql = """
-                WITH flow AS (
-                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
-                           i.color_id, i.bill_date AS d, i.qty AS signed_qty, 17 AS mt
-                    FROM subcontract_receipt_items i JOIN subcontract_receipts o ON o.id = i.receipt_id
-                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
-                    UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
-                           i.color_id, i.bill_date, -i.qty, 18
-                    FROM subcontract_return_items i JOIN subcontract_returns o ON o.id = i.return_id
-                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
-                    UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
-                           i.color_id, i.bill_date, -i.qty, 15
-                    FROM subcontract_material_issue_items i JOIN subcontract_material_issues o ON o.id = i.issue_id
-                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
-                    UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
-                           i.color_id, i.bill_date, i.qty, 16
-                    FROM subcontract_material_return_items i JOIN subcontract_material_returns o ON o.id = i.material_return_id
-                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
-                    UNION ALL
-                    SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
-                           i.color_id, i.bill_date, -i.qty, 19
-                    FROM subcontract_waste_items i JOIN subcontract_wastes o ON o.id = i.waste_id
-                    WHERE COALESCE(o.is_deleted,false)=false AND o.status=1 AND COALESCE(i.is_deleted,false)=false
-                ),
-                agg AS (
-                    SELECT supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id
-                    FROM flow
-                    WHERE (CAST(:supplierId AS uuid) IS NULL OR supplier_id = :supplierId)
-                    GROUP BY supplier_id, goods_id, goods_code_snapshot, goods_name_snapshot, color_id
-                )
-                SELECT COUNT(*) FROM agg a
-                LEFT JOIN goods gg ON gg.id = a.goods_id
-                LEFT JOIN suppliers sup ON sup.id = a.supplier_id
-                LEFT JOIN colors col ON col.id = a.color_id
-                """ + searchFilter.sql();
+        String countSql = "SELECT COUNT(*) FROM (" + baseSql + ") report_filtered";
         long total = ReportReadPlan.UNKNOWN_TOTAL;
         if (ReportReadPlan.current().includeCount()) {
             var cq = em.createNativeQuery(countSql);
             cq.setParameter("supplierId", supplierId);
+            cq.setParameter("from", dateFrom);
+            cq.setParameter("to", dateTo);
             searchFilter.params().forEach(cq::setParameter);
             total = ((Number) cq.getSingleResult()).longValue();
         }
         int totalPages = ReportReadPlan.totalPages(total, safeSize);
 
-        return new ReportTableResponse(safeCols, items, Map.of(), safePage, safeSize, total, totalPages);
+        return new ReportTableResponse(safeCols, items, Map.of(), safePage, safeSize, total, totalPages)
+                .withColumnSearchKeys(columnSearchKeys);
     }
 
     // ======================== facet 复用 ========================
@@ -912,6 +928,11 @@ public class SubcontractReportService {
 
     private static FacetSpec facetWarehouse() {
         return new FacetSpec("warehouseName", "CAST(wh.id AS text) AS v, wh.name AS lbl", "wh.id, wh.name", "o.warehouse_id", "uuid");
+    }
+
+    private static FacetSpec facetApproved() {
+        return new FacetSpec("approved", "(o.status=1) AS v, CASE WHEN o.status=1 THEN '已审' ELSE '未审' END AS lbl",
+                "(o.status=1)", "o.status=1", "bool");
     }
 
     /** 2026-09-25 单号列统一：四张委外明细报表的单号列均投影 o.bill_no，按值筛选（等值匹配，桶 LIMIT 50 见 execute）。 */
@@ -946,8 +967,7 @@ public class SubcontractReportService {
             case "MATERIAL_ISSUE/summary" -> (pg, sz) -> materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "MATERIAL_RETURN/detail" -> (pg, sz) -> materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "MATERIAL_RETURN/summary"-> (pg, sz) -> materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
-            // 出入状况表综合聚合，不接受 sort/facets；忽略 sort/order 参数（无注入风险）。
-            case "in-out-status"          -> (pg, sz) -> inOutStatus(supplierId, dateFrom, dateTo, kw, pg, sz);
+            case "in-out-status"          -> (pg, sz) -> inOutStatus(supplierId, dateFrom, dateTo, kw, pg, sz, facets, sort, order);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,

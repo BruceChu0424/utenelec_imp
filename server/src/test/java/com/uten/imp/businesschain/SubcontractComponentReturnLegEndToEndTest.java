@@ -90,6 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test",
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+// Pre-V961 historical plans deliberately retain the original finished-goods tolerance contract.
 class SubcontractComponentReturnLegEndToEndTest {
 
     @DynamicPropertySource
@@ -527,7 +528,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);
         fixture.loginAs(reviewer);
-        fixture.approvePendingFinance("SUBCONTRACT", orderId);
+        fixture.approvePendingFinance("SUBCONTRACT", orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);
         fixture.loginAs(w.superAdminUserId());
         assertEquals(1, count("SELECT COUNT(*) FROM subcontract_material_plan_items WHERE order_item_id=? AND is_deleted=FALSE",
                 itemId), "批准后按唯一直属边冻结一条计划行");
@@ -572,7 +573,7 @@ class SubcontractComponentReturnLegEndToEndTest {
                            '00000000-0000-0000-0000-000000000001'::uuid AS plan_id,
                            FALSE AS is_deleted, ?::numeric AS planned_qty, ?::numeric AS issued_qty,
                            -- 单耗 1: 没有委外商自带料时我方需发量 LEAST(计划量, f(Qm)) = 计划量(ADR-143 §三.4a)
-                           1::numeric AS bom_unit_qty,
+                           1::numeric AS bom_unit_qty, 0::numeric AS material_loss_pct,
                            CASE WHEN ?::boolean THEN now() END AS draw_closed_at
                 ), subcontract_material_plans AS (
                     SELECT '00000000-0000-0000-0000-000000000001'::uuid AS id,
@@ -622,7 +623,7 @@ class SubcontractComponentReturnLegEndToEndTest {
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);
         fixture.loginAs(reviewer);
-        fixture.approvePendingFinance("SUBCONTRACT", orderId);
+        fixture.approvePendingFinance("SUBCONTRACT", orderId); fixture.seedHistoricalSubcontractLossPlanBeforeExecution(orderId);
         fixture.loginAs(w.superAdminUserId());
         UUID planItemId = db.queryForObject("""
                 SELECT id FROM subcontract_material_plan_items WHERE order_item_id=? AND is_deleted=FALSE

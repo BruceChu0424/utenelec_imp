@@ -15,8 +15,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -26,8 +28,8 @@ import static org.mockito.Mockito.when;
  *
  * <p>导出一直写「备注」列（goods.paper），GoodsSaveRequest 本就开放编辑，但导入
  * 表头别名表把它登记为 ignored ——「导出 → 在表里改 → 再导入」会把备注悄悄吃掉。
- * 同一批把「模具编号 / 归属车间」从「未识别」补登记为 ignored（导出有、DTO 未开放
- * 编辑，按 UUID-only 契约按名反查不落值），与 客户型号 / 所属仓库 同口径。</p>
+ * 「模具编号 / 归属车间 / 所属仓库」仅供预览原文，DTO 未开放编辑，
+ * 仍遵守 UUID-only 契约，不按名称反查和写入关系。</p>
  */
 class GoodsImportPaperTest {
 
@@ -53,18 +55,23 @@ class GoodsImportPaperTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void exportOnlyHeadersAreRecognizedAsIgnored() throws Exception {
-        // 模具编号 / 归属车间 / 所属仓库：导出有但导入不落值——
-        // 必须显式登记为 ignored（明账），未登记会被当成待补的漏项。
+    void exportOnlyHeadersRemainReadOnlyAndKeepDistinctPreviewKeys() throws Exception {
         Map<String, String> aliases = headerAliases();
         assertEquals("paper", aliases.get(normKey("备注")));
-        assertEquals("ignored", aliases.get(normKey("模具编号")));
-        assertEquals("ignored", aliases.get(normKey("模具")));
-        assertEquals("ignored", aliases.get(normKey("归属车间")));
-        assertEquals("ignored", aliases.get(normKey("车间")));
+        assertEquals("mouldCode", aliases.get(normKey("模具编号")));
+        assertEquals("mouldName", aliases.get(normKey("模具")));
+        assertEquals("productionWorkshopName", aliases.get(normKey("归属车间")));
+        assertEquals("productionWorkshopName", aliases.get(normKey("车间")));
         // Customer model is now an editable goods scalar, not a UUID relation.
         assertEquals("cNumber", aliases.get(normKey("客户型号")));
-        assertEquals("ignored", aliases.get(normKey("所属仓库")));
+        assertEquals("owningWarehouseName", aliases.get(normKey("所属仓库")));
+        Field field = GoodsImportService.class.getDeclaredField("CORRECTABLE_FIELDS");
+        field.setAccessible(true);
+        Set<String> correctable = (Set<String>) field.get(null);
+        for (String name : List.of("模具编号", "模具", "归属车间", "车间", "所属仓库")) {
+            assertFalse(correctable.contains(aliases.get(normKey(name))),
+                    "An exported display name must never become an editable relationship identity");
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -40,29 +40,25 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ArApLedgerQueryService {
 
-    private static final Map<String, String> ALLOWED_SORT = Map.of(
-            "billDate", "billDate",
-            "amountOriginal", "amountOriginal",
-            "amountOriginalLocal", "amountOriginalLocal",
-            "amountReceivedOriginal", "amountReceivedOriginal",
-            "amountWriteOffOriginal", "amountWriteOffOriginal",
-            "amountBalanceOriginal", "amountBalanceOriginal",
-            "amountSettled", "amountSettled",
-            "amountBalance", "amountBalance",
-            // 2026-09-25 单号列统一：单据号/来源单号可排序。
-            "billNo", "billNo",
-            "sourceDocNo", "sourceDocNo");
+    private static final Map<String, String> ALLOWED_SORT = Map.ofEntries(
+            Map.entry("billDate","billDate"),Map.entry("dueDate","dueDate"),Map.entry("exchangeRate","exchangeRate"),
+            Map.entry("amountOriginal","amountOriginal"),Map.entry("amountOriginalLocal","amountOriginalLocal"),
+            Map.entry("amountReceivedOriginal","amountReceivedOriginal"),Map.entry("amountWriteOffOriginal","amountWriteOffOriginal"),
+            Map.entry("amountBalanceOriginal","amountBalanceOriginal"),Map.entry("amountSettled","amountSettled"),
+            Map.entry("amountBalance","amountBalance"),Map.entry("prepaymentAppliedOriginal","amountOffsetOriginal"),
+            Map.entry("billNo","billNo"),Map.entry("sourceDocNo","sourceDocNo"));
 
     private final ArApLedgerRepository repo;
     private final EntityManager em;
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<ArApLedgerListItem> list(
             ArApLedgerQueryFilter filter, int page, int size, String sort, String order) {
+        ArApLedgerHeaderQuery.requireMonetaryScope(filter,sort);
         Specification<ArApLedger> spec = specification(filter);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, filter.keyword());
+        var searchPage = NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:filter.keyword());
         Page<ArApLedger> result = repo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, LedgerMetadata> metadata = loadMetadata(
                 result.getContent().stream().map(ArApLedger::getId).toList());
@@ -91,17 +87,18 @@ public class ArApLedgerQueryService {
      * 单号列值筛选桶（2026-09-25 单号列统一）：单据号/来源单号与列表同一份谓词
      * 分组计数；端点不收单号列自身的筛选值（桶口径即全量行）。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public Map<String, List<Map<String, Object>>> facets(ArApLedgerQueryFilter filter) {
-        Specification<ArApLedger> spec = specification(filter);
         return Map.of(
                 "billNo",
-                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, spec, "billNo"),
+                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, specification(filter.forFacet("billNo")), "billNo"),
                 "sourceDocNo",
-                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, spec, "sourceDocNo"));
+                com.uten.imp.common.web.TableFacets.groupCount(em, ArApLedger.class, specification(filter.forFacet("sourceDocNo")), "sourceDocNo"),
+                "currency",currencyReferences());
     }
 
     private Specification<ArApLedger> specification(ArApLedgerQueryFilter f) {
+        ArApLedgerHeaderQuery.requireMonetaryScope(f,null);
         return (Root<ArApLedger> root, jakarta.persistence.criteria.CriteriaQuery<?> query,
                 CriteriaBuilder cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -175,6 +172,7 @@ public class ArApLedgerQueryService {
             if (f.dateTo() != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             }
+            predicates.add(ArApLedgerHeaderQuery.predicate(root,query,cb,f));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }
@@ -200,7 +198,7 @@ public class ArApLedgerQueryService {
                 settlement.offsetLocal(), settlement.balanceOriginal(),
                 ledger.getDueDate(), ledger.getSettlementStyleLegacy(),
                 metadata.salesOrderNos(), metadata.salesOrderIds(),
-                authoritativeOrder(metadata.salesOrderIds()));
+                authoritativeOrder(metadata.salesOrderIds())).withReadFacts(ledger.getOpenItemKind(),ledger.getLegacySourceResolution());
     }
 
     private ArApLedgerDetail toDetail(ArApLedger ledger, LedgerMetadata metadata) {
@@ -221,7 +219,7 @@ public class ArApLedgerQueryService {
                 settlement.offsetOriginal(), settlement.offsetLocal(),
                 settlement.balanceOriginal(), ledger.getSettlementStyleLegacy(),
                 metadata.salesOrderNos(), metadata.salesOrderIds(),
-                authoritativeOrder(metadata.salesOrderIds()), ledger.getLegacySourceResolution());
+                authoritativeOrder(metadata.salesOrderIds()), ledger.getLegacySourceResolution()).withOpenItemKind(ledger.getOpenItemKind());
     }
 
     /** New AP postings and V246-authoritative payments maintain the same dual-currency fields as AR. */
@@ -296,6 +294,15 @@ public class ArApLedgerQueryService {
             List<UUID> salesOrderIds) {
         private static final LedgerMetadata EMPTY = new LedgerMetadata(
                 null, null, null, null, List.of(), List.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String,Object>> currencyReferences() {
+        List<Object[]> rows=em.createNativeQuery("SELECT currency.id,"+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
+                +" FROM currencies currency WHERE currency.id IN (SELECT currency_id FROM ar_ap_ledger WHERE is_deleted=FALSE) ORDER BY currency.code,currency.id").getResultList();
+        List<Map<String,Object>> values=new ArrayList<>();
+        for(Object[] row:rows)values.add(Map.of("value",row[0].toString(),"label",row[1]==null?"未命名币种":row[1].toString(),"count",0));
+        return List.copyOf(values);
     }
 
     private static UUID authoritativeOrder(List<UUID> ids) {

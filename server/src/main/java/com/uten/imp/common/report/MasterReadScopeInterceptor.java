@@ -20,6 +20,9 @@ public class MasterReadScopeInterceptor implements HandlerInterceptor {
         if("GET".equals(request.getMethod())&&path.equals("/api/master/goods/cost-sheets/actual")) {
             ReadScopePublication.capture(request,authority,users,"master_goods");return true;
         }
+        if("GET".equals(request.getMethod())&&path.matches("^/api/master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates)?$")) {
+            ReadScopePublication.capture(request,authority,users,"master_goods_cost");return true;
+        }
         if("GET".equals(request.getMethod())&&path.matches("^/api/master/reference-methods/settlement-admin(?:/page)?$")) {
             ReadScopePublication.capture(request,authority,users,"master_settlement_method");return true;
         }

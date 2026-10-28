@@ -36,6 +36,8 @@ import java.util.UUID;
 @RequestMapping("/api/finance/ar-ap")
 @RequiredArgsConstructor
 public class ArApLedgerController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final ArApLedgerQueryService queryService;
     private final AuditDetailViewRecorder detailViewAudit;
@@ -63,7 +65,7 @@ public class ArApLedgerController {
             @RequestParam(required = false) String salesOrderNos) {
         ArApLedgerQueryFilter f = new ArApLedgerQueryFilter(
                 keyword, direction, sourceDocType, partyId, clientId, supplierId, currencyId,
-                settled, status, dateFrom, dateTo, sourceDocNo, billNo, salesOrderNos);
+                settled, status, dateFrom, dateTo, sourceDocNo, billNo, salesOrderNos).withColumns(headers());
         return queryService.list(f, page, size, sort, order);
     }
 
@@ -84,8 +86,20 @@ public class ArApLedgerController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
         ArApLedgerQueryFilter f = new ArApLedgerQueryFilter(
                 keyword, direction, sourceDocType, partyId, clientId, supplierId, currencyId,
-                settled, status, dateFrom, dateTo, null, null, null);
+                settled, status, dateFrom, dateTo,parameter("sourceDocNo"),parameter("billNo"),parameter("salesOrderNos")).withColumns(headers());
         return queryService.facets(f);
+    }
+
+    private String parameter(String key){return request==null?null:request.getParameter(key);}
+    private java.util.Map<String,String> headers() {
+        var values=new java.util.LinkedHashMap<String,String>();
+        if(request!=null)request.getParameterMap().forEach((key,items)->{
+            if(key.startsWith("search.")||java.util.Set.of("openItemKind","legacySourceResolution","settlementStyleLegacy").contains(key)) {
+                if(items.length!=1)throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"同一台账列只能提交一个条件");
+                values.put(key,items[0]);
+            }
+        });
+        return values;
     }
 
     @GetMapping("/{id}")

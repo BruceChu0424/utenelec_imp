@@ -200,7 +200,7 @@ public class ClientService {
     }
 
     private static void validateReadFilter(ClientQueryFilter filter) {
-        com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+        com.uten.imp.common.web.ContactSensitiveFilter.requireBoundedReadValues(
                 filter.keyword(), filter.mobile(), filter.phone(), filter.phone2(), filter.bankAccount());
     }
 

@@ -79,7 +79,8 @@ public class MouldController {
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new MouldQueryFilter(categoryId, keyword, nullFields,
                 code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
-                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size);
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size,
+                request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order"));
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致） ----------
@@ -102,7 +103,7 @@ public class MouldController {
         ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
                 nullFields, code, name, qty, place, mstatus, remark, status, manufacturer).withColumnSearch(
                         com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)),
-                exportLimits.exportMaxRows());
+                exportLimits.exportMaxRows(),request==null?null:request.getParameter("sort"),request==null?null:request.getParameter("order"));
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

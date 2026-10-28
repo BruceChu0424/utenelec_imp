@@ -22,6 +22,8 @@ import java.util.UUID;
  */
 @Getter
 public class ClientListItem {
+    public String getCreditDisplayText() { return credit==null?null:credit.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
+    public String getCreditFloorDisplayText() { return (creditFloor==null?java.math.BigDecimal.ZERO:creditFloor).setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
     private UUID id;
     private String code;                // 客户编码（Number）
     private String name;                // 客户简称（Client_Name）

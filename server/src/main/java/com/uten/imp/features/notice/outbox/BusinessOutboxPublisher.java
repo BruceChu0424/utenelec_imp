@@ -26,6 +26,10 @@ import java.util.UUID;
  * <p>The caller-provided HTTP idempotency key is reused when present. Without
  * one, the guarded document state transition remains the idempotency boundary
  * and this publisher creates a fresh event identity.
+ *
+ * <p>Duplicate reads use {@code v_business_outbox_full}: after payload tiering
+ * (V953) the equivalence check still compares the full original payload from
+ * the history tier, so a replayed key behaves exactly as before tiering.
  */
 @Service
 public class BusinessOutboxPublisher implements BusinessEventPublisher {
@@ -110,7 +114,7 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
         ExistingEvent existing = jdbc.queryForObject("""
                         SELECT id, event_type, aggregate_type, aggregate_id,
                                payload::text
-                        FROM business_outbox
+                        FROM v_business_outbox_full
                         WHERE dedupe_key = ?
                         """,
                 (rs, rowNum) -> new ExistingEvent(

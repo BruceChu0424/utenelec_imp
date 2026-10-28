@@ -20,6 +20,7 @@ public class DepartmentPermissionStaffQuery {
             FROM employees employee
             JOIN departments department ON department.id = employee.department_id
             LEFT JOIN positions position ON position.id = employee.position_id
+            LEFT JOIN users account ON account.employee_id=employee.id AND account.is_deleted=FALSE
             WHERE employee.is_deleted = FALSE
               AND employee.status IN ('active', 'probation', 'onLeave')
               AND department.is_deleted = FALSE
@@ -35,6 +36,12 @@ public class DepartmentPermissionStaffQuery {
             String search,
             int requestedPage,
             int requestedSize) {
+        return query(authority,selectedDepartmentId,excludedEmployeeId,search,requestedPage,requestedSize,
+                PagePermissionStaffHeaderQuery.read(java.util.Map.of()));
+    }
+
+    Result query(StaffSearchAuthority authority, UUID selectedDepartmentId, UUID excludedEmployeeId,
+            String search, int requestedPage, int requestedSize, PagePermissionStaffHeaderQuery headers) {
         int page = Math.max(1, requestedPage);
         int size = Math.min(Math.max(1, requestedSize), 50);
         String normalized = search == null ? "" : search.trim();
@@ -54,6 +61,7 @@ public class DepartmentPermissionStaffQuery {
             parameters.add(pattern);
             parameters.add(pattern);
         }
+        headers.append(filter,parameters);
 
         Long count = jdbc.queryForObject(
                 cte + "SELECT count(*) " + filter,
@@ -63,7 +71,7 @@ public class DepartmentPermissionStaffQuery {
 
         List<Object> pageParameters = new ArrayList<>(parameters);
         String rankOrder = "";
-        if (hasSearch) {
+        if (hasSearch && headers.sort()==null) {
             String phrase=KeywordSearch.phrase(normalized);
             pageParameters.add(phrase); pageParameters.add(phrase);
             pageParameters.add(KeywordSearch.prefixPattern(phrase)); pageParameters.add(KeywordSearch.prefixPattern(phrase));
@@ -88,7 +96,9 @@ public class DepartmentPermissionStaffQuery {
                         """
                         + filter
                         + "\n"
-                        + "ORDER BY " + rankOrder + "employee.full_name, employee.code, employee.id LIMIT ? OFFSET ?",
+                        + "ORDER BY " + (headers.ordering()==null
+                            ? rankOrder + "employee.full_name, employee.code, employee.id" : headers.ordering())
+                        + " LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new StaffProjection(
                         rs.getObject("id", UUID.class),
                         rs.getString("code"),

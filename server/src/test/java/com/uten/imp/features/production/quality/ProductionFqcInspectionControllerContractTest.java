@@ -25,7 +25,8 @@ class ProductionFqcInspectionControllerContractTest {
         Method list = ProductionFqcInspectionController.class
                 .getDeclaredMethod(
                         "list", String.class, String.class, String.class,
-                        int.class, int.class);
+                        int.class, int.class, String.class, String.class,
+                        jakarta.servlet.http.HttpServletRequest.class);
         Method sheets = ProductionFqcInspectionController.class
                 .getDeclaredMethod(
                         "sheets", String.class, String.class,

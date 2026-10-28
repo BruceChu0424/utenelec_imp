@@ -88,7 +88,7 @@ public class FinanceOtherIncomeService {
         Specification<FinanceOtherIncome> spec = incomeSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<FinanceOtherIncome> p = incomeRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceOtherIncomeListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return retainedRecords.page(result, "finance_other_incomes", p.getContent());
@@ -136,6 +136,10 @@ public class FinanceOtherIncomeService {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             f.headerFilters().apply(root, cb, ps, "amountLocal", true, null, false, null, true);
+            f.headerFilters().applySearch(root,q,cb,ps,Map.of(
+                    "billNo",com.uten.imp.common.web.HeaderColumnFilter.SearchField.text("billNo"),
+                    "billDate",com.uten.imp.common.web.HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "amountLocal",com.uten.imp.common.web.HeaderColumnFilter.SearchField.decimal("amountLocal")));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

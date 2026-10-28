@@ -59,7 +59,7 @@ public class WarehouseInboundTaskCenterQueryService {
         if (!SOURCES.contains(source)) throw invalid("入库来源不正确");
         String status = normalize(filter.status(), "");
         if (!status.isEmpty() && !STATUSES.containsKey(status)) throw invalid("入库状态不正确");
-        if (filter.sort()!=null && !filter.sort().isBlank() && !Set.of("billNo","businessDate").contains(filter.sort())) {
+        if (filter.sort()!=null && !filter.sort().isBlank() && !WarehouseTaskHeaderQuery.sortable(filter.sort())) {
             throw invalid("入库排序字段不正确");
         }
         if (filter.order()!=null && !filter.order().isBlank() && !Set.of("asc","desc").contains(filter.order().toLowerCase(Locale.ROOT))) {
@@ -83,7 +83,8 @@ public class WarehouseInboundTaskCenterQueryService {
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate(),
                 WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
-        String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword());
+        var headers = WarehouseTaskHeaderQuery.criteria(filter.columnSearch(), true);
+        String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate());
         int page = Math.max(1,filter.page());
         int size = Math.max(1,Math.min(100,filter.size()));
         MapSqlParameterSource parameters = new MapSqlParameterSource()
@@ -96,6 +97,7 @@ public class WarehouseInboundTaskCenterQueryService {
                         ? actor.getEmployeeId().toString():"")
                 .addValue("limit",size).addValue("offset",((long)page-1)*size);
         parameters.addValues(TaskKeywordSearch.parameters(filter.keyword()));
+        parameters.addValues(headers.parameters());
         parameters.addValues(access.workshop().parameters());
         if (owner.parameterName()!=null) parameters.addValue(owner.parameterName(),owner.owners());
         String identityFilter="";
@@ -134,14 +136,21 @@ public class WarehouseInboundTaskCenterQueryService {
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> detail(String rowKey,UUID warehouseId,int linePage,int lineSize) {
+        return detail(rowKey,warehouseId,linePage,lineSize,Map.of(),null,null);
+    }
+
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public Map<String,Object> detail(String rowKey,UUID warehouseId,int linePage,int lineSize,
+            Map<String,String> columns,String sort,String order) {
         String[] parts=rowKey==null?new String[0]:rowKey.split(":",-1);
         if((parts.length!=3 && parts.length!=4) || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")) throw invalid("入库记录身份不正确");
         UUID id;
         try { id=UUID.fromString(parts[2]); } catch(IllegalArgumentException failure) { throw invalid("入库记录身份不正确"); }
-        return warehouseScopes.withQueryScopeCache(() -> detailScoped(parts, id, warehouseId, linePage, lineSize));
+        return warehouseScopes.withQueryScopeCache(() -> detailScoped(parts,id,warehouseId,linePage,lineSize,columns,sort,order));
     }
 
-    private Map<String,Object> detailScoped(String[] parts, UUID id, UUID warehouseId, int linePage, int lineSize) {
+    private Map<String,Object> detailScoped(String[] parts,UUID id,UUID warehouseId,int linePage,int lineSize,
+            Map<String,String> columns,String sort,String order) {
         Page page=list(new Filter(parts[0],"","",null,null,null,warehouseId,1,1,null,null,
                 WarehouseTaskCenterContracts.TaskView.ALL),new Identity(id,parts[1],parts.length==4?parts[3]:null));
         if(page.items().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"入库记录不存在或已不在当前范围");
@@ -245,7 +254,18 @@ public class WarehouseInboundTaskCenterQueryService {
         int safePage=Math.max(1,linePage),safeSize=Math.max(1,Math.min(100,lineSize));
         long total;
         List<Map<String,Object>> items;
-        if(sql==null) { total=1;items=safePage==1?List.of(row.actionData()):List.of(); }
+        var headers=WarehousePhysicalDetailHeaders.criteria(columns,"to_jsonb(physical_detail)");
+        String detailOrder=WarehousePhysicalDetailHeaders.order(sort,order,"to_jsonb(physical_detail)");
+        parameters.addValues(headers.parameters());
+        if(sql==null) {
+            parameters.addValue("detail_payload",objectMapper.valueToTree(row.actionData()).toString());
+            String relation="SELECT CAST(:detail_payload AS jsonb) AS detail_payload";
+            var payloadHeaders=WarehousePhysicalDetailHeaders.criteria(columns,"physical_detail.detail_payload");
+            parameters.addValues(payloadHeaders.parameters());
+            Long count=jdbc.queryForObject("SELECT COUNT(*) FROM ("+relation+") physical_detail WHERE "+payloadHeaders.predicate(),parameters,Long.class);
+            total=count==null?0:count;safePage=1;
+            items=total>0?List.of(new LinkedHashMap<>(row.actionData())):List.of();
+        }
         else {
             // A document may span several warehouses. Details must retain the same
             // physical item boundary as rows, including legacy three-part keys.
@@ -262,11 +282,14 @@ public class WarehouseInboundTaskCenterQueryService {
                 row=row.withWarehouseName(names);
             }
             sql="SELECT visible_detail.* FROM ("+sql+") visible_detail WHERE visible_detail.id IN (:visibleItems)";
+            sql="SELECT physical_detail.* FROM ("+sql+") physical_detail WHERE ("+headers.predicate()+")";
             Long count=jdbc.queryForObject("SELECT COUNT(*) FROM ("+sql+") detail_rows",parameters,Long.class);
             total=count==null?0:count;
+            safePage=total==0?1:(int)Math.min(safePage,Math.min(Integer.MAX_VALUE,(total+safeSize-1)/safeSize));
             parameters.addValue("lineLimit",safeSize).addValue("lineOffset",((long)safePage-1)*safeSize);
-            items=jdbc.queryForList(sql+" LIMIT :lineLimit OFFSET :lineOffset",parameters);
+            items=jdbc.queryForList(sql+" ORDER BY "+detailOrder+" LIMIT :lineLimit OFFSET :lineOffset",parameters);
         }
+        items.forEach(com.uten.imp.common.report.ReportQueryKit::includeDecimalTexts);
         return Map.of("row",row,"items",items,"page",safePage,"size",safeSize,"total",total,
                 "totalPages",(int)Math.min(Integer.MAX_VALUE,total==0?0:(total+safeSize-1)/safeSize));
     }

@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -133,10 +134,83 @@ class FulfillmentWorkbenchPageReadPostgresTest {
         }
     }
 
+    @Test void differenceHeaderFiltersWholeResultWithExactDecimalsAndExcludesUnknownOrGroupedFacts() throws Exception {
+        insertRows();
+        try(var statement=connection.createStatement()) { statement.execute("""
+                UPDATE workbench_fixture SET difference_qty=CASE task_id::text
+                  WHEN '00000000-0000-0000-0000-000000000001' THEN -9007199254740993.0001::numeric
+                  WHEN '00000000-0000-0000-0000-000000000002' THEN -9007199254740993.0002::numeric
+                  WHEN '00000000-0000-0000-0000-000000000004' THEN -0.1::numeric END,
+                  visible_doc_no=CASE WHEN task_id::text='00000000-0000-0000-0000-000000000004'
+                    THEN NULL ELSE visible_doc_no END
+                """); }
+        var exact = read("", Map.of("search.differenceQty", "=-9007199254740993.0001"), null, null, 0, 1);
+        assertEquals(1L, ((Number) exact.getFirst()[50]).longValue());
+        assertEquals(new BigDecimal("-9007199254740993.0001"), exact.getFirst()[49]);
+        var second = read("", Map.of("search.differenceQty", "-9007199254740993.0002..-9007199254740993.0001"),
+                null, null, 1, 1).getFirst();
+        assertEquals(2L, ((Number) second[50]).longValue());
+        assertEquals(new BigDecimal("-9007199254740993.0002"), second[49]);
+        // SQL's unknown comparison excludes missing and unreadable values even for !=.
+        assertEquals(2L, ((Number) read("", Map.of("search.differenceQty", "!=0"), null, null, 0, 20)
+                .getFirst()[50]).longValue());
+        try(var statement=connection.createStatement()) { statement.execute("""
+                UPDATE workbench_fixture SET goods_count=2
+                  WHERE task_id::text='00000000-0000-0000-0000-000000000001';
+                UPDATE workbench_fixture SET action_item_ids=ARRAY['item1','item2']
+                  WHERE task_id::text='00000000-0000-0000-0000-000000000002'
+                """); }
+        assertEquals(0L, ((Number) read("", Map.of("search.differenceQty", "<0"), null, null, 0, 20)
+                .getFirst()[50]).longValue());
+    }
+
     private List<Object[]> read(String status, Map<String, String> filters, LocalDate from, LocalDate to,
                                 long offset, int limit) {
         var table = new FulfillmentWorkbenchTableQuery("needDate", "asc", filters, null, null, null, null);
         return read(status, from, to, offset, limit, "PURCHASE", table);
+    }
+
+    @Test void operationsQuantityQueriesUseVisibleSingleMaterialValuesWithoutTreatingGroupedLinesOrDiscoveryAsNumbers() throws Exception {
+        insertRows();
+        try(var statement=connection.createStatement()) {statement.execute("""
+                UPDATE workbench_fixture SET required_qty=12.3456,allocated_qty=4.1234,fulfilled_qty=3.1111,open_qty=9.2345,
+                  goods_count=1,open_line_count=1,action_doc_type='PURCHASE_ORDER',need_date='2026-10-28',expected_date='2026-10-29',
+                  issued_at='2026-10-27T16:00:00Z';
+                UPDATE workbench_fixture SET allocated_qty=5.1234 WHERE task_id::text='00000000-0000-0000-0000-000000000002';
+                UPDATE workbench_fixture SET visible_doc_no=NULL WHERE task_id::text='00000000-0000-0000-0000-000000000001';
+                UPDATE workbench_fixture SET goods_count=2,open_line_count=2,required_qty=1000,allocated_qty=1000,fulfilled_qty=1000,open_qty=1000
+                  WHERE task_id::text='00000000-0000-0000-0000-000000000003';
+                UPDATE workbench_fixture SET task_status='MATERIALS_TO_DEFINE',action_doc_type='MATERIAL_DISCOVERY',visible_doc_no=NULL,
+                  required_qty=1000,allocated_qty=1000,fulfilled_qty=1000,open_qty=1000,need_date=NULL,expected_date=NULL
+                  WHERE task_id::text='00000000-0000-0000-0000-000000000004';
+                """);}
+        var table=new FulfillmentWorkbenchTableQuery("allocatedQty","desc",Map.of("search.requiredQty","12.3456",
+                "search.allocatedQty",">=4.1234","search.fulfilledQty","3.1111","search.openQty","9.2345"),null,null,null,null).forOperationsProjection();
+        var first=read("",null,null,0,1,"PURCHASE",table).getFirst();
+        var second=read("",null,null,1,1,"PURCHASE",table).getFirst();
+        assertEquals(2L,((Number)first[50]).longValue());
+        assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000002"),first[1]);
+        assertEquals(UUID.fromString("00000000-0000-0000-0000-000000000001"),second[1]);
+        assertEquals(new BigDecimal("5.1234"),first[17]);
+        var rawPending=new FulfillmentWorkbenchTableQuery(null,null,Map.of("search.requiredQty",">=999"),null,null,null,null);
+        assertEquals(2L,((Number)read("",null,null,0,20,"PURCHASE",rawPending).getFirst()[50]).longValue());
+        assertEquals(0L,((Number)read("",null,null,0,20,"PURCHASE",rawPending.forOperationsProjection()).getFirst()[50]).longValue());
+    }
+
+    @Test void typedWorkbenchDatesUseChineseInstantsAndLocalCalendarRangesWithoutChangingExactDateFacets() throws Exception {
+        insertRows();
+        try(var statement=connection.createStatement()) {statement.execute("""
+                UPDATE workbench_fixture SET need_date='2026-10-28',expected_date='2026-11-02',issued_at='2026-10-27T16:00:00Z';
+                UPDATE workbench_fixture SET issued_at='2026-10-28T16:00:00Z' WHERE task_id::text='00000000-0000-0000-0000-000000000004';
+                """);}
+        var table=new FulfillmentWorkbenchTableQuery("expectedDate","asc",Map.of("search.needDate","2026-10-28..2026-10-28",
+                "search.expectedDate","2026-11","search.issuedAt","2026-10-28"),null,null,null,null).forOperationsProjection();
+        assertEquals(3L,((Number)read("",null,null,0,1,"PURCHASE",table).getFirst()[50]).longValue());
+        assertEquals(1,read("",null,null,2,1,"PURCHASE",table).size());
+        var exact=new FulfillmentWorkbenchTableQuery(null,null,Map.of("needDate","2026-10-28"),null,null,null,null);
+        assertEquals(4L,((Number)read("",null,null,0,20,"PURCHASE",exact).getFirst()[50]).longValue());
+        org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                ()->new FulfillmentWorkbenchTableQuery(null,null,Map.of("search.expectedDate","2026-02-30"),null,null,null,null));
     }
 
     private List<Object[]> read(String status, LocalDate from, LocalDate to, long offset, int limit,
@@ -146,7 +220,7 @@ class FulfillmentWorkbenchPageReadPostgresTest {
                 "(:status='' OR task_status=:status)", "(:exception='' OR exception_code=:exception)",
                 "(CAST(:date_from AS date) IS NULL OR updated_at>=CAST(:date_from AS date))"
                         + " AND (CAST(:date_to AS date) IS NULL OR updated_at<CAST(:date_to AS date)+INTERVAL '1 day')",
-                "need_date,task_id", department, table);
+                table==null?"need_date,task_id":table.orderSql(), department, table);
         var parameters = new MapSqlParameterSource().addValue("department", department)
                 .addValue("status", status).addValue("exception", "").addValue("offset", offset).addValue("limit", limit)
                 .addValue("date_from", from, Types.DATE).addValue("date_to", to, Types.DATE);

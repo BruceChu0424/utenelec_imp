@@ -428,7 +428,7 @@ class WebsiteInquiryConcurrencyPostgresTest {
                 INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
                 SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code IN ('website:view','website:content_edit')
                 """,first.user());
-        UUID sid=authSessions.openStaffSession(first.user()).sid();
+        UUID sid=authSessions.openStaffSession(first.user(),null).sid();
         assertThat(websiteActors.currentPermissions(first.user(),sid)).contains("website:view","website:content_edit");
         jdbc.update("""
                 UPDATE user_permission_overrides SET effect='revoke',row_version=row_version+1
@@ -440,7 +440,7 @@ class WebsiteInquiryConcurrencyPostgresTest {
         jdbc.update("UPDATE users SET status='active',must_change_password=true WHERE id=?",first.user());
         assertThat(websiteActors.currentPermissions(first.user(),sid)).isEmpty();
         jdbc.update("UPDATE users SET must_change_password=false WHERE id=?",first.user());
-        sid=authSessions.openStaffSession(first.user()).sid();
+        sid=authSessions.openStaffSession(first.user(),null).sid();
         assertThat(websiteActors.currentPermissions(first.user(),sid)).contains("website:view");
         jdbc.update("""
                 UPDATE user_permission_overrides SET effect='revoke',row_version=row_version+1
@@ -456,21 +456,21 @@ class WebsiteInquiryConcurrencyPostgresTest {
                 INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source)
                 SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code='website:view'
                 """,first.user());
-        UUID original=authSessions.openStaffSession(first.user()).sid();
+        UUID original=authSessions.openStaffSession(first.user(),null).sid();
         assertThat(websiteActors.currentPermissions(first.user(),original)).contains("website:view");
         authSessions.revoke(original,com.uten.imp.features.auth.AuthSessionService.REASON_PASSWORD_RESET);
         // Even after a completed password change restored the active account, this session stays revoked.
         assertThat(websiteActors.currentPermissions(first.user(),original)).isEmpty();
-        UUID current=authSessions.openStaffSession(first.user()).sid();
+        UUID current=authSessions.openStaffSession(first.user(),null).sid();
         assertThat(websiteActors.currentPermissions(first.user(),current)).contains("website:view");
-        assertThat(websiteActors.currentPermissions(first.user(),authSessions.openStaffSession(second.user()).sid())).isEmpty();
+        assertThat(websiteActors.currentPermissions(first.user(),authSessions.openStaffSession(second.user(),null).sid())).isEmpty();
         assertThat(websiteActors.currentPermissions(first.user(),null)).isEmpty();
         jdbc.update("""
                 UPDATE auth_sessions SET created_at=now()-interval '2 days',last_seen_at=now()-interval '2 days',
                 absolute_expires_at=now()-interval '1 day' WHERE sid=?
                 """,current);
         assertThat(websiteActors.currentPermissions(first.user(),current)).isEmpty();
-        UUID loggedOut=authSessions.openStaffSession(first.user()).sid();
+        UUID loggedOut=authSessions.openStaffSession(first.user(),null).sid();
         authSessions.revoke(loggedOut,com.uten.imp.features.auth.AuthSessionService.REASON_LOGOUT);
         assertThat(websiteActors.currentPermissions(first.user(),loggedOut)).isEmpty();
     }

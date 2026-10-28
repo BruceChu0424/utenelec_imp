@@ -54,7 +54,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class ProcurementInspectionService implements ProcurementInspectionPort {
+public class ProcurementInspectionService implements ProcurementInspectionPort, com.uten.imp.application.port.QualityPendingSourcePort {
 
     private static final String PENDING = "PENDING";
     private static final String PARTIAL = "PARTIAL";
@@ -871,7 +871,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     @PreAuthorize("hasAuthority('procurement_inspection:view')")
     @SuppressWarnings("unchecked")
     public List<Object[]> pendingReceiptSummaries() {
-        return em.createNativeQuery("""
+        return em.createNativeQuery(pendingReceiptSql()+" ORDER BY a.first_received_at LIMIT 200").getResultList();
+    }
+
+    private static String pendingReceiptSql() {
+        return """
                         WITH agg AS (
                             SELECT i.receipt_type, i.receipt_id,
                                    COUNT(*) AS item_count,
@@ -913,7 +917,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         )
                         SELECT a.receipt_type, a.receipt_id, a.item_count, a.pending_base_qty,
                                a.first_received_at, a.last_received_at, a.warehouse_id,
-                               x.bill_no, x.bill_date, x.supplier_id, s.name,
+                               x.bill_no, x.bill_date, x.supplier_id, s.name AS supplier_name,
                                a.pre_stocked_item_count,
                                a.pre_stocked_warehouse_names, a.pre_stocked_places,
                                a.goods_summary,
@@ -950,10 +954,37 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                 GROUP BY COALESCE(base_unit.name, '')
                             ) unit_total
                         ) pending ON TRUE
-                        ORDER BY a.first_received_at
-                        LIMIT 200
-                        """)
-                .getResultList();
+                        """;
+    }
+
+    @Override public String readAuthority(){return "procurement_inspection:view";}
+
+    @Override @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public List<com.uten.imp.application.port.QualityPendingSourcePort.Plan> pendingPlans(){
+        String relation="("+pendingReceiptSql()+") q";
+        String sql="""
+            SELECT 'iqc:'||q.receipt_type||':'||q.receipt_id::text AS identity,q.receipt_type::text AS kind,
+                COALESCE(q.bill_no,q.receipt_id::text) AS bill_no,COALESCE(q.supplier_name,'—') AS party,
+                COALESCE(q.goods_summary,'—') AS goods,COALESCE(q.goods_code_summary,'—') AS goods_code,COALESCE(q.color_name_summary,'—') AS color_name,
+                COALESCE(q.pre_stocked_warehouse_names,'待检区') AS warehouse,COALESCE(q.pre_stocked_places,'—') AS place,q.item_count::bigint AS item_count,
+                COALESCE(q.pending_qty_text,'—') AS pending_qty,q.last_received_at AS entered_at,'PENDING'::text AS status_code,
+                q.first_received_at AS sequence_at,ARRAY[COALESCE(q.goods_summary,'')]::text[] AS goods_names FROM %s
+            """.formatted(relation);
+        return List.of(new com.uten.imp.application.port.QualityPendingSourcePort.Plan("IQC",sql,Map.of()));
+    }
+
+    @Override @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('procurement_inspection:view')")
+    public Map<String,Object> pendingPayloads(String planKey,Set<String> identities){
+        if(!"IQC".equals(planKey)||identities.isEmpty())return Map.of();
+        String sql="SELECT q.* FROM ("+pendingReceiptSql()+") q WHERE 'iqc:'||q.receipt_type||':'||q.receipt_id::text IN (:qualityIqcIdentities)";
+        Map<String,Object> result=new java.util.LinkedHashMap<>();
+        for(Object[] row:com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter("qualityIqcIdentities",identities))){
+            var value=com.uten.imp.features.warehouse.inbound.dto.PendingInspectionReceiptView.from(row);
+            result.put("iqc:"+value.receiptType()+":"+value.receiptId(),value);
+        }
+        return Map.copyOf(result);
     }
 
     // ---- helpers ----

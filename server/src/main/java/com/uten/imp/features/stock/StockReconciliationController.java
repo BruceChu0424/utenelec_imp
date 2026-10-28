@@ -37,13 +37,24 @@ public class StockReconciliationController {
             BigDecimal diffQty) {
     }
 
-    public record ReconciliationReport(long driftCount, List<DriftRow> rows) {
+    public record ReconciliationReport(long driftCount, List<DriftRow> rows, VerificationState verification) {
+    }
+
+    /** 分块完整核对游程（B2）：运维可见低峰滚动核对进度与漂移计数。 */
+    public record VerificationState(
+            java.time.OffsetDateTime lastRunAt,
+            UUID lastVerifiedGoods,
+            long lastChunkRows,
+            long lastDriftCount,
+            long fullCycles) {
     }
 
     @GetMapping
     @PreAuthorize("hasAuthority('stock:balance:adjust')")
     public ReconciliationReport report(@RequestParam(defaultValue = "50") int limit) {
-        List<DriftRow> rows = reconciliation.driftRows(limit).stream()
+        // 单次查询同时取明细与总数（旧实现 countDrift+driftRows 各聚合一遍）。
+        var report = reconciliation.driftReport(limit);
+        List<DriftRow> rows = report.rows().stream()
                 .map(r -> new DriftRow(
                         (UUID) r.get("goods_id"),
                         (UUID) r.get("warehouse_id"),
@@ -55,7 +66,11 @@ public class StockReconciliationController {
                         toBd(r.get("flow_qty")),
                         toBd(r.get("balance_qty")).subtract(toBd(r.get("flow_qty")))))
                 .toList();
-        return new ReconciliationReport(reconciliation.countDrift(), rows);
+        var state = reconciliation.verificationState();
+        return new ReconciliationReport(report.total(), rows,
+                state == null ? null : new VerificationState(
+                        state.lastRunAt(), state.lastVerifiedGoods(),
+                        state.lastChunkRows(), state.lastDriftCount(), state.fullCycles()));
     }
 
     private static BigDecimal toBd(Object value) {

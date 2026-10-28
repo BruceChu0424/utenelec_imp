@@ -42,8 +42,9 @@ public final class AuditClassifier {
             "verify_password", "verify_password_failed");
     private static final Set<String> AUTHORIZATION_ACTIONS = Set.of(
             "super_admin_grant", "super_admin_revoke", "remote_access_grant", "remote_access_revoke",
-            "permission_configuration_import", "permission_configuration_copy",
+            "permission_configuration_import", "permission_configuration_copy", "permission_configuration_batch",
             "permission_template_create", "permission_template_update", "permission_template_delete", "permission_template_apply",
+            "permission_template_sync", "permission_template_unbind",
             "company_file_permissions_set", "company_file_password_set", "company_file_password_clear",
             "company_file.set_permissions", "company_file.set_password",
             "impersonation_enter", "impersonation_switch", "impersonation_exit");

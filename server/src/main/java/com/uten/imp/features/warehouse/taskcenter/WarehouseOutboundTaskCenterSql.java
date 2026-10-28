@@ -113,6 +113,8 @@ final class WarehouseOutboundTaskCenterSql {
             }
         }
         parameters.putAll(TaskKeywordSearch.parameters(filter.keyword()));
+        var headers = WarehouseTaskHeaderQuery.criteria(filter.columnSearch(), false);
+        parameters.putAll(headers.parameters());
         parameters.put("billNo", filter.billNo());
         parameters.put("dateFrom", filter.dateFrom());
         parameters.put("dateTo", filter.dateTo());
@@ -131,7 +133,7 @@ final class WarehouseOutboundTaskCenterSql {
                 ), physical_rows AS (
                   SELECT source_rows.*, %s AS keyword_rank,
                     ((:view='ALL' OR (:view='ACTIVE')=(%s))
-                     AND (%s)
+                     AND (%s) AND (%s)
                      AND (CAST(:dateFrom AS date) IS NULL OR business_date>=CAST(:dateFrom AS date))
                      AND (CAST(:dateTo AS date) IS NULL OR business_date<=CAST(:dateTo AS date))) AS context_match
                   FROM source_rows
@@ -143,12 +145,12 @@ final class WarehouseOutboundTaskCenterSql {
                 """.formatted(TaskKeywordSearch.rankNamesFirst(filter.keyword(), new String[]{}, new String[]{"goods_names"},
                         new String[]{"bill_no", "source_doc_no"}, "goods_codes"),
                         ACTIVE_STATUS_PREDICATE, TaskKeywordSearch.condition(filter.keyword(),
-                                "search_text", "party_name", "warehouse_name", "responsible_name"));
+                                "search_text", "party_name", "warehouse_name", "responsible_name"),headers.predicate());
         String direction = "asc".equals(filter.order()) ? "ASC" : "DESC";
-        String primary = "billNo".equals(filter.sort()) ? "bill_no " + direction + " NULLS LAST,business_date DESC NULLS LAST"
-                : "business_date " + direction + " NULLS LAST";
+        String primary = WarehouseTaskHeaderQuery.orderExpression(filter.sort(),false) + " " + direction + " NULLS LAST";
         return new Plan(cte, Collections.unmodifiableMap(parameters),
-                " ORDER BY keyword_rank," + primary + ",source_type,record_type,id,line_no NULLS LAST,line_key ");
+                " ORDER BY " + (filter.sort()==null||filter.sort().isBlank()?"keyword_rank,":"")
+                        + primary + ",source_type,record_type,id,line_no NULLS LAST,line_key ");
     }
 
     private static boolean selected(String requested, String source) {

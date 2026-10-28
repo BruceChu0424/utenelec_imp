@@ -247,7 +247,8 @@ class FinanceReportPartyStatementTest {
                 mock(FinanceStatementService.class),
                 mock(FinanceCostService.class),
                 mock(GlReportService.class),
-                mock(FixedAssetService.class));
+                mock(FixedAssetService.class),
+                mock(PartyMonthlySummaryService.class));
     }
 
     private static FinanceDocumentAccessPolicy unrestrictedAccess() {

@@ -10,6 +10,8 @@ public enum ErrorCode {
     ACCOUNT_LOCKED(401, "账号已锁定，请稍后再试"),
     ACCOUNT_DISABLED(401, "账号已停用"),
     UNAUTHORIZED(401, "未登录或会话已过期"),
+    // 单设备顶号：会话被新的一次登录撤销。与普通过期区分，客户端据此弹「当前设备已下线」。
+    SESSION_REPLACED(401, "账号已在其他设备登录，本设备已自动下线"),
     FORBIDDEN(403, "当前账号无权执行此操作，请联系管理员核对操作权限和数据范围"),
     READ_SCOPE_CHANGED(403, "数据访问范围已变化，请重新打开页面后核对"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),

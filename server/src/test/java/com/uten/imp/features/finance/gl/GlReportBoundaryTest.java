@@ -23,7 +23,7 @@ class GlReportBoundaryTest {
     @Test void invalidMonthsCannotReachTheDatabaseOrAnUnboundedYearToDateLoop() {
         EntityManager em = mock(EntityManager.class);
         GlReportLineSource lines = mock(GlReportLineSource.class);
-        GlReportService service = new GlReportService(em, lines);
+        GlReportService service = new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company());
         for (int month : new int[]{Integer.MIN_VALUE, -1, 0, 13, Integer.MAX_VALUE}) {
             assertThatThrownBy(() -> service.profitMonthly(2026, month))
                     .isInstanceOfSatisfying(ApiException.class,
@@ -56,7 +56,7 @@ class GlReportBoundaryTest {
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
-        GlReportService service = new GlReportService(em, mock(GlReportLineSource.class));
+        GlReportService service = new GlReportService(em, mock(GlReportLineSource.class),com.uten.imp.support.FinanceReportTestAccess.company());
         ReflectionTestUtils.invokeMethod(service, "finishedInMonthly", 2026);
         verify(query).setParameter("from", LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime());
         verify(query).setParameter("to", LocalDate.of(2027, 1, 1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime());

@@ -9,6 +9,7 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.SystemMasterCategoryRegistry;
+import com.uten.imp.features.master.CategorySiblingNameGuard;
 import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import com.uten.imp.features.master.materialcategory.dto.*;
 import com.uten.imp.security.TxSessionVars;
@@ -31,9 +32,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class MaterialCategoryService {
-
-    private static final String ACQUIRE_HIERARCHY_LOCK_SQL =
-            "SELECT pg_advisory_xact_lock(hashtextextended('MATERIAL_CATEGORY_HIERARCHY',0))";
 
     private final MaterialCategoryRepository repo;
     private final EntityManager em;
@@ -113,12 +111,16 @@ public class MaterialCategoryService {
     @Transactional
     public MaterialCategoryDetail create(MaterialCategorySaveRequest req) {
         tx.bind();
+        lockCategoryHierarchy();
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MATERIAL,
+                name, req.getParentId(), null);
         MaterialCategory c = new MaterialCategory();
         // 分类自身的内部 code 只用于兼容 path；用户可编辑的是 remark 和 codePrefix。
         c.setCode(masterCodeService.nextCode(MasterCodePrefix.CATEGORY));
         c.setRemark(cleanRemark(req.getRemark()));
         c.setCodePrefix(CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
-        c.setName(req.getName());
+        c.setName(name);
         c.setSortOrder(req.getSortOrder() == null ? 0 : req.getSortOrder());
         if (req.getParentId() != null) {
             MaterialCategory parent = requireCategory(req.getParentId());
@@ -145,14 +147,20 @@ public class MaterialCategoryService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "不能同时选择上级分类和移到顶层");
         }
-        if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
-            lockCategoryHierarchy();
-        }
+        lockCategoryHierarchy();
         MaterialCategory c = requireCategory(id);
         OptimisticLocks.requireUpToDate(c.getVersion(), req.getVersion());
+        String name = CategorySiblingNameGuard.normalize(req.getName());
+        UUID nameParentId = moveToRoot ? null : req.getParentId() != null
+                ? req.getParentId() : c.getParent() == null ? null : c.getParent().getId();
+        UUID oldNameParentId = c.getParent() == null ? null : c.getParent().getId();
+        if (!Objects.equals(c.getName(), name) || !Objects.equals(oldNameParentId, nameParentId)) {
+            CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MATERIAL,
+                    name, nameParentId, id);
+        }
         CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
                 CategoryDrivenCodeService.MasterType.GOODS, id);
-        boolean editChanged = !Objects.equals(c.getName(), req.getName())
+        boolean editChanged = !Objects.equals(c.getName(), name)
                 || (req.getRemark() != null
                     && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
                 || (req.getCodePrefix() != null
@@ -161,7 +169,7 @@ public class MaterialCategoryService {
         if (editChanged) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("material_category:edit");
         }
-        c.setName(req.getName());
+        c.setName(name);
         if (req.getRemark() != null) {
             c.setRemark(cleanRemark(req.getRemark()));
         }
@@ -297,7 +305,7 @@ public class MaterialCategoryService {
     }
 
     private void lockCategoryHierarchy() {
-        em.createNativeQuery(ACQUIRE_HIERARCHY_LOCK_SQL).getSingleResult();
+        CategorySiblingNameGuard.lockHierarchy(em, CategorySiblingNameGuard.Kind.MATERIAL);
     }
 
     /** 把扁平分类列表组装为树；rootId 非 null 时仅返回以该节点为根的子树。 */

@@ -103,8 +103,12 @@ public class SubcontractReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return service.inOutStatus(supplierId, dateFrom, dateTo, keyword, page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam Map<String, String> allParams) {
+        return service.inOutStatus(supplierId, dateFrom, dateTo, keyword, page, size,
+                com.uten.imp.common.report.ReportQueryKit.facetsOf(allParams), sort, order);
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

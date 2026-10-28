@@ -85,6 +85,11 @@ public class ProductionOverLimitDispositionService {
     }
 
     public PageResponse<View> list(String status,int page,int size) {
+        return list(status,page,size,null,null,Map.of());
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public PageResponse<View> list(String status,int page,int size,String sort,String order,Map<String,String> parameters) {
         requireApprover();
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of("PENDING","HELD","RETURNED","ACCEPTED","WITHDRAWN","ALL").contains(filter))
@@ -93,9 +98,21 @@ public class ProductionOverLimitDispositionService {
         String predicate=scope.predicate()+" AND request.status<>'DRAFT'";
         if("PENDING".equals(filter))predicate+=" AND request.status IN('PENDING','HELD','RETURNED')";
         else if(!"ALL".equals(filter))predicate+=" AND request.status=:status";
+        Map<String,String> input=new java.util.LinkedHashMap<>();
+        parameters.forEach((key,value)->{if(key.startsWith("search."))input.put(key.substring(7),value);});
+        var headers=com.uten.imp.common.util.SqlColumnSearch.criteria(input,HEADER_FIELDS);
+        predicate+=" AND ("+headers.predicate()+")";
+        String ordering="request.created_at DESC,request.id DESC";
+        if(sort!=null&&!sort.isBlank()){
+            var field=HEADER_FIELDS.get(sort);
+            if(field==null||order!=null&&!Set.of("asc","desc").contains(order.toLowerCase(java.util.Locale.ROOT)))
+                throw validation("超限产出排序字段或方向无效");
+            ordering=field.expression()+("desc".equalsIgnoreCase(order)?" DESC":" ASC")+" NULLS LAST,request.created_at DESC,request.id DESC";
+        }
         var count=em.createNativeQuery("SELECT COUNT(*) "+FROM+" WHERE "+predicate);
-        var query=em.createNativeQuery(PROJECTION+FROM+" WHERE "+predicate+" ORDER BY request.created_at DESC,request.id DESC");
+        var query=em.createNativeQuery(PROJECTION+FROM+" WHERE "+predicate+" ORDER BY "+ordering);
         scope.bind(count);scope.bind(query);
+        headers.bind(count);headers.bind(query);
         if(!Set.of("PENDING","ALL").contains(filter)){count.setParameter("status",filter);query.setParameter("status",filter);}
         long total=((Number)count.getSingleResult()).longValue();
         int actualPage=Math.max(page,1),actualSize=Math.min(Math.max(size,1),100);
@@ -204,16 +221,22 @@ public class ProductionOverLimitDispositionService {
     private static BigDecimal number(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static ApiException validation(String text){return new ApiException(ErrorCode.VALIDATION_FAILED,text);}
     private static ApiException conflict(String text){return new ApiException(ErrorCode.CONFLICT,text);}
+    // Preserve the original batch fact using immutable disposition snapshots.
+    // Withdrawn/soft-deleted sibling slices remain part of that historical batch.
+    private static final String WITHIN_QTY_SQL="""
+        request.actual_batch_qty-(SELECT COALESCE(SUM(snapshot.qty),0) FROM production_over_limit_dispositions snapshot
+            JOIN production_daily_report_items piece ON piece.id=snapshot.report_item_id
+            WHERE snapshot.report_id=request.report_id AND piece.output_batch_id=item.output_batch_id)
+        """;
     private static final String PROJECTION="""
         SELECT request.id,request.status,request.row_version,request.report_id,report.bill_no,item.id,item.output_batch_id,
                request.execution_segment_id,segment.segment_code,request.plan_id,plan.bill_no,goods.code,goods.name,
                color.name,unit.name,request.planned_qty,request.allowed_rate,request.actual_batch_qty,
-               request.actual_batch_qty-(SELECT COALESCE(SUM(piece.qty),0) FROM production_daily_report_items piece
-                   WHERE piece.report_id=item.report_id AND piece.output_batch_id=item.output_batch_id AND piece.is_over_limit AND NOT piece.is_deleted),
+               %s,
                request.qty,request.reason,request.created_at,decision.reason,decision.decided_by_name,decision.decided_at,
                request.last_decision_id,plan.maker_id,segment.workshop_department_id,segment.responsible_employee_id,
                (report.status=1 AND NOT report.is_deleted AND NOT item.is_deleted),report.maker_id
-        """;
+        """.formatted(WITHIN_QTY_SQL);
     private static final String FROM="""
         FROM production_over_limit_dispositions request
         JOIN production_daily_report_items item ON item.id=request.report_item_id
@@ -224,4 +247,15 @@ public class ProductionOverLimitDispositionService {
         LEFT JOIN colors color ON color.id=item.color_id LEFT JOIN units unit ON unit.id=item.unit_id
         LEFT JOIN production_over_limit_decisions decision ON decision.id=request.last_decision_id
         """;
+    private static final Map<String,com.uten.imp.common.util.SqlColumnSearch.Field> HEADER_FIELDS=Map.ofEntries(
+        Map.entry("reportNo",com.uten.imp.common.util.SqlColumnSearch.Field.text("report.bill_no")),
+        Map.entry("planNo",com.uten.imp.common.util.SqlColumnSearch.Field.text("plan.bill_no")),
+        Map.entry("segmentCode",com.uten.imp.common.util.SqlColumnSearch.Field.text("segment.segment_code")),
+        Map.entry("goodsName",com.uten.imp.common.util.SqlColumnSearch.Field.text("goods.name")),
+        Map.entry("goodsCode",com.uten.imp.common.util.SqlColumnSearch.Field.text("goods.code")),
+        Map.entry("colorName",com.uten.imp.common.util.SqlColumnSearch.Field.text("color.name")),
+        Map.entry("reason",com.uten.imp.common.util.SqlColumnSearch.Field.text("request.reason")),
+        Map.entry("actual",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("request.actual_batch_qty")),
+        Map.entry("within",com.uten.imp.common.util.SqlColumnSearch.Field.decimal(WITHIN_QTY_SQL)),
+        Map.entry("over",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("request.qty")));
 }

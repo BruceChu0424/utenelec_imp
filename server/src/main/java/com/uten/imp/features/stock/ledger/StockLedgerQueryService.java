@@ -82,6 +82,16 @@ public class StockLedgerQueryService {
                                   LocalDate dateFrom, LocalDate dateTo, String movementTypes, Short direction,
                                   boolean includeWeightAdjustments, int page, int size,
                                   boolean inventoryOnly, boolean includeDefective, boolean includeLineSide) {
+        return ledger(goodsId, warehouseId, colorId, colorNull, dateFrom, dateTo, movementTypes, direction,
+                includeWeightAdjustments, page, size, inventoryOnly, includeDefective, includeLineSide, Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public StockLedgerPage ledger(UUID goodsId, UUID warehouseId, UUID colorId, boolean colorNull,
+                                  LocalDate dateFrom, LocalDate dateTo, String movementTypes, Short direction,
+                                  boolean includeWeightAdjustments, int page, int size,
+                                  boolean inventoryOnly, boolean includeDefective, boolean includeLineSide,
+                                  Map<String, String> columns, String sort, String order) {
         new com.uten.imp.features.stock.dto.StockInventoryScope(warehouseId, colorId, colorNull,
                 inventoryOnly, includeDefective, includeLineSide);
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
@@ -104,15 +114,55 @@ public class StockLedgerQueryService {
 
         boolean canViewCost = costMasker.canView();
         Set<String> authorities = sourceAccess.currentAuthorities();
-        List<StockLedgerRow> items = db.query(StockLedgerSql.page(query), params,
+        String pageSql = StockLedgerSql.page(query);
+        Long filteredCount = null;
+        if (!columns.isEmpty() || sort != null) {
+            var fields = headerFields(goods);
+            var headers = com.uten.imp.common.util.SqlColumnSearch.criteria(columns, fields);
+            headers.parameters().forEach(params::addValue);
+            var visibleSources = java.util.Arrays.stream(StockLedgerSource.values())
+                    .filter(source -> source.viewAuthorities().stream().anyMatch(authorities::contains))
+                    .map(StockLedgerSource::code).toList();
+            params.addValue("headerVisibleSources", visibleSources.isEmpty() ? List.of("__none__") : visibleSources);
+            if (goods.exactKgPerUnit() != null) params.addValue("headerExactKg", goods.exactKgPerUnit());
+            String source = " FROM (" + StockLedgerSql.page(query, false) + ") ledger WHERE " + headers.predicate();
+            filteredCount = db.queryForObject("SELECT COUNT(*)" + source, params, Long.class);
+            var selected = fields.get(sort == null ? "" : sort);
+            String ordering = selected == null ? "ledger.transaction_date DESC,ledger.ledger_seq DESC"
+                    : selected.expression() + ("desc".equalsIgnoreCase(order) ? " DESC" : " ASC")
+                        + " NULLS LAST,ledger.ledger_seq DESC";
+            pageSql = "SELECT ledger.*" + source + " ORDER BY " + ordering + " LIMIT :limit OFFSET :offset";
+        }
+        List<StockLedgerRow> items = db.query(pageSql, params,
                 (rs, i) -> row(rs, goods, canViewCost, authorities));
         Totals totals = db.queryForObject(StockLedgerSql.summary(query), params, (rs, i) -> totals(rs));
         Map<String, List<FacetBucket>> facets = facets(query, params);
 
-        long total = totals == null ? 0L : totals.displayRows();
+        long total = filteredCount != null ? filteredCount : totals == null ? 0L : totals.displayRows();
         int totalPages = (int) ((total + paging.getPageSize() - 1) / paging.getPageSize());
         return new StockLedgerPage(items, paging.getPageNumber() + 1, paging.getPageSize(), total, totalPages,
                 summary(totals, query, goods), facets);
+    }
+
+    private Map<String, com.uten.imp.common.util.SqlColumnSearch.Field> headerFields(GoodsHead goods) {
+        String counterpart = "CASE WHEN ledger.counterpart_kind='WAREHOUSE' OR ledger.source_doc_type IN (:headerVisibleSources) "
+                + "THEN ledger.counterpart_name WHEN ledger.counterpart_kind IS NOT NULL THEN '已隐藏' END";
+        String balanceWeight = goods.exactKgPerUnit() == null ? "ledger.balance_weight_after"
+                : "CASE WHEN ledger.balance_qty_after>=0 THEN round(ledger.balance_qty_after*:headerExactKg,4) END";
+        return Map.ofEntries(
+                Map.entry("date", com.uten.imp.common.util.SqlColumnSearch.Field.instant("ledger.transaction_date")),
+                Map.entry("billNo", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.bill_no")),
+                Map.entry("counterpart", com.uten.imp.common.util.SqlColumnSearch.Field.text(counterpart)),
+                Map.entry("warehouse", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.warehouse_name")),
+                Map.entry("color", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.color_name")),
+                Map.entry("operator", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.operator_name")),
+                Map.entry("remark", com.uten.imp.common.util.SqlColumnSearch.Field.text("ledger.remark")),
+                Map.entry("inQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("CASE WHEN ledger.row_kind='M' AND ledger.direction=1 THEN abs(ledger.qty_signed) END")),
+                Map.entry("outQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("CASE WHEN ledger.row_kind='M' AND ledger.direction=-1 THEN abs(ledger.qty_signed) END")),
+                Map.entry("balanceQty", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("ledger.balance_qty_after")),
+                Map.entry("inWeight", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("CASE WHEN ledger.row_kind='W' AND ledger.weight_signed>0 OR ledger.row_kind='M' AND ledger.direction=1 THEN abs(ledger.weight_signed) END")),
+                Map.entry("outWeight", com.uten.imp.common.util.SqlColumnSearch.Field.decimal("CASE WHEN ledger.row_kind='W' AND ledger.weight_signed<0 OR ledger.row_kind='M' AND ledger.direction=-1 THEN abs(ledger.weight_signed) END")),
+                Map.entry("balanceWeight", com.uten.imp.common.util.SqlColumnSearch.Field.decimal(balanceWeight)));
     }
 
     // ------------------------------------------------------------------ rows

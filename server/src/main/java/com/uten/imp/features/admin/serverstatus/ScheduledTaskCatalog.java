@@ -23,19 +23,19 @@ public final class ScheduledTaskCatalog {
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
             Map.entry("LoginFailureAlertScheduler.scan", new Entry("登录安全提醒",
                     "每分钟核对近期登录失败记录, 同一网络来源在 10 分钟内连续失败达到 10 次时提醒管理员检查。")),
-            Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
-                    "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
-                            + " 7 天前的识别任务与 180 天前的调用记录删除。")),
+            Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据整理",
+                    "每 10 分钟整理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
+                            + " 7 天前的识别任务与 180 天前的调用记录转入归档状态, 原始内容保留不删除。")),
             Map.entry("AiInputOriginalCleanup.purge",new Entry("未采用识别原件清理",
                     "每小时登记未采用识别来源的归档状态，保留原文件、内容和关联，正式单据来源原件继续保留。")),
             Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
                     "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
             Map.entry("SalesPlanningNoticeCatchUpScheduler.reconcile", new Entry("计划提醒补投",
                     "每半分钟补发财务已确认但员工尚未接手的生产计划提醒, 同一订单同一个人同一审核版本只提醒一次。")),
-            Map.entry("SalesQuoteTemplateCleanupScheduler.purgeExpired", new Entry("报价模板候选清理",
-                    "每小时清理过期且尚未采用的客户报价模板候选，已采用的模板版本继续保留。")),
-            Map.entry("SalesLearningEvidenceCleanupScheduler.purgeExpiredEvidence", new Entry("销售学习证据清理",
-                    "每小时清理超过重试期限的销售学习原始证据，保留学习结果与处理记录。")),
+            Map.entry("SalesQuoteTemplateCleanupScheduler.purgeExpired", new Entry("报价模板候选归档",
+                    "每小时把过期且尚未采用的客户报价模板候选转入归档状态, 候选原文与已采用的模板版本继续保留。")),
+            Map.entry("SalesLearningEvidenceCleanupScheduler.purgeExpiredEvidence", new Entry("销售学习证据归档",
+                    "每小时把超过重试期限的销售学习回执转入归档状态, 学习结果与处理记录继续保留。")),
             Map.entry("AttachmentObjectOutboxScheduler.drain", new Entry("附件文件清理",
                     "把已确认删除或已过期的附件文件从文件存储里真正删掉, 释放磁盘空间。")),
             Map.entry("AttachmentUploadExpiryScheduler.expire", new Entry("附件上传超时清理",
@@ -55,7 +55,15 @@ public final class ScheduledTaskCatalog {
             Map.entry("WorkshopMaterialCloseScheduler.retry", new Entry("车间内料仓自动结算",
                     "每 10 分钟给已经盘点、还没结算的车间内料仓补做结算; 差报工审核、单个重量或发料记录的, 通知该补的人, 补完自动结算。")),
             Map.entry("MaterializedViewRefreshScheduler.refreshAll", new Entry("报表数据刷新",
-                    "每 5 分钟刷新销售、采购、生产、库存、委外和应收应付的报表汇总。")),
+                    "每 5 分钟刷新销售、采购、生产和委外的报表汇总; 库存与应收应付月度已改为增量汇总表, 不再整表重算。")),
+            Map.entry("PartyMonthlySummaryScheduler.drain", new Entry("往来月度汇总重算",
+                    "每隔数秒把客户/供应商往来事件按月汇总重算, 对账单期初不再全历史重放, 读取前还会按单位即时补算。")),
+            Map.entry("StockMonthlyVerificationScheduler.verifyChunk", new Entry("库存月汇总分块核对",
+                    "每天 03:41 低峰滚动核对一段货品的月度汇总与出入库流水是否一致, 只告警不修复。")),
+            Map.entry("BusinessOutboxPayloadTieringScheduler.tierDeliveredPayloads", new Entry("事件载荷分层",
+                    "每天 03:53 把送达超过 90 天的业务事件完整载荷无损转入历史层, 热表只留防重身份, 查询与防重语义不变。")),
+            Map.entry("BusinessArchiveEligibilityScheduler.scan", new Entry("归档资格扫描",
+                    "每天 03:57 低峰扫描已结清满一定期限的采购订单, 登记可完整打包归档的候选与阻碍原因, 只登记不搬移不删除。")),
             Map.entry("ReportExportWorker.poll", new Entry("报表导出处理",
                     "每两秒接手已授权的报表导出请求，分批生成完整文件并核对读取权限；过期结果按保留策略清理，原业务记录不改变。")),
             Map.entry("ServerStatusAlertScheduler.scan", new Entry("服务器状态告警推送",
@@ -71,17 +79,17 @@ public final class ScheduledTaskCatalog {
             Map.entry("ReservationHoldScheduler.scan", new Entry("库存预留逾期提醒",
                     "每天 08:37 提醒交货期加宽限期已过仍占着库存的预留。")),
             Map.entry("ReconcilePlanHousekeeping.purge", new Entry("员工核对清理",
-                    "每 10 分钟清除超过 24 小时未执行的员工资料核对内容，已执行的更正记录继续保留。")),
+                    "每 10 分钟关闭超过 24 小时未执行的员工资料核对计划并清空其中已加密的核对内容, 已执行的更正记录继续保留。")),
             Map.entry("SubcontractReturnDueScheduler.scan", new Entry("委外回厂到期提醒",
                     "每天 08:49 提醒 3 天内应回厂却还没回厂的委外单。")),
             Map.entry("SubcontractShortDeliveryOverdueScheduler.scan", new Entry("委外短交逾期提醒",
                     "每天 08:53 提醒判定为分批到货、过了预计到齐日却还没到齐的委外回厂短交。")),
             Map.entry("StockReconciliationScheduler.scan", new Entry("库存余额对账",
-                    "每天 08:51 核对库存余额与出入库流水是否一致, 只告警不改账。")),
+                    "每天 08:51 核对库存余额与月度汇总是否一致, 只告警不改账; 低峰另有分块完整核对兜底。")),
             Map.entry("GoodsWeightRefreshScheduler.refresh", new Entry("单重学习刷新",
                     "每天 02:13 按最新称重记录补算各货品的单重学习结果, 只更新学习结果, 不改库存和货品资料。")),
             Map.entry("AuditRetentionScheduler.runScheduled", new Entry("审计日志归档",
-                    "每天 03:17 把整月超过在线保留期的审计日志移入归档, 归档再到期后整月清理, 每次运行留一条完成记录。")),
+                    "每天 03:17 把整月超过在线保留期的审计日志移入冷归档分区, 归档证据永久保留不销毁, 每次运行留一条完成记录。")),
             Map.entry("AuditPartitionMaintainer.ensureUpcoming", new Entry("审计日志月分区预建",
                     "每天 01:07 预先建好当月和之后 3 个月的审计日志存放区, 保证新记录随时有地方写。")),
             Map.entry("PrimaryHealthIndicator.ping", new Entry("云端主库连通探测",
@@ -92,6 +100,36 @@ public final class ScheduledTaskCatalog {
     );
 
     private ScheduledTaskCatalog() {}
+
+    /**
+     * 完成回执要持久化到 {@code scheduled_task_runs} 的治理类低频任务 (B3/V954)。
+     *
+     * <p>只收每日/每小时节奏的治理任务: 高频轮询(秒级 drain/poll/reconcile)仍只留内存观测,
+     * 避免运行证据表被刷屏。条目必须同时存在于 {@link #ENTRIES} (契约测试钉死)。
+     */
+    static final Set<String> DURABLE_EVIDENCE_TASKS = Set.of(
+            "AiInputOriginalCleanup.purge",
+            "SalesQuoteTemplateCleanupScheduler.purgeExpired",
+            "SalesLearningEvidenceCleanupScheduler.purgeExpiredEvidence",
+            "AttachmentReconciliationService.scheduledReconcile",
+            "InternalStorageScratchScheduler.cleanup",
+            "CelebrationScheduler.scan",
+            "DeliveryDueWarningScheduler.scan",
+            "ReservationHoldScheduler.scan",
+            "SubcontractReturnDueScheduler.scan",
+            "SubcontractShortDeliveryOverdueScheduler.scan",
+            "StockReconciliationScheduler.scan",
+            "GoodsWeightRefreshScheduler.refresh",
+            "AuditRetentionScheduler.runScheduled",
+            "AuditPartitionMaintainer.ensureUpcoming",
+            "StockMonthlyVerificationScheduler.verifyChunk",
+            "BusinessOutboxPayloadTieringScheduler.tierDeliveredPayloads",
+            "BusinessArchiveEligibilityScheduler.scan");
+
+    /** 持久证据任务集合的只读视图。 */
+    public static Set<String> durableEvidenceTasks() {
+        return DURABLE_EVIDENCE_TASKS;
+    }
 
     /** 登记项; 未登记的程序标识返回空 (调用方回落到程序标识, 契约测试保证线上不会发生)。 */
     public static Optional<Entry> describe(String name) {

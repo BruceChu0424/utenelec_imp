@@ -45,6 +45,7 @@ class ReportExportSpecialSourcesPostgresTest {
             "warehouses","warehouse_goods_place_preferences","finance_reconciliations","account_flow_monthly_summaries",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines","ar_ap_ledger",
             "legacy_finance_import_sources","customer_open_item_offsets","customer_open_item_offset_batches",
+            "party_monthly_summaries","party_month_dirty",
             "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","v_stock_actual_finished_receipts"};
     private static final UUID CURRENCY=UUID.randomUUID(),CLIENT=UUID.randomUUID(),SUPPLIER=UUID.randomUUID(),
             ACCOUNT=UUID.randomUUID(),UNIT=UUID.randomUUID();
@@ -117,11 +118,12 @@ class ReportExportSpecialSourcesPostgresTest {
             Class<?> lines=Class.forName("com.uten.imp.features.finance.gl.GlReportLineSource");
             var constructor=lines.getDeclaredConstructor(jakarta.persistence.EntityManager.class);constructor.setAccessible(true);
             var gl=(com.uten.imp.features.finance.gl.GlReportService)com.uten.imp.features.finance.gl.GlReportService.class
-                    .getConstructors()[0].newInstance(session,constructor.newInstance(session));
+                    .getConstructors()[0].newInstance(session,constructor.newInstance(session),access);
             finance=new FinanceReportService(session,access,settings,
-                    new com.uten.imp.features.finance.statement.FinanceStatementService(session),
-                    new com.uten.imp.features.finance.cost.FinanceCostService(session),gl,
-                    new com.uten.imp.features.finance.asset.FixedAssetService(session,mock(com.uten.imp.security.TxSessionVars.class)));
+                    new com.uten.imp.features.finance.statement.FinanceStatementService(session,access),
+                    new com.uten.imp.features.finance.cost.FinanceCostService(session,access),gl,
+                    new com.uten.imp.features.finance.asset.FixedAssetService(session,mock(com.uten.imp.security.TxSessionVars.class),access),
+                    new com.uten.imp.features.finance.report.PartyMonthlySummaryService(session));
             var costs=mock(StockCostMasker.class);when(costs.canView()).thenReturn(true);
             var query=new StockQueryService(mock(com.uten.imp.features.stock.StockBalanceRepository.class),session,costs);
             stock=new StockReportService(session,settings,query,costs);
@@ -161,6 +163,7 @@ class ReportExportSpecialSourcesPostgresTest {
             assertThat(streamed).containsExactlyElementsOf(original.rows());
             // Preflight proof queries may remain; there is one unbounded data SELECT, never repeated OFFSET scans.
             var dataStatements=context.sql.stream().filter(statement->!statement.toLowerCase(Locale.ROOT).startsWith("select count(*)")
+                    && !statement.toLowerCase(Locale.ROOT).contains("from party_month_dirty")
                     && statement.matches("(?is).*\\bORDER\\s+BY\\b.*")).toList();
             assertThat(dataStatements)
                     .hasSize(1).allSatisfy(statement->assertThat(statement).doesNotContain("LIMIT ? OFFSET ?"));

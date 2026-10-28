@@ -117,10 +117,10 @@ public class MasterReportExportSource implements MasterReportExportPort {
                     .readValue(json.treeAsTokens(tree));
             if (!validator.validate(value).isEmpty()) throw invalid();
             if (value instanceof ClientQueryFilter f)
-                com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+                com.uten.imp.common.web.ContactSensitiveFilter.requireBoundedReadValues(
                         f.keyword(), f.mobile(), f.phone(), f.phone2(), f.bankAccount());
             if (value instanceof SupplierQueryFilter f)
-                com.uten.imp.features.master.dto.ContactSensitiveFilter.requireBoundedReadValues(
+                com.uten.imp.common.web.ContactSensitiveFilter.requireBoundedReadValues(
                         f.keyword(), f.mobile(), f.phone(), f.phone2(), f.bankAccount());
             return value;
         } catch (java.io.IOException | IllegalArgumentException failure) {

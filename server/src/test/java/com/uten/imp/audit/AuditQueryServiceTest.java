@@ -149,7 +149,7 @@ class AuditQueryServiceTest {
         ApiException error = assertThrows(
                 ApiException.class, () -> service.detail(99L));
 
-        assertEquals("审计日志不存在或已归档", error.getMessage());
+        assertEquals("审计日志不存在", error.getMessage());
     }
 
     @Test

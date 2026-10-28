@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 
 class GlReportExportSnapshotTest {
     private final LocalDate date = LocalDate.of(2026, 10, 25);
-    private final GlReportService service = spy(new GlReportService(mock(EntityManager.class), mock(GlReportLineSource.class)));
+    private final GlReportService service = spy(new GlReportService(mock(EntityManager.class), mock(GlReportLineSource.class),com.uten.imp.support.FinanceReportTestAccess.company()));
 
     @AfterEach void clear() {
         TransactionSynchronizationManager.clear();

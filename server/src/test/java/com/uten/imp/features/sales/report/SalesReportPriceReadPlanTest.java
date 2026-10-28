@@ -17,6 +17,18 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class SalesReportPriceReadPlanTest {
+    @Test void hiddenPriceHeaderRejectsBeforeParsingAndBeforeReadingDataOrMetadata(){
+        var fixture=fixture();
+        for(String key:List.of("price","discount","amount","billedLocalAmount","billedLocalTotal","totalAmount","machiningPrice")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->fixture.service().orderDetail(null,null,(Short)null,null,null,null,
+                    Map.of("search."+key,"invalid-numeric-probe"),1,50,null,null))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                    .satisfies(error->assertThat(((com.uten.imp.common.web.ApiException)error).getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        }
+        assertThat(fixture.sql()).isEmpty();
+        var result=fixture.service().orderDetail(null,null,(Short)null,null,null,null,Map.of(),1,50,null,null);
+        assertThat(result.columnSearchKeys()).contains("billDate","goodsName","pendingQty").doesNotContain("price","discount","amount","totalAmount");
+    }
     private record Fixture(SalesReportService service, List<String> sql) { }
 
     private Fixture fixture() {

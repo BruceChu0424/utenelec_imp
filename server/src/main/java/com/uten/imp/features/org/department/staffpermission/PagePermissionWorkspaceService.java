@@ -130,6 +130,12 @@ public class PagePermissionWorkspaceService {
             String search,
             int page,
             int size) {
+        return staff(surfaceKey,departmentId,search,page,size,Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public PagePermissionStaffPageDto staff(String surfaceKey, UUID departmentId, String search,
+            int page, int size, Map<String,String> columns) {
         AuthUser actor = requireStaffSubject();
         featureGate.requireEnabled();
         surfaceRegistry.permissionsFor(surfaceKey);
@@ -144,8 +150,11 @@ public class PagePermissionWorkspaceService {
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.FORBIDDEN,
                         "当前账号没有可管理的员工范围"));
+        var headers=PagePermissionStaffHeaderQuery.read(columns);
         DepartmentPermissionStaffQuery.Result result =
-                staffQuery.query(
+                headers.active() ? staffQuery.query(
+                        searchAuthority, departmentId, actor.isSuperAdmin()?null:actor.getEmployeeId(),
+                        search,page,size,headers) : staffQuery.query(
                         searchAuthority,
                         departmentId,
                         actor.isSuperAdmin() ? null : actor.getEmployeeId(),

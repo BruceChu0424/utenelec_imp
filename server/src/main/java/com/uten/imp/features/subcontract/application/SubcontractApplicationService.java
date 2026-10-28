@@ -72,7 +72,7 @@ public class SubcontractApplicationService {
 
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。
      *  2026-09-25 单号列统一：billNo 进白名单。 */
-    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
+    private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "billNo", "billNo");
 
     private final SubcontractApplicationRepository applicationRepo;
     private final SubcontractApplicationItemRepository itemRepo;
@@ -150,7 +150,8 @@ public class SubcontractApplicationService {
         final ApplicationQueryFilter f = com.uten.imp.common.history.ImportedBusinessDocumentScope.historyFilter(originalFilter);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(applicationSpec(f), pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(applicationSpec(f), pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractApplication> p = applicationRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ApplicationListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return retainedRecords.page(result, "subcontract_applications", p.getContent());
@@ -189,6 +190,7 @@ public class SubcontractApplicationService {
             }
             f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class)));
             return cb.and(ps.toArray(new Predicate[0]));

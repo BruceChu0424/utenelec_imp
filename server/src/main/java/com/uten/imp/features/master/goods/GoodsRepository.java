@@ -42,13 +42,6 @@ public interface GoodsRepository extends JpaRepository<Goods, UUID>, JpaSpecific
             """, nativeQuery = true)
     Optional<Goods> findFirstByCodeAndDeletedTrueOrderByIdAsc(@Param("code") String code);
 
-    @Query(value = """
-            SELECT g.id FROM goods g WHERE g.code=:code AND g.is_deleted
-              AND NOT EXISTS(SELECT 1 FROM goods_code_reuse_releases r WHERE r.old_goods_id=g.id)
-            ORDER BY g.id
-            """, nativeQuery = true)
-    List<UUID> findRestorableDeletedIdsByCode(@Param("code") String code);
-
     @Query(value = "SELECT EXISTS(SELECT 1 FROM goods_code_reuse_releases WHERE normalized_code=upper(btrim(:code)))", nativeQuery = true)
     boolean codeHasReuseHistory(@Param("code") String code);
 

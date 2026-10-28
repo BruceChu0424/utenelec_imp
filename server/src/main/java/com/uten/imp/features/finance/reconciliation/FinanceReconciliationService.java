@@ -42,16 +42,23 @@ public class FinanceReconciliationService {
             "inAmount", "inAmount",
             "outAmount", "outAmount",
             // 2026-09-25 单号列统一：单据号可排序。
-            "billNo", "billNo");
+            "billNo", "billNo", "counterpartName","counterpartName");
+    private static final Map<String,com.uten.imp.common.util.JpaColumnSearch.Field> HEADER_FIELDS=Map.of(
+            "billDate",com.uten.imp.common.util.JpaColumnSearch.Field.instant("billDate"),
+            "billNo",com.uten.imp.common.util.JpaColumnSearch.Field.text("billNo"),
+            "counterpartName",com.uten.imp.common.util.JpaColumnSearch.Field.text("counterpartName"),
+            "inAmount",com.uten.imp.common.util.JpaColumnSearch.Field.decimal("inAmount"),
+            "outAmount",com.uten.imp.common.util.JpaColumnSearch.Field.decimal("outAmount"));
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('account:view') and hasAuthority('account:balance:view') "
             + "and hasAuthority('account:flow:view')")
     public PageResponse<FinanceReconciliationListItem> list(FinanceReconciliationQueryFilter f, int page, int size, String sort, String order) {
+        requireAmountAccount(f,sort);
         Specification<FinanceReconciliation> spec = reconciliationSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<FinanceReconciliation> p = repo.findAll(searchPage.specification(), searchPage.pageable());
         return new PageResponse<>(p.map(this::toList).getContent(), p);
     }
@@ -68,6 +75,8 @@ public class FinanceReconciliationService {
 
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
     private Specification<FinanceReconciliation> reconciliationSpec(FinanceReconciliationQueryFilter f) {
+        requireAmountAccount(f,null);
+        var searches=com.uten.imp.common.util.JpaColumnSearch.validate(f.columnSearch(),HEADER_FIELDS);
         return (Root<FinanceReconciliation> root,
                 jakarta.persistence.criteria.CriteriaQuery<?> q,
                 CriteriaBuilder cb) -> {
@@ -99,6 +108,8 @@ public class FinanceReconciliationService {
             if (f.billNo() != null && !f.billNo().isBlank()) {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
+            if(f.reversalOfId()!=null)ps.add(cb.equal(root.get("reversalOfId"),f.reversalOfId()));
+            ps.add(com.uten.imp.common.util.JpaColumnSearch.predicate(root,q,cb,searches,HEADER_FIELDS));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }
@@ -108,5 +119,11 @@ public class FinanceReconciliationService {
                 r.getSourceDocId(), r.getAccountId(), r.getCheckNo(), r.getCounterpartName(),
                 r.getInAmount(), r.getOutAmount(), r.getBillDate(), r.getSettledDate(),
                 r.getSourceRemark(), r.getLegacyBstyle(), r.getEntryKind(), r.getReversalOfId());
+    }
+
+    private static void requireAmountAccount(FinanceReconciliationQueryFilter f,String sort) {
+        boolean amountSearch=f.columnSearch().entrySet().stream().anyMatch(entry->java.util.Set.of("inAmount","outAmount").contains(entry.getKey())&&entry.getValue()!=null&&!entry.getValue().isBlank());
+        if(f.accountId()==null&&(amountSearch||"inAmount".equals(sort)||"outAmount".equals(sort)))
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"按原币收入或支出筛选、排序前，请先选择账户");
     }
 }

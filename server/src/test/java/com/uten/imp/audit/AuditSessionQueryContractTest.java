@@ -184,14 +184,25 @@ class AuditSessionQueryContractTest {
     void sessionQueriesExposeArchiveAndSnapshotBoundariesWithoutSilentEmptySuccess()
             throws IOException {
         String source = source("AuditSessionQueryService.java");
-        assertTrue(source.contains("hasArchivedSessions("));
-        assertTrue(source.contains("登录会话已转入冷归档"));
+        // 统一读取合同(V952): 在线+冷归档经 v_audit_log_all 跨层查询,
+        // 归档段计入完整时间线(spans_archive), 不存在「包含归档即整体拒绝」的熔断。
+        assertTrue(source.contains("FROM v_audit_log_all"));
         assertTrue(source.contains("登录会话不存在"));
         assertTrue(source.contains("登录会话晚于当前查询快照"));
         assertTrue(source.contains("查询快照编号超出当前审计范围"));
         assertTrue(source.contains("SessionAvailability availability"));
         assertTrue(source.contains("archive_presence AS"));
-        assertTrue(source.contains("AS timeline_partial"));
+        assertTrue(source.contains("AS spans_archive"));
+        assertFalse(source.contains("hasArchivedSessions("));
+        assertFalse(source.contains("已转入冷归档"));
+
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/"
+                        + "V952__audit_archive_unified_read.sql"));
+        assertTrue(migration.contains("CREATE VIEW public.v_audit_log_all"));
+        assertTrue(migration.contains("UNION ALL"));
+        assertTrue(migration.contains("INSTEAD OF INSERT ON public.v_audit_log_all"));
+        assertTrue(migration.contains("INSERT INTO public.audit_log"));
     }
 
     @Test

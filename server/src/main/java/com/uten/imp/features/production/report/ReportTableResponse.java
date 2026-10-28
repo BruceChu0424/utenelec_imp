@@ -29,7 +29,15 @@ public record ReportTableResponse(
         Map<String, Object> meta,
         List<ReportTotal> totals,
         String readScopeVersion,
-        String statisticsGeneratedAt) {
+        String statisticsGeneratedAt,java.util.Set<String> columnSearchKeys) {
+    public ReportTableResponse(List<ReportColumn> columns,List<Map<String,Object>> rows,
+            Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,Map<String,Object> meta,
+            List<ReportTotal> totals,String readScopeVersion,String statisticsGeneratedAt) {
+        this(columns,rows,facets,page,size,total,totalPages,meta,totals,readScopeVersion,statisticsGeneratedAt,java.util.Set.of());
+    }
+    public ReportTableResponse withColumnSearchKeys(java.util.Set<String> keys) {
+        return new ReportTableResponse(columns,rows,facets,page,size,total,totalPages,meta,totals,readScopeVersion,statisticsGeneratedAt,java.util.Set.copyOf(keys));
+    }
     public ReportTableResponse(List<ReportColumn> columns, List<Map<String,Object>> rows,
             Map<String,List<ReportFacet>> facets,int page,int size,long total,int totalPages,
             List<ReportTotal> totals,String readScopeVersion) {

@@ -11,16 +11,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class PermissionDependencyCatalogTest {
     @Test
-    void companyFilesAcquireOnlyTheirActualAttachmentReadOrUploadDependencies() {
+    void companyFilesUploadKeepsAttachmentDependenciesAndDownloadOnlyNeedsTheEntrance() {
         var catalog=catalog(view("company_file:view"),action("company_file:upload"),action("company_file:download"),
                 view("attachment:view"),action("attachment:upload"),action("attachment:download"),action("attachment:delete"));
         assertThat(catalog.requiredPermissions("company_file:upload",Set.of()))
                 .containsExactly("company_file:view","attachment:view","attachment:upload");
+        // V958: 可见即可下载——公司资料下载不再依赖通用附件权限，仅随入口。
         assertThat(catalog.requiredPermissions("company_file:download",Set.of()))
-                .containsExactly("company_file:view","attachment:view","attachment:download");
+                .containsExactly("company_file:view");
         assertThat(catalog.usablePermissions(Set.of("company_file:view","company_file:upload","attachment:view")))
                 .doesNotContain("company_file:upload");
-        assertThat(catalog.requiredPermissions("company_file:download",Set.of())).doesNotContain("attachment:upload","attachment:delete");
+        assertThat(catalog.usablePermissions(Set.of("company_file:view","company_file:download")))
+                .contains("company_file:download");
+        assertThat(catalog.requiredPermissions("company_file:download",Set.of("company_file:view")))
+                .doesNotContain("attachment:view","attachment:upload","attachment:download","attachment:delete");
     }
     @Test
     void materialEngineeringForwardRequiresItsActualAnalysisReadWithoutPlanOrGoodsWrites() {

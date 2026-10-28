@@ -174,8 +174,37 @@ public class AdminUserController {
                 req == null ? null : req.expectedOwnerEmployeeIds());
     }
 
+    /**
+     * 批量整体替换多个范围：一次再认证覆盖一次批量编辑（ADR-110 凭证一次性，
+     * 逐范围请求会让管理员每改一个范围输一次密码）。任一范围 CAS 失败整批回滚。
+     */
+    @PutMapping("/users/{id}/data-scopes/batch")
+    @RequiresStepUp
+    @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
+    public DataScopesBatchResultDto setDataScopesBatch(
+            @PathVariable UUID id, @Valid @RequestBody DataScopesBatchBody req) {
+        var result = dataScopeAdmin.setDataScopesBatch(id,
+                req == null || req.scopes() == null ? List.of()
+                        : req.scopes().stream()
+                        .map(scope -> new DataScopeAdminService.ScopeReplacement(
+                                scope.scope(), scope.ownerEmployeeIds(), scope.expectedOwnerEmployeeIds()))
+                        .toList());
+        return new DataScopesBatchResultDto(
+                result.changedScopes(), result.addedOwners(), result.removedOwners());
+    }
+
     /** 数据范围整体替换请求体。 */
     public record DataScopesBody(
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> ownerEmployeeIds,
             @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> expectedOwnerEmployeeIds) {}
+
+    /** 批量整体替换请求体：每个范围一条，含 CAS 基线。 */
+    public record DataScopesBatchBody(@NotNull @Size(max = 8) List<DataScopesScopeBody> scopes) {}
+
+    public record DataScopesScopeBody(
+            @NotNull String scope,
+            @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> ownerEmployeeIds,
+            @Size(max = RequestLimits.ADMIN_SCOPE_OWNERS) List<UUID> expectedOwnerEmployeeIds) {}
+
+    public record DataScopesBatchResultDto(int changedScopes, int addedOwners, int removedOwners) {}
 }

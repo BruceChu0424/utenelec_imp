@@ -28,4 +28,9 @@ public class WasteListItem extends com.uten.imp.common.history.DocumentHistoryMe
     }
 
     public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
+    public String getTotalWeightText() { return com.uten.imp.common.util.DecimalText.of(totalWeight); }
+    public String getTotalWeightDisplayText() {
+        var display=com.uten.imp.common.finance.MoneyPolicy.quantityDisplay(totalWeight,3);
+        return display==null?null:display.toPlainString();
+    }
 }

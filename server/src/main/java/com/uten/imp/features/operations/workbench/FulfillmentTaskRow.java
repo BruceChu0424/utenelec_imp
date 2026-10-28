@@ -93,6 +93,11 @@ public record FulfillmentTaskRow(
         String supplierName,
         BigDecimal differenceQty) {
 
+    public String getRequiredQtyExact() {return requiredQty==null?null:requiredQty.toPlainString();}
+    public String getAllocatedQtyExact() {return allocatedQty==null?null:allocatedQty.toPlainString();}
+    public String getFulfilledQtyExact() {return fulfilledQty==null?null:fulfilledQty.toPlainString();}
+    public String getOpenQtyExact() {return openQty==null?null:openQty.toPlainString();}
+
     public String getDifferenceQtyExact() {
         return com.uten.imp.common.util.DecimalText.of(differenceQty);
     }

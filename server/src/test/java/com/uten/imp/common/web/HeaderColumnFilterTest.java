@@ -13,7 +13,8 @@ import static org.mockito.Mockito.*;
 
 class HeaderColumnFilterTest {
     @Test void maskedAmountAndNullProbesFailBeforeParsingOrTouchingAnyJpaProperty() {
-        for (var values : java.util.List.of(Map.of("amountMin", "NaN"), Map.of("amountNull", "true"))) {
+        for (var values : java.util.List.of(Map.of("amountMin", "NaN"), Map.of("amountNull", "true"),
+                Map.of("search.total","NaN"), Map.of("search.amount",">1"))) {
             var root = mock(Root.class);var builder = mock(CriteriaBuilder.class);
             var filter = new HeaderColumnFilter(values);
             var failure = assertThrows(ApiException.class, () -> filter.apply(root,builder,new ArrayList<>(),"totalLocal",false,null,false,null,false));
@@ -24,8 +25,18 @@ class HeaderColumnFilterTest {
         assertThrows(ApiException.class,()->HeaderColumnFilter.from(Map.of("hf.makerId", "someone")));
         assertThrows(ApiException.class,()->HeaderColumnFilter.from(Map.of("hf.amountMin;DELETE", "1")));
         assertEquals(HeaderColumnFilter.EMPTY,HeaderColumnFilter.from(Map.of("keyword","normal legacy search")));
-        for (String column : java.util.List.of("total", "amount", "billDate", "status", "makerId", "billNo);DELETE"))
+        for (String column : java.util.List.of("totalLocal", "bill_date", "deliverDate", "status", "makerId", "billNo);DELETE"))
             assertThrows(ApiException.class, () -> HeaderColumnFilter.from(Map.of("search." + column, "x")));
+    }
+    @Test void typedColumnsRemainExplicitAndProtectedSortsFailBeforeAnyPropertyAccess() {
+        var filter=HeaderColumnFilter.from(Map.of("search.billDate","2026-10","search.total",">0","search.weight","1..2"));
+        assertTrue(filter.hasAmount());assertTrue(filter.hasAmountRange());
+        assertEquals(ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
+                ()->HeaderColumnFilter.requireAmountSortVisible("total",false)).getCode());
+        assertDoesNotThrow(()->HeaderColumnFilter.requireAmountSortVisible("billDate",false));
+        var root=mock(Root.class);var builder=mock(CriteriaBuilder.class);
+        assertThrows(ApiException.class,()->filter.applySearch(root,null,builder,new ArrayList<>(),Map.of()));
+        verifyNoInteractions(root,builder);
     }
     @Test void columnSearchHasItsOwnWhitelistedNamespaceAndCannotBecomeAnExactIdFilter() {
         var filters = HeaderColumnFilter.from(Map.of("search.billNo", " CD2026 ", "search.supplier", "华东",

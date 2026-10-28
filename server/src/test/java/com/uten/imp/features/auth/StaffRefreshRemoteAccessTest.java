@@ -34,7 +34,7 @@ class StaffRefreshRemoteAccessTest {
         deployment.setSite("cloud");
         AuthSessionService sessions = mock(AuthSessionService.class);
         when(sessions.lockAndEvaluateForRefresh(any(), any(), any()))
-                .thenReturn(AuthSessionService.Verdict.ACTIVE);
+                .thenReturn(AuthSessionService.RefreshVerdict.active());
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
                 users,
                 tokens,
@@ -78,7 +78,7 @@ class StaffRefreshRemoteAccessTest {
         // 远程访问开关同时吊销了会话: 仍返回明确的「未授权外网访问」, 不当成令牌被盗。
         AuthSessionService sessions = mock(AuthSessionService.class);
         when(sessions.lockAndEvaluateForRefresh(any(), any(), any()))
-                .thenReturn(AuthSessionService.Verdict.REVOKED);
+                .thenReturn(new AuthSessionService.RefreshVerdict(AuthSessionService.Verdict.REVOKED, null, null));
         StaffRefreshTransaction transaction = new StaffRefreshTransaction(
                 users, tokens, tokenService, new RemoteAccessPolicy(deployment), sessions);
 

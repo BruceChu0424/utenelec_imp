@@ -31,7 +31,7 @@ class StockWeightControllerSecurityTest {
         assertGuard("params", VIEW, WeightParamsRequest.class);
         assertGuard("goods", VIEW, UUID.class);
         assertGuard("observations", VIEW, UUID.class, int.class, int.class, String.class, UUID.class,
-                String.class);
+                String.class, String.class, String.class, jakarta.servlet.http.HttpServletRequest.class);
         assertGuard("sample", SAMPLE, UUID.class, WeightSampleRequest.class);
         assertGuard("updateProfile", MANAGE, UUID.class, WeightProfileUpdateRequest.class);
         assertGuard("exclude", MANAGE, UUID.class, WeightExcludeRequest.class);

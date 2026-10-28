@@ -97,13 +97,18 @@ public class WorkshopMaterialReportGuardAdapter implements WorkshopMaterialRepor
     private String reopeners() {
         List<String> names = db.queryForList("""
                 SELECT DISTINCT employee.full_name
-                FROM user_permission_overrides grant_row
+                FROM (
+                    SELECT user_id,permission_id FROM user_permission_overrides WHERE active AND effect='grant'
+                    UNION SELECT user_id,permission_id FROM authorization_user_template_permission_sources
+                ) grant_row
                 JOIN permissions permission ON permission.id = grant_row.permission_id
                  AND permission.code = 'workshop_material:reopen'
                 JOIN users account ON account.id = grant_row.user_id AND NOT account.is_deleted
                  AND account.status = 'active'
                 JOIN employees employee ON employee.id = account.employee_id AND NOT employee.is_deleted
-                WHERE grant_row.effect = 'grant' AND COALESCE(grant_row.active, TRUE)
+                WHERE NOT EXISTS(SELECT 1 FROM user_permission_overrides revoked
+                    WHERE revoked.user_id=account.id AND revoked.permission_id=permission.id
+                      AND revoked.active AND revoked.effect='revoke')
                 ORDER BY employee.full_name
                 LIMIT 5
                 """, Map.of(), String.class);

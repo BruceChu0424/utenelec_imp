@@ -31,6 +31,10 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class CompanyFileService {
     public static final String OWNER_TYPE = "COMPANY_FILE";
+    /** V958 synthetic ACL subject marking an entry as visible to everyone. */
+    public static final String EVERYONE_SUBJECT_TYPE = "ALL";
+    public static final UUID EVERYONE_SUBJECT_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000000");
     static final List<String> ACTIONS =
             List.of(
                     "view",
@@ -46,8 +50,6 @@ public class CompanyFileService {
             Map.of(
                     "view",
                     "company_file:view",
-                    "download",
-                    "company_file:download",
                     "upload",
                     "company_file:upload",
                     "create",
@@ -62,6 +64,8 @@ public class CompanyFileService {
                     "company_file:restore",
                     "manage_permissions",
                     "company_file:manage_permissions");
+    /** Reading actions stay default-open along the chain; writes need an explicit grant. */
+    private static final Set<String> DEFAULT_OPEN_ACTIONS = Set.of("view", "download");
     private static final int MAX_CHILDREN = 500, MAX_DEPTH = 32, MAX_SUBTREE = 5000;
     private final JdbcTemplate jdbc;
     private final SecurityContextCurrentUser currentUser;
@@ -84,6 +88,11 @@ public class CompanyFileService {
             boolean trash,
             int page,
             int size) {
+        return list(parentId, search, sort, direction, trash, page, size, Map.of());
+    }
+
+    public Listing list(UUID parentId, String search, String sort, String direction,
+            boolean trash, int page, int size, Map<String, String> columnSearches) {
         AuthUser user = user();
         requireGlobal(user, "view");
         Scope scope = new Scope(user);
@@ -116,8 +125,9 @@ public class CompanyFileService {
                     Math.clamp(size, 1, 200),
                     rootActions,
                     false);
+        CompanyFileHeaderQuery headers = new CompanyFileHeaderQuery(columnSearches);
         if (trash)
-            return listTrash(scope, folder, breadcrumbs, search, sort, direction, page, size, rootActions);
+            return listTrash(scope, folder, breadcrumbs, search, sort, direction, page, size, rootActions, headers);
         String query =
                 "SELECT n.* FROM company_file_nodes n WHERE n.parent_id IS NOT DISTINCT FROM ? AND"
                         + " n.deleted=?";
@@ -134,6 +144,7 @@ public class CompanyFileService {
                 candidates.stream()
                         .filter(n -> scope.can(n, "view", trash, false))
                         .filter(n -> n.name.toLowerCase(Locale.ROOT).contains(needle))
+                        .filter(n -> headerMatches(scope, n, headers))
                         .toList();
         int limit = Math.clamp(size, 1, 200), current = Math.max(0, page);
         long start = Math.min((long) current * limit, visible.size());
@@ -144,6 +155,7 @@ public class CompanyFileService {
         boolean canReorder =
                 !trash
                         && needle.isEmpty()
+                        && headers.isEmpty()
                         && current == 0
                         && visible.size() <= limit
                         && visible.size() == candidates.size()
@@ -164,7 +176,8 @@ public class CompanyFileService {
 
     /** Past deletion batches are not bounded by a directory's current live-item capacity. */
     private Listing listTrash(Scope scope, Node folder, List<Breadcrumb> breadcrumbs,
-            String search, String sort, String direction, int page, int size, List<String> rootActions) {
+            String search, String sort, String direction, int page, int size, List<String> rootActions,
+            CompanyFileHeaderQuery headers) {
         String needle = search == null ? "" : search.strip().toLowerCase(Locale.ROOT);
         if (needle.length() > 180) throw invalid("搜索内容最多 180 个字符");
         int limit = Math.clamp(size, 1, 200), current = Math.max(0, page);
@@ -194,8 +207,9 @@ public class CompanyFileService {
                 scope.actorNames.clear();
                 scope.prime(batch);
                 for (Node n : batch) {
-                    if (!n.name.toLowerCase(Locale.ROOT).contains(needle)
-                            || !scope.can(n, "view", true, false)) continue;
+                    if (!scope.can(n, "view", true, false)
+                            || !n.name.toLowerCase(Locale.ROOT).contains(needle)
+                            || !headerMatches(scope, n, headers)) continue;
                     if (total >= start && entries.size() < limit) entries.add(scope.entry(n, true));
                     total++;
                 }
@@ -203,6 +217,11 @@ public class CompanyFileService {
             return new Listing(folderEntry, breadcrumbs, List.copyOf(entries), total, current, limit,
                     rootActions, false);
         });
+    }
+
+    private static boolean headerMatches(Scope scope, Node n, CompanyFileHeaderQuery headers) {
+        Long knownSize = "FILE".equals(n.kind) && !n.pending && n.attachmentId != null ? n.sizeBytes : null;
+        return headers.matches(n.kind, n.name, knownSize, scope.actor(n.updatedBy), n.updatedAt);
     }
 
     public Entry detail(UUID id) {
@@ -226,7 +245,8 @@ public class CompanyFileService {
         AuthUser user = user();
         requireGlobal(user, "view");
         String action = kind.equals("FOLDER") ? "create" : "upload";
-        requireGlobal(user, action);
+        // Root level has no folder ACL; only a global administration code opens it.
+        if (request.parentId() == null) requireGlobal(user, action);
         String name = validName(request.name());
         String description = validDescription(request.description());
         InitialAccess access = request.access();
@@ -430,7 +450,8 @@ public class CompanyFileService {
         treeLock();
         AuthUser u = user();
         Scope s = new Scope(u);
-        requireGlobal(u, "move");
+        // Root order has no folder ACL; only a global administration code opens it.
+        if (request.parentId() == null) requireGlobal(u, "move");
         if (request.parentId() != null) s.require(s.node(request.parentId()), "move", false, true);
         List<Node> nodes =
                 jdbc.query(
@@ -602,7 +623,6 @@ public class CompanyFileService {
     public Entry setPassword(UUID id, Password request) {
         AuthUser u = user();
         requireGlobal(u, "view");
-        requireGlobal(u, "manage_permissions");
         if (u.getImpersonatedBy() != null)
             throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
         String hash = unlocks.hash(request.password());
@@ -655,9 +675,9 @@ public class CompanyFileService {
 
     public List<Principal> principals(String type, String search) {
         AuthUser u = user();
+        // Any reader may resolve subjects: folder-level managers are appointed through
+        // directory ACL grants, not through global administration codes (V958).
         requireGlobal(u, "view");
-        if (!has(u, "create") && !has(u, "upload") && !has(u, "manage_permissions"))
-            throw new ApiException(ErrorCode.FORBIDDEN);
         if (!Set.of("USER", "DEPARTMENT").contains(type)) throw invalid("请选择人员或部门");
         String value = search == null ? "" : search.strip();
         if (value.length() > 60) throw invalid("搜索内容过长");
@@ -840,27 +860,38 @@ public class CompanyFileService {
             return aclCache.getOrDefault(id, List.of());
         }
 
-        boolean decision(List<Node> chain, String action) {
-            boolean allowed = true, denied = false;
+        private record Verdict(boolean allowed, boolean denied) {}
+
+        /** Reading is open unless a non-inheriting cut or deny blocks it; writes start closed. */
+        Verdict verdict(List<Node> chain, String action) {
+            boolean allowed = DEFAULT_OPEN_ACTIONS.contains(action), denied = false;
             for (Node n : chain) {
                 if (!n.inheritPermissions) allowed = false;
                 for (Acl rule : rules(n.id)) {
                     boolean matches =
-                            rule.subjectType.equals("USER")
-                                    ? rule.subjectId.equals(user.getId())
-                                    : departments.contains(rule.subjectId);
+                            EVERYONE_SUBJECT_TYPE.equals(rule.subjectType)
+                                    ? rule.subjectId.equals(EVERYONE_SUBJECT_ID)
+                                    : rule.subjectType.equals("USER")
+                                            ? rule.subjectId.equals(user.getId())
+                                            : departments.contains(rule.subjectId);
                     if (matches && rule.actions.contains(action)) {
                         if (rule.effect.equals("DENY")) denied = true;
                         else allowed = true;
                     }
                 }
             }
-            return allowed && !denied;
+            return new Verdict(allowed, denied);
+        }
+
+        boolean decision(List<Node> chain, String action) {
+            Verdict verdict = verdict(chain, action);
+            return verdict.allowed() && !verdict.denied();
         }
 
         boolean can(Node n, String action, boolean trash, boolean requireUnlocked) {
             if (!cache.containsKey(n.id)) prime(List.of(n));
-            if (!has(user, action)) return false;
+            // The single system switch: the library entrance. Every action needs it.
+            if (!has(user, "view")) return false;
             List<Node> path = chain(n);
             boolean recovery = action.equals("manage_permissions") && user.isSuperAdmin();
             if (!trash && path.stream().anyMatch(v -> v.deleted)) return false;
@@ -882,14 +913,26 @@ public class CompanyFileService {
                 return false;
             for (int i = 0; i < path.size(); i++)
                 if (!decision(path.subList(0, i + 1), "view")) return false;
-            if (!decision(path, action)) return false;
-            return !requireUnlocked
-                    || path.stream()
-                            .noneMatch(
-                                    v ->
-                                            v.passwordHash != null
-                                                    && !unlocks.isUnlocked(
-                                                            v.id, v.passwordRevision, user));
+            // Reads ride the entrance plus the folder scope; writes need an explicit folder
+            // allow rule or a global library-administration code. A deny always wins.
+            return authorized(path, action)
+                    && (!requireUnlocked
+                            || path.stream()
+                                    .noneMatch(
+                                            v ->
+                                                    v.passwordHash != null
+                                                            && !unlocks.isUnlocked(
+                                                                    v.id,
+                                                                    v.passwordRevision,
+                                                                    user)));
+        }
+
+        /** Folder-ACL grant or (for writes) a global administration code; denies win. */
+        boolean authorized(List<Node> path, String action) {
+            Verdict verdict = verdict(path, action);
+            return !verdict.denied()
+                    && (verdict.allowed()
+                            || (!DEFAULT_OPEN_ACTIONS.contains(action) && has(user, action)));
         }
 
         private boolean canAdministerPending(List<Node> path) {
@@ -897,8 +940,8 @@ public class CompanyFileService {
             // replacement or a content download, and does not depend on the grant's source.
             return has(user, "manage_permissions")
                     && has(user, "delete")
-                    && decision(path, "manage_permissions")
-                    && decision(path, "delete")
+                    && authorized(path, "manage_permissions")
+                    && authorized(path, "delete")
                     // As with any locked entry, eligible cleanup managers can see its own
                     // lock label and enter a known password. Ancestors must already be unlocked;
                     // actual deletion still requires every password through can(..., true).
@@ -1003,7 +1046,7 @@ public class CompanyFileService {
         for (Rule rule : rules) {
             if (rule == null || rule.subjectId() == null
                     || rule.subjectType() == null || rule.effect() == null
-                    || !Set.of("USER", "DEPARTMENT").contains(rule.subjectType())
+                    || !Set.of("USER", "DEPARTMENT", EVERYONE_SUBJECT_TYPE).contains(rule.subjectType())
                     || !Set.of("ALLOW", "DENY").contains(rule.effect())
                     || rule.actions() == null || rule.actions().isEmpty()
                     || rule.actions().stream().anyMatch(Objects::isNull)
@@ -1011,20 +1054,31 @@ public class CompanyFileService {
                     || new HashSet<>(rule.actions()).size() != rule.actions().size()) {
                 throw invalid(readOnly ? "新资料只能设置查看和下载范围，不能授予系统操作权限" : "资料授权规则无效");
             }
+            // The synthetic everyone subject is a fixed allow-view/read marker only.
+            if (EVERYONE_SUBJECT_TYPE.equals(rule.subjectType())
+                    && (!rule.subjectId().equals(EVERYONE_SUBJECT_ID)
+                            || !"ALLOW".equals(rule.effect())
+                            || !Set.of("view", "download").containsAll(rule.actions())))
+                throw invalid("所有人规则仅支持允许查看和下载");
             Acl value = new Acl(rule.subjectType(), rule.subjectId(), rule.effect(), rule.actions().stream().sorted().toList());
             if (result.putIfAbsent(aclKey(value.subjectType, value.subjectId, value.effect), value) != null)
                 throw invalid("同一对象的相同授权类型不能重复");
         }
-        Map<String, Principal> principals = loadPrincipals(result.values());
-        if (result.values().stream().anyMatch(rule -> !principals.containsKey(principalKey(rule.subjectType, rule.subjectId))))
+        Map<String, Principal> principals =
+                loadPrincipals(result.values().stream()
+                        .filter(rule -> !EVERYONE_SUBJECT_TYPE.equals(rule.subjectType())).toList());
+        if (result.values().stream().anyMatch(rule -> !EVERYONE_SUBJECT_TYPE.equals(rule.subjectType())
+                && !principals.containsKey(principalKey(rule.subjectType, rule.subjectId))))
             throw invalid("授权对象已停用或不存在，请重新选择");
         return result;
     }
 
     private Rule ruleDto(Acl acl, Map<String, Principal> principals) {
-        Principal p = principals.getOrDefault(principalKey(acl.subjectType, acl.subjectId),
-                new Principal(acl.subjectId, "已停用对象", "", acl.subjectType));
-        return new Rule(acl.subjectType, acl.subjectId, p.name(), acl.effect, acl.actions);
+        String name = EVERYONE_SUBJECT_TYPE.equals(acl.subjectType)
+                ? "所有人"
+                : principals.getOrDefault(principalKey(acl.subjectType, acl.subjectId),
+                        new Principal(acl.subjectId, "已停用对象", "", acl.subjectType)).name();
+        return new Rule(acl.subjectType, acl.subjectId, name, acl.effect, acl.actions);
     }
 
     /** Read and validate the same active subjects in at most one query per subject type. */
@@ -1109,17 +1163,16 @@ public class CompanyFileService {
     private static boolean has(AuthUser u, String action) {
         if (u == null
                 || u.isVisitor()
-                || !PERMISSIONS.containsKey(action)
-                || !u.getPermissions().contains(PERMISSIONS.get(action))) return false;
+                || !ACTIONS.contains(action)) return false;
+        // V958: view is the single common-module entrance switch; download follows it.
+        if (action.equals("view") || action.equals("download"))
+            return u.getPermissions().contains(PERMISSIONS.get("view"));
         if (action.equals("upload"))
             return u.getEmployeeId() != null
                     && u.getPermissions()
                             .containsAll(Set.of("attachment:view", "attachment:upload"));
-        if (action.equals("download"))
-            return u.getEmployeeId() != null
-                    && u.getPermissions()
-                            .containsAll(Set.of("attachment:view", "attachment:download"));
-        return true;
+        // Write actions remain catalog codes held by global library administrators.
+        return u.getPermissions().contains(PERMISSIONS.get(action));
     }
 
     private static void requireGlobal(AuthUser u, String action) {
@@ -1246,11 +1299,11 @@ public class CompanyFileService {
                 switch (key) {
                     case "name" -> "lower(n.name) COLLATE \"C\"";
                     case "updated" -> "n.updated_at";
-                    case "size" -> "coalesce(n.size_bytes,0)";
+                    case "size" -> "CASE WHEN n.kind='FILE' AND NOT n.pending AND n.attachment_id IS NOT NULL THEN n.size_bytes END";
                     default -> "n.position";
                 };
         return "(n.kind<>'FOLDER')," + value
-                + ("desc".equals(direction) ? " DESC" : " ASC") + ",n.id";
+                + ("desc".equals(direction) ? " DESC" : " ASC") + " NULLS LAST,n.id";
     }
 
     private void event(AuthUser u, String action, UUID id) {

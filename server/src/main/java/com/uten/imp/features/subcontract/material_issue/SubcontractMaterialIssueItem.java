@@ -111,7 +111,7 @@ public class SubcontractMaterialIssueItem extends BaseEntity {
     private BigDecimal consumedQty = BigDecimal.ZERO;
 
     /** 审核时冻结的 BOM 版本：每单位父件耗用本子件量。 */
-    @Column(name = "frozen_unit_qty", precision = 18, scale = 6)
+    @Column(name = "frozen_unit_qty", columnDefinition = "numeric")
     private BigDecimal frozenUnitQty;
 
     /** 供应商期末结存（生成列，只读）。 */

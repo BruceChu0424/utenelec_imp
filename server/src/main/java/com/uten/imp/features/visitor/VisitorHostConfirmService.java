@@ -39,19 +39,27 @@ public class VisitorHostConfirmService {
             String status,
             int page,
             int size) {
+        return myAsHost(status, page, size, java.util.Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<VisitorListItem> myAsHost(String status, int page, int size,
+            java.util.Map<String, String> columns, String sort, String order) {
         UUID employeeId = currentUser.get()
                 .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)).getEmployeeId();
         if (employeeId == null) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         final UUID eid = employeeId;
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(columns, VisitorColumnQueries.APPLICATION);
         final List<String> statuses = VisitorStatusFilter.parse(status, List.of("hostReviewing"));
         Specification<VisitorApplication> spec = (root, q, cb) -> cb.and(
                 cb.equal(root.get("deleted"), false),
                 cb.equal(root.get("hostEmployeeId"), eid),
                 statuses.size() == 1 ? cb.equal(root.get("status"), statuses.getFirst())
-                        : root.get("status").in(statuses));
-        Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
+                        : root.get("status").in(statuses),
+                com.uten.imp.common.util.JpaColumnSearch.predicate(root, q, cb, searches, VisitorColumnQueries.APPLICATION));
+        Pageable pageable = VisitorColumnQueries.page(page, size, sort, order);
         Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
         return appService.toPageResponse(result, pageable);
     }

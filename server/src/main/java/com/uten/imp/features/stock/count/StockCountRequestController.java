@@ -27,8 +27,11 @@ public class StockCountRequestController {
             @RequestParam(required=false) UUID categoryId, @RequestParam(defaultValue="false") boolean stockedOnly,
             @RequestParam(defaultValue="false") boolean sheet,
             @RequestParam(defaultValue="false") boolean includeRelated,
-            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,sheet,page,size,includeRelated);
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,sheet,page,size,includeRelated,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request),sort,order);
     }
     /** Existing Java callers keep the unfiltered candidate contract. */
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> goodsIds,int page,int size) {
@@ -57,7 +60,14 @@ public class StockCountRequestController {
             @RequestParam(required=false) String status, @RequestParam(required=false) UUID warehouseId,
             @RequestParam(required=false) UUID scopeWarehouseId,
             @RequestParam(required=false) String keyword,
-            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(scopeWarehouseId),keyword,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request),sort,order);
+    }
+    public PageResponse<Map<String,Object>> list(String reviewRoute,String status,UUID warehouseId,
+            UUID scopeWarehouseId,String keyword,int page,int size) {
         return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(scopeWarehouseId),keyword);
     }
     /** Java 调用方: 同端点口径(本人仓库数据范围)。 */

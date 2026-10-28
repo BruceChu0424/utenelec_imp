@@ -68,7 +68,7 @@ class SalesReportUnitsPostgresTest {
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void reset(){
-        db.execute("TRUNCATE sales_orders,sales_order_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items,sales_other_shipments,sales_other_shipment_items,production_plans,production_plan_items,stock_documents,stock_document_items");
+        db.execute("TRUNCATE sales_orders,sales_order_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items,sales_other_shipments,sales_other_shipment_items,production_plans,production_plan_items,subplan_links,stock_documents,stock_document_items");
         when(prices.canView()).thenReturn(true);
         dataColumns=List.of();
         executedSql.clear();
@@ -301,6 +301,71 @@ class SalesReportUnitsPostgresTest {
         assertThat(row.get("goodsName")).isEqualTo("主档货品");assertThat(row.get("goodsCode")).isEqualTo("主档编号");
         assertThat(row.get("colorName")).isEqualTo("颜色名");assertThat(row.get("model")).isEqualTo("型号名");
         assertThat(row.get("__unitName")).isEqualTo("箱");assertThat(decimal(row,"qty")).isEqualByComparingTo("3");
+    }
+    @ParameterizedTest @ValueSource(strings={"ORDER","SHIPMENT","RETURN","OTHER_SHIPMENT"})
+    void everyDisplayedScalarDetailHeaderUsesItsRealSnapshotProjectionBeforePageCountFacetsAndTotals(String type){
+        Doc doc=create(type,EACH);create(type,EACH);
+        var baseline=detail(type,null);
+        var expected=baseline.columns().stream().filter(column->Set.of("text","number","money","date").contains(column.type()))
+                .map(ReportColumn::key).toList();
+        assertThat(baseline.columnSearchKeys()).containsExactlyInAnyOrderElementsOf(expected);
+        Map<String,Object> row=baseline.rows().getFirst();
+        for(var column:baseline.columns()){
+            if(!baseline.columnSearchKeys().contains(column.key()))continue;
+            Object value=row.get(column.key());
+            String search=value==null?(column.type().equals("date")?"1999-01":Set.of("money","number").contains(column.type())?">=999999":"absent-literal_%")
+                    :value instanceof BigDecimal decimal?decimal.toPlainString():value.toString();
+            var response=sales.detail(type,null,CLIENT,null,(Short)null,null,null,null,Map.of("search."+column.key(),search),1,1,column.key(),"asc");
+            assertThat(response.columnSearchKeys()).as(type+" "+column.key()).containsExactlyInAnyOrderElementsOf(expected);
+            if(value!=null){assertThat(response.total()).as(type+" "+column.key()+" "+search).isPositive();assertThat(response.rows()).hasSize(1);}
+        }
+        var filtered=sales.detail(type,null,CLIENT,null,(Short)null,null,null,null,
+                Map.of("search.goodsName","快照货品","search.billDate","2026-10-01..2026-10-31","search.price",">=7"),2,1,"billNo","asc");
+        assertThat(filtered.total()).isEqualTo(2);assertThat(filtered.rows()).hasSize(1);
+        assertThat(filtered.facets().get("clientName")).singleElement().satisfies(facet->assertThat(facet.count()).isEqualTo(2));
+        assertThat(sales.detail(type,null,CLIENT,null,(Short)null,null,null,null,
+                Map.of("search.goodsName","主档货品"),1,1,null,null).total()).isZero();
+    }
+    @ParameterizedTest @ValueSource(strings={"ORDER","SHIPMENT","RETURN","OTHER_SHIPMENT"})
+    void summaryHeaderNumbersFilterAfterClientAggregationAndMixedUnitQuantityRemainsUnknown(String type){
+        create(type,EACH);create(type,EACH);
+        String threshold=type.equals("ORDER")?">40":">290";
+        var result=sales.summary(type,null,CLIENT,null,(Short)null,null,null,null,
+                Map.of("search.totalAmount",threshold,"search.docCount",">=2","search.totalQty","6"),1,1,null,null);
+        assertThat(result.total()).isEqualTo(1);assertThat(result.rows()).hasSize(1);
+        assertThat(result.columnSearchKeys()).contains("clientName","region","docCount","totalQty","totalAmount");
+        assertThat(decimal(result.rows().getFirst(),"totalQty")).isEqualByComparingTo("6");
+        create(type,BOX);
+        var mixed=sales.summary(type,null,CLIENT,null,(Short)null,null,null,null,Map.of("search.totalQty",">=0"),1,50,null,null);
+        assertThat(mixed.total()).isZero();
+        var text=sales.summary(type,null,CLIENT,null,(Short)null,null,null,null,Map.of("search.clientName","客户名"),1,50,null,null);
+        assertThat(text.total()).isEqualTo(1);assertThat(text.rows().getFirst().get("totalQty")).isNull();
+    }
+    @Test void productionHeadersUseEveryVisibleSourceFieldAndLocalDateBoundsBeforePageAndKeepParentOnlySummary(){
+        UUID parent=UUID.randomUUID(),child=UUID.randomUUID();
+        for(UUID plan:List.of(parent,child)){
+            db.update("INSERT INTO production_plans(id,bill_no,bill_date,status,workshop_name,seller_name,f_style,delivery_date,maker_name,approver_name,remark) VALUES (?,?,'2026-10-31',1,'一车间','跟单甲','方式乙','2026-11-01','冻结制单人','冻结审核人','摘要_%')",plan,"PLAN-"+plan);
+            db.update("INSERT INTO production_plan_items(id,plan_id,bill_no,bill_date,goods_id,color_id,unit_id,qty,oqty,iqty,plan_begin_date,plan_end_date,client_name,remark) VALUES (gen_random_uuid(),?,?,'2026-10-31',?,?,?,3.125,5,1,'2026-11-02','2026-11-03','快照客户','备注_%')",plan,"PLAN-"+plan,GOODS,COLOR,BOX);
+        }
+        var detail=production.planDetail(null,null,null,null,null,null,Map.of(),1,50,null,null);
+        assertThat(detail.columnSearchKeys()).containsExactlyInAnyOrderElementsOf(detail.columns().stream().filter(column->!column.type().equals("bool")).map(com.uten.imp.features.production.report.ReportColumn::key).toList());
+        var sample=detail.rows().getFirst();
+        for(var column:detail.columns()){
+            if(!detail.columnSearchKeys().contains(column.key()))continue;
+            Object value=sample.get(column.key());
+            String search=value==null?(column.type().equals("date")?"1999-01":column.type().equals("number")?">999999":"absent_%")
+                    :value instanceof BigDecimal decimal?decimal.toPlainString():value.toString();
+            var filtered=production.planDetail(null,null,null,null,null,null,Map.of("search."+column.key(),search),1,1,column.key(),"asc");
+            if(value!=null)assertThat(filtered.total()).as(column.key()).isPositive();
+        }
+        var page=production.planDetail(null,null,null,null,null,null,
+                Map.of("search.billDate","2026-10","search.planEndDate","2026-11-01..2026-11-03","search.qty",">=3.125"),2,1,"qty","desc");
+        assertThat(page.total()).isEqualTo(2);assertThat(page.rows()).hasSize(1);
+        assertThat(page.totals().stream().filter(total->total.key().equals("qty")).findFirst().orElseThrow().groups().getFirst().value()).isEqualByComparingTo("6.25");
+        db.update("INSERT INTO subplan_links(id,plan_id,subplan_id,is_deleted) VALUES (?,?,?,false)",UUID.randomUUID(),parent,child);
+        var summary=production.planSummary(null,null,null,null,null,Map.of("search.makerName","冻结制单人","search.shipmentDate","2026-11"),1,1,"billNo","asc");
+        assertThat(summary.total()).isEqualTo(1);assertThat(summary.rows().getFirst().get("__srcId")).isEqualTo(parent.toString());
+        assertThat(summary.columnSearchKeys()).containsExactlyInAnyOrder("billNo","billDate","fStyle","shipmentDate","makerName","approverName","remark");
     }
     @Test void stockActualBaseQuantityDoesNotUseTheDocumentBoxUnit(){
         UUID doc=UUID.randomUUID();db.update("INSERT INTO stock_documents(id,bill_no,bill_date,status,doc_type) VALUES (?,'REPORT-DRAW',?,1,'DRAW')",doc,DATE);

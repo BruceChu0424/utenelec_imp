@@ -50,8 +50,12 @@ public class VisitorApprovalController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID hostDepartmentId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return hrApprovalService.listForApproval(status, hostDepartmentId, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return hrApprovalService.listForApproval(status, hostDepartmentId, page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     /** HR 审批列表表头筛选桶（状态/接待人部门），status 与列表分段同口径（空=待办）。 */
@@ -66,8 +70,12 @@ public class VisitorApprovalController {
     public PageResponse<VisitorListItem> asHost(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return hostConfirmService.myAsHost(status, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return hostConfirmService.myAsHost(status, page, size,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 
     /**

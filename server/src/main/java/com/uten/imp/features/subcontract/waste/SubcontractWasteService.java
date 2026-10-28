@@ -117,7 +117,8 @@ public class SubcontractWasteService {
         Specification<SubcontractWaste> spec = wasteSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(spec, pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractWaste> p = wasteRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<WasteListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
@@ -159,6 +160,8 @@ public class SubcontractWasteService {
             }
             f.headerFilters().apply(root, cb, ps, null, false, null, false, "totalWeight", false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
+                    "weight", HeaderColumnFilter.SearchField.decimalDisplay("totalWeight",3),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
@@ -392,7 +395,8 @@ public class SubcontractWasteService {
                         .executeUpdate();
                 if (updated != 1) {
                     throw new ApiException(ErrorCode.CONFLICT,
-                            "委外损耗量超过可损耗余量(在供应商处 − 已消费 − 已退 − 已损耗)，禁止超损耗");
+                            "委外损耗量超过可损耗余量(在供应商处 − 已消费 − 已退 − 已损耗)，禁止超损耗；"
+                                    + "正常用料损耗已包含在回厂估算核销中的部分不能重复登记");
                 }
             }
         }

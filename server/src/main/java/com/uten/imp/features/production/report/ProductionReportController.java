@@ -110,7 +110,12 @@ public class ProductionReportController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return whereUsedQuery.whereUsed(materialGoodsId, source, dateFrom, dateTo, page, size, sort, order);
+        var request=com.uten.imp.common.util.ColumnKeywordSearch.currentRequest();
+        Map<String,String> parameters=new java.util.LinkedHashMap<>();
+        if(request!=null)request.getParameterMap().forEach((key,values)->{if(values.length==1)parameters.put(key,values[0]);});
+        var headers=ReportQueryKit.facetsOf(parameters);
+        return headers.isEmpty()?whereUsedQuery.whereUsed(materialGoodsId,source,dateFrom,dateTo,page,size,sort,order)
+                :whereUsedQuery.whereUsed(materialGoodsId,source,dateFrom,dateTo,page,size,sort,order,headers);
     }
 
     /**

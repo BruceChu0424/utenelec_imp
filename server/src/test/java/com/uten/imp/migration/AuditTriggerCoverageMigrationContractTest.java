@@ -95,6 +95,16 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("employee_identity_aliases", "authorization", false,
                     "V937 经人工证据核实的员工身份合并关系决定跨档案历史的查询范围；身份授权决定须完整审计，不能因只追加而豁免",
                     Set.of("employee_identity_aliases")),
+            new FullGroup("employee_identity_physical_merges", "authorization", false,
+                    "V964/965 已核验同人永久合并、退休账号与 Worker 映射和精确工号释放决定身份及编号归属；证书和原 actor 保留完整审计",
+                    Set.of("employee_identity_merges", "employee_legacy_identity_aliases",
+                            "employee_identity_user_tombstones", "employee_code_reuse_releases")),
+            new FullGroup("employee_identity_reviews", "authorization", true,
+                    "V964 同名不同人和历史标识重新核验由 owner 留证；证件和手机 HMAC 不复制到通用审计载荷",
+                    Set.of("employee_identity_review_certificates")),
+            new FullGroup("employee_code_reuse_claims", "data_change", false,
+                    "V965 已释放工号只能由新员工 UUID 原子领取；永久领取证据保留实际 actor、数据集和事务审计",
+                    Set.of("employee_code_reuse_claims")),
             new FullGroup("document_unapprovals", "data_change", false,
                     "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
             new FullGroup("permission_templates", "authorization", false,
@@ -331,6 +341,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     Set.of(
                         "audit_log", "audit_log_archive", "auth_sessions", "auth_step_up_states",
                         "authorization_state",
+                        "employee_identity_merge_installation", "employee_code_reuse_installation",
                         "business_document_sequences", "category_master_code_sequences",
                         "doc_number_sequences", "flyway_schema_history",
                         "legacy_migration_checkpoints", "legacy_migration_reconciliation_items",
@@ -346,6 +357,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
+                            "employee_identity_merge_payloads", "employee_identity_historical_claims", "employee_identity_legacy_roles",
                             "master_record_versions",
                             "notice_blessing_history",
                             "sales_quote_template_candidate_history", "platform_record_fields")),
@@ -411,6 +423,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     "派生投影与计算结果: 可由单据和流水重算, 每次重算整行复制只是噪声",
                     Set.of(
                         "website_bridge_status",
+                        // V962: private HMAC claim/lock projection; original PII and alias decisions retain their own audit.
+                        "employee_identity_document_claims",
                         "account_flow_monthly_summaries", "da_amortization_log",
                         // V739 / ADR-129：学习档案、样本与真实使用数量由台账重算。
                         "goods_bom_actual_usages", "goods_bom_learning_profiles", "production_bom_learning_samples",

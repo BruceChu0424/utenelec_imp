@@ -63,19 +63,27 @@ class StaffSingleDeviceLoginPostgresTest {
                 "SELECT revoked_at IS NOT NULL FROM auth_sessions WHERE sid=?", Boolean.class, sid));
     }
 
+    private String string(UUID sid, String column) {
+        return jdbc.queryForObject(
+                "SELECT " + column + " FROM auth_sessions WHERE sid=?", String.class, sid);
+    }
+
     @Test
     void newLoginReplacesSameAccountSessionsAndKeepsOtherAccounts() {
         UUID account = user("a");
         UUID colleague = user("b");
-        var firstDevice = sessions.openStaffSession(account);
-        var colleagueSession = sessions.openStaffSession(colleague);
+        var firstDevice = sessions.openStaffSession(account, "Windows 客户端");
+        var colleagueSession = sessions.openStaffSession(colleague, null);
 
-        var secondDevice = sessions.openStaffSession(account);
+        var secondDevice = sessions.openStaffSession(account, " 网页端 · Chrome ");
 
         assertThat(revoked(firstDevice.sid())).isTrue();
         assertThat(jdbc.queryForObject(
                 "SELECT revoked_reason FROM auth_sessions WHERE sid=?", String.class, firstDevice.sid()))
                 .isEqualTo(AuthSessionService.REASON_REPLACED_BY_LOGIN);
+        assertThat(string(firstDevice.sid(), "replaced_by_device")).isEqualTo("网页端 · Chrome");
+        assertThat(string(secondDevice.sid(), "device_info")).isEqualTo("网页端 · Chrome");
+        assertThat(string(colleagueSession.sid(), "device_info")).isNull();
         assertThat(revoked(secondDevice.sid())).isFalse();
         assertThat(revoked(colleagueSession.sid())).isFalse();
     }
@@ -83,12 +91,25 @@ class StaffSingleDeviceLoginPostgresTest {
     @Test
     void repeatLogoutLoginCycleKeepsOnlyTheLatestSession() {
         UUID account = user("cycle");
-        var first = sessions.openStaffSession(account);
-        var second = sessions.openStaffSession(account);
+        var first = sessions.openStaffSession(account, null);
+        var second = sessions.openStaffSession(account, null);
         assertThat(revoked(first.sid())).isTrue();
         sessions.revoke(second.sid(), AuthSessionService.REASON_LOGOUT);
-        var third = sessions.openStaffSession(account);
+        var third = sessions.openStaffSession(account, null);
         assertThat(revoked(second.sid())).isTrue();
         assertThat(revoked(third.sid())).isFalse();
+    }
+
+    @Test
+    void refreshVerdictReportsReplacementDeviceForKickedSession() {
+        UUID account = user("refresh");
+        var first = sessions.openStaffSession(account, "Windows 客户端");
+        sessions.openStaffSession(account, "网页端 · Chrome");
+
+        var verdict = sessions.lockAndEvaluateForRefresh(first.sid(), account, null);
+
+        assertThat(verdict.replacedByLogin()).isTrue();
+        assertThat(verdict.replacedNotice())
+                .isEqualTo("账号已在「网页端 · Chrome」登录，本设备已自动下线");
     }
 }

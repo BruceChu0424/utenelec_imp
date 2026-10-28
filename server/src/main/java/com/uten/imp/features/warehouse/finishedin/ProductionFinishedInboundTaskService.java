@@ -73,7 +73,9 @@ public class ProductionFinishedInboundTaskService {
                        COALESCE(SUM(report_item.qty) FILTER (WHERE report_item.is_actual_surplus), 0)
                            AS actual_surplus_qty,
                        array_agg(DISTINCT goods.code) AS goods_codes,
-                       array_agg(DISTINCT goods.name) AS goods_names
+                       array_agg(DISTINCT goods.name) AS goods_names,
+                       jsonb_agg(jsonb_build_object('unitId',task_unit.id,'unit',task_unit.name,
+                           'qty',report_item.qty,'surplus',CASE WHEN report_item.is_actual_surplus THEN report_item.qty ELSE 0 END)) AS unit_quantities
                 FROM production_daily_reports report
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
@@ -81,6 +83,7 @@ public class ProductionFinishedInboundTaskService {
                 JOIN v_production_report_items_pending_registration pending
                   ON pending.report_item_id = report_item.id
                 JOIN goods goods ON goods.id = report_item.goods_id
+                LEFT JOIN units task_unit ON task_unit.id=COALESCE(report_item.unit_id,goods.unit_id)
                 -- 行色优先、主档色兜底（仓库里既有写法）：一单多货品时摘要按
                 -- 「名称 (编号 · 颜色)」拼，否则同名不同色的两行会被 DISTINCT 合成一条。
                 LEFT JOIN colors line_color
@@ -146,7 +149,9 @@ public class ProductionFinishedInboundTaskService {
                        COALESCE(SUM(item.qty) FILTER (WHERE lot_source.is_actual_surplus), 0)
                            AS actual_surplus_qty,
                        array_agg(DISTINCT item.goods_code_snapshot) AS goods_codes,
-                       array_agg(DISTINCT item.goods_name_snapshot) AS goods_names
+                       array_agg(DISTINCT item.goods_name_snapshot) AS goods_names,
+                       jsonb_agg(jsonb_build_object('unitId',task_unit.id,'unit',task_unit.name,
+                           'qty',item.qty,'surplus',CASE WHEN lot_source.is_actual_surplus THEN item.qty ELSE 0 END)) AS unit_quantities
                 FROM stock_documents document
                 JOIN stock_document_items item
                   ON item.doc_id = document.id
@@ -162,6 +167,7 @@ public class ProductionFinishedInboundTaskService {
                 LEFT JOIN colors line_color
                   ON line_color.id = item.color_id
                  AND line_color.is_deleted = FALSE
+                LEFT JOIN units task_unit ON task_unit.id=item.unit_id
                 LEFT JOIN warehouses warehouse
                   ON warehouse.id = document.warehouse_id
                  AND warehouse.is_deleted = FALSE
@@ -202,10 +208,26 @@ public class ProductionFinishedInboundTaskService {
                          document.bill_date, document.warehouse_id,
                          warehouse.name, plan.plan_id, plan.plan_no,
                          reports.report_nos, document.created_at
-            ), task_documents AS (
+            ), task_documents_raw AS (
                 SELECT * FROM arrival_tasks
                 UNION ALL
                 SELECT * FROM final_count_tasks
+            ), task_documents AS (
+                SELECT raw.*, quantities.pending_qty_text, quantities.actual_surplus_qty_text
+                FROM task_documents_raw raw
+                LEFT JOIN LATERAL (
+                    SELECT string_agg(CASE WHEN grouped.unit_id IS NULL OR grouped.qty IS NULL THEN '待核验'
+                               ELSE trim_scale(grouped.qty)::text||' '||COALESCE(grouped.unit_name,'未命名单位') END,
+                               ' · ' ORDER BY grouped.unit_name,grouped.unit_id) AS pending_qty_text,
+                           string_agg(CASE WHEN grouped.surplus>0 THEN CASE WHEN grouped.unit_id IS NULL THEN '待核验'
+                               ELSE trim_scale(grouped.surplus)::text||' '||COALESCE(grouped.unit_name,'未命名单位') END END,
+                               ' · ' ORDER BY grouped.unit_name,grouped.unit_id) AS actual_surplus_qty_text
+                    FROM (
+                        SELECT entry->>'unitId' AS unit_id,entry->>'unit' AS unit_name,
+                               SUM((entry->>'qty')::numeric) AS qty,SUM((entry->>'surplus')::numeric) AS surplus
+                        FROM jsonb_array_elements(raw.unit_quantities) entry GROUP BY entry->>'unitId',entry->>'unit'
+                    ) grouped
+                ) quantities ON TRUE
             )
             """;
 
@@ -258,6 +280,14 @@ public class ProductionFinishedInboundTaskService {
             String keyword, String taskStage, UUID warehouseId,
             int requestedPage, int requestedSize, WarehouseTaskScope warehouseScope,
             String sort, String order, String taskNo, String planNo) {
+        return list(keyword,taskStage,warehouseId,requestedPage,requestedSize,warehouseScope,sort,order,taskNo,planNo,java.util.Map.of());
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public PageResponse<ProductionFinishedInboundTask> list(
+            String keyword, String taskStage, UUID warehouseId,
+            int requestedPage, int requestedSize, WarehouseTaskScope warehouseScope,
+            String sort, String order, String taskNo, String planNo,java.util.Map<String,String> columns) {
         boolean scoped = warehouseScope != null && warehouseScope.active();
         PageRequest pageable = Pageables.of(
                 requestedPage, requestedSize);
@@ -276,14 +306,16 @@ public class ProductionFinishedInboundTaskService {
                     com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
                     "任务步骤仅支持 ARRIVAL_REGISTRATION 或 FINAL_COUNT");
         }
+        var headers = com.uten.imp.common.util.SqlColumnSearch.criteria(columns,headerFields(),"finished_header_");
         String filter = taskFilter(normalized, normalizedStage, warehouseId,
-                scoped ? warehouseScope : null, taskNo, planNo);
+                scoped ? warehouseScope : null, taskNo, planNo)+" AND ("+headers.predicate()+")";
         String base = baseSql(scoped ? warehouseScope : null);
 
         Query countQuery = em.createNativeQuery(
                 base + " SELECT COUNT(*) FROM task_documents " + filter);
         bindTaskFilters(countQuery, normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, taskNo, planNo);
+        headers.bind(countQuery);
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query rowsQuery = em.createNativeQuery(base + """
@@ -292,14 +324,15 @@ public class ProductionFinishedInboundTaskService {
                        warehouse_id, warehouse_name, plan_id, plan_no,
                        report_nos, goods_summary, line_count,
                        pending_qty, created_at, residual_task,
-                       public_qty, actual_surplus_qty
+                       public_qty, actual_surplus_qty, pending_qty_text, actual_surplus_qty_text
                 FROM task_documents
                 """ + filter + "\n" + taskOrderBy(sort, order, normalized) + """
                 OFFSET :offset LIMIT :limit
                 """);
         bindTaskFilters(rowsQuery, normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, taskNo, planNo);
-        TaskKeywordSearch.bind(rowsQuery, normalized, true);
+        headers.bind(rowsQuery);
+        TaskKeywordSearch.bind(rowsQuery, normalized, !explicitSort(sort));
         rowsQuery.setParameter("offset", pageable.getOffset());
         rowsQuery.setParameter("limit", size);
         List<ProductionFinishedInboundTask> items =
@@ -320,23 +353,37 @@ public class ProductionFinishedInboundTaskService {
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
             String keyword, String taskStage, UUID warehouseId,
             WarehouseTaskScope warehouseScope) {
+        return facets(keyword,taskStage,warehouseId,warehouseScope,null,null,java.util.Map.of());
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
+            String keyword,String taskStage,UUID warehouseId,WarehouseTaskScope warehouseScope,
+            String taskNo,String planNo,java.util.Map<String,String> columns) {
         if (!access.canAccessWarehouseTasks()) {
             return java.util.Map.of(
                     "taskNo", List.of(), "planNo", List.of());
         }
         String normalized = KeywordSearch.phrase(keyword);
         String normalizedStage = taskStage == null ? "" : taskStage.strip().toUpperCase();
+        if(!normalizedStage.isEmpty()&&!TASK_STAGES.contains(normalizedStage)) throw new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"任务步骤仅支持 ARRIVAL_REGISTRATION 或 FINAL_COUNT");
         boolean scoped = warehouseScope != null && warehouseScope.active();
-        String filter = taskFilter(normalized, normalizedStage, warehouseId,
-                scoped ? warehouseScope : null, null, null);
+        var scope = scoped ? warehouseScope : null;
+        var taskColumns = new java.util.LinkedHashMap<>(columns==null?java.util.Map.<String,String>of():columns);taskColumns.remove("taskNo");
+        var planColumns = new java.util.LinkedHashMap<>(columns==null?java.util.Map.<String,String>of():columns);planColumns.remove("planNo");
+        var taskHeaders=com.uten.imp.common.util.SqlColumnSearch.criteria(taskColumns,headerFields(),"finished_header_");
+        var planHeaders=com.uten.imp.common.util.SqlColumnSearch.criteria(planColumns,headerFields(),"finished_header_");
         List<java.util.Map<String, Object>> taskNoBuckets = billBuckets("taskNo",
-                "SELECT " + TASK_NO_EXPR + ", COUNT(*) FROM task_documents " + filter
+                "SELECT " + TASK_NO_EXPR + ", COUNT(*) FROM task_documents "
+                        +taskFilter(normalized,normalizedStage,warehouseId,scope,null,planNo)+" AND ("+taskHeaders.predicate()+")"
                         + " GROUP BY 1 ORDER BY 1",
-                normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
+                normalized, normalizedStage, warehouseId, scope,null,planNo,taskHeaders);
         List<java.util.Map<String, Object>> planNoBuckets = billBuckets("planNo",
-                "SELECT COALESCE(plan_no, ''), COUNT(*) FROM task_documents " + filter
+                "SELECT COALESCE(plan_no, ''), COUNT(*) FROM task_documents "
+                        +taskFilter(normalized,normalizedStage,warehouseId,scope,taskNo,null)+" AND ("+planHeaders.predicate()+")"
                         + " GROUP BY 1 ORDER BY 1",
-                normalized, normalizedStage, warehouseId, scoped ? warehouseScope : null);
+                normalized, normalizedStage, warehouseId,scope,taskNo,null,planHeaders);
         return java.util.Map.of("taskNo", taskNoBuckets, "planNo", planNoBuckets);
     }
 
@@ -344,15 +391,35 @@ public class ProductionFinishedInboundTaskService {
      *  task_documents 是 BASE_SQL 里的 CTE，桶查询必须同样带上 CTE 前缀。 */
     private List<java.util.Map<String, Object>> billBuckets(
             String field, String sql, String normalized, String normalizedStage, UUID warehouseId,
-            WarehouseTaskScope warehouseScope) {
+            WarehouseTaskScope warehouseScope,String taskNo,String planNo,com.uten.imp.common.util.SqlColumnSearch.Criteria headers) {
         Query query = NativeFacets.query(em, field, baseSql(warehouseScope) + sql).setMaxResults(500);
-        bindTaskFilters(query, normalized, normalizedStage, warehouseId, warehouseScope, null, null);
+        bindTaskFilters(query, normalized, normalizedStage, warehouseId, warehouseScope,taskNo,planNo);
+        headers.bind(query);
         return NativeFacets.rowsOf(query);
     }
 
     /** 任务单号列展示口径（待登记=报工单号、待点收=入库单号，兜底任务 id）。 */
     private static final String TASK_NO_EXPR =
             "COALESCE(NULLIF(document_no, ''), NULLIF(report_nos, ''), task_id::text)";
+
+    private static java.util.Map<String,com.uten.imp.common.util.SqlColumnSearch.Field> headerFields() {
+        return java.util.Map.ofEntries(
+                java.util.Map.entry("taskNo",com.uten.imp.common.util.SqlColumnSearch.Field.text(TASK_NO_EXPR)),
+                java.util.Map.entry("planNo",com.uten.imp.common.util.SqlColumnSearch.Field.text("COALESCE(plan_no,'—')")),
+                java.util.Map.entry("reportNos",com.uten.imp.common.util.SqlColumnSearch.Field.text("COALESCE(report_nos,'—')")),
+                java.util.Map.entry("goodsSummary",com.uten.imp.common.util.SqlColumnSearch.Field.text("COALESCE(goods_summary,'—')")),
+                java.util.Map.entry("warehouseName",com.uten.imp.common.util.SqlColumnSearch.Field.text(WAREHOUSE_TEXT)),
+                java.util.Map.entry("pendingQty",com.uten.imp.common.util.SqlColumnSearch.Field.text(
+                        "pending_qty_text||CASE WHEN actual_surplus_qty_text IS NOT NULL THEN ' (其中实际超产 '||actual_surplus_qty_text||')' ELSE '' END")),
+                java.util.Map.entry("lineCount",com.uten.imp.common.util.SqlColumnSearch.Field.decimal("line_count")),
+                java.util.Map.entry("documentDate",com.uten.imp.common.util.SqlColumnSearch.Field.calendarDate("document_date")),
+                java.util.Map.entry("createdAt",com.uten.imp.common.util.SqlColumnSearch.Field.instant("created_at")));
+    }
+    private static final String WAREHOUSE_TEXT="CASE WHEN task_stage='ARRIVAL_REGISTRATION' THEN '待本步骤选择' ELSE COALESCE(warehouse_name,'—') END";
+    private static final java.util.Map<String,String> SORT_FIELDS=java.util.Map.of(
+            "taskNo",TASK_NO_EXPR,"planNo","plan_no","warehouseName",WAREHOUSE_TEXT,"lineCount","line_count",
+            "documentDate","document_date","createdAt","created_at");
+    private static boolean explicitSort(String sort) { return sort!=null && SORT_FIELDS.containsKey(sort); }
 
     /** 列表 / 计数 / facets 共用 WHERE 片段（同一过滤基座，2026-09-25 单号列统一）；
      *  命名参数按条件出现，未出现的条件不绑定（Hibernate 6 校验未知命名参数）。 */
@@ -396,14 +463,9 @@ public class ProductionFinishedInboundTaskService {
      *  未知/空→默认（进队时间升序, 任务 id 稳定序）。 */
     private static String taskOrderBy(String sort, String order, String keyword) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        String result = switch (sort == null ? "" : sort) {
-            case "taskNo" -> "ORDER BY " + TASK_NO_EXPR + " " + dir
-                    + " NULLS LAST, created_at ASC, task_id ASC\n";
-            case "planNo" -> "ORDER BY plan_no " + dir
-                    + " NULLS LAST, created_at ASC, task_id ASC\n";
-            default -> "ORDER BY created_at ASC, task_id ASC\n";
-        };
-        return KeywordSearch.terms(keyword).isEmpty() ? result : result.replace("ORDER BY ",
+        String result = explicitSort(sort)?"ORDER BY "+SORT_FIELDS.get(sort)+" "+dir+" NULLS LAST, created_at ASC, task_id ASC\n"
+                :"ORDER BY created_at ASC, task_id ASC\n";
+        return KeywordSearch.terms(keyword).isEmpty() || explicitSort(sort) ? result : result.replace("ORDER BY ",
                 "ORDER BY " + TaskKeywordSearch.rankNamesFirst(keyword, new String[]{}, new String[]{"goods_names"},
                         new String[]{TASK_NO_EXPR, "plan_no", "report_nos"}, "goods_codes") + ", ");
     }
@@ -445,7 +507,9 @@ public class ProductionFinishedInboundTaskService {
                 Boolean.TRUE.equals(row[15]),
                 NativeValueConverters.toBigDecimal(row[16]),
                 NativeValueConverters.toBigDecimal(row[17]),
-                com.uten.imp.common.production.OutputLotText.actualSurplusNote(NativeValueConverters.toBigDecimal(row[17])));
+                row.length>19 && row[19]!=null ? "其中实际超产 "+row[19]
+                        :com.uten.imp.common.production.OutputLotText.actualSurplusNote(NativeValueConverters.toBigDecimal(row[17])),
+                row.length>18?NativeValueConverters.text(row[18]):null);
     }
 
     private static OffsetDateTime offsetDateTime(Object value) {

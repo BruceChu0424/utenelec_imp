@@ -56,10 +56,11 @@ public class SubcontractShortDeliveryController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String orderBillNo) {
+            @RequestParam(required = false) String orderBillNo,
+            @RequestParam Map<String, String> parameters) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 订货单号表头值筛选。
         return service.list(segment, keyword, supplierId, orderId, dateFrom, dateTo,
-                page, size, sort, order, orderBillNo);
+                page, size, sort, order, orderBillNo, parameters);
     }
 
     /** 订货单号 facets（2026-09-25 单号列统一）：{orderBillNo:[各订货单号]}——
@@ -72,8 +73,9 @@ public class SubcontractShortDeliveryController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID orderId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(segment, keyword, supplierId, orderId, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam Map<String, String> parameters) {
+        return service.facets(segment, keyword, supplierId, orderId, dateFrom, dateTo, parameters);
     }
 
     // 按会话主体浏览（2026-10-19 起摘 @BusinessTaskRead）：分段计数须与列表、工作台

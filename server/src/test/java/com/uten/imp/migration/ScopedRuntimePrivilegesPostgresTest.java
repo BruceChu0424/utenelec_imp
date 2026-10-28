@@ -167,6 +167,13 @@ class ScopedRuntimePrivilegesPostgresTest {
         execute(runtime,"SELECT refresh_finance_ar_ap_mv()");
         execute(runtime,"INSERT INTO audit_log(actor_account,action,target_type,target_id,result,event_source,risk_level,event_category) "
                 +"VALUES('runtime-acl-fixture','insert','acl_business_probe','fixture','success','business','low','data_change')");
+        // V952 audit unified read layer: the JPA write channel inserts through the view,
+        // so the runtime keeps exactly that INSERT path while every other view stays read-only.
+        assertEquals("t",scalar(runtime,"SELECT has_table_privilege(current_user,'v_audit_log_all','SELECT,INSERT')"));
+        assertEquals("f",scalar(runtime,"SELECT has_table_privilege(current_user,'v_audit_log_all','UPDATE,DELETE')"));
+        assertEquals("f",scalar(runtime,"SELECT has_table_privilege(current_user,'v_stock_usable','INSERT')"));
+        execute(runtime,"INSERT INTO v_audit_log_all(actor_account,action,target_type,target_id,result,event_source,risk_level,event_category) "
+                +"VALUES('runtime-acl-fixture','insert','acl_business_probe','fixture','success','business','low','data_change')");
         runtime.rollback();
         assertEquals(before,facts(owner));
     }

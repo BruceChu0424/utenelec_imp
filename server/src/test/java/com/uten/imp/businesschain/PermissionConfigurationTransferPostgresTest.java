@@ -58,7 +58,10 @@ class PermissionConfigurationTransferPostgresTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired PermissionConfigurationTransferService transfer;
     @Autowired PermissionTemplateService templates;
+    @Autowired com.uten.imp.features.admin.PermissionTemplateAssignmentService assignments;
     @Autowired PermissionResolver resolver;
+    @Autowired com.uten.imp.features.admin.serveroperations.ServerOperationsActorAuthority serverAuthority;
+    @Autowired com.uten.imp.features.org.department.staffpermission.PagePermissionWorkspaceService pagePermissions;
     @Autowired UserAccountRepository users;
     @Autowired ObjectMapper mapper;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
@@ -339,22 +342,44 @@ class PermissionConfigurationTransferPostgresTest {
 
     private List<String> confirmations(Preview preview){return preview.sensitiveAdditions().stream().map(SensitiveAddition::key).toList();}
 
-    @Test void savedTemplateIsAnIndependentVersionedSnapshotAndNeverARole() {
-        UUID target=account(department(),"模板快照");
+    @Test void appliedTemplatesStayBoundAndTemplateEditsPropagateWithoutTouchingPersonalRevokes() {
+        UUID dept=department(),target=account(dept,"模板快照"),peer=account(dept,"模板收回");
         var created=templates.create(new PermissionTemplateDtos.Save("模板-"+UUID.randomUUID(),"采购用途",List.of("goods:view"),0L));
+        assertThat(created.appliedCount()).isZero();
         assertThat(templates.list()).anyMatch(row->row.id().equals(created.id()) && row.permissions().contains("goods:view"));
         var request=new PermissionTemplateDtos.Apply(created.id(),created.version(),PermissionTemplateDtos.ApplyMode.MERGE);
         var preview=templates.preview(target,request);
         assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
         templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
+        // 绑定记录：最近应用该模板的账号（差量同步的目标集合）。
+        assertThat(jdbc.queryForList("SELECT user_id::text FROM user_permission_template_bindings WHERE template_id=?",String.class,created.id()))
+                .containsExactly(target.toString());
         assertThat(effective(target)).contains("goods:view");
+        // peer 也应用同一模板，但把模板即将新增的码提前个人收回。
+        var peerRequest=new PermissionTemplateDtos.Apply(created.id(),created.version(),PermissionTemplateDtos.ApplyMode.MERGE);
+        var peerPreview=templates.preview(peer,peerRequest);
+        templates.apply(peer,new PermissionTemplateDtos.Commit(peerRequest,peerPreview.fingerprint(),confirmations(peerPreview)));
+        revoke(peer,"supplier:view");
+        // 模板改为 supplier:view：绑定账号差量跟随；个人收回优先不被覆盖。
         var updated=templates.update(created.id(),new PermissionTemplateDtos.Save(created.name(),"新用途",List.of("supplier:view"),created.version()));
         assertThat(updated.version()).isEqualTo(created.version()+1);
-        assertThat(effective(target)).contains("goods:view").doesNotContain("supplier:view");
+        assertThat(updated.appliedCount()).isEqualTo(2);
+        assertThat(templates.list().stream().filter(row->row.id().equals(created.id())).findFirst().orElseThrow().appliedCount()).isEqualTo(2);
+        // 模板移除的码：个人加授被清（生效与否取决于基础包/部门继承，不在此断言）。
+        assertThat(effective(target)).contains("supplier:view");
+        assertThat(activeEffects(target)).doesNotContain("goods:view=grant","supplier:view=grant");
+        assertThat(breakdown(target).templatePermissions()).contains("supplier:view");
+        assertThat(effective(peer)).doesNotContain("supplier:view");
+        assertThat(activeEffects(peer)).contains("supplier:view=revoke");
         assertThatThrownBy(()->templates.update(created.id(),new PermissionTemplateDtos.Save(created.name(),"过期",List.of(),created.version())))
                 .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        // 同步写的是中央个人覆盖（不是角色/新授权来源），并留有同步审计。
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_sync' AND target_id=?",Long.class,created.id().toString())).isEqualTo(1);
+        // 删除模板：解除关联，已应用账号保持当前权限（快照留存的个人覆盖不变）。
         templates.delete(updated.id(),new PermissionTemplateDtos.Delete(updated.version()));
-        assertThat(effective(target)).contains("goods:view");
+        assertThat(effective(target)).contains("supplier:view");
+        assertThat(activeEffects(target)).contains("supplier:view=grant");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_template_bindings WHERE template_id=?",Long.class,updated.id())).isZero();
         assertThat(templates.list()).noneMatch(row->row.id().equals(created.id()));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_apply' AND target_id=?",Long.class,target.toString())).isEqualTo(1);
     }
@@ -369,23 +394,24 @@ class PermissionConfigurationTransferPostgresTest {
         assertThat(effective(target)).contains("goods:view","supplier:view");
         UUID revoked=account(department(),"明确收回");revoke(revoked,"goods:view");
         var blocked=templates.preview(revoked,request);
-        assertThat(blocked.canApply()).isFalse();
-        assertThat(blocked.issues()).anyMatch(message->message.contains("已明确收回"));
-        assertThatThrownBy(()->templates.apply(revoked,new PermissionTemplateDtos.Commit(request,blocked.fingerprint(),confirmations(blocked))))
-                .isInstanceOf(ApiException.class);
+        assertThat(blocked.canApply()).isTrue();
+        assertThat(blocked.notes()).anyMatch(message->message.contains("个人收回"));
+        templates.apply(revoked,new PermissionTemplateDtos.Commit(request,blocked.fingerprint(),confirmations(blocked)));
+        assertThat(effective(revoked)).doesNotContain("goods:view");
         assertThat(activeEffects(revoked)).contains("goods:view=revoke");
     }
 
-    @Test void replacementShowsAndRevokesExtraInheritedRightsAndCanDeliberatelyRestoreACentralRevoke() {
+    @Test void replacementChangesDirectSettingsAndKeepsInheritedSourcesAndExplicitPersonalRevokes() {
         UUID dept=department(),target=account(dept,"模板覆盖");departmentGrant(dept,"supplier:view");revoke(target,"goods:view");
         var template=templates.create(new PermissionTemplateDtos.Save("覆盖-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
         var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
         var preview=templates.preview(target,request);
         assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
-        assertThat(preview.changes().getFirst().removed()).contains("supplier:view");
+        assertThat(preview.changes().getFirst().removed()).doesNotContain("supplier:view");
         templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
-        assertThat(effective(target)).containsExactly("goods:view");
-        assertThat(activeEffects(target)).contains("goods:view=grant","supplier:view=revoke");
+        assertThat(effective(target)).contains("supplier:view").doesNotContain("goods:view");
+        assertThat(activeEffects(target)).contains("goods:view=revoke").doesNotContain("supplier:view=revoke","goods:view=grant");
+        assertThat(breakdown(target).templatePermissions()).contains("goods:view");
     }
 
     @Test void templateSensitiveRightsRequirePerEmployeeReviewAndStaleAuthorityOrTemplateNeverWrites() {
@@ -439,6 +465,229 @@ class PermissionConfigurationTransferPostgresTest {
         assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview))))
                 .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
+    @Test void independentTemplateRemovalPreservesManualGrantsAndRefreshesAuthority() {
+        UUID target=account(department(),"独立来源");personal(target,"goods:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("独立-"+UUID.randomUUID(),"",List.of("goods:view","supplier:view"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        assertThat(activeEffects(target)).contains("goods:view=grant").doesNotContain("supplier:view=grant");
+        long epoch=jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1",Long.class);
+        templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("client:view"),template.version()));
+        assertThat(effective(target)).contains("goods:view","client:view").doesNotContain("supplier:view");
+        assertThat(jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1",Long.class)).isGreaterThan(epoch);
+        jdbc.update("UPDATE users SET status='disabled' WHERE id=?",target);
+        var current=templates.list().stream().filter(row->row.id().equals(template.id())).findFirst().orElseThrow();
+        templates.update(current.id(),new PermissionTemplateDtos.Save(current.name(),"",List.of("supplier:view"),current.version()));
+        jdbc.update("UPDATE users SET status='active' WHERE id=?",target);
+        assertThat(effective(target)).contains("goods:view","supplier:view").doesNotContain("client:view");
+    }
+
+    @Test void departmentTemplateTracksExistingFutureAndSecondaryMembersAndRespectsIndividualRevokes() {
+        UUID dept=department(),child=department();jdbc.update("UPDATE departments SET parent_id=? WHERE id=?",dept,child);
+        UUID primary=account(child,"部门继承"),secondary=account(department(),"兼职继承"),denied=account(dept,"个人收回");
+        jdbc.update("INSERT INTO employee_secondary_departments(employee_id,department_id) SELECT employee_id,? FROM users WHERE id=?",dept,secondary);
+        revoke(denied,"goods:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("部门关联-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(),List.of(dept));
+        assertThat(effective(primary)).contains("goods:view");assertThat(effective(secondary)).contains("goods:view");assertThat(effective(denied)).doesNotContain("goods:view");
+        UUID future=account(dept,"新入职");assertThat(effective(future)).contains("goods:view");
+        templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("supplier:view"),template.version()));
+        for(UUID user:List.of(primary,secondary,denied,future)) assertThat(effective(user)).contains("supplier:view").doesNotContain("goods:view");
+        var listed=templates.list().stream().filter(row->row.id().equals(template.id())).findFirst().orElseThrow();
+        assertThat(listed.appliedDepartmentCount()).isEqualTo(1);assertThat(listed.appliedUserCount()).isZero();
+        String individual=jdbc.queryForObject("SELECT code FROM permissions WHERE 'INDIVIDUAL_ONLY'=ANY(grant_policy) ORDER BY code LIMIT 1",String.class);
+        assertThatThrownBy(()->templates.update(listed.id(),new PermissionTemplateDtos.Save(listed.name(),"",List.of(individual),listed.version())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已关联部门");
+    }
+
+    @Test void multiEmployeeAndDepartmentTemplateApplicationIsAtomicAndRejectsStaleOrSensitiveUnreviewedWrites() {
+        UUID first=account(department(),"批量一"),second=account(department(),"批量二"),dept=department();
+        var template=templates.create(new PermissionTemplateDtos.Save("批量-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE,List.of(first,second),List.of(dept));
+        var preview=assignments.preview(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assignments.apply(new PermissionTemplateDtos.BatchCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(first)).contains("goods:view");assertThat(effective(second)).contains("goods:view");
+        assertThat(assignments.bindings()).filteredOn(binding->binding.templateId().equals(template.id())).hasSize(3);
+        var stale=assignments.preview(request);personal(second,"supplier:view");
+        assertThatThrownBy(()->assignments.apply(new PermissionTemplateDtos.BatchCommit(request,stale.fingerprint(),confirmations(stale))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已变化");
+        UUID invalid=account(department(),"停用目标");jdbc.update("UPDATE users SET status='disabled' WHERE id=?",invalid);
+        var blockedRequest=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE,List.of(account(department(),"未提交"),invalid),List.of());
+        var blocked=assignments.preview(blockedRequest);assertThat(blocked.canApply()).isFalse();
+        assertThatThrownBy(()->assignments.apply(new PermissionTemplateDtos.BatchCommit(blockedRequest,blocked.fingerprint(),confirmations(blocked)))).isInstanceOf(ApiException.class);
+        assertThat(assignments.bindings()).noneMatch(binding->binding.targetId().equals(blockedRequest.userIds().getFirst()));
+    }
+
+    @Test void incrementalBatchPreservesOtherRightsAndPersonalRevokeOverridesLinkedTemplateAndBaseline() {
+        UUID first=account(department(),"增量一"),second=account(department(),"增量二");personal(first,"supplier:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("增量模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(first,second),List.of());
+        var request=new PermissionTemplateDtos.DeltaRequest(List.of(first,second),List.of(),List.of("client:view"),List.of("goods:view"));
+        var preview=assignments.previewDelta(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assignments.applyDelta(new PermissionTemplateDtos.DeltaCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(first)).contains("supplier:view","client:view").doesNotContain("goods:view");
+        assertThat(effective(second)).contains("client:view").doesNotContain("goods:view");
+        assertThat(assignments.bindings()).filteredOn(binding->binding.templateId().equals(template.id())).hasSize(2);
+        jdbc.update("UPDATE permissions SET baseline=true WHERE code='goods:view'");
+        try { assertThat(effective(first)).doesNotContain("goods:view");assertThat(effective(second)).doesNotContain("goods:view"); }
+        finally { jdbc.update("UPDATE permissions SET baseline=false WHERE code='goods:view'"); }
+    }
+
+    @Test void unbindingFreezesLiveSourcesAndSamePermissionCopyDetachesTheRelationship() {
+        UUID target=account(department(),"解绑"),source=account(department(),"同权复制"),dept=department();personal(source,"goods:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("解绑模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(target),List.of(dept));
+        var result=unbind(List.of(),List.of(dept));assertThat(result.changed()).isTrue();
+        assertThat(jdbc.queryForList("SELECT p.code FROM department_permissions d JOIN permissions p ON p.id=d.permission_id WHERE d.department_id=?",String.class,dept)).contains("goods:view");
+        var snapshot=transfer.copySnapshot(source);var request=new CopyRequest(source,snapshot.fingerprint());var preview=transfer.previewCopy(target,request);
+        transfer.copyPermissions(target,new CopyCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(assignments.bindings()).noneMatch(binding->binding.targetId().equals(target));
+        assertThat(effective(target)).contains("goods:view");
+    }
+
+    @Test void legacySnapshotIsExplicitAndNeverReclassifiedOrAutomaticallyReplayed() {
+        UUID target=account(department(),"旧快照");personal(target,"goods:view");
+        var template=templates.create(new PermissionTemplateDtos.Save("旧模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        jdbc.update("INSERT INTO permission_template_applies(user_id,template_id,applied_version,applied_by) VALUES (?,?,?,?)",target,template.id(),template.version(),admin);
+        assertThat(assignments.bindings()).anyMatch(binding->binding.targetId().equals(target) && binding.legacySnapshot());
+        var updated=templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("supplier:view"),template.version()));
+        assertThat(activeEffects(target)).contains("goods:view=grant").doesNotContain("supplier:view=grant");
+        applyTemplate(updated,List.of(target),List.of());
+        assertThat(assignments.bindings()).anyMatch(binding->binding.targetId().equals(target) && !binding.legacySnapshot());
+        assertThat(effective(target)).contains("goods:view","supplier:view");
+    }
+
+    @Test void addingSensitivePermissionsToLinkedTemplatesRequiresServerVerifiedConfirmation() {
+        UUID target=account(department(),"模板敏感变更");
+        var template=templates.create(new PermissionTemplateDtos.Save("保存敏感-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        assertThatThrownBy(()->templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("goods:view","goods:price:view"),template.version())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("逐项确认");
+        assertThat(effective(target)).doesNotContain("goods:price:view");
+        templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("goods:view","goods:price:view"),template.version(),List.of("goods:price:view")));
+        assertThat(effective(target)).contains("goods:price:view");
+    }
+
+    @Test void restoringTemplateBackedSnapshotsMaterializesTheirCurrentCodesAndDetachesDestinationBindings() {
+        UUID sourceDept=department(),targetDept=department(),source=account(sourceDept,"模板备份源"),target=account(targetDept,"模板备份目标");
+        var template=templates.create(new PermissionTemplateDtos.Save("备份模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(source,target),List.of(sourceDept,targetDept));
+        Backup backup=transfer.exportConfiguration();
+        var request=new ImportRequest(backup,false,List.of(new Mapping(sourceDept.toString(),targetDept)),List.of(new Mapping(source.toString(),target)),false,List.of());
+        var preview=transfer.previewImport(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        transfer.importConfiguration(new ImportCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(target)).contains("goods:view");
+        assertThat(assignments.bindings()).noneMatch(binding->binding.targetId().equals(target) || binding.targetId().equals(targetDept));
+        templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("supplier:view"),template.version()));
+        assertThat(effective(source)).contains("supplier:view");assertThat(effective(target)).contains("goods:view").doesNotContain("supplier:view");
+    }
+
+    @Test void deletingTemplateWithDisabledMemberFreezesTheConfigurationAndDoesNotBlockDeletion() {
+        UUID target=account(department(),"停用关联");
+        var template=templates.create(new PermissionTemplateDtos.Save("停用解绑-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        jdbc.update("UPDATE users SET status='disabled' WHERE id=?",target);
+        templates.delete(template.id(),new PermissionTemplateDtos.Delete(template.version()));
+        assertThat(assignments.bindings()).noneMatch(binding->binding.templateId().equals(template.id()));
+        assertThat(activeEffects(target)).contains("goods:view=grant");
+        jdbc.update("UPDATE users SET status='active' WHERE id=?",target);assertThat(effective(target)).contains("goods:view");
+    }
+
+    @Test void pagePermissionDrawerAndSystemPermissionsShareTheIndependentTemplateSourceAndPersonalRevoke() {
+        UUID dept=department(),target=account(dept,"页面模板来源");
+        UUID employee=users.findById(target).orElseThrow().getEmployeeId();
+        var template=templates.create(new PermissionTemplateDtos.Save("页面模板-"+UUID.randomUUID(),"",List.of("goods:cost:view"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        var first=pagePermissions.employeePermissions(employee,dept,"basic.goods").groups().stream()
+                .flatMap(group->group.permissions().stream()).filter(permission->permission.code().equals("goods:cost:view")).findFirst().orElseThrow();
+        assertThat(first.effective()).isTrue();assertThat(first.targetBaseEffective()).isTrue();assertThat(first.configuredEffect()).isNull();
+        assertThat(breakdown(target).templatePermissions()).contains("goods:cost:view");
+        revoke(target,"goods:cost:view");
+        var second=pagePermissions.employeePermissions(employee,dept,"basic.goods").groups().stream()
+                .flatMap(group->group.permissions().stream()).filter(permission->permission.code().equals("goods:cost:view")).findFirst().orElseThrow();
+        assertThat(second.effective()).isFalse();assertThat(second.configuredEffect()).isEqualTo("revoke");
+        assertThat(effective(target)).doesNotContain("goods:cost:view");
+    }
+
+    @Test void repeatedIdenticalTemplateApplicationDoesNotInvalidateUnrelatedAuthority() {
+        UUID target=account(department(),"重复关联"),dept=department();
+        var template=templates.create(new PermissionTemplateDtos.Save("无改动模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(target),List.of(dept));
+        long epoch=jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1",Long.class);
+        long version=jdbc.queryForObject("SELECT auth_version FROM users WHERE id=?",Long.class,target);
+        var request=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE,List.of(target),List.of(dept));
+        var preview=assignments.preview(request);
+        assertThat(assignments.apply(new PermissionTemplateDtos.BatchCommit(request,preview.fingerprint(),confirmations(preview))).changed()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1",Long.class)).isEqualTo(epoch);
+        assertThat(jdbc.queryForObject("SELECT auth_version FROM users WHERE id=?",Long.class,target)).isEqualTo(version);
+    }
+
+    @Test void templateBindingDoesNotReconfirmUnrelatedLegacyOverridesOrMakeThemRedelegable() {
+        UUID target=account(department(),"历史来源保全");personal(target,"supplier:view");
+        jdbc.update("UPDATE user_permission_overrides SET authority_source='LEGACY_UNKNOWN',source_actor_user_id=null WHERE user_id=?",target);
+        var template=templates.create(new PermissionTemplateDtos.Save("保留来源-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        assertThat(breakdown(target).legacyUnknownGrants()).contains("supplier:view");
+        assertThat(breakdown(target).confirmedGrants()).doesNotContain("supplier:view");
+        unbind(List.of(target),List.of());
+        assertThat(breakdown(target).legacyUnknownGrants()).contains("supplier:view");
+        assertThat(breakdown(target).confirmedGrants()).contains("goods:view").doesNotContain("supplier:view");
+    }
+
+    @Test void simultaneousParentAndChildDepartmentRevocationUsesTheSamePlannedHierarchy() {
+        UUID parent=department(),child=department();jdbc.update("UPDATE departments SET parent_id=? WHERE id=?",parent,child);
+        UUID target=account(child,"父子部门批量");departmentGrant(parent,"goods:view");
+        assertThat(effective(target)).contains("goods:view");
+        var request=new PermissionTemplateDtos.DeltaRequest(List.of(),List.of(parent,child),List.of(),List.of("goods:view"));
+        var preview=assignments.previewDelta(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assignments.applyDelta(new PermissionTemplateDtos.DeltaCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(target)).doesNotContain("goods:view");
+    }
+
+    @Test void unattendedServerAuthorityUsesLiveIndividualTemplateSourcesAndAlwaysHonorsPersonalRevocation() {
+        UUID target=account(department(),"模板运维授权");assertThat(serverAuthority.mayUpdate(target)).isFalse();
+        var template=templates.create(new PermissionTemplateDtos.Save("运维模板-"+UUID.randomUUID(),"",List.of("server:update"),0L));
+        applyTemplate(template,List.of(target),List.of());
+        assertThat(serverAuthority.mayUpdate(target)).isTrue();assertThat(serverAuthority.currentUpdaters()).contains(target);
+        revoke(target,"server:update");
+        assertThat(serverAuthority.mayUpdate(target)).isFalse();assertThat(serverAuthority.currentUpdaters()).doesNotContain(target);
+    }
+
+    @Test void staleUnbindCannotRemoveANewerTemplateRelationshipAndMissingConfirmationNeverWrites() {
+        UUID target=account(department(),"并发解绑");
+        var first=templates.create(new PermissionTemplateDtos.Save("解绑A-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var second=templates.create(new PermissionTemplateDtos.Save("解绑B-"+UUID.randomUUID(),"",List.of("supplier:view"),0L));
+        applyTemplate(first,List.of(target),List.of());
+        var seen=assignments.bindings().stream().filter(binding->binding.targetId().equals(target)).findFirst().orElseThrow();
+        var oldRequest=new PermissionTemplateDtos.Unbind(List.of(target),List.of(),List.of(expectedBinding(seen)));
+        applyTemplate(second,List.of(target),List.of());
+        long auditBefore=jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_unbind' AND target_id=?",Long.class,target.toString());
+        assertThatThrownBy(()->assignments.unbind(oldRequest)).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThatThrownBy(()->assignments.unbind(new PermissionTemplateDtos.Unbind(List.of(target),List.of(),null))).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThat(assignments.bindings()).anyMatch(binding->binding.targetId().equals(target) && binding.templateId().equals(second.id()));
+        assertThat(effective(target)).contains("supplier:view");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_unbind' AND target_id=?",Long.class,target.toString())).isEqualTo(auditBefore);
+        var beforeEdit=assignments.bindings().stream().filter(binding->binding.targetId().equals(target)).findFirst().orElseThrow();
+        templates.update(second.id(),new PermissionTemplateDtos.Save(second.name(),"",List.of("supplier:view","client:view"),second.version()));
+        assertThatThrownBy(()->assignments.unbind(new PermissionTemplateDtos.Unbind(List.of(target),List.of(),List.of(expectedBinding(beforeEdit)))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThat(unbind(List.of(target),List.of()).changed()).isTrue();
+    }
+
+    private PermissionTemplateDtos.ExpectedBinding expectedBinding(PermissionTemplateDtos.Binding binding) {
+        return new PermissionTemplateDtos.ExpectedBinding(binding.kind(),binding.targetId(),binding.templateId(),binding.templateVersion(),binding.legacySnapshot());
+    }
+    private Result unbind(List<UUID> users,List<UUID> departments) {
+        var expected=assignments.bindings().stream().filter(binding->binding.kind().equals("user")
+                ? users.contains(binding.targetId()):departments.contains(binding.targetId())).map(this::expectedBinding).toList();
+        return assignments.unbind(new PermissionTemplateDtos.Unbind(users,departments,expected));
+    }
+
+    private void applyTemplate(PermissionTemplateDtos.Template template,List<UUID> users,List<UUID> departments) {
+        var request=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE,users,departments);
+        var preview=assignments.preview(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assignments.apply(new PermissionTemplateDtos.BatchCommit(request,preview.fingerprint(),confirmations(preview)));
+    }
+
     private PermissionResolver.PermBreakdown breakdown(UUID user){
         return new org.springframework.transaction.support.TransactionTemplate(transactionManager)
                 .execute(status->resolver.breakdownOf(users.findById(user).orElseThrow()));

@@ -10,7 +10,8 @@ import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface VisitorAccountRepository extends JpaRepository<VisitorAccount, UUID> {
+public interface VisitorAccountRepository extends JpaRepository<VisitorAccount, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<VisitorAccount> {
     Optional<VisitorAccount> findByPhoneHash(String phoneHash);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

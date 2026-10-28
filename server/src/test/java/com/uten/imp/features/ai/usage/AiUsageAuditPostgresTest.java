@@ -12,6 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 class AiUsageAuditPostgresTest extends AiPlatformPostgresTestSupport {
+    @Test void headerQueriesFilterAllPagesSummariesAndCurrencyCostsBeforePagination() throws Exception {
+        Staff actor = aiUser(); UUID provider = provider();
+        UUID a = job(actor,2,"HEADER_NEEDLE A","SUCCEEDED"), b = job(actor,2,"HEADER_NEEDLE B","SUCCEEDED");
+        UUID other = job(actor,1,"OTHER_QUESTION","FAILED");
+        for (UUID id : new UUID[]{a,b}) {
+            call(actor,provider,id,100,20,1,"USD","1",null,true);
+            call(actor,provider,id,200,40,1,"CNY","2",null,true);
+        }
+        call(actor,provider,other,null,null,1,null,null,null,false);
+        String filters = "&headerQuery=true&search.question=HEADER_NEEDLE&search.calls=2&size=1&sort=inputTokens&order=desc";
+        JsonNode first = read(actor,filters+"&page=0"), second = read(actor,filters+"&page=1");
+        assertThat(first.path("total").asInt()).isEqualTo(2);
+        assertThat(first.path("summary").path("calls").asInt()).isEqualTo(4);
+        assertThat(first.path("summary")).isEqualTo(second.path("summary"));
+        assertThat(first.path("records").get(0).path("id")).isNotEqualTo(second.path("records").get(0).path("id"));
+        assertCost(first.path("summary"),"USD","ESTIMATED","2");
+        assertCost(first.path("summary"),"CNY","ESTIMATED","4");
+        assertThat(first.toString()).doesNotContain("OTHER_QUESTION", "HIDDEN_RAW_RESULT");
+        assertThat(read(actor,"&headerQuery=true&search.cost=pending").path("total").asInt()).isEqualTo(1);
+        assertThat(read(actor,"&headerQuery=true&search.inputTokens=0").path("total").asInt()).isZero();
+    }
     @Test void retriesLocalHelpUnknownUsageAndCurrencyAreAccountedWithoutInventingCosts() throws Exception {
         Staff actor = aiUser(); UUID provider = provider();
         UUID paid = job(actor,1,"成本是多少？","SUCCEEDED"), local = job(actor,0,"怎么填写？","SUCCEEDED"),

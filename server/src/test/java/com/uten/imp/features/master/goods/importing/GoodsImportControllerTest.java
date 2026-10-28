@@ -89,7 +89,7 @@ class GoodsImportControllerTest {
         GoodsImportController controller = new GoodsImportController(service);
         CountDownLatch firstEnteredParser = new CountDownLatch(1);
         CountDownLatch releaseFirst = new CountDownLatch(1);
-        when(service.detect(any())).thenAnswer(invocation -> {
+        when(service.detect(any(), any(), any(), any(), any())).thenAnswer(invocation -> {
             firstEnteredParser.countDown();
             assertTrue(releaseFirst.await(5, TimeUnit.SECONDS));
             return null;
@@ -100,7 +100,7 @@ class GoodsImportControllerTest {
         AtomicReference<Throwable> firstFailure = new AtomicReference<>();
         Thread first = new Thread(() -> {
             try {
-                controller.detect(firstRequest);
+                controller.detect(null, firstRequest);
             } catch (Throwable error) {
                 firstFailure.set(error);
             }
@@ -110,7 +110,7 @@ class GoodsImportControllerTest {
 
         MockHttpServletRequest secondRequest = new MockHttpServletRequest();
         secondRequest.setContent(new byte[]{2});
-        ApiException busy = assertThrows(ApiException.class, () -> controller.detect(secondRequest));
+        ApiException busy = assertThrows(ApiException.class, () -> controller.detect(null, secondRequest));
         assertEquals(ErrorCode.RATE_LIMITED, busy.getCode());
 
         releaseFirst.countDown();
@@ -129,12 +129,14 @@ class GoodsImportControllerTest {
         request.setContent(bytes);
         GoodsImportResult expected = new GoodsImportResult(
                 UUID.randomUUID(), 1, 0, 0, 0, List.of());
-        when(service.commit(eq(planId), any(), eq("goods.xlsx"))).thenReturn(expected);
+        when(service.commit(eq(planId), any(), eq("goods.xlsx"), any(), any(), any(), any(),
+                eq(GoodsImportMode.MIXED))).thenReturn(expected);
 
-        GoodsImportResult result = controller.commit(planId, "goods.xlsx", request);
+        GoodsImportResult result = controller.commit(planId, "goods.xlsx", null, request);
 
         assertEquals(expected, result);
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx");
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of(),
+                java.util.Map.of(), java.util.Set.of(), java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -151,7 +153,8 @@ class GoodsImportControllerTest {
 
         controller.commitJson(request);
 
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.copyOf(keys));
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.copyOf(keys),
+                java.util.Map.of(), java.util.Set.of(), java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -175,8 +178,9 @@ class GoodsImportControllerTest {
         request.setContent("{\"file\":\"!invalid!\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         assertThrows(ApiException.class, () -> controller.commitJson(request));
         MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
-        controller.detect(valid);
-        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+        controller.detect(null, valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1}, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -189,21 +193,20 @@ class GoodsImportControllerTest {
 
         controller.detectJson(request);
 
-        org.mockito.Mockito.verify(service).detect(bytes, corrections, null);
+        org.mockito.Mockito.verify(service).detect(bytes, corrections, null, java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
-    void jsonDetectWithoutCorrectionsRetainsTheLegacyServiceContract() throws Exception {
+    void jsonDetectWithoutCorrectionsAlwaysCarriesTheImportMode() throws Exception {
         GoodsImportService service = mock(GoodsImportService.class);
         GoodsImportController controller = new GoodsImportController(service);
         byte[] bytes = new byte[]{7, 8, 9};
 
         controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(bytes, null)));
 
-        org.mockito.Mockito.verify(service).detect(bytes);
-        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any());
-        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any(), any());
-        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any(), any(), any(), any());
+        org.mockito.Mockito.verify(service).detect(bytes, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
+        org.mockito.Mockito.verify(service, org.mockito.Mockito.never()).detect(any());
     }
 
     @Test
@@ -217,7 +220,8 @@ class GoodsImportControllerTest {
         controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of("goods:2"), corrections)));
 
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), corrections, null);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"),
+                corrections, null, java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -237,8 +241,9 @@ class GoodsImportControllerTest {
                         new GoodsImportDetectRequest(bytes, corrections))))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
 
-        org.mockito.Mockito.verify(service).detect(bytes);
-        org.mockito.Mockito.verify(service).detect(bytes, corrections, null);
+        org.mockito.Mockito.verify(service).detect(bytes, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
+        org.mockito.Mockito.verify(service).detect(bytes, corrections, null, java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -262,8 +267,9 @@ class GoodsImportControllerTest {
         }
         org.mockito.Mockito.verifyNoInteractions(service);
         MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
-        controller.detect(valid);
-        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+        controller.detect(null, valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1}, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -278,8 +284,9 @@ class GoodsImportControllerTest {
         controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of(), Map.of(), excluded)));
 
-        org.mockito.Mockito.verify(service).detect(bytes, Map.of(), excluded);
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of(), Map.of(), excluded);
+        org.mockito.Mockito.verify(service).detect(bytes, Map.of(), excluded, java.util.Map.of(), GoodsImportMode.MIXED);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of(), Map.of(),
+                excluded, java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -296,8 +303,9 @@ class GoodsImportControllerTest {
         controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of("goods:2"), codes, excluded, cells)));
 
-        org.mockito.Mockito.verify(service).detect(bytes, codes, excluded, cells);
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), codes, excluded, cells);
+        org.mockito.Mockito.verify(service).detect(bytes, codes, excluded, cells, GoodsImportMode.MIXED);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of("goods:2"), codes,
+                excluded, cells, GoodsImportMode.MIXED);
     }
 
     @Test
@@ -311,8 +319,10 @@ class GoodsImportControllerTest {
         controller.commitJson(jsonBodyRequest(new GoodsImportCommitRequest(
                 bytes, planId, "goods.xlsx", List.of(), Map.of(), java.util.Set.of(), Map.of())));
 
-        org.mockito.Mockito.verify(service).detect(bytes);
-        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of());
+        org.mockito.Mockito.verify(service).detect(bytes, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
+        org.mockito.Mockito.verify(service).commit(planId, bytes, "goods.xlsx", java.util.Set.of(), java.util.Map.of(),
+                java.util.Set.of(), java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -335,7 +345,8 @@ class GoodsImportControllerTest {
         }
         org.mockito.Mockito.verifyNoInteractions(service);
         controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of())));
-        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+        org.mockito.Mockito.verify(service).detect(new byte[]{1}, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -353,7 +364,8 @@ class GoodsImportControllerTest {
         }
         org.mockito.Mockito.verifyNoInteractions(service);
         controller.detectJson(jsonBodyRequest(new GoodsImportDetectRequest(new byte[]{1}, Map.of(), java.util.Set.of())));
-        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+        org.mockito.Mockito.verify(service).detect(new byte[]{1}, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test
@@ -367,8 +379,9 @@ class GoodsImportControllerTest {
         }
         org.mockito.Mockito.verifyNoInteractions(service);
         MockHttpServletRequest valid = new MockHttpServletRequest(); valid.setContent(new byte[]{1});
-        controller.detect(valid);
-        org.mockito.Mockito.verify(service).detect(new byte[]{1});
+        controller.detect(null, valid);
+        org.mockito.Mockito.verify(service).detect(new byte[]{1}, java.util.Map.of(), java.util.Set.of(),
+                java.util.Map.of(), GoodsImportMode.MIXED);
     }
 
     @Test

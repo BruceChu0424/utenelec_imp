@@ -13,5 +13,13 @@ public record CurrencyQueryFilter(
         Set<String> nullFields,
         String code,
         String name,
-        String status) {
+        String status,
+        java.util.Map<String, String> columnSearch) {
+    public CurrencyQueryFilter(String keyword, Set<String> nullFields, String code, String name, String status) {
+        this(keyword, nullFields, code, name, status, java.util.Map.of());
+    }
+    public CurrencyQueryFilter withColumnSearch(java.util.Map<String, String> searches) {
+        return new CurrencyQueryFilter(keyword, nullFields, code, name, status,
+                searches == null ? java.util.Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(searches)));
+    }
 }

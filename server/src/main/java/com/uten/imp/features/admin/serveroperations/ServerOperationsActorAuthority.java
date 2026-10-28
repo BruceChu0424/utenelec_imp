@@ -16,15 +16,20 @@ public class ServerOperationsActorAuthority {
             FROM users actor
             WHERE NOT actor.is_deleted AND actor.status='active'
               AND NOT actor.must_change_password
-              AND (actor.is_super_admin OR (EXISTS (
-                SELECT 1 FROM employees employee WHERE employee.id=actor.employee_id
-                  AND NOT employee.is_deleted AND employee.status IN ('active','probation','onLeave'))
-                AND EXISTS (
-                SELECT 1 FROM user_permission_overrides allocation
-                JOIN permissions permission ON permission.id=allocation.permission_id
-                WHERE allocation.user_id=actor.id AND allocation.active
-                  AND allocation.effect='grant' AND allocation.authority_source='SUPER_ADMIN_CONFIRMED'
-                  AND permission.code='server:update')))
+              AND (actor.is_super_admin OR (
+                EXISTS (SELECT 1 FROM employees employee WHERE employee.id=actor.employee_id
+                    AND NOT employee.is_deleted AND employee.status IN ('active','probation','onLeave'))
+                AND (EXISTS (SELECT 1 FROM user_permission_overrides allocation
+                    JOIN permissions permission ON permission.id=allocation.permission_id
+                    WHERE allocation.user_id=actor.id AND allocation.active
+                      AND allocation.effect='grant' AND allocation.authority_source='SUPER_ADMIN_CONFIRMED'
+                      AND permission.code='server:update')
+                    OR EXISTS (SELECT 1 FROM authorization_user_template_permission_sources source
+                        WHERE source.user_id=actor.id AND source.code='server:update'))
+                AND NOT EXISTS (SELECT 1 FROM user_permission_overrides revoked
+                    JOIN permissions permission ON permission.id=revoked.permission_id
+                    WHERE revoked.user_id=actor.id AND revoked.active AND revoked.effect='revoke'
+                      AND permission.code='server:update')))
             """;
 
     @Transactional(readOnly = true)

@@ -48,14 +48,6 @@ class CommonModuleCatalogMigrationPostgresTest {
 
         assertThat(rows).containsExactly(
                 new Grouped("company_file:view", "公司资料库", 15),
-                new Grouped("company_file:download", "公司资料库", 16),
-                new Grouped("company_file:upload", "公司资料库", 17),
-                new Grouped("company_file:create", "公司资料库", 18),
-                new Grouped("company_file:edit", "公司资料库", 19),
-                new Grouped("company_file:move", "公司资料库", 20),
-                new Grouped("company_file:delete", "公司资料库", 21),
-                new Grouped("company_file:restore", "公司资料库", 22),
-                new Grouped("company_file:manage_permissions", "公司资料库", 23),
                 new Grouped("expense:apply", "我的报销", 30),
                 new Grouped("payroll:view:self", "工资条", 40),
                 new Grouped("suggestion:submit", "意见箱", 50),
@@ -75,6 +67,11 @@ class CommonModuleCatalogMigrationPostgresTest {
                 "SELECT NOT baseline AND array_to_string(grant_policy, ',') = 'NON_DELEGABLE' "
                         + "FROM permissions WHERE code = 'visitor:host_confirm'", Boolean.class))
                 .isTrue();
+        // V958: 资料库写操作码移入「系统管理」，常用模块只剩入口开关。
+        Integer libraryAdministration = jdbc.queryForObject(
+                "SELECT count(*) FROM permissions WHERE module = '系统管理' AND code LIKE 'company_file:%'",
+                Integer.class);
+        assertThat(libraryAdministration).isEqualTo(7);
         // 管理码留在「人事行政」，常用模块里不混入其它码。
         Integer hrManagement = jdbc.queryForObject(
                 "SELECT count(*) FROM permissions WHERE module = '人事行政' AND code IN ("

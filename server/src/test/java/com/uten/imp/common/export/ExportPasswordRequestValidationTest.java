@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Parameter;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,21 +56,21 @@ class ExportPasswordRequestValidationTest {
                 StockReportController.class,
                 SubcontractReportController.class);
 
-        int endpoints = 0;
         for (Class<?> controller : controllers) {
+            boolean foundExportBody = false;
             for (var method : controller.getDeclaredMethods()) {
                 for (Parameter parameter : method.getParameters()) {
                     // 客户/供应商导出的请求体还带手机/电话/银行账号筛选 (security-19), 同样必须 @Valid。
                     if (parameter.getType() == ExportPasswordRequest.class
                             || parameter.getType() == com.uten.imp.features.master.dto.ContactExportRequest.class) {
-                        endpoints++;
+                        foundExportBody = true;
                         assertTrue(
                                 parameter.isAnnotationPresent(Valid.class),
                                 controller.getSimpleName() + "." + method.getName());
                     }
                 }
             }
+            assertTrue(foundExportBody, controller.getSimpleName() + " must expose an inspected export request body");
         }
-        assertEquals(13, endpoints);
     }
 }

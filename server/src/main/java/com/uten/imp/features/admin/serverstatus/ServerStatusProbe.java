@@ -83,6 +83,9 @@ public class ServerStatusProbe {
     private Instant attachmentsSampledAt;
     /** 审计留存最近一次成功时间(持久在审计表里, 重启不丢); 无此组件时为空。 */
     private Supplier<Optional<Instant>> auditRetentionLastSuccess = Optional::empty;
+    /** 治理任务持久回执(V954); 注入后重启仍能显示最近执行证据, 缺失时退回内存观测。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private ScheduledTaskRunStore durableRunStore;
     /** 本实例负责审计归档(本地主实例; 云端实例不跑归档, 不重复告警)。 */
     private boolean auditRetentionWatched;
     private Supplier<Instant> processStartedAt =
@@ -454,7 +457,50 @@ public class ServerStatusProbe {
             } else result.add(report);
         }
         if(!retentionScheduled&&auditRetentionWatched) unscheduledAuditRetention(now).ifPresent(result::add);
+        appendPersistedOnlyEvidence(result, runs, now);
         return List.copyOf(result);
+    }
+
+    /**
+     * 重启后内存注册表为空: 对持久证据任务补上 {@code scheduled_task_runs} 里最近一次
+     * 完成回执合成的报告, 管理员仍能看到「上次执行是什么时候、成没成功」。
+     * 只是观测增强, 查询失败时静默跳过, 不影响状态页其余部分。
+     */
+    private void appendPersistedOnlyEvidence(List<JobReport> result,
+            List<ScheduledTaskRunRegistry.Run> memoryRuns, Instant now) {
+        if (durableRunStore == null) return;
+        java.util.Set<String> inMemory = new java.util.HashSet<>();
+        for (var run : memoryRuns) inMemory.add(run.name());
+        var keys = ScheduledTaskCatalog.durableEvidenceTasks().stream()
+                .filter(key -> !inMemory.contains(key)).toList();
+        if (keys.isEmpty()) return;
+        Map<String, ScheduledTaskRunStore.PersistedRun> persisted;
+        try {
+            persisted = durableRunStore.latestRuns(keys);
+        } catch (RuntimeException unavailable) {
+            return;
+        }
+        for (ScheduledTaskRunStore.PersistedRun run : persisted.values()) {
+            result.add(persistedReport(run, now));
+        }
+    }
+
+    /** 由持久完成回执合成状态页报告: 完成事实跨重启可见, 不推断排队/运行中状态。 */
+    private JobReport persistedReport(ScheduledTaskRunStore.PersistedRun run, Instant now) {
+        String label = ScheduledTaskCatalog.labelOf(run.taskKey());
+        String took = run.durationMs() <= 0 ? ""
+                : ", 耗时 " + humanDuration(Duration.ofMillis(run.durationMs()));
+        String evidence = "(本次启动前的持久回执)";
+        if (run.errorType() != null) {
+            return new JobReport(new Job(run.taskKey(), label, run.startedAt(), run.finishedAt(),
+                    run.durationMs(), null, run.errorType(), "WARNING",
+                    "最近一次执行失败 (错误类型 " + run.errorType() + ")" + took + "; 按固定日程触发。 " + evidence),
+                    JOB_PREFIX+"「"+label+"」最近一次执行失败",
+                    "重启前该任务曾失败, 请结合服务日志确认是否已恢复。");
+        }
+        return quiet(new Job(run.taskKey(), label, run.startedAt(), run.finishedAt(),
+                run.durationMs(), null, null, "NORMAL",
+                "上次执行正常"+took+"; 按固定日程触发。 "+evidence));
     }
 
     static final String AUDIT_RETENTION_JOB="AuditRetentionScheduler.runScheduled";

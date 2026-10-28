@@ -60,6 +60,20 @@ class AccountSecurityAndRedactionTest {
     }
 
     @Test
+    void balanceSearchChecksPermissionBeforeSyntaxOrDatabaseReads() {
+        authenticate("account:view");
+        AccountRepository repository = mock(AccountRepository.class);
+        EntityManager em = mock(EntityManager.class);
+        AccountService service = service(repository, em);
+        for (String term : new String[]{">0", "NaN"}) {
+            assertThatThrownBy(() -> service.list(new AccountQueryFilter(null, Set.of(), null, null, null, null, null)
+                            .withColumnSearch(java.util.Map.of("balanceCurrent", term)), 1, 20, null, null))
+                    .isInstanceOf(ApiException.class).hasMessageContaining("不能按余额筛选");
+        }
+        verifyNoInteractions(repository, em);
+    }
+
+    @Test
     void warningEndpointAndServiceRequireViewBalanceAndWarningAuthorities()
             throws Exception {
         String required = "hasAuthority('account:view') and hasAuthority('account:balance:view') "

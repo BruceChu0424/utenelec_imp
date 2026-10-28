@@ -37,8 +37,8 @@ class RemoteMfaLoginTest {
         order.verify(access).requireStaffAccess(user);
         order.verify(access).isRemoteRequest();
         order.verify(mfa).remoteLogin(eq(user.getId()),eq("123456"),any());
-        order.verify(login).completeRemote(user.getId(),"hash");
-        verify(login,never()).complete(any(),any());
+        order.verify(login).completeRemote(user.getId(),"hash",null);
+        verify(login,never()).complete(any(),any(),any());
     }
 
     @Test void wrongPasswordAndDeniedRemoteEligibilityNeverConsumeOtp() {
@@ -56,7 +56,7 @@ class RemoteMfaLoginTest {
     @Test void localLoginRetainsExistingNonMfaContractAndNeverConsumesOptionalCode() {
         var user=user();when(passwords.matches("password","hash")).thenReturn(true);
         service.login(new LoginRequest("E1","password","123456"),"192.168.1.4");
-        verify(login).complete(user.getId(),"hash");verifyNoInteractions(mfa);
+        verify(login).complete(user.getId(),"hash",null);verifyNoInteractions(mfa);
     }
 
     private UserAccount user(){var u=new UserAccount();u.setLoginAccount("E1");u.setPasswordHash("hash");u.setMustChangePassword(false);u.setRemoteAccess(true);

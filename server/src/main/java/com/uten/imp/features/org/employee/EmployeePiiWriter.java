@@ -21,13 +21,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EmployeePiiWriter {
 
-    static final String DUPLICATE_IDENTITY_MESSAGE =
-            "该证件号码已被其他员工使用，请核对是否录错或与其他员工档案重复";
-    static final String HISTORICAL_IDENTITY_MESSAGE =
-            "该号码保存在此人员的历史档案中，需核对历史证件资料后处理";
-
+    static final String DUPLICATE_IDENTITY_MESSAGE = EmployeeExistingIdentityGuard.DUPLICATE_DOCUMENT_MESSAGE;
     private final TxSessionVars tx;
     private final EmployeeSensitiveRepository sensitiveRepo;
+    private final EmployeeExistingIdentityGuard existingIdentityGuard;
     private com.uten.imp.application.port.EmployeeIdentityLookupPort employeeIdentities;
 
     @org.springframework.beans.factory.annotation.Autowired(required=false)
@@ -53,16 +50,15 @@ public class EmployeePiiWriter {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, problem.message());
             }
         }
+        existingIdentityGuard.requireUnclaimedIdentity(employeeId,idType,normalized);
         String hash = tx.hmac(normalized);
-        if (hash != null && sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(hash, employeeId)) {
-            if(employeeIdentities!=null) {
-                var historical=employeeIdentities.employeeIdentityMembers(employeeId).stream()
-                        .filter(member -> !member.equals(employeeId)).toList();
-                if(!historical.isEmpty() && sensitiveRepo.existsByIdCardHashAndEmployeeIdIn(hash,historical))
-                    throw new ApiException(ErrorCode.CONFLICT,HISTORICAL_IDENTITY_MESSAGE);
-            }
+        if (hash != null) {
+            sensitiveRepo.lockIdentityHash(hash);
+            boolean claimedByOtherPerson = employeeIdentities == null
+                    ? sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(hash,employeeId)
+                    : sensitiveRepo.existsByIdentityHashOutsidePerson(hash,employeeId);
             // 各类证件共用一句话 (护照、港澳台通行证也走这里)；不说出是哪位员工，免得借查重探出别人的证件号。
-            throw new ApiException(ErrorCode.CONFLICT, DUPLICATE_IDENTITY_MESSAGE);
+            if(claimedByOtherPerson) throw new ApiException(ErrorCode.CONFLICT, DUPLICATE_IDENTITY_MESSAGE);
         }
         target.setIdCardEnc(tx.encrypt(normalized));
         target.setIdCardLast4(IdCardUtil.last4(normalized));
@@ -79,10 +75,14 @@ public class EmployeePiiWriter {
                         "中国大陆手机号格式不正确"));
         UUID employeeId = java.util.Objects.requireNonNull(target.getEmployeeId(),
                 "Primary phone requires its owning employee identity");
+        existingIdentityGuard.requireUnclaimedPhone(employeeId,normalized);
         String hash = tx.hmac(normalized);
         if (hash != null && !hash.equals(target.getPhoneHash())) {
             sensitiveRepo.lockPrimaryPhoneHash(hash);
-            if (sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash, employeeId)) {
+            boolean claimedByOtherPerson=employeeIdentities==null
+                    ?sensitiveRepo.existsByPhoneHashAndEmployeeIdNot(hash,employeeId)
+                    :sensitiveRepo.existsByPhoneHashOutsidePerson(hash,employeeId);
+            if (claimedByOtherPerson) {
                 throw new ApiException(ErrorCode.CONFLICT, "该手机号已被其他员工使用");
             }
         }

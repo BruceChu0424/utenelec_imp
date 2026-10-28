@@ -24,8 +24,8 @@ class PermissionTransferDtoTest {
         assertThat(json).doesNotContain("password","superAdmin","remoteAccess");
     }
     @Test void transferReceiptsAreRetainedAuthorizationEvidence() {
-        for(String action:List.of("permission_configuration_import","permission_configuration_copy",
-                "permission_template_create","permission_template_update","permission_template_delete","permission_template_apply")) {
+        for(String action:List.of("permission_configuration_import","permission_configuration_copy","permission_configuration_batch",
+                "permission_template_create","permission_template_update","permission_template_delete","permission_template_apply","permission_template_sync","permission_template_unbind")) {
             var classification=com.uten.imp.audit.AuditClassifier.classify("business",action,"permissions","", "success",200);
             assertThat(classification.eventCategory()).isEqualTo("authorization");
             assertThat(classification.riskLevel()).isEqualTo("high");
@@ -38,7 +38,10 @@ class PermissionTransferDtoTest {
         for(var method:List.of(controller.getMethod("create",com.uten.imp.features.admin.dto.PermissionTemplateDtos.Save.class),
                 controller.getMethod("update",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Save.class),
                 controller.getMethod("delete",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Delete.class),
-                controller.getMethod("apply",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Commit.class))) {
+                controller.getMethod("apply",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Commit.class),
+                controller.getMethod("applyBatch",com.uten.imp.features.admin.dto.PermissionTemplateDtos.BatchCommit.class),
+                controller.getMethod("applyDelta",com.uten.imp.features.admin.dto.PermissionTemplateDtos.DeltaCommit.class),
+                controller.getMethod("unbind",com.uten.imp.features.admin.dto.PermissionTemplateDtos.Unbind.class))) {
             assertThat(method.getAnnotation(com.uten.imp.security.RequiresStepUp.class)).isNotNull();
         }
         assertThat(controller.getMethod("preview",java.util.UUID.class,com.uten.imp.features.admin.dto.PermissionTemplateDtos.Apply.class)

@@ -109,6 +109,18 @@ class MasterReportExportSourceTest {
         }
         verifyNoInteractions(clients);
     }
+    @Test void accountAndCurrencyTasksKeepPrivateTermsAndOriginalDecimalHeaderPrecision(){
+        exporter("account");
+        source.read(request("account","{\"keyword\":\"6222\",\"columnSearch\":{\"bankAccountNo\":\"6222%_\",\"balanceCurrent\":\">90071992547409.1234\"}}"));
+        var account=(com.uten.imp.features.master.account.dto.AccountQueryFilter)decoded.get();
+        assertThat(account.keyword()).isEqualTo("6222");
+        assertThat(account.columnSearch()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "bankAccountNo","6222%_","balanceCurrent",">90071992547409.1234"));
+        exporter("currency");
+        source.read(request("currency","{\"columnSearch\":{\"exchangeRate\":\"123456789012.123456\"}}"));
+        assertThat(((com.uten.imp.features.master.currency.dto.CurrencyQueryFilter)decoded.get()).columnSearch())
+                .containsEntry("exchangeRate","123456789012.123456");
+    }
     @Test void anotherFeatureExportDoesNotAuthorizeAClientExport(){
         exporter("supplier");
         assertThatThrownBy(()->source.read(request("client","{}"))).isInstanceOf(ApiException.class);

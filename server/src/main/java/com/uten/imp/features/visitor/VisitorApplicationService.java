@@ -158,7 +158,15 @@ public class VisitorApplicationService {
 
     @Transactional(readOnly = true)
     public PageResponse<VisitorListItem> listMine(String status, int page, int size) {
+        return listMine(status, page, size, java.util.Map.of(), null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<VisitorListItem> listMine(String status, int page, int size,
+            java.util.Map<String, String> columns, String sort, String order) {
         UUID visitorId = currentVisitorId();
+        var fields = VisitorColumnQueries.mine();
+        var searches = com.uten.imp.common.util.JpaColumnSearch.validate(columns, fields);
         // status 支持逗号分隔多状态（如 pending,hostReviewing，访客端「申请中」口径）；
         // 单状态保持原 equal 语义，未知状态码自然查空，不做白名单拦截。
         List<String> statuses = status == null ? List.of()
@@ -174,9 +182,9 @@ public class VisitorApplicationService {
             } else if (statuses.size() > 1) {
                 p = cb.and(p, root.get("status").in(statuses));
             }
-            return p;
+            return cb.and(p, com.uten.imp.common.util.JpaColumnSearch.predicate(root, q, cb, searches, fields));
         };
-        Pageable pageable = visitorPageable(page, size);
+        Pageable pageable = VisitorColumnQueries.page(page, size, sort, order);
         Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
         return toPageResponse(result, pageable);
     }

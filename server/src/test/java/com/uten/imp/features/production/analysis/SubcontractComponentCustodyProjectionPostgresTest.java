@@ -88,7 +88,8 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
                     goods_id uuid, color_id uuid, bom_unit_qty numeric, issued_qty numeric,
-                    is_deleted boolean DEFAULT false);
+                    is_deleted boolean DEFAULT false, base_bom_unit_qty numeric(18,6),
+                    material_loss_pct numeric(5,2) NOT NULL DEFAULT 0);
                 CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     issue_id uuid, plan_item_id uuid, qty numeric, is_deleted boolean DEFAULT false,

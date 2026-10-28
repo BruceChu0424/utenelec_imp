@@ -77,24 +77,22 @@ class EmployeeIdentityAliasesPostgresTest {
         assertEquals(alias,db.queryForObject("SELECT employee_id FROM employee_education WHERE id=?",UUID.class,education));
         assertEquals(alias,db.queryForObject("SELECT employee_id FROM employment_history WHERE id=?",UUID.class,event));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM employee_sensitive WHERE employee_id=?",Integer.class,canonical));
-        // Alias verification does not declare the old document number correct or relax global uniqueness.
-        assertThrows(RuntimeException.class,()->db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'new-cipher','new-phone','unchecked',?)",canonical,retainedHash));
+        // Re-entering a verified person's archived document no longer steals a new identity claim.
+        db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'new-cipher','new-phone','unchecked',?)",canonical,retainedHash);
         assertEquals(before,db.queryForObject("SELECT to_jsonb(s)::text FROM employee_sensitive s WHERE employee_id=?",String.class,alias));
         try(var em=factory.createEntityManager()) {
             var repository=new org.springframework.data.jpa.repository.support.JpaRepositoryFactory(em)
                     .getRepository(EmployeeSensitiveRepository.class);
             var tx=mock(com.uten.imp.security.TxSessionVars.class);
             org.mockito.Mockito.when(tx.hmac("fixture-document")).thenReturn(retainedHash);
-            var writer=new EmployeePiiWriter(tx,repository);writer.setEmployeeIdentities(directory);
-            var error=assertThrows(com.uten.imp.common.web.ApiException.class,
-                    ()->writer.applyIdentity(new EmployeeSensitive(),canonical,"护照","fixture-document"));
-            assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,error.getCode());
-            assertEquals(EmployeePiiWriter.HISTORICAL_IDENTITY_MESSAGE,error.getMessage());
+            var writer=new EmployeePiiWriter(tx,repository,mock(EmployeeExistingIdentityGuard.class));writer.setEmployeeIdentities(directory);
+            writer.applyIdentity(new EmployeeSensitive(),canonical,"护照","fixture-document");
             UUID anotherPerson=employee(false);
             var crossPerson=assertThrows(com.uten.imp.common.web.ApiException.class,
                     ()->writer.applyIdentity(new EmployeeSensitive(),anotherPerson,"护照","fixture-document"));
             assertEquals(EmployeePiiWriter.DUPLICATE_IDENTITY_MESSAGE,crossPerson.getMessage());
-            org.mockito.Mockito.verify(tx,org.mockito.Mockito.never()).encrypt(org.mockito.ArgumentMatchers.anyString());
+            org.mockito.Mockito.verify(tx).encrypt("fixture-document");
+            assertThrows(RuntimeException.class,()->db.update("INSERT INTO employee_sensitive(employee_id,id_card_enc,phone_enc,id_card_check,id_card_hash) VALUES(?,'other-cipher','other-phone','unchecked',?)",anotherPerson,retainedHash));
         }
     }
     @Test void displayNameAloneAndAliasChainsNeverCreateIdentityMembership() {

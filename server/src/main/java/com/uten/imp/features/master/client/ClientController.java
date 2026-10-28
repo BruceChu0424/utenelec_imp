@@ -15,7 +15,7 @@ import com.uten.imp.features.master.client.dto.ClientListItem;
 import com.uten.imp.features.master.client.dto.ClientQueryFilter;
 import com.uten.imp.features.master.client.dto.ClientSaveRequest;
 import com.uten.imp.features.master.dto.ContactExportRequest;
-import com.uten.imp.features.master.dto.ContactSensitiveFilter;
+import com.uten.imp.common.web.ContactSensitiveFilter;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

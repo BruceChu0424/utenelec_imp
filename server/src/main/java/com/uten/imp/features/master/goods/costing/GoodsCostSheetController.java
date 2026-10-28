@@ -21,6 +21,13 @@ public class GoodsCostSheetController {
     private final AuditDetailViewRecorder detailViews;
     private final GoodsProductionOutputQueryPort productionOutput;
     @GetMapping public List<SheetSummary> list(@RequestParam UUID goodsId){return service.list(goodsId);}
+    @GetMapping("/versions") public VersionPage versions(@RequestParam UUID goodsId,
+            @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
+            @RequestParam(required=false) String status,@RequestParam(required=false) String currencyId,
+            @RequestParam(required=false) String sort,@RequestParam(required=false) String order) {
+        return service.versions(goodsId,page,size,status,currencyId,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()),sort,order);
+    }
     /** Keep the retired read route from being interpreted as the generic UUID detail route. */
     @GetMapping("/bootstrap") public void rejectBootstrapGet() {
         throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.METHOD_NOT_ALLOWED);

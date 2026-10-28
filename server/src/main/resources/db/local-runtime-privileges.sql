@@ -1,4 +1,6 @@
 -- Canonical split-role runtime ACL. The dev callback remains loopback/uten_imp only.
+-- Views stay runtime read-only except insert_through_views: the audit unified read
+-- layer (V952) receives the JPA write channel through its INSTEAD OF INSERT trigger.
 -- A reviewed nonstandard candidate must enter through ops/reconcile-runtime-privileges.sql,
 -- which pins its name, OID, cluster identity and migration owner in this transaction.
 -- No business rows, migration history, object definitions, owners or role attributes change.
@@ -27,12 +29,31 @@ DECLARE
         'legacy_production_plan_counter_import_contexts','stock_measurement_holds'];
     private_relations constant text[] := ARRAY[
         'flyway_schema_history','business_test_object_cleanup_intents'];
+    -- Only these views keep a runtime INSERT path; the INSTEAD OF trigger lands the
+    -- rows in audit_log, and UPDATE/DELETE stay denied because no such trigger exists.
+    insert_through_views constant text[] := ARRAY['v_audit_log_all'];
     private_names constant text[] := ARRAY[
         'business_data_reset','fn_require_runtime_maintenance','fn_require_runtime_refresh',
         'fn_business_test_reset_verify_purged','fn_clear_business_test_object_metadata',
         'fn_audit_track_table','fn_audit_seal_privileges','fn_migrate_financial_amount_columns',
         'fn_capture_stock_measurement_holds','fn_verify_stock_original_measurement_basis',
         'fn_audit_stock_measurement_hold_columns'];
+    -- V964/V965 freeze these ACLs inside their independent catalog seals. A
+    -- general application grant must never reopen private preimages or merge/
+    -- code-release commands, nor rewrite a valid seal during a no-op startup.
+    sealed_relations constant text[] := ARRAY[
+        'employee_identity_merges','employee_identity_merge_payloads','employee_legacy_identity_aliases',
+        'employee_identity_historical_claims','employee_identity_user_tombstones','employee_identity_legacy_roles',
+        'employee_identity_review_certificates','employee_identity_merge_installation',
+        'employee_code_reuse_installation','employee_code_reuse_releases','employee_code_reuse_claims'];
+    sealed_read_relations constant text[] := ARRAY[
+        'employee_identity_merges','employee_identity_historical_claims','employee_legacy_identity_aliases'];
+    sealed_functions text[];
+    sealed_runtime_functions constant text[] := ARRAY[
+        'fn_employee_merge_completed','fn_employee_identity_from_legacy_worker','fn_employee_merge_retained_user',
+        'fn_employee_merge_database_identity','fn_employee_merge_source_fingerprint','fn_employee_merge_identifier_reviewed',
+        'fn_claim_next_released_employee_code','fn_employee_code_reuse_claim_authorizes','fn_employee_code_requires_identity_mapping'];
+    sealed_preserved_functions constant text[] := ARRAY['fn_reserve_master_code','fn_claim_global_business_identifier'];
 BEGIN
     IF current_user<>'uten_migrator' OR session_user<>current_user
        OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user
@@ -97,6 +118,42 @@ BEGIN
        OR to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
         RAISE EXCEPTION 'Complete business-reset retirement before runtime ACL reconciliation';
     END IF;
+    SELECT COALESCE(array_agg(DISTINCT p.proname),ARRAY[]::text[]) INTO sealed_functions
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND (
+        p.proname ~ '^(fn_employee_merge_|fn_employee_code_|fn_guard_employee_code_|fn_finish_employee_code_reuse_claim$)'
+        OR p.proname IN('fn_merge_employee_identity','fn_employee_identity_from_legacy_worker',
+                       'fn_claim_next_released_employee_code','fn_release_merged_employee_code')
+        OR (to_regclass('public.employee_code_reuse_installation') IS NOT NULL
+            AND p.proname=ANY(sealed_preserved_functions)));
+    -- Drift is a review failure, not permission to replace the extension's
+    -- exact grants. Check effective column/PUBLIC paths before any ACL write.
+    FOR entry IN SELECT c.oid,c.relname,c.relowner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                 WHERE n.nspname='public' AND c.relname=ANY(sealed_relations) AND c.relkind IN('r','p') LOOP
+        IF entry.relowner<>owner_id
+           OR has_table_privilege('uten',entry.oid,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+           OR has_any_column_privilege('uten',entry.oid,'INSERT,UPDATE,REFERENCES')
+           OR has_table_privilege('uten',entry.oid,'SELECT WITH GRANT OPTION')
+           OR has_any_column_privilege('uten',entry.oid,'SELECT WITH GRANT OPTION')
+           OR (entry.relname=ANY(sealed_read_relations)
+               AND NOT has_table_privilege('uten',entry.oid,'SELECT'))
+           OR (NOT entry.relname=ANY(sealed_read_relations)
+               AND (has_table_privilege('uten',entry.oid,'SELECT') OR has_any_column_privilege('uten',entry.oid,'SELECT'))) THEN
+            RAISE EXCEPTION 'Sealed employee identity relation ACL drifted; explicit review required: %',entry.relname;
+        END IF;
+    END LOOP;
+    FOR entry IN SELECT p.oid,p.proname,p.proowner,p.prorettype FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                 WHERE n.nspname='public' AND p.proname=ANY(sealed_functions) LOOP
+        IF entry.proowner<>owner_id OR has_function_privilege('uten',entry.oid,'EXECUTE WITH GRANT OPTION')
+           OR (entry.proname=ANY(sealed_runtime_functions) AND NOT has_function_privilege('uten',entry.oid,'EXECUTE'))
+           OR (NOT entry.proname=ANY(sealed_runtime_functions) AND NOT entry.proname=ANY(sealed_preserved_functions)
+               -- PostgreSQL trigger functions are not directly callable. Their
+               -- installed PUBLIC EXECUTE may differ with the site's defaults.
+               AND entry.prorettype<>'trigger'::regtype
+               AND has_function_privilege('uten',entry.oid,'EXECUTE')) THEN
+            RAISE EXCEPTION 'Sealed employee identity function ACL drifted; explicit review required: %',entry.proname;
+        END IF;
+    END LOOP;
     PERFORM pg_advisory_xact_lock(hashtextextended('uten.local.runtime-privileges',0));
     PERFORM set_config('lock_timeout','5s',true);
     EXECUTE format('GRANT CONNECT,TEMPORARY ON DATABASE %I TO uten',current_database());
@@ -109,6 +166,7 @@ BEGIN
                  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
                  WHERE n.nspname='public' AND c.relowner=owner_id
                    AND c.relkind IN ('r','p','v','m') ORDER BY c.relname LOOP
+        IF entry.relname=ANY(sealed_relations) THEN CONTINUE; END IF;
         EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC,uten RESTRICT',entry.relname);
         FOR attribute IN SELECT attname FROM pg_attribute
                          WHERE attrelid=entry.oid AND attnum>0 AND NOT attisdropped
@@ -119,6 +177,8 @@ BEGIN
             NULL;
         ELSIF entry.relname='audit_log' THEN
             GRANT SELECT,INSERT ON public.audit_log TO uten;
+        ELSIF entry.relname=ANY(insert_through_views) THEN
+            EXECUTE format('GRANT SELECT,INSERT ON TABLE public.%I TO uten',entry.relname);
         ELSIF entry.relname=ANY(protected_names) OR entry.relname='audit_log_archive'
               OR entry.relkind IN ('v','m') THEN
             EXECUTE format('GRANT SELECT ON TABLE public.%I TO uten',entry.relname);
@@ -135,6 +195,7 @@ BEGIN
     FOR entry IN SELECT p.oid,p.proname,pg_get_function_identity_arguments(p.oid) args
                  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                  WHERE n.nspname='public' AND p.proowner=owner_id AND p.prokind='f' LOOP
+        IF entry.proname=ANY(sealed_functions) THEN CONTINUE; END IF;
         IF entry.proname=ANY(private_names)
            OR entry.proname LIKE 'fn\_register\_legacy\_%' ESCAPE '\'
            OR entry.proname LIKE 'fn\_import\_legacy\_%' ESCAPE '\' THEN
@@ -178,12 +239,14 @@ BEGIN
         END LOOP;
         IF entry.relname=ANY(protected_names) OR entry.relname='audit_log_archive'
            OR entry.relkind IN ('v','m') OR entry.relispartition OR entry.relname=ANY(private_relations) THEN
-            FOREACH privilege_name IN ARRAY ARRAY['INSERT','UPDATE','DELETE'] LOOP
-                IF has_table_privilege('uten',entry.oid,privilege_name)
-                   OR (privilege_name IN ('INSERT','UPDATE') AND has_any_column_privilege('uten',entry.oid,privilege_name)) THEN
-                    RAISE EXCEPTION 'Runtime retains protected evidence mutation privilege: % %',entry.relname,privilege_name;
-                END IF;
-            END LOOP;
+        FOREACH privilege_name IN ARRAY ARRAY['INSERT','UPDATE','DELETE'] LOOP
+            IF entry.relname=ANY(insert_through_views) AND privilege_name='INSERT' THEN
+                NULL;
+            ELSIF has_table_privilege('uten',entry.oid,privilege_name)
+               OR (privilege_name IN ('INSERT','UPDATE') AND has_any_column_privilege('uten',entry.oid,privilege_name)) THEN
+                RAISE EXCEPTION 'Runtime retains protected evidence mutation privilege: % %',entry.relname,privilege_name;
+            END IF;
+        END LOOP;
         ELSIF entry.relname='audit_log' AND
               (has_table_privilege('uten',entry.oid,'UPDATE,DELETE') OR has_any_column_privilege('uten',entry.oid,'UPDATE')) THEN
             RAISE EXCEPTION 'Runtime retains audit mutation privilege';

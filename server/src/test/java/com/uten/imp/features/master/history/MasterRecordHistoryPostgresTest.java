@@ -749,6 +749,12 @@ class MasterRecordHistoryPostgresTest {
     assertFalse(entry.recordCode().isBlank());
     assertEquals(actor, entry.actorId());
     assertTrue(entry.summary().contains("修改"));
+    assertEquals(1, service.search("colors", item, null, null,
+        new MasterRecordHistoryService.Filters("EDIT", null, null, null, null, null, 50,
+            "RECORD", "修改")).entries().size());
+    assertTrue(service.search("colors", item, null, null,
+        new MasterRecordHistoryService.Filters(null, null, null, null, null, null, 50,
+            "CATEGORY", null)).entries().isEmpty());
     assertTrue(
         service
             .search(
@@ -778,6 +784,9 @@ class MasterRecordHistoryPostgresTest {
           return null;
         });
     login(Set.of("goods:view"), false);
+    assertTrue(service.search("goods", priced, null, null,
+        new MasterRecordHistoryService.Filters(null, null, null, null, null, null, 50,
+            null, "885521.17")).entries().isEmpty());
     assertTrue(
         service
             .search(

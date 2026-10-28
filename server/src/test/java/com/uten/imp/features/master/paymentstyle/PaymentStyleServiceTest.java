@@ -58,6 +58,9 @@ class PaymentStyleServiceTest {
     void provideHierarchyLockForEveryUpdate() {
         lenient().when(em.createNativeQuery(contains("PAYMENT_STYLE_HIERARCHY")))
                 .thenReturn(hierarchyLockQuery);
+        Query siblingQuery = org.mockito.Mockito.mock(Query.class);
+        lenient().when(em.createNativeQuery(org.mockito.ArgumentMatchers.startsWith("SELECT id FROM payment_styles")))
+                .thenReturn(siblingQuery);
     }
 
     @AfterEach

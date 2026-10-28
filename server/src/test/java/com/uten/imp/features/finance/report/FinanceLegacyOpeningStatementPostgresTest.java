@@ -33,7 +33,8 @@ class FinanceLegacyOpeningStatementPostgresTest {
     static final PostgreSQLContainer PG=new PostgreSQLContainer("postgres:16-alpine");
     static final String[] TABLES={"currencies","clients","suppliers","ar_ap_ledger","legacy_finance_import_sources",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines",
-            "customer_open_item_offset_batches","customer_open_item_offsets","supplier_open_item_offsets"};
+            "customer_open_item_offset_batches","customer_open_item_offsets","supplier_open_item_offsets",
+            "party_monthly_summaries","party_month_dirty"};
     static JdbcTemplate jdbc;
     static SessionFactory sessions;
     UUID party,currency,ledger,run;
@@ -54,6 +55,8 @@ class FinanceLegacyOpeningStatementPostgresTest {
         jdbc.update("INSERT INTO clients(id,code,name,code_sequence) VALUES(?,'SYN-PARTY','Synthetic party',1)",party);
         jdbc.update("INSERT INTO suppliers(id,code,name,code_sequence) VALUES(?,'SYN-PARTY','Synthetic party',1)",party);
         jdbc.update("INSERT INTO currencies(id,code,name,exchange_rate) VALUES(?,'SYN','Synthetic currency',1)",currency);
+        // 投影夹具不带触发器：种哨兵让读路径自愈在事务内按事件权威全量重建本方汇总。
+        jdbc.update("INSERT INTO party_month_dirty(side,party_id,month_start,reason) VALUES ('AR',?,DATE '1900-01-01','FIXTURE'),('AP',?,DATE '1900-01-01','FIXTURE')",party,party);
     }
 
     @ParameterizedTest @ValueSource(strings={"AR","AP"})
@@ -224,7 +227,7 @@ class FinanceLegacyOpeningStatementPostgresTest {
             session.createNativeQuery("SET TIME ZONE 'America/Los_Angeles'", Object.class).executeUpdate();
             assertThat(session.createNativeQuery("SHOW TimeZone", Object.class).getSingleResult()).isEqualTo("America/Los_Angeles");
             var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
-            try { return operation.apply(new FinanceReportService(session,access,null,null,null,null,null)); }
+            try { return operation.apply(new FinanceReportService(session,access,null,null,null,null,null,new PartyMonthlySummaryService(session))); }
             finally { tx.rollback(); }
         }
     }

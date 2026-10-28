@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * ADR-131 §7.5 附件8 换源 (包 S3): 塑料耗用明细改读车间内料仓的结算结果, 列名列序保持会计模板原样并在末尾加
- * "其它耗用、期间、内料仓"; 按月查询列出期末日落在该月的已结算各期; "安装挑选不良"第一期恒为 0 并在表头注明;
+ * "其它耗用、期间、内料仓、材料单位"; 按月查询列出期末日落在该月的已结算各期; 未有原始不良记录时保持未知;
  * 附件 8-1/8-2/8-3 分别取内料仓发料、退回流水与已结算的理论明细。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -85,11 +85,11 @@ class PlasticUsageAttachmentPostgresTest {
         ReportTableResponse table = finance.plasticUsage(code, monthStart, monthEnd, 1, 50);
         assertEquals(List.of("goodsCode", "goodsName", "prevBalance", "drawQty", "returnQty", "rejectQty",
                         "finishedWeight", "bookBalance", "checkQty", "diff", "usageRatio",
-                        "otherIssueQty", "periodLabel", "binName"),
+                        "otherIssueQty", "periodLabel", "binName","unit"),
                 table.columns().stream().map(ReportColumn::key).toList(), "原 11 列顺序不变, 新列在末尾");
         assertEquals(List.of("材料编码", "材料名称", "上月结存", "本月仓库领用", "退料", "安装挑选不良(待不良数上线)",
-                        "产品入库数", "账面结存", "实际盘点数", "差异", "成品占材料比例%",
-                        "其它耗用", "期间", "内料仓"),
+                        "产品入库数", "账面结存", "实际盘点数", "差异", "成品占材料比例",
+                        "其它耗用", "期间", "内料仓","材料单位"),
                 table.columns().stream().map(ReportColumn::label).toList());
         assertEquals(1, table.rows().size());
         Map<String, Object> row = table.rows().getFirst();
@@ -97,7 +97,10 @@ class PlasticUsageAttachmentPostgresTest {
         money("0", row.get("prevBalance"));
         money("3", row.get("drawQty"));
         money("0.5", row.get("returnQty"));
-        money("0", row.get("rejectQty"));
+        assertNull(row.get("rejectQty"),"尚无不良事件记录时不能显示已知零");
+        assertFalse(table.columnSearchKeys().contains("rejectQty"));
+        assertEquals("%",table.columns().stream().filter(column->column.key().equals("usageRatio")).findFirst().orElseThrow().unitLabel());
+        assertEquals(db.queryForObject("SELECT unit.name FROM workshop_material_period_lines line JOIN units unit ON unit.id=line.unit_id WHERE line.period_id=? AND line.goods_id=?",String.class,bench.firstPeriod,granule),row.get("unit"));
         money("1", row.get("finishedWeight"));
         money("1.5", row.get("bookBalance"));
         money("1.3", row.get("checkQty"));

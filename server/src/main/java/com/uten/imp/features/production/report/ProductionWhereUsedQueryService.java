@@ -384,16 +384,27 @@ public class ProductionWhereUsedQueryService {
                                          LocalDate dateFrom, LocalDate dateTo,
                                          int page, int size, String sort, String order) {
         return readWhereUsed(materialGoodsId,source,dateFrom,dateTo,page,size,sort,order,
-                ReportReadPlan.current().includeCount()||ReportReadPlan.current().includeTotals());
+                ReportReadPlan.current().includeCount()||ReportReadPlan.current().includeTotals(),Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse whereUsed(UUID materialGoodsId,String source,LocalDate dateFrom,LocalDate dateTo,
+            int page,int size,String sort,String order,Map<String,String> filters) {
+        return readWhereUsed(materialGoodsId,source,dateFrom,dateTo,page,size,sort,order,
+                ReportReadPlan.current().includeCount()||ReportReadPlan.current().includeTotals(),filters);
     }
 
     ReportTableResponse whereUsedExportPage(UUID materialGoodsId,String source,LocalDate from,LocalDate to,
                                            int page,int size,String sort,String order,boolean includeMetadata) {
-        return readWhereUsed(materialGoodsId,source,from,to,page,size,sort,order,includeMetadata);
+        return readWhereUsed(materialGoodsId,source,from,to,page,size,sort,order,includeMetadata,Map.of());
+    }
+    ReportTableResponse whereUsedExportPage(UUID materialGoodsId,String source,LocalDate from,LocalDate to,
+            int page,int size,String sort,String order,boolean includeMetadata,Map<String,String> filters) {
+        return readWhereUsed(materialGoodsId,source,from,to,page,size,sort,order,includeMetadata,filters);
     }
 
     private ReportTableResponse readWhereUsed(UUID materialGoodsId,String source,LocalDate dateFrom,LocalDate dateTo,
-                                              int page,int size,String sort,String order,boolean includeMetadata) {
+                                              int page,int size,String sort,String order,boolean includeMetadata,Map<String,String> filters) {
         String normalizedSource = normalizeSource(source);
         if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "起始日期不能晚于结束日期");
@@ -419,7 +430,18 @@ public class ProductionWhereUsedQueryService {
                 sort, order,
                 "\"__currentBom\" DESC, \"lastUsed\" DESC NULLS LAST, \"goodsCode\" ASC",
                 sortKeys);
-        String predicate = sourcePredicate(normalizedSource);
+        var headerWhere=new com.uten.imp.common.report.ReportQueryKit.WhereBuilder("WHERE "+sourcePredicate(normalizedSource));
+        Map<String,String> types=new LinkedHashMap<>();
+        visible.forEach(column->types.put(column.key(),column.type()));
+        var searchKeys=com.uten.imp.common.report.ReportColumnSearch.apply(headerWhere,filters,types,
+                Map.ofEntries(Map.entry("goodsName","row.goods_name"),Map.entry("goodsCode","row.goods_code"),
+                        Map.entry("colorName","row.color_name"),Map.entry("spec","row.spec"),Map.entry("categoryName","row.category_name"),
+                        Map.entry("sources","row.sources"),Map.entry("bomRelation","row.bom_relation"),
+                        Map.entry("executionSegmentCount","row.execution_segment_count"),Map.entry("legacyPlanCount","row.legacy_plan_count"),
+                        Map.entry("legacyRequiredQty","row.legacy_required_qty"),Map.entry("subcontractOrderCount","row.subcontract_order_count"),
+                        Map.entry("subcontractIssueCount","row.subcontract_issue_count"),Map.entry("lastUsed","row.last_used")),
+                Map.of("lastUsed",com.uten.imp.common.util.JpaColumnSearch.Kind.DATE));
+        var header=headerWhere.build(null);
         String sql = WHERE_USED_CTES + """
                 SELECT row.product_id AS "__productId",
                        row.current_bom AS "__currentBom",
@@ -473,12 +495,13 @@ public class ProductionWhereUsedQueryService {
                        row.subcontract_issue_count AS "subcontractIssueCount",
                        row.last_used AS "lastUsed"
                 """ + (ReportReadPlan.current().includeCount()?", COUNT(*) OVER() AS \"__total\" ":"")
-                + " FROM combined row WHERE " + predicate
+                + " FROM combined row " + header.sql()
                 + " ORDER BY " + effectiveOrder + ", \"__productId\" ASC"
                 + " LIMIT :__limit OFFSET :__offset";
 
         Query query = ReportExportCursor.query(em,sql);
         bindWhereUsed(query, materialGoodsId, dateFrom, dateTo);
+        header.params().forEach(query::setParameter);
         query.setParameter("__limit", safeSize);
         query.setParameter("__offset", (long) (safePage - 1) * safeSize);
         @SuppressWarnings("unchecked")
@@ -496,11 +519,11 @@ public class ProductionWhereUsedQueryService {
         }
 
         long total = !ReportReadPlan.current().includeCount()?ReportReadPlan.UNKNOWN_TOTAL:rawRows.isEmpty()
-                ? (safePage == 1 ? 0L : countRows(materialGoodsId, dateFrom, dateTo, predicate))
+                ? (safePage == 1 ? 0L : countRows(materialGoodsId, dateFrom, dateTo, header))
                 : ((Number) rawRows.get(0)[columns.size()]).longValue();
         int totalPages = ReportReadPlan.totalPages(total,safeSize);
         return new ReportTableResponse(visible, rows, Map.of(), safePage, safeSize,
-                total, totalPages, meta);
+                total, totalPages, meta).withColumnSearchKeys(searchKeys);
     }
 
     /** The picker has its own read projection so its permission never expands to master-data access. */
@@ -837,10 +860,11 @@ public class ProductionWhereUsedQueryService {
     }
 
     private long countRows(UUID materialGoodsId, LocalDate dateFrom, LocalDate dateTo,
-                           String predicate) {
+                           com.uten.imp.common.report.ReportQueryKit.WhereBuilder.Built header) {
         Query query = em.createNativeQuery(
-                WHERE_USED_CTES + "SELECT COUNT(*) FROM combined row WHERE " + predicate);
+                WHERE_USED_CTES + "SELECT COUNT(*) FROM combined row " + header.sql());
         bindWhereUsed(query, materialGoodsId, dateFrom, dateTo);
+        header.params().forEach(query::setParameter);
         return ((Number) query.getSingleResult()).longValue();
     }
 
@@ -970,6 +994,12 @@ public class ProductionWhereUsedQueryService {
                 ReportColumn.number("subcontractOrderCount", "委外订货"),
                 ReportColumn.number("subcontractIssueCount", "委外发料单"),
                 ReportColumn.date("lastUsed", "最近历史使用"));
+    }
+
+    /** Only displayed relationship fields may become durable export criteria. */
+    public static boolean supportsHeaderParameter(String key) {
+        return key!=null&&key.startsWith("f.search.")&&columns().stream()
+                .anyMatch(column->!column.key().startsWith("__")&&key.equals("f.search."+column.key()));
     }
 
     private static Object normalize(Object value) {

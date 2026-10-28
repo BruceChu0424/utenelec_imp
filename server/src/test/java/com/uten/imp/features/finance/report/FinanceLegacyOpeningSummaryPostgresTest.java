@@ -225,7 +225,7 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 assertThat(session.createNativeQuery("SHOW TimeZone", Object.class).getSingleResult()).isEqualTo("America/Los_Angeles");
                 FinanceDocumentAccessPolicy access=mock(FinanceDocumentAccessPolicy.class);
                 when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
-                FinanceReportService service=new FinanceReportService(session,access,null,null,null,null,null);
+                FinanceReportService service=new FinanceReportService(session,access,null,null,null,null,null,new PartyMonthlySummaryService(session));
                 LocalDate from=LocalDate.parse(start),to=from.withDayOfMonth(from.lengthOfMonth());
                 ReportTableResponse result="AR".equals(direction)?service.receivableSummary(keyword,from,to,1,50)
                         :service.payableSummary(keyword,from,to,1,50);

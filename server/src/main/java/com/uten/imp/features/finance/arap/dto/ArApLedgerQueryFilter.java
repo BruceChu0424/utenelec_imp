@@ -24,7 +24,24 @@ public record ArApLedgerQueryFilter(
         LocalDate dateTo,
         String sourceDocNo,       // 立帐单号精确
         String billNo,            // 台账单据号精确（2026-09-25 单号列统一）
-        String salesOrderNos) {   // 关联销售单号精确（聚合列，EXISTS 匹配）
+        String salesOrderNos,
+        java.util.Map<String,String> columnQuery) {
+    public ArApLedgerQueryFilter {
+        columnQuery=columnQuery==null?java.util.Map.of():java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(columnQuery));
+    }
+    public ArApLedgerQueryFilter(String keyword,String direction,String sourceDocType,UUID partyId,UUID clientId,
+            UUID supplierId,UUID currencyId,Boolean settled,Short status,LocalDate dateFrom,LocalDate dateTo,
+            String sourceDocNo,String billNo,String salesOrderNos) {
+        this(keyword,direction,sourceDocType,partyId,clientId,supplierId,currencyId,settled,status,dateFrom,dateTo,sourceDocNo,billNo,salesOrderNos,java.util.Map.of());
+    }
+    public ArApLedgerQueryFilter withColumns(java.util.Map<String,String> columns) {
+        return new ArApLedgerQueryFilter(keyword,direction,sourceDocType,partyId,clientId,supplierId,currencyId,settled,status,dateFrom,dateTo,sourceDocNo,billNo,salesOrderNos,columns);
+    }
+    public ArApLedgerQueryFilter forFacet(String key) {
+        var columns=new java.util.LinkedHashMap<>(columnQuery);columns.remove("search."+key);columns.remove(key);
+        return new ArApLedgerQueryFilter(keyword,direction,sourceDocType,partyId,clientId,supplierId,currencyId,settled,status,dateFrom,dateTo,
+                key.equals("sourceDocNo")?null:sourceDocNo,key.equals("billNo")?null:billNo,salesOrderNos,columns);
+    }
 
     /** 兼容旧签名（无单号筛选）。 */
     public ArApLedgerQueryFilter(

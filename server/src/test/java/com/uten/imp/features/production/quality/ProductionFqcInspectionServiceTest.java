@@ -173,6 +173,28 @@ class ProductionFqcInspectionServiceTest {
                 .hasMessageContaining("1-100");
     }
 
+    @Test void numericHeadersAndSortKeepTheReadScopeInBothCountAndPageSql() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = countQuery(em, 0L);
+        when(query.getResultList()).thenReturn(List.of());
+        var access = mock(ProductionDocumentAccessPolicy.class);
+        var tasks = mock(ProductionFqcTaskAccessPolicy.class);
+        when(tasks.canAccessQualityPool()).thenReturn(false);
+        when(access.nativeReadScope(eq("report.maker_id"), eq("fqcOwners"), any(String[].class)))
+                .thenReturn(new NativeReadScope("report.maker_id IS NULL", null, Set.of()));
+        service(em, access, tasks).list("ACTIVE", "", null, 2, 1,
+                java.util.Map.of("remainingQty", ">=0.125"), "remainingQty", "desc");
+        var sql = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).allSatisfy(statement -> assertThat(statement)
+                .contains("report.maker_id IS NULL", "inspection.status IN ('PENDING','PARTIAL')",
+                        "(inspection.reported_qty-inspection.passed_qty-inspection.failed_qty) >= :column_0"));
+        assertThat(sql.getAllValues().getLast()).contains("ORDER BY (inspection.reported_qty-inspection.passed_qty-inspection.failed_qty) DESC NULLS LAST");
+        org.mockito.Mockito.verify(query, org.mockito.Mockito.atLeastOnce()).setParameter("column_0", new BigDecimal("0.125"));
+        verify(query).setParameter("offset", 1L);
+        verify(query).setParameter("limit", 1);
+    }
+
     @Test
     void passAllReverseInputHasOneStableLockOrderAndRequestHash() {
         UUID first = UUID.fromString(

@@ -45,8 +45,12 @@ public class StockLedgerController {
             @RequestParam(required = false) Short direction,
             @RequestParam(defaultValue = "false") boolean includeWeightAdjustments,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            jakarta.servlet.http.HttpServletRequest request) {
         return service.ledger(goodsId, warehouseId, colorId, colorNull, dateFrom, dateTo, movementTypes,
-                direction, includeWeightAdjustments, page, size, inventoryOnly, includeDefective, includeLineSide);
+                direction, includeWeightAdjustments, page, size, inventoryOnly, includeDefective, includeLineSide,
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request), sort, order);
     }
 }

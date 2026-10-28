@@ -67,9 +67,71 @@ class ProductionFqcReportBatchPostgresTest {
     @Autowired ProductionFinishedArrivalRegistrationService arrivals;
     @Autowired ProductionFqcInspectionService quality;
     @Autowired ProductionFqcRecordQueryService records;
+    @Autowired com.uten.imp.features.quality.pending.QualityPendingQueueService pendingQueue;
+    @Autowired com.uten.imp.features.warehouse.inbound.ProcurementInspectionService procurementQuality;
     @MockitoSpyBean ProductionCompletionReverseService completion;
     @MockitoSpyBean ProductionQualityMutationFootprintService footprints;
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
+
+    @Test void mixedPendingQueueUsesRealSheetPayloadsAndTheCurrentIqcSourceShape() {
+        Source source = source(2);
+        var inspection = quality.detail(source.ids().getFirst());
+        String oldName = db.queryForObject("SELECT name FROM goods WHERE id=?", String.class, inspection.goodsId());
+        String literalName = "合并待检" + UUID.randomUUID() + "10%_";
+        db.update("UPDATE goods SET name=? WHERE id=?", literalName, inspection.goodsId());
+        try {
+            var sheets = quality.listSheets("ACTIVE", inspection.reportNo(), 1, 20);
+            assertEquals(1, sheets.getTotal());
+            var expected = sheets.getItems().getFirst();
+            assertEquals(2, expected.activeCount());
+            assertNotNull(expected.pendingQtyText());
+            assertFalse(expected.pendingQtyText().isBlank());
+            var request = new com.uten.imp.features.quality.pending.QualityPendingQueueService.Request(
+                    1, 1, inspection.reportNo() + "\t10%_", "FQC", null,
+                    Map.of("billNo", expected.sheetNo(), "goods", "10%_", "itemCount", "2",
+                            "pendingQty", expected.pendingQtyText()), "enteredAt", "asc", Map.of());
+            var page = pendingQueue.query(request);
+            assertEquals(1, page.total());
+            assertEquals(1, page.totalPages());
+            assertEquals(1, page.items().size());
+            var row = page.items().getFirst();
+            assertEquals("FQC_SHEET", row.source());
+            assertEquals("sheet:" + expected.id(), row.identity());
+            assertEquals("FQC", row.kind());
+            assertEquals(expected.sheetNo(), row.values().get("billNo"));
+            assertEquals(2, ((Number) row.values().get("itemCount")).intValue());
+            assertEquals(expected.pendingQtyText(), row.values().get("pendingQty"),
+                    "The mixed queue must retain the owning sheet's unit-grouped text, not add unlike units");
+            assertInstanceOf(InspectionSheetView.class, row.payload());
+            var payload = (InspectionSheetView) row.payload();
+            assertEquals(expected.id(), payload.id());
+            assertEquals(expected.activeCount(), payload.activeCount());
+            assertEquals(expected.pendingQtyText(), payload.pendingQtyText());
+            assertTrue(payload.goodsSummary().contains("10%_"));
+            assertEquals(1, page.facets().get("docType").stream()
+                    .filter(facet -> "FQC".equals(facet.value())).findFirst().orElseThrow().count());
+            assertEquals(0, pendingQueue.query(new com.uten.imp.features.quality.pending.QualityPendingQueueService.Request(
+                    1, 10, inspection.reportNo() + " 10__", "FQC", null, Map.of(), null, null, Map.of())).total());
+
+            // Execute the owning IQC adapter without mocking its SQL or its current migrated tables.
+            // The source can be empty in this FQC scenario, but PostgreSQL must still resolve all
+            // joins, aggregate expressions and the exact 15-column common source contract.
+            var iqc = procurementQuality.pendingPlans().getFirst();
+            assertEquals("IQC", iqc.key());
+            assertTrue(iqc.bindings().isEmpty());
+            var projection = db.queryForList("SELECT * FROM (" + iqc.sql() + ") iqc_shape LIMIT 0");
+            assertTrue(projection.isEmpty());
+            Long count = db.queryForObject("SELECT COUNT(*) FROM (" + iqc.sql() + ") iqc_source", Long.class);
+            assertNotNull(count);
+            assertTrue(count >= 0);
+            db.query("SELECT * FROM (" + iqc.sql() + ") iqc_shape LIMIT 0", result -> {
+                assertEquals(15, result.getMetaData().getColumnCount());
+                return null;
+            });
+        } finally {
+            db.update("UPDATE goods SET name=? WHERE id=?", oldName, inspection.goodsId());
+        }
+    }
 
     @Test void searchQueuesAndDecisionRecordsUseLiteralWordsWithoutChangingPendingQuantities() {
         Source source = source(2);
@@ -84,17 +146,43 @@ class ProductionFqcReportBatchPostgresTest {
             assertEquals(2,first.getTotal());
             assertNotEquals(first.getItems().getFirst().id(),second.getItems().getFirst().id());
             amount("1",first.getItems().getFirst().remainingQty());
+            var header = quality.list("ACTIVE", "", null, 1, 1,
+                    Map.of("reportNo", inspection.reportNo(), "remainingQty", ">=1"), "remainingQty", "desc");
+            var headerNext = quality.list("ACTIVE", "", null, 2, 1,
+                    Map.of("reportNo", inspection.reportNo(), "remainingQty", ">=1"), "remainingQty", "desc");
+            assertEquals(2, header.getTotal());
+            assertNotEquals(header.getItems().getFirst().id(), headerNext.getItems().getFirst().id());
+            String chineseDay = inspection.createdAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString();
+            assertEquals(2, quality.list("ACTIVE", "", null, 1, 1,
+                    Map.of("reportNo", inspection.reportNo(), "createdAt", chineseDay), null, null).getTotal());
             assertEquals(0,quality.list("ACTIVE","10__ "+inspection.reportNo(),null,1,20).getTotal());
             var sheets = quality.listSheets("ACTIVE",compound,1,20);
             assertEquals(1,sheets.getTotal());
             assertEquals(2,sheets.getItems().getFirst().itemCount());
             quality.decide(source.ids().getFirst(),new DecisionRequest("PASS",new BigDecimal(".25"),null,null,null,"search-decision-"+UUID.randomUUID()));
+            var filteredPass = quality.list("ACTIVE", "", null, 1, 1,
+                    Map.of("reportNo", inspection.reportNo(), "passedQty", ">=0.25", "remainingQty", "<1"),
+                    "passedQty", "desc");
+            assertEquals(1, filteredPass.getTotal());
+            assertEquals(source.ids().getFirst(), filteredPass.getItems().getFirst().id());
+            amount(".25", filteredPass.getItems().getFirst().passedQty());
             var result = records.list(null,compound,null,null,null,null,null,1,20,null,null,null,null,null);
             assertEquals(1,result.total());
             assertEquals(source.ids().getFirst(),result.items().getFirst().inspectionId());
             amount(".25",result.items().getFirst().passQty());
             assertEquals(1,records.facets(null,compound,null,null,null,null,null).get("sourceNo").size());
             assertEquals(0,records.list(null,"10__ "+inspection.reportNo(),null,null,null,null,null,1,20,null,null,null,null,null).total());
+            quality.decide(source.ids().getLast(),new DecisionRequest("PASS",new BigDecimal(".5"),null,null,null,"header-record-"+UUID.randomUUID()));
+            String recordDay=result.items().getFirst().decidedAt().atZoneSameInstant(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString();
+            var recordColumns=Map.of("sourceNo",inspection.reportNo(),"goodsName","10%_","passQty",">=0.25","failQty","0","decidedAt",recordDay);
+            var recordsFirst=records.list(null,"",null,null,null,"ACTIVE",null,1,1,"passQty","desc",null,null,null,recordColumns);
+            var recordsSecond=records.list(null,"",null,null,null,"ACTIVE",null,2,1,"passQty","desc",null,null,null,recordColumns);
+            assertEquals(2,recordsFirst.total());
+            assertNotEquals(recordsFirst.items().getFirst().recordId(),recordsSecond.items().getFirst().recordId());
+            amount(".5",recordsFirst.items().getFirst().passQty());
+            amount(".25",recordsSecond.items().getFirst().passQty());
+            assertEquals(1,records.facets(null,"",null,null,null,"ACTIVE",null,recordColumns).get("sourceNo").size());
+            assertEquals(0,records.list(null,"",null,null,null,null,null,1,20,null,null,null,null,null,Map.of("goodsName","10__","sourceNo",inspection.reportNo())).total());
         } finally {
             db.update("UPDATE goods SET name=? WHERE id=?",oldName,inspection.goodsId());
         }

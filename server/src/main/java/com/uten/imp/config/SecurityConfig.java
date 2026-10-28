@@ -270,6 +270,7 @@ public class SecurityConfig {
         cfg.setExposedHeaders(List.of(
                 "Content-Disposition",
                 "Retry-After",
+                com.uten.imp.security.StepUpInterceptor.RENEWAL_HEADER,
                 "X-Uten-Read-Scope-Version",
                 "X-Uten-Read-Scope-Domain",
                 AuditRequestContext.RESPONSE_REQUEST_ID_HEADER,

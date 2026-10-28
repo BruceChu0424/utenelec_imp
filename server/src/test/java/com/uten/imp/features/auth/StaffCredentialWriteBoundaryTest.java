@@ -63,7 +63,7 @@ class StaffCredentialWriteBoundaryTest {
         when(tokens.findIdentityByTokenHash(token.getTokenHash())).thenReturn(Optional.of(identity));
         when(users.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
         when(tokens.findAndLockByTokenHash(token.getTokenHash())).thenReturn(Optional.of(token));
-        when(sessions.lockAndEvaluateForRefresh(token.getSessionId(),user.getId(),null)).thenReturn(AuthSessionService.Verdict.ACTIVE);
+        when(sessions.lockAndEvaluateForRefresh(token.getSessionId(),user.getId(),null)).thenReturn(AuthSessionService.RefreshVerdict.active());
         lenient().when(tokenService.issueInSession(any(),any(),any(),any())).thenReturn(new RefreshTokenService.IssuedRefreshToken("unreturned-fixture",UUID.randomUUID(),token.getSessionId(),token.getExpiresAt()));
         ApiException error=assertThrows(ApiException.class,()->transaction.rotate("locked-staff-refresh-fixture"));
         assertEquals(ErrorCode.ACCOUNT_LOCKED,error.getCode());

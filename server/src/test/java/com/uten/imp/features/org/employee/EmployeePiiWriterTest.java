@@ -32,7 +32,7 @@ class EmployeePiiWriterTest {
 
     @BeforeEach
     void setUp() {
-        writer = new EmployeePiiWriter(tx, repository);
+        writer = new EmployeePiiWriter(tx, repository,org.mockito.Mockito.mock(EmployeeExistingIdentityGuard.class));
     }
 
     @Test

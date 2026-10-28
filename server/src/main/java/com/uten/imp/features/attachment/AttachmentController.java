@@ -88,18 +88,18 @@ public class AttachmentController {
     }
 
     @GetMapping("/{id}/download-grant")
-    @PreAuthorize("hasAuthority('attachment:download')")
+    @PreAuthorize("hasAuthority('attachment:download') or hasAuthority('company_file:view')")
     public AttachmentDownloadResponse downloadGrant(@PathVariable UUID id) {
         return service.downloadGrant(id);
     }
 
     /**
      * Office 文档在线预览：服务端 LibreOffice 转 PDF 后以私有、不落缓存的响应返回。
-     * 门槛与下载授权相同（attachment:download + owner 策略）；服务器未装转换组件、
-     * 超时或转换失败返回业务错误，客户端回落为下载原件。
+     * 门槛与下载授权相同（下载授权 + owner 策略；公司资料库原件按资料库下载权限）；
+     * 服务器未装转换组件、超时或转换失败返回业务错误，客户端回落为下载原件。
      */
     @GetMapping("/{id}/preview")
-    @PreAuthorize("hasAuthority('attachment:download')")
+    @PreAuthorize("hasAuthority('attachment:download') or hasAuthority('company_file:view')")
     public ResponseEntity<Resource> preview(@PathVariable UUID id) throws java.io.IOException {
         AttachmentPreviewService.PreviewDownload rendered = previewService.open(id);
         String encoded = URLEncoder.encode(rendered.fileName(), StandardCharsets.UTF_8)
@@ -162,7 +162,7 @@ public class AttachmentController {
     }
 
     @GetMapping("/raw/{key}")
-    @PreAuthorize("hasAuthority('attachment:download')")
+    @PreAuthorize("hasAuthority('attachment:download') or hasAuthority('company_file:view')")
     public ResponseEntity<Resource> downloadRaw(@PathVariable String key) {
         AttachmentService.RawDownload download = service.openRaw(key);
         if (download == null) {

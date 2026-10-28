@@ -99,15 +99,22 @@ public class FinanceAssetQueryService {
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public PageResponse<AssetWorkbenchResponses.Summary> listFixedAssets(
             String q, String status, UUID categoryId, UUID departmentId, int page, int size) {
+        return listFixedAssets(q, status, categoryId, departmentId, page, size, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public PageResponse<AssetWorkbenchResponses.Summary> listFixedAssets(
+            String q, String status, UUID categoryId, UUID departmentId, int page, int size,
+            Map<String, String> columnQuery) {
         authorization.require(FinanceAssetAuthorization.VIEW);
-        FilterSql filter = filters("a", q, status, categoryId, departmentId);
+        FilterSql filter = filters("a", q, status, categoryId, departmentId, columnQuery, false);
         String select = """
                 SELECT a.id, 'FIXED_ASSET', a.code, a.name, a.lifecycle_status,
                        a.category_id, c.name, a.department_id, d.name,
                        a.custodian_employee_id, e.full_name, a.location_text,
                        a.original_value, NULL::numeric,
-                       CASE WHEN a.lifecycle_status='DISPOSED' THEN 0
-                            ELSE a.original_value-COALESCE(x.accumulated,0) END, NULL::numeric,
+                       %s, NULL::numeric,
                        a.salvage_rate, a.useful_months, a.start_period,
                        a.ready_for_use_on, NULL::date, a.operating_status,
                        a.source_type, a.source_ref, a.remark, a.row_version,
@@ -123,13 +130,9 @@ public class FinanceAssetQueryService {
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
                 LEFT JOIN employees e ON e.id=a.custodian_employee_id
-                LEFT JOIN LATERAL (
-                    SELECT SUM(l.amount) accumulated FROM fa_depreciation_log l
-                    WHERE l.asset_id=a.id AND l.entry_kind='NORMAL'
-                      AND l.status='ACTIVE' AND l.is_deleted=false
-                ) x ON TRUE
                 WHERE a.is_deleted=false
-                """ + filter.where() + " ORDER BY " + filter.rank() + "a.code,a.id";
+                """.formatted(balanceExpression("a", false)) + filter.where()
+                + " ORDER BY " + columnOrder(columnQuery, false, filter.rank());
         return page(select, "SELECT COUNT(*) FROM fixed_assets a WHERE a.is_deleted=false" + filter.where(),
                 filter, page, size, false);
     }
@@ -138,15 +141,22 @@ public class FinanceAssetQueryService {
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public PageResponse<AssetWorkbenchResponses.Summary> listDeferredExpenses(
             String q, String status, UUID categoryId, UUID departmentId, int page, int size) {
+        return listDeferredExpenses(q, status, categoryId, departmentId, page, size, Map.of());
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public PageResponse<AssetWorkbenchResponses.Summary> listDeferredExpenses(
+            String q, String status, UUID categoryId, UUID departmentId, int page, int size,
+            Map<String, String> columnQuery) {
         authorization.require(FinanceAssetAuthorization.VIEW);
-        FilterSql filter = filters("a", q, status, categoryId, departmentId);
+        FilterSql filter = filters("a", q, status, categoryId, departmentId, columnQuery, true);
         String select = """
                 SELECT a.id, 'DEFERRED_EXPENSE', a.code, a.name, a.lifecycle_status,
                        a.category_id, c.name, a.department_id, d.name,
                        a.responsible_employee_id, e.full_name, a.location_text,
                        NULL::numeric, a.total_amount,
-                       NULL::numeric, CASE WHEN a.lifecycle_status IN ('COMPLETED','TERMINATED') THEN 0
-                            ELSE a.total_amount-COALESCE(x.accumulated,0) END,
+                       NULL::numeric, %s,
                        NULL::numeric, a.useful_months, a.start_period,
                        NULL::date, a.service_start_on, NULL::text,
                        a.source_type, a.source_ref, a.remark, a.row_version,
@@ -163,13 +173,9 @@ public class FinanceAssetQueryService {
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
                 LEFT JOIN employees e ON e.id=a.responsible_employee_id
-                LEFT JOIN LATERAL (
-                    SELECT SUM(l.amount) accumulated FROM da_amortization_log l
-                    WHERE l.deferred_id=a.id AND l.entry_kind='NORMAL'
-                      AND l.status='ACTIVE' AND l.is_deleted=false
-                ) x ON TRUE
                 WHERE a.is_deleted=false
-                """ + filter.where() + " ORDER BY " + filter.rank() + "a.code,a.id";
+                """.formatted(balanceExpression("a", true)) + filter.where()
+                + " ORDER BY " + columnOrder(columnQuery, true, filter.rank());
         return page(select, "SELECT COUNT(*) FROM deferred_expenses a WHERE a.is_deleted=false" + filter.where(),
                 filter, page, size, true);
     }
@@ -419,7 +425,8 @@ public class FinanceAssetQueryService {
         return count.longValue() > 0;
     }
 
-    private static FilterSql filters(String alias, String q, String status, UUID categoryId, UUID departmentId) {
+    private static FilterSql filters(String alias, String q, String status, UUID categoryId, UUID departmentId,
+                                     Map<String, String> columnQuery, boolean deferred) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> parameters = new LinkedHashMap<>();
         String rank = "";
@@ -447,7 +454,57 @@ public class FinanceAssetQueryService {
             where.append(" AND ").append(alias).append(".department_id=:departmentId");
             parameters.put("departmentId", departmentId);
         }
+        if (columnQuery != null) {
+            for (String key : List.of("code", "name", "startPeriod")) {
+                String value = columnQuery.get("search." + key);
+                if (value == null || value.isBlank()) continue;
+                String field = switch (key) {
+                    case "startPeriod" -> alias + ".start_period";
+                    default -> alias + "." + key;
+                };
+                String parameter = "header_" + key;
+                where.append(" AND ").append(TaskKeywordSearch.conditionParameter(parameter, new String[]{field}));
+                parameters.put(parameter, KeywordSearch.phrase(value));
+            }
+            for (String key : List.of("grossAmount", "balance")) {
+                String value = columnQuery.get("search." + key);
+                if (value == null || value.isBlank()) continue;
+                var query = com.uten.imp.common.util.NumericColumnFilter.parse(value);
+                String parameter = "header_" + key;
+                String field = key.equals("balance") ? balanceExpression(alias, deferred)
+                        : alias + (deferred ? ".total_amount" : ".original_value");
+                where.append(" AND ").append(query.sql("(" + field + ")", parameter));
+                query.bind(parameter, parameters::put);
+            }
+        }
         return new FilterSql(where.toString(), parameters, rank);
+    }
+
+    private static String balanceExpression(String alias, boolean deferred) {
+        String closed = deferred ? "('COMPLETED','TERMINATED')" : "('DISPOSED')";
+        String amount = alias + (deferred ? ".total_amount" : ".original_value");
+        String table = deferred ? "da_amortization_log" : "fa_depreciation_log";
+        String owner = deferred ? "deferred_id" : "asset_id";
+        return "CASE WHEN " + alias + ".lifecycle_status IN " + closed + " THEN 0 ELSE " + amount
+                + "-COALESCE((SELECT SUM(header_log.amount) FROM " + table + " header_log WHERE header_log."
+                + owner + "=" + alias + ".id AND header_log.entry_kind='NORMAL'"
+                + " AND header_log.status='ACTIVE' AND header_log.is_deleted=false),0) END";
+    }
+
+    private static String columnOrder(Map<String, String> query, boolean deferred, String relevance) {
+        if (query == null) return relevance + "a.code,a.id";
+        String key = query.get("sort");
+        String expression = key == null ? null : switch (key) {
+            case "code" -> "a.code";
+            case "name" -> "a.name";
+            case "startPeriod" -> "a.start_period";
+            case "grossAmount" -> deferred ? "a.total_amount" : "a.original_value";
+            case "balance" -> "(" + balanceExpression("a", deferred) + ")";
+            default -> null;
+        };
+        if (expression == null) return relevance + "a.code,a.id";
+        return expression + ("desc".equalsIgnoreCase(query.get("order")) ? " DESC" : " ASC")
+                + " NULLS LAST,a.id";
     }
 
     private static Query bind(Query query, FilterSql filter) {

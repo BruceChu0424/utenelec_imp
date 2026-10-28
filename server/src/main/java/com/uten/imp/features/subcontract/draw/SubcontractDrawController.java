@@ -48,8 +48,11 @@ public class SubcontractDrawController {
             @RequestParam(required = false) UUID orderId,
             @RequestParam(required = false) List<UUID> orderItemIds,
             @RequestParam(required = false) List<UUID> applicationItemIds,
-            @RequestParam(required = false) UUID applicationId) {
-        return queries.tasks(page, size, keyword, status, orderId, orderItemIds, applicationItemIds, applicationId);
+            @RequestParam(required = false) UUID applicationId,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam Map<String, String> parameters) {
+        return queries.tasks(page, size, keyword, status, orderId, orderItemIds, applicationItemIds, applicationId, sort, order, parameters);
     }
 
     /**

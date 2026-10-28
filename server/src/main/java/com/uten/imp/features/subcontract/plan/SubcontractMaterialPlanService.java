@@ -44,7 +44,7 @@ import java.util.UUID;
  * 委外领料计划(ADR-143): 委外任务按工序只领 P 的直属物料, 分批领、分批回厂。
  *
  * <p>财务批准时按 {@code fn_subcontract_draw_edges(P)} 为每条可发外直属边冻结一条计划行:
- * 物料、解析后颜色、冻结单耗 {@code b = ROUND(订货换算率 × 边用量, 6)}、计划量
+ * 物料、解析后颜色、冻结含正常损耗单耗 {@code b = ROUND(ROUND(订货换算率 × 边用量, 6) × (1 + 损耗% / 100), 10)}、计划量
  * {@code planned = f(Q) = CEIL(Q × b, 4)}。之后一切按冻结计划行读取, 不再读现时 BOM;
  * 没有可发外直属边的委外件(缺 BOM)不能批准(ADR-143 §二.3), 批准后每条明细都有计划行。
  *
@@ -106,8 +106,12 @@ public class SubcontractMaterialPlanService {
                 SELECT oi.id, oi.line_no, oi.goods_id, oi.color_id,
                        COALESCE(oi.goods_code_snapshot, parent.code), COALESCE(oi.goods_name_snapshot, parent.name),
                        edge.component_goods_id, edge.color_id, component.unit_id, component.code, component.name,
-                       ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6) AS bom_unit_qty,
-                       fn_subcontract_draw_f(oi.qty, ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6))
+                       ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6) AS base_bom_unit_qty,
+                       fn_subcontract_supply_unit_qty(
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct) AS bom_unit_qty,
+                       fn_subcontract_draw_f(oi.qty, fn_subcontract_supply_unit_qty(
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct)),
+                       COALESCE(oi.allowed_loss_pct, 0) AS material_loss_pct
                 FROM subcontract_order_items oi
                 CROSS JOIN LATERAL fn_subcontract_draw_edges(oi.goods_id) edge
                 JOIN goods component ON component.id = edge.component_goods_id
@@ -151,14 +155,14 @@ public class SubcontractMaterialPlanService {
                         id, plan_id, order_item_id, line_no,
                         parent_goods_id, parent_color_id,
                         goods_id, color_id, unit_id, unit_rate,
-                        bom_unit_qty, planned_qty, issued_qty,
+                        base_bom_unit_qty, material_loss_pct, bom_unit_qty, planned_qty, issued_qty,
                         created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, ?, ?)
                     """,
                     UUID.randomUUID(), planId, edge[0], lineNo++,
                     edge[2], edge[3],
                     edge[6], edge[7], edge[8],
-                    decimal(edge[11]), decimal(edge[12]),
+                    decimal(edge[11]), decimal(edge[14]), decimal(edge[12]), decimal(edge[13]),
                     actor, actor);
             dimensions.add(new SubcontractOutboundWakePort.StockedDimension((UUID) edge[6], (UUID) edge[7], null));
         }

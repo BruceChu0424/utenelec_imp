@@ -15,7 +15,19 @@ public record FinanceReconciliationQueryFilter(
         OffsetDateTime dateFrom,
         OffsetDateTime dateTo,
         String entryKind,
-        String billNo) {               // 单据号精确（2026-09-25 单号列统一）
+        String billNo,
+        java.util.Map<String,String> columnSearch,
+        UUID reversalOfId) {
+    public FinanceReconciliationQueryFilter {
+        columnSearch=columnSearch==null?java.util.Map.of():java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(columnSearch));
+    }
+    public FinanceReconciliationQueryFilter(String keyword,UUID accountId,String sourceDocType,UUID sourceDocId,
+            String checkNo,OffsetDateTime dateFrom,OffsetDateTime dateTo,String entryKind,String billNo) {
+        this(keyword,accountId,sourceDocType,sourceDocId,checkNo,dateFrom,dateTo,entryKind,billNo,java.util.Map.of(),null);
+    }
+    public FinanceReconciliationQueryFilter withColumns(java.util.Map<String,String> columns,UUID reversal) {
+        return new FinanceReconciliationQueryFilter(keyword,accountId,sourceDocType,sourceDocId,checkNo,dateFrom,dateTo,entryKind,billNo,columns,reversal);
+    }
 
     /** 兼容旧调用：不按流水类型过滤。 */
     public FinanceReconciliationQueryFilter(

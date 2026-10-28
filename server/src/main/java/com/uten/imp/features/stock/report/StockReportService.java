@@ -98,9 +98,11 @@ public class StockReportService {
         String fromJoin = DETAIL_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(i.is_deleted,false)=false AND COALESCE(o.is_deleted,false)=false AND i.bill_type = '" + dt + "'");
-        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, true);
+        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, true, hasApprovedFacet(facets));
+        var searchKeys = addColumnSearch(w, cols, facets);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", detailFacets(), facets, page, size, sort, order);
+                "o.bill_date DESC, o.bill_no, i.line_no NULLS LAST, i.id", detailFacets(), facets, page, size, sort, order)
+                .withColumnSearchKeys(searchKeys);
     }
 
     @Transactional(readOnly = true)
@@ -115,9 +117,11 @@ public class StockReportService {
         String fromJoin = SUMMARY_FROM;
         WhereBuilder w = new WhereBuilder(
                 "WHERE COALESCE(o.is_deleted,false)=false AND o.doc_type = '" + dt + "'");
-        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, false);
+        addCommonFilters(w, billNo, warehouseId, clientId, status, departmentId, dateFrom, dateTo, kw, false, hasApprovedFacet(facets));
+        var searchKeys = addColumnSearch(w, cols, facets);
         return execute(cols.stream().map(c -> c.col).toList(), dataSelect, fromJoin, w,
-                "o.bill_date DESC, o.bill_no, o.id", commonFacets(), facets, page, size, sort, order);
+                "o.bill_date DESC, o.bill_no, o.id", commonFacets(), facets, page, size, sort, order)
+                .withColumnSearchKeys(searchKeys);
     }
 
     // ======================== 明细列集（按 docType） ========================
@@ -343,12 +347,12 @@ public class StockReportService {
 
     private static void addCommonFilters(WhereBuilder w, String billNo, UUID warehouseId, UUID clientId, Short status,
                                          UUID departmentId,
-                                         LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems) {
+                                         LocalDate dateFrom, LocalDate dateTo, String kw, boolean hasItems, boolean approvedFacet) {
         if (billNo != null && !billNo.isBlank()) w.add("o.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         if (clientId != null) w.add("o.client_id = :clientId", "clientId", clientId);
         // 默认口径（草稿不进报表）见 ReportQueryKit.addApprovedByDefault（2026-09-16 收敛）。
-        ReportQueryKit.addApprovedByDefault(w, status);
+        if (status != null || !approvedFacet) ReportQueryKit.addApprovedByDefault(w, status);
         if (departmentId != null) w.add("o.department_id = :departmentId", "departmentId", departmentId);
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
@@ -420,7 +424,7 @@ public class StockReportService {
         LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
         LocalDate dateTo = ReportQueryKit.parseDate(p == null ? null : p.get("dateTo"));
         String kw = p == null ? null : p.get("keyword");
-        Map<String, String> facets = ReportQueryKit.facetsOf(p);
+        Map<String, String> facets = columnFiltersOf(p);
         BiFunction<Integer, Integer, ReportTableResponse> loader = switch (kind) {
             case "detail"  -> (pg, sz) -> detail(docType, billNo, warehouseId, clientId, status,
                     departmentId, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
@@ -633,27 +637,19 @@ public class StockReportService {
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
 
-        List<WhereBuilder.Clause> facetClauses = new ArrayList<>();
-        if (activeFacets != null) {
-            for (Map.Entry<String, String> e : activeFacets.entrySet()) {
-                FacetSpec spec = specs.stream().filter(s -> s.key().equals(e.getKey())).findFirst().orElse(null);
-                if (spec != null && e.getValue() != null && !e.getValue().isBlank()) {
-                    facetClauses.add(facetClause(spec, e.getValue()));
-                }
-            }
-        }
-        WhereBuilder.Built full = mainWhere.build(facetClauses);
-        WhereBuilder.Built baseB = mainWhere.build(null);
+        WhereBuilder.Built full = mainWhere.build(activeFacetClauses(specs, activeFacets, null));
 
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
+        boolean explicitOrder = sort != null && sortKeys.contains(sort);
+        String resolvedOrder = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = explicitOrder ? resolvedOrder : mainWhere.orderBy(resolvedOrder);
 
         var dataQ = ReportExportCursor.query(em, dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
-        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
+        if (!explicitOrder) mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -676,9 +672,10 @@ public class StockReportService {
 
         Map<String, List<ReportFacet>> facets = new LinkedHashMap<>();
         for (FacetSpec spec : ReportReadPlan.current().includeFacets() ? specs : List.<FacetSpec>of()) {
+            WhereBuilder.Built facetScope = mainWhere.build(activeFacetClauses(specs, activeFacets, spec.key()));
             var fq = em.createNativeQuery("SELECT " + spec.selectExpr() + ", COUNT(*) AS cnt " + fromJoin + " "
-                    + baseB.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
-            baseB.params().forEach(fq::setParameter);
+                    + facetScope.sql() + " GROUP BY " + spec.groupExpr() + " ORDER BY cnt DESC LIMIT 50");
+            facetScope.params().forEach(fq::setParameter);
             @SuppressWarnings("unchecked")
             List<Object[]> frs = fq.getResultList();
             List<ReportFacet> buckets = new ArrayList<>();
@@ -686,8 +683,14 @@ public class StockReportService {
                 Object v = fr[0];
                 String val = (v == null) ? ReportTableResponse.NULL_FACET : Objects.toString(v);
                 String lbl = (v == null) ? "(空)" : (fr[1] == null ? null : fr[1].toString());
+                if("approved".equals(spec.key())&&v instanceof Boolean approved)
+                    lbl=approved?"已审":"未审（含已撤回）";
                 long cnt = ((Number) fr[2]).longValue();
                 buckets.add(new ReportFacet(val, lbl, cnt));
+            }
+            if("approved".equals(spec.key())) {
+                for(String value:List.of("true","false")) if(buckets.stream().noneMatch(bucket->value.equals(bucket.value())))
+                    buckets.add(new ReportFacet(value,"true".equals(value)?"已审":"未审（含已撤回）",0));
             }
             facets.put(spec.key(), buckets);
         }
@@ -742,6 +745,15 @@ public class StockReportService {
         return v.toString();
     }
 
+    private static List<WhereBuilder.Clause> activeFacetClauses(List<FacetSpec> specs, Map<String,String> filters, String excluded) {
+        List<WhereBuilder.Clause> clauses=new ArrayList<>();
+        if(filters!=null) filters.forEach((key,value)->{
+            if(key.equals(excluded)||value==null||value.isBlank())return;
+            specs.stream().filter(spec->spec.key().equals(key)).findFirst().ifPresent(spec->clauses.add(facetClause(spec,value)));
+        });
+        return clauses;
+    }
+
     private static WhereBuilder.Clause facetClause(FacetSpec spec, String value) {
         String p = "facet_" + spec.key();
         if (ReportTableResponse.NULL_FACET.equals(value)) {
@@ -752,6 +764,41 @@ public class StockReportService {
             case "bool" -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS boolean)", p, ReportQueryKit.parseRequiredBoolean(value));
             default -> new WhereBuilder.Clause("(" + spec.filterExpr() + ") = CAST(:" + p + " AS text)", p, value);
         };
+    }
+
+    static Map<String, String> columnFiltersOf(Map<String, String> parameters) {
+        Map<String, String> filters = new LinkedHashMap<>(ReportQueryKit.facetsOf(parameters));
+        if (parameters != null) parameters.forEach((key,value) -> {
+            if (key.startsWith("search.") && value != null && !value.isBlank()) filters.put(key,value.strip());
+        });
+        return filters;
+    }
+
+    private static boolean hasApprovedFacet(Map<String, String> filters) {
+        return filters != null && filters.get("approved") != null && !filters.get("approved").isBlank();
+    }
+
+    private static final java.util.Set<String> NUMBER_HEADERS = java.util.Set.of(
+            "qty","weight","drawQty","issuedQty","actualQty","returnQty","netWeight",
+            "bookQty","bookWeight","actualWeight");
+    private static final java.util.Set<String> TEXT_HEADERS = java.util.Set.of(
+            "billNo","fromWh","toWh","workerName","goodsName","goodsCode","colorName","stockPlace","model",
+            "clientModel","spec","unitName","warehouseName","series","departmentName","clientName","assTeam",
+            "orderNo","makerName","approverName","material","remark","issueStatus");
+
+    /** All 14 current reports project physical item/head values, never SUM/window results. */
+    private static java.util.Set<String> addColumnSearch(WhereBuilder where, List<Col> columns, Map<String,String> filters) {
+        Map<String,String> types = new LinkedHashMap<>(), expressions = new LinkedHashMap<>();
+        for (Col column:columns) {
+            String key=column.col.key();
+            if (NUMBER_HEADERS.contains(key)) types.put(key,"number");
+            else if ("billDate".equals(key)) types.put(key,"date");
+            else if (TEXT_HEADERS.contains(key)) types.put(key,"text");
+            else continue;
+            expressions.put(key,column.expr);
+        }
+        return com.uten.imp.common.report.ReportColumnSearch.apply(where,filters,types,expressions,
+                Map.of("billDate",com.uten.imp.common.util.JpaColumnSearch.Kind.DATE));
     }
 
     private static String normalizeDocType(String docType) {

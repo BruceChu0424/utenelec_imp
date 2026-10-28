@@ -164,7 +164,8 @@ public class SubcontractMaterialIssueService {
         boolean priceMasked = subcontractPriceMasked();
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        var searchPage = NameRefKeyword.page(issueSpec(f), pageable, f.keyword());
+        var searchPage = NameRefKeyword.page(issueSpec(f), pageable,
+                sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());
         Page<SubcontractMaterialIssue> p = issueRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<MaterialIssueListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
@@ -210,6 +211,7 @@ public class SubcontractMaterialIssueService {
             }
             f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
             f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billDate", HeaderColumnFilter.SearchField.calendarDate("billDate"),
                     "billNo", HeaderColumnFilter.SearchField.text("billNo"),
                     "supplier", HeaderColumnFilter.SearchField.reference("supplierId", com.uten.imp.features.master.supplier.Supplier.class),
                     "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));

@@ -96,8 +96,11 @@ class EmployeePiiExtraProtectionMigrationContractTest {
                 .doesNotContain("证件号不足六位");
         assertThat(writer)
                 .contains("if (idnumber == null || idnumber.isblank())")
-                .contains("chinamobilenumber.normalize(phone)")
-                .contains("existsbyidcardhashandemployeeidnot(hash, employeeid)");
+                .contains("chinamobilenumber.normalize(phone)");
+        assertThat(writer.replaceAll("\\s+", ""))
+                .contains("existingidentityguard.requireunclaimedidentity(employeeid,idtype,normalized)")
+                .contains("employeeidentities==null?sensitiverepo.existsbyidcardhashandemployeeidnot(hash,employeeid)")
+                .contains("sensitiverepo.existsbyidentityhashoutsideperson(hash,employeeid)");
     }
 
     @Test

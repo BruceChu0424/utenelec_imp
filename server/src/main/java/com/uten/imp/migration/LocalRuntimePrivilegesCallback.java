@@ -16,7 +16,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.regex.Pattern;
 
-/** Restores the local split-role runtime ACL after both fresh and no-op migrations. */
+/** Prepares fresh split-role defaults, then verifies runtime ACLs after migrations. */
 @Component
 @Profile("dev")
 public final class LocalRuntimePrivilegesCallback implements Callback {
@@ -30,7 +30,7 @@ public final class LocalRuntimePrivilegesCallback implements Callback {
 
     @Override
     public boolean supports(Event event, Context context) {
-        return event == Event.AFTER_MIGRATE;
+        return event == Event.BEFORE_MIGRATE || event == Event.AFTER_MIGRATE;
     }
 
     @Override
@@ -40,7 +40,7 @@ public final class LocalRuntimePrivilegesCallback implements Callback {
 
     @Override
     public void handle(Event event, Context context) {
-        if (event != Event.AFTER_MIGRATE) {
+        if (event != Event.BEFORE_MIGRATE && event != Event.AFTER_MIGRATE) {
             return;
         }
         try {
@@ -54,6 +54,12 @@ public final class LocalRuntimePrivilegesCallback implements Callback {
                     || !LOCAL_DATABASE.matcher(connection.getMetaData().getURL()).matches()) {
                 throw new FlywayException("Local runtime ACL reconciliation requires the reviewed loopback split-role database");
             }
+            // New functions must inherit their ordinary runtime EXECUTE before
+            // an immutable installer captures its catalog seal. Existing or
+            // partially migrated application databases retain AFTER_MIGRATE only.
+            if (event == Event.BEFORE_MIGRATE && !freshApplicationSchema(connection)) {
+                return;
+            }
             String sql = new ClassPathResource("db/local-runtime-privileges.sql")
                     .getContentAsString(StandardCharsets.UTF_8);
             try (Statement statement = connection.createStatement()) {
@@ -61,6 +67,30 @@ public final class LocalRuntimePrivilegesCallback implements Callback {
             }
         } catch (SQLException | IOException exception) {
             throw new FlywayException("Unable to reconcile local runtime database privileges", exception);
+        }
+    }
+
+    private static boolean freshApplicationSchema(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            boolean historyAbsent;
+            try (var result = statement.executeQuery("""
+                    SELECT to_regclass('public.flyway_schema_history') IS NULL,
+                           NOT EXISTS (
+                             SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                             WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f')
+                               AND c.relname<>'flyway_schema_history'
+                               AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass
+                                   AND d.objid=c.oid AND d.deptype='e'))
+                    """)) {
+                if (!result.next()) throw new SQLException("Missing fresh-schema catalog evidence");
+                if (!result.getBoolean(2)) return false;
+                historyAbsent = result.getBoolean(1);
+            }
+            if (historyAbsent) return true;
+            try (var result = statement.executeQuery("SELECT NOT EXISTS (SELECT 1 FROM public.flyway_schema_history)")) {
+                if (!result.next()) throw new SQLException("Missing fresh-schema migration history evidence");
+                return result.getBoolean(1);
+            }
         }
     }
 

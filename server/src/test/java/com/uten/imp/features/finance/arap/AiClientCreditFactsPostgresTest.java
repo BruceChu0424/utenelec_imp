@@ -116,8 +116,8 @@ class AiClientCreditFactsPostgresTest extends AiPlatformPostgresTestSupport {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
-                SELECT ?,?,'信用查询测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_SALES'
-                """, id, "CREDIT-" + id);
+                SELECT ?,?,?,'其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_SALES'
+                """, id, "CREDIT-" + id, "信用查询测试 " + id);
         return id;
     }
     private UUID client(UUID owner) {

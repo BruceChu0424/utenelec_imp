@@ -52,10 +52,12 @@ class LocalRuntimePrivilegesPostgresTest {
             assertIdentityExtensionsRemainSealed(owner);
             var runtime = new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(), "uten", password));
             assertThat(runtime.queryForObject("SELECT count(*) FROM permission_surfaces", Integer.class)).isPositive();
+            assertThat(runtime.update("INSERT INTO colors(code,name) VALUES ('ACL-FRESH-COLOR','Runtime ACL fresh color')")).isEqualTo(1);
             owner.execute("REVOKE SELECT ON permission_surfaces,permission_surface_permissions,permissions FROM uten");
             assertThat(flyway.migrate().migrationsExecuted).isZero();
             assertIdentityExtensionsRemainSealed(owner);
             assertThat(runtime.queryForObject("SELECT count(*) FROM permission_surfaces", Integer.class)).isPositive();
+            assertThat(runtime.update("INSERT INTO colors(code,name) VALUES ('ACL-SECOND-COLOR','Runtime ACL no-op color')")).isEqualTo(1);
             assertThat(admin.queryForObject("SELECT to_regprocedure('business_data_reset()') IS NULL", Boolean.class)).isTrue();
             assertThat(admin.queryForObject("SELECT count(*) FROM permissions WHERE code='system:business_data_reset'", Integer.class)).isZero();
             assertThat(admin.queryForObject("SELECT has_function_privilege('uten','fn_require_runtime_refresh()','EXECUTE')", Boolean.class)).isFalse();

@@ -8,13 +8,45 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Statement;
+import java.sql.ResultSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class LocalRuntimePrivilegesCallbackTest {
+    @Test
+    void preparesDefaultsBeforeAnEmptyNewSchemaCanFreezeFunctionAcls() throws Exception {
+        Fixture fixture = fixture("uten_migrator", "jdbc:postgresql://127.0.0.1:5434/uten_imp");
+        freshCatalog(fixture, true, true, true);
+        var callback = new LocalRuntimePrivilegesCallback("uten");
+        assertThat(callback.supports(Event.BEFORE_MIGRATE, fixture.context)).isTrue();
+        callback.handle(Event.BEFORE_MIGRATE, fixture.context);
+        verify(fixture.statement).execute(contains("$local_runtime_privileges$"));
+    }
+
+    @Test
+    void anEmptyFlywayHistoryTableStillBelongsToTheFirstMigration() throws Exception {
+        Fixture fixture = fixture("uten_migrator", "jdbc:postgresql://127.0.0.1:5434/uten_imp");
+        freshCatalog(fixture, false, true, true);
+        new LocalRuntimePrivilegesCallback("uten").handle(Event.BEFORE_MIGRATE, fixture.context);
+        verify(fixture.statement).execute(contains("$local_runtime_privileges$"));
+    }
+
+    @Test
+    void existingApplicationObjectsOrMigrationHistoryNeverReceivePreMigrationAclWrites() throws Exception {
+        Fixture existing = fixture("uten_migrator", "jdbc:postgresql://127.0.0.1:5434/uten_imp");
+        freshCatalog(existing, true, false, true);
+        new LocalRuntimePrivilegesCallback("uten").handle(Event.BEFORE_MIGRATE, existing.context);
+        verify(existing.statement, never()).execute(anyString());
+        Fixture historical = fixture("uten_migrator", "jdbc:postgresql://127.0.0.1:5434/uten_imp");
+        freshCatalog(historical, false, true, false);
+        new LocalRuntimePrivilegesCallback("uten").handle(Event.BEFORE_MIGRATE, historical.context);
+        verify(historical.statement, never()).execute(anyString());
+    }
+
     @Test
     void runsAfterNoOpMigrateBeforeApplicationReadsPermissionCatalog() throws Exception {
         Fixture fixture = fixture("uten_migrator", "jdbc:postgresql://127.0.0.1:5434/uten_imp");
@@ -74,6 +106,19 @@ class LocalRuntimePrivilegesCallbackTest {
         when(metadata.getURL()).thenReturn(url);
         when(connection.createStatement()).thenReturn(statement);
         return new Fixture(context, connection, statement);
+    }
+
+    private void freshCatalog(Fixture fixture, boolean historyAbsent, boolean emptySchema,
+            boolean emptyHistory) throws Exception {
+        ResultSet catalog = mock(ResultSet.class);
+        when(catalog.next()).thenReturn(true);
+        when(catalog.getBoolean(1)).thenReturn(historyAbsent);
+        when(catalog.getBoolean(2)).thenReturn(emptySchema);
+        ResultSet history = mock(ResultSet.class);
+        when(history.next()).thenReturn(true);
+        when(history.getBoolean(1)).thenReturn(emptyHistory);
+        when(fixture.statement.executeQuery(contains("to_regclass"))).thenReturn(catalog);
+        when(fixture.statement.executeQuery(contains("FROM public.flyway_schema_history"))).thenReturn(history);
     }
 
     private record Fixture(Context context, Connection connection, Statement statement) { }

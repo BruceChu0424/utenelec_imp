@@ -20,7 +20,8 @@ class CustomerPrepaymentReportOrderChainContractTest {
                 .contains("COALESCE(sales_order.bill_no,'客户池')")
                 .contains("string_agg(DISTINCT sales_order.bill_no")
                 .contains("string_agg(DISTINCT sales_order.id::text")
-                .contains("item.put(\"salesOrderIds\"")
+                .contains("projectedColumns.add(ReportColumn.text(\"__salesOrderIds\",\"\"))")
+                .contains("row.put(\"salesOrderIds\",row.remove(\"__salesOrderIds\"))")
                 .contains("'预收到账'::text AS event_type_label")
                 .contains("'预收转销应收'")
                 .contains("'预收转销反转'");

@@ -120,17 +120,18 @@ class LoginServiceAuditOrderingTest {
         ApiException denied = assertThrows(ApiException.class,
                 () -> service.login(request, "203.0.113.9"));
         assertEquals(ErrorCode.UNAUTHORIZED, denied.getCode());
-        verify(tokenIssuer, never()).issueTokens(any());
+        verify(tokenIssuer, never()).issueTokens(any(), any());
         verify(userRepo, never()).save(any());
     }
 
     @Test
     void successfulAuditIsWrittenOnlyAfterTokenIssuance() {
+        request = new LoginRequest("E001", "correct-password", null, "Desktop audit fixture");
         passwordIsCorrect();
         rowLockSeesSameAccount();
         TokenResponse response = new TokenResponse(
                 "access", "refresh", 900, false, null);
-        when(tokenIssuer.issueTokens(user)).thenReturn(response);
+        when(tokenIssuer.issueTokens(user, request.deviceName())).thenReturn(response);
 
         assertSame(response, service.login(request, "203.0.113.9"));
 
@@ -141,7 +142,7 @@ class LoginServiceAuditOrderingTest {
         order.verify(userRepo).findByIdForUpdate(user.getId());
         order.verify(tx).bindActor(user.getId(), user.getLoginAccount());
         order.verify(userRepo).save(user);
-        order.verify(tokenIssuer).issueTokens(user);
+        order.verify(tokenIssuer).issueTokens(user, request.deviceName());
         order.verify(audit).logCommitted(
                 user.getId(),
                 user.getLoginAccount(),
@@ -155,7 +156,7 @@ class LoginServiceAuditOrderingTest {
     void tokenIssuanceFailureCannotLeaveASuccessfulLoginAudit() {
         passwordIsCorrect();
         rowLockSeesSameAccount();
-        when(tokenIssuer.issueTokens(user))
+        when(tokenIssuer.issueTokens(user, request.deviceName()))
                 .thenThrow(new IllegalStateException("token failure"));
 
         assertThrows(
@@ -185,7 +186,7 @@ class LoginServiceAuditOrderingTest {
                 () -> service.login(request, "203.0.113.9"));
 
         assertEquals(ErrorCode.BAD_CREDENTIALS, denied.getCode());
-        verify(tokenIssuer, never()).issueTokens(any());
+        verify(tokenIssuer, never()).issueTokens(any(), any());
     }
 
     @Test
@@ -209,7 +210,7 @@ class LoginServiceAuditOrderingTest {
         // 锁定期的每次尝试继续计数 (顺延锁定)
         verify(failureRecorder, org.mockito.Mockito.times(2))
                 .record(user.getId(), "E001", "attempt_while_locked", user.getPasswordHash(), user.getAuthVersion());
-        verify(tokenIssuer, never()).issueTokens(any());
+        verify(tokenIssuer, never()).issueTokens(any(), any());
     }
 
     @Test
@@ -237,7 +238,7 @@ class LoginServiceAuditOrderingTest {
         assertEquals(ErrorCode.REMOTE_ACCESS_DENIED, denied.getCode());
         assertNull(user.getLastLoginAt());
         verify(userRepo, never()).save(user);
-        verify(tokenIssuer, never()).issueTokens(user);
+        verify(tokenIssuer, never()).issueTokens(user, request.deviceName());
         verify(audit).logExplicit(
                 user.getId(), user.getLoginAccount(), "login_failed",
                 "users", user.getId().toString(), "remote_access_denied");
@@ -254,7 +255,7 @@ class LoginServiceAuditOrderingTest {
                 () -> service.login(request, "203.0.113.9"));
 
         assertEquals(ErrorCode.BAD_CREDENTIALS, denied.getCode());
-        verify(tokenIssuer, never()).issueTokens(user);
+        verify(tokenIssuer, never()).issueTokens(user, request.deviceName());
         verify(failureRecorder).record(user.getId(), "E001", "bad_password", user.getPasswordHash(), user.getAuthVersion());
     }
 
@@ -269,7 +270,7 @@ class LoginServiceAuditOrderingTest {
                 () -> service.login(request, "203.0.113.9"));
 
         assertEquals(ErrorCode.ACCOUNT_DISABLED, denied.getCode());
-        verify(tokenIssuer, never()).issueTokens(user);
+        verify(tokenIssuer, never()).issueTokens(user, request.deviceName());
     }
 
     @Test
@@ -283,7 +284,7 @@ class LoginServiceAuditOrderingTest {
                 () -> service.login(request, "203.0.113.9"));
 
         assertEquals(ErrorCode.UNAUTHORIZED, denied.getCode());
-        verify(tokenIssuer, never()).issueTokens(user);
+        verify(tokenIssuer, never()).issueTokens(user, request.deviceName());
         verify(userRepo, never()).save(user);
         verify(audit).logExplicit(
                 user.getId(), user.getLoginAccount(), "login_failed",
@@ -298,7 +299,7 @@ class LoginServiceAuditOrderingTest {
         user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(1));
         TokenResponse response = new TokenResponse(
                 "access", "refresh", 900, true, null);
-        when(tokenIssuer.issueTokens(user)).thenReturn(response);
+        when(tokenIssuer.issueTokens(user, request.deviceName())).thenReturn(response);
 
         assertSame(response, service.login(request, "203.0.113.9"));
     }

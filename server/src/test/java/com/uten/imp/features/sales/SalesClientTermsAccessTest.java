@@ -25,7 +25,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
+import com.uten.imp.support.MockControllerSecurityContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,7 +50,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class SalesClientTermsAccessTest {
-    private AnnotationConfigApplicationContext context;
+    private AnnotationConfigWebApplicationContext context;
     private SalesOrderController controller;
     private SalesOrderService service;
     private ReferenceMethodController referenceController;
@@ -60,7 +61,7 @@ class SalesClientTermsAccessTest {
     @BeforeEach
     void openContext() {
         SecurityContextHolder.clearContext();
-        context = new AnnotationConfigApplicationContext(SecurityConfig.class);
+        context = MockControllerSecurityContext.open(SecurityConfig.class);
         controller = context.getBean(SalesOrderController.class);
         var dependencies = context.getBean(ControllerDependencies.class);
         service = dependencies.service;

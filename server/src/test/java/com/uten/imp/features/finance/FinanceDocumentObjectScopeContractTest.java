@@ -26,8 +26,10 @@ class FinanceDocumentObjectScopeContractTest {
             var helper = Pattern.compile("Specification<[^>]+>\\s+spec\\s*=\\s*(\\w+Spec)\\(f\\)")
                     .matcher(list);
             assertThat(helper.find()).as("list must use its shared scope specification in %s", relative).isTrue();
-            assertThat(list).as("relevance wraps the original scoped spec before paging in %s", relative)
-                    .contains("var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());")
+            assertThat(list.replaceAll("\\s+", ""))
+                    .as("relevance preserves the scoped spec and yields to an explicit allowlisted sort in %s", relative)
+                    .contains("varsearchPage=NameRefKeyword.page(spec,pageable,sort!=null&&ALLOWED_SORT.containsKey(sort)?null:f.keyword());");
+            assertThat(list).as("the repository executes the original scoped specification in %s", relative)
                     .contains(".findAll(searchPage.specification(), searchPage.pageable())");
             assertThat(method(source, " " + helper.group(1) + "(")).contains(
                     "var readScope = access.scope();",

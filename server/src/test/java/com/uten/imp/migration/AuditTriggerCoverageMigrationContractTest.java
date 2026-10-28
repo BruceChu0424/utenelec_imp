@@ -109,7 +109,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
             new FullGroup("permission_templates", "authorization", false,
                     "V894 权限模板是超管保存的授权快照；增改与软删除完整审计，应用到账号仍由独立授权流程决定",
-                    Set.of("permission_templates")),
+                    Set.of("permission_templates", "permission_template_applies",
+                            "user_permission_template_bindings", "department_permission_template_bindings")),
             new FullGroup("company_file_acl", "authorization", false,
                     "公司资料目录的用户和部门允许与拒绝规则是人工授权决定，必须逐行审计",
                     Set.of("company_file_acl")),
@@ -129,7 +130,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("system", "system", false,
                     "系统设置与全局配置: 改动影响全平台运行口径",
                     Set.of(
-                        "business_identifier_namespaces", "expense_claim_settings",
+                        "business_identifier_namespaces", "expense_claim_settings", "data_lifecycle_policies",
                         "system_master_category_registry", "business_record_retention_registry",
                         "system_posting_style_roles", "system_settings",
                         "unit_measurement_profiles")),
@@ -276,6 +277,20 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("stock_monthly_summaries", "data_change", true,
+                    List.of("last_rebuilt_at"),
+                    "V949 可重建库存月汇总仅记录重建戳，不复制每笔库存投影数量变化"),
+            new ScopedTable("stock_monthly_verification_state", "data_change", true,
+                    List.of("last_verified_goods", "last_run_at", "last_chunk_rows", "last_drift_count", "last_error"),
+                    "V949 分块校验进度与漂移结果是独立运行证据，仅保留明确列清单"),
+            new ScopedTable("party_monthly_summaries", "data_change", true,
+                    List.of("net_original", "posted_local_sum", "settled_local_sum", "net_local", "event_count", "null_original_count"),
+                    "V950 往来月汇总按已登记的有限金额及计数列留核对证据，权威原始应收应付流水仍独立保留"),
+            new ScopedTable("party_month_dirty", "data_change", true, List.of("touched_at"),
+                    "V950 月汇总重算脏键只记录触达时间，不扩大到来源流水或业务原文"),
+            new ScopedTable("business_archive_eligibility", "data_change", true,
+                    List.of("eligible", "blocked_reasons", "final_settled_on", "evaluated_at"),
+                    "V955 归档准入判定只记录有限结论与核验时点，不复制完整归档内容"),
             new ScopedTable("report_export_jobs", "data_change", true,
                     List.of("status", "snapshot_at", "snapshot_identity", "finished_at", "artifact_sha256", "error_message"),
                     "V938 永久导出请求身份独立保留，审计仅记录作业状态与发布摘要，不复制私有筛选或文件原文；原件删除守卫保持"),
@@ -340,7 +355,7 @@ class AuditTriggerCoverageMigrationContractTest {
                             + "再认证成功/失败与会话吊销另有显式安全事件, V680)",
                     Set.of(
                         "audit_log", "audit_log_archive", "auth_sessions", "auth_step_up_states",
-                        "authorization_state",
+                        "authorization_state", "scheduled_task_runs",
                         "employee_identity_merge_installation", "employee_code_reuse_installation",
                         "business_document_sequences", "category_master_code_sequences",
                         "doc_number_sequences", "flyway_schema_history",
@@ -357,6 +372,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
+                            "business_outbox_payload_history", "business_archive_packages",
                             "employee_identity_merge_payloads", "employee_identity_historical_claims", "employee_identity_legacy_roles",
                             "master_record_versions",
                             "notice_blessing_history",
@@ -863,7 +879,14 @@ class AuditTriggerCoverageMigrationContractTest {
                 continue;
             }
             String sql = stripSqlComments(migration.sql()).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-            assertFalse(sql.contains("create trigger trg_audit_"),
+            String rowAuditSql = sql;
+            if (migration.version() == 952) {
+                String writer = "create trigger trg_audit_log_all_insert instead of insert on public.v_audit_log_all "
+                        + "for each row execute function public.fn_audit_log_all_insert();";
+                assertTrue(sql.contains(writer), "V952 must preserve only the exact audit-view INSERT forwarding trigger");
+                rowAuditSql = sql.replace(writer, "");
+            }
+            assertFalse(rowAuditSql.contains("create trigger trg_audit_"),
                     migration.path().getFileName() + " must attach audit triggers through fn_audit_track_table");
             assertFalse(sql.contains("execute function fn_audit()")
                             || sql.contains("execute function public.fn_audit()"),

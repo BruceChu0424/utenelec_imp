@@ -126,6 +126,8 @@ owner 权限。保留该迁移和校验，使用独立的本地开发 PostgreSQL
 
 本地 `dev` 使用 `uten_migrator` 迁移、`uten` 运行时，
 `LocalRuntimePrivilegesCallback` 在 Flyway 成功结束后核对运行权限，**没有待执行迁移时也执行**。
+只有应用 schema 为空且迁移历史也为空的新库，才会在首次迁移前预置同一默认权限，
+确保业务函数的运行权限在 V964/V965 封存目录前已正确继承；已有业务表或迁移历史的库不提前补权。
 这修复了新库只完成 owner 迁移、未完成业务账号授权时，启动报
 `permission denied for table permission_surfaces`，随后逐表报错的问题。
 统一策略位于 `src/main/resources/db/local-runtime-privileges.sql`，只处理本库迁移 owner

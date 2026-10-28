@@ -301,7 +301,7 @@
       "title": "账户资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "账户·期初·余额",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -324,7 +324,7 @@
       "title": "客户资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "客户分类与主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -347,7 +347,7 @@
       "title": "颜色资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "颜色主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -370,7 +370,7 @@
       "title": "币种资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "币种·参考汇率",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -393,7 +393,7 @@
       "title": "货品资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "物料分类树与货品主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -416,7 +416,7 @@
       "title": "模具资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "模具系列分类与主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -439,7 +439,7 @@
       "title": "收付款类别",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "资产负债等六大类",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -462,7 +462,7 @@
       "title": "结算方式",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "结账字典·账期口径",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -485,7 +485,7 @@
       "title": "供应商资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "供应商分类与主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -508,7 +508,7 @@
       "title": "基本单位",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "计量单位主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",
@@ -531,7 +531,7 @@
       "title": "仓库资料",
       "aliases": [],
       "module": "基础资料",
-      "purpose": "仓库主档",
+      "purpose": "",
       "paths": [
         [
           "工作台",

@@ -16,7 +16,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
+import com.uten.imp.support.MockControllerSecurityContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -64,7 +65,7 @@ class DepartmentEmployeePickerSecurityContractTest {
         }
     }
 
-    private AnnotationConfigApplicationContext context;
+    private AnnotationConfigWebApplicationContext context;
     private MockMvc http;
     private DepartmentService departments;
     private EmployeeQueryService employees;
@@ -73,7 +74,7 @@ class DepartmentEmployeePickerSecurityContractTest {
 
     @BeforeEach
     void setUp() {
-        context = new AnnotationConfigApplicationContext(Config.class);
+        context = MockControllerSecurityContext.open(Config.class);
         departments = AopTestUtils.getUltimateTargetObject(context.getBean(DepartmentService.class));
         employees = AopTestUtils.getUltimateTargetObject(context.getBean(EmployeeQueryService.class));
         when(departments.employeePickerTree()).thenReturn(List.of(new DepartmentPickerNode(

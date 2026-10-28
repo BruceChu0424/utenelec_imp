@@ -19,7 +19,9 @@ class ReceiptCommercialMaskContractTest {
         // 2026-09-25 单号列统一：价格遮蔽分支仍不放开金额排序（total 不进白名单），
         // billNo 排序不泄露商业信息故保留在两分支。
         assertThat(source)
-                .contains("boolean priceMasked = !priceMasker.canViewPurchaseReceipt()")
+                .contains("boolean priceMasked = priceMasker==null||!priceMasker.canViewPurchaseReceipt()")
+                .contains("f.headerFilters().requireAmountVisible(!priceMasked)")
+                .contains("HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked)")
                 .contains("priceMasked\n                                ? Map.of(\"billDate\", \"billDate\", \"billNo\", \"billNo\")")
                 .contains("mask ? null : r.getCurrencyId()")
                 .contains("mask ? null : r.getExchangeRate()")
@@ -35,7 +37,9 @@ class ReceiptCommercialMaskContractTest {
                 .replace("\r\n", "\n");
 
         assertThat(source)
-                .contains("boolean priceMasked = !priceMasker.canViewSubcontractReceipt()")
+                .contains("boolean priceMasked = priceMasker==null||!priceMasker.canViewSubcontractReceipt()")
+                .contains("f.headerFilters().requireAmountVisible(!priceMasked)")
+                .contains("HeaderColumnFilter.requireAmountSortVisible(sort,!priceMasked)")
                 .contains("priceMasked\n                                ? Map.of(\"billDate\", \"billDate\", \"billNo\", \"billNo\")\n                                : ALLOWED_SORT")
                 .contains("mask ? null : r.getCurrencyId()")
                 .contains("mask ? null : r.getExchangeRate()")

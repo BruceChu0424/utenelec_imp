@@ -66,7 +66,8 @@ class HostOperationsTest(unittest.TestCase):
         self.migrator_config = self.root / 'migrator.env'
         host.atomic(self.migrator_config, ('UTEN_MIGRATOR_DB_PASSWORD=' + 'fixture' * 5 + '\n').encode())
         for name, value in (('OPERATIONS_CONFIG', self.operations_config), ('BACKUP_CONFIG', str(self.backup_config)),
-                            ('MIGRATOR_CONFIG', self.migrator_config), ('PG_SOCKET_DIRECTORY', str(self.pg_socket))):
+                            ('MIGRATOR_CONFIG', self.migrator_config), ('PG_SOCKET_DIRECTORY', str(self.pg_socket)),
+                            ('UPDATER_LOCK', self.root / 'updater.lock')):
             patcher = patch.object(host, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -789,6 +790,119 @@ class HostOperationsTest(unittest.TestCase):
         self.assertEqual(['instance-identity', 'latest', 'stage', 'backup', 'verify', 'backup-toc', 'instance-identity', 'activate', 'database-catalog', 'stable-health'], events)
         self.assertEqual('SUCCEEDED', ops.job()['state'])
         self.assertEqual('UP', ops.job()['health'])
+
+    def _cleanup_worker(self):
+        ops, base = self._prepared_failure_worker()
+        def activate(job, target):
+            (base / 'current').unlink()
+            (base / 'current').symlink_to('releases/' + target)
+            (base / 'active-version.txt').write_text(target)
+        return ops, activate
+
+    def _completed_cleanup_job(self):
+        ops, activate = self._cleanup_worker()
+        job = ops.job()
+        activate(job, 'v2.5.18')
+        job.update(state='SUCCEEDED', phase='DONE', health='UP', targetVersion='v2.5.18', finishedAt=host.now())
+        ops.store_job(job)
+        return ops, job
+
+    def test_post_update_cleanup_follows_durable_success_with_both_locks_and_never_replays(self):
+        ops, activate = self._cleanup_worker()
+        storage = Mock()
+        events = []
+        def cleanup(context):
+            job = ops.job()
+            self.assertEqual(('SUCCEEDED', 'DONE', 'UP'), (job['state'], job['phase'], job['health']))
+            self.assertIsNotNone(job['finishedAt'])
+            self.assertEqual([], context['active_jobs'])
+            self.assertTrue(context['lock_held'])
+            self.assertTrue(list(self.state.glob('post-update-backup-cleanup-*.json')))
+            for path in (self.state / 'operations.lock', host.UPDATER_LOCK):
+                with self.assertRaises(host.OperationError), host.lock(path):
+                    self.fail('Both mutation locks must remain held during pruning')
+            events.append('cleanup')
+            return {'status': 'SUCCEEDED', 'deletedCount': 2, 'reclaimedBytes': 42, 'deferredCount': 0}
+        storage.prune_preactivation_backups.side_effect = cleanup
+        with patch.object(ops, 'activate', side_effect=activate), patch.object(ops, 'validate_database'), \
+                patch.object(ops, 'stable_health', side_effect=lambda env: events.append('healthy')), \
+                patch.object(host, 'load_storage', return_value=storage):
+            self.assertEqual(0, ops.worker())
+            job = ops.job()
+            original = host.read_json(self.state / ('post-update-backup-cleanup-' + job['id'] + '.json'))
+            with host.lock(self.state / 'operations.lock'):
+                self.assertEqual(original, ops.prune_successful_update_backups(job))
+            self.assertEqual(0, ops.worker())
+        self.assertEqual(['healthy', 'cleanup'], events)
+        storage.prune_preactivation_backups.assert_called_once()
+        self.assertEqual('SUCCEEDED', original['state'])
+
+    def test_post_update_cleanup_failure_cannot_turn_health_success_into_update_failure(self):
+        ops, activate = self._cleanup_worker()
+        storage = Mock()
+        storage.prune_preactivation_backups.side_effect = OSError('PRIVATE_CLEANUP_SECRET')
+        with patch.object(ops, 'activate', side_effect=activate), patch.object(ops, 'validate_database'), \
+                patch.object(ops, 'stable_health'), patch.object(host, 'load_storage', return_value=storage):
+            self.assertEqual(0, ops.worker())
+        job = ops.job()
+        receipt = host.read_json(self.state / ('post-update-backup-cleanup-' + job['id'] + '.json'))
+        self.assertEqual(('SUCCEEDED', 'UP'), (job['state'], job['health']))
+        self.assertNotIn('failure', job)
+        self.assertEqual('FAILED', receipt['state'])
+        self.assertNotIn('PRIVATE_CLEANUP_SECRET', json.dumps(receipt))
+
+    def test_post_update_cleanup_never_starts_without_durable_cleanup_intent(self):
+        ops, activate = self._cleanup_worker()
+        original = host.write_json
+        def fail_cleanup(path, value):
+            if path.name.startswith('post-update-backup-cleanup-'):
+                raise OSError('PRIVATE_WRITE_FAILURE')
+            return original(path, value)
+        with patch.object(ops, 'activate', side_effect=activate), patch.object(ops, 'validate_database'), \
+                patch.object(ops, 'stable_health'), patch.object(host, 'load_storage') as storage, \
+                patch.object(host, 'write_json', side_effect=fail_cleanup), patch('sys.stderr', new_callable=io.StringIO) as diagnostic:
+            self.assertEqual(0, ops.worker())
+        storage.assert_not_called()
+        self.assertEqual('SUCCEEDED', ops.job()['state'])
+        self.assertNotIn('PRIVATE_WRITE_FAILURE', diagnostic.getvalue())
+
+    def test_failed_health_has_no_post_update_cleanup(self):
+        ops, activate = self._cleanup_worker()
+        with patch.object(ops, 'activate', side_effect=activate), patch.object(ops, 'validate_database'), \
+                patch.object(ops, 'stable_health', side_effect=host.OperationError('UNHEALTHY', '')), \
+                patch.object(host, 'load_storage') as storage:
+            self.assertEqual(1, ops.worker())
+        storage.assert_not_called()
+        self.assertFalse(list(self.state.glob('post-update-backup-cleanup-*.json')))
+
+    def test_post_update_cleanup_skips_when_version_changes(self):
+        ops, job = self._completed_cleanup_job()
+        with host.lock(self.state / 'operations.lock'), patch.object(host, 'current_version', return_value='v2.5.19'), \
+                patch.object(host, 'load_storage') as storage:
+            receipt = ops.prune_successful_update_backups(job)
+        storage.assert_not_called()
+        self.assertEqual(('SKIPPED', 'CURRENT_VERSION_CHANGED'), (receipt['state'], receipt['errorCode']))
+        self.assertEqual('SUCCEEDED', ops.job()['state'])
+
+    def test_post_update_cleanup_skips_another_active_job(self):
+        ops, job = self._completed_cleanup_job()
+        other = {**job, 'id': str(uuid.uuid4()), 'state': 'QUEUED', 'health': None}
+        ops.store_job(other)
+        host.write_json(self.state / 'active-job.json', {'id': other['id']})
+        with host.lock(self.state / 'operations.lock'), patch.object(host, 'load_storage') as storage:
+            receipt = ops.prune_successful_update_backups(job)
+        storage.assert_not_called()
+        self.assertEqual(('SKIPPED', 'BUSY'), (receipt['state'], receipt['errorCode']))
+        self.assertEqual('QUEUED', ops.job()['state'])
+        self.assertEqual('SUCCEEDED', ops.job(job['id'])['state'])
+
+    def test_post_update_cleanup_skips_updater_lock_conflict(self):
+        ops, job = self._completed_cleanup_job()
+        with host.lock(self.state / 'operations.lock'), host.lock(host.UPDATER_LOCK), \
+                patch.object(host, 'load_storage') as storage:
+            receipt = ops.prune_successful_update_backups(job)
+        storage.assert_not_called()
+        self.assertEqual(('SKIPPED', 'BUSY'), (receipt['state'], receipt['errorCode']))
 
     def test_migration_history_must_match_the_whole_release_not_only_latest_version(self):
         path = self.root / 'release.jar'

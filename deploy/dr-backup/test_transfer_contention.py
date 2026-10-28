@@ -154,7 +154,8 @@ class TransferContentionTest(unittest.TestCase):
                 with backup.lock(Path(config['state_directory']) / '.archive-source.lock'):
                     self.fail('Duplicate archive job was admitted')
             return {'state': 'TARGET_BYTES_VERIFIED'}
-        with patch.object(backup, 'upload', side_effect=upload), patch.object(backup, 'prune_source_exports'):
+        with patch.object(backup, 'upload', side_effect=upload), patch.object(backup, 'prune_source_exports',
+                return_value={'status': 'APPLIED', 'removedSets': 0, 'removedCipherBytes': 0, 'retainedSets': 0}):
             result = backup.run_source(config)
         self.assertEqual('TARGET_BYTES_VERIFIED', result['state'])
 

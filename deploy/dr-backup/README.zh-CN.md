@@ -22,6 +22,21 @@
 
 ## 日常检查
 
+### 公司端旧导出副本的保留入口（2026-10-28 本地候选）
+
+整包上传和分块快照上传完成后共用 `finish_source_export_retention` / `prune_source_exports`，
+避免切到分块后旧整包导出再也没有清理触发。只处理源导出命名空间中同时有完整源/目标回执、
+export/set/manifest/cipher 摘要和长度一致、目标确认超过两天的旧副本；无回执、未知内容及身份变化均保留。
+两条上传路径通过独立 `.source-export-retention.lock` 串行执行规划与删除，不延长采集锁或串行上传。
+锁忙公开 `sourceExportCleanup.status=DEFERRED`，下次成功上传重试，不把已成功的新点降为失败；
+实际清理异常公开 `FAILED` 并降健康档，仍保留新点回执。
+
+`latest_snapshot` 下须新目标回执的 `cleanupState=COMPLETE` 才执行该清理；待 commissioning 或失败时
+明确保旧。此修正不会启用暂停的生产 timer、删除云端恢复点、修改本地双仓/paired 保留窗口或移走目录。
+安装须配套更新两个 Python 模块与 snapshot service；后者的 `ReadWritePaths` 精确覆盖已有
+`/srv/uten-backup/dr-continuous-exports`，供同一受控源副本 GC 使用，不再仅开放 `.snapshot-spool`。
+本地测试不代表已安装，也不授权在 commissioning 未通过时手动删除旧导出。
+
 ### 采集、传输和保留任务互斥
 
 小时整包与五分钟分块任务各自持有作业锁，防止同一种任务重入；两者仅在创建成套备份、

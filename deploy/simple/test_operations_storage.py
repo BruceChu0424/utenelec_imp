@@ -378,6 +378,91 @@ class StorageTest(unittest.TestCase):
         self.assertFalse(entries[0].exists())
         self.assertTrue(entries[-1].exists())
 
+    def _preactivation_fixture(self, count=6, rollback=False):
+        entries = []
+        for index in range(count):
+            created = dt.date(2026, 8, 1) + dt.timedelta(days=index)
+            path = self.path('preactivation_backup_root', f'uten_imp-v2.5.16-{created:%Y%m%d}-010000.ABCDEF.dump')
+            path.write_bytes(b'backup ' + str(index).encode())
+            path.chmod(0o600)
+            self.old(path)
+            entries.append(path)
+        proofs = []
+        for index, path in enumerate([entries[0], entries[-1]] if rollback else [entries[-1]]):
+            proofs.append({'kind': 'PREACTIVATION_BACKUPS', 'resourceName': path.name,
+                           'dumpSha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                           'verifiedAt': (self.now - dt.timedelta(minutes=2-index)).isoformat(),
+                           'restoreExitCode': 0, 'sourceVersion': 'v2.5.16',
+                           'flywayVersion': '864', 'flywayCount': 790, 'verificationMethod': 'ISOLATED_POSTGRES_RESTORE',
+                           'restoreReceiptSha256': 'b' * 64, 'restoredFlywayVersion': '864',
+                           'restoredFlywayCount': 790, 'restoredFlywayFailed': 0})
+        registry = {'format': 'uten-operations-recovery-proofs-v1', 'proofs': proofs,
+                    'requiredReleaseVersions': ['v2.5.16'],
+                    'requiredRollbackResources': [{'kind': 'PREACTIVATION_BACKUPS', 'resourceName': entries[0].name}] if rollback else []}
+        storage._write(self.state / 'recovery-proofs.json', registry)
+        return entries, registry
+
+    @unittest.skipUnless(os.name == 'posix', 'requires protected filesystem deletion')
+    def test_automatic_preactivation_prune_reuses_proof_floor_and_rollback_without_touching_other_kinds(self):
+        paired = [self.paired(i) for i in range(1, 6)]
+        self.pointer(paired[-1])
+        paired_registry = self.registry([paired[-1]])
+        entries, registry = self._preactivation_fixture(rollback=True)
+        registry['proofs'].extend(paired_registry['proofs'])
+        storage._write(self.state / 'recovery-proofs.json', registry)
+        stage, log = self.stage(), self.log()
+        result = storage.prune_preactivation_backups(self.context)
+        self.assertEqual('SUCCEEDED', result['status'])
+        self.assertEqual(2, result['deletedCount'])
+        self.assertEqual(0, result['deferredCount'])
+        self.assertTrue(entries[0].exists(), 'explicit rollback point remains protected')
+        self.assertTrue(all(p.exists() for p in entries[-3:]), 'newest three complete dumps remain')
+        self.assertTrue(all(not p.exists() for p in entries[1:3]))
+        self.assertTrue(all(p.exists() for _, p in paired))
+        self.assertTrue(stage.exists())
+        self.assertTrue(log.exists())
+        receipt = json.loads((self.state / ('storage-result-' + self.request + '.json')).read_text())
+        self.assertEqual(result['previewId'], receipt['previewId'])
+        self.assertEqual('SUCCEEDED', receipt['result']['status'])
+
+    @unittest.skipUnless(os.name == 'posix', 'requires private backup inventory')
+    def test_automatic_preactivation_prune_without_actual_restore_proof_deletes_nothing(self):
+        entries, _ = self._preactivation_fixture()
+        (self.state / 'recovery-proofs.json').unlink()
+        result = storage.prune_preactivation_backups(self.context)
+        self.assertEqual('SKIPPED', result['status'])
+        self.assertEqual(0, result['deletedCount'])
+        self.assertTrue(all(p.exists() for p in entries))
+        self.assertFalse(list(self.state.glob('storage-result-*.json')))
+
+    def test_automatic_preactivation_prune_requires_mutation_locks_and_no_active_job(self):
+        for extra in ({'lock_held': False}, {'active_jobs': [{'state': 'RUNNING'}]}):
+            with self.subTest(extra=extra), self.assertRaises(storage.StorageError) as caught:
+                storage.prune_preactivation_backups({**self.context, **extra})
+            self.assertEqual('BUSY', caught.exception.code)
+
+    @unittest.skipUnless(os.name == 'posix', 'requires protected filesystem deletion')
+    def test_automatic_preactivation_prune_respects_batch_limit_and_reports_deferred_candidates(self):
+        entries, _ = self._preactivation_fixture(count=60)
+        result = storage.prune_preactivation_backups(self.context)
+        self.assertEqual(('SUCCEEDED', 50, 7), (result['status'], result['deletedCount'], result['deferredCount']))
+        self.assertEqual(10, sum(p.exists() for p in entries))
+        self.assertTrue(all(p.exists() for p in entries[-3:]))
+
+    @unittest.skipUnless(os.name == 'posix', 'requires protected filesystem deletion')
+    def test_automatic_preactivation_prune_revalidates_restore_proof_before_deleting(self):
+        entries, _ = self._preactivation_fixture()
+        dispatch = storage.dispatch
+        def change_proof(operation, payload, context):
+            if operation == 'STORAGE_DELETE':
+                (self.state / 'recovery-proofs.json').unlink()
+            return dispatch(operation, payload, context)
+        with patch.object(storage, 'dispatch', side_effect=change_proof):
+            result = storage.prune_preactivation_backups(self.context)
+        self.assertEqual('FAILED', result['status'])
+        self.assertEqual(0, result['deletedCount'])
+        self.assertTrue(all(p.exists() for p in entries))
+
     @unittest.skipUnless(os.name == 'posix', 'requires controlled release cleanup')
     def test_installed_release_protects_current_rollback_and_latest_three_but_cleans_old_excess(self):
         entry = self.paired(1)

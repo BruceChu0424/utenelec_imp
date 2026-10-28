@@ -42,6 +42,7 @@ UPDATE_NOTICE_SECONDS = 10 * 60
 SOCKET = Path('/run/uten-imp-operations/control.sock')
 CONFIG = Path('/etc/uten-imp-updater/source.env')
 UPDATER = '/usr/local/sbin/uten-imp-updater'
+UPDATER_LOCK = Path('/run/uten-imp-updater/updater.lock')
 SERVICE = 'uten-imp-update-job.service'
 BACKUP = '/usr/local/lib/uten-imp/paired_internal_backup.py'
 BACKUP_CONFIG = '/etc/uten-imp/paired-internal-backup.json'
@@ -965,7 +966,7 @@ class Operations:
                 with lock(self.state / 'operations.lock'):
                     self.no_running_job()
                     # updater's root-only lock also excludes manual CLI activation.
-                    with lock(Path('/run/uten-imp-updater/updater.lock')):
+                    with lock(UPDATER_LOCK):
                         context.update(lock_held=True, active_jobs=[])
                         try:
                             return operations_storage.dispatch(operation, payload, context)
@@ -1076,6 +1077,14 @@ class Operations:
                 job.update(state='SUCCEEDED', phase='DONE', finishedAt=now(), health='UP', message='更新完成，数据库迁移和后端健康检查通过。')
                 job.pop('failure', None)
                 self.store_job(job)
+                # Cleanup follows the durable successful update receipt, while
+                # this worker still owns operations.lock. Cleanup failure must
+                # never turn a verified healthy activation into a failed update.
+                try:
+                    self.prune_successful_update_backups(job)
+                except Exception as error:
+                    print('Post-update backup cleanup receipt unavailable: ' + type(error).__name__
+                          + ' jobId=' + job['id'], file=sys.stderr)
                 return 0
             except Exception as error:
                 # Details stay private. Never return subprocess output, config,
@@ -1095,6 +1104,46 @@ class Operations:
                       + ' code=' + job['failure']['code'] + ' phase=' + job['failure']['phase']
                       + ' step=' + step + ' exitCode=' + str(status), file=sys.stderr)
                 return 1
+
+    def prune_successful_update_backups(self, job: dict) -> dict:
+        """Caller holds operations.lock; never replay an existing cleanup intent."""
+        job_id = identifier(job['id'])
+        path = self.state / ('post-update-backup-cleanup-' + job_id + '.json')
+        try:
+            return read_json(path)
+        except FileNotFoundError:
+            pass
+        request_id = str(uuid.uuid5(uuid.UUID(job_id), 'post-update-preactivation-backups'))
+        receipt = {'jobId': job_id, 'requestId': request_id, 'kind': 'PREACTIVATION_BACKUPS',
+                   'state': 'RUNNING', 'startedAt': now(), 'finishedAt': None}
+        # A lost/interrupted invocation retains its original intent and storage
+        # request ID. Neither worker restart nor a second call repeats deletion.
+        write_json(path, receipt)
+        try:
+            with lock(UPDATER_LOCK):
+                active = self.job()
+                if (not active or active['id'] != job_id or active.get('state') != 'SUCCEEDED'
+                        or active.get('phase') != 'DONE' or active.get('health') != 'UP'
+                        or active.get('mode') not in {'CHECK_AND_UPDATE', 'SCHEDULE_UPDATE'}):
+                    raise OperationError('BUSY', '本次健康升级成功记录已变化，未清理备份。')
+                target = active.get('targetVersion')
+                if (not isinstance(target, str) or not VERSION.fullmatch(target)
+                        or current_version(self.source.load()[1]) != target):
+                    raise OperationError('CURRENT_VERSION_CHANGED', '运行版本已变化，未清理备份。')
+                config = read_json(OPERATIONS_CONFIG)
+                context = {'config': config['storage'], 'host_state_dir': self.state,
+                           'actor_id': identifier(active['actorId']), 'request_id': request_id,
+                           'lock_held': True, 'active_jobs': []}
+                result = load_storage().prune_preactivation_backups(context)
+                receipt.update(state=result['status'], result=result)
+        except Exception as error:
+            code = getattr(error, 'code', None)
+            code = code if code in PUBLIC_OPERATION_CODES else 'UNKNOWN'
+            receipt.update(state='SKIPPED' if code in {'BUSY', 'CURRENT_VERSION_CHANGED'} else 'FAILED',
+                           errorCode=code, errorType=type(error).__name__)
+        receipt['finishedAt'] = now()
+        write_json(path, receipt)
+        return receipt
 
     def activate(self, job: dict, target: str):
         with subprocess.Popen([UPDATER, 'activate', target, '--expected-current', job['currentVersion'] or 'none'], stdout=subprocess.PIPE,

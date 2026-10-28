@@ -103,6 +103,12 @@ english.LaunchUimp=Open UTEN
 chinesesimp.LaunchUimp=打开 UTEN
 #endif
 
+[Messages]
+; The Flutter 3.44 engine binary hard-requires Windows 10+ (Win8+/Win10-only kernel imports),
+; so machines older than that can only use the web client — the refusal text must say so.
+english.WinVersionTooLowError=The UTEN desktop client requires Windows 10 or newer and cannot run on this computer. Please use the UTEN web client in a browser instead.
+chinesesimp.WinVersionTooLowError=UTEN 桌面客户端需要 Windows 10 或更高版本，无法在这台电脑上运行。请改用浏览器访问 UTEN Web 端。
+
 [Files]
 ; PayloadDir contains only the validated runtime, fixed updater and manifest.
 ; The intermediate ZIP is outside this directory and is never embedded twice.

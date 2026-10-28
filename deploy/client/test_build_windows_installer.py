@@ -460,6 +460,8 @@ class WindowsSetupSourceTest(unittest.TestCase):
             "VersionInfoDescription=Uten IMP Windows Setup ({#PayloadArchitecture})",
             "english.AppDisplayName=UTEN",
             "chinesesimp.AppDisplayName=UTEN",
+            "english.WinVersionTooLowError=",
+            "chinesesimp.WinVersionTooLowError=UTEN 桌面客户端需要 Windows 10 或更高版本",
             'Name: "{autoprograms}\\{cm:AppDisplayName}"',
             'Name: "{userdesktop}\\{cm:AppDisplayName}"',
         ):

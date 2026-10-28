@@ -730,8 +730,8 @@ def run_source(config):
                 "marketStateIncluded": receipt["marketStateIncluded"],
                 "clientReleaseStateIncluded": receipt["clientReleaseStateIncluded"],
                 'budgetSeconds': budget, 'reviewedUnitTimeoutSeconds': unit, 'phaseSeconds': phases}
+            finish_source_export_retention(config, status, newest=directory)
             atomic_json(status_path, status)
-            prune_source_exports(config, directory)
             return status
         except Exception as error:
             status = {"format": FORMAT, "state": "FAILED", "health": "DEGRADED", "observedAt": now().isoformat(),
@@ -747,25 +747,88 @@ def run_source(config):
             raise
 
 
-def prune_source_exports(config, newest):
+def finish_source_export_retention(config, status, *, newest=None):
+    """One source-copy policy for archive and chunk upload completion paths.
+
+    A latest-mode seed without valid rotation commissioning must preserve the
+    old archives. This never changes receiver recovery-point retention.
+    """
+    if latest_enabled(config) and status.get('cleanupState') != 'COMPLETE':
+        status['sourceExportCleanup'] = {'status': 'PROTECTED_PENDING_COMMISSIONING'}
+        return
+    try:
+        status['sourceExportCleanup'] = prune_source_exports(config, newest)
+    except TransferBusy:
+        status['sourceExportCleanup'] = {'status': 'DEFERRED', 'retryPolicy': 'NEXT_SUCCESSFUL_UPLOAD'}
+    except (OSError, ValueError):
+        # The newly acknowledged point remains successful. Cleanup failure is
+        # visible without losing that latest point or exposing host diagnostics.
+        status['sourceExportCleanup'] = {'status': 'FAILED'}
+        status['health'] = 'DEGRADED'
+
+
+def prune_source_exports(config, newest=None):
     """Only newly commissioned namespace; retain acknowledged ciphertext for two days."""
     root = private_path(config["source_export_directory"], directory=True)
+    # Archive and snapshot jobs have independent upload locks. Only GC shares
+    # this short mutex; encryption/upload and capture do not serialize here.
+    with lock(root / '.source-export-retention.lock', busy_code='SOURCE_BUSY'):
+        return _prune_source_exports_locked(root, newest)
+
+
+def _prune_source_exports_locked(root, newest):
+    planned, retained = [], 0
     for directory in root.iterdir():
         if not EXPORT.fullmatch(directory.name) or directory == newest:
             continue
         private_path(directory, directory=True)
         if {item.name for item in directory.iterdir()} != {"archive.gpg", "receipt.json", "target-receipt.json"}:
+            retained += 1
             continue
-        source = read_json(directory / "receipt.json")
-        target = read_json(directory / "target-receipt.json")
-        if (target.get("state") != "TARGET_BYTES_VERIFIED"
+        source = read_json(private_path(directory / "receipt.json"))
+        target = read_json(private_path(directory / "target-receipt.json"))
+        archive = private_path(directory / 'archive.gpg')
+        if not isinstance(source, dict) or not isinstance(target, dict):
+            raise ValueError('Source export receipt is invalid')
+        if (not all(isinstance(document.get(key), str)
+                    for document in (source, target)
+                    for key in ('exportId', 'sourceSetId', 'sourceManifestSha256',
+                                'ciphertextSha256', 'format', 'state'))
+                or type(source.get('ciphertextBytes')) is not int
+                or type(target.get('ciphertextBytes')) is not int):
+            retained += 1
+            continue
+        if (source.get('exportId') != directory.name or target.get('exportId') != directory.name
+                or source.get('format') != 'uten-sealed-paired-v1' or target.get('format') != FORMAT
+                or source.get('state') != 'CIPHERTEXT_CREATED'
+                or target.get("state") != "TARGET_BYTES_VERIFIED"
+                or target.get('sourceSetId') != source.get('sourceSetId')
+                or not SET.fullmatch(source.get('sourceSetId', ''))
+                or target.get('sourceManifestSha256') != source.get('sourceManifestSha256')
+                or not HASH.fullmatch(source.get('sourceManifestSha256', ''))
                 or target.get("ciphertextSha256") != source.get("ciphertextSha256")
-                or instant(target["receivedAt"]) >= now() - timedelta(days=2)):
+                or not HASH.fullmatch(source.get('ciphertextSha256', ''))
+                or source.get('ciphertextBytes') != archive.stat().st_size
+                or target.get('ciphertextBytes') != archive.stat().st_size
+                or instant(target.get("receivedAt", '')) >= now() - timedelta(days=2)):
+            retained += 1
             continue
         if directory.parent != root or directory != directory.resolve():
             raise ValueError("Source export cleanup escaped namespace")
+        info = directory.lstat()
+        planned.append((directory, (info.st_dev, info.st_ino), archive.stat().st_size))
+    # Complete evidence validation before removing any entry. Recheck identity
+    # before each deletion; unknown or replaced directories stay untouched.
+    removed_bytes = 0
+    for directory, identity, size in planned:
+        info = private_path(directory, directory=True).lstat()
+        if identity != (info.st_dev, info.st_ino):
+            raise ValueError('Source export identity changed before cleanup')
         shutil.rmtree(directory)
+        removed_bytes += size
     sync_directory(root)
+    return {'status': 'APPLIED', 'removedSets': len(planned),
+            'removedCipherBytes': removed_bytes, 'retainedSets': retained}
 
 
 def main():

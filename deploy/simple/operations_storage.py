@@ -821,6 +821,30 @@ def dispatch(operation: str, payload: dict, context: dict) -> dict:
             'confirmationText': '确认清理', 'warnings': ['清理会永久删除所选文件；正在使用、业务引用及恢复保护条目不能删除。']}
 
 
+def prune_preactivation_backups(context: dict) -> dict:
+    """One bounded post-update batch, using the same protected UI delete path.
+
+    The successful update worker owns both operations/updater locks and records
+    its durable cleanup intent before calling this non-RPC entry. No new age,
+    count, proof or rollback policy is defined here. Excess beyond the protocol's
+    50-resource batch limit is reported for a later update or manual cleanup.
+    """
+    if not context.get('lock_held') or context.get('active_jobs'):
+        _fail('BUSY', '服务器正在更新或未取得安全操作锁。')
+    _, resources = _inventory(context)
+    candidates = sorted(
+        (r for r in resources if r['public']['kind'] == 'PREACTIVATION_BACKUPS' and r['public']['canDelete']),
+        key=lambda r: (_backup_created('PREACTIVATION_BACKUPS', r['name']), r['name']),
+    )
+    if not candidates:
+        return {'status': 'SKIPPED', 'deletedCount': 0, 'reclaimedBytes': 0,
+                'deferredCount': 0, 'detail': '没有符合保留期与恢复保护规则的升级前备份可清理。'}
+    selected = candidates[:50]
+    preview = dispatch('STORAGE_PREVIEW_DELETE', {'resourceIds': [r['public']['id'] for r in selected]}, context)
+    result = dispatch('STORAGE_DELETE', {'previewId': preview['previewId'], 'requestId': context['request_id']}, context)
+    return {**result, 'previewId': preview['previewId'], 'deferredCount': len(candidates) - len(selected)}
+
+
 def _execute_preview(payload, context, preview, receipt_path, actor, request):
     receipt = _read_json(receipt_path)
     try:

@@ -10,14 +10,22 @@ for item in "/:系统盘" "/data:数据盘" "/var/lib/uten-imp-media:附件盘" 
   mount_point=${item%%:*}
   name=${item#*:}
   if ! mountpoint -q "$mount_point"; then
-    "$alert" "disk-$mount_point" "$name 没有挂载"
+    "$alert" "disk-$mount_point:unmounted" "$name 没有挂载"
     continue
   fi
-  read -r used avail inodes < <(df -B1 --output=pcent,avail,ipcent "$mount_point" \
-    | awk 'NR==2 { gsub("%", ""); print $1, $2, $3 }')
-  if [ "${used:-100}" -ge 90 ] || [ "${avail:-0}" -lt 21474836480 ] || [ "${inodes:-100}" -ge 90 ]; then
-    "$alert" "disk-$mount_point" "$name 已用 ${used:-?}%"
-  elif [ "${used:-100}" -ge 80 ]; then
+  if ! read -r used avail inodes < <(df -B1 --output=pcent,avail,ipcent "$mount_point" \
+    | awk 'NR==2 { gsub("%", ""); print $1, $2, $3 }') \
+    || [[ ! "${used:-} ${avail:-} ${inodes:-}" =~ ^[0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+    "$alert" "disk-$mount_point:probe-failed" "$name 容量检查失败"
+    continue
+  fi
+  if [ "$avail" -lt 21474836480 ]; then
+    "$alert" "disk-$mount_point:low-free" "$name 可用空间不足 20GiB"
+  elif [ "$used" -ge 90 ]; then
+    "$alert" "disk-$mount_point:full" "$name 已用 ${used}%"
+  elif [ "$inodes" -ge 90 ]; then
+    "$alert" "disk-$mount_point:inodes" "$name inode 已用 ${inodes}%"
+  elif [ "$used" -ge 80 ]; then
     "$alert" "diskwarn-$mount_point" "$name 已用 ${used}%"
   fi
 done

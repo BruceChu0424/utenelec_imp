@@ -39,11 +39,21 @@ def category(event):
         ("backup-stale", "CRITICAL", "备份未按时完成"),
     ):
         if event.startswith(prefix):
-            key = prefix.rstrip("-") + "-" + hashlib.sha256(event.encode()).hexdigest()[:16]
+            # Disk reasons refine the fixed message while preserving the original
+            # per-volume throttle key across upgrades and changing failure causes.
+            dimension, _, reason = event[len(prefix):].partition(":")
+            key_event = prefix + dimension if prefix == "disk-" else event
+            key = prefix.rstrip("-") + "-" + hashlib.sha256(key_event.encode()).hexdigest()[:16]
             if prefix in ("disk-", "diskwarn-"):
                 label = {"/": "系统盘", "/data": "数据盘", "/var/lib/uten-imp-media": "附件盘",
-                         "/srv/uten-backup": "本机备份盘"}.get(event[len(prefix):], "磁盘")
-                title = label + ("使用率超过八成" if prefix == "diskwarn-" else "空间不足或未挂载")
+                         "/srv/uten-backup": "本机备份盘"}.get(dimension, "磁盘")
+                if prefix == "diskwarn-":
+                    title = label + "使用率超过八成"
+                else:
+                    title = label + {"unmounted": "未挂载", "low-free": "可用空间低于20GiB",
+                                     "probe-failed": "容量检查失败",
+                                     "full": "使用率达到九成", "inodes": "文件数量接近上限"}.get(
+                                         reason, "空间不足或未挂载")
             elif prefix == "down-":
                 label = {"uten-imp": "ERP 后台", "postgresql@16-main": "数据库",
                          "nginx": "网页入口", "clamav-daemon": "病毒扫描服务",

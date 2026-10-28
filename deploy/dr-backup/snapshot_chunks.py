@@ -880,6 +880,7 @@ def run_source(config, base):
                 if target.get('cleanupState') != 'COMPLETE':
                     status_value.update(health='DEGRADED', state=('SNAPSHOT_COMPLETE_CLEANUP_FAILED'
                         if target.get('cleanupState') == 'FAILED' else 'SNAPSHOT_COMPLETE_COMMISSIONING_PENDING'))
+            base.finish_source_export_retention(config, status_value)
             base.atomic_json(status_path, status_value)
             return status_value
         except Exception as error:

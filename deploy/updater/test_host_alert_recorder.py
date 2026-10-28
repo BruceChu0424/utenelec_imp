@@ -3,6 +3,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -21,6 +23,56 @@ class HostAlertCategoryTest(unittest.TestCase):
         self.assertEqual(recorder.category("uten-imp"), recorder.category("uten-imp.service"))
         self.assertIn("数据盘", recorder.category("disk-/data")[2])
         self.assertIn("病毒扫描服务", recorder.category("down-clamav-daemon")[2])
+
+    def test_disk_reason_is_specific_and_preserves_existing_volume_throttle(self):
+        original_key = recorder.category("disk-/srv/uten-backup")[0]
+        for reason, expected in {
+            "low-free": "本机备份盘可用空间低于20GiB",
+            "unmounted": "本机备份盘未挂载",
+            "full": "本机备份盘使用率达到九成",
+            "inodes": "本机备份盘文件数量接近上限",
+            "probe-failed": "本机备份盘容量检查失败",
+        }.items():
+            with self.subTest(reason=reason):
+                self.assertEqual((original_key, "CRITICAL", expected),
+                                 recorder.category("disk-/srv/uten-backup:" + reason))
+        self.assertEqual(recorder.category("disk-/srv/uten-backup"),
+                         recorder.category("disk-/srv/uten-backup:private-secret"))
+
+
+@unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Disk check requires Bash")
+class HostDiskCheckTest(unittest.TestCase):
+    def test_real_disk_branch_identifies_causes_without_changing_thresholds(self):
+        source = SOURCE.with_name("uten-host-check.sh").read_text()
+        # Execute the shipped disk loop against command fixtures. No real mounts,
+        # host alert writes, service checks, or database commands are involved.
+        disk_loop = "for item in " + source.split("for item in ", 1)[1].split("# 2.", 1)[0]
+        fixture = """
+set -uo pipefail
+fixture_alert() { printf '%s\\n' "$1"; }
+mountpoint() { return "$fixture_mount_status"; }
+df() { printf '%s\\n' "$fixture_df_data"; }
+alert=fixture_alert
+"""
+        mounts = ("/", "/data", "/var/lib/uten-imp-media", "/srv/uten-backup")
+        cases = (
+            ("mounted-low-free", 0, "72% 16895066112 1%", "disk-", ":low-free"),
+            ("unmounted", 1, "72% 16895066112 1%", "disk-", ":unmounted"),
+            ("full", 0, "90% 30000000000 1%", "disk-", ":full"),
+            ("inodes", 0, "70% 30000000000 90%", "disk-", ":inodes"),
+            ("warning", 0, "80% 30000000000 1%", "diskwarn-", ""),
+            ("exact-free-boundary", 0, "79% 21474836480 89%", None, ""),
+            ("failed-probe", 0, "unavailable", "disk-", ":probe-failed"),
+        )
+        for name, mount_status, row, prefix, suffix in cases:
+            with self.subTest(name=name):
+                env = {**os.environ, "fixture_mount_status": str(mount_status),
+                       "fixture_df_data": "Use% Avail IUse%\n" + row}
+                run = subprocess.run(["bash", "-c", fixture + disk_loop], env=env,
+                                     text=True, capture_output=True, timeout=5)
+                self.assertEqual(0, run.returncode, run.stderr)
+                self.assertEqual([] if prefix is None else [prefix + path + suffix for path in mounts],
+                                 run.stdout.splitlines())
 
 
 @unittest.skipUnless(os.name == "posix", "Local recorder requires POSIX flock and no-follow opens")

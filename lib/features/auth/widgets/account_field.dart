@@ -35,7 +35,7 @@ class AccountField extends ConsumerStatefulWidget {
 class _AccountFieldState extends ConsumerState<AccountField> {
   final _layerLink = LayerLink();
   final _focus = FocusNode();
-  final _menuFocus = FocusNode(skipTraversal: true, canRequestFocus: false);
+  final _menuFocus = FocusNode(skipTraversal: true);
   final _tapRegionGroup = Object();
   OverlayEntry? _overlay;
   List<String> _history = const [];
@@ -104,7 +104,7 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   }
 
   void _showDropdown() {
-    _hideDropdown();
+    if (_overlay != null) return;
     if (_history.isEmpty) return;
     final entry = OverlayEntry(
       builder: (_) => UtenDropdownScrollScope(
@@ -140,6 +140,9 @@ class _AccountFieldState extends ConsumerState<AccountField> {
   }
 
   void _hideDropdown({bool notify = true}) {
+    // Clear the menu's focus history before removal, so the input is not
+    // automatically focused again and reopening the dismissed history.
+    if (_menuFocus.hasFocus) _menuFocus.unfocus();
     _overlay?.remove();
     _overlay?.dispose();
     _overlay = null;
@@ -232,78 +235,87 @@ class _Dropdown extends StatelessWidget {
               link: layerLink,
               targetAnchor: Alignment.bottomLeft,
               offset: const Offset(0, 4),
-              child: Focus(
-                focusNode: menuFocus,
-                child: TextFieldTapRegion(
-                  groupId: tapRegionGroup,
-                  onTapOutside: (_) => onClose(),
-                  child: Material(
-                    elevation: 6,
-                    borderRadius: BorderRadius.circular(UtenRadius.md),
-                    color: theme.colorScheme.surface,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 280),
-                      child: SizedBox(
-                        // 与输入框同宽（不再按内容收缩）
-                        width: width,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Flexible(
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: accounts.length,
-                                itemBuilder: (_, i) {
-                                  final a = accounts[i];
-                                  return InkWell(
-                                    onTap: () => onPick(a),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.person_outline,
-                                            size: 18,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              a,
-                                              style: theme.textTheme.bodyMedium,
+              child: Listener(
+                // Web closes the native text-input connection when the mouse
+                // presses a menu row. Give the menu focus on pointer-down so
+                // that the field's ensuing blur cannot remove a pending tap.
+                // InkWell only selects on pointer-up; scroll and delete stay
+                // separate gestures.
+                onPointerDown: (_) => menuFocus.requestFocus(),
+                child: Focus(
+                  focusNode: menuFocus,
+                  child: TextFieldTapRegion(
+                    groupId: tapRegionGroup,
+                    onTapOutside: (_) => onClose(),
+                    child: Material(
+                      elevation: 6,
+                      borderRadius: BorderRadius.circular(UtenRadius.md),
+                      color: theme.colorScheme.surface,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 280),
+                        child: SizedBox(
+                          // 与输入框同宽（不再按内容收缩）
+                          width: width,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Flexible(
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: accounts.length,
+                                  itemBuilder: (_, i) {
+                                    final a = accounts[i];
+                                    return InkWell(
+                                      onTap: () => onPick(a),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.person_outline,
+                                              size: 18,
                                             ),
-                                          ),
-                                          IconButton(
-                                            tooltip: '删除',
-                                            iconSize: 18,
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            icon: const Icon(
-                                              Icons.close,
-                                              size: 16,
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                a,
+                                                style:
+                                                    theme.textTheme.bodyMedium,
+                                              ),
                                             ),
-                                            onPressed: () => onDelete(a),
-                                          ),
-                                        ],
+                                            IconButton(
+                                              tooltip: '删除',
+                                              iconSize: 18,
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              icon: const Icon(
+                                                Icons.close,
+                                                size: 16,
+                                              ),
+                                              onPressed: () => onDelete(a),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
+                                    );
+                                  },
+                                ),
                               ),
-                            ),
-                            const Divider(height: 1),
-                            TextButton.icon(
-                              onPressed: onClear,
-                              icon: const Icon(
-                                Icons.delete_sweep_outlined,
-                                size: 18,
+                              const Divider(height: 1),
+                              TextButton.icon(
+                                onPressed: onClear,
+                                icon: const Icon(
+                                  Icons.delete_sweep_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('清除全部'),
                               ),
-                              label: const Text('清除全部'),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),

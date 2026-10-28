@@ -110,10 +110,9 @@ void main() {
             locale: const Locale('zh'),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            home: UtenDisplayZoomBox(
-              fontFactor: scenario.zoom,
-              child: const LoginPage(),
-            ),
+            builder: (context, child) =>
+                UtenDisplayZoomBox(fontFactor: scenario.zoom, child: child!),
+            home: const LoginPage(),
           ),
         ),
       );

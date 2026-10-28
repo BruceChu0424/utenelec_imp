@@ -45,7 +45,8 @@
         <!-- tomcat 钉版：Spring Boot 4.1.1 托管 11.0.24，带 GHSA-9xv2-5v5q-p794 等 3 个 Critical
              （即原 10.1.59 钉版针对的同批 CVE 在 11 线重现），固定到修复版 11.0.25，osv-scanner 门禁。 -->
         <tomcat.version>11.0.25</tomcat.version>
-        <opentelemetry.version>1.62.0</opentelemetry.version>
+        <!-- GHSA-ccrj-gw8r-854m / CVE-2026-118259: align the complete managed OpenTelemetry family. -->
+        <opentelemetry.version>1.67.0</opentelemetry.version>
         <postgresql.version>42.7.12</postgresql.version>
         <!-- 短信 SDK 的传递依赖里有三个构件把 com.aliyun:tea 声明成版本**区间**:
              alibabacloud-gateway-spi:0.0.3 写 [1.1.14, 2.0.0)、credentials-java 与

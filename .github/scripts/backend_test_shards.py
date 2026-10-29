@@ -379,6 +379,11 @@ def allowed_skip(case, method, runtime_platform=None):
     reason = case["skip_reason"]
     if method["id"] == EXPORTER:
         return "Set -Duten.exportFlywayChecksums=true only in the signed-release CI job" in reason
+    # The WPF package inspector reads a pinned private BouncyCastle fixture that lives
+    # outside the repository; by design CI either provides it via
+    # -Duten.wpf.dependencyFixtureRoot or every fixture-backed case reports this skip.
+    if method["id"].startswith("com.uten.imp.features.clientupdates.WindowsWpfPackageInspectorTest#"):
+        return reason.startswith("Pinned private WPF dependency fixture is unavailable: ")
     if method["id"] == WORKBOOK_REVIEW:
         return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]
                 and not case.get("workbook_property_present", False)

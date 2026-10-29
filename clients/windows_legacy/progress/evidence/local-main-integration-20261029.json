@@ -3,7 +3,7 @@
   "evidenceId": "E-MAIN-INTEGRATION-007",
   "capturedAtUtc": "2026-10-29T09:36:39.346547+00:00",
   "authorization": "Human asked to merge the Win7 branch into local main after two hours and delete it only after verified integration; this supersedes prior no-merge/no-delete instructions, local only.",
-  "state": "candidate_verified_not_yet_applied",
+  "state": "integrated_local_main_branch_deleted",
   "oldMain": "55675934d94755d288ba218ceeed35c4eb779763",
   "sourceBranch": "uimp/win7-wpf-client-20261028",
   "sourceTip": "e26a4d7e62d24e03b7371cdeaa24c8068e678e91",
@@ -1516,7 +1516,104 @@
     "progressToolTestsPassed": 11,
     "cleanCommittedContextTokenCheck": true,
     "generatedXamlFreshCheckoutLFCheck": true,
-    "cleanAndComposedInventoryChecksPassed": true
+    "cleanAndComposedInventoryChecksPassed": true,
+    "concurrentBusinessUI": {
+      "categoryTestsPassed": 66,
+      "goodsImportPreviewTestsPassed": 32,
+      "analyzeIssues": 0,
+      "priorCategorySnapshotTestsPassed": 46,
+      "overlapNotSummed": true
+    },
+    "goodsImportIncremental": {
+      "passed": true,
+      "head": "a8fac847af6e55f14618decbb52ef7a6afd8da20",
+      "utc": "2026-10-29T10:06:12.0236832Z",
+      "tests": 126,
+      "passedTests": 126,
+      "failures": 0,
+      "skipped": 0,
+      "aborted": 0,
+      "classes": [
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsBomImportMergeServiceTest",
+          "tests": 14,
+          "passed": 14
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsBomImportNumericPrecisionTest",
+          "tests": 4,
+          "passed": 4
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportCellCorrectionsSafetyTest",
+          "tests": 12,
+          "passed": 12
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportCodeAvailabilityTest",
+          "tests": 10,
+          "passed": 10
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportMergeTest",
+          "tests": 39,
+          "passed": 39
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportModeBomRefTest",
+          "tests": 15,
+          "passed": 15
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportNumericPrecisionTest",
+          "tests": 7,
+          "passed": 7
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportOptionalCodeTest",
+          "tests": 2,
+          "passed": 2
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportPartialSafetyTest",
+          "tests": 11,
+          "passed": 11
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportPlanSafetyTest",
+          "tests": 8,
+          "passed": 8
+        },
+        {
+          "className": "com.uten.imp.features.master.goods.importing.GoodsImportReviewExactDecimalTest",
+          "tests": 4,
+          "passed": 4
+        }
+      ],
+      "sourceDeltaFrom928": [
+        {
+          "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportMergeTest.java",
+          "sha256": "d9733f828376ee44fa75818084657af79774a229ab76fc1b4f5781c93215df61"
+        }
+      ],
+      "selectedTestSourceDrift": [],
+      "reusedProductionSourceBaseline": "57e6abfcc4567e1280f88676cdfece8656180669ac10be6979a5d5dd4817e64e",
+      "productionSourceUnchangedAtStart": true,
+      "execution": "javac --release 21 recompiles 11 explicit repository test sources into new private classes; JUnit Platform Launcher 6.0.3 executes actual tests, with new classes first and prior validated main/helper classes reused",
+      "binaryPins": "reused-binary-pins.json",
+      "sourceInputs": "source-before-tests.json",
+      "sourceAfter": "source-after-tests.json",
+      "commands": [
+        "javac @javac.args",
+        "java @java.args (working directory server)"
+      ],
+      "environment": {
+        "database": "none",
+        "companyTraffic": "none",
+        "UTEN_RUN_DB_TESTS": "false"
+      },
+      "scope": "Incremental test only; no production/test source edits; prior 928 evidence untouched; no DB, full Maven rerun, deployment, upload, push or commit by this reviewer"
+    }
   },
   "logFiles": [
     {
@@ -1583,6 +1680,41 @@
       "path": "build/local-integration-composed-progress.log",
       "bytes": 614,
       "sha256": "3a20c6f77e6f389ed16997748b4c210ff464418e55a3757dcf8cd0500f31117c"
+    },
+    {
+      "path": "build/local-integration-application-safety.log",
+      "sha256": "628785d7865bdf69034404248898721a235aecc96e0dc331c89c78e2f859c431",
+      "bytes": 718
+    },
+    {
+      "path": "build/local-integration-main-application.log",
+      "sha256": "c667a62b4806414be886504fcc24688465571400a09cc5d693b3a35290a324e4",
+      "bytes": 119
+    },
+    {
+      "path": "build/local-integration-latest-category-tests.log",
+      "sha256": "5c951114c5a3261dc7815836fa0fd09d66eba5b3b4eafaca863b46f74517e8cc",
+      "bytes": 15590
+    },
+    {
+      "path": "build/local-integration-latest-import-tests-final.log",
+      "sha256": "b23dfe96e38e432163cd8c341bd094c2148198d44d87f4e49b5981d8c73c9bf5",
+      "bytes": 2980
+    },
+    {
+      "path": "build/local-integration-latest-business-analyze.log",
+      "sha256": "5ccd19c7d0f8efdd72bbe636a18f33788530e8f3c342b84e5bdab4afa6c6e7e6",
+      "bytes": 148
+    },
+    {
+      "path": "build/local-integration-main-latest-progress.log",
+      "sha256": "3a20c6f77e6f389ed16997748b4c210ff464418e55a3757dcf8cd0500f31117c",
+      "bytes": 614
+    },
+    {
+      "path": "build/local-integration-main-token-check.log",
+      "sha256": "69cc448354c28b461aee147ab96cc782829e4a744ba4a3030b90327cf66a9460",
+      "bytes": 65
     }
   ],
   "sourceFiles": [
@@ -53811,10 +53943,12 @@
   "applicationSafety": {
     "method": "Verified merge descendant; old-ref compare-and-swap, exclusive Git index.lock, Windows target write/delete exclusion, frozen verified rollback originals, atomic index install; no stash/reset/clean or unrelated staged commits.",
     "reviewedHelperSha256": "88438262f171c74b3a14bbc8f7402c61031274efd7106a93eb52b4de0d80ebba",
-    "requiresFinalReprepare": true,
-    "powerLossAutomaticRecoveryClaimed": false
+    "requiresFinalReprepare": false,
+    "powerLossAutomaticRecoveryClaimed": false,
+    "actualJournalState": "applied",
+    "writePaths": 361
   },
-  "branchDeleted": false,
+  "branchDeleted": true,
   "pushed": false,
   "productionDeployed": false,
   "formalWindowsPackagesCreated": false,
@@ -53827,5 +53961,107 @@
     "Other native platform toolchains",
     "Browser engine end-to-end",
     "Real recovery manifest acceptance and formal signed distribution"
-  ]
+  ],
+  "mainIntegrationCommit": "a8fac847af6e55f14618decbb52ef7a6afd8da20",
+  "completedAtUtc": "2026-10-29T10:11:22.715865+00:00",
+  "branchDeletion": {
+    "completedAtUtc": "2026-10-29T10:06:46.181590+00:00",
+    "sourceTip": "e26a4d7e62d24e03b7371cdeaa24c8068e678e91",
+    "mainHead": "a8fac847af6e55f14618decbb52ef7a6afd8da20",
+    "branchDeleted": "uimp/win7-wpf-client-20261028",
+    "forcedDeleteUsed": false,
+    "originalWorktreePreserved": true,
+    "originalWorktreeDetachedHead": "e26a4d7e62d24e03b7371cdeaa24c8068e678e91",
+    "buildEvidencePreserved": true
+  },
+  "controlledApplicationFixtures": {
+    "capturedAtUtc": "2026-10-29T09:42:26.239850+00:00",
+    "realMainMutated": false,
+    "cases": [
+      {
+        "scenario": "success",
+        "passed": true,
+        "journalState": "applied",
+        "originalUnstagedAndUntrackedPreserved": true,
+        "mainPath": "C:\\Users\\bruce\\.codex\\worktrees\\win7-main-integration-20261029\\uten_imp\\build\\merge-application-safety\\d5fe7ddf-757b-4758-a166-207993d52c07\\main"
+      },
+      {
+        "scenario": "before_ref_error",
+        "passed": true,
+        "journalState": "rolled_back",
+        "originalUnstagedAndUntrackedPreserved": true,
+        "mainPath": "C:\\Users\\bruce\\.codex\\worktrees\\win7-main-integration-20261029\\uten_imp\\build\\merge-application-safety\\22e2349e-f009-43ba-9033-8eb59b596522\\main"
+      },
+      {
+        "scenario": "after_ref_error",
+        "passed": true,
+        "journalState": "rolled_back",
+        "originalUnstagedAndUntrackedPreserved": true,
+        "mainPath": "C:\\Users\\bruce\\.codex\\worktrees\\win7-main-integration-20261029\\uten_imp\\build\\merge-application-safety\\d1ff3584-1dcf-4967-baec-8b09ac619d9b\\main"
+      },
+      {
+        "scenario": "after_index_error",
+        "passed": true,
+        "journalState": "applied",
+        "originalUnstagedAndUntrackedPreserved": true,
+        "mainPath": "C:\\Users\\bruce\\.codex\\worktrees\\win7-main-integration-20261029\\uten_imp\\build\\merge-application-safety\\d12ceb2f-bd22-41d8-a748-41ab7f7ca042\\main"
+      }
+    ]
+  },
+  "latestConcurrentSnapshot": {
+    "capturedAtUtc": "2026-10-29T09:58:33.875436+00:00",
+    "mainHead": "a8fac847af6e55f14618decbb52ef7a6afd8da20",
+    "candidateHead": "a8fac847af6e55f14618decbb52ef7a6afd8da20",
+    "latestParallelEditsMirroredUnstaged": [
+      {
+        "path": "clients/windows_legacy/progress/business-inventory.json",
+        "sha256": "5beb3e7656037a41ff372984b4bb921c110f59eebaa18caa10ce0ee36a1156eb"
+      },
+      {
+        "path": "clients/windows_legacy/progress/work-items.json",
+        "sha256": "94d7e8c28bd28cd1d09a80f15f695ec5a7a3e7f4a16b80206349aba50a933a85"
+      },
+      {
+        "path": "deploy/simple/RUNBOOK.zh-CN.md",
+        "sha256": "839772f6d182ccc788a6a59da24796c34564bc00c439b5b27220112bee3f0845"
+      },
+      {
+        "path": "docs/99-项目治理/2026-10-29-货品资料与BOM缺失根因排查.md",
+        "sha256": "ba686b749de30657888f4f55d84ddb05da9aa2403bba0353758487ca71529397"
+      },
+      {
+        "path": "docs/99-项目治理/Win7兼容版/pages/basic_data.md",
+        "sha256": "9124b2978eda0f2fd5eb80491b37dad48b69777c044ee23e2cb07e4d4bc22304"
+      },
+      {
+        "path": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+        "sha256": "78dce027869bc378592217feaacc82d4c3072abe942cefd73125149de561af34"
+      },
+      {
+        "path": "lib/features/basic_data/pages/mould_category_page.dart",
+        "sha256": "9e336353e32ffa47fb02d7add3a16417982d89c29bfe234725ca728c982f3b97"
+      },
+      {
+        "path": "lib/features/basic_data/pages/product_category_page.dart",
+        "sha256": "8d01ea73378ff557da3397282212a83bbcd53dd3e3ff8ad09fa3b01e76fe024d"
+      },
+      {
+        "path": "lib/features/basic_data/widgets/category_deletion_safety.dart",
+        "sha256": "dc45887951c375f9fa1a27b40e939f0307213f09c5d34d6a8ea1c1b9a62b648c"
+      },
+      {
+        "path": "server/src/test/java/com/uten/imp/features/master/goods/importing/GoodsImportMergeTest.java",
+        "sha256": "d9733f828376ee44fa75818084657af79774a229ab76fc1b4f5781c93215df61"
+      },
+      {
+        "path": "test/features/basic_data/pages/goods_import_preview_page_test.dart",
+        "sha256": "4e0a618f63f5e153c37920ecc71aba6f78ff4cede00f52874730ebab61c38c27"
+      },
+      {
+        "path": "test/features/basic_data/pages/product_category_delete_safety_test.dart",
+        "sha256": "fb65a11f7c86392fb4b487114db4a9e4513925c0706a8eac0b8c8fe9d3196cd1"
+      }
+    ]
+  },
+  "concurrencyScope": "All integration write targets were verified under exclusion locks at application. Later independent goods/category/import and RUNBOOK edits were retained unstaged and incrementally tested; this is not a claim that future parallel work is already accepted."
 }

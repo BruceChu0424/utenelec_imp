@@ -40,8 +40,17 @@ class SubcontractPublicResponsibilityEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) { FullChainEndToEndTest.registerDataSource(registry); }
     @Autowired AutowireCapableBeanFactory beans;
     AggregateMaterialOrderEndToEndTest h;
+    // 本类 approve 的委外退货单没有配套 AP 贷项，属于共享库残留；不清理会让后续类的
+    // 总账 generate 撞「退货成本未完整核定」守卫（ProcurementReturnCostGlProjection 按当期全库扫描）。
+    private final java.util.List<java.util.UUID> approvedSubcontractReturns = new java.util.ArrayList<>();
     @BeforeEach void before() { h=new AggregateMaterialOrderEndToEndTest();beans.autowireBean(h);h.before(); }
-    @AfterEach void after() { h.after(); }
+    @AfterEach void after() {
+        for (java.util.UUID id : approvedSubcontractReturns) {
+            h.db.update("UPDATE subcontract_returns SET is_deleted=true WHERE id=? AND NOT is_deleted", id);
+        }
+        approvedSubcontractReturns.clear();
+        h.after();
+    }
 
     @Test void aDifferentDatePublicBatchAddsItsRealBomWithoutAddingPrivateDemand() {
         var c=prepare(false,false);var publicBatch=submitPublic(c,"2",Map.of());
@@ -93,7 +102,9 @@ class SubcontractPublicResponsibilityEndToEndTest {
         product.setQty(BigDecimal.ONE);product.setPrice(new BigDecimal("30"));
         product.setReceiptItemId(h.db.queryForObject("SELECT id FROM subcontract_receipt_items WHERE receipt_id=? AND NOT is_deleted",UUID.class,receipt));
         returned.setItems(List.of(product));var returns=beans.getBean(com.uten.imp.features.subcontract.ret.SubcontractReturnService.class);
-        returns.approve(returns.create(returned).getId());assertNoShortage(c,parent,"7");
+        var subcontractReturnId=returns.create(returned).getId();returns.approve(subcontractReturnId);
+        approvedSubcontractReturns.add(subcontractReturnId);
+        assertNoShortage(c,parent,"7");
 
         var materialReturn=new com.uten.imp.features.subcontract.material_return.dto.MaterialReturnSaveRequest();
         materialReturn.setBillDate(BusinessTime.today());materialReturn.setSupplierId(w.supplierId());materialReturn.setWarehouseId(w.warehouseId());

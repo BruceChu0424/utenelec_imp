@@ -861,10 +861,10 @@ class GoodsImportHistoryPostgresTest {
         assertTrue(json.get("newValue").isTextual());
         assertEquals("12.3400", json.get("oldValue").asText());
         assertEquals("35.3", json.get("newValue").asText());
-        var imported = inTx(() -> {
+        var imported = commitWithTransientLockRetry(() -> inTx(() -> {
             provenance("/api/master/goods/import/commit", "POST");
             return importer.commit(detected.planId(), file, "numeric-cell-boundary.xlsx", Set.of("goods:2"));
-        });
+        }));
         assertEquals(1, imported.updatedCount());
         assertEquals(1, imported.createdCount());
         assertEquals("35.3000", scalar("SELECT price::text FROM goods WHERE id=:id", existingId));
@@ -1110,6 +1110,26 @@ class GoodsImportHistoryPostgresTest {
     }
     private <T> T inTx(Supplier<T> action) {
         return new TransactionTemplate(transactions).execute(status -> { T result = action.get(); em.flush(); return result; });
+    }
+
+    /// CI 分片串行跑几百个共享库测试类；前序类收尾的异步任务可能短暂持有基础资料行锁，
+    /// NOWAIT 的 CONFLICT（"基础资料正在更新"）是产品对并发用户的提示语义，这里按同一
+    /// 语义有界重试即可收敛，不掩盖真实的数据断言。
+    private GoodsImportResult commitWithTransientLockRetry(
+            java.util.function.Supplier<GoodsImportResult> attempt) {
+        ApiException lastConflict = null;
+        for (int retry = 0; retry < 5; retry++) {
+            try {
+                return attempt.get();
+            } catch (ApiException conflict) {
+                if (!"基础资料正在更新，请稍后重新检测后导入".equals(conflict.getMessage())) throw conflict;
+                lastConflict = conflict;
+                try { Thread.sleep(300); } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt(); throw conflict;
+                }
+            }
+        }
+        throw lastConflict;
     }
     @SuppressWarnings("unchecked")
     private static <T> T transactional(T target) {

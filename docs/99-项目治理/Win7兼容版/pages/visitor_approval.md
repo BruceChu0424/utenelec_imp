@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyVisitorsPage @44 (page-class)<br>_MyVisitorsPageState @51 (state-class) |
-| 真实路由绑定 | /my-visitors；router @2184；builder ['MyVisitorsPage']；redirect None |
+| 真实路由绑定 | /my-visitors；router @2201；builder ['MyVisitorsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalDetailPage @29 (page-class)<br>_VisitorApprovalDetailPageState @38 (state-class) |
-| 真实路由绑定 | /visitor-approval/:id；router @2177；builder ['VisitorApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /visitor-approval/:id；router @2194；builder ['VisitorApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalListPage @51 (page-class)<br>_VisitorApprovalListPageState @59 (state-class) |
-| 真实路由绑定 | /visitor-approval；router @2172；builder ['VisitorApprovalListPage']；redirect None |
+| 真实路由绑定 | /visitor-approval；router @2189；builder ['VisitorApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

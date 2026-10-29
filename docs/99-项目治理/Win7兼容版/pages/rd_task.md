@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | RdTaskPage @91 (page-class)<br>_RdTaskPageState @101 (state-class)<br>_RdTaskListPanel @230 (supporting-class)<br>_RdTaskListPanelState @241 (state-class)<br>_DesktopTaskTable @748 (supporting-class)<br>_ResolveBar @956 (supporting-class) |
-| 真实路由绑定 | /rd/tasks；router @982；builder ['RdTaskPage']；redirect None |
+| 真实路由绑定 | /rd/tasks；router @999；builder ['RdTaskPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | rd_task:resolve @293；定义 lib/shared/auth/permissions.dart:514 |
 | 接口常量 | 未静态确认；不能当作不存在 |

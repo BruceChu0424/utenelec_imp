@@ -1,4 +1,5 @@
 #include "client_update_channel.h"
+#include "software_download_host.h"
 
 #include <bcrypt.h>
 #include <shlobj.h>
@@ -196,6 +197,20 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
   channel_->SetMethodCallHandler(
       [window](const flutter::MethodCall<Value>& call,
                std::unique_ptr<flutter::MethodResult<Value>> result) {
+    if (call.method_name() == "getSoftwareDownloadHost") {
+      const auto host = ReadSoftwareDownloadHost();
+      result->Success(Value(Map{
+          {Value("platform"), Value("windows")},
+          {Value("architecture"), Value(host.architecture)},
+          {Value("osLabel"), Value(host.os_label)},
+          {Value("osMajor"), Value(static_cast<int64_t>(host.major))},
+          {Value("osMinor"), Value(static_cast<int64_t>(host.minor))},
+          {Value("osBuild"), Value(static_cast<int64_t>(host.build))},
+          {Value("servicePackMajor"), Value(static_cast<int64_t>(host.service_pack_major))},
+          {Value("isServer"), Value(host.is_server)},
+      }));
+      return;
+    }
     const auto staging = StagingDirectory();
     const auto executable = Executable();
     const auto script = executable.parent_path() / L"client_updater" /

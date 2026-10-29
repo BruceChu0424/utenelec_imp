@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeDetailPage @29 (page-class)<br>_Content @80 (supporting-class)<br>_CompleteTodoButton @446 (supporting-class)<br>_CompleteTodoButtonState @456 (state-class) |
-| 真实路由绑定 | /notice/:id；router @712；builder ['NoticeDetailPage']；redirect None |
+| 真实路由绑定 | /notice/:id；router @729；builder ['NoticeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeListPage @44 (page-class)<br>_NoticeListPageState @55 (state-class)<br>_NoticeCard @368 (supporting-class)<br>_TypeBadge @665 (supporting-class)<br>_TodoTag @698 (supporting-class)<br>_WorkTag @738 (supporting-class)<br>_PriorityChip @775 (supporting-class)<br>_GroupCountPill @815 (supporting-class)<br>_NoticeGroupCard @869 (supporting-class) |
-| 真实路由绑定 | /notice；router @680；builder ['NoticeListPage']；redirect None |
+| 真实路由绑定 | /notice；router @697；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @880 (supporting-class)<br>_CelebrationTemplateCurator @934 (supporting-class) |
-| 真实路由绑定 | /notice/publish；router @692；builder ['NoticePublishPage']；redirect None |
+| 真实路由绑定 | /notice/publish；router @709；builder ['NoticePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

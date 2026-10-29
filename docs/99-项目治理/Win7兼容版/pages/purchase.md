@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseDocDetailPage @80 (page-class)<br>_PurchaseDocDetailPageState @94 (state-class)<br>_KV @2545 (supporting-class) |
-| 真实路由绑定 | /purchase/:doc/:id；router @1106；builder ['PurchaseDocDetailPage']；redirect _rejectUnknownPurchaseDoc |
+| 真实路由绑定 | /purchase/:doc/:id；router @1123；builder ['PurchaseDocDetailPage']；redirect _rejectUnknownPurchaseDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:create @115；定义 lib/shared/auth/permissions.dart:595<br>purchase_order:decompose @116；定义 lib/shared/auth/permissions.dart:599<br>purchase_request:view @299；定义 lib/shared/auth/permissions.dart:91<br>purchase_order:decompose @300；定义 lib/shared/auth/permissions.dart:599<br>finance_order_approval:view @612；定义 lib/shared/auth/permissions.dart:455<br>purchase_order:change_qty @624；定义 lib/shared/auth/permissions.dart:602<br>purchase_order:submit_finance @639；定义 lib/shared/auth/permissions.dart:97<br>purchase_order:view @1235；定义 lib/shared/auth/permissions.dart:94<br>purchase_order:edit @1239；定义 lib/shared/auth/permissions.dart:95<br>finance_order_approval:view @1241；定义 lib/shared/auth/permissions.dart:455<br>purchase_order:view @1273；定义 lib/shared/auth/permissions.dart:94<br>finance_order_approval:view @1275；定义 lib/shared/auth/permissions.dart:455<br>purchase_order:cancel @2383；定义 lib/shared/auth/permissions.dart:597<br>purchase_order:submit_finance @2397；定义 lib/shared/auth/permissions.dart:97 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseDocEditPage @111 (page-class)<br>_PurchaseDocEditPageState @121 (state-class) |
-| 真实路由绑定 | /purchase/:doc/new；router @1087；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc<br>/purchase/:doc/:id/edit；router @1096；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc |
+| 真实路由绑定 | /purchase/:doc/new；router @1104；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc<br>/purchase/:doc/:id/edit；router @1113；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _PurchaseDocSeg @70 (supporting-class)<br>PurchaseDocListPage @93 (page-class)<br>_PurchaseDocListPageState @111 (state-class) |
-| 真实路由绑定 | /purchase/requests；router @1025；builder ['PurchaseDocListPage']；redirect None<br>/purchase/orders；router @1031；builder ['PurchaseDocListPage']；redirect None<br>/purchase/receipts；router @1040；builder ['PurchaseDocListPage']；redirect None<br>/purchase/returns；router @1048；builder ['PurchaseDocListPage']；redirect None |
+| 真实路由绑定 | /purchase/requests；router @1042；builder ['PurchaseDocListPage']；redirect None<br>/purchase/orders；router @1048；builder ['PurchaseDocListPage']；redirect None<br>/purchase/receipts；router @1057；builder ['PurchaseDocListPage']；redirect None<br>/purchase/returns；router @1065；builder ['PurchaseDocListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseHubPage @42 (page-class)<br>_Entry @216 (supporting-class)<br>_EntryTile @244 (supporting-class) |
-| 真实路由绑定 | /purchase；router @1020；builder ['PurchaseHubPage']；redirect None |
+| 真实路由绑定 | /purchase；router @1037；builder ['PurchaseHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseOrderEditPage @106 (page-class)<br>_PurchaseOrderEditPageState @123 (state-class) |
-| 真实路由绑定 | /purchase/orders/new；router @1065；builder ['PurchaseOrderEditPage']；redirect None<br>/purchase/orders/:id/edit；router @1079；builder ['PurchaseOrderEditPage']；redirect None |
+| 真实路由绑定 | /purchase/orders/new；router @1082；builder ['PurchaseOrderEditPage']；redirect None<br>/purchase/orders/:id/edit；router @1096；builder ['PurchaseOrderEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:submit_finance @129；定义 lib/shared/auth/permissions.dart:97<br>attachment:view @1936；定义 lib/shared/auth/permissions.dart:87<br>purchase_order:create @1955；定义 lib/shared/auth/permissions.dart:595 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _Monthly @27 (supporting-class)<br>_Pending @44 (supporting-class)<br>PurchaseReportPage @52 (page-class)<br>_PurchaseReportPageState @59 (state-class) |
-| 真实路由绑定 | /purchase/report；router @1115；builder ['PurchaseReportPage']；redirect None |
+| 真实路由绑定 | /purchase/report；router @1132；builder ['PurchaseReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | ApiEndpoints.purchaseReportMonthly @97 → /purchase/reports/monthly<br>ApiEndpoints.purchaseReportPending @105 → /purchase/reports/pending |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseReportTablePage @57 (page-class)<br>_PurchaseReportTablePageState @66 (state-class) |
-| 真实路由绑定 | /purchase/report/:kind；router @1057；builder ['PurchaseReportTablePage']；redirect None |
+| 真实路由绑定 | /purchase/report/:kind；router @1074；builder ['PurchaseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_report:export @579；定义 lib/shared/auth/permissions.dart:507<br>purchase_report:export @588；定义 lib/shared/auth/permissions.dart:507 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import QuartzCore
+import Darwin
 
 class MainFlutterWindow: NSWindow {
   private var clientUpdateChannel: FlutterMethodChannel?
@@ -54,6 +55,33 @@ class MainFlutterWindow: NSWindow {
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     channel.setMethodCallHandler { call, result in
+      if call.method == "getSoftwareDownloadHost" {
+        // Rosetta reports a translated x86 process; query system facts instead.
+        var translated: Int32 = 0
+        var translatedSize = MemoryLayout<Int32>.size
+        let translatedRead = sysctlbyname("sysctl.proc_translated", &translated, &translatedSize, nil, 0) == 0
+        var arm: Int32 = 0
+        var armSize = MemoryLayout<Int32>.size
+        let armRead = sysctlbyname("hw.optional.arm64", &arm, &armSize, nil, 0) == 0
+        var system = utsname()
+        let machineRead = uname(&system) == 0
+        let machineCapacity = MemoryLayout.size(ofValue: system.machine)
+        let machine = machineRead ? withUnsafePointer(to: &system.machine) { pointer in
+          pointer.withMemoryRebound(to: CChar.self, capacity: machineCapacity) { String(cString: $0) }
+        } : "unknown"
+        let armSystem = (translatedRead && translated == 1) || (armRead && arm == 1)
+        let architecture = armSystem ? "arm64" : machine == "x86_64" ? "x64" : machine == "arm64" ? "arm64" : "unknown"
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let rawVersion = "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+        result([
+          "platform": "macos", "architecture": architecture,
+          "osVersion": rawVersion, "osLabel": "macOS \(rawVersion)",
+          "osMajor": version.majorVersion, "osMinor": version.minorVersion,
+          "osBuild": 0, "osPatch": version.patchVersion, "servicePackMajor": 0,
+          "isServer": false, "isSimulator": false,
+        ])
+        return
+      }
       guard call.method == "getInstallContext" else {
         result(FlutterMethodNotImplemented)
         return

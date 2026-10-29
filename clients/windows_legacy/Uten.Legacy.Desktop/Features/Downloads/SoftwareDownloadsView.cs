@@ -22,6 +22,7 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         }
         private readonly SessionCoordinator session;
         private readonly SoftwareDownloadsService service;
+        private readonly SoftwareDownloadHostInfo host = SoftwareDownloadHostInfo.Read();
         private readonly ComboBox runtime = new ComboBox { DisplayMemberPath = "Label", SelectedValuePath = "Value" };
         private readonly ComboBox architecture = new ComboBox { DisplayMemberPath = "Label", SelectedValuePath = "Value" };
         private readonly Button refresh = new Button { Content = "刷新版本" };
@@ -52,12 +53,8 @@ namespace Uten.Legacy.Desktop.Features.Downloads
                 new TargetChoice { Value = ClientPackageDescriptor.LegacyRuntime, Label = "Windows 7 SP1 / 8.1 兼容版" },
                 new TargetChoice { Value = ClientPackageDescriptor.FlutterRuntime, Label = "Windows 10 / 11 常规版" }
             };
-            architecture.ItemsSource = new[] {
-                new TargetChoice { Value = "x64", Label = "64 位 · Intel / AMD" },
-                new TargetChoice { Value = "x86", Label = "32 位" }
-            };
-            runtime.SelectedValue = ClientPackageDescriptor.LegacyRuntime;
-            architecture.SelectedValue = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+            runtime.SelectedValue = host.SuggestedFamily;
+            SetArchitectureChoices(host.Architecture);
             initializing = false;
             runtime.SelectionChanged += OnTargetChanged;
             architecture.SelectionChanged += OnTargetChanged;
@@ -85,6 +82,10 @@ namespace Uten.Legacy.Desktop.Features.Downloads
             title.SetResourceReference(StyleProperty, "Uten.PageTitle"); header.Children.Add(title);
             content.Children.Add(header);
             var panel = new StackPanel();
+            var detected = new TextBlock { Text = "已识别此电脑：" + host.DisplayLabel
+                + (host.SuggestedFamily == null ? "。请手动确认目标安装系统。" : "。也可以为其他电脑手动选择。"),
+                TextWrapping = TextWrapping.Wrap, Margin = Gap(bottom: "S16") };
+            detected.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted"); panel.Children.Add(detected);
             var selectors = new Grid();
             selectors.ColumnDefinitions.Add(new ColumnDefinition());
             selectors.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Space("S12")) });
@@ -106,8 +107,7 @@ namespace Uten.Legacy.Desktop.Features.Downloads
             progressText.Margin = Gap(top: "S8"); progressText.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted"); panel.Children.Add(progressText);
             cancel.Margin = Gap(top: "S8"); panel.Children.Add(cancel);
             savedPath.Margin = Gap(top: "S12"); panel.Children.Add(savedPath);
-            var surface = new RoundedSurface { Child = panel, BorderThickness = new Thickness(1) };
-            surface.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius.Card");
+            var surface = UtenSurfaces.Wrap(panel);
             surface.SetResourceReference(Border.PaddingProperty, "Uten.Padding.S24");
             surface.SetResourceReference(Border.BackgroundProperty, "Uten.Surface");
             surface.SetResourceReference(Border.BorderBrushProperty, "Uten.Border"); content.Children.Add(surface);
@@ -127,6 +127,16 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         }
         private string Family { get { return runtime.SelectedValue as string; } }
         private string Architecture { get { return architecture.SelectedValue as string; } }
+        private void SetArchitectureChoices(string preferred)
+        {
+            var choices = new System.Collections.Generic.List<TargetChoice> {
+                new TargetChoice { Value = "x64", Label = "X64 · 64位 Intel / AMD" },
+                new TargetChoice { Value = "x86", Label = "X86 · 32位" }
+            };
+            if (Family == ClientPackageDescriptor.FlutterRuntime) choices.Add(new TargetChoice { Value = "arm64", Label = "ARM64 · 64位 ARM" });
+            architecture.ItemsSource = choices;
+            architecture.SelectedValue = choices.Exists(choice => choice.Value == preferred) ? preferred : null;
+        }
         private async void OnLoaded(object sender, RoutedEventArgs args)
         {
             if (subscribed) return;
@@ -161,11 +171,23 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         }
         private async void OnTargetChanged(object sender, SelectionChangedEventArgs args)
         {
+            if (initializing) return;
+            if (ReferenceEquals(sender, runtime))
+            {
+                initializing = true;
+                try { SetArchitectureChoices(Architecture); } finally { initializing = false; }
+            }
             if (!initializing && IsLoaded && !transferring) await LoadAsync();
         }
         public async Task LoadAsync()
         {
-            if (!IsLoaded || lifetime == null || lifetime.IsCancellationRequested || transferring || Family == null || Architecture == null) return;
+            if (!IsLoaded || lifetime == null || lifetime.IsCancellationRequested || transferring) return;
+            if (Family == null || Architecture == null)
+            {
+                readCancellation?.Cancel(); ++readSequence; loading = false; ClearPackage(); UpdateControls();
+                status.Text = "请手动选择目标电脑的系统和架构后获取对应版本。";
+                return;
+            }
             readCancellation?.Cancel(); long mine = ++readSequence, owner = session.Generation, revision = session.ReadScopeRevision;
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             readCancellation = cancellation; string family = Family, targetArchitecture = Architecture;
@@ -183,12 +205,13 @@ namespace Uten.Legacy.Desktop.Features.Downloads
                     return;
                 }
                 packageGeneration = owner; packageReadRevision = revision;
-                packageTitle.Text = family == ClientPackageDescriptor.LegacyRuntime ? "Windows 7 SP1 / 8.1 兼容版" : "Windows 10 / 11 常规版";
-                packageInfo.Text = "版本 " + selected.Version + " · " + (targetArchitecture == "x86" ? "32 位" : "64 位") + " · " + Megabytes(selected.SizeBytes) + " MB";
+                packageTitle.Text = SoftwareDownloadHostInfo.TargetLabel(family, targetArchitecture);
+                packageInfo.Text = "版本 " + selected.Version + "（" + selected.BuildNumber + "） · " + Megabytes(selected.SizeBytes) + " MB";
                 packageTitle.Visibility = packageInfo.Visibility = Visibility.Visible;
                 notes.Text = selected.ReleaseNotes;
                 notes.Visibility = String.IsNullOrWhiteSpace(selected.ReleaseNotes) ? Visibility.Collapsed : Visibility.Visible;
                 status.Text = "下载完成后将核验完整性，并保存完整安装程序。";
+                download.Content = "下载 " + SoftwareDownloadHostInfo.TargetLabel(family, targetArchitecture) + " 安装包";
                 download.Visibility = Visibility.Visible;
             }
             catch (OperationCanceledException) { }
@@ -210,7 +233,7 @@ namespace Uten.Legacy.Desktop.Features.Downloads
             if (transferring || loading || package == null || !package.IsInstallerFor(Family, Architecture)
                 || packageGeneration != session.Generation || packageReadRevision != session.ReadScopeRevision) return;
             long owner = session.Generation, revision = session.ReadScopeRevision;
-            var chooser = new SaveFileDialog { Title = "保存 Windows 安装程序", FileName = package.FileName,
+            var chooser = new SaveFileDialog { Title = "保存 " + SoftwareDownloadHostInfo.TargetLabel(Family, Architecture), FileName = SoftwareDownloadHostInfo.FileName(package),
                 Filter = "Windows 安装程序 (*.exe)|*.exe", DefaultExt = ".exe", AddExtension = true,
                 CheckPathExists = true, OverwritePrompt = true };
             bool? accepted;

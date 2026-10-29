@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DisasterRecoveryPage @60 (page-class)<br>_DisasterRecoveryPageState @68 (state-class) |
-| 真实路由绑定 | /operations/recovery；router @471；builder ['DisasterRecoveryPage']；redirect None |
+| 真实路由绑定 | /operations/recovery；router @473；builder ['DisasterRecoveryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

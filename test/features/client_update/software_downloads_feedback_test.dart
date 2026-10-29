@@ -76,6 +76,15 @@ class _Harness {
           authenticatedScopeProvider.overrideWith((ref) => ref.watch(owner)),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           performanceProvider.overrideWith(() => _Tier(tier)),
+          softwareHostReaderProvider.overrideWithValue(
+            () async => const SoftwareHostInfo(
+              platform: SoftwareDownloadPlatform.windows,
+              osLabel: 'Windows 11',
+              osVersion: 'windows11',
+              architecture: 'x64',
+              windowsRuntimeFamily: 'flutter',
+            ),
+          ),
           softwareDevicePlatformProvider.overrideWithValue(
             SoftwareDownloadPlatform.windows,
           ),

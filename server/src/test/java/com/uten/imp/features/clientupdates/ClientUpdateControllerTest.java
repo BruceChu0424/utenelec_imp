@@ -71,6 +71,18 @@ class ClientUpdateControllerTest {
         mvc.perform(post("/api/admin/client-releases/{id}/withdraw", id)).andExpect(status().isOk()).andExpect(jsonPath("$.state").value("WITHDRAWN"));
     }
 
+    @Test void perFileReceiptAndAllPlatformCatalogAreAdditiveAndPrivate() throws Exception {
+        when(service.get(id)).thenReturn(release("PUBLISHED"));
+        mvc.perform(get("/api/admin/client-releases/{id}", id)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "private, no-store"))
+                .andExpect(jsonPath("$.id").value(id.toString())).andExpect(jsonPath("$.state").value("PUBLISHED"));
+        when(service.downloads("flutter", true, true)).thenReturn(List.of(release("PUBLISHED")));
+        mvc.perform(get("/api/client-updates/downloads").param("allRuntimeFamilies", "true").param("allPlatforms", "true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].platform").value("android"))
+                .andExpect(header().string("Cache-Control", "private, no-store"));
+        verify(service).get(id); verify(service).downloads("flutter", true, true);
+    }
+
     @Test void downloadCarriesExactLengthHashAndPrivateHeadersAndWithdrawalIs404() throws Exception {
         byte[] bytes = {1, 2, 3, 4};
         when(service.download(id, "flutter")).thenReturn(new ClientReleaseService.Download(release("PUBLISHED"), new ByteArrayInputStream(bytes)));

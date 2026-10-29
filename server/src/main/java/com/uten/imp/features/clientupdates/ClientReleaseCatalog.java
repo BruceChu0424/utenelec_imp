@@ -101,7 +101,7 @@ public class ClientReleaseCatalog {
     private ClientReleaseDto.Release read(Path metadata) throws IOException {
         if (Files.size(metadata) > 65536) throw new IOException("Oversized release metadata");
         var release = mapper.readValue(metadata.toFile(), ClientReleaseDto.Release.class);
-        try { ClientRuntimeFamily.requireMode(release); }
+        try { ClientRuntimeFamily.requireMode(release); ClientDeliveryContract.require(release); }
         catch (ApiException invalid) { throw new IOException("Invalid client runtime metadata"); }
         return release;
     }

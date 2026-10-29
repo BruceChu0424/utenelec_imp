@@ -25,6 +25,16 @@ namespace Uten.Legacy.Desktop.Features.Downloads
             flutterValue["runtimeFamily"] = null;
             check(ClientPackageDescriptor.Parse(flutterValue).RuntimeFamily == ClientPackageDescriptor.FlutterRuntime, "null family defaults to Flutter");
             var legacy = ClientPackageDescriptor.Parse(Value("wpf_legacy", "x64", "installer"));
+            var detected7 = SoftwareDownloadHostInfo.FromFacts(6, 1, 7601, 1, false, "x64");
+            check(detected7.DisplayLabel == "Windows 7 SP1 · X64" && detected7.SuggestedFamily == "wpf_legacy", "native Win7/SP1 and OS bitness are explicit");
+            check(SoftwareDownloadHostInfo.FromFacts(10, 0, 22631, 0, false, "arm64").DisplayLabel == "Windows 11 · ARM64", "native Windows build and ARM target are distinct");
+            check(SoftwareDownloadHostInfo.FromFacts(6, 1, 7600, 0, false, "x86").SuggestedFamily == null, "RTM cannot pretend SP1 is installed");
+            check(SoftwareDownloadHostInfo.FromFacts(10, 0, 20348, 0, true, "x64").SuggestedFamily == null, "server OS has no automatic client recommendation");
+            check(SoftwareDownloadHostInfo.FromFacts(10, 0, 19045, 0, false, "unknown").Architecture == null, "unknown architecture never becomes detected x64");
+            check(SoftwareDownloadHostInfo.TargetLabel("wpf_legacy", "x86").Contains("X86") && SoftwareDownloadHostInfo.TargetLabel("flutter", "arm64").Contains("ARM64"),
+                "download target names always include exact architecture");
+            check(SoftwareDownloadHostInfo.FileName(legacy).Contains("Windows-7SP1-8.1-X64") && SoftwareDownloadHostInfo.FileName(legacy).EndsWith("-Setup.exe"),
+                "saved installer name identifies the matching OS family and architecture");
             check(legacy.IsInstallerFor("wpf_legacy", "x64"), "legacy installer exact target");
             check(!legacy.IsInstallerFor("flutter", "x64") && !legacy.IsInstallerFor("wpf_legacy", "x86"), "no family or architecture fallback");
             var update = ClientPackageDescriptor.Parse(Value("wpf_legacy", "x64", "update"));

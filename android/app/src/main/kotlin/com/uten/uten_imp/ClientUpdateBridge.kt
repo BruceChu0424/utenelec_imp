@@ -32,6 +32,31 @@ internal class ClientUpdateBridge(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
+            "getSoftwareDownloadHost" -> {
+                // OS-supported ABI, independent of a 32-bit app process. No package/staging I/O.
+                val abi = Build.SUPPORTED_64_BIT_ABIS.firstOrNull()
+                    ?: Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+                val architecture = when (abi) {
+                    "arm64-v8a" -> "arm64"
+                    "x86_64" -> "x64"
+                    "armeabi-v7a" -> "armeabi-v7a"
+                    "x86" -> "x86"
+                    else -> "unknown"
+                }
+                result.success(mapOf(
+                    "platform" to "android",
+                    "architecture" to architecture,
+                    "osVersion" to Build.VERSION.RELEASE,
+                    "osLabel" to "Android ${Build.VERSION.RELEASE}",
+                    "osMajor" to (Build.VERSION.RELEASE.substringBefore('.').toIntOrNull() ?: 0),
+                    "osMinor" to (Build.VERSION.RELEASE.split('.').getOrNull(1)?.toIntOrNull() ?: 0),
+                    "osBuild" to 0,
+                    "apiLevel" to Build.VERSION.SDK_INT,
+                    "servicePackMajor" to 0,
+                    "isServer" to false,
+                    "isSimulator" to false,
+                ))
+            }
             "getInstallContext" -> {
                 val installed = installedPackage()
                 val staging = stagingDirectory()

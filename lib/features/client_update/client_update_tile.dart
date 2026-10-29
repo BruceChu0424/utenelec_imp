@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
 import 'client_release_access.dart';
-import 'client_release_publish_dialog.dart';
+import '../../core/router/nav_helpers.dart';
+import '../../core/router/route_names.dart';
 import 'client_update_controller.dart';
 import 'client_update_page.dart';
 
@@ -52,11 +53,7 @@ class ClientReleasePublishTile extends ConsumerWidget {
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: () {
         if (ref.read(clientReleasePublisherProvider) == null) return;
-        showDialog<void>(
-          context: context,
-          barrierDismissible: false,
-          builder: (_) => const ClientReleasePublishDialog(),
-        );
+        pushPage(context, RouteName.clientReleasePublish);
       },
     );
   }

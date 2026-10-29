@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyProfileChangesPage @42 (page-class)<br>_MyProfileChangesPageState @50 (state-class)<br>_MyBatchDetailDialog @328 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2216；builder ['MyProfileChangesPage']；redirect None |
+| 真实路由绑定 | /profile/me/changes；router @2233；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2201；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2218；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @774 (supporting-class)<br>_EditFieldPencil @899 (supporting-class)<br>_PolicyBadge @928 (supporting-class)<br>_IdentityGroup @946 (supporting-class)<br>_HeroCard @958 (supporting-class)<br>_RoleChip @1089 (supporting-class)<br>_MyDepartmentShortcut @1137 (supporting-class)<br>_MyChangesShortcut @1189 (supporting-class) |
-| 真实路由绑定 | /profile；router @561；builder ['ProfilePage']；redirect None |
+| 真实路由绑定 | /profile；router @578；builder ['ProfilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

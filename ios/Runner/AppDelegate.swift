@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import Darwin
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -19,6 +20,32 @@ import UIKit
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     channel.setMethodCallHandler { call, result in
+      if call.method == "getSoftwareDownloadHost" {
+        var system = utsname()
+        let read = uname(&system) == 0
+        let machineCapacity = MemoryLayout.size(ofValue: system.machine)
+        let machine = read ? withUnsafePointer(to: &system.machine) { pointer in
+          pointer.withMemoryRebound(to: CChar.self, capacity: machineCapacity) { String(cString: $0) }
+        } : "unknown"
+        #if targetEnvironment(simulator)
+        let simulator = true
+        let architecture = "unknown"
+        #else
+        let simulator = false
+        // All devices supported by the current iOS deployment target are ARM64.
+        let architecture = machine.hasPrefix("iPhone") || machine.hasPrefix("iPad") || machine.hasPrefix("iPod") ? "arm64" : "unknown"
+        #endif
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        result([
+          "platform": "ios", "architecture": architecture,
+          "osVersion": UIDevice.current.systemVersion,
+          "osLabel": "iOS \(UIDevice.current.systemVersion)",
+          "osMajor": version.majorVersion, "osMinor": version.minorVersion,
+          "osBuild": 0, "osPatch": version.patchVersion, "servicePackMajor": 0,
+          "isServer": false, "isSimulator": simulator, "machine": machine,
+        ])
+        return
+      }
       guard call.method == "getInstallContext" else {
         result(FlutterMethodNotImplemented)
         return

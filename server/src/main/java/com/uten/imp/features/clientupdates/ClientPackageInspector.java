@@ -35,6 +35,7 @@ public class ClientPackageInspector {
 
     void inspect(Path file, ClientReleaseDto.Release release) throws IOException {
         ClientRuntimeFamily.requireMode(release);
+        ClientDeliveryContract.require(release);
         if (ClientRuntimeFamily.setupMode(release.runtimeFamily()).equals(release.installMode())) {
             WindowsSetupInspector.inspect(file, release);
             return;
@@ -77,6 +78,7 @@ public class ClientPackageInspector {
             if (isWindowsPackage(release)) inspectWindows(zip, files, release);
             else if (!files.containsKey("AndroidManifest.xml") || !files.containsKey("classes.dex"))
                 throw invalid("请选择完整的 Android APK 更新包");
+            else if (ClientDeliveryContract.auditedAndroid(release)) AndroidPackageInspector.inspect(zip, files, release);
         } catch (ZipException malformed) {
             throw invalid("更新包不是有效的 ZIP 或 APK 文件");
         }
@@ -118,7 +120,7 @@ public class ClientPackageInspector {
                 || manifest.path("buildNumber").asLong(-1) != release.buildNumber()
                 || !release.packageKind().equals(manifest.path("packageKind").asText("update"))
                 || !release.runtimeFamily().equals(manifest.path("runtimeFamily").asText("flutter"))
-                || wpf && !release.version().equals(manifest.path("version").asText())
+                || (wpf || ClientDeliveryContract.paired(release)) && !release.version().equals(manifest.path("version").asText())
                 || !(wpf ? WindowsWpfPackageInspector.EXECUTABLE : "uten_imp.exe").equals(manifest.path("executable").asText())
                 || !manifest.path("files").isArray())
             throw invalid("Windows 软件清单的平台、架构、包类型或构建号与发布信息不一致");
@@ -151,6 +153,7 @@ public class ClientPackageInspector {
         }
         if (recorded.size() != files.size() - 1) throw invalid("Windows 更新包包含未登记在清单内的文件");
         if (wpf) WindowsWpfPackageInspector.inspect(zip, files, release, mapper);
+        else if (ClientDeliveryContract.paired(release)) WindowsFlutterPackageInspector.inspect(zip, files, release);
     }
 
     private static boolean isWindowsPackage(ClientReleaseDto.Release release) {

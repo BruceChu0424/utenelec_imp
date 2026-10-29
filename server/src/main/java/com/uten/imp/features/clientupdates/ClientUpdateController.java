@@ -29,8 +29,14 @@ public class ClientUpdateController {
     @PreAuthorize(ClientReleaseService.DOWNLOADS_EXPRESSION)
     public ResponseEntity<List<ClientReleaseDto.Release>> downloads(
             @RequestParam(value = "runtimeFamily", defaultValue = "flutter") String runtimeFamily,
-            @RequestParam(value = "allRuntimeFamilies", defaultValue = "false") boolean allRuntimeFamilies) {
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store").body(service.downloads(runtimeFamily, allRuntimeFamilies));
+            @RequestParam(value = "allRuntimeFamilies", defaultValue = "false") boolean allRuntimeFamilies,
+            @RequestParam(value = "allPlatforms", defaultValue = "false") boolean allPlatforms) {
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store").body(allPlatforms
+                ? service.downloads(runtimeFamily, allRuntimeFamilies, true) : service.downloads(runtimeFamily, allRuntimeFamilies));
+    }
+
+    public ResponseEntity<List<ClientReleaseDto.Release>> downloads(String runtimeFamily, boolean allRuntimeFamilies) {
+        return downloads(runtimeFamily, allRuntimeFamilies, false);
     }
 
     public ResponseEntity<List<ClientReleaseDto.Release>> downloads() { return downloads("flutter", false); }

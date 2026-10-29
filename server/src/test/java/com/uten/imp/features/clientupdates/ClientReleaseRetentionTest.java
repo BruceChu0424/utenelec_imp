@@ -111,7 +111,9 @@ class ClientReleaseRetentionTest {
     void differentVersionsAreNotACompleteGeneration() throws Exception {
         var old = pair(10, "x64");
         publish(20, "x64", "installer", "2.5.20");
-        publish(20, "x64", "update", "2.5.21");
+        var mismatch = uploaded(20, "x64", "update", "2.5.21");
+        assertCode(() -> service.publish(mismatch.id()), ErrorCode.CONFLICT);
+        assertThat(service.get(mismatch.id()).state()).isEqualTo("DRAFT");
         assertRetained(old);
     }
 
@@ -133,7 +135,7 @@ class ClientReleaseRetentionTest {
         var old = pair(10, "x64");
         var arm = pair(10, "arm64");
         var draft = uploaded(15, "x64", "update", "2.5.15");
-        var apk = zip(Map.of("AndroidManifest.xml", new byte[] {1}, "classes.dex", new byte[] {2}));
+        var apk = AndroidPackageFixture.apk(10, "2.5.10", "arm64", null);
         var android = service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "android", "arm64", "2.5.10", 10,
                 "", false, "uten.apk", sha(apk), null, "update"));
         service.upload(android.id(), new ByteArrayInputStream(apk), apk.length);
@@ -149,8 +151,8 @@ class ClientReleaseRetentionTest {
     @Test
     void historicalFullZipInstallerIsRemovedOnlyByANewCompleteSetupGeneration() throws Exception {
         var bytes = windows(5, "x64", "installer");
-        var legacy = service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "windows", "x64", "2.5.5", 5,
-                "", false, "uten-full.zip", sha(bytes), null, "installer"));
+        var legacy = ClientReleaseFixtures.legacyDraft(properties, mapper, new ClientReleaseDto.Create(UUID.randomUUID(), "windows", "x64", "2.5.5", 5,
+                "", false, "uten-full.zip", sha(bytes), null, "installer"), "windows_bundle");
         service.upload(legacy.id(), new ByteArrayInputStream(bytes), bytes.length);
         legacy = service.publish(legacy.id());
         publish(10, "x64", "update", "2.5.10");
@@ -166,6 +168,9 @@ class ClientReleaseRetentionTest {
         var update = uploaded(20, "x64", "update", "2.5.20");
         catalog.failAfterRetiring = old.getFirst().id();
         assertCode(() -> service.publish(update.id()), ErrorCode.PRIMARY_UNAVAILABLE);
+        // Metadata PUBLISHED is not a receipt for a successful retention operation.
+        assertThat(service.get(update.id()).state()).isEqualTo("PUBLISHED");
+        assertThat(binary(old.getFirst())).isRegularFile();
         assertThat(receipt(old.getFirst()).state()).isEqualTo("WITHDRAWN");
         assertThat(receipt(old.getFirst()).sha256()).isNull();
         assertThat(binary(old.getFirst())).isRegularFile();
@@ -260,7 +265,8 @@ class ClientReleaseRetentionTest {
     }
 
     private ClientReleaseDto.Release uploaded(long build, String architecture, String kind, String version) throws Exception {
-        var bytes = "installer".equals(kind) ? WindowsSetupFixture.bytes(build, architecture, version) : windows(build, architecture, kind);
+        var bytes = "installer".equals(kind) ? WindowsSetupFixture.bytes(build, architecture, version)
+                : ClientReleaseFixtures.windows(mapper, build, architecture, version);
         var release = service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "windows", architecture, version, build,
                 "Windows release", false, "installer".equals(kind) ? "UTEN-Setup.exe" : "UTEN-update.zip", sha(bytes), null, kind));
         return service.upload(release.id(), new ByteArrayInputStream(bytes), bytes.length);
@@ -295,6 +301,7 @@ class ClientReleaseRetentionTest {
     }
 
     private byte[] windows(long build, String architecture, String kind) throws Exception {
+        if ("update".equals(kind)) return ClientReleaseFixtures.windows(mapper, build, architecture, "2.5." + build);
         Map<String, byte[]> files = new LinkedHashMap<>();
         for (String name : List.of("uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin"))
             files.put(name, name.getBytes(StandardCharsets.UTF_8));

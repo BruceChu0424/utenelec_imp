@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DeviceAuditReceiptsPage @25 (page-class)<br>_DeviceAuditReceiptsPageState @40 (state-class)<br>_IntroCard @188 (supporting-class)<br>_DeviceProfileCard @251 (supporting-class)<br>_SearchCard @298 (supporting-class)<br>_ReceiptResultCard @361 (supporting-class)<br>_Fact @458 (supporting-class)<br>_CopyFact @485 (supporting-class) |
-| 真实路由绑定 | /settings/device-receipts；router @571；builder ['DeviceAuditReceiptsPage']；redirect None |
+| 真实路由绑定 | /settings/device-receipts；router @588；builder ['DeviceAuditReceiptsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | ApiEndpoints.adminAuditLocalReceiptVerification @147 → /admin/audit-logs/local-receipt-verifications/{operationId} |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SettingsPage @41 (page-class)<br>_LogoutTile @287 (supporting-class)<br>_LogoutTileState @294 (state-class) |
-| 真实路由绑定 | /settings；router @566；builder ['SettingsPage']；redirect None |
+| 真实路由绑定 | /settings；router @583；builder ['SettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | audit_log:view @51；定义 lib/shared/auth/permissions.dart:45 |
 | 接口常量 | 未静态确认；不能当作不存在 |

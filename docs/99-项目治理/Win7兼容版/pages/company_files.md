@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | CompanyFilesPage @45 (page-class)<br>_CompanyFilesPageState @51 (state-class) |
-| 真实路由绑定 | /company-files；router @586；builder ['CompanyFilesPage']；redirect None |
+| 真实路由绑定 | /company-files；router @603；builder ['CompanyFilesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

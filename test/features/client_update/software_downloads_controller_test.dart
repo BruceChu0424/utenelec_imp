@@ -102,7 +102,7 @@ void main() {
       await controller.load();
       await controller.download(controller.releases.single);
       expect(saver.published.single, transport.bytes);
-      expect(saver.filenames.single, endsWith('windows-x64-setup.exe'));
+      expect(saver.filenames.single, endsWith('windows10-11-x64-setup.exe'));
       expect(
         controller.savedPath,
         'fixture-downloads/${saver.filenames.single}',

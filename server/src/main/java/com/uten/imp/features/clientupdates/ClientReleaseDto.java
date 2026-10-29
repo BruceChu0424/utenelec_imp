@@ -33,10 +33,22 @@ public final class ClientReleaseDto {
                           long buildNumber, String releaseNotes, boolean mandatory, String fileName,
                           String expectedSha256, String sha256, long sizeBytes, String installMode,
                           String storeUrl, String downloadUrl, String state, Instant createdAt,
-                          Instant publishedAt, String packageKind, String runtimeFamily) {
+                          Instant publishedAt, String packageKind, String runtimeFamily,
+                          @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                          String deliveryContract) {
         public Release {
             packageKind = packageKind == null ? "update" : packageKind;
             runtimeFamily = ClientRuntimeFamily.normalize(runtimeFamily);
+        }
+
+        public Release(UUID id, String platform, String architecture, String version,
+                       long buildNumber, String releaseNotes, boolean mandatory, String fileName,
+                       String expectedSha256, String sha256, long sizeBytes, String installMode,
+                       String storeUrl, String downloadUrl, String state, Instant createdAt,
+                       Instant publishedAt, String packageKind, String runtimeFamily) {
+            this(id, platform, architecture, version, buildNumber, releaseNotes, mandatory, fileName,
+                    expectedSha256, sha256, sizeBytes, installMode, storeUrl, downloadUrl, state,
+                    createdAt, publishedAt, packageKind, runtimeFamily, null);
         }
 
         public Release(UUID id, String platform, String architecture, String version,

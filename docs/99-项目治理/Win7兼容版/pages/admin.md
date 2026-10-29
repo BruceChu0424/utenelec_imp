@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiSettingsPage @90 (page-class)<br>_AdminAiSettingsSession @113 (supporting-class)<br>_AdminAiSettingsPageState @121 (state-class)<br>_StatusHero @532 (supporting-class)<br>_TodayUsageCard @645 (supporting-class)<br>_EmptyProviders @767 (supporting-class)<br>_SecurityNote @815 (supporting-class)<br>_LoadingSkeleton @846 (supporting-class) |
-| 真实路由绑定 | /admin/ai-settings；router @2337；builder ['AdminAiSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-settings；router @2354；builder ['AdminAiSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @84；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePage @80 (page-class)<br>_AdminAiUsageSession @103 (supporting-class)<br>_AdminAiUsagePageState @110 (state-class)<br>_KpiRow @645 (supporting-class)<br>_TodayTokensCard @736 (supporting-class)<br>_MetricCard @825 (supporting-class)<br>_LoadingSkeleton @904 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage；router @2343；builder ['AdminAiUsagePage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage；router @2360；builder ['AdminAiUsagePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @74；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePersonPage @72 (page-class)<br>_AdminAiUsagePersonSession @100 (supporting-class)<br>_AdminAiUsagePersonPageState @110 (state-class)<br>_InfoLine @441 (supporting-class)<br>_DistributionCard @480 (supporting-class)<br>_RecentUsesCard @576 (supporting-class)<br>_LoadingSkeleton @680 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage/:userId；router @2348；builder ['AdminAiUsagePersonPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage/:userId；router @2365；builder ['AdminAiUsagePersonPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @66；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsageRecordsPage @83 (page-class)<br>_AdminAiUsageRecordsSession @106 (supporting-class)<br>_AdminAiUsageRecordsPageState @114 (state-class)<br>_SummaryRow @819 (supporting-class)<br>_SummaryCard @908 (supporting-class)<br>_PlatformNote @986 (supporting-class)<br>_CostCell @1017 (supporting-class)<br>_RecordDetailPanel @1061 (supporting-class)<br>_LoadingSkeleton @1164 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage-records；router @2356；builder ['AdminAiUsageRecordsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage-records；router @2373；builder ['AdminAiUsageRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @75；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditLogPage @71 (page-class)<br>_AdminAuditLogPageState @80 (state-class) |
-| 真实路由绑定 | /admin/audit-logs；router @2281；builder ['AdminAuditLogPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs；router @2298；builder ['AdminAuditLogPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | audit_log:export @1608；定义 lib/shared/auth/permissions.dart:48 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditSessionDetailPage @25 (page-class)<br>_AdminAuditSessionDetailPageState @46 (state-class)<br>_PageIntroduction @243 (supporting-class)<br>_TimelineHeading @275 (supporting-class) |
-| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2288；builder ['AdminAuditSessionDetailPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2305；builder ['AdminAuditSessionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPermissionsPage @44 (page-class)<br>_AdminPermissionsPageState @59 (state-class)<br>_EmployeePermTab @220 (supporting-class)<br>_EmployeePermTabState @241 (state-class)<br>AccountStatusBadge @799 (supporting-class) |
-| 真实路由绑定 | /admin/permissions；router @2273；builder ['AdminPermissionsPage']；redirect None |
+| 真实路由绑定 | /admin/permissions；router @2290；builder ['AdminPermissionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @98；定义 lib/shared/auth/permissions.dart:22<br>account:support @558；定义 lib/shared/auth/permissions.dart:19 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPlatformSettingsPage @79 (page-class)<br>_PlatformSettingsEditor @95 (supporting-class)<br>_PlatformSettingsState @102 (state-class) |
-| 真实路由绑定 | /admin/platform-settings；router @2316；builder ['AdminPlatformSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/platform-settings；router @2333；builder ['AdminPlatformSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -153,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminRemoteAccessPage @29 (page-class)<br>_RemoteAccessSession @51 (supporting-class)<br>_RemoteAccessSessionState @58 (state-class)<br>_StatusRow @419 (supporting-class)<br>_ResetReasonDialog @442 (supporting-class)<br>_ResetReasonDialogState @448 (state-class) |
-| 真实路由绑定 | /admin/remote-access；router @2311；builder ['AdminRemoteAccessPage']；redirect None |
+| 真实路由绑定 | /admin/remote-access；router @2328；builder ['AdminRemoteAccessPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -171,7 +171,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminSmsSettingsPage @24 (page-class)<br>_SmsEditor @39 (supporting-class)<br>_SmsEditorState @45 (state-class) |
-| 真实路由绑定 | /admin/sms-settings；router @2306；builder ['AdminSmsSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/sms-settings；router @2323；builder ['AdminSmsSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -189,7 +189,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminSystemSettingsPage @52 (page-class)<br>_SystemSettingsSession @64 (supporting-class)<br>_AdminSystemSettingsPageState @71 (state-class)<br>_SettingGroupGrid @494 (supporting-class)<br>_SettingGroupCard @513 (supporting-class)<br>_AuditRetentionNotice @597 (supporting-class)<br>_SettingRow @697 (supporting-class)<br>_RetentionConfirmDialog @841 (supporting-class)<br>_ErrorState @871 (state-class) |
-| 真实路由绑定 | /admin/system-settings；router @2301；builder ['AdminSystemSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/system-settings；router @2318；builder ['AdminSystemSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -207,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerOperationsPage @33 (page-class)<br>_ServerOperationsSession @44 (supporting-class)<br>_ServerOperationsState @51 (state-class) |
-| 真实路由绑定 | /admin/server-operations；router @2326；builder ['ServerOperationsPage']；redirect None |
+| 真实路由绑定 | /admin/server-operations；router @2343；builder ['ServerOperationsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -225,7 +225,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStatusPage @41 (page-class)<br>_ServerStatusSession @54 (supporting-class)<br>_ServerStatusPageState @61 (state-class)<br>_MetricCard @946 (supporting-class)<br>_BigNumber @1039 (supporting-class)<br>_StatusBadge @1080 (supporting-class) |
-| 真实路由绑定 | /admin/server-status；router @2321；builder ['ServerStatusPage']；redirect None |
+| 真实路由绑定 | /admin/server-status；router @2338；builder ['ServerStatusPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -243,7 +243,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStoragePage @28 (page-class)<br>_ServerStorageSession @39 (supporting-class)<br>_ServerStorageState @45 (state-class) |
-| 真实路由绑定 | /admin/server-storage；router @2331；builder ['ServerStoragePage']；redirect None |
+| 真实路由绑定 | /admin/server-storage；router @2348；builder ['ServerStoragePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

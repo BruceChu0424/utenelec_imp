@@ -74,6 +74,25 @@ class ClientRelease {
               : 'windows_setup') &&
       state == 'PUBLISHED';
 
+  bool get isAndroidPackage =>
+      platform == 'android' &&
+      runtimeFamily == ClientRuntimeFamily.flutter &&
+      const {
+        'arm64',
+        'armeabi-v7a',
+        'x64',
+        'universal',
+      }.contains(architecture) &&
+      const {'update', 'installer'}.contains(packageKind) &&
+      installMode == 'android_package' &&
+      state == 'PUBLISHED';
+
+  bool get isTrustedStoreRelease =>
+      runtimeFamily == ClientRuntimeFamily.flutter &&
+      installMode == 'store' &&
+      state == 'PUBLISHED' &&
+      trustedStoreUri != null;
+
   bool matches(ClientInstallContext context) =>
       packageKind == 'update' &&
       platform == context.platform &&

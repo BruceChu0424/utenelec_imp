@@ -72,6 +72,13 @@ def _validate_runtime_contract(release: dict) -> tuple[str, str]:
             raise ValueError("Invalid WPF runtime family/target/install mode")
     elif mode in _WPF_MODES:
         raise ValueError("Flutter runtime cannot contain a WPF install mode")
+    delivery = release.get("deliveryContract")
+    if delivery is not None:
+        if not isinstance(delivery, str) or delivery not in {"paired_v1", "audited_v1"}:
+            raise ValueError("Invalid client delivery contract")
+        if (delivery == "paired_v1" and (platform != "windows" or mode not in {"windows_setup", "windows_archive", "windows_wpf_setup", "windows_wpf_archive"})
+                or delivery == "audited_v1" and (platform != "android" or mode != "android_package" or family != "flutter")):
+            raise ValueError("Client delivery contract does not match its runtime/target")
     if mode in {"windows_setup", "windows_wpf_setup"}:
         filename = release.get("fileName")
         if (not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,180}", filename)

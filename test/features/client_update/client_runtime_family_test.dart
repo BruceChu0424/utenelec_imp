@@ -168,6 +168,7 @@ void main() {
       await controller.load();
       expect(transport.requests.single.queryParameters, {
         'allRuntimeFamilies': true,
+        'allPlatforms': true,
       });
       expect(controller.releases.map((release) => release.runtimeFamily), [
         ClientRuntimeFamily.flutter,

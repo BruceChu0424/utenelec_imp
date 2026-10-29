@@ -40,6 +40,20 @@ class ClientRuntimeContractTest(unittest.TestCase):
                     value = self.release(runtimeFamily="wpf_legacy", architecture=architecture, installMode=mode,
                                          packageKind=kind, fileName="Uten-Win7-Setup.EXE")
                     self.assertEqual(("wpf_legacy", kind), client._validate_runtime_contract(value))
+    def test_delivery_contract_is_optional_preserved_and_target_bound(self):
+        for contract in (None, "paired_v1"):
+            value = self.release(deliveryContract=contract)
+            before = json.dumps(value, sort_keys=True)
+            self.assertEqual(("flutter", "update"), client._validate_runtime_contract(value))
+            self.assertEqual(before, json.dumps(value, sort_keys=True))
+        android = {"platform": "android", "architecture": "arm64", "installMode": "android_package",
+                   "runtimeFamily": "flutter", "deliveryContract": "audited_v1"}
+        self.assertEqual(("flutter", "update"), client._validate_runtime_contract(android))
+        for fields in ({"deliveryContract": "audited_v1"}, {"deliveryContract": "unknown"},
+                       {"deliveryContract": False}, {"deliveryContract": []},
+                       {"platform": "android", "architecture": "arm64", "installMode": "android_package", "deliveryContract": "paired_v1"}):
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                client._validate_runtime_contract(self.release(**fields))
 
     def test_malformed_family_mode_architecture_or_platform_is_rejected(self):
         for field, malformed in (("runtimeFamily", ["", "Flutter", "wpf", False, 1, [], {}]),

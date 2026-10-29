@@ -110,7 +110,7 @@ class ClientRuntimeFamilyTest {
         String version="2.5."+build;
         byte[] bytes = "installer".equals(kind)
                 ? "flutter".equals(family) ? WindowsSetupFixture.bytes(build, arch, version) : WindowsWpfFixture.setup(build, arch, version)
-                : "flutter".equals(family) ? WindowsWpfFixture.flutterUpdate(build, arch) : WindowsWpfFixture.update(build, arch, version);
+                : "flutter".equals(family) ? ClientReleaseFixtures.windows(mapper, build, arch, version) : WindowsWpfFixture.update(build, arch, version);
         var draft = service.create(request(UUID.randomUUID(), family, arch, build, kind, bytes));
         return service.upload(draft.id(), new ByteArrayInputStream(bytes), bytes.length);
     }

@@ -48,6 +48,7 @@ class ClientUpdateControllerSecurityTest {
                 login(user);
                 mvc.perform(post("/api/admin/client-releases/{id}/publish", UUID.randomUUID())).andExpect(status().isForbidden());
                 mvc.perform(get("/api/admin/client-releases")).andExpect(status().isForbidden());
+                mvc.perform(get("/api/admin/client-releases/{id}", UUID.randomUUID())).andExpect(status().isForbidden());
                 mvc.perform(post("/api/admin/client-releases").contentType("application/json").content(createBody()))
                         .andExpect(status().isForbidden());
                 mvc.perform(put("/api/admin/client-releases/{id}/package", UUID.randomUUID())
@@ -63,6 +64,7 @@ class ClientUpdateControllerSecurityTest {
             MockMvc mvc = mvc(context);
             login(user(false, false, false, Set.of(ClientReleaseService.PUBLISH_PERMISSION)));
             mvc.perform(get("/api/admin/client-releases")).andExpect(status().isOk());
+            mvc.perform(get("/api/admin/client-releases/{id}", UUID.randomUUID())).andExpect(status().isOk());
             mvc.perform(post("/api/admin/client-releases").contentType("application/json").content(createBody()))
                     .andExpect(status().isCreated());
             mvc.perform(put("/api/admin/client-releases/{id}/package", UUID.randomUUID())

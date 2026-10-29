@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangeDetailPage @37 (page-class)<br>_HrProfileChangeDetailPageState @46 (state-class) |
-| 真实路由绑定 | /hr/profile-changes/:id；router @2265；builder ['HrProfileChangeDetailPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes/:id；router @2282；builder ['HrProfileChangeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangesListPage @58 (page-class)<br>_HrProfileChangesListPageState @66 (state-class) |
-| 真实路由绑定 | /hr/profile-changes；router @2260；builder ['HrProfileChangesListPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes；router @2277；builder ['HrProfileChangesListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

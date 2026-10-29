@@ -9,32 +9,107 @@ import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
+import '../../core/router/page_navigation_session.dart';
+import '../../core/router/route_names.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/theme/uten_anim.dart';
 import '../../core/ui/uten_notify.dart';
 import '../../core/ui/opportunistic_dialog_coordinator.dart';
 import 'client_release.dart';
 import 'client_release_access.dart';
-import 'client_release_publish_dialog.dart';
 import 'software_downloads_controller.dart';
 import 'software_downloads_presentation.dart';
 
 class SoftwareDownloadsPage extends ConsumerStatefulWidget {
   const SoftwareDownloadsPage({super.key});
-
   @override
   ConsumerState<SoftwareDownloadsPage> createState() => _DownloadsState();
 }
 
 class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
-  String _architecture = 'x64';
+  SoftwareDownloadPlatform _platform = SoftwareDownloadPlatform.windows;
+  SoftwareWindowsVersion? _windowsVersion;
   String _runtimeFamily = ClientRuntimeFamily.flutter;
+  String? _architecture;
+  bool _manualSelection = false;
+  final _navigation = PageNavigationSession();
   DialogOpportunity? _resultOpportunity;
+
+  SoftwareDownloadTarget get _target => SoftwareDownloadTarget(
+    platform: _platform,
+    runtimeFamily: _runtimeFamily,
+    architecture: _architecture ?? 'unknown',
+    windowsVersion: _windowsVersion,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _platform =
+        ref.read(softwareDevicePlatformProvider) ??
+        SoftwareDownloadPlatform.windows;
+    _runtimeFamily = _platform == SoftwareDownloadPlatform.windows
+        ? ref.read(softwareWindowsRuntimeFamilyProvider)
+        : ClientRuntimeFamily.flutter;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(softwareDownloadsControllerProvider).load();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _navigation.attach(context);
+  }
 
   @override
   void dispose() {
+    _navigation.dispose();
     _resultOpportunity?.interrupt();
     super.dispose();
+  }
+
+  void _useHost(SoftwareHostInfo host) {
+    if (_manualSelection) return;
+    final suggestion = host.suggestedTarget;
+    setState(() {
+      _platform = host.platform ?? _platform;
+      _architecture = suggestion?.architecture;
+      _runtimeFamily =
+          suggestion?.runtimeFamily ??
+          (_platform == SoftwareDownloadPlatform.windows
+              ? host.windowsRuntimeFamily ?? ClientRuntimeFamily.flutter
+              : ClientRuntimeFamily.flutter);
+      _windowsVersion = suggestion?.windowsVersion;
+    });
+  }
+
+  void _choosePlatform(SoftwareDownloadPlatform platform) {
+    setState(() {
+      _manualSelection = true;
+      _platform = platform;
+      _windowsVersion = null;
+      _runtimeFamily = ClientRuntimeFamily.flutter;
+      _architecture = null;
+    });
+  }
+
+  Future<void> _publish(SoftwareDownloadsController controller) async {
+    if (ref.read(clientReleasePublisherProvider) == null) return;
+    final destination = Uri(
+      path: RouteName.clientReleasePublish,
+      queryParameters: {
+        'platform': _platform.name,
+        'runtimeFamily': _runtimeFamily,
+        'architecture': ?_architecture,
+        'packageKind': 'installer',
+      },
+    );
+    await _navigation.push<void>(destination.toString());
+    if (mounted &&
+        identical(controller, ref.read(softwareDownloadsControllerProvider))) {
+      await controller.load();
+    }
   }
 
   Future<void> _download(
@@ -45,7 +120,8 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
     bool current() =>
         mounted &&
         identical(controller, ref.read(softwareDownloadsControllerProvider));
-    await controller.download(release);
+    await controller.download(release, target: _target);
+    if (controller.storeOpened) return;
     if (!mounted ||
         !current() ||
         controller.savedPath == null && controller.downloadError == null) {
@@ -65,7 +141,9 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
         await UtenNotify.alert(
           context,
           title: '安装程序已下载',
-          message: release.runtimeFamily == ClientRuntimeFamily.wpfLegacy
+          message: release.platform == 'android'
+              ? '安装程序已校验并保存。请在 Android 设备上打开 APK，按系统提示完成安装。'
+              : release.runtimeFamily == ClientRuntimeFamily.wpfLegacy
               ? '安装程序已校验${kIsWeb ? '并交给浏览器下载' : '并保存到：\n$saved'}。请在 Windows 7 SP1 / 8.1 电脑上打开安装；使用范围及后续更新方式请查看该版本的发布说明。'
               : kIsWeb
               ? '安装程序已校验并交给浏览器下载。请从浏览器下载列表找到 Setup.exe，在 Windows 电脑上打开并完成首次安装。以后可在软件内直接更新。'
@@ -97,37 +175,18 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
   }
 
   @override
-  void initState() {
-    super.initState();
-    _runtimeFamily = ref.read(softwareWindowsRuntimeFamilyProvider);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(softwareDownloadsControllerProvider).load();
-    });
-  }
-
-  Future<void> _publish(SoftwareDownloadsController controller) async {
-    if (ref.read(clientReleasePublisherProvider) == null) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => ClientReleasePublishDialog(
-        packageKind: 'installer',
-        initialRuntimeFamily: _runtimeFamily,
-      ),
-    );
-    if (mounted &&
-        identical(controller, ref.read(softwareDownloadsControllerProvider))) {
-      await controller.load();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final controller = ref.watch(softwareDownloadsControllerProvider);
+    final host = ref.watch(softwareHostInfoProvider);
     final canPublish = ref.watch(clientReleasePublisherProvider) != null;
-    final currentPlatform = ref.watch(softwareDevicePlatformProvider);
+    ref.listen(softwareHostInfoProvider, (_, next) {
+      final info = next.asData?.value;
+      if (info != null && mounted) _useHost(info);
+    });
     ref.listen(softwareDownloadsControllerProvider, (_, next) {
       _resultOpportunity?.interrupt();
+      _manualSelection = false;
+      _architecture = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted &&
             identical(next, ref.read(softwareDownloadsControllerProvider))) {
@@ -135,6 +194,8 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
         }
       });
     });
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Scaffold(
       appBar: UtenAppBar(
         title: '软件下载',
@@ -148,71 +209,289 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
               size: UtenButtonSize.small,
               icon: Icons.publish_rounded,
               onPressed: () => _publish(controller),
-              child: const Text('发布 Windows 版本'),
+              child: const Text('发布与管理'),
             ),
         ],
       ),
       body: ListenableBuilder(
         listenable: controller,
         builder: (context, _) {
-          final release = selectWindowsInstaller(
+          final target = _target;
+          final release = selectSoftwareInstaller(
             controller.releases,
-            runtimeFamily: _runtimeFamily,
-            architecture: _architecture,
+            target: target,
           );
+          final packageTarget = release == null
+              ? target
+              : SoftwareDownloadTarget(
+                  platform: target.platform,
+                  runtimeFamily: release.runtimeFamily,
+                  architecture: release.architecture,
+                  windowsVersion: target.windowsVersion,
+                );
+          final busy = controller.downloadingId != null;
           return SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: UtenContentContainer(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (currentPlatform != null &&
-                      currentPlatform != SoftwareDownloadPlatform.windows) ...[
-                    _CurrentUnavailablePlatform(platform: currentPlatform),
-                    const SizedBox(height: UtenSpacing.s24),
-                  ],
-                  _WindowsPanel(
-                    key: const ValueKey('software-platform-windows'),
-                    controller: controller,
-                    release: release,
-                    runtimeFamily: _runtimeFamily,
-                    architecture: _architecture,
-                    currentDevice:
-                        currentPlatform == SoftwareDownloadPlatform.windows,
-                    onArchitectureChanged: (value) =>
-                        setState(() => _architecture = value),
-                    onRuntimeFamilyChanged: (value) => setState(() {
-                      _runtimeFamily = value;
-                      if (!windowsDownloadArchitectures(
-                        value,
-                      ).contains(_architecture)) {
-                        _architecture = 'x64';
-                      }
-                    }),
-                    onDownload: (release) =>
-                        unawaited(_download(controller, release)),
+                  Text(
+                    '为这台设备选择合适的版本',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  const SizedBox(height: UtenSpacing.s24),
-                  _InstallationGuide(runtimeFamily: _runtimeFamily),
-                  const SizedBox(height: UtenSpacing.s32),
-                  _OtherPlatforms(excluded: currentPlatform),
-                  const SizedBox(height: UtenSpacing.s24),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 12),
+                  _HostStrip(
+                    host: host,
+                    manual: _manualSelection,
+                    onReset: busy
+                        ? null
+                        : () {
+                            final info = host.asData?.value;
+                            if (info != null) {
+                              _manualSelection = false;
+                              _useHost(info);
+                            }
+                          },
+                  ),
+                  const SizedBox(height: 24),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      Icon(
-                        Icons.verified_user_outlined,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: UtenSpacing.s8),
-                      Expanded(
-                        child: Text(
-                          '安装包由公司授权人员发布，下载完成后自动校验完整性。请使用本人账号登录。',
-                          style: Theme.of(context).textTheme.bodySmall,
+                      for (final platform in SoftwareDownloadPlatform.values)
+                        ChoiceChip(
+                          showCheckmark: false,
+                          key: ValueKey('software-select-${platform.name}'),
+                          avatar: Icon(platform.icon, size: 18),
+                          label: Text(platform.label),
+                          selected: _platform == platform,
+                          onSelected: busy
+                              ? null
+                              : (_) => _choosePlatform(platform),
                         ),
-                      ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    key: ValueKey('software-platform-${_platform.name}'),
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerLowest,
+                      borderRadius: UtenRadius.cardAll,
+                      border: Border.all(color: colors.outlineVariant),
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, bounds) {
+                        final wide =
+                            bounds.maxWidth >= 900 &&
+                            MediaQuery.textScalerOf(context).scale(16) <= 24;
+                        final content = Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              softwareProductName(
+                                Localizations.localeOf(context),
+                              ),
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _architecture == null
+                                  ? '${_platform == SoftwareDownloadPlatform.windows ? windowsRuntimeLabel(_runtimeFamily) : _platform.label} · 请选择架构'
+                                  : target.displayLabel,
+                              key: const ValueKey(
+                                'software-download-target-label',
+                              ),
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '下载目标可以与当前设备不同。请选择实际安装电脑或手机的系统与架构。',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: colors.onSurfaceVariant,
+                                height: 1.6,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            _TargetFields(
+                              target: target,
+                              architecture: _architecture,
+                              enabled: !busy,
+                              onVersion: (version, family) => setState(() {
+                                _manualSelection = true;
+                                _windowsVersion = version;
+                                _runtimeFamily = family;
+                                if (!_target.isSupported) _architecture = null;
+                              }),
+                              onArchitecture: (arch) => setState(() {
+                                _manualSelection = true;
+                                _architecture = arch;
+                              }),
+                            ),
+                            const SizedBox(height: 24),
+                            if (release != null) ...[
+                              Wrap(
+                                spacing: 16,
+                                runSpacing: 8,
+                                children: [
+                                  Text(
+                                    '版本 ${release.version}',
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  Text(
+                                    '构建 ${release.buildNumber}',
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                  if (release.architecture !=
+                                      target.architecture)
+                                    Text(
+                                      '通用包 · 适用 ${softwareArchitectureLabel(target.architecture)}',
+                                    ),
+                                  if (release.installMode != 'store')
+                                    Text(
+                                      '${(release.sizeBytes / 1048576).toStringAsFixed(1)} MB',
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: UtenButton(
+                                  key: ValueKey(
+                                    'software-downloads-${_platform.name}',
+                                  ),
+                                  size: UtenButtonSize.large,
+                                  icon: release.installMode == 'store'
+                                      ? Icons.open_in_new_rounded
+                                      : Icons.download_rounded,
+                                  isLoading: busy,
+                                  onPressed: busy
+                                      ? null
+                                      : () => _download(controller, release),
+                                  child: Text(
+                                    busy
+                                        ? '正在处理 ${(controller.progress * 100).floor()}%'
+                                        : release.installMode == 'store'
+                                        ? '前往 ${_platform.label} 应用商店'
+                                        : '下载 ${packageTarget.displayLabel}',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SelectableText(
+                                release.installMode == 'store'
+                                    ? '通过官方应用商店安装和更新'
+                                    : softwareDownloadFilename(
+                                        release,
+                                        target: target,
+                                      ),
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ] else ...[
+                              Text(
+                                controller.loading
+                                    ? '正在获取可下载版本'
+                                    : _architecture == null
+                                    ? '选择架构后查看对应安装包'
+                                    : controller.loadError != null
+                                    ? '暂时无法读取版本'
+                                    : '此版本暂未发布',
+                                style: theme.textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                controller.loadError != null
+                                    ? '请检查连接后刷新版本。'
+                                    : _architecture == null
+                                    ? '系统识别不足时，请根据目标设备手动选择，不会自动替换为其他架构。'
+                                    : '当前目标：${target.displayLabel}。公司发布对应版本后即可下载。',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                            _DownloadStatus(controller: controller),
+                            if (controller.storeOpened)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 12),
+                                child: Text('已打开官方应用商店'),
+                              ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: controller.loading || busy
+                                    ? null
+                                    : controller.load,
+                                icon: const Icon(
+                                  Icons.refresh_rounded,
+                                  size: 18,
+                                ),
+                                label: const Text('刷新版本'),
+                              ),
+                            ),
+                            if (release != null && controller.loadError != null)
+                              Text(
+                                '版本列表刷新失败，当前显示上次读取的结果。',
+                                style: TextStyle(color: colors.error),
+                              ),
+                            if (release?.releaseNotes.isNotEmpty == true) ...[
+                              const Divider(height: 32),
+                              Text('本次更新', style: theme.textTheme.titleSmall),
+                              const SizedBox(height: 8),
+                              Text(
+                                release!.releaseNotes,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  height: 1.7,
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                        return wide
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(flex: 5, child: content),
+                                  const SizedBox(width: 40),
+                                  const Expanded(
+                                    flex: 3,
+                                    child: Padding(
+                                      padding: EdgeInsets.only(top: 24),
+                                      child: _DesktopArtwork(),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : content;
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text('其他设备与平台', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  for (final platform in SoftwareDownloadPlatform.values.where(
+                    (value) => value != _platform,
+                  ))
+                    _PlatformRow(
+                      platform: platform,
+                      releases: controller.releases,
+                      onChoose: busy ? null : () => _choosePlatform(platform),
+                    ),
+                  const SizedBox(height: 24),
+                  _InstallHelp(target: target),
+                  const SizedBox(height: 24),
+                  Text(
+                    '安装包由公司授权人员发布，下载后自动核对文件大小与完整性。请使用本人账号登录。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -224,324 +503,234 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
   }
 }
 
-class _CurrentUnavailablePlatform extends StatelessWidget {
-  const _CurrentUnavailablePlatform({required this.platform});
-  final SoftwareDownloadPlatform platform;
-
+class _HostStrip extends StatelessWidget {
+  const _HostStrip({
+    required this.host,
+    required this.manual,
+    required this.onReset,
+  });
+  final AsyncValue<SoftwareHostInfo> host;
+  final bool manual;
+  final VoidCallback? onReset;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return Container(
-      key: ValueKey('software-platform-${platform.name}'),
-      padding: const EdgeInsets.all(UtenSpacing.s24),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLowest,
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: UtenRadius.cardAll,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            crossAxisAlignment: WrapCrossAlignment.center,
+    final info = host.asData?.value;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.devices_rounded, size: 20, color: theme.colorScheme.primary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(platform.icon, size: 28, color: colors.primary),
-              Text(platform.label, style: theme.textTheme.titleMedium),
               Text(
-                '当前设备',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.primary,
+                host.isLoading
+                    ? '正在识别当前设备…'
+                    : info == null
+                    ? '暂未识别系统，请手动选择下载目标'
+                    : '当前设备：${info.osLabel} · ${softwareArchitectureLabel(info.architecture ?? 'unknown')}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
                 ),
               ),
+              if (info?.certaintyExplanation.isNotEmpty == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    info!.certaintyExplanation,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+              if (manual)
+                TextButton(onPressed: onReset, child: const Text('重新使用设备识别结果')),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s16),
-          Text(
-            softwareProductName(Localizations.localeOf(context)),
-            style: theme.textTheme.titleLarge,
+        ),
+      ],
+    );
+  }
+}
+
+class _TargetFields extends StatelessWidget {
+  const _TargetFields({
+    required this.target,
+    required this.architecture,
+    required this.enabled,
+    required this.onVersion,
+    required this.onArchitecture,
+  });
+  final SoftwareDownloadTarget target;
+  final String? architecture;
+  final bool enabled;
+  final void Function(SoftwareWindowsVersion?, String) onVersion;
+  final ValueChanged<String> onArchitecture;
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) {
+      final columns =
+          bounds.maxWidth >= 560 &&
+          MediaQuery.textScalerOf(context).scale(16) <= 24;
+      final fields = <Widget>[
+        if (target.platform == SoftwareDownloadPlatform.windows)
+          UtenDropdownScrollScope(
+            nativeDropdown: true,
+            child: DropdownButtonFormField<String>(
+              key: ValueKey(
+                'software-downloads-runtime-${target.windowsVersion?.name ?? target.runtimeFamily}',
+              ),
+              initialValue: target.windowsVersion?.name ?? target.runtimeFamily,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: '目标系统'),
+              items: [
+                for (final family in [
+                  ClientRuntimeFamily.flutter,
+                  ClientRuntimeFamily.wpfLegacy,
+                ])
+                  DropdownMenuItem(
+                    value: family,
+                    child: Text(windowsRuntimeLabel(family)),
+                  ),
+                for (final version in SoftwareWindowsVersion.values)
+                  DropdownMenuItem(
+                    value: version.name,
+                    child: Text(version.label),
+                  ),
+              ],
+              onChanged: !enabled
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      final version = SoftwareWindowsVersion.values
+                          .where((v) => v.name == value)
+                          .firstOrNull;
+                      onVersion(version, version?.runtimeFamily ?? value);
+                    },
+            ),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text('暂时无法下载', style: theme.textTheme.bodyMedium),
+        UtenDropdownScrollScope(
+          key: const ValueKey('software-downloads-architecture'),
+          nativeDropdown: true,
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('software-arch-${target.key}'),
+            initialValue: architecture,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: '目标架构'),
+            hint: const Text('请选择架构'),
+            items: [
+              for (final arch
+                  in softwareDownloadArchitectures(
+                    target.platform,
+                    runtimeFamily: target.runtimeFamily,
+                  ).where(
+                    (a) =>
+                        !(target.windowsVersion ==
+                                SoftwareWindowsVersion.windows11 &&
+                            a == 'x86'),
+                  ))
+                DropdownMenuItem(
+                  value: arch,
+                  child: Text(softwareArchitectureLabel(arch)),
+                ),
+            ],
+            onChanged: !enabled
+                ? null
+                : (value) {
+                    if (value != null) onArchitecture(value);
+                  },
+          ),
+        ),
+      ];
+      return Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          for (final field in fields)
+            SizedBox(
+              width: columns ? (bounds.maxWidth - 12) / 2 : bounds.maxWidth,
+              child: field,
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _PlatformRow extends StatelessWidget {
+  const _PlatformRow({
+    required this.platform,
+    required this.releases,
+    required this.onChoose,
+  });
+  final SoftwareDownloadPlatform platform;
+  final List<ClientRelease> releases;
+  final VoidCallback? onChoose;
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final available = releases.any(
+      (r) => r.platform == platform.name && isSoftwareDownloadRelease(r),
+    );
+    return Container(
+      key: ValueKey('software-platform-${platform.name}'),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(platform.icon, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(platform.label, style: theme.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  available ? '已发布版本，请选择系统架构' : '暂未发布可下载版本',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(onPressed: onChoose, child: const Text('查看版本')),
         ],
       ),
     );
   }
 }
 
-class _WindowsPanel extends StatelessWidget {
-  const _WindowsPanel({
-    super.key,
-    required this.controller,
-    required this.release,
-    required this.runtimeFamily,
-    required this.architecture,
-    required this.onArchitectureChanged,
-    required this.onRuntimeFamilyChanged,
-    required this.currentDevice,
-    required this.onDownload,
-  });
-  final SoftwareDownloadsController controller;
-  final ClientRelease? release;
-  final String runtimeFamily, architecture;
-  final ValueChanged<String> onArchitectureChanged;
-  final ValueChanged<String> onRuntimeFamilyChanged;
-  final bool currentDevice;
-  final ValueChanged<ClientRelease> onDownload;
-
+class _InstallHelp extends StatelessWidget {
+  const _InstallHelp({required this.target});
+  final SoftwareDownloadTarget target;
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final downloading = controller.downloadingId != null;
-    final legacy = runtimeFamily == ClientRuntimeFamily.wpfLegacy;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerLowest,
-        borderRadius: UtenRadius.cardAll,
-        border: Border.all(color: colors.outlineVariant),
-      ),
-      child: LayoutBuilder(
-        builder: (context, bounds) {
-          final roomy =
-              bounds.maxWidth >= 800 &&
-              MediaQuery.textScalerOf(context).scale(16) <= 24;
-          final details = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Icon(Icons.window_rounded, size: 24, color: colors.primary),
-                  Text('Windows', style: theme.textTheme.titleMedium),
-                  if (currentDevice) ...[
-                    const SizedBox(width: UtenSpacing.s12),
-                    Text(
-                      '当前设备',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.primary,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s24),
-              Text(
-                softwareProductName(Localizations.localeOf(context)),
-                style: theme.textTheme.headlineLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                legacy
-                    ? '适用于 Windows 7 SP1 / 8.1。\n可用功能与更新方式以该版本的发布说明为准。'
-                    : '将优腾完整客户端保存到电脑，\n用熟悉的账号继续办公。',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: colors.onSurfaceVariant,
-                  height: 1.7,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s24),
-              LayoutBuilder(
-                builder: (context, targetBounds) {
-                  final width = targetBounds.maxWidth >= 600
-                      ? (targetBounds.maxWidth - UtenSpacing.s12) / 2
-                      : targetBounds.maxWidth;
-                  return Wrap(
-                    spacing: UtenSpacing.s12,
-                    runSpacing: UtenSpacing.s12,
-                    children: [
-                      SizedBox(
-                        width: width,
-                        child: UtenDropdownScrollScope(
-                          nativeDropdown: true,
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              'software-downloads-runtime-$runtimeFamily',
-                            ),
-                            initialValue: runtimeFamily,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Windows 版本',
-                            ),
-                            items: [
-                              for (final family in [
-                                ClientRuntimeFamily.flutter,
-                                ClientRuntimeFamily.wpfLegacy,
-                              ])
-                                DropdownMenuItem(
-                                  value: family,
-                                  child: Text(windowsRuntimeLabel(family)),
-                                ),
-                            ],
-                            onChanged: downloading
-                                ? null
-                                : (value) {
-                                    if (value != null) {
-                                      onRuntimeFamilyChanged(value);
-                                    }
-                                  },
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        key: const ValueKey('software-downloads-architecture'),
-                        width: width,
-                        child: UtenDropdownScrollScope(
-                          nativeDropdown: true,
-                          child: DropdownButtonFormField<String>(
-                            key: ValueKey(
-                              'software-downloads-target-$runtimeFamily-$architecture',
-                            ),
-                            initialValue: architecture,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: '电脑架构',
-                            ),
-                            items: [
-                              for (final target in windowsDownloadArchitectures(
-                                runtimeFamily,
-                              ))
-                                DropdownMenuItem(
-                                  value: target,
-                                  child: Text(_architectureLabel(target)),
-                                ),
-                            ],
-                            onChanged: downloading
-                                ? null
-                                : (value) {
-                                    if (value != null) {
-                                      onArchitectureChanged(value);
-                                    }
-                                  },
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s24),
-              if (release != null) ...[
-                Wrap(
-                  spacing: UtenSpacing.s16,
-                  runSpacing: UtenSpacing.s8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      '版本 ${release!.version}',
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    Text(
-                      '${(release!.sizeBytes / 1048576).toStringAsFixed(1)} MB',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    Text(
-                      _architectureLabel(release!.architecture),
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s24),
-                UtenButton(
-                  key: const ValueKey('software-downloads-windows'),
-                  size: UtenButtonSize.large,
-                  icon: Icons.download_rounded,
-                  isLoading: downloading,
-                  onPressed: downloading ? null : () => onDownload(release!),
-                  child: Text(
-                    downloading
-                        ? '正在下载 ${(controller.progress * 100).floor()}%'
-                        : '下载 Windows 安装程序',
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  legacy
-                      ? 'Setup.exe · 请在所选系统与架构的电脑上安装'
-                      : 'Setup.exe · 双击安装，后续更新自动使用原安装位置',
-                  style: theme.textTheme.bodySmall,
-                ),
-              ] else if (controller.loading) ...[
-                const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                const Text('正在获取可下载版本'),
-              ] else ...[
-                Text(
-                  controller.loadError != null
-                      ? '暂时无法读取版本'
-                      : legacy
-                      ? '兼容版暂未发布'
-                      : 'Windows 版本正在准备',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  controller.loadError != null
-                      ? '请检查连接后重新获取。'
-                      : '当前选择：${windowsRuntimeLabel(runtimeFamily)}，${_architectureLabel(architecture)}。公司发布对应安装包后即可下载。',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ],
-              _DownloadStatus(controller: controller),
-              const SizedBox(height: UtenSpacing.s12),
-              TextButton.icon(
-                onPressed: controller.loading || downloading
-                    ? null
-                    : controller.load,
-                icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('刷新版本'),
-              ),
-              if (release != null && controller.loadError != null)
-                Text(
-                  '版本列表刷新失败，当前显示上次读取的结果。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colors.error,
-                  ),
-                ),
-              if (release?.releaseNotes.isNotEmpty == true) ...[
-                const Divider(height: UtenSpacing.s32),
-                Text('本次更新', style: theme.textTheme.titleSmall),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  release!.releaseNotes,
-                  style: theme.textTheme.bodyMedium?.copyWith(height: 1.7),
-                ),
-              ],
-            ],
-          );
-          return Padding(
-            padding: EdgeInsets.all(roomy ? UtenSpacing.s32 : UtenSpacing.s24),
-            child: roomy
-                ? Row(
-                    children: [
-                      Expanded(flex: 5, child: details),
-                      const SizedBox(width: UtenSpacing.s32),
-                      const Expanded(flex: 3, child: _DesktopArtwork()),
-                    ],
-                  )
-                : details,
-          );
-        },
-      ),
+    final windows = target.platform == SoftwareDownloadPlatform.windows;
+    final description = windows
+        ? target.runtimeFamily == ClientRuntimeFamily.wpfLegacy
+              ? '兼容版适用于 Windows 7 SP1 / 8.1。打开所选架构的 Setup.exe 完成安装，功能范围以对应发布说明为准。'
+              : '打开 Setup.exe 完成首次安装。以后在软件内更新，会自动使用原安装位置。'
+        : target.platform == SoftwareDownloadPlatform.android
+        ? 'APK 请在 Android 设备上按系统提示安装；应用商店版本通过官方商店安装和更新。'
+        : '请通过已发布版本的官方应用商店入口安装。尚未发布的平台会显示具体状态。';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('安装与后续更新', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        Text(
+          description,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.7),
+        ),
+      ],
     );
   }
-
-  String _architectureLabel(String architecture) => switch (architecture) {
-    'x64' => '64 位 · Intel / AMD',
-    'arm64' => 'ARM 64 位',
-    'x86' => '32 位',
-    _ => architecture,
-  };
 }
 
 class _DownloadStatus extends StatelessWidget {
@@ -700,174 +889,6 @@ class _DesktopArtwork extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _InstallationGuide extends StatelessWidget {
-  const _InstallationGuide({required this.runtimeFamily});
-  final String runtimeFamily;
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final steps = [
-      ('下载安装程序', '根据 Windows 系统版本和电脑架构选择安装包，等待下载与校验完成。'),
-      ('双击完成安装', '打开 Setup.exe，按提示完成首次安装。'),
-      (
-        '登录并保持更新',
-        runtimeFamily == ClientRuntimeFamily.wpfLegacy
-            ? '使用本人账号登录；兼容版的可用功能和后续更新方式请查看对应发布说明。'
-            : '使用本人账号登录。以后点击“立即更新”，自动下载、替换并重启，无需重新选择路径。',
-      ),
-    ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('从下载到开始工作', style: theme.textTheme.titleLarge),
-        const SizedBox(height: UtenSpacing.s16),
-        LayoutBuilder(
-          builder: (context, bounds) {
-            final columns =
-                bounds.maxWidth >= 840 &&
-                MediaQuery.textScalerOf(context).scale(16) <= 24;
-            final children = [
-              for (var i = 0; i < steps.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s16,
-                    right: UtenSpacing.s16,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: theme.colorScheme.surfaceContainerHigh,
-                        child: Text(
-                          '${i + 1}',
-                          style: theme.textTheme.labelMedium,
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              steps[i].$1,
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: UtenSpacing.s8),
-                            Text(
-                              steps[i].$2,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                height: 1.7,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ];
-            return columns
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final child in children) Expanded(child: child),
-                    ],
-                  )
-                : Column(children: children);
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _OtherPlatforms extends StatelessWidget {
-  const _OtherPlatforms({this.excluded});
-  final SoftwareDownloadPlatform? excluded;
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    final platforms = SoftwareDownloadPlatform.values
-        .where(
-          (platform) =>
-              platform != SoftwareDownloadPlatform.windows &&
-              platform != excluded,
-        )
-        .toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('其他平台', style: theme.textTheme.titleLarge),
-        const SizedBox(height: UtenSpacing.s16),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(color: colors.outlineVariant),
-            borderRadius: UtenRadius.cardAll,
-          ),
-          child: LayoutBuilder(
-            builder: (context, bounds) {
-              final horizontal =
-                  bounds.maxWidth >= 720 &&
-                  MediaQuery.textScalerOf(context).scale(16) <= 24;
-              final tiles = [
-                for (final platform in platforms)
-                  Padding(
-                    key: ValueKey('software-platform-${platform.name}'),
-                    padding: const EdgeInsets.all(UtenSpacing.s20),
-                    child: Row(
-                      children: [
-                        Icon(
-                          platform.icon,
-                          color: colors.onSurfaceVariant,
-                          size: 26,
-                        ),
-                        const SizedBox(width: UtenSpacing.s16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                platform.label,
-                                style: theme.textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: UtenSpacing.s4),
-                              Text('暂时无法下载', style: theme.textTheme.bodySmall),
-                            ],
-                          ),
-                        ),
-                        Icon(
-                          Icons.lock_outline_rounded,
-                          color: colors.onSurfaceVariant,
-                          size: 16,
-                        ),
-                      ],
-                    ),
-                  ),
-              ];
-              return horizontal
-                  ? Row(
-                      children: [
-                        for (final tile in tiles) Expanded(child: tile),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        for (var i = 0; i < tiles.length; i++) ...[
-                          if (i > 0) const Divider(height: 1),
-                          tiles[i],
-                        ],
-                      ],
-                    );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

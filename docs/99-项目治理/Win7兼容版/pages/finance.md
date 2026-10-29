@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceAccountFlowPage @53 (page-class)<br>_FinanceAccountFlowPageState @61 (state-class) |
-| 真实路由绑定 | /finance/report/account-flow；router @2066；builder ['FinanceAccountFlowPage']；redirect None |
+| 真实路由绑定 | /finance/report/account-flow；router @2083；builder ['FinanceAccountFlowPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_report:export @517；定义 lib/shared/auth/permissions.dart:437<br>finance_report:export @526；定义 lib/shared/auth/permissions.dart:437 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceArApOverviewPage @62 (page-class)<br>_FinanceArApOverviewPageState @70 (state-class) |
-| 真实路由绑定 | /finance/report/overview；router @2056；builder ['FinanceArApOverviewPage']；redirect None |
+| 真实路由绑定 | /finance/report/overview；router @2073；builder ['FinanceArApOverviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_report:export @885；定义 lib/shared/auth/permissions.dart:437<br>finance_report:export @894；定义 lib/shared/auth/permissions.dart:437 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceArApPage @54 (page-class)<br>_FinanceArApPageState @61 (state-class) |
-| 真实路由绑定 | /finance/ar-ap；router @2092；builder ['FinanceArApPage']；redirect None |
+| 真实路由绑定 | /finance/ar-ap；router @2109；builder ['FinanceArApPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceAssetsPage @6 (page-class) |
-| 真实路由绑定 | /finance/assets；router @2108；builder ['FinanceAssetsPage']；redirect None |
+| 真实路由绑定 | /finance/assets；router @2125；builder ['FinanceAssetsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _AuditSegment @42 (supporting-class)<br>FinanceAuditCenterPage @50 (page-class)<br>_FinanceAuditCenterPageState @68 (state-class)<br>_SegmentPlaceholder @297 (supporting-class)<br>_NoAuditPermission @330 (supporting-class) |
-| 真实路由绑定 | /finance/audits；router @1954；builder ['FinanceAuditCenterPage']；redirect None |
+| 真实路由绑定 | /finance/audits；router @1971；builder ['FinanceAuditCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order_finance:view @129；定义 lib/shared/auth/permissions.dart:458<br>sales_shipment_finance:view @130；定义 lib/shared/auth/permissions.dart:449<br>finance_order_approval:view @131；定义 lib/shared/auth/permissions.dart:455<br>procurement_iqc_rejection:view @132；定义 lib/shared/auth/permissions.dart:290 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceDocDetailPage @57 (page-class)<br>_FinanceDocDetailPageState @71 (state-class)<br>_KV @1444 (supporting-class) |
-| 真实路由绑定 | /finance/:seg/:id；router @2151；builder ['FinanceDocDetailPage']；redirect _rejectUnknownFinanceDoc |
+| 真实路由绑定 | /finance/:seg/:id；router @2168；builder ['FinanceDocDetailPage']；redirect _rejectUnknownFinanceDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_expense:gl_confirm @114；定义 lib/shared/auth/permissions.dart:706<br>finance:view:all @375；定义 lib/shared/auth/permissions.dart:487<br>customer_prepayment:view @377；定义 lib/shared/auth/permissions.dart:469 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceDocEditPage @110 (page-class)<br>_FinanceDocEditPageState @119 (state-class) |
-| 真实路由绑定 | /finance/:seg/new；router @2131；builder ['FinanceDocEditPage']；redirect _rejectUnknownFinanceDoc<br>/finance/:seg/:id/edit；router @2141；builder ['FinanceDocEditPage']；redirect _rejectUnknownFinanceDoc |
+| 真实路由绑定 | /finance/:seg/new；router @2148；builder ['FinanceDocEditPage']；redirect _rejectUnknownFinanceDoc<br>/finance/:seg/:id/edit；router @2158；builder ['FinanceDocEditPage']；redirect _rejectUnknownFinanceDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance:view:all @719；定义 lib/shared/auth/permissions.dart:487<br>customer_prepayment:view @720；定义 lib/shared/auth/permissions.dart:469<br>finance_receipt:create @721；定义 lib/shared/auth/permissions.dart:694<br>attachment:upload @2141；定义 lib/shared/auth/permissions.dart:732<br>finance:view:all @2395；定义 lib/shared/auth/permissions.dart:487<br>customer_prepayment:view @2396；定义 lib/shared/auth/permissions.dart:469<br>customer_prepayment:apply @2397；定义 lib/shared/auth/permissions.dart:470<br>finance:view:all @2400；定义 lib/shared/auth/permissions.dart:487<br>customer_prepayment:view @2401；定义 lib/shared/auth/permissions.dart:469<br>finance_receipt:create @2402；定义 lib/shared/auth/permissions.dart:694<br>attachment:view @2820；定义 lib/shared/auth/permissions.dart:87 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -153,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceDocListPage @54 (page-class)<br>_FinanceDocListPageState @69 (state-class) |
-| 真实路由绑定 | /finance/:seg；router @2160；builder ['FinanceDocListPage']；redirect _rejectUnknownFinanceDoc |
+| 真实路由绑定 | /finance/:seg；router @2177；builder ['FinanceDocListPage']；redirect _rejectUnknownFinanceDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -171,7 +171,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceHubPage @53 (page-class)<br>_FinanceHubPageState @59 (state-class)<br>_Entry @372 (supporting-class)<br>_EntryTile @395 (supporting-class) |
-| 真实路由绑定 | /finance；router @1947；builder ['FinanceHubPage']；redirect None |
+| 真实路由绑定 | /finance；router @1964；builder ['FinanceHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -189,7 +189,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceProcurementApprovalReviewPage @77 (page-class)<br>_FinanceProcurementApprovalReviewPageState @87 (state-class) |
-| 真实路由绑定 | /finance/procurement-approvals/:caseId；router @1975；builder ['FinanceProcurementApprovalReviewPage']；redirect None |
+| 真实路由绑定 | /finance/procurement-approvals/:caseId；router @1992；builder ['FinanceProcurementApprovalReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_order_approval:approve @106；定义 lib/shared/auth/permissions.dart:611<br>finance_order_approval:reject @107；定义 lib/shared/auth/permissions.dart:612<br>purchase_order:reverse @108；定义 lib/shared/auth/permissions.dart:598<br>subcontract_order:reverse @109；定义 lib/shared/auth/permissions.dart:663<br>finance_order_approval:view @115；定义 lib/shared/auth/permissions.dart:455<br>finance_order_approval:approve @116；定义 lib/shared/auth/permissions.dart:611<br>finance_order_approval:reject @117；定义 lib/shared/auth/permissions.dart:612<br>purchase_order:reverse @118；定义 lib/shared/auth/permissions.dart:598<br>subcontract_order:reverse @119；定义 lib/shared/auth/permissions.dart:663<br>finance_order_approval:approve @141；定义 lib/shared/auth/permissions.dart:611<br>finance_order_approval:reject @145；定义 lib/shared/auth/permissions.dart:612<br>finance_order_approval:reject @199；定义 lib/shared/auth/permissions.dart:612<br>finance_order_approval:approve @200；定义 lib/shared/auth/permissions.dart:611<br>finance_order_approval:view @336；定义 lib/shared/auth/permissions.dart:455<br>finance_order_approval:approve @389；定义 lib/shared/auth/permissions.dart:611<br>finance_order_approval:reject @390；定义 lib/shared/auth/permissions.dart:612<br>finance_order_approval:view @824；定义 lib/shared/auth/permissions.dart:455<br>purchase_order:view @1234；定义 lib/shared/auth/permissions.dart:94<br>subcontract_order:view @1234；定义 lib/shared/auth/permissions.dart:336<br>purchase_order:edit @1239；定义 lib/shared/auth/permissions.dart:95<br>subcontract_order:edit @1239；定义 lib/shared/auth/permissions.dart:337 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -207,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceProcurementApprovalTasksPage @54 (page-class)<br>_FinanceProcurementApprovalTasksPageState @80 (state-class)<br>_InlineError @1242 (supporting-class) |
-| 真实路由绑定 | /finance/procurement-approvals；router @1968；builder ['FinanceProcurementApprovalTasksPage']；redirect None |
+| 真实路由绑定 | /finance/procurement-approvals；router @1985；builder ['FinanceProcurementApprovalTasksPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_order_approval:view @182；定义 lib/shared/auth/permissions.dart:455<br>finance_order_approval:view @754；定义 lib/shared/auth/permissions.dart:455 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -225,7 +225,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceQuoteReviewListPage @55 (page-class)<br>_FinanceQuoteReviewListPageState @66 (state-class)<br>_InlineError @582 (supporting-class) |
-| 真实路由绑定 | /finance/quote-review；router @2016；builder ['FinanceQuoteReviewListPage']；redirect None |
+| 真实路由绑定 | /finance/quote-review；router @2033；builder ['FinanceQuoteReviewListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -243,7 +243,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceQuoteReviewPage @84 (page-class)<br>_FinanceQuoteReviewPageState @94 (state-class) |
-| 真实路由绑定 | /finance/quote-review/:id；router @2023；builder ['FinanceQuoteReviewPage']；redirect None |
+| 真实路由绑定 | /finance/quote-review/:id；router @2040；builder ['FinanceQuoteReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_quote_finance:confirm @367；定义 lib/shared/auth/permissions.dart:464<br>sales_quote_finance:reject @368；定义 lib/shared/auth/permissions.dart:465<br>sales_quote_finance:reverse @369；定义 lib/shared/auth/permissions.dart:466<br>sales_quote_finance:view @371；定义 lib/shared/auth/permissions.dart:463<br>sales_quote_finance:view @410；定义 lib/shared/auth/permissions.dart:463<br>attachment:view @1081；定义 lib/shared/auth/permissions.dart:87 |
 | 接口常量 | ApiEndpoints.settlementMethods @529 → /master/reference-methods/settlement |
@@ -261,7 +261,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceReconciliationPage @59 (page-class)<br>_FinanceReconciliationPageState @67 (state-class) |
-| 真实路由绑定 | /finance/reconciliations；router @2097；builder ['FinanceReconciliationPage']；redirect None |
+| 真实路由绑定 | /finance/reconciliations；router @2114；builder ['FinanceReconciliationPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -279,7 +279,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceReportTablePage @60 (page-class)<br>_FinanceReportTablePageState @69 (state-class) |
-| 真实路由绑定 | /finance/report；router @2041；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/detail；router @2046；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/summary；router @2051；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/customer-prepayment；router @2071；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/recon；router @2077；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/cost；router @2082；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/gl；router @2087；builder ['FinanceReportTablePage']；redirect None |
+| 真实路由绑定 | /finance/report；router @2058；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/detail；router @2063；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/summary；router @2068；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/customer-prepayment；router @2088；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/recon；router @2094；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/cost；router @2099；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/gl；router @2104；builder ['FinanceReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | payment_style:edit @477；定义 lib/shared/auth/permissions.dart:492<br>finance_report:export @643；定义 lib/shared/auth/permissions.dart:437<br>finance_report:export @652；定义 lib/shared/auth/permissions.dart:437 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -297,7 +297,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceSalesOrderConfirmationPage @67 (page-class)<br>_FinanceSalesOrderConfirmationPageState @95 (state-class)<br>_ClientBalanceCell @1345 (supporting-class)<br>_InlineError @1380 (supporting-class) |
-| 真实路由绑定 | /finance/sales-order-confirmations；router @1982；builder ['FinanceSalesOrderConfirmationPage']；redirect None<br>/finance/sales-order-changes；router @1989；builder ['FinanceSalesOrderConfirmationPage']；redirect None |
+| 真实路由绑定 | /finance/sales-order-confirmations；router @1999；builder ['FinanceSalesOrderConfirmationPage']；redirect None<br>/finance/sales-order-changes；router @2006；builder ['FinanceSalesOrderConfirmationPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order_finance:view @157；定义 lib/shared/auth/permissions.dart:458<br>sales_order_finance:confirm @164；定义 lib/shared/auth/permissions.dart:459<br>sales_order_finance:view @783；定义 lib/shared/auth/permissions.dart:458<br>sales_order_finance:confirm @786；定义 lib/shared/auth/permissions.dart:459 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -315,7 +315,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceSalesOrderReviewPage @65 (page-class)<br>_FinanceSalesOrderReviewPageState @80 (state-class) |
-| 真实路由绑定 | /finance/sales-order-confirmations/:id；router @1995；builder ['FinanceSalesOrderReviewPage']；redirect None |
+| 真实路由绑定 | /finance/sales-order-confirmations/:id；router @2012；builder ['FinanceSalesOrderReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order_finance:view @92；定义 lib/shared/auth/permissions.dart:458<br>sales_order_finance:confirm @93；定义 lib/shared/auth/permissions.dart:459<br>sales_order:reverse @94；定义 lib/shared/auth/permissions.dart:579<br>sales_order_finance:view @201；定义 lib/shared/auth/permissions.dart:458<br>sales_order_finance:confirm @202；定义 lib/shared/auth/permissions.dart:459<br>finance:view:all @612；定义 lib/shared/auth/permissions.dart:487<br>customer_prepayment:view @613；定义 lib/shared/auth/permissions.dart:469<br>attachment:view @713；定义 lib/shared/auth/permissions.dart:87<br>sales_quote:view @789；定义 lib/shared/auth/permissions.dart:298<br>sales_order:view @767；定义 lib/features/finance/pages/finance_sales_order_review_page.dart:767<br>sales_order:reverse @768；定义 lib/features/finance/pages/finance_sales_order_review_page.dart:768 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -333,7 +333,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceSalesShipmentAuditPage @6 (page-class) |
-| 真实路由绑定 | /finance/sales-shipment-audits；router @2003；builder ['FinanceSalesShipmentAuditPage']；redirect None |
+| 真实路由绑定 | /finance/sales-shipment-audits；router @2020；builder ['FinanceSalesShipmentAuditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -351,7 +351,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceSalesShipmentAuditReviewPage @66 (page-class)<br>_FinanceSalesShipmentAuditReviewPageState @76 (state-class) |
-| 真实路由绑定 | /finance/sales-shipment-audits/:id；router @2008；builder ['FinanceSalesShipmentAuditReviewPage']；redirect None |
+| 真实路由绑定 | /finance/sales-shipment-audits/:id；router @2025；builder ['FinanceSalesShipmentAuditReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_shipment_finance:view @90；定义 lib/shared/auth/permissions.dart:449<br>sales_shipment_finance:approve @91；定义 lib/shared/auth/permissions.dart:450<br>sales_shipment_finance:reject @92；定义 lib/shared/auth/permissions.dart:451<br>sales_shipment_finance:reverse @93；定义 lib/shared/auth/permissions.dart:452<br>sales_shipment_finance:view @108；定义 lib/shared/auth/permissions.dart:449<br>sales_shipment_finance:reject @147；定义 lib/shared/auth/permissions.dart:451<br>sales_shipment_finance:approve @148；定义 lib/shared/auth/permissions.dart:450<br>sales_shipment_finance:approve @218；定义 lib/shared/auth/permissions.dart:450<br>sales_shipment_finance:reject @222；定义 lib/shared/auth/permissions.dart:451<br>sales_shipment_finance:reverse @226；定义 lib/shared/auth/permissions.dart:452<br>sales_shipment_finance:approve @362；定义 lib/shared/auth/permissions.dart:450<br>sales_shipment_finance:reject @364；定义 lib/shared/auth/permissions.dart:451<br>sales_shipment:view @1491；定义 lib/shared/auth/permissions.dart:313<br>sales_shipment_finance:view @1492；定义 lib/shared/auth/permissions.dart:449 |
 | 接口常量 | ApiEndpoints.settlementMethods @452 → /master/reference-methods/settlement |
@@ -369,7 +369,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceStatementPage @54 (page-class)<br>_FinanceStatementPageState @62 (state-class) |
-| 真实路由绑定 | /finance/report/statement；router @2061；builder ['FinanceStatementPage']；redirect None |
+| 真实路由绑定 | /finance/report/statement；router @2078；builder ['FinanceStatementPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_report:export @570；定义 lib/shared/auth/permissions.dart:437<br>finance_report:export @579；定义 lib/shared/auth/permissions.dart:437 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -387,7 +387,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinancePayablesPage @63 (page-class)<br>_FinancePayablesPageState @71 (state-class) |
-| 真实路由绑定 | /finance/payables；router @1963；builder ['FinancePayablesPage']；redirect None |
+| 真实路由绑定 | /finance/payables；router @1980；builder ['FinancePayablesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | finance_payment:create @102；定义 lib/shared/auth/permissions.dart:698<br>ar_ap_ledger:view @106；定义 lib/shared/auth/permissions.dart:468<br>finance:view:all @107；定义 lib/shared/auth/permissions.dart:487<br>subcontract_loss_claim:view @112；定义 lib/shared/auth/permissions.dart:472<br>supplier_settlement:view @116；定义 lib/shared/auth/permissions.dart:480<br>supplier_open_item_offset:apply @120；定义 lib/shared/auth/permissions.dart:476<br>finance:view:all @121；定义 lib/shared/auth/permissions.dart:487 |
 | 接口常量 | 未静态确认；不能当作不存在 |

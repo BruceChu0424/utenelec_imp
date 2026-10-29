@@ -412,15 +412,9 @@ public class WarehouseOutboundTaskCenterQueryService {
             UUID itemId = NativeValueConverters.uuid(raw[20]);
             if (itemId != null) data.put("itemId", itemId);
         }
-        Row row = new Row(documentKey, id, source, record,
-                raw[3] == null ? null : raw[3].toString(), raw[4] == null ? null : raw[4].toString(),
-                NativeValueConverters.toLocalDate(raw[5]),
-                raw[6] == null ? "" : raw[6].toString(), raw[7] == null ? "" : raw[7].toString(),
-                raw[8] == null ? "" : raw[8].toString(), raw[9] == null ? "" : raw[9].toString(),
-                raw[10] instanceof Number number ? number.intValue() : 0,
-                status, state.label(), state.tone(), action, id, canHandle, data, null, null);
         // 生产工单逐单 {code,planId}：供前端「生产工单」格弹窗按单跳生产计划详情；
         // 解析失败只少一个跳转通道，不影响显示列（productionOrderNo 文本仍完整）。
+        // 必须在构造 Row 之前写入：Row 的紧凑构造器会 Map.copyOf 冻结 actionData。
         if (raw.length > 30 && raw[30] != null) {
             try {
                 data.put("productionOrders", objectMapper.readValue(raw[30].toString(),
@@ -428,6 +422,13 @@ public class WarehouseOutboundTaskCenterQueryService {
             } catch (java.io.IOException ignored) {
             }
         }
+        Row row = new Row(documentKey, id, source, record,
+                raw[3] == null ? null : raw[3].toString(), raw[4] == null ? null : raw[4].toString(),
+                NativeValueConverters.toLocalDate(raw[5]),
+                raw[6] == null ? "" : raw[6].toString(), raw[7] == null ? "" : raw[7].toString(),
+                raw[8] == null ? "" : raw[8].toString(), raw[9] == null ? "" : raw[9].toString(),
+                raw[10] instanceof Number number ? number.intValue() : 0,
+                status, state.label(), state.tone(), action, id, canHandle, data, null, null);
         Row mapped = raw.length < 29 ? row : row.withLine(new Line(String.valueOf(raw[19]), NativeValueConverters.uuid(raw[20]),
                 raw[21] instanceof Number number ? number.intValue() : null,
                 NativeValueConverters.text(raw[22]), NativeValueConverters.text(raw[23]), NativeValueConverters.text(raw[24]),

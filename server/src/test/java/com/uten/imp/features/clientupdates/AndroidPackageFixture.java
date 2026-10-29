@@ -42,11 +42,11 @@ final class AndroidPackageFixture {
         var data=new ByteArrayOutputStream();var offsets=new ArrayList<Integer>();
         for(String value:strings){offsets.add(data.size());byte[] bytes=value.getBytes(utf16?StandardCharsets.UTF_16LE:StandardCharsets.UTF_8);
             if(utf16){data.write(value.length()&255);data.write(value.length()>>>8);}else{length(data,value.length());length(data,bytes.length);}data.writeBytes(bytes);data.write(0);if(utf16)data.write(0);}
-        while((data.size()&3)!=0)data.write(0);int start=28+strings.size()*4;var result=ByteBuffer.allocate(start+data.size()).order(ByteOrder.LITTLE_ENDIAN);
+        while((data.size()&3)!=0){data.write(0);}int start=28+strings.size()*4;var result=ByteBuffer.allocate(start+data.size()).order(ByteOrder.LITTLE_ENDIAN);
         result.putShort((short)1).putShort((short)28).putInt(result.capacity()).putInt(strings.size()).putInt(0).putInt(utf16?0:256).putInt(start).putInt(0);
         offsets.forEach(result::putInt);result.put(data.toByteArray());return result.array();
     }
-    private static void length(ByteArrayOutputStream out,int value){if(value>127)out.write(0x80|(value>>>8));out.write(value&255);}
+    private static void length(ByteArrayOutputStream out,int value){if(value>127){out.write(0x80|(value>>>8));}out.write(value&255);}
     private static byte[] attribute(int ns,int name,int raw,int type,int value){return ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN).putInt(ns).putInt(name).putInt(raw).putShort((short)8).put((byte)0).put((byte)type).putInt(value).array();}
     private static byte[] start(int name,List<byte[]> attributes){var out=ByteBuffer.allocate(36+attributes.size()*20).order(ByteOrder.LITTLE_ENDIAN);out.putShort((short)0x102).putShort((short)16).putInt(out.capacity()).putInt(1).putInt(-1)
             .putInt(-1).putInt(name).putShort((short)20).putShort((short)20).putShort((short)attributes.size()).putShort((short)0).putShort((short)0).putShort((short)0);attributes.forEach(out::put);return out.array();}

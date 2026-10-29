@@ -38,7 +38,7 @@ namespace Uten.Legacy.Updater
             var handle = CreateFile(path, access == FileAccess.Read ? Read : Read | Write,
                 access == FileAccess.Read ? 1u : 0u, IntPtr.Zero, create ? 1u : lockFile ? 4u : 3u,
                 OpenReparse, IntPtr.Zero);
-            if (handle.IsInvalid) { var error = Marshal.GetLastWin32Error(); handle.Dispose(); throw new IOException("Cannot exclusively access an approved file.", new Win32Exception(error)); }
+            if (handle.IsInvalid) { var error = Marshal.GetLastWin32Error(); handle.Dispose(); throw new IOException("Cannot access approved file " + Path.GetFileName(path) + " (Win32 " + error + ").", new Win32Exception(error)); }
             try
             {
                 NativeInformation information;

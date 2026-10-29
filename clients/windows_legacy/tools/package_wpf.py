@@ -47,9 +47,10 @@ MAX_TOTAL_BYTES = CONTRACT["maximumExpandedBytesExclusive"] - 1
 MAX_MANIFEST_BYTES = CONTRACT["maximumManifestBytes"]
 MAX_JSON_BYTES = 8 * 1024 * 1024
 SOURCE_PATHS = ["clients/windows_legacy", "pubspec.yaml", "assets/security/uten-imp-root-ca.crt",
-    "assets/fonts/NotoSansSC.ttf", "assets/images/logo_ip.png", "assets/images/logo_name.png",
+    "assets/fonts/NotoSansSC.ttf", "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt", "assets/images/logo_ip.png", "assets/images/logo_name.png",
     "windows/runner/resources/app_icon.ico", "lib/core/theme"]
 SOURCE_REQUIRED = {"pubspec.yaml", "clients/windows_legacy/BuildVersion.targets",
+    "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt",
     "clients/windows_legacy/dependencies.lock.json",
     "clients/windows_legacy/package-contract.json",
     "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json",
@@ -341,6 +342,30 @@ def write_build_receipt(bundle: Path, output: Path, *, architecture: str, source
     _write_json(_output(output, bundle, ".json"), receipt)
     return receipt
 
+def inspect_bootstrap(helper: Path, *, architecture: str, version: str, build_number: int, company: bool = True) -> dict:
+    helper = _plain(helper)
+    if helper.name != "Uten.Legacy.Updater.exe" or inspect_managed(helper, executable=True)["architecture"] != architecture:
+        raise ValueError("Fixed bootstrap PE/CLR architecture differs from its app")
+    info = inspect_executable_info(helper)
+    expected = tuple(map(int, version.split("."))) + (build_number,)
+    if company and (info["fileVersion"] != expected or info["productVersion"] != expected or info["strings"].get("comments") != MARKER):
+        raise ValueError("Company bootstrap must come from the same Release/Company version/build")
+    configuration = _plain(helper.with_suffix(".exe.config"))
+    _runtime_configuration(configuration)
+    return {"files": [{"path": "client_updater/" + path.name, "size": path.stat().st_size, "sha256": _digest(path)}
+                     for path in (helper, configuration)], "fileVersion": list(info["fileVersion"])}
+
+
+def write_bootstrap_receipt(helper: Path, output: Path, *, architecture: str, source_root: Path, source_state: dict) -> dict:
+    current = capture_source_state(source_root)
+    if not _same(current, source_state):
+        raise ValueError("Source changed during bootstrap compilation")
+    bootstrap = inspect_bootstrap(helper, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
+    receipt = {**current, "artifactKind": "bootstrap", "runtimeFamily": "wpf_legacy", "platform": "windows",
+        "architecture": architecture, "configuration": "Release", "distributionProfile": "Company", "files": bootstrap["files"]}
+    _write_json(_output(output, _plain(helper).parent, ".json"), receipt)
+    return receipt
+
 
 def validate_package(path: Path, *, architecture: str, version: str, build_number: int) -> dict:
     path = _plain(path)
@@ -462,6 +487,12 @@ def main() -> None:
     state = commands.add_parser("source-state")
     state.add_argument("--source-root", type=Path, default=ROOT)
     receipt = commands.add_parser("receipt")
+    bootstrap = commands.add_parser("bootstrap-receipt")
+    bootstrap.add_argument("--source-root", type=Path, default=ROOT)
+    bootstrap.add_argument("--updater", type=Path, required=True)
+    bootstrap.add_argument("--architecture", choices=("x86", "x64"), required=True)
+    bootstrap.add_argument("--source-state", type=Path, required=True)
+    bootstrap.add_argument("--output", type=Path, required=True)
     package = commands.add_parser("package")
     for command in (receipt, package):
         command.add_argument("--source-root", type=Path, default=ROOT)
@@ -482,6 +513,9 @@ def main() -> None:
         elif args.command == "receipt":
             result = write_build_receipt(args.bundle, args.output, architecture=args.architecture, source_root=args.source_root,
                 source_state=_read_json(args.source_state), configuration=args.configuration, distribution_profile=args.distribution_profile)
+        elif args.command == "bootstrap-receipt":
+            result = write_bootstrap_receipt(args.updater, args.output, architecture=args.architecture, source_root=args.source_root,
+                source_state=_read_json(args.source_state))
         else:
             result = package_update(args.bundle, args.output, architecture=args.architecture, source_root=args.source_root,
                 receipt_path=args.receipt, build=args.build)

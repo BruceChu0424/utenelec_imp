@@ -117,14 +117,17 @@ namespace Uten.Legacy.Tests
                     var oldOwner = session.CaptureMutationOwner();
                     var main = new MainWindow(session, configuration, true) { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
                     UnitEditorWindow editor = null;
-                    bool mainClosed = false, editorClosed = false;
+                    UtenDialogWindow intermediate = null;
+                    bool mainClosed = false, editorClosed = false, intermediateClosed = false;
                     main.Closed += (sender, args) => mainClosed = true;
                     try
                     {
                         // A real HWND owner is needed: owner-driven close ignores a child's
                         // Closing cancellation. Opacity=0/ShowActivated=false avoids visible UI.
                         main.Show();
-                        editor = new UnitEditorWindow(main, session, new UnitService(session), null, MutationAction.UnitCreate);
+                        intermediate = new UtenDialogWindow(main, "Fixture intermediate owner") { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                        intermediate.Closed += (sender, args) => intermediateClosed = true; intermediate.Show();
+                        editor = new UnitEditorWindow(intermediate, session, new UnitService(session), null, MutationAction.UnitCreate);
                         editor.Closed += (sender, args) => editorClosed = true;
                         Layout(editor);
                         var input = FindVisual<TextBox>((DependencyObject)editor.Content, item =>
@@ -133,6 +136,8 @@ namespace Uten.Legacy.Tests
                         editor.Close();
                         PumpUntil(() => blocked.SaveEntered.IsSet, "The private blocking store must reach the close-preservation checkpoint.");
                         if (input.IsEnabled) throw new InvalidOperationException("Closing preservation must freeze input while disk I/O is pending.");
+                        intermediate.Close();
+                        if (intermediateClosed) throw new InvalidOperationException("An intermediate owned dialog must not bypass a preserving descendant.");
                         main.Close();
                         if (mainClosed) throw new InvalidOperationException("The real owner must not close while its editor is preserving a draft.");
                         handler.UserId = "fixture-new-owner";
@@ -142,6 +147,7 @@ namespace Uten.Legacy.Tests
                         if (mainClosed) throw new InvalidOperationException("Replacing a workspace must not lose a retired editor's global exit guard.");
                         blocked.ContinueSave.Set();
                         PumpUntil(() => editorClosed, "The original owner's draft must finish before releasing the global exit guard.");
+                        PumpUntil(() => intermediateClosed, "The intermediate owner may close only after descendant preservation completes.");
                         if (!state.Store.ListDrafts(oldOwner).Any(draft => draft.BodyJson.Contains("父窗口阻塞输入")))
                             throw new InvalidOperationException("The original namespace must retain the last editable input before owner retirement.");
                         main.Close();
@@ -151,6 +157,7 @@ namespace Uten.Legacy.Tests
                     {
                         blocked.ContinueSave.Set();
                         if (editor != null && !editorClosed) { editor.RetireOwner(); PumpUntil(() => editorClosed, "Fixture editor cleanup must preserve its private draft."); }
+                        if (intermediate != null && !intermediateClosed) intermediate.Close();
                         if (!mainClosed) main.Close();
                     }
                 }
@@ -249,7 +256,8 @@ namespace Uten.Legacy.Tests
                     service.SendAsync(statusRequest, CancellationToken.None).GetAwaiter().GetResult();
                     var pending = session.LoadMutationJournalAsync(statusRequest.RequestId, newOwner, CancellationToken.None).GetAwaiter().GetResult();
                     var inspectorType = typeof(UnitRecoveryWindow).GetNestedType("UtenRecordWindow", System.Reflection.BindingFlags.NonPublic);
-                    var inspector = (Window)inspectorType.GetConstructors(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)[0]
+                    var inspector = (Window)inspectorType.GetConstructor(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance,
+                        null, new[] { typeof(Window), typeof(MutationJournalRecord) }, null)
                         .Invoke(new object[] { null, pending });
                     try
                     {
@@ -259,6 +267,18 @@ namespace Uten.Legacy.Tests
                             throw new InvalidOperationException("A status-only unknown submission must show its exact target UUID for manual reconciliation.");
                     }
                     finally { inspector.Close(); }
+
+                    var noteLease = session.CreateMutationReviewLeaseAsync(pending.RequestId, newOwner, CancellationToken.None).GetAwaiter().GetResult();
+                    var noteWindow = new UnitReviewNoteWindow(null, session, noteLease, newOwner);
+                    Layout(noteWindow);
+                    var noteInput = FindVisual<TextBox>((DependencyObject)noteWindow.Content, item =>
+                        System.Windows.Automation.AutomationProperties.GetName(item) == "核对说明");
+                    noteInput.Text = "已核对原UUID和操作时间，原提交仍保留未知事实。";
+                    bool noteClosed = false; noteWindow.Closed += (sender, args) => noteClosed = true; noteWindow.Close();
+                    PumpUntil(() => noteClosed, "Local review note must be preserved before its window closes.");
+                    var reviewed = session.LoadMutationJournalAsync(pending.RequestId, newOwner, CancellationToken.None).GetAwaiter().GetResult();
+                    if (!noteWindow.NoteRecorded || reviewed.State != MutationJournalState.Unknown || !reviewed.ReviewNote.Contains("已核对原UUID"))
+                        throw new InvalidOperationException("A local annotation must preserve text without claiming success or replaying the unknown operation.");
 
                     var view = new UnitsWorkspaceView(session);
                     try

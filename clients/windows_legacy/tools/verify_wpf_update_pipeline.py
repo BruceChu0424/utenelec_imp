@@ -27,6 +27,29 @@ def java_argument(value: str) -> str:
     # Java @argfile syntax, never a shell command.
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
+def build_fixture_package(root: Path, architecture: str) -> dict:
+    """Actual producer flow for an explicitly synthetic clean source and inert payload."""
+    source = root / "synthetic-clean-source"
+    source.mkdir()
+    for name in producer.SOURCE_REQUIRED:
+        target = source / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("Synthetic integration fixture source; not a product release.\n", encoding="utf-8")
+    (source / "pubspec.yaml").write_text("name: fixture\nversion: 2.5.35+2535\n", encoding="utf-8")
+    (source / "clients/windows_legacy/package-contract.json").write_bytes(producer.CONTRACT_PATH.read_bytes())
+    (source / "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json").write_bytes((root / "payload/uten.client.json").read_bytes())
+    (source / "clients/windows_legacy/dependencies.lock.json").write_bytes(producer.DEPENDENCY_LOCK.read_bytes())
+    run(["git", "init", "-q"], cwd=source)
+    run(["git", "add", "."], cwd=source)
+    run(["git", "-c", "user.name=WPF integration fixture", "-c", "user.email=fixture@example.invalid",
+         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=disabled-hooks", "commit", "-qm", "inert synthetic integration fixture"], cwd=source)
+    state = producer.capture_source_state(source)
+    receipt = root / "receipt.json"
+    producer.write_build_receipt(root / "payload", receipt, architecture=architecture, source_root=source,
+        source_state=state, configuration="Release", distribution_profile="Company")
+    return producer.package_update(root / "payload", root / "producer.zip", architecture=architecture,
+        source_root=source, receipt_path=receipt, build=True)
+
 def verify(harness: Path, architecture: str, java_report: Path | None = None, java_exe: str | None = None) -> dict:
     synchronize()
     harness = harness.resolve(strict=True)
@@ -37,26 +60,7 @@ def verify(harness: Path, architecture: str, java_report: Path | None = None, ja
         emitted = json.loads(run([str(harness), "emit", str(root)]))
         if emitted != {"architecture": architecture, "fixtureOnly": True}:
             raise ValueError("Native fixture harness architecture differs")
-        source = root / "synthetic-clean-source"
-        source.mkdir()
-        for name in producer.SOURCE_REQUIRED:
-            target = source / name
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text("Synthetic integration fixture source; not a product release.\n", encoding="utf-8")
-        (source / "pubspec.yaml").write_text("name: fixture\nversion: 2.5.35+2535\n", encoding="utf-8")
-        (source / "clients/windows_legacy/package-contract.json").write_bytes(producer.CONTRACT_PATH.read_bytes())
-        (source / "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json").write_bytes((root / "payload/uten.client.json").read_bytes())
-        (source / "clients/windows_legacy/dependencies.lock.json").write_bytes(producer.DEPENDENCY_LOCK.read_bytes())
-        run(["git", "init", "-q"], cwd=source)
-        run(["git", "add", "."], cwd=source)
-        run(["git", "-c", "user.name=WPF integration fixture", "-c", "user.email=fixture@example.invalid",
-             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=disabled-hooks", "commit", "-qm", "inert synthetic integration fixture"], cwd=source)
-        state = producer.capture_source_state(source)
-        receipt = root / "receipt.json"
-        producer.write_build_receipt(root / "payload", receipt, architecture=architecture, source_root=source,
-            source_state=state, configuration="Release", distribution_profile="Company")
-        package = producer.package_update(root / "payload", root / "producer.zip", architecture=architecture,
-            source_root=source, receipt_path=receipt, build=True)
+        package = build_fixture_package(root, architecture)
         # A second independent producer read precedes the native consumer.
         producer.validate_package(root / "producer.zip", architecture=architecture, version="2.5.35", build_number=2535)
         native = json.loads(run([str(harness), "verify", str(root)]))

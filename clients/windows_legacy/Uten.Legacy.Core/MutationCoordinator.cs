@@ -16,8 +16,8 @@ namespace Uten.Legacy.Core
         private StepUpGrant stepUpGrant;
         private const int MaximumRetainedMutationIntents = 512;
 
-        /// <summary>W7-CORE-011 is an in-process safety foundation. Durable encrypted drafts,
-        /// a crash-safe submit journal and receipt/manual reconciliation UI are separate work.</summary>
+        /// <summary>A configured independent business store is required before any write.
+        /// Individual durable failures remain explicit on MutationResult.PersistenceError.</summary>
         public bool DurableMutationJournalAvailable { get { return businessStateStore != null; } }
 
         public MutationOwnerSnapshot CaptureMutationOwner()
@@ -59,6 +59,10 @@ namespace Uten.Legacy.Core
         internal static MutationRequest BuildMutationRequest(MutationAction action, string requestId, string bodyJson,
             MutationOwnerSnapshot owner, string resourceId = null, string observedStatus = null)
         {
+            if (IsSupplementalUnitAction(action)) return BuildUnitSupplementalRequest(action, requestId, bodyJson, owner, resourceId, observedStatus);
+            if (IsUnitHistoryMutation(action)) return BuildUnitHistoryRequest(action, requestId, bodyJson, owner, resourceId, observedStatus);
+            if (IsUnitExportMutation(action)) return BuildUnitExportRequest(action, requestId, bodyJson, owner, resourceId, observedStatus);
+            if (IsUnitPlatformMutation(action)) return BuildUnitPlatformRequest(action, requestId, bodyJson, owner, resourceId, observedStatus);
             var id = CanonicalCommandId(requestId);
             Dictionary<string, FlatJsonField> fields;
             try { fields = MutationFlatJson.Parse(bodyJson); }
@@ -142,6 +146,12 @@ namespace Uten.Legacy.Core
                 // Refresh is shared and may rotate access credentials. It may not change this
                 // frozen command's logical owner, grants, dataset or read revision.
                 var owned = await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
+                if (IsUnitPlatformMutation(request.Action))
+                {
+                    await ValidateUnitPlatformPrerequisitesAsync(request, cancellationToken).ConfigureAwait(false);
+                    // A safe prerequisite read may have refreshed access credentials once.
+                    owned = await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
+                }
                 permit.ValidateBeforeDispatch();
                 await Task.Run(() => BusinessPersist(() => businessStateStore.BeginSending(request))).ConfigureAwait(false);
                 checkpointCommitted = true;
@@ -164,8 +174,15 @@ namespace Uten.Legacy.Core
                     return await PersistMutationCompletionAsync(CompleteMutation(request,
                         rejected ? MutationOutcome.Rejected : MutationOutcome.Unknown, error), checkpointCommitted).ConfigureAwait(false);
                 }
-                // The verified routes return UnitDetail, not an asynchronous 202 acknowledgement.
-                if (response.Status != 200 || !ValidUnitReply(response.Text, request.ResourceId))
+                MutationResponseContract.Assessment assessment = null;
+                var validResponse = response.Status == 200;
+                if (validResponse)
+                {
+                    try { assessment = MutationResponseContract.Assess(request, response.Text); }
+                    catch (Exception invalid) when (invalid is FormatException || invalid is ArgumentException || invalid is InvalidOperationException)
+                    { validResponse = false; }
+                }
+                if (!validResponse)
                     return await PersistMutationCompletionAsync(CompleteMutation(request, MutationOutcome.Unknown,
                         new ApiException("MUTATION_RESPONSE_UNCONFIRMED", "服务器回复不能确认为本次单位操作结果，请先人工核对。", response.Status, true)), checkpointCommitted).ConfigureAwait(false);
                 MutationResult confirmed;
@@ -173,6 +190,8 @@ namespace Uten.Legacy.Core
                 {
                     RequireMutationOwnerLocked(request.Owner);
                     confirmed = CompleteMutation(request, MutationOutcome.Confirmed, null, response.Text);
+                    confirmed.BatchResult = assessment.Batch;
+                    confirmed.ExportJob = assessment.ExportJob;
                 }
                 return await PersistMutationCompletionAsync(confirmed, checkpointCommitted).ConfigureAwait(false);
             }
@@ -279,19 +298,6 @@ namespace Uten.Legacy.Core
                 request.Result = result;
                 return result;
             }
-        }
-        private static bool ValidUnitReply(string json, string expectedId)
-        {
-            try
-            {
-                var body = JsonValue.ParseObject(json);
-                var id = JsonValue.RequiredString(body, "id", 36);
-                CanonicalCommandId(id);
-                JsonValue.RequiredString(body, "name", 16384);
-                return expectedId == null || id == expectedId;
-            }
-            catch (Exception error) when (error is ApiException || error is FormatException || error is ArgumentException || error is InvalidOperationException)
-            { return false; }
         }
         private static void RequireFields(IDictionary<string, FlatJsonField> fields, params string[] allowed)
         { if (fields.Keys.Any(key => !allowed.Contains(key, StringComparer.Ordinal))) throw InvalidAction(); }

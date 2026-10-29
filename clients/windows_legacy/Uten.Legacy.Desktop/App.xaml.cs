@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -18,6 +19,10 @@ namespace Uten.Legacy.Desktop
 
         private void OnStartup(object sender, StartupEventArgs e)
         {
+            // Resource consumers/contract runners can load this Application without
+            // launching the desktop executable. They must never start its real
+            // profile, single-instance mutex or default company network session.
+            if (!Object.ReferenceEquals(Assembly.GetEntryAssembly(), typeof(App).Assembly)) return;
             bool render = e.Args.Length == 2 && e.Args[0] == "--render-login";
             bool development = e.Args.Contains("--development-smoke");
             // Installing/launching this validation client on modern Windows is

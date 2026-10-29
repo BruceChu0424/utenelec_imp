@@ -55,9 +55,9 @@
 
 ## W7-PKG-004
 
-- [ ] **完整Setup构建器** — 未开始
+- [ ] **完整Setup构建器** — 本机验证/待本项最终验收
 
-影响：`delivery`；负责人：待认领；依赖：W7-ENV-003, W7-ENV-005。
+影响：`delivery`；负责人：Codex；依赖：W7-ENV-003, W7-ENV-005。
 
 源入口：`clients/windows_legacy/tools/package_wpf.py`；`clients/windows_legacy/tools/build_windows_wpf.ps1`。
 
@@ -66,9 +66,9 @@
 1. 同源双payload+bootstrap、经审核编译器、外层身份/版本校验，不能只交ZIP或脚本。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：新Setup builder和固定双arch staging/app+bootstrap source receipts已实现；不可安装fixture经ISCC6.7.3编译0警告，producer/staging27与policy11通过。非真实Company包/非Win7安装验收。。
 
 ## W7-PKG-005
 

@@ -13,7 +13,7 @@
   <ItemGroup>
     <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Security"/><Reference Include="System.Web.Extensions"/>
     <Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/>
-    <Compile Include="Program.cs"/><Compile Include="SafeFiles.cs"/><Compile Include="StrictJson.cs"/><Compile Include="PackageContract.g.cs"/><Compile Include="ZipDirectory.cs"/><Compile Include="UpdateContract.cs"/><Compile Include="UpdateAuthorization.cs"/><Compile Include="UpdateExecutor.cs"/>
+    <Compile Include="Program.cs"/><Compile Include="SafeFiles.cs"/><Compile Include="StrictJson.cs"/><Compile Include="PackageContract.g.cs"/><Compile Include="ZipDirectory.cs"/><Compile Include="ParentProcessLease.cs"/><Compile Include="UpdateContract.cs"/><Compile Include="UpdateAuthorization.cs"/><Compile Include="UpdateExecutor.cs"/>
     <None Include="App.config"/>
   </ItemGroup>
   <Import Project="..\BuildVersion.targets"/>

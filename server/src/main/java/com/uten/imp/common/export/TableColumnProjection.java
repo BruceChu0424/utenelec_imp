@@ -73,5 +73,12 @@ public final class TableColumnProjection {
                 + ", columns=" + columns + "]";
     }
     public record Column(@NotBlank @Size(max=120) String key, @Size(max=200) String label,
-            @DecimalMin("1") @DecimalMax("2000") Double width, @Size(max=20) String type, JsonNode definition) { }
+            @DecimalMin("1") @DecimalMax("2000") Double width, @Size(max=20) String type, JsonNode definition) {
+        public Column {
+            // Missing and explicit JSON null describe the same absent definition.
+            // Preserve record equality across persistence so the same named export job
+            // cannot spuriously conflict after Jackson materializes a NullNode.
+            if(definition!=null&&definition.isNull())definition=null;
+        }
+    }
 }

@@ -16,6 +16,13 @@ namespace Uten.Legacy.Core.Tests
         {
             CompanyCertificatePolicy.FromEmbeddedCertificate();
             MutationContractChecks.Run();
+            UnitCommandContractChecks.Run();
+            UnitHistoryMutationChecks.Run();
+            UnitExportDownloadChecks.Run();
+            UnitExportMutationChecks.Run();
+            ReadAndReviewLeaseChecks.Run();
+            UnitProjectionChecks.Run();
+            UnitPlatformMutationChecks.Run();
             BusinessStateContractChecks.Run();
             ClientPackageDownloadChecks.Run();
             ReadScopeRevisionChecks.Run();

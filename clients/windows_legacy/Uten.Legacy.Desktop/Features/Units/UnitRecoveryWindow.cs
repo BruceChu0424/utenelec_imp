@@ -64,9 +64,13 @@ namespace Uten.Legacy.Desktop.Features.Units
         private static DataGridTextColumn Column(string title, string property, double width, bool stretch = false)
         { return new DataGridTextColumn { Header = title, Binding = new Binding(property), Width = new DataGridLength(width, stretch ? DataGridLengthUnitType.Star : DataGridLengthUnitType.Pixel) }; }
         private static bool IsUnitAction(MutationAction action)
-        { return action == MutationAction.UnitCreate || action == MutationAction.UnitUpdate || action == MutationAction.UnitStatus; }
+        { return action != MutationAction.Unknown && Enum.IsDefined(typeof(MutationAction), action) && action.ToString().StartsWith("Unit", StringComparison.Ordinal); }
+        private static bool IsFormDraft(MutationAction action)
+        { return action == MutationAction.UnitCreate || action == MutationAction.UnitUpdate || action == MutationAction.UnitStatus
+            || action == MutationAction.UnitInlineEdit || action == MutationAction.UnitColumnLayoutSave
+            || action == MutationAction.UnitPlatformDefinitionCreate || action == MutationAction.UnitPlatformValuesWrite; }
         private static string ActionName(MutationAction action)
-        { return action == MutationAction.UnitCreate ? "新增单位" : action == MutationAction.UnitUpdate ? "编辑单位" : "更改状态"; }
+        { return UnitActionLabels.Title(action); }
         private static string StateName(MutationJournalState state)
         {
             switch (state)
@@ -120,8 +124,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             if (resume == null) return;
             var selected = drafts.SelectedItem as DraftRow;
             string permission = selected?.Draft.Action == MutationAction.UnitCreate ? "unit:create" :
-                selected?.Draft.Action == MutationAction.UnitUpdate ? "unit:edit" : "unit:status";
-            resume.IsEnabled = !busy && Current() && selected != null && !selected.Pending && session.CurrentUser.HasPermission(permission);
+                selected?.Draft.Action == MutationAction.UnitUpdate || selected?.Draft.Action == MutationAction.UnitInlineEdit ? "unit:edit" :
+                selected?.Draft.Action == MutationAction.UnitStatus ? "unit:status" : "unit:view";
+            resume.IsEnabled = !busy && Current() && selected != null && IsFormDraft(selected.Draft.Action)
+                && !selected.Pending && session.CurrentUser.HasPermission(permission);
             delete.IsEnabled = !busy && Current() && selected != null && !selected.Pending;
         }
         private void ResumeSelected()
@@ -150,7 +156,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (!Current() || !(journal.SelectedItem is JournalRow row)) return;
             var record = row.Record;
-            var detail = new UtenRecordWindow(this, record);
+            var detail = new UtenRecordWindow(this, record, session, owner);
             detail.ShowDialog();
         }
         private void OnOwnerChanged(object sender, EventArgs args)
@@ -162,23 +168,83 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private sealed class UtenRecordWindow : UtenDialogWindow
         {
-            internal UtenRecordWindow(Window parent, MutationJournalRecord record) : base(parent, "原提交与核对依据", 720)
+            private readonly SessionCoordinator session;
+            private readonly MutationOwnerSnapshot owner;
+            private readonly MutationJournalRecord record;
+            private readonly TextBlock review = new TextBlock { TextWrapping = TextWrapping.Wrap };
+            private bool ended, opening;
+            internal UtenRecordWindow(Window parent, MutationJournalRecord record) : this(parent, record, null, null) { }
+            internal UtenRecordWindow(Window parent, MutationJournalRecord record, SessionCoordinator session, MutationOwnerSnapshot owner)
+                : base(parent, "原提交与核对依据", 720)
             {
+                this.session = session; this.owner = owner; this.record = record;
                 Body.Children.Add(new TextBlock { Text = StateName(record.State) + " · " + record.CreatedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") });
                 Body.Children.Add(new TextBlock { Text = "提交编号：" + record.RequestId, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S12"), 0, 0) });
                 Body.Children.Add(new TextBlock { Text = "原服务器：" + record.IssuerApiBaseUrl, TextWrapping = TextWrapping.Wrap });
                 Body.Children.Add(new TextBlock { Text = "操作：" + ActionName(record.Action), TextWrapping = TextWrapping.Wrap });
-                Body.Children.Add(new TextBox { Text = "目标单位 UUID：" + (record.ResourceId ?? record.ConfirmedResourceId ?? "新增时尚未取得"),
+                string targetLabel = record.Action.ToString().Contains("RecordRestore") ? "历史版本编号"
+                    : record.Action.ToString().Contains("Undo") || record.Action.ToString().Contains("Redo") ? "原操作编号"
+                    : record.Action.ToString().Contains("Export") ? "任务编号" : "目标单位 UUID";
+                Body.Children.Add(new TextBox { Text = targetLabel + "：" + (record.ResourceId ?? record.ConfirmedResourceId ?? "见原请求中的记录集合或新增内容"),
                     IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0) });
                 Body.Children.Add(new TextBlock { Text = "请求：" + record.Method + " " + record.RelativePath, TextWrapping = TextWrapping.Wrap });
                 Body.Children.Add(new TextBox { Text = record.BodyJson, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
                     MaxHeight = 220, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, Space("S12"), 0, 0) });
+                if (!String.IsNullOrEmpty(record.ResultJson))
+                    Body.Children.Add(new TextBox { Text = record.ResultJson, IsReadOnly = true, TextWrapping = TextWrapping.Wrap,
+                        MaxHeight = 180, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(0, Space("S12"), 0, 0) });
                 if (record.MayNeedManualReconciliation)
                     Body.Children.Add(new TextBlock { Text = "请在原服务器核对单位详情和操作历史。同名记录或目标值相同不能证明本次提交成功，请勿重复提交。",
                         TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S12"), 0, 0) });
-                if (!String.IsNullOrEmpty(record.ReviewNote))
-                    Body.Children.Add(new TextBlock { Text = record.ReviewNote, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, Space("S12"), 0, 0) });
+                review.Text = record.ReviewNote ?? ""; review.Margin = new Thickness(0, Space("S12"), 0, 0); Body.Children.Add(review);
+                if (session != null)
+                {
+                    ActionButton("追加核对说明", () => { _ = AppendAsync(); });
+                    session.SessionChanged += OnOwnerChanged; session.ReadScopeChanged += OnOwnerChanged;
+                }
                 ActionButton("关闭", () => Close());
+            }
+            private bool Current
+            {
+                get
+                {
+                    if (ended) return false;
+                    if (session == null) return true; // Read-only isolated UI fixture constructor.
+                    var user = session.CurrentUser;
+                    return user != null && session.IsAuthenticated && session.Generation == owner.AuthGeneration
+                        && session.ReadScopeRevision == owner.ReadScopeRevision && session.CurrentEndpoint?.ApiBaseUrl == owner.IssuerApiBaseUrl
+                        && user.Id == owner.UserId && user.BusinessDatasetId == owner.BusinessDatasetId && user.BusinessResetGeneration == owner.BusinessResetGeneration;
+                }
+            }
+            private async Task AppendAsync()
+            {
+                if (!Current || opening) return;
+                opening = true; Actions.IsEnabled = false;
+                try
+                {
+                    var lease = await session.CreateMutationReviewLeaseAsync(record.RequestId, owner, CancellationToken.None);
+                    if (!Current) return;
+                    var window = new UnitReviewNoteWindow(this, session, lease, owner);
+                    window.ShowDialog();
+                    if (window.NoteRecorded && Current)
+                    {
+                        var updated = await session.LoadMutationJournalAsync(record.RequestId, owner, CancellationToken.None);
+                        if (Current) review.Text = updated?.ReviewNote ?? "";
+                    }
+                }
+                catch (ApiException error) { if (Current) ShowStatus(error.UserMessage, true); }
+                finally { opening = false; if (!ended) Actions.IsEnabled = Current; }
+            }
+            private void OnOwnerChanged(object sender, EventArgs args)
+            {
+                if (!ended) Dispatcher.BeginInvoke(new Action(() =>
+                { if (!Current && !ended) { Body.Children.Clear(); Actions.IsEnabled = false; Close(); } }));
+            }
+            protected override void OnClosed(EventArgs args)
+            {
+                ended = true;
+                if (session != null) { session.SessionChanged -= OnOwnerChanged; session.ReadScopeChanged -= OnOwnerChanged; }
+                base.OnClosed(args);
             }
         }
     }

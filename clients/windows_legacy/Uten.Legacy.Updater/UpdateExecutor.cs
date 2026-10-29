@@ -12,6 +12,8 @@ namespace Uten.Legacy.Updater
         public bool Succeeded { get; internal set; }
         public bool RollbackComplete { get; internal set; }
         public string State { get; internal set; }
+        public int RestartedPid { get; internal set; }
+        public long RestartedStartTimeUtcTicks { get; internal set; }
     }
 
     /// <summary>
@@ -77,6 +79,8 @@ namespace Uten.Legacy.Updater
                                 UseShellExecute = false, Arguments = String.Empty
                             });
                             if (started == null) throw new IOException("The anchored application did not start.");
+                            result.RestartedPid = started.Id;
+                            result.RestartedStartTimeUtcTicks = started.StartTime.ToUniversalTime().Ticks;
                             started.Dispose();
                         }
                         finally { foreach (var lease in leases) lease.Dispose(); }
@@ -87,7 +91,7 @@ namespace Uten.Legacy.Updater
                 }
                 catch (Exception error)
                 {
-                    journal.TryRecord("failed", error.GetType().Name);
+                    journal.TryRecord("failed", error.GetType().Name + ": " + error.Message);
                     var result = new UpdateResult { State = journal.MutationStarted ? "failed_manual_recovery" : "failed_before_apply",
                         Succeeded = false, RollbackComplete = !journal.MutationStarted };
                     try { ResultFile(plan, result); } catch (IOException) { /* Recovery material is still retained; never restart after failure. */ }
@@ -96,19 +100,7 @@ namespace Uten.Legacy.Updater
             }
         }
 
-        private static Process VerifiedParent(UpdatePlan plan)
-        {
-            Process parent = null;
-            try
-            {
-                parent = Process.GetProcessById(plan.ParentPid);
-                if (parent.HasExited || parent.StartTime.ToUniversalTime().Ticks != plan.ParentStartTimeUtcTicks
-                    || parent.MainModule == null || !SafeFiles.Same(parent.MainModule.FileName, SafeFiles.Child(plan.AppRoot, UpdateContract.MainExecutable)))
-                    throw new IOException("Parent PID/start time/image identity differs.");
-                return parent;
-            }
-            catch { if (parent != null) parent.Dispose(); throw; }
-        }
+        private static ParentProcessLease VerifiedParent(UpdatePlan plan) { return ParentProcessLease.Open(plan); }
         private static void CheckCancelled(UpdatePlan plan)
         { UpdateAuthorization.ThrowIfCancelled(plan); }
         private static void ResultFile(UpdatePlan plan, UpdateResult result)
@@ -118,6 +110,7 @@ namespace Uten.Legacy.Updater
                 { "schemaVersion", 1 }, { "candidate", true }, { "state", result.State }, { "succeeded", result.Succeeded },
                 { "rollbackComplete", result.RollbackComplete }, { "runtimeFamily", "wpf_legacy" },
                 { "architecture", plan.Architecture }, { "version", plan.Version }, { "buildNumber", plan.BuildNumber },
+                { "restartedPid", result.RestartedPid }, { "restartedStartTimeUtcTicks", result.RestartedStartTimeUtcTicks },
                 { "recoveryDirectory", plan.JobRoot }, { "updaterPid", Process.GetCurrentProcess().Id }
             });
         }
@@ -169,6 +162,22 @@ namespace Uten.Legacy.Updater
                         }
                     }
                     journal.Record("all_backups_verified");
+                    // This record survives an interrupted process and binds every retained
+                    // backup to the package and anchored installation. It is recovery
+                    // evidence, not a claim of an atomic/power-loss-safe transaction.
+                    SafeFiles.NewJson(plan.JobRoot, "recovery-manifest.json", new Dictionary<string, object>
+                    {
+                        { "schemaVersion", 1 }, { "runtimeFamily", "wpf_legacy" }, { "architecture", plan.Architecture },
+                        { "appRoot", plan.AppRoot }, { "packageSha256", plan.Sha256 }, { "packageSizeBytes", plan.SizeBytes },
+                        { "originalVersion", plan.CurrentVersion }, { "originalBuildNumber", plan.CurrentBuild },
+                        { "version", plan.Version }, { "buildNumber", plan.BuildNumber },
+                        { "files", prepared.Files.Select(record => (object)new Dictionary<string, object>
+                            {
+                                { "path", record.Name }, { "originalSize", plan.OriginalFiles[record.Name].Size },
+                                { "originalSha256", plan.OriginalFiles[record.Name].Sha256 },
+                                { "targetSize", record.Size }, { "targetSha256", record.Sha256 }
+                            }).ToArray() }
+                    });
                     try
                     {
                         var index = 0;

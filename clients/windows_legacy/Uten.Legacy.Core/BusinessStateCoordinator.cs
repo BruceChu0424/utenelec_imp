@@ -18,8 +18,9 @@ namespace Uten.Legacy.Core
             lock (gate)
             {
                 RequireMutationOwnerLocked(owner);
-                RequireMutationPermissionsLocked(new[] { action == MutationAction.UnitCreate ? "unit:create"
-                    : action == MutationAction.UnitUpdate ? "unit:edit" : "unit:status" });
+                RequireMutationPermissionsLocked(IsUnitPlatformMutation(action) ? UnitPlatformPermissions(action) : action == MutationAction.UnitInlineEdit ? new[] { "unit:view", "unit:edit" }
+                    : new[] { action == MutationAction.UnitCreate ? "unit:create" : action == MutationAction.UnitUpdate ? "unit:edit"
+                        : action == MutationAction.UnitBatchDelete ? "unit:delete" : "unit:status" });
                 RequireBusinessStateStore();
                 return new DraftWriteLease(mutationIdentity, action, draftId, owner, resourceId, observedStatus);
             }
@@ -93,8 +94,7 @@ namespace Uten.Legacy.Core
             MutationOwnerSnapshot owner, CancellationToken ct)
         {
             CanonicalCommandId(requestId); RequireBusinessReader(owner);
-            if (String.IsNullOrWhiteSpace(note) || note.Length > 2000 || note.Any(value => Char.IsControl(value) && value != '\n' && value != '\r' && value != '\t'))
-                throw new ApiException("REVIEW_NOTE_INVALID", "请填写不含认证材料的有界人工核对说明；它不会把未知提交改成成功。");
+            ValidateReviewNote(note);
             var result = await Task.Run(() =>
             {
                 RequireBusinessReader(owner);
@@ -150,11 +150,19 @@ namespace Uten.Legacy.Core
 
         internal static void ValidateDraftMetadata(MutationAction action, string resourceId, string observedStatus)
         {
-            if (action == MutationAction.UnitCreate) { if (resourceId != null || observedStatus != null) throw InvalidAction(); }
-            else if (action == MutationAction.UnitUpdate || action == MutationAction.UnitStatus)
+            if (IsUnitPlatformMutation(action))
+            {
+                if (observedStatus != null || action == MutationAction.UnitPlatformDefinitionDelete || action == MutationAction.UnitPlatformDefinitionUse) throw InvalidAction();
+                if (action == MutationAction.UnitPlatformValuesWrite) CanonicalCommandId(resourceId);
+                else if (resourceId != null) throw InvalidAction();
+                return;
+            }
+            if (action == MutationAction.UnitCreate || action == MutationAction.UnitBatchStatus || action == MutationAction.UnitBatchDelete)
+            { if (resourceId != null || observedStatus != null) throw InvalidAction(); }
+            else if (action == MutationAction.UnitUpdate || action == MutationAction.UnitStatus || action == MutationAction.UnitInlineEdit)
             {
                 CanonicalCommandId(resourceId);
-                if ((action == MutationAction.UnitStatus && observedStatus != null)
+                if (((action == MutationAction.UnitStatus || action == MutationAction.UnitInlineEdit) && observedStatus != null)
                     || (observedStatus != null && observedStatus != "使用" && observedStatus != "禁用")) throw InvalidAction();
             }
             else throw InvalidAction();
@@ -163,6 +171,8 @@ namespace Uten.Legacy.Core
         {
             try
             {
+                if (IsUnitPlatformMutation(action)) { ValidateUnitPlatformBody(action, body, true); return; }
+                if (IsSupplementalUnitAction(action)) { ValidateSupplementalBody(action, body, true); return; }
                 var fields = MutationFlatJson.Parse(body, 65536, true);
                 if (action == MutationAction.UnitStatus) RequireFields(fields, "status", "version");
                 else if (action == MutationAction.UnitCreate || action == MutationAction.UnitUpdate)

@@ -210,13 +210,17 @@ namespace Uten.Legacy.Core
             { throw new ApiException("LOGOUT_PENDING", "已退出本机；服务器注销已保存在待处理队列，恢复连接后重试。", isSubmissionUnknown: true); }
         }
 
-        public async Task<string> GetAsync(string relativePath, CancellationToken cancellationToken)
+        public Task<string> GetAsync(string relativePath, CancellationToken cancellationToken)
+        { return ReadJsonAsync(HttpMethod.Get, relativePath, null, cancellationToken); }
+
+        private async Task<string> ReadJsonAsync(HttpMethod method, string relativePath, object body, CancellationToken cancellationToken, string requiredPermission = null)
         {
             Scope scope;
             ReadRequest reader;
             lock (gate)
             {
                 RequireAuthenticated();
+                if (requiredPermission != null) RequireMutationPermissionsLocked(new[] { requiredPermission });
                 scope = CaptureLocked();
                 reader = new ReadRequest(readScopes.Revision, ++readSequence, readCancellation.Token);
             }
@@ -227,14 +231,14 @@ namespace Uten.Legacy.Core
                     // A reader's retirement/close must not cancel a shared credential refresh.
                     var owned = await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
                     RequireReader(scope, reader);
-                    var response = await SendAsync(scope, HttpMethod.Get, relativePath, null, owned.AccessToken, readWait.Token).ConfigureAwait(false);
+                    var response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true).ConfigureAwait(false);
                     RequireReader(scope, reader);
                     var failure = ErrorFrom(response, false);
                     if (failure != null && failure.StatusCode == 401 && failure.HasResponseCode && failure.Code == "UNAUTHORIZED")
                     {
                         owned = await EnsureAccessAsync(scope, true, owned, cancellationToken).ConfigureAwait(false);
                         RequireReader(scope, reader);
-                        response = await SendAsync(scope, HttpMethod.Get, relativePath, null, owned.AccessToken, readWait.Token).ConfigureAwait(false);
+                        response = await SendAsync(scope, method, relativePath, body, owned.AccessToken, readWait.Token, idempotentRead: true).ConfigureAwait(false);
                         RequireReader(scope, reader);
                         failure = ErrorFrom(response, false);
                     }
@@ -492,12 +496,12 @@ namespace Uten.Legacy.Core
         }
 
         private async Task<Reply> SendAsync(Scope scope, HttpMethod method, string path, object body, string bearer,
-            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null)
+            CancellationToken cancellationToken, string rawBodyJson = null, MutationWirePermit mutationPermit = null, bool idempotentRead = false)
         {
             RequireScope(scope);
             cancellationToken.ThrowIfCancellationRequested();
             var uri = scope.Endpoint.Resolve(path);
-            var write = method != HttpMethod.Get;
+            var write = method != HttpMethod.Get && !idempotentRead;
             var submitted = false;
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Cancellation))
             using (var request = new HttpRequestMessage(method, uri))
@@ -510,7 +514,7 @@ namespace Uten.Legacy.Core
                 if (body != null || rawBodyJson != null)
                 {
                     var json = rawBodyJson ?? JsonValue.Serialize(body);
-                    if (Encoding.UTF8.GetByteCount(json) > 16384) throw new ApiException("REQUEST_TOO_LARGE", "提交内容超出限制。");
+                    if (Encoding.UTF8.GetByteCount(json) > (mutationPermit?.MaximumRequestBytes ?? 16384)) throw new ApiException("REQUEST_TOO_LARGE", "提交内容超出限制。");
                     request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 }
                 if (mutationPermit != null) mutationPermit.Attach(request);

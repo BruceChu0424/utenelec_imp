@@ -38,6 +38,8 @@ namespace Uten.Legacy.Desktop
             this.session = session ?? throw new ArgumentNullException(nameof(session));
             this.rendering = rendering;
             InitializeComponent();
+            CommandBindings.Add(new CommandBinding(ApplicationCommands.Help, (sender, args) => OnAbout(sender, args)));
+            InputBindings.Add(new KeyBinding(ApplicationCommands.Help, Key.F1, ModifierKeys.None));
             SetResourceReference(StyleProperty, typeof(Window));
             EndpointBox.ItemsSource = configuration.Endpoints;
             EndpointBox.SelectedValue = configuration.SelectedEndpointId;
@@ -266,6 +268,10 @@ namespace Uten.Legacy.Desktop
         {
             if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session));
         }
+        private void OnAbout(object sender, RoutedEventArgs args)
+        {
+            if (!busy && CanLeaveWorkspace()) new AboutWindow(this).ShowDialog();
+        }
         private async void OnCheckUpdate(object sender, RoutedEventArgs e)
         {
             if (busy || !session.IsAuthenticated || session.CurrentUser.MustChangePassword) return;
@@ -313,7 +319,9 @@ namespace Uten.Legacy.Desktop
         }
         public void TrackPendingEditor(Window editor)
         {
-            if (editor == null || editor.Owner != this) throw new ArgumentException("The editor must belong to this main window.");
+            Window ancestor = editor?.Owner;
+            while (ancestor != null && ancestor != this) ancestor = ancestor.Owner;
+            if (ancestor != this) throw new ArgumentException("The editor must belong to this main window's owned dialog chain.");
             if (pendingEditors.Add(editor)) editor.Closed += OnPendingEditorClosed;
         }
         private void OnPendingEditorClosed(object sender, EventArgs args)

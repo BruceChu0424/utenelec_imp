@@ -16,6 +16,11 @@ internal static class PackageContractFixtureHost
                 UpdaterContractChecks.EmitProducerInputs(arguments[1]);
                 Console.WriteLine("{\"architecture\":\"" + architecture + "\",\"fixtureOnly\":true}");
             }
+            else if (arguments[0] == "emit-execute")
+            {
+                UpdaterContractChecks.EmitExecuteInputs(arguments[1]);
+                Console.WriteLine("{\"architecture\":\"" + architecture + "\",\"fixtureOnly\":true}");
+            }
             else if (arguments[0] == "verify")
             {
                 int count = UpdaterContractChecks.RunProducerPackageChecks(arguments[1]);

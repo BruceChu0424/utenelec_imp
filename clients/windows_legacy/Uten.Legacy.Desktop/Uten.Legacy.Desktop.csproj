@@ -28,11 +28,15 @@
     <Page Include="Themes\Uten.Tokens.g.xaml"><Generator>MSBuild:Compile</Generator></Page>
     <Compile Include="App.xaml.cs"><DependentUpon>App.xaml</DependentUpon></Compile>
     <Compile Include="MainWindow.xaml.cs"><DependentUpon>MainWindow.xaml</DependentUpon></Compile>
-    <Compile Include="Views\**\*.cs"/><Compile Include="Controls\**\*.cs"/><Compile Include="Updates\**\*.cs"/><Compile Include="Features\**\*.cs" Exclude="Features\**\*Checks.cs"/>
+    <Compile Include="Views\**\*.cs"/><Compile Include="Controls\**\*.cs"/><Compile Include="Updates\**\*.cs"/><Compile Include="Shared\**\*.cs" Exclude="Shared\**\*Checks.cs"/><Compile Include="Features\**\*.cs" Exclude="Features\**\*Checks.cs"/>
     <Compile Include="Features\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
+    <Compile Include="Shared\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
     <Resource Include="..\..\..\assets\images\logo_ip.png"><Link>Assets\logo_ip.png</Link></Resource>
     <Resource Include="..\..\..\assets\images\logo_name.png"><Link>Assets\logo_name.png</Link></Resource>
     <Resource Include="..\..\..\assets\fonts\NotoSansSC.ttf"><Link>Assets\NotoSansSC.ttf</Link></Resource>
+    <Resource Include="..\..\..\assets\fonts\NotoSansSCFull.ttf"><Link>PrintAssets\NotoSansSCFull.ttf</Link></Resource>
+    <Resource Include="..\..\..\assets\fonts\OFL.txt"><Link>PrintAssets\OFL.txt</Link></Resource>
+    <Resource Include="..\..\..\build\windows-wpf\dependencies\BouncyCastle.Cryptography.2.7.0\LICENSE.md"><Link>Licenses\BouncyCastle-LICENSE.md</Link></Resource>
     <None Include="App.config"/>
     <Content Include="uten.client.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <Content Include="..\..\..\build\windows-wpf\dependencies\BouncyCastle.Cryptography.2.7.0\LICENSE.md"><Link>BouncyCastle-LICENSE.md</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>

@@ -43,7 +43,13 @@ public class ReportExportService {
         this(repository,users,restorer,json,buildIdentity,rateLimiter,readScopes,projectionAccess,null,null,directory);
     }
     public record View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
-            String error,OffsetDateTime createdAt,OffsetDateTime finishedAt) { }
+            String error,OffsetDateTime createdAt,OffsetDateTime finishedAt,ReportExportRequest request) {
+        /** Preserve source compatibility for existing producers/fixtures and old JSON consumers. */
+        public View(UUID id,String domain,String report,String format,String status,boolean cancelRequested,int rows,long bytes,OffsetDateTime snapshotAt,
+                String error,OffsetDateTime createdAt,OffsetDateTime finishedAt) {
+            this(id,domain,report,format,status,cancelRequested,rows,bytes,snapshotAt,error,createdAt,finishedAt,null);
+        }
+    }
 
     public boolean available() {
         principal();
@@ -195,6 +201,15 @@ public class ReportExportService {
     private View view(ReportExportRepository.Job job) {
         var request=decode(job.request());
         String state="SUCCEEDED".equals(job.status()) && job.expiresAt().isBefore(OffsetDateTime.now())?"EXPIRED":job.status();
-        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt());
+        // A named job/status alone cannot prove which lost submit was accepted. Return the
+        // persisted typed request only for the audited Unit adapter and only while its
+        // original data/projection access is still current. Old metadata remains readable
+        // after a scope change, but cannot leak old private filter/projection contents.
+        ReportExportRequest proof=null;
+        if("master".equals(request.domain())&&"unit".equals(request.report())) {
+            try {requireCurrentAccess(job);proof=request;}
+            catch(ApiException noLongerCurrent) { /* Preserve legacy metadata behavior, omit proof. */ }
+        }
+        return new View(job.id(),request.domain(),request.report(),request.format(),state,job.cancelRequested(),job.rows(),job.bytes(),job.snapshotAt(),job.error(),job.createdAt(),job.finishedAt(),proof);
     }
 }

@@ -78,6 +78,7 @@ namespace Uten.Legacy.Core
             if (!uri.IsDefaultPort) host += ":" + uri.Port.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             var fields = new List<Field>();
+            var requestBudget = MutationWirePermit.From(request)?.MaximumRequestBytes ?? MaxRequestBytes;
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var header in request.Headers)
             {
@@ -89,7 +90,7 @@ namespace Uten.Legacy.Core
             var body = new byte[0];
             if (request.Content != null)
             {
-                using (var sink = new BoundedWriteStream(MaxRequestBytes, cancellationToken))
+                using (var sink = new BoundedWriteStream(requestBudget, cancellationToken))
                 {
                     try { request.Content.CopyToAsync(sink).GetAwaiter().GetResult(); }
                     catch (OperationCanceledException) { throw; }
@@ -104,7 +105,7 @@ namespace Uten.Legacy.Core
                     if (header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
                     {
                         var lengthValues = new List<string>(header.Value);
-                        if (lengthValues.Count != 1 || ParseDecimal(lengthValues[0], MaxRequestBytes) != body.Length)
+                        if (lengthValues.Count != 1 || ParseDecimal(lengthValues[0], requestBudget) != body.Length)
                             throw Invalid("The request body length is invalid.");
                         continue; // Always regenerate it from the actual bounded bytes.
                     }
@@ -209,6 +210,7 @@ namespace Uten.Legacy.Core
             }
             if (status >= 300 && status < 400) throw Invalid("HTTP redirects are not supported.");
             var streamToFile = responseSink != null && status == 200;
+            if (streamToFile) limit = Math.Min(limit, responseSink.MaximumBytes);
             if (responseSink != null && status >= 200 && status < 300 && status != 200)
                 throw Invalid("A package download must return a complete HTTP 200 response.");
             if (responseSink != null && !streamToFile) limit = responseSink.ErrorResponseBytes;
@@ -230,7 +232,9 @@ namespace Uten.Legacy.Core
             ValidateTrailerDeclaration(singletons);
             var hopHeaders = ConnectionHeaderNames(singletons);
             var exactLength = hasLength ? ParseDecimal(contentLength, limit) : 0;
-            if (streamToFile && hasLength && exactLength != responseSink.ExpectedBytes)
+            if (streamToFile && responseSink.ExpectedBytes < 0 && !hasLength && !chunked)
+                throw Invalid("An export download requires explicit complete response framing.");
+            if (streamToFile && responseSink.ExpectedBytes >= 0 && hasLength && exactLength != responseSink.ExpectedBytes)
                 throw Invalid("The package content length disagrees with its release metadata.");
             if (status == 204 && (hasLength || chunked || gzip))
                 throw Invalid("A no-content response contains body headers.");

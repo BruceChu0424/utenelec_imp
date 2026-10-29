@@ -21,9 +21,9 @@
 
 ## W7-ENV-002
 
-- [ ] **任务私有依赖锁及许可** — 源码已实现/待整合验证
+- [x] **任务私有依赖锁及许可** — 本项DoD完成
 
-影响：`frontend`；负责人：待认领；依赖：W7-GOV-001。
+影响：`frontend`；负责人：Codex；依赖：W7-GOV-001。
 
 源入口：`clients/windows_legacy/BuildVersion.targets`；`clients/windows_legacy/tools/build_windows_wpf.ps1`。
 
@@ -32,15 +32,15 @@
 1. BC固定版本、包SHA512、文件SHA256、实际加载库检查、MIT许可及无全局缓存修改。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：BC私有版本/包SHA512/实际文件与运行加载SHA256/原MIT均已当前两架构整合与59工具验证；许可另随程序可查看，无全局缓存或SDK修改。仅此依赖锁DoD完成。。
 
 ## W7-ENV-003
 
-- [ ] **同源版本与构建号** — 源码已实现/待整合验证
+- [x] **同源版本与构建号** — 本项DoD完成
 
-影响：`shared`；负责人：待认领；依赖：W7-GOV-001。
+影响：`shared`；负责人：Codex；依赖：W7-GOV-001。
 
 源入口：`clients/windows_legacy/BuildVersion.targets`；`clients/windows_legacy/tools/build_windows_wpf.ps1`。
 
@@ -49,9 +49,9 @@
 1. 主/Core/Updater版本资源从pubspec唯一来源生成；BC保持自身版本；不得改低现有SDK版本。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：当前6件Release及两架构Debug从同pubspec生成Assembly/File/Product版本，BC保持独立供应商版本；metadata-only六件通过，未降低SDK。。
 
 ## W7-ENV-004
 

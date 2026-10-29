@@ -89,7 +89,7 @@ namespace Uten.Legacy.Core
                     ValidateRequestOrigin(request);
                     if (request.RequestUri != origin) throw new HttpRequestException("接口请求地址已经变化。");
                     return ManagedHttp11.SendAndReceive(protocol.Stream, request,
-                        responseSink == null ? configuration.MaxResponseBytes : HttpResponseSink.MaximumPackageBytes,
+                        responseSink == null ? configuration.MaxResponseBytes : responseSink.MaximumBytes,
                         originalCancellation, status =>
                         {
                             var auth = request.Method == HttpMethod.Post && status >= 200 && status <= 299
@@ -149,8 +149,8 @@ namespace Uten.Legacy.Core
                 || owner.Resolve(uri.PathAndQuery.Substring(5)) != uri)
                 throw new HttpRequestException("接口请求不属于已审核服务器。");
             var sink = HttpResponseSink.FromRequest(request);
-            if (sink != null && (request.Method != HttpMethod.Get || !sink.Owns(uri)))
-                throw new HttpRequestException("下载请求不属于预先绑定的软件包。");
+            if (sink != null && !sink.Owns(request))
+                throw new HttpRequestException("下载请求不属于预先绑定的下载合同。");
             var mutation = MutationWirePermit.From(request);
             if (mutation != null && !mutation.Owns(request)) throw new HttpRequestException("提交请求离开了冻结的接口合同。");
         }

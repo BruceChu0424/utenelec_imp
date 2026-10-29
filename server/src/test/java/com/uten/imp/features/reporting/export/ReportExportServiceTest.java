@@ -47,6 +47,62 @@ class ReportExportServiceTest {
         verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
         verify(repository,never()).active(any());
     }
+    @Test void unitReceiptCarriesTheExactPersistedRequestOnlyForItsCurrentOwnerAndScope() throws Exception {
+        var unitUser=new AuthUser(owner,user.getEmployeeId(),"unit-export",Set.of("unit:export"),false,true,false);
+        when(users.get()).thenReturn(Optional.of(unitUser));when(restorer.restore(owner,1,1L)).thenReturn(unitUser);
+        String filter="{ \"keyword\" : \"M&1\", \"nullFields\":[\"name\"], \"status\":\"使用\" }";
+        var request=new ReportExportRequest(UUID.randomUUID(),"master","unit",Map.of("filter",filter),null,null,null);
+        var row=job(request);when(repository.find(request.id())).thenReturn(Optional.of(row));
+        var view=service.get(request.id());
+        assertEquals(request,view.request());
+        assertEquals(filter,view.request().parameters().get("filter"),"opaque original filter string must not be normalized/replaced");
+        assertThrows(UnsupportedOperationException.class,()->view.request().parameters().put("filter","{}"));
+        var wire=mapper.copy().registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        var encoded=wire.readTree(wire.writeValueAsString(view));
+        assertEquals(request.id().toString(),encoded.path("id").asText());
+        assertEquals("PENDING",encoded.path("status").asText());
+        assertEquals(request.id().toString(),encoded.path("request").path("id").asText());
+        assertFalse(encoded.path("request").has("password"));
+        when(readScopes.scopeFor(anyString(),any())).thenReturn("b".repeat(64));
+        assertEquals(request.id(),service.get(request.id()).id(),"existing metadata behavior survives scope retirement");
+        assertNull(service.get(request.id()).request(),"retired data/projection filters are not returned as a receipt proof");
+        when(users.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),user.getEmployeeId(),"other",Set.of("unit:export"),false,true,false)));
+        assertEquals(ErrorCode.NOT_FOUND,assertThrows(ApiException.class,()->service.get(request.id())).getCode());
+    }
+    @Test void oldConsumersAndOtherReportDomainsKeepTheirExistingMetadataContract() throws Exception {
+        var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(job(request)));
+        var view=service.get(request.id());
+        assertEquals(request.id(),view.id());assertEquals("sales",view.domain());assertEquals("xlsx",view.format());
+        assertNull(view.request(),"new proof is not a generic private filter disclosure");
+        var oldConstructor=new ReportExportService.View(view.id(),view.domain(),view.report(),view.format(),view.status(),
+                view.cancelRequested(),view.rows(),view.bytes(),view.snapshotAt(),view.error(),view.createdAt(),view.finishedAt());
+        assertNull(oldConstructor.request());assertEquals(view.id(),oldConstructor.id());
+    }
+    @Test void nativeProjectionRoundTripKeepsSameJobIdempotencyAndStillRejectsChangedLayout() throws Exception {
+        mapper=com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper();
+        var unitUser=new AuthUser(owner,user.getEmployeeId(),"unit-export",Set.of("unit:export"),false,true,false);
+        when(users.get()).thenReturn(Optional.of(unitUser));when(restorer.restore(owner,1,1L)).thenReturn(unitUser);
+        var master=mock(com.uten.imp.application.port.MasterReportExportPort.class);
+        when(master.projection(any())).thenAnswer(call->((ReportExportRequest)call.getArgument(0)).columnProjection());
+        when(projectionAccess.getObject()).thenReturn(mock(com.uten.imp.common.export.ExportProjectionAccessGuard.class));
+        service=new ReportExportService(repository,users,restorer,mapper,buildIdentity,rateLimiter,readScopes,projectionAccess,master,null,directory.toString());
+        UUID id=UUID.randomUUID();
+        String projection="""
+                {"tableKey":"master.unit","scope":"master_unit","columns":[
+                {"key":"code","label":"编号","width":120.5,"type":"text"},
+                {"key":"name","label":"单位名称","width":220,"type":"text"},
+                {"key":"status","label":"状态","width":72,"type":"text"}]}
+                """;
+        var columns=mapper.readValue(projection,com.uten.imp.common.export.TableColumnProjection.class);
+        var request=new ReportExportRequest(id,"master","unit",Map.of("filter","{}"),null,null,columns);
+        var stored=job(request);when(repository.find(id)).thenReturn(Optional.of(stored));
+        assertEquals(request,service.decode(stored.request()));
+        assertEquals(id,service.submit(request).id());
+        verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
+        var changed=mapper.readValue(projection.replace("120.5","121.5"),com.uten.imp.common.export.TableColumnProjection.class);
+        var other=new ReportExportRequest(id,"master","unit",request.parameters(),null,null,changed);
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.submit(other)).getCode());
+    }
     @Test void aDifferentRequestCannotReuseTheSameIdentity() throws Exception {
         UUID id=UUID.randomUUID();when(repository.find(id)).thenReturn(Optional.of(job(request(id))));
         var changed=new ReportExportRequest(id,"sales","ORDER/summary",Map.of(),null,null,null);

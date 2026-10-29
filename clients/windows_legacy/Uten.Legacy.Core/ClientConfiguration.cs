@@ -106,7 +106,7 @@ namespace Uten.Legacy.Core
                 throw new ApiException("INVALID_API_PATH", "接口路径无效。");
             var path = relativePath.TrimStart('/');
             var pathOnly = path.Split('?')[0];
-            if (pathOnly.Length == 0 || pathOnly.Contains(":"))
+            if (pathOnly.Length == 0 || (pathOnly.Contains(":") && pathOnly != "platform-columns/master_unit/values:batch"))
                 throw new ApiException("INVALID_API_PATH", "接口路径无效。");
             foreach (var part in pathOnly.Split('/'))
             {

@@ -13,7 +13,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         public IReadOnlyDictionary<string, UnitOptionalText> Changes { get; private set; }
         public string RelativePath { get { return "/master/inline-edit/units/" + Id; } }
         public string Method { get { return "PATCH"; } }
-        public bool CoreTypedAdapterAvailable { get { return false; } }
+        public bool CoreTypedAdapterAvailable { get { return true; } }
         public bool ServerReceiptAvailable { get { return false; } }
 
         public UnitInlinePatch(string id, IDictionary<string, UnitOptionalText> expected,
@@ -63,7 +63,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         public string RequiredPermission { get { return Action == UnitBatchAction.Status ? "unit:status" : "unit:delete"; } }
         public bool EnforcesExpectedVersion { get { return false; } }
         public bool ServerReceiptAvailable { get { return false; } }
-        public bool CoreTypedAdapterAvailable { get { return false; } }
+        public bool CoreTypedAdapterAvailable { get { return true; } }
         public UnitBatchCommand(UnitBatchAction action, IEnumerable<string> ids, string status = null)
         {
             if (action != UnitBatchAction.Status && action != UnitBatchAction.Delete) throw new ArgumentOutOfRangeException(nameof(action));

@@ -135,11 +135,29 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         public Task<MutationResult> SendAsync(MutationRequest request, CancellationToken cancellationToken)
         {
-            if (request == null || (request.Action != MutationAction.UnitCreate && request.Action != MutationAction.UnitUpdate && request.Action != MutationAction.UnitStatus))
+            if (request == null || (request.Action != MutationAction.UnitCreate && request.Action != MutationAction.UnitUpdate && request.Action != MutationAction.UnitStatus
+                && request.Action != MutationAction.UnitInlineEdit && request.Action != MutationAction.UnitBatchStatus && request.Action != MutationAction.UnitBatchDelete))
                 throw new ArgumentException("单位服务只发送已注册的真实单位动作。", nameof(request));
             // Core owns durable pre-send gating and outcome recording. This service
             // never retries, changes an outcome, fabricates receipts, or writes its own journal.
             return session.MutateAsync(request, cancellationToken);
+        }
+        public MutationRequest PrepareInline(string requestId, UnitInlinePatch patch, UnitReadOwner sourceOwner)
+        {
+            if (patch == null) throw new ArgumentNullException(nameof(patch));
+            RequireCurrent(sourceOwner);
+            var owner = CaptureWriteOwner();
+            if (!sourceOwner.Matches(owner)) throw new ApiException("MUTATION_OWNER_CHANGED", "行内编辑不属于当前读取范围，请重新加载。");
+            return session.PrepareMutation(MutationAction.UnitInlineEdit, requestId, patch.ToJson(), owner, patch.Id);
+        }
+        public MutationRequest PrepareBatch(string requestId, UnitBatchCommand command, UnitReadOwner sourceOwner)
+        {
+            if (command == null) throw new ArgumentNullException(nameof(command));
+            RequireCurrent(sourceOwner);
+            var owner = CaptureWriteOwner();
+            if (!sourceOwner.Matches(owner)) throw new ApiException("MUTATION_OWNER_CHANGED", "批量选择不属于当前读取范围，请重新选择。");
+            return session.PrepareMutation(command.Action == UnitBatchAction.Delete ? MutationAction.UnitBatchDelete : MutationAction.UnitBatchStatus,
+                requestId, command.ToJson(), owner);
         }
         public bool TryReadConfirmedUnit(MutationResult result, out UnitRecord record)
         {

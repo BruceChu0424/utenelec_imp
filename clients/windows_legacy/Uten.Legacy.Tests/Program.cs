@@ -5,6 +5,8 @@ using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Features.Goods;
 using Uten.Legacy.Desktop.Features.Downloads;
 using Uten.Legacy.Desktop.Features.Units;
+using Uten.Legacy.Desktop.Shared;
+using Uten.Legacy.Desktop.Features.Columns;
 
 namespace Uten.Legacy.Tests
 {
@@ -18,7 +20,17 @@ namespace Uten.Legacy.Tests
                 if (args.Length == 1 && args[0] == "--ui-contracts-only")
                 {
                     UiContractChecks.Run();
-                    Console.WriteLine("PASS native UI contracts only; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    Console.WriteLine("PASS UI shell/draft/review fixtures");
+                    int historyUi = UnitHistoryContractChecks.RunUi();
+                    int printUi = NativePrintContractChecks.Run();
+                    int drafts = DurableDraftDialogChecks.Run();
+                    int exports = UnitExportUiChecks.Run();
+                    Console.WriteLine("PASS UI history/print/draft/export fixtures");
+                    int inline = UnitInlineWorkspaceChecks.Run();
+                    Console.WriteLine("PASS UI inline fixtures");
+                    int columnUi = ColumnUiContractChecks.Run();
+                    Console.WriteLine("PASS native UI contracts only; history=" + historyUi + "; print=" + printUi + "; common drafts=" + drafts + "; exports=" + exports + "; inline=" + inline + "; column UI=" + columnUi
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
                 if (args.Length != 0) throw new ArgumentException("Unknown native test group.");
@@ -28,10 +40,21 @@ namespace Uten.Legacy.Tests
                 int goods = GoodsReadContractChecks.Run();
                 int downloads = DownloadsContractChecks.Run();
                 int units = UnitContractChecks.Run();
+                int history = UnitHistoryContractChecks.Run();
+                int columns = ColumnModelContractChecks.Run() + ColumnServiceContractChecks.RunRead() + ColumnUiContractChecks.RunWrites();
                 int updater = UpdaterContractChecks.Run();
                 Console.WriteLine("PASS goods/downloads/units/updater contracts");
                 UiContractChecks.Run();
-                Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads + "; units assertions=" + units + "; updater assertions=" + updater + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                int historyUiAssertions = UnitHistoryContractChecks.RunUi();
+                int printAssertions = NativePrintContractChecks.Run();
+                int draftAssertions = DurableDraftDialogChecks.Run();
+                int exportAssertions = UnitExportUiChecks.Run();
+                int inlineAssertions = UnitInlineWorkspaceChecks.Run();
+                int columnUiAssertions = ColumnUiContractChecks.Run();
+                Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads + "; units assertions=" + units
+                    + "; history assertions=" + history + "; history UI=" + historyUiAssertions + "; print assertions=" + printAssertions
+                    + "; columns=" + columns + "; column UI=" + columnUiAssertions + "; common drafts=" + draftAssertions + "; exports=" + exportAssertions + "; inline=" + inlineAssertions
+                    + "; updater assertions=" + updater + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                 return 0;
             }
             catch (Exception error)

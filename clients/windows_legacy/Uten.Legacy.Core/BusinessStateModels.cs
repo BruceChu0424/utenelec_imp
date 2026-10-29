@@ -22,6 +22,7 @@ namespace Uten.Legacy.Core
     /// always requires new authorization and fresh business detail before an explicit submission.</summary>
     public sealed class BusinessDraft
     {
+        public int ContractVersion { get { return MutationRequest.ContractVersionFor(Action); } }
         public string DraftId { get; private set; }
         public long Revision { get; private set; }
         public MutationAction Action { get; private set; }
@@ -51,7 +52,7 @@ namespace Uten.Legacy.Core
     /// Review notes do not change Unknown into success and never identify a row by equal values.</summary>
     public sealed class MutationJournalRecord
     {
-        public int ContractVersion { get { return 1; } }
+        public int ContractVersion { get; private set; }
         public string RequestId { get; private set; }
         public MutationAction Action { get; private set; }
         public string Method { get; private set; }
@@ -72,20 +73,42 @@ namespace Uten.Legacy.Core
         public string UserId { get; private set; }
         public string BusinessDatasetId { get; private set; }
         public long BusinessResetGeneration { get; private set; }
-        public bool ServerIdempotencyAvailable { get { return false; } }
-        public bool EnforcesExpectedVersion { get { return false; } }
+        public bool ServerIdempotencyAvailable { get { return Action == MutationAction.UnitExportSubmit; } }
+        public string ServerIdempotencyKey { get { return ServerIdempotencyAvailable ? ResourceId : null; } }
+        public string ServerIdempotencyBodyField { get { return ServerIdempotencyAvailable ? "id" : null; } }
+        public string ReceiptPath { get { return Action == MutationAction.UnitExportSubmit || Action == MutationAction.UnitExportCancel ? "report-export-jobs/" + ResourceId : null; } }
+        public bool EnforcesExpectedVersion { get { return VersionStrategy == MutationVersionStrategy.OperationVersion || VersionStrategy == MutationVersionStrategy.PlatformRowVersion; } }
         public MutationVersionStrategy VersionStrategy { get; private set; }
         public string ExpectedVersionJson { get; private set; }
-        public MutationReceiptStrategy ReceiptStrategy { get { return MutationReceiptStrategy.NoReceiptManualReconciliation; } }
+        public string ExpectedHead { get; private set; }
+        public MutationResponseKind ResponseKind { get; private set; }
+        public string ResultJson { get; private set; }
+        public MutationBatchResult BatchResult { get; private set; }
+        public MutationExportJob ExportJob { get; private set; }
+        public bool ConfirmedByReceiptQuery { get; private set; }
+        public System.Collections.ObjectModel.ReadOnlyCollection<string> BatchResourceIds { get; private set; }
+        public MutationReceiptStrategy ReceiptStrategy { get { return Action == MutationAction.UnitExportSubmit ? MutationReceiptStrategy.ExportJobCreation
+            : Action == MutationAction.UnitExportCancel ? MutationReceiptStrategy.ExportJobStateQuery : MutationReceiptStrategy.NoReceiptManualReconciliation; } }
         public bool MayNeedManualReconciliation { get { return State == MutationJournalState.Sending || State == MutationJournalState.Unknown; } }
         internal string ObservedStatus;
         public MutationJournalRecord(MutationRequest request, MutationJournalState state, DateTime createdAtUtc,
-            DateTime updatedAtUtc, int? statusCode = null, string errorCode = null, string confirmedResourceId = null, string reviewNote = null)
+            DateTime updatedAtUtc, int? statusCode = null, string errorCode = null, string confirmedResourceId = null, string reviewNote = null, string resultJson = null,
+            bool confirmedByReceiptQuery = false)
         {
+            ContractVersion = request.ContractVersion; ResponseKind = request.ResponseKind; BatchResourceIds = request.BatchResourceIds;
             RequestId = request.RequestId; Action = request.Action; Method = request.Method; RelativePath = request.RelativePath;
             ResourceId = request.ResourceId; BodyJson = request.BodyJson; BodySha256 = request.BodySha256; State = state;
             OriginDraftId = request.OriginDraftId; OriginDraftRevision = request.OriginDraftRevision; VersionStrategy = request.VersionStrategy;
             ExpectedVersionJson = request.ExpectedVersionJson;
+            ExpectedHead = request.ExpectedHead;
+            ResultJson = resultJson;
+            if (resultJson != null)
+            {
+                var assessment = MutationResponseContract.Assess(request, resultJson);
+                BatchResult = assessment.Batch; ExportJob = assessment.ExportJob;
+                if (confirmedByReceiptQuery) UnitExportMutationContract.RequireCreationProof(request, resultJson);
+            }
+            ConfirmedByReceiptQuery = confirmedByReceiptQuery;
             CreatedAtUtc = createdAtUtc; UpdatedAtUtc = updatedAtUtc; StatusCode = statusCode; ErrorCode = errorCode;
             ConfirmedResourceId = confirmedResourceId; ReviewNote = reviewNote; ObservedStatus = request.ObservedStatus;
             IssuerApiBaseUrl = request.Owner.IssuerApiBaseUrl; UserId = request.Owner.UserId;
@@ -106,5 +129,12 @@ namespace Uten.Legacy.Core
         IReadOnlyList<MutationJournalRecord> ListJournal(MutationOwnerSnapshot owner);
         MutationJournalRecord LoadJournal(MutationOwnerSnapshot owner, string requestId);
         MutationJournalRecord AppendReviewNote(MutationOwnerSnapshot owner, string requestId, string note);
+    }
+
+    /// <summary>Only a verified, server-owned unit export creation receipt can settle its
+    /// matching Unknown. Ordinary unit/history writes never use this optional extension.</summary>
+    public interface IUnitExportReceiptStore
+    {
+        void ConfirmUnitExportReceipt(MutationRequest original, string verifiedJobJson);
     }
 }

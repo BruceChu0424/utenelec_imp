@@ -45,14 +45,14 @@ function Source-Proof {
     $progressBoundary = (Join-Path $clientRoot 'progress') + [IO.Path]::DirectorySeparatorChar
     $inputs = @(Get-ChildItem -LiteralPath $clientRoot -Recurse -File)
     $inputs += @(Get-ChildItem -LiteralPath (Join-Path $workspaceRoot 'lib/core/theme') -Recurse -File -Filter '*.dart')
-    foreach ($relative in @('pubspec.yaml', 'assets/security/uten-imp-root-ca.crt', 'assets/fonts/NotoSansSC.ttf',
+    foreach ($relative in @('pubspec.yaml', 'assets/security/uten-imp-root-ca.crt', 'assets/fonts/NotoSansSC.ttf', 'assets/fonts/NotoSansSCFull.ttf', 'assets/fonts/OFL.txt',
         'assets/images/logo_ip.png', 'assets/images/logo_name.png', 'windows/runner/resources/app_icon.ico')) {
         $inputs += Get-Item -LiteralPath (Join-Path $workspaceRoot $relative) -ErrorAction Stop
     }
     $records = foreach ($file in ($inputs | Sort-Object FullName -Unique)) {
         if ($file.FullName.StartsWith($progressBoundary, [StringComparison]::OrdinalIgnoreCase) -or $file.Name -eq 'README.zh-CN.md') { continue }
         if ($file.Extension -notin @('.cs', '.csproj', '.xaml', '.props', '.targets', '.config', '.manifest', '.json',
-            '.py', '.ps1', '.iss', '.dart', '.yaml', '.crt', '.ttf', '.png', '.ico') -and $file.Name -ne '.gitignore') { continue }
+            '.py', '.ps1', '.iss', '.dart', '.yaml', '.crt', '.ttf', '.png', '.ico', '.txt') -and $file.Name -ne '.gitignore') { continue }
         [PSCustomObject]@{
             Path = $file.FullName.Substring($workspaceRoot.Length + 1).Replace([IO.Path]::DirectorySeparatorChar, [char]'/')
             Sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

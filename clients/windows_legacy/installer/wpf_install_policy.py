@@ -105,9 +105,10 @@ def render_pascal_policy() -> str:
     for number, name in ARCHITECTURES.items():
         lines.append(f"    {number}: Result := {quoted(name)};")
     lines.extend([
-        "  else",
+        "  else begin",
         f"    ErrorMessage := {quoted(ERRORS['architecture'])};",
         "    Exit;",
+        "  end;",
         "  end;",
         f"  if NetRelease < {MIN_NET_RELEASE} then begin",
         "    Result := '';",
@@ -241,10 +242,15 @@ def validate_app_configuration(path: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check-policy", action="store_true")
+    parser.add_argument("--write-policy", action="store_true")
     parser.add_argument("--verify-executable", type=Path)
     parser.add_argument("--architecture", choices=tuple(ARCHITECTURES.values()))
     parser.add_argument("--configuration", type=Path)
     args = parser.parse_args()
+    if args.check_policy and args.write_policy:
+        parser.error("Choose a read-only check or explicit regeneration")
+    if args.write_policy:
+        Path(__file__).with_suffix(".iss").write_text(render_pascal_policy(), encoding="utf-8", newline="\n")
     if args.check_policy:
         include = Path(__file__).with_suffix(".iss")
         if include.read_text(encoding="utf-8") != render_pascal_policy():
@@ -256,7 +262,7 @@ def main() -> None:
     if args.configuration:
         validate_app_configuration(args.configuration)
         print("Configuration shape checked; endpoint approval and TLS connectivity remain unverified.")
-    if not (args.check_policy or args.verify_executable or args.configuration):
+    if not (args.check_policy or args.write_policy or args.verify_executable or args.configuration):
         parser.print_help()
 
 

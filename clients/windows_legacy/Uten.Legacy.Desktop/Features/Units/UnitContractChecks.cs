@@ -62,7 +62,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 new Dictionary<string, UnitOptionalText> { ["name"] = UnitOptionalText.Of("新单位") });
             var inlineBody = Parse(inline.ToJson());
             check(((Dictionary<string, object>)inlineBody["expected"])["name"] == null, "inline expected null retained");
-            check(!inline.CoreTypedAdapterAvailable && !inline.ServerReceiptAvailable, "typed inline contract does not invent a sender or receipt");
+            check(inline.CoreTypedAdapterAvailable && !inline.ServerReceiptAvailable, "typed inline adapter exists without inventing a receipt");
             Expect<ArgumentException>(() => new UnitInlinePatch(Id,
                 new Dictionary<string, UnitOptionalText> { ["code"] = UnitOptionalText.Of("A") },
                 new Dictionary<string, UnitOptionalText> { ["code"] = UnitOptionalText.Of("B") }), check, "code is not inline writable");

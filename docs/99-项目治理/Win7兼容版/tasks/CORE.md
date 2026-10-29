@@ -185,9 +185,9 @@
 1. 动作配置表达真实method/path/body/version/idempotency/回执；写不自动重放，身份校验和并发策略统一。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`；`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`；`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：三个受控单位动作已接durable journal及真实WPF表单，双进程架构验证；原JSON/presence/权限/owner/未知结果有效。其它动作迁移尚待，不标公共全覆盖done。。
+接续/限制：受控1至16动作真实接单位/历史/导出/平台写，原body/预算/权限/row版本/receipt差异保持，current root两arch全部通过；其它模块迁移/目标环境未完。。
 
 ## W7-CORE-012
 
@@ -276,9 +276,9 @@
 
 ## W7-CORE-017
 
-- [ ] **有界流式软件包保存** — 源码已实现/待整合验证
+- [x] **有界流式软件包保存** — 本项DoD完成
 
-影响：`shared`；负责人：待认领；依赖：W7-ENV-001。
+影响：`shared`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -287,15 +287,15 @@
 1. 512MiB独立sink、长度/哈希/来源校验、身份取消、原子final、只清自己的temp且内存有界。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：当前两架构真实Core整体含512MiB独立软件包sink/已知长度SHA来源/owner取消/atomic final/仅本GUID temp/有界流读取；新增导出unknown长度capability独立且旧known包不能借此绕过长度。范围限此流式能力，非Win7目标或完整更新验收。。
 
 ## W7-CORE-018
 
-- [ ] **加密导出及报告任务** — 未开始
+- [ ] **加密导出及报告任务** — 本机验证/待本项最终验收
 
-影响：`shared`；负责人：待认领；依赖：W7-ENV-001。
+影响：`shared`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -304,15 +304,15 @@
 1. POST密码仅body，过滤/列投影/权限一致，下载绑定上下文、流式/完整性和未知结果处理。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：原请求proof后端与投影null等价修复45项、旧Flutter21项；原生任务/丢响应核对/同key显式确认/取消/密码下载落盘/legacy capability fallback UI16两arch通过。尚无真实目标机/正式交付。。
 
 ## W7-CORE-019
 
-- [ ] **PDF预览和原生打印** — 未开始
+- [ ] **PDF预览和原生打印** — 本机验证/待本项最终验收
 
-影响：`frontend`；负责人：待认领；依赖：W7-ENV-001。
+影响：`frontend`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -321,9 +321,9 @@
 1. 字体/分页/纸张/选中范围与完整快照，打印取消和重复点击；x86/x64 provider均可用。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：完整分页、同屏幕projection、A4纸面/全中文/选择器取消/范围退役/队列适配21两arch通过；WPF原生打印内部非PDF，未实际物理打印或交付独立PDF，不能标此大能力done。。
 
 ## W7-CORE-020
 
@@ -361,9 +361,9 @@
 
 ## W7-CORE-022
 
-- [ ] **偏好、账号/服务器历史与语言** — 未开始
+- [ ] **偏好、账号/服务器历史与语言** — 本机验证/待本项最终验收
 
-影响：`frontend`；负责人：待认领；依赖：W7-ENV-001。
+影响：`frontend`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -372,6 +372,6 @@
 1. 独立profile；保留现有选择/重开行为、多语言及公司品牌配置，不复用Flutter凭据。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：master.unit表头/自设列/偏好/真实定义与整行version写、恢复、同投影已接，columns46+UI9/common16两arch通过；语言/账号服务器历史以及更多scope仍未完。。

@@ -15,6 +15,7 @@ namespace Uten.Legacy.Core
         private readonly Action validateOwner;
         private int dispatched;
         private int wireStarted;
+        internal int MaximumRequestBytes { get { return command.MaximumBodyBytes; } }
         internal MutationWirePermit(MutationRequest command, bool wireSignalRequired, Action validateOwner)
         { this.command = command; this.wireSignalRequired = wireSignalRequired; this.validateOwner = validateOwner; }
         internal bool MayHaveBeenSubmitted { get { return Volatile.Read(ref wireStarted) != 0
@@ -47,7 +48,8 @@ namespace Uten.Legacy.Core
         internal static bool AllowsExtendedMethod(HttpRequestMessage request)
         {
             var permit = From(request);
-            return permit != null && permit.Owns(request) && (request.Method.Method == "PUT" || request.Method.Method == "PATCH");
+            return permit != null && permit.Owns(request) && (request.Method.Method == "PUT" || request.Method.Method == "PATCH"
+                || request.Method.Method == "DELETE" && permit.command.Action == MutationAction.UnitPlatformDefinitionDelete);
         }
         internal static void BeforeWireWrite(HttpRequestMessage request, byte[] bytes)
         {

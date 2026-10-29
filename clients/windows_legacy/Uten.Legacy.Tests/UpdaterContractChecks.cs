@@ -194,6 +194,28 @@ namespace Uten.Legacy.Tests
                 return 0;
             });
         }
+        /// <summary>Explicit process integration inputs only; the real helper remains unmodified.</summary>
+        public static void EmitExecuteInputs(string integrationRoot)
+        {
+            var root = SafeFiles.Full(integrationRoot);
+            if (!Path.GetFileName(root).StartsWith("uten-wpf-execute-", StringComparison.Ordinal)
+                || !SafeFiles.Same(Path.GetDirectoryName(root), Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar)))
+                throw new InvalidDataException("Execute fixtures require a random direct Temp root.");
+            using (SafeFiles.GuardDirectories(root)) { }
+            WithEmitter(() =>
+            {
+                using (var fixture = new Fixture())
+                    foreach (var pair in new[] { Tuple.Create(fixture.AppRoot, "installed"), Tuple.Create(fixture.Incoming, "payload") })
+                    {
+                        string destination = Path.Combine(root, pair.Item2);
+                        Directory.CreateDirectory(destination);
+                        using (SafeFiles.GuardDirectories(root, destination))
+                            foreach (var name in UpdateContract.ApprovedFiles)
+                                File.Copy(Path.Combine(pair.Item1, name), Path.Combine(destination, name), false);
+                    }
+                return 0;
+            });
+        }
         /// <summary>Reads the actual Python producer's ZIP, validates and applies only in a new owned temporary installation.</summary>
         public static int RunProducerPackageChecks(string integrationRoot)
         {

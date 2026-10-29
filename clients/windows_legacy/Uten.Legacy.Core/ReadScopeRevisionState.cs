@@ -122,6 +122,8 @@ namespace Uten.Legacy.Core
         { return !String.IsNullOrEmpty(value) && value.Length <= 256 && !value.Any(Char.IsControl); }
         private static string DomainFromPath(string path)
         {
+            if (path.StartsWith("/api/platform-columns/master_unit/", StringComparison.Ordinal)
+                || path.StartsWith("/platform-columns/master_unit/", StringComparison.Ordinal)) return "master_unit";
             if (SettlementPath.IsMatch(path)) return "master_settlement_method";
             var report = ReportPath.Match(path);
             if (report.Success) return report.Groups[1].Value;

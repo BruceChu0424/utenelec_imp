@@ -27,9 +27,10 @@ begin
   case Architecture of
     0: Result := 'x86';
     9: Result := 'x64';
-  else
+  else begin
     ErrorMessage := '当前验证版仅提供 x86 和 x64；不支持 ARM 或无法识别的系统架构。';
     Exit;
+  end;
   end;
   if NetRelease < 528040 then begin
     Result := '';

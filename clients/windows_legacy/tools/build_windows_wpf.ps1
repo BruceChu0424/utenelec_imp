@@ -187,6 +187,9 @@ foreach ($plan in $plans) {
         $receiptOutput = Join-Path $buildRoot "receipts/$($plan.Architecture)-company.json"
         & $PythonPath $packageTool receipt --source-root $workspaceRoot --source-state $sourceStateFile --bundle $payloadDirectory --architecture $plan.Architecture --configuration Release --distribution-profile Company --output $receiptOutput
         if ($LASTEXITCODE -ne 0) { throw 'Compiled payload does not match the reviewed Company source receipt.' }
+        $bootstrapReceipt = Join-Path $buildRoot "receipts/$($plan.Architecture)-bootstrap-company.json"
+        & $PythonPath $packageTool bootstrap-receipt --source-root $workspaceRoot --source-state $sourceStateFile --updater (Join-Path $updaterOutput 'Uten.Legacy.Updater.exe') --architecture $plan.Architecture --output $bootstrapReceipt
+        if ($LASTEXITCODE -ne 0) { throw 'Compiled bootstrap does not match the same reviewed Company source receipt.' }
         Write-Output "Company candidate snapshot: $payloadDirectory"
     }
 }

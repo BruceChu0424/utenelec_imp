@@ -87,9 +87,9 @@ class TableColumnProjectionImmutabilityTest {
                 """, TableColumnProjection.class);
         var wire = mapper.writeValueAsBytes(valid);
         var roundTrip = mapper.readValue(wire, TableColumnProjection.class);
-        // An absent JsonNode becomes an explicit NullNode on JSON round-trip;
-        // the public contract is the JSON value, not that Java representation.
+        // Absent and explicit null definitions stay one value contract after persistence.
         assertEquals(mapper.readTree(wire), mapper.valueToTree(roundTrip));
+        assertEquals(valid,roundTrip);
         try (var factory = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
             var validator = factory.getValidator();
             assertTrue(validator.validate(valid).isEmpty());
@@ -105,5 +105,21 @@ class TableColumnProjectionImmutabilityTest {
             assertFalse(validator.forExecutables().validateConstructorParameters(constructor,
                     new Object[]{"report", "view_sales", null}).isEmpty());
         }
+    }
+    @Test void domainMapperNormalizesOnlyAbsentDefinitionsAndRetainsRealDefinitionDifferences() throws Exception {
+        var mapper=com.uten.imp.config.Jackson2ObjectMapperAutoConfiguration.domainObjectMapper();
+        var absent=mapper.readValue("""
+                {"key":"code","label":"编号","width":120.5,"type":"text"}
+                """,TableColumnProjection.Column.class);
+        var explicit=mapper.readValue("""
+                {"key":"code","label":"编号","width":120.50,"type":"text","definition":null}
+                """,TableColumnProjection.Column.class);
+        var actual=mapper.readValue("""
+                {"key":"code","label":"编号","width":120.5,"type":"text","definition":{}}
+                """,TableColumnProjection.Column.class);
+        assertEquals(absent,explicit);
+        assertEquals(absent,mapper.readValue(mapper.writeValueAsBytes(absent),TableColumnProjection.Column.class));
+        assertNull(explicit.definition());
+        assertNotEquals(absent,actual,"do not drop a real definition while normalizing null");
     }
 }

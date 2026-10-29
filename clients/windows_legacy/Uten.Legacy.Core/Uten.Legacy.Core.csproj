@@ -38,13 +38,31 @@
     <Compile Include="MutationModels.cs" />
     <Compile Include="MutationCoordinator.cs" />
     <Compile Include="MutationWirePermit.cs" />
+    <Compile Include="MutationJsonTree.cs" />
+    <Compile Include="UnitCommandContracts.cs" />
+    <Compile Include="UnitHistoryMutationContract.cs" />
+    <Compile Include="UnitExportMutationContract.cs" />
+    <Compile Include="UnitExportReceiptCoordinator.cs" />
+    <Compile Include="MutationReviewLease.cs" />
+    <Compile Include="UnitPlatformRead.cs" />
+    <Compile Include="UnitColumnProjectionContract.cs" />
+    <Compile Include="UnitPlatformMutationContracts.cs" />
+    <Compile Include="UnitPlatformPrerequisites.cs" />
     <Compile Include="BusinessStateModels.cs" />
     <Compile Include="BusinessStateCoordinator.cs" />
     <Compile Include="DpapiBusinessStateStore.cs" />
     <Compile Include="Tests\BusinessStateTestFixture.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\BusinessStateContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\MutationContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitCommandContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitHistoryMutationChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitExportDownloadChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitExportMutationChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\ReadAndReviewLeaseChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitProjectionChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UnitPlatformMutationChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ClientPackageDownload.cs" />
+    <Compile Include="UnitExportDownload.cs" />
     <Compile Include="HttpResponseSink.cs" />
     <Compile Include="Tests\ClientPackageDownloadChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ReadScopeRevisionState.cs" />

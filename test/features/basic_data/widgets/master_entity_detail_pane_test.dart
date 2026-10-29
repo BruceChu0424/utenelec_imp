@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -486,7 +487,7 @@ void main() {
     expect(find.text('已删除 98 个，2 个没有处理'), findsOneWidget);
     expect(find.text('货品-g3'), findsOneWidget);
     expect(find.textContaining('它还是以下货品的 BOM 组件'), findsNWidgets(2));
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(_table(tester).selectedIds, {'g3', 'g4'}, reason: '失败的留着方便处理后重试');
   });

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/platform_table_recovery_text.dart';
@@ -74,6 +75,13 @@ Future<void> _mount(
 Finder _dialogText(String text) => find.descendant(
   of: find.byType(UtenAlertDialog),
   matching: find.text(text),
+);
+
+// The details dialog closes through its top-right UtenCloseButton; the close
+// label survives as that button's tooltip.
+Finder _dialogClose() => find.descendant(
+  of: find.byType(UtenAlertDialog),
+  matching: find.byType(UtenCloseButton),
 );
 
 void main() {
@@ -187,7 +195,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      final close = _dialogText(platformTableRecoveryTexts['close']!.first);
+      final close = _dialogClose();
       expect(tester.getRect(close).bottom, lessThanOrEqualTo(700));
       await tester.tap(close);
       await tester.pumpAndSettle();
@@ -237,7 +245,7 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.byType(UtenAlertDialog), findsOneWidget);
-    await tester.tap(_dialogText(platformTableRecoveryTexts['close']!.first));
+    await tester.tap(_dialogClose());
     await tester.pumpAndSettle();
     expect(find.byType(UtenAlertDialog), findsNothing);
     expect(retries, 0);

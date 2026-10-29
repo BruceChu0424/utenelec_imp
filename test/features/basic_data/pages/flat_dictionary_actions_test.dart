@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -583,7 +584,7 @@ void main() {
         pending.complete();
         await tester.pumpAndSettle();
         expect(find.text('被货品或单据引用'), findsOneWidget);
-        await tester.tap(find.text('知道了'));
+        await tester.tap(find.byType(UtenCloseButton));
         await tester.pumpAndSettle();
         final table = tester.widget<MasterDataTableView<dynamic>>(
           find.byWidgetPredicate(

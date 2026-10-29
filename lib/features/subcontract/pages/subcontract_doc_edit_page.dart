@@ -150,7 +150,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   bool _loading = false;
 
   @override
-  bool get formDraftEnabled => widget.id == null;
+  // 发料单由「领料」提交生成（无 createPerm/draftKind，不接人工草稿）：
+  // 无 createPerm 的单据不能手工新建，也不参与表单草稿——formDraftSpec 的
+  // permission 为必填，此处提前退出，避免 FormDraftMixin 取 spec 时空指针。
+  bool get formDraftEnabled => widget.id == null && _cfg.createPerm != null;
 
   @override
   bool get formDraftBusy => _saving;

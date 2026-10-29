@@ -105,14 +105,6 @@
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/admin/pages/admin_permissions_page.dart",
-    "owner": "_EmployeePermTabState._listColumn",
-    "fingerprint": "b206be522245d9d0d0df677aad98e4535487f9cc5300b2b76f8a509ff1deb5c0",
-    "count": 1,
-    "reason": "Exits employee multi-select mode without closing the page."
-  },
-  {
-    "kind": "raw-close-icon",
     "path": "lib/features/admin/pages/audit_device_evidence.dart",
     "owner": "_DeviceCompareRow.build",
     "fingerprint": "827fac50da600f3fa64875b9efcf858be2597ca14dd7f5a8fe4c0a6a42ba0c7c",

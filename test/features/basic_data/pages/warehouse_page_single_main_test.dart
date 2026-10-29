@@ -19,6 +19,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_task_progress_dialog.dart';
@@ -219,7 +220,7 @@ void main() {
       'ids': ['c01', 'c0401'],
     });
     expect(find.text('仓库还有库存，不能删除'), findsOneWidget);
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     final table = tester.widget<MasterDataTableView<WarehouseDetail>>(
       find.byKey(const Key('warehouse-master-table')),
@@ -285,8 +286,8 @@ void main() {
     await tester.tap(find.text('删除'));
     await tester.pumpAndSettle();
     expect(find.text('原身份库存原因'), findsOneWidget);
-    final oldClose = tester.widget<UtenButton>(
-      find.widgetWithText(UtenButton, '知道了'),
+    final oldClose = tester.widget<UtenCloseButton>(
+      find.byType(UtenCloseButton),
     );
     container.read(_grants.notifier).state = {Perm.warehouseView};
     await tester.pumpAndSettle();

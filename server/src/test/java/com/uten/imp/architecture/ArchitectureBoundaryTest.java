@@ -92,6 +92,10 @@ class ArchitectureBoundaryTest {
             // IQC 隔离与仓库确认入库都落仓库侧；品质 PASS 不写库存，只有仓库确认批次
             // 通过统一 StockService 记账，因此 warehouse 仍合法依赖 stock（ADR-017）。
             "warehouse->stock",
+            // 2026-10-29：仓库任务中心按筛选导出（WarehouseTaskCenterExportService 经
+            // SystemSettingsService 读 EXPORT_MAX_ROWS 导出上限），与 finance/production/
+            // purchase/sales/stock/subcontract ->admin 读系统设置同构，ADR-017 登记边。
+            "warehouse->admin",
             // 2026-08-06：庆典互动/账号锁定跨切面（V224/V226）——notice 读 system_settings、
             // org 员工详情锁账号，均依赖 admin（admin 为账号/系统设置枢纽，与 finance/production/
             // stock/visitor →admin 同构，已登记 ADR-017）。

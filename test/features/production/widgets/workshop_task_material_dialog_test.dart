@@ -251,7 +251,7 @@ void main() {
       expect(find.byKey(_continue), findsNothing);
       expect(find.byType(Checkbox), findsNothing);
       expect(find.text('自制开关后座'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
       expect(harness.result.value, isNull);
       expect(draw.calls, 0);

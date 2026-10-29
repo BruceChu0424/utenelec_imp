@@ -161,7 +161,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   String? _createdAt;
 
   @override
-  bool get formDraftEnabled => widget.id == null;
+  // 申请单是计划下达的只读需求（无 createPerm/draftKind，不接人工草稿）：
+  // 无 createPerm 的单据不能手工新建，也不参与表单草稿——formDraftSpec 的
+  // permission 为必填，此处提前退出，避免 FormDraftMixin 取 spec 时空指针。
+  bool get formDraftEnabled => widget.id == null && _cfg.createPerm != null;
 
   @override
   bool get formDraftBusy => _saving;

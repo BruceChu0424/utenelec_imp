@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -340,7 +341,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.tap(find.text('关闭'));
+    // 详情弹窗按统一收口改为右上角 UtenCloseButton 关闭（「关闭」仅剩 tooltip）。
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

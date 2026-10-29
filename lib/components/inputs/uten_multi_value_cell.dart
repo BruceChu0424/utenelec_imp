@@ -114,7 +114,7 @@ class UtenMultiValueCell extends StatelessWidget {
           UtenButton(
             type: UtenButtonType.secondary,
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('关闭'),
+            child: const Text('取消'),
           ),
         ],
       ),

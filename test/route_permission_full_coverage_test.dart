@@ -97,7 +97,10 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 244 条守卫 / 20 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 245 条守卫 / 20 条豁免。
+/// 2026-10-29 客户端发布工作台 /settings/software-publish 上线（client-updates
+/// 批次），any=[client_release:publish]（V946 INDIVIDUAL_ONLY），守卫 244→245；
+/// 页面权限面按独立系统管理边界豁免负责人转授。
 /// 2026-10-25 公司资料中心增加精确 company_file:view 守卫，文件夹范围和写动作由后端裁决。
 /// 独立救援入口 /operations/recovery 不依赖业务会话，控制面保留独立认证与恢复门禁。
 /// 2026-10-18 销售订单进度详情整页退役（履约时间线并入订货单详情页），
@@ -246,6 +249,11 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // 2026-10-18 官网管理页（uimp/website-imp-integration 并入）：按 website:view
   // 收口进入，内容编辑/发布/回退等动作由管理端会话权限与服务端另行把关。
   '/website-management': [Perm.websiteView],
+  // 2026-10-29 客户端发布工作台（client-updates 批次并入）：any=
+  // [client_release:publish] 单一守卫（与 server ClientReleaseService
+  // .PUBLISH_PERMISSION 同码）；V946 授予策略 INDIVIDUAL_ONLY，包上传/发布/
+  // 撤回仍由服务端逐动作校验，页面权限面按独立系统管理边界豁免转授。
+  '/settings/software-publish': [Perm.clientReleasePublish],
 };
 
 String _samplePath(String pattern) => pattern
@@ -265,6 +273,9 @@ const _pagePermissionExemptPatterns = <String, String>{
   '/expense/:id/edit': '本人报销申请',
   '/my-visitors': '本人访客接待',
   '/settings/device-receipts': '本机审计回执',
+  // 客户端发布工作台：client_release:publish 为 INDIVIDUAL_ONLY 高危权限
+  // (V946)，仅超级管理员逐人授权、不可部门授权或转授，不提供负责人页面转授。
+  '/settings/software-publish': '客户端版本发布仅超级管理员逐人授权，不提供负责人转授',
   '/production/chain-health': '全局初筛尚无对象范围，不开放负责人转授',
 };
 

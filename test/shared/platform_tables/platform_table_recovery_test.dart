@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/platform_table_recovery_text.dart';
@@ -770,12 +772,9 @@ void main() {
             findsOneWidget,
           );
           await tester.tap(
-            find.text(
-              platformTableRecoveryTexts['close']![[
-                'zh',
-                'en',
-                'ko',
-              ].indexOf(language)],
+            find.descendant(
+              of: find.byType(UtenAlertDialog),
+              matching: find.byType(UtenCloseButton),
             ),
           );
           await tester.pumpAndSettle();
@@ -918,12 +917,9 @@ void main() {
             findsOneWidget,
           );
           await tester.tap(
-            find.text(
-              platformTableRecoveryTexts['close']![[
-                'zh',
-                'en',
-                'ko',
-              ].indexOf(language)],
+            find.descendant(
+              of: find.byType(UtenAlertDialog),
+              matching: find.byType(UtenCloseButton),
             ),
           );
           await tester.pumpAndSettle();

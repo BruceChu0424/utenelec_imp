@@ -69,6 +69,19 @@ class DetailViewAuditCoverageArchitectureTest {
                 assertExportJobPollingContract(source);
                 continue;
             }
+            // A client-release GET is recovery metadata for an uncertain publish:
+            // the admin re-reads one immutable queue identity to retry the exact
+            // same publish operation (PUBLISHED alone does not prove Windows
+            // retention succeeded). Create/upload/publish/withdraw keep their
+            // explicit client_release_* audit events, so a detail-view event here
+            // would only add noise. The response must stay private and no-store.
+            if (normalizedPath.endsWith("/clientupdates/ClientReleaseAdminController.java")) {
+                assertFalse(source.contains("AuditDetailViewRecorder"),
+                        "client release recovery metadata must rely on explicit action audit events");
+                assertTrue(source.contains("private, no-store"),
+                        "client release recovery metadata must not be cached");
+                continue;
+            }
             assertTrue(source.contains("AuditDetailViewRecorder"),
                     () -> "missing explicit detail-view audit dependency: " + controller);
             assertTrue(DETAIL_ACTION.matcher(source).find(),
@@ -106,8 +119,12 @@ class DetailViewAuditCoverageArchitectureTest {
                 com.uten.imp.features.reporting.export.ReportExportService.View.class.getRecordComponents())
                 .map(java.lang.reflect.RecordComponent::getName).collect(java.util.stream.Collectors.toSet());
         assertTrue(fields.equals(java.util.Set.of("id", "domain", "report", "format", "status",
-                "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt")),
-                "status polling must not expose filters, request bodies or private artifact paths");
+                "cancelRequested", "rows", "bytes", "snapshotAt", "error", "createdAt", "finishedAt",
+                "request")),
+                "status polling must not expose private artifact paths; the echoed 'request' is the "
+                + "owner's own ReportExportRequest for idempotent dedupe and same-parameter re-run "
+                + "(parameter keys matching password/token/secret/authorization are rejected at "
+                + "submit time and passwords are supplied only at download time)");
     }
 
     @Test

@@ -8409,11 +8409,22 @@ void main() {
   testWidgets('big analysis opens waiting bucket fast (perf canary)', (
     tester,
   ) async {
-    // 性能看门狗：1500 产品 / 4500 物料的大分析，点「暂不可安排」入口
-    // 必须在 10 秒内完成。分桶投影原为 O(物料²)（候选×全表扫描），该量级
+    // 性能看门狗：1500 产品 / 4500 物料的大分析，首开与点「暂不可安排」入口
+    // 都必须远快于退化路径。分桶投影原为 O(物料²)（候选×全表扫描），该量级
     // 下要点几十秒（真实环境表现为整页卡死）；2026-09-04 起走
     // (analysisLineId,parentNodeKey) 复合索引 + 分析快照缓存。此用例
     // 超时/超阈值即算法退化。
+    //
+    // 守卫分两层（2026-10-29 调整）：
+    // 1. 结构层（主守卫，不受机器负载影响）：候选就绪度评估恰为每产品一次
+    //    （1500 产品 = 1500 次，同 32 产品用例口径）。退化为候选×全表扫描时
+    //    该计数会暴涨，任何负载下都能稳定检出。
+    // 2. 墙钟层（粗粒度兜底）：原 10s 阈值按 2026-09-04 串行单跑校准（健康
+    //    路径约 5-7s）。2026-10-29 实测：全量 flutter test 并行负载下健康代码
+    //    墙钟 8.9-20.4s（本提交与合并前基线均出现），10s 会随机误杀健康代码。
+    //    上限调到 30s——仍在退化路径（本量级几十秒起步，较 2026-09 的 3000
+    //    物料再×2.25 扫描量）之下，仅兜住极端回归；绝对耗时以遥测打印留档。
+    final beforeSortEvaluations = debugMaterialCandidateSortEvaluations;
     final firstInteractiveStopwatch = Stopwatch()..start();
     final harness = await _pumpPage(
       tester,
@@ -8426,16 +8437,32 @@ void main() {
       analysisJson: _bigWaitingAnalysisJson(),
     );
     firstInteractiveStopwatch.stop();
+    // ignore: avoid_print
+    print(
+      'material-analysis-perf-canary firstOpenMs='
+      '${firstInteractiveStopwatch.elapsedMilliseconds} '
+      'sortEvaluations=${debugMaterialCandidateSortEvaluations - beforeSortEvaluations}',
+    );
     expect(harness, isNotNull);
 
+    // 结构守卫：就绪度评估恰好每候选一次（O(产品)），扫描退化立即可检出。
+    expect(
+      debugMaterialCandidateSortEvaluations - beforeSortEvaluations,
+      1500,
+      reason: '候选投影退化成候选×全表扫描（应走复合索引，每产品恰评估一次）',
+    );
     expect(
       firstInteractiveStopwatch.elapsed.inSeconds,
-      lessThan(10),
+      lessThan(30),
       reason: '首屏分桶计数/冷投影退化，页面无法及时交互',
     );
     final stopwatch = Stopwatch()..start();
     await _openBucketDetail(tester, 'workshop', stateFilter: '需处理');
     stopwatch.stop();
+    // ignore: avoid_print
+    print(
+      'material-analysis-perf-canary bucketOpenMs=${stopwatch.elapsedMilliseconds}',
+    );
     expect(
       find.byKey(const Key('material-analysis-bucket-entries')),
       findsNothing,
@@ -8460,7 +8487,7 @@ void main() {
     );
     expect(
       stopwatch.elapsed.inSeconds,
-      lessThan(10),
+      lessThan(30),
       reason: '分桶投影/渲染退化为全表平方扫描',
     );
   });

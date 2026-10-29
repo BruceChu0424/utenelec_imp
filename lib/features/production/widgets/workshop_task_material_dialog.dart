@@ -370,7 +370,7 @@ class _WorkshopTaskMaterialDialogState
         UtenButton(
           type: UtenButtonType.secondary,
           onPressed: () => Navigator.of(context).pop(),
-            child: const Text('取消'),
+          child: const Text('取消'),
         ),
         if (widget.canRequestDraw)
           UtenButton(

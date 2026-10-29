@@ -394,36 +394,34 @@ void main() {
     FilePicker.platform = picker;
   });
 
-  testWidgets(
-    'multi-file and identity guidance opens before selecting files',
-    (tester) async {
-      final repo = _Repository();
-      await _open(tester, repo, pick: false);
-      const note = '可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。';
-      expect(find.textContaining(note), findsNothing);
-      final hint = find.byWidgetPredicate(
-        (widget) =>
-            widget is UtenFieldHintIcon &&
-            (widget.info?.contains(note) ?? false),
-      );
-      expect(hint, findsOneWidget);
-      await tester.tap(hint);
-      await tester.pumpAndSettle();
-      expect(find.textContaining(note), findsOneWidget);
-      expect(find.textContaining('编号和名称不用于匹配'), findsOneWidget);
-      expect(find.textContaining('系统生成独立身份'), findsOneWidget);
-      expect(find.textContaining('填写已占用编号会报错'), findsOneWidget);
-      expect(find.textContaining('没有系统标识时按编号匹配'), findsNothing);
-      expect(find.textContaining('同编号已删除货品按清单内容恢复'), findsNothing);
-      expect(repo.detections, 0);
-      expect(repo.commits, 0);
-      expect(picker.selections, 0);
-      Tooltip.dismissAllToolTips();
-      await tester.pumpAndSettle();
-      expect(find.text('选择 Excel 文件'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('multi-file and identity guidance opens before selecting files', (
+    tester,
+  ) async {
+    final repo = _Repository();
+    await _open(tester, repo, pick: false);
+    const note = '可一次选择多个文件，按顺序检测并导入。每个文件独立保存，后续失败或关闭不会撤销已成功的文件。';
+    expect(find.textContaining(note), findsNothing);
+    final hint = find.byWidgetPredicate(
+      (widget) =>
+          widget is UtenFieldHintIcon && (widget.info?.contains(note) ?? false),
+    );
+    expect(hint, findsOneWidget);
+    await tester.tap(hint);
+    await tester.pumpAndSettle();
+    expect(find.textContaining(note), findsOneWidget);
+    expect(find.textContaining('编号和名称不用于匹配'), findsOneWidget);
+    expect(find.textContaining('系统生成独立身份'), findsOneWidget);
+    expect(find.textContaining('填写已占用编号会报错'), findsOneWidget);
+    expect(find.textContaining('没有系统标识时按编号匹配'), findsNothing);
+    expect(find.textContaining('同编号已删除货品按清单内容恢复'), findsNothing);
+    expect(repo.detections, 0);
+    expect(repo.commits, 0);
+    expect(picker.selections, 0);
+    Tooltip.dismissAllToolTips();
+    await tester.pumpAndSettle();
+    expect(find.text('选择 Excel 文件'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'every normal and unchanged row requires full preview confirmation',

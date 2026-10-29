@@ -129,6 +129,12 @@ class FixtureSchemaDriftGuardPostgresTest {
             "entitlement_evidence",
             "entitlement_facts",
             "stock_facts",
+            // ProductionWorkshopPreparationFilterPostgresTest 的车间物料筛选投影桩：
+            // 只为内嵌的生产 SQL 片段提供编译/行为事实，不属于业务 schema。
+            "workshop_filter_materials",
+            "workshop_filter_requests",
+            "workshop_filter_flags",
+            "workshop_filter_sources",
             // 审计分类迁移测试的材料探针。
             "audit_v556_material_probe",
             // ADR-105 列级审计登记探针: 只验证「只在登记列变化时写审计」, 不是业务表。

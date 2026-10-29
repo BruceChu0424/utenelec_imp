@@ -76,6 +76,7 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
     }
     return WebUpdateSafetyState(blocked: visible);
   }
+
   static const double _handleThickness = 6;
   static const double _cornerExtent = 14;
   static const double _areaMargin = 8;

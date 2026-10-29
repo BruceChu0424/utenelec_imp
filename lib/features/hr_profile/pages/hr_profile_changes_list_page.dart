@@ -524,7 +524,8 @@ class _HrProfileChangesListPageState
           .join('、'),
       cellBuilder: (context, m) => UtenMultiValueCell(
         values: [
-          for (final code in m.fieldCodes) ProfileFieldPolicy.labelOf(l10n, code),
+          for (final code in m.fieldCodes)
+            ProfileFieldPolicy.labelOf(l10n, code),
         ],
         title: '变更字段',
       ),

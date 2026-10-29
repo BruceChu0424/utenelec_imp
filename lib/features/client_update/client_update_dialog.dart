@@ -50,7 +50,9 @@ Future<void> showClientUpdateCountdownDialog(
   final navigator = Navigator.of(context, rootNavigator: true);
   return navigator.push(
     DialogRoute<void>(
-      settings: const RouteSettings(name: '/settings/software-update-countdown'),
+      settings: const RouteSettings(
+        name: '/settings/software-update-countdown',
+      ),
       context: context,
       barrierDismissible: false,
       builder: (_) => ClientUpdateCountdownDialog(
@@ -169,13 +171,11 @@ class _ClientUpdateCountdownDialogState
           Text(branding.companyName, textAlign: TextAlign.center),
           Text(branding.platformName, textAlign: TextAlign.center),
           const SizedBox(height: UtenSpacing.s12),
-          Text(
-            switch (language) {
-              'zh' => '建议立即更新。',
-              'ko' => '지금 업데이트하는 것을 권장합니다.',
-              _ => 'We recommend updating now.',
-            },
-          ),
+          Text(switch (language) {
+            'zh' => '建议立即更新。',
+            'ko' => '지금 업데이트하는 것을 권장합니다.',
+            _ => 'We recommend updating now.',
+          }),
           const SizedBox(height: UtenSpacing.s12),
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -194,9 +194,7 @@ class _ClientUpdateCountdownDialogState
               const SizedBox(width: UtenSpacing.s8),
               Text(
                 _waitingForSafety
-                    ? (language == 'zh'
-                          ? '当前操作完成后自动更新'
-                          : '将等待当前操作完成后自动更新')
+                    ? (language == 'zh' ? '当前操作完成后自动更新' : '将等待当前操作完成后自动更新')
                     : switch (language) {
                         'zh' => '秒后自动更新',
                         'ko' => '초 후 자동 업데이트',

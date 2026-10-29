@@ -2170,9 +2170,7 @@ void main() {
     );
     expect(find.text('生产工单'), findsNothing);
     expect(
-      _table(tester).columns.any(
-        (column) => column.key == 'productionOrderNo',
-      ),
+      _table(tester).columns.any((column) => column.key == 'productionOrderNo'),
       isFalse,
     );
     expect(tester.takeException(), isNull);
@@ -2226,10 +2224,7 @@ void main() {
     final harness = await _pump(
       tester,
       gateway,
-      permissions: {
-        Perm.stockDocView,
-        Perm.productionPlanView,
-      },
+      permissions: {Perm.stockDocView, Perm.productionPlanView},
     );
     // 格内只显示第 1 个 +「等 N 个」，不撑宽表格；其余只在弹窗里。
     expect(find.text('GD-A 等 3 个'), findsOneWidget);

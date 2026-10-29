@@ -906,159 +906,154 @@ class _WarehouseTaskRecordsViewState
 
   /// 表格列定义（打印预览与导出白名单共用同一口径）。
   List<MasterColumnDef<WarehouseTaskCenterRecord>> _buildColumns() => [
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          facetSearchEnabled: true,
-          columnSearchEnabled: false,
-          info: '按服务端工作阶段筛选。本地草稿标签保留原任务阶段和恢复入口。',
-          width: 210,
-          value: (row) {
-            final matches = _draftsFor(row);
-            return matches.isEmpty
-                ? row.statusLabel
-                : '${widget.sources[row.sourceType] ?? '仓库'} · ${taskDraftStatus(matches)}';
-          },
-          cellColor: (context, row) => utenStatusBadgeCellColor(
-            _draftsFor(row).isEmpty
-                ? row.statusType
-                : UtenStatusBadgeType.neutral,
-          ),
-        ),
-        MasterColumnDef(
-          key: 'billNo',
-          label: '单据 / 任务单号',
-          width: 180,
-          sortable: true,
-          value: (row) => row.billNo ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'goodsName',
-          sortable: true,
-          label: '货品名称',
-          width: 200,
-          value: (row) => row.line?.goodsName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'goodsCode',
-          sortable: true,
-          label: '货品编码',
-          width: 150,
-          value: (row) => row.line?.goodsCode ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'colorName',
-          sortable: true,
-          label: '颜色',
-          width: 100,
-          value: (row) => row.line?.colorName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'specification',
-          sortable: true,
-          label: '规格',
-          width: 140,
-          value: (row) => row.line?.specification ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'quantity',
-          label: '数量',
-          width: 130,
-          type: 'number',
-          sortable: true,
-          columnSearchEnabled: true,
-          exactValueOf: (row) =>
-              row.line?.quantityText ?? row.line?.quantity?.toString(),
-          value: (row) => row.line?.quantityLabel ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'sourceDocNo',
-          sortable: true,
-          label: '来源单据',
-          width: 180,
-          value: (row) => row.sourceDocNo ?? '—',
-        ),
-        // 领料单关联的生产工单（2026-10-29 用户批注）：链路 = 计划包单据/明细行执行段/
-        // 计划包明细-需求 → production_execution_segments.segment_code；非领料行为「—」。
-        if (widget.direction == WarehouseTaskDirection.outbound)
-          MasterColumnDef(
-            key: 'productionOrderNo',
-            sortable: true,
-            label: '生产工单',
-            width: 150,
-            value: (row) => row.productionOrderNo ?? '—',
-            // 多工单不撑宽表格（2026-10-29 用户口径，参照车间任务物料摘要格）：
-            // 格内最多显示 1 个工单 +「等 N 个」，点击弹窗列全部，可按单跳详情。
-            cellBuilder: (context, row) {
-              final orders = row.productionOrderNo?.split('、') ??
-                  const <String>[];
-              if (orders.isEmpty) return const Text('—');
-              final planIdOf = <String, String?>{
-                for (final entry in row.productionOrderEntries)
-                  entry.$1: entry.$2,
-              };
-              final permissions = ref.read(currentPermissionsProvider);
-              final superAdmin = ref.read(isSuperAdminProvider);
-              final canOpenPlan = locationAllowedFor(
-                permissions,
-                superAdmin,
-                RouteName.productionPlanList,
-              );
-              return UtenMultiValueCell(
-                key: ValueKey('warehouse-production-orders-${row.rowKey}'),
-                values: orders,
-                title: '生产工单（${row.billNo ?? row.id}）',
-                enabled: !_busy && !_batchPromptOpen && !_loading,
-                detailAvailableOf: (order) =>
-                    canOpenPlan && planIdOf[order] != null,
-                onDetail: (order) => _navigation.push<void>(
-                  RoutePath.productionPlanDetail(planIdOf[order]!),
-                ),
-              );
-            },
-          ),
-        MasterColumnDef(
-          key: 'partyName',
-          sortable: true,
-          label: '客户 / 供应商 / 委外商',
-          width: 200,
-          value: (row) => row.partyName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'warehouseName',
-          sortable: true,
-          label: '仓库',
-          width: 180,
-          value: (row) => row.warehouseName ?? '未确定',
-        ),
-        MasterColumnDef(
-          key: 'businessDate',
-          label: '业务日期',
-          width: 120,
-          type: 'date',
-          columnSearchEnabled: true,
-          sortable: true,
-          value: (row) => row.businessDate ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'responsibleName',
-          sortable: true,
-          label: '负责人',
-          width: 110,
-          value: (row) => row.responsibleName ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'makerName',
-          sortable: true,
-          label: '制单人',
-          width: 110,
-          value: (row) => row.makerName ?? '—',
-        ),
-      ];
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      facetSearchEnabled: true,
+      columnSearchEnabled: false,
+      info: '按服务端工作阶段筛选。本地草稿标签保留原任务阶段和恢复入口。',
+      width: 210,
+      value: (row) {
+        final matches = _draftsFor(row);
+        return matches.isEmpty
+            ? row.statusLabel
+            : '${widget.sources[row.sourceType] ?? '仓库'} · ${taskDraftStatus(matches)}';
+      },
+      cellColor: (context, row) => utenStatusBadgeCellColor(
+        _draftsFor(row).isEmpty ? row.statusType : UtenStatusBadgeType.neutral,
+      ),
+    ),
+    MasterColumnDef(
+      key: 'billNo',
+      label: '单据 / 任务单号',
+      width: 180,
+      sortable: true,
+      value: (row) => row.billNo ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsName',
+      sortable: true,
+      label: '货品名称',
+      width: 200,
+      value: (row) => row.line?.goodsName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'goodsCode',
+      sortable: true,
+      label: '货品编码',
+      width: 150,
+      value: (row) => row.line?.goodsCode ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'colorName',
+      sortable: true,
+      label: '颜色',
+      width: 100,
+      value: (row) => row.line?.colorName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'specification',
+      sortable: true,
+      label: '规格',
+      width: 140,
+      value: (row) => row.line?.specification ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'quantity',
+      label: '数量',
+      width: 130,
+      type: 'number',
+      sortable: true,
+      columnSearchEnabled: true,
+      exactValueOf: (row) =>
+          row.line?.quantityText ?? row.line?.quantity?.toString(),
+      value: (row) => row.line?.quantityLabel ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'sourceDocNo',
+      sortable: true,
+      label: '来源单据',
+      width: 180,
+      value: (row) => row.sourceDocNo ?? '—',
+    ),
+    // 领料单关联的生产工单（2026-10-29 用户批注）：链路 = 计划包单据/明细行执行段/
+    // 计划包明细-需求 → production_execution_segments.segment_code；非领料行为「—」。
+    if (widget.direction == WarehouseTaskDirection.outbound)
+      MasterColumnDef(
+        key: 'productionOrderNo',
+        sortable: true,
+        label: '生产工单',
+        width: 150,
+        value: (row) => row.productionOrderNo ?? '—',
+        // 多工单不撑宽表格（2026-10-29 用户口径，参照车间任务物料摘要格）：
+        // 格内最多显示 1 个工单 +「等 N 个」，点击弹窗列全部，可按单跳详情。
+        cellBuilder: (context, row) {
+          final orders = row.productionOrderNo?.split('、') ?? const <String>[];
+          if (orders.isEmpty) return const Text('—');
+          final planIdOf = <String, String?>{
+            for (final entry in row.productionOrderEntries) entry.$1: entry.$2,
+          };
+          final permissions = ref.read(currentPermissionsProvider);
+          final superAdmin = ref.read(isSuperAdminProvider);
+          final canOpenPlan = locationAllowedFor(
+            permissions,
+            superAdmin,
+            RouteName.productionPlanList,
+          );
+          return UtenMultiValueCell(
+            key: ValueKey('warehouse-production-orders-${row.rowKey}'),
+            values: orders,
+            title: '生产工单（${row.billNo ?? row.id}）',
+            enabled: !_busy && !_batchPromptOpen && !_loading,
+            detailAvailableOf: (order) =>
+                canOpenPlan && planIdOf[order] != null,
+            onDetail: (order) => _navigation.push<void>(
+              RoutePath.productionPlanDetail(planIdOf[order]!),
+            ),
+          );
+        },
+      ),
+    MasterColumnDef(
+      key: 'partyName',
+      sortable: true,
+      label: '客户 / 供应商 / 委外商',
+      width: 200,
+      value: (row) => row.partyName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'warehouseName',
+      sortable: true,
+      label: '仓库',
+      width: 180,
+      value: (row) => row.warehouseName ?? '未确定',
+    ),
+    MasterColumnDef(
+      key: 'businessDate',
+      label: '业务日期',
+      width: 120,
+      type: 'date',
+      columnSearchEnabled: true,
+      sortable: true,
+      value: (row) => row.businessDate ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'responsibleName',
+      sortable: true,
+      label: '负责人',
+      width: 110,
+      value: (row) => row.responsibleName ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'makerName',
+      sortable: true,
+      label: '制单人',
+      width: 110,
+      value: (row) => row.makerName ?? '—',
+    ),
+  ];
 
-  String get _directionLabel => widget.direction == WarehouseTaskDirection.outbound
-      ? '出库'
-      : '入库';
+  String get _directionLabel =>
+      widget.direction == WarehouseTaskDirection.outbound ? '出库' : '入库';
   String get _exportTitle => '仓库$_directionLabel任务';
 
   /// 导出查询参数：与 [_loadPage] 同一筛选口径（不含分页；列筛选以 search.* 透传）。
@@ -1071,8 +1066,7 @@ class _WarehouseTaskRecordsViewState
         if (widget.keyword.trim().isNotEmpty) 'keyword': widget.keyword.trim(),
         if (_billNo != null && _billNo!.trim().isNotEmpty)
           'billNo': _billNo!.trim(),
-        if (_dates != null)
-          'dateFrom': ChinaDateTime.formatDate(_dates!.start),
+        if (_dates != null) 'dateFrom': ChinaDateTime.formatDate(_dates!.start),
         if (_dates != null) 'dateTo': ChinaDateTime.formatDate(_dates!.end),
         if (_sort != null) 'sort': _sort,
         if (_sort != null) 'order': _ascending ? 'asc' : 'desc',

@@ -85,11 +85,7 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
   }
 
   Future<void> _tryAutomaticUpdate() async {
-    if (!mounted ||
-        _applying ||
-        _countdownOpen ||
-        !widget.enabled ||
-        kIsWeb) {
+    if (!mounted || _applying || _countdownOpen || !widget.enabled || kIsWeb) {
       return;
     }
     final store = ref.read(clientStagedUpdateStoreProvider);
@@ -119,11 +115,13 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
                 .installPrepared(automatic: automatic);
           } else {
             // This path performs no authenticated or anonymous network request.
-            await ref.read(clientStagedUpdateStoreProvider).apply(
-              bridge: ref.read(clientUpdateBridgeProvider),
-              isSafe: () => webUpdateSafety.safeToReload,
-              automatic: automatic,
-            );
+            await ref
+                .read(clientStagedUpdateStoreProvider)
+                .apply(
+                  bridge: ref.read(clientUpdateBridgeProvider),
+                  isSafe: () => webUpdateSafety.safeToReload,
+                  automatic: automatic,
+                );
           }
         } catch (_) {
           // The store retains the failure and latches this release for manual

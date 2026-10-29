@@ -321,10 +321,8 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
           // value（筛选/导出）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
           value: (it) =>
               it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
-          cellBuilder: (context, it) => UtenMultiValueCell(
-            values: it.salesOrderNos,
-            title: '销售订单号',
-          ),
+          cellBuilder: (context, it) =>
+              UtenMultiValueCell(values: it.salesOrderNos, title: '销售订单号'),
         ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 sourceDocNo 白名单/桶）。

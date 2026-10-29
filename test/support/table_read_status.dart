@@ -21,7 +21,10 @@ Future<void> expectTableReadFailureDetails(
     matching: find.byType(UtenAlertDialog),
   );
   expect(dialog, findsOneWidget);
-  final close = find.descendant(of: dialog, matching: find.byTooltip(closeLabel));
+  final close = find.descendant(
+    of: dialog,
+    matching: find.byTooltip(closeLabel),
+  );
   expect(close, findsOneWidget);
   await tester.ensureVisible(close);
   await tester.tap(close);

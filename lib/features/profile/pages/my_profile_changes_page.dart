@@ -330,10 +330,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       info: '本批修改涉及的档案字段（顿号连接）；双击行可查看逐字段旧→新值对比。',
       // 屏幕格走多值截断+弹窗口径（2026-10-29）；value（导出）保留全量。
       value: (item) => item.fieldLabels.join('、'),
-      cellBuilder: (context, item) => UtenMultiValueCell(
-        values: item.fieldLabels,
-        title: '变更字段',
-      ),
+      cellBuilder: (context, item) =>
+          UtenMultiValueCell(values: item.fieldLabels, title: '变更字段'),
     ),
     MasterColumnDef(
       key: 'itemCount',

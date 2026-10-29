@@ -42,33 +42,42 @@ void main() {
   });
 
   for (final family in ['flutter', 'wpf_legacy']) {
-    test('preserves the approved $family selector on authenticated stream', () async {
-      await api.getPackageStream('$path?runtimeFamily=$family', cancelToken: CancelToken());
-      expect(adapter.seen!.path, path);
-      expect(adapter.seen!.queryParameters, {'runtimeFamily': family});
-      expect(adapter.seen!.uri.host, 'approved.test');
-      expect(adapter.seen!.followRedirects, isFalse);
-    });
+    test(
+      'preserves the approved $family selector on authenticated stream',
+      () async {
+        await api.getPackageStream(
+          '$path?runtimeFamily=$family',
+          cancelToken: CancelToken(),
+        );
+        expect(adapter.seen!.path, path);
+        expect(adapter.seen!.queryParameters, {'runtimeFamily': family});
+        expect(adapter.seen!.uri.host, 'approved.test');
+        expect(adapter.seen!.followRedirects, isFalse);
+      },
+    );
   }
 
-  test('rejects foreign origins and arbitrary or ambiguous selectors', () async {
-    for (final invalid in [
-      'https://foreign.test$path',
-      '//foreign.test$path',
-      '$path#fragment',
-      '$path?runtimeFamily=wpf_legacy&runtimeFamily=flutter',
-      '$path?runtimeFamily=wpf_legacy&token=secret',
-      '$path?runtimeFamily=unknown',
-      '$path?runtimeFamily=%77pf_legacy',
-      '$path?',
-      '$path\n',
-    ]) {
-      await expectLater(
-        api.getPackageStream(invalid, cancelToken: CancelToken()),
-        throwsFormatException,
-        reason: invalid,
-      );
-    }
-    expect(adapter.seen, isNull);
-  });
+  test(
+    'rejects foreign origins and arbitrary or ambiguous selectors',
+    () async {
+      for (final invalid in [
+        'https://foreign.test$path',
+        '//foreign.test$path',
+        '$path#fragment',
+        '$path?runtimeFamily=wpf_legacy&runtimeFamily=flutter',
+        '$path?runtimeFamily=wpf_legacy&token=secret',
+        '$path?runtimeFamily=unknown',
+        '$path?runtimeFamily=%77pf_legacy',
+        '$path?',
+        '$path\n',
+      ]) {
+        await expectLater(
+          api.getPackageStream(invalid, cancelToken: CancelToken()),
+          throwsFormatException,
+          reason: invalid,
+        );
+      }
+      expect(adapter.seen, isNull);
+    },
+  );
 }

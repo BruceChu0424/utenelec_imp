@@ -405,7 +405,11 @@ void main() {
     'default-on staged login update waits for clean idle, counts down and installs at zero',
     (tester) async {
       final navigator = GlobalKey<NavigatorState>();
-      await pumpIdleLoginHost(tester, store: controller.stagedUpdates, navigator: navigator);
+      await pumpIdleLoginHost(
+        tester,
+        store: controller.stagedUpdates,
+        navigator: navigator,
+      );
       final requests = server.requests.length;
       // 60s clean idle at the login screen shows the visible countdown.
       await tester.pump(const Duration(seconds: 15));
@@ -427,7 +431,11 @@ void main() {
     'cancel during the countdown keeps the program until a fresh idle window',
     (tester) async {
       final navigator = GlobalKey<NavigatorState>();
-      await pumpIdleLoginHost(tester, store: controller.stagedUpdates, navigator: navigator);
+      await pumpIdleLoginHost(
+        tester,
+        store: controller.stagedUpdates,
+        navigator: navigator,
+      );
       await tester.pump(const Duration(seconds: 15));
       expect(find.textContaining(RegExp('立即更新（\\d+）')), findsOneWidget);
       await tester.tap(find.text('稍后'));
@@ -451,7 +459,11 @@ void main() {
     'the primary button installs immediately without waiting for the countdown',
     (tester) async {
       final navigator = GlobalKey<NavigatorState>();
-      await pumpIdleLoginHost(tester, store: controller.stagedUpdates, navigator: navigator);
+      await pumpIdleLoginHost(
+        tester,
+        store: controller.stagedUpdates,
+        navigator: navigator,
+      );
       await tester.pump(const Duration(seconds: 15));
       final primary = find.textContaining(RegExp('立即更新（\\d+）'));
       expect(primary, findsOneWidget);

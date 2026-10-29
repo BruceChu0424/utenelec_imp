@@ -1,0 +1,11 @@
+diff --git a/runtime/BUILD.gn b/runtime/BUILD.gn
+index 8cd05ff4..792f9ed8 100644
+--- a/runtime/BUILD.gn
++++ b/runtime/BUILD.gn
+@@ -110 +110,5 @@ config("dart_precompiler_config") {
+-    cflags = [ "-fno-omit-frame-pointer" ]
++    if (is_win) {
++      cflags = [ "/clang:-fno-omit-frame-pointer" ]
++    } else {
++      cflags = [ "-fno-omit-frame-pointer" ]
++    }

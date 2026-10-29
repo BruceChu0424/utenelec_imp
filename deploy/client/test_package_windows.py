@@ -130,6 +130,26 @@ class WindowsPackageTest(unittest.TestCase):
             self.assertFalse(any("client_updater" in name for name in archive.namelist()))
             self.assertEqual(9, len(archive.namelist()))
 
+    def test_known_crashing_engine_blocks_both_outputs_without_replacing_previous_package(self):
+        engine_digest = hashlib.sha256((self.bundle / "flutter_windows.dll").read_bytes()).hexdigest()
+        self.output.write_bytes(b"previous approved package")
+        with mock.patch.dict(package_module.KNOWN_CRASHING_ENGINE_DIGESTS,
+                             {engine_digest: "reproduced native window restore crash"}):
+            for kind in ("installer", "update"):
+                with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "Known crashing"):
+                    package_release(self.bundle, self.output, build_number=2,
+                                    architecture="x64", kind=kind)
+                self.assertEqual(b"previous approved package", self.output.read_bytes())
+
+    def test_independent_archive_validation_rejects_known_crash_despite_valid_hash_manifest(self):
+        (self.bundle / "flutter_windows.dll").rename(self.bundle / "FLUTTER_WINDOWS.DLL")
+        package_release(self.bundle, self.output, build_number=2, architecture="x64")
+        engine_digest = hashlib.sha256((self.bundle / "FLUTTER_WINDOWS.DLL").read_bytes()).hexdigest()
+        with mock.patch.dict(package_module.KNOWN_CRASHING_ENGINE_DIGESTS,
+                             {engine_digest: "reproduced native window restore crash"}):
+            with self.assertRaisesRegex(ValueError, "Known crashing"):
+                validate_package(self.output, build_number=2, architecture="x64")
+
     def test_every_package_kind_requires_all_architecture_core_runtimes(self):
         for kind in ("update", "installer"):
             for name in required_vc_runtime("x64"):

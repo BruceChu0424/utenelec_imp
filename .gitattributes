@@ -30,6 +30,8 @@ web/maintenance.css text eol=lf
 *.json text eol=lf
 *.md text eol=lf
 *.py text eol=lf
+# Rebuildable engine patches use portable zero-context diffs with pinned hashes.
+deploy/client/flutter-engine-patches/*.patch text eol=lf
 *.html text eol=lf
 *.tmpl text eol=lf
 *.cjs text eol=lf

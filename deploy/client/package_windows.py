@@ -27,6 +27,14 @@ REQUIRED_FILES = {"uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/ic
 UPDATER_PATH = "client_updater/client_updater.ps1"
 PACKAGE_KINDS = {"update", "installer"}
 VC_RUNTIME_CORE = {"msvcp140.dll", "vcruntime140.dll"}
+# Confirmed by symbolicated dumps and the real-window/UIA regression. This
+# rejects the exact failed runtime; an unknown digest is not a safety proof.
+KNOWN_CRASHING_ENGINE_DIGESTS = {
+    "72bf222a81e542348a8100ffb1e60ecee6fb066086b678a8f1c28497e7b4695e":
+        "Flutter 3.44.2 Windows x64 Profile: null accessibility child on restore",
+    "a5f0e1c7d685a022995ce49ed8529fb72523b0a3e9634ac10a8b0754af23df14":
+        "Incomplete accessibility child guard: stale AXNodeData after tree reparent/update",
+}
 # These are Windows 10+ OS contracts, not libraries found on the build machine.
 # In particular, a development machine's System32 VC++ installation never makes
 # msvcp/vcruntime/concrt application dependencies available on employee devices.
@@ -49,6 +57,14 @@ windows.storage.dll
 """.split())
 DEBUG_RUNTIME = re.compile(
     r"^(?:(?:msvcp|msvcr|vcruntime|concrt|vcomp|mfc|mfcm)\d+(?:_\d+)?u?d(?:_[^.]+)?|ucrtbased)\.dll$", re.I)
+
+
+def reject_known_crashing_engine(relative: str, digest: str) -> None:
+    if relative.casefold() == "flutter_windows.dll":
+        reason = KNOWN_CRASHING_ENGINE_DIGESTS.get(digest.lower())
+        if reason is not None:
+            raise ValueError(f"Known crashing Flutter Windows engine cannot be packaged: {reason}; "
+                             "use the reviewed runtime and complete native window/UIA regression")
 
 
 class _PeReader:
@@ -474,6 +490,7 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             raise ValueError("Expanded release exceeds 2 GiB")
         with source.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        reject_known_crashing_engine(relative, digest)
         if proof is not None:
             frozen = {"data/app.so": proof["aotSha256"],
                       "data/flutter_assets/NativeAssetsManifest.json": proof["nativeAssetsSha256"]}
@@ -548,8 +565,10 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
             if total > MAX_EXPANDED_BYTES:
                 raise ValueError("Expanded archive too large")
             with archive.open(entry) as stream:
-                if hashlib.file_digest(stream, "sha256").hexdigest() != record["sha256"]:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                if digest != record["sha256"]:
                     raise ValueError("Runtime SHA-256 mismatch")
+            reject_known_crashing_engine(entry.filename, digest)
         if len(seen) != len(expected) + 1:
             raise ValueError("Archive omits release files")
         modules = {}

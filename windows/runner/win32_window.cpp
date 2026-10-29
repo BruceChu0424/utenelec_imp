@@ -23,10 +23,11 @@ namespace {
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr DWORD kLoginWindowStyle =
     WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
-// Keep native resize, system-menu and snap/shortcut capabilities while Flutter
-// supplies the same transparent control strip in login and main presentations.
+// Keep standard styles for DWM transitions, resize and system shortcuts.
+// WM_NCCALCSIZE removes the visible title bar while Flutter paints controls.
+// Windows retains control of animation and reduced-motion preferences.
 constexpr DWORD kMainWindowStyle =
-    (WS_OVERLAPPEDWINDOW & ~WS_CAPTION) | WS_CLIPCHILDREN;
+    WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
 constexpr UINT kBeginWindowDrag = WM_APP + 0x351;
 constexpr UINT_PTR kResizeChildSubclass = 0x352;
 constexpr int kLoginCornerRadius = 16;
@@ -458,7 +459,9 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      // Do not reactivate the child during deactivation or minimization.
+      if (LOWORD(wparam) != WA_INACTIVE && HIWORD(wparam) == 0 &&
+          child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;

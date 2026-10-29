@@ -1,0 +1,26 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><UtenDistributionProfile Condition="'$(UtenDistributionProfile)' == ''">Unreviewed</UtenDistributionProfile></PropertyGroup>
+  <!-- Read the same reviewed source version as Flutter; never edit pubspec or
+       invent a lower SDK/application version to target an older OS. -->
+  <Target Name="GenerateUtenWpfVersion" BeforeTargets="CoreCompile">
+    <ReadLinesFromFile File="$(MSBuildThisFileDirectory)..\..\pubspec.yaml"><Output TaskParameter="Lines" ItemName="_UtenSourceLines"/></ReadLinesFromFile>
+    <ItemGroup><_UtenVersionLine Include="@(_UtenSourceLines)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^version:'))"/></ItemGroup>
+    <PropertyGroup><_UtenSourceVersionText>@(_UtenVersionLine)</_UtenSourceVersionText></PropertyGroup>
+    <Error Condition="'@(_UtenVersionLine->Count())' != '1'" Text="The reviewed source must contain exactly one application version."/>
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(_UtenSourceVersionText)', '^version:\s*[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+\s*$'))" Text="Invalid reviewed application version/build."/>
+    <PropertyGroup>
+      <_UtenVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(_UtenSourceVersionText)', '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$', '$1'))</_UtenVersion>
+      <_UtenBuild>$([System.Text.RegularExpressions.Regex]::Replace('$(_UtenSourceVersionText)', '^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$', '$2'))</_UtenBuild>
+    </PropertyGroup>
+    <ItemGroup>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyCompanyAttribute"><_Parameter1>Uten</_Parameter1></_UtenAssemblyAttribute>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyProductAttribute"><_Parameter1>UTEN Win7 WPF</_Parameter1></_UtenAssemblyAttribute>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyVersionAttribute"><_Parameter1>$(_UtenVersion).0</_Parameter1></_UtenAssemblyAttribute>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyFileVersionAttribute"><_Parameter1>$(_UtenVersion).$(_UtenBuild)</_Parameter1></_UtenAssemblyAttribute>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyInformationalVersionAttribute"><_Parameter1>$(_UtenVersion).$(_UtenBuild)</_Parameter1></_UtenAssemblyAttribute>
+      <_UtenAssemblyAttribute Include="System.Reflection.AssemblyDescriptionAttribute"><_Parameter1>UTEN WPF candidate; Configuration=$(Configuration); Distribution=$(UtenDistributionProfile)</_Parameter1></_UtenAssemblyAttribute>
+    </ItemGroup>
+    <WriteCodeFragment Language="C#" OutputFile="$(IntermediateOutputPath)Uten.Version.g.cs" AssemblyAttributes="@(_UtenAssemblyAttribute)"/>
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)Uten.Version.g.cs"/></ItemGroup>
+  </Target>
+</Project>

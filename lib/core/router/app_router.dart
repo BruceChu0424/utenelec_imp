@@ -15,6 +15,8 @@ import '../../components/layout/uten_app_bar.dart';
 import 'editor_resource_key.dart';
 import '../../features/client_update/client_update_navigation.dart';
 import '../../features/client_update/software_downloads_page.dart';
+import '../../features/client_update/client_release_publish_page.dart';
+import '../../features/client_update/client_release.dart';
 import '../../features/company_files/pages/company_files_page.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
@@ -559,6 +561,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.softwareDownloads,
             name: 'software-downloads',
             builder: (_, _) => const SoftwareDownloadsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.clientReleasePublish,
+            name: 'client-release-publish',
+            builder: (_, state) => ClientReleasePublishPage(
+              initialPlatform:
+                  state.uri.queryParameters['platform'] ?? 'windows',
+              initialRuntimeFamily:
+                  state.uri.queryParameters['runtimeFamily'] ??
+                  ClientRuntimeFamily.flutter,
+              initialArchitecture:
+                  state.uri.queryParameters['architecture'] ?? 'x64',
+              initialPackageKind:
+                  state.uri.queryParameters['packageKind'] ?? 'update',
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.profile,

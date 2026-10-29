@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\BuildIsolation.props"/>
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x86</Platform>
+    <ProjectGuid>{D8B39060-10F6-40A8-A125-CA42E9630D8E}</ProjectGuid>
+    <OutputType>WinExe</OutputType><RootNamespace>Uten.Legacy.Desktop</RootNamespace>
+    <AssemblyName>Uten.Legacy.Desktop</AssemblyName><TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion><PlatformTarget>$(Platform)</PlatformTarget><Prefer32Bit>false</Prefer32Bit>
+    <OutputPath>..\..\..\build\windows-wpf\$(Platform)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>..\..\..\build\windows-wpf\obj\Desktop\$(UtenBuildScope)\$(Platform)\$(Configuration)\</IntermediateOutputPath>
+    <ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>..\..\..\windows\runner\resources\app_icon.ico</ApplicationIcon>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects><Deterministic>true</Deterministic>
+    <DebugSymbols Condition="'$(Configuration)' == 'Debug'">true</DebugSymbols>
+    <DebugType Condition="'$(Configuration)' == 'Debug'">portable</DebugType>
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Configuration"/>
+    <Reference Include="System.Web.Extensions"/><Reference Include="System.Xaml"/>
+    <Reference Include="System.Net.Http" Condition="'$(Configuration)' == 'Debug'"/>
+    <Reference Include="WindowsBase"/><Reference Include="PresentationCore"/><Reference Include="PresentationFramework"/>
+    <ApplicationDefinition Include="App.xaml"><Generator>MSBuild:Compile</Generator></ApplicationDefinition>
+    <Page Include="MainWindow.xaml"><Generator>MSBuild:Compile</Generator></Page>
+    <Page Include="Themes\Uten.xaml"><Generator>MSBuild:Compile</Generator></Page>
+    <Page Include="Themes\Uten.Controls.xaml"><Generator>MSBuild:Compile</Generator></Page>
+    <Page Include="Themes\Uten.Tokens.g.xaml"><Generator>MSBuild:Compile</Generator></Page>
+    <Compile Include="App.xaml.cs"><DependentUpon>App.xaml</DependentUpon></Compile>
+    <Compile Include="MainWindow.xaml.cs"><DependentUpon>MainWindow.xaml</DependentUpon></Compile>
+    <Compile Include="Views\**\*.cs"/><Compile Include="Controls\**\*.cs"/><Compile Include="Updates\**\*.cs"/><Compile Include="Shared\**\*.cs" Exclude="Shared\**\*Checks.cs"/><Compile Include="Features\**\*.cs" Exclude="Features\**\*Checks.cs"/>
+    <Compile Include="Features\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
+    <Compile Include="Shared\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
+    <Resource Include="..\..\..\assets\images\logo_ip.png"><Link>Assets\logo_ip.png</Link></Resource>
+    <Resource Include="..\..\..\assets\images\logo_name.png"><Link>Assets\logo_name.png</Link></Resource>
+    <Resource Include="..\..\..\assets\fonts\NotoSansSC.ttf"><Link>Assets\NotoSansSC.ttf</Link></Resource>
+    <Resource Include="..\..\..\assets\fonts\NotoSansSCFull.ttf"><Link>PrintAssets\NotoSansSCFull.ttf</Link></Resource>
+    <Resource Include="..\..\..\assets\fonts\OFL.txt"><Link>PrintAssets\OFL.txt</Link></Resource>
+    <Resource Include="..\..\..\build\windows-wpf\dependencies\BouncyCastle.Cryptography.2.7.0\LICENSE.md"><Link>Licenses\BouncyCastle-LICENSE.md</Link></Resource>
+    <None Include="App.config"/>
+    <Content Include="uten.client.json"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="..\..\..\build\windows-wpf\dependencies\BouncyCastle.Cryptography.2.7.0\LICENSE.md"><Link>BouncyCastle-LICENSE.md</Link><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <ProjectReference Include="..\Uten.Legacy.Core\Uten.Legacy.Core.csproj">
+      <Project>{9FC37E48-AF39-4671-AFAD-E365597E96D8}</Project><Name>Uten.Legacy.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+  <Import Project="..\BuildVersion.targets"/>
+</Project>

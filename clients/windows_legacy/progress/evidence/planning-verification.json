@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-PLAN-002",
+  "clientDate": "2026-10-28",
+  "scope": "Planning/inventory/progress tooling only; not ERP or Win7 runtime acceptance",
+  "checks": [
+    {
+      "command": "python -B clients/windows_legacy/tools/business_inventory.py --check",
+      "exitCode": 0,
+      "result": "214 pages; 34 features; 245 controllers; 1465 referenced source files with SHA256; static candidates require manual review"
+    },
+    {
+      "command": "python -B -m unittest discover -s clients/windows_legacy/tools -p test_progress_tracker.py -v",
+      "exitCode": 0,
+      "tests": 8,
+      "failures": 0,
+      "log": "build/windows-wpf/progress-tracker-tests.log"
+    },
+    {
+      "command": "python -B clients/windows_legacy/tools/progress_tracker.py check",
+      "exitCode": 0,
+      "result": "registry/inventory/90 generated and manual Markdown documents/relative links/task anchors/dependency graph consistent"
+    },
+    {
+      "check": "unique baseline IDs",
+      "total": 349,
+      "unique": 349,
+      "pagePackages": 214,
+      "commonAndFlowPackages": 135
+    }
+  ],
+  "notProven": [
+    "Full native business workflows",
+    "Win7 x86/x64 target acceptance",
+    "Integrated installation/update distribution",
+    "Production release"
+  ],
+  "mergeMainAllowed": false
+}

@@ -21,6 +21,7 @@ final class WindowsSetupInspector {
     private WindowsSetupInspector() { }
 
     static void inspect(Path file, ClientReleaseDto.Release release) throws IOException {
+        ClientRuntimeFamily.requireMode(release);
         if (!"windows".equals(release.platform()) || !"installer".equals(release.packageKind())) throw invalid();
         try (var channel = FileChannel.open(file, StandardOpenOption.READ)) {
             Reader reader = new Reader(channel);
@@ -63,7 +64,7 @@ final class WindowsSetupInspector {
         }
     }
 
-    private static long offset(List<Section> sections, long rva, long length) {
+    static long offset(List<Section> sections, long rva, long length) {
         Long result = null;
         for (Section section : sections) {
             long delta = rva - section.rva();
@@ -97,9 +98,11 @@ final class WindowsSetupInspector {
                     String value = versionText(data.text(item.value(), item.valueSize()));
                     if (values.putIfAbsent(item.key().toLowerCase(Locale.ROOT), value) != null) throw invalid();
                 }
-                if (!"Uten IMP Windows Setup".equals(values.get("productname"))
-                        || !"UtenIMPSetup.exe".equals(values.get("originalfilename"))
-                        || !("Uten IMP Windows Setup (" + release.architecture() + ")").equals(values.get("filedescription"))
+                boolean wpf = ClientRuntimeFamily.WPF_LEGACY.equals(release.runtimeFamily());
+                String product = wpf ? "Uten IMP Native WPF Compatibility Validation" : "Uten IMP Windows Setup";
+                if (!product.equals(values.get("productname"))
+                        || !(wpf ? "UtenWin7WpfSetup.exe" : "UtenIMPSetup.exe").equals(values.get("originalfilename"))
+                        || !(wpf ? product : "Uten IMP Windows Setup (" + release.architecture() + ")").equals(values.get("filedescription"))
                         || !textVersion.equals(values.get("fileversion")) || !textVersion.equals(values.get("productversion"))) throw invalid();
                 tables++;
             }
@@ -117,7 +120,7 @@ final class WindowsSetupInspector {
         return normalized;
     }
 
-    private static int[] numericVersion(String version) {
+    static int[] numericVersion(String version) {
         try {
             String[] parts = version.split("-", 2)[0].split("\\.", -1);
             if (parts.length != 3) throw invalid();
@@ -130,11 +133,11 @@ final class WindowsSetupInspector {
         } catch (NumberFormatException malformed) { throw invalid(); }
     }
 
-    private record Section(long rva, long length, long raw) { }
-    private record Entry(long name, boolean directory, int offset) { }
-    private record Block(String key, int type, int value, int valueSize, List<Block> children) { }
+    record Section(long rva, long length, long raw) { }
+    record Entry(long name, boolean directory, int offset) { }
+    record Block(String key, int type, int value, int valueSize, List<Block> children) { }
 
-    private static final class ResourceTree {
+    static final class ResourceTree {
         private final Data data;
         private int visited;
         ResourceTree(Data data) { this.data = data; }
@@ -152,7 +155,7 @@ final class WindowsSetupInspector {
         }
     }
 
-    private static final class Blocks {
+    static final class Blocks {
         private final Data data;
         private int visited;
         Blocks(Data data) { this.data = data; }
@@ -192,7 +195,7 @@ final class WindowsSetupInspector {
             return new Data(bytes);
         }
     }
-    private static final class Data {
+    static final class Data {
         private final byte[] bytes;
         private final ByteBuffer buffer;
         Data(byte[] bytes) { this.bytes = bytes; this.buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN); }
@@ -200,6 +203,7 @@ final class WindowsSetupInspector {
         void range(int offset, int length) { if (offset < 0 || length < 0 || offset > bytes.length - length) throw invalid(); }
         int word(int offset) { range(offset, 2); return Short.toUnsignedInt(buffer.getShort(offset)); }
         long dword(int offset) { range(offset, 4); return Integer.toUnsignedLong(buffer.getInt(offset)); }
+        byte[] bytes(int offset, int length) { range(offset, length); return java.util.Arrays.copyOfRange(bytes, offset, offset + length); }
         String text(int offset, int length) {
             range(offset, length);
             if ((length & 1) != 0) throw invalid();

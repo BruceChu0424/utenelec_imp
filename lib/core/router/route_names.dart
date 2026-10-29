@@ -65,6 +65,7 @@ abstract final class RouteName {
   static const String home = '/';
   static const String dashboard = '/dashboard';
   static const String softwareDownloads = '/software-downloads';
+  static const String clientReleasePublish = '/settings/software-publish';
   static const String accessDenied = '/access-denied';
   static const String notFound = '/not-found';
   static const String profile = '/profile';

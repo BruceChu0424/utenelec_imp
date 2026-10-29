@@ -112,6 +112,14 @@ class ClientReleasePublicationFlowTest {
                     "client_release", release.toString(), "success");
 
             login(employee, Set.of());
+            check(mvc, "x64", 2531, false);
+            mvc.perform(get("/api/client-updates/{id}/download", release)).andExpect(status().isNotFound());
+            login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
+            UUID installer = UUID.randomUUID();
+            createAndUpload(mvc, mapper, installer, 2532, "x64", "installer", WindowsSetupFixture.bytes(2532, "x64", "2.5.32"));
+            mvc.perform(post("/api/admin/client-releases/{id}/publish", installer)).andExpect(status().isOk());
+
+            login(employee, Set.of());
             check(mvc, "x64", 2531, true);
             check(mvc, "arm64", 2531, false);
             check(mvc, "x64", 2532, false);
@@ -163,10 +171,18 @@ class ClientReleasePublicationFlowTest {
                     .andExpect(jsonPath("$.installMode").value("windows_setup"));
 
             login(employee, Set.of());
+            mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk()).andExpect(content().json("[]"));
+            mvc.perform(get("/api/client-updates/{id}/download", first)).andExpect(status().isNotFound());
+            login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
+            UUID firstUpdate = UUID.randomUUID();
+            createAndUpload(mvc, mapper, firstUpdate, 2532, "x64", "update", windowsPackage(mapper, 2532));
+            mvc.perform(post("/api/admin/client-releases/{id}/publish", firstUpdate)).andExpect(status().isOk());
+
+            login(employee, Set.of());
             mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk())
                     .andExpect(header().string("Cache-Control", "private, no-store"))
                     .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(first.toString()));
-            check(mvc, "x64", 2531, false);
+            check(mvc, "x64", 2531, true);
             mvc.perform(get("/api/client-updates/{id}/download", first)).andExpect(status().isOk())
                     .andExpect(header().string("X-Checksum-Sha256", sha256(firstZip)))
                     .andExpect(content().bytes(firstZip));
@@ -209,6 +225,9 @@ class ClientReleasePublicationFlowTest {
             assertThat(retired.path("publishedAt").isNull()).isFalse();
             createAndUpload(mvc, mapper, arm, 2530, "arm64", "installer", WindowsSetupFixture.bytes(2530, "arm64", "2.5.32"));
             mvc.perform(post("/api/admin/client-releases/{id}/publish", arm)).andExpect(status().isOk());
+            UUID armUpdate = UUID.randomUUID();
+            createAndUpload(mvc, mapper, armUpdate, 2530, "arm64", "update", windowsPackage(mapper, 2530, "arm64", "update"));
+            mvc.perform(post("/api/admin/client-releases/{id}/publish", armUpdate)).andExpect(status().isOk());
 
             login(employee, Set.of());
             check(mvc, "x64", 2532, true);
@@ -227,13 +246,13 @@ class ClientReleasePublicationFlowTest {
                     .andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].id").value(arm.toString()));
             mvc.perform(get("/api/client-updates/{id}/download", first)).andExpect(status().isNotFound());
             mvc.perform(get("/api/client-updates/{id}/download", latest)).andExpect(status().isNotFound());
-            mvc.perform(get("/api/client-updates/{id}/download", update)).andExpect(status().isOk()).andExpect(content().bytes(updateZip));
+            mvc.perform(get("/api/client-updates/{id}/download", update)).andExpect(status().isNotFound());
             login(publisher, Set.of(ClientReleaseService.PUBLISH_PERMISSION));
             mvc.perform(post("/api/admin/client-releases/{id}/withdraw", first)).andExpect(status().isOk());
             mvc.perform(post("/api/admin/client-releases/{id}/withdraw", arm)).andExpect(status().isOk());
             login(employee, Set.of());
             mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk()).andExpect(content().json("[]"));
-            check(mvc, "x64", 2532, true);
+            check(mvc, "x64", 2532, false);
         }
     }
 
@@ -265,6 +284,7 @@ class ClientReleasePublicationFlowTest {
     }
 
     private static byte[] windowsPackage(ObjectMapper mapper, long build, String architecture, String kind) throws Exception {
+        if ("update".equals(kind)) return ClientReleaseFixtures.windows(mapper, build, architecture, "2.5.32");
         Map<String, byte[]> files = new LinkedHashMap<>();
         for (String name : List.of("uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", "data/flutter_assets/AssetManifest.bin")) {
             files.put(name, ("fixture:" + name).getBytes(StandardCharsets.UTF_8));

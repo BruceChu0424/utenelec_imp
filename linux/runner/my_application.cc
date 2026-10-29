@@ -1,6 +1,8 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <sys/utsname.h>
+#include <cstring>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -21,6 +23,29 @@ static void client_update_method_call_cb(FlMethodChannel* channel,
                                         gpointer user_data) {
   (void)channel;
   (void)user_data;
+  if (g_strcmp0(fl_method_call_get_name(method_call), "getSoftwareDownloadHost") == 0) {
+    struct utsname system = {};
+    const bool read = uname(&system) == 0;
+    const char* machine = read ? system.machine : "unknown";
+    const char* architecture = std::strcmp(machine, "x86_64") == 0 ? "x64"
+        : std::strcmp(machine, "aarch64") == 0 || std::strcmp(machine, "arm64") == 0 ? "arm64"
+        : std::strcmp(machine, "i386") == 0 || std::strcmp(machine, "i686") == 0 ? "x86" : "unknown";
+    g_autoptr(FlValue) host = fl_value_new_map();
+    fl_value_set_string_take(host, "platform", fl_value_new_string("linux"));
+    fl_value_set_string_take(host, "architecture", fl_value_new_string(architecture));
+    fl_value_set_string_take(host, "osVersion", fl_value_new_string(read ? system.release : ""));
+    fl_value_set_string_take(host, "osLabel", fl_value_new_string("Linux"));
+    // uname supplies kernel facts, not a fabricated distribution product version.
+    fl_value_set_string_take(host, "osMajor", fl_value_new_int(0));
+    fl_value_set_string_take(host, "osMinor", fl_value_new_int(0));
+    fl_value_set_string_take(host, "osBuild", fl_value_new_int(0));
+    fl_value_set_string_take(host, "servicePackMajor", fl_value_new_int(0));
+    fl_value_set_string_take(host, "isServer", fl_value_new_bool(FALSE));
+    fl_value_set_string_take(host, "isSimulator", fl_value_new_bool(FALSE));
+    g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(fl_method_success_response_new(host));
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
   if (g_strcmp0(fl_method_call_get_name(method_call), "getInstallContext") != 0) {
     g_autoptr(FlMethodResponse) response =
         FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());

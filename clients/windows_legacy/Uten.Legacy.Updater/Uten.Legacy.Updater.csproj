@@ -1,0 +1,21 @@
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\BuildIsolation.props"/>
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration><Platform Condition="'$(Platform)' == ''">x86</Platform>
+    <ProjectGuid>{AA9ED4E2-EA37-4F83-B161-33798FA32B84}</ProjectGuid>
+    <OutputType>WinExe</OutputType><AssemblyName>Uten.Legacy.Updater</AssemblyName><RootNamespace>Uten.Legacy.Updater</RootNamespace>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion><LangVersion>7.3</LangVersion><PlatformTarget>$(Platform)</PlatformTarget><Prefer32Bit>false</Prefer32Bit>
+    <OutputPath>..\..\..\build\windows-wpf\updater\$(Platform)\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>..\..\..\build\windows-wpf\obj\Updater\$(UtenBuildScope)\$(Platform)\$(Configuration)\</IntermediateOutputPath>
+    <Deterministic>true</Deterministic><WarningLevel>4</WarningLevel><ApplicationManifest>app.manifest</ApplicationManifest>
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Security"/><Reference Include="System.Web.Extensions"/>
+    <Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/>
+    <Compile Include="Program.cs"/><Compile Include="SafeFiles.cs"/><Compile Include="StrictJson.cs"/><Compile Include="PackageContract.g.cs"/><Compile Include="ZipDirectory.cs"/><Compile Include="ParentProcessLease.cs"/><Compile Include="UpdateContract.cs"/><Compile Include="UpdateAuthorization.cs"/><Compile Include="UpdateExecutor.cs"/>
+    <None Include="App.config"/>
+  </ItemGroup>
+  <Import Project="..\BuildVersion.targets"/>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
+</Project>

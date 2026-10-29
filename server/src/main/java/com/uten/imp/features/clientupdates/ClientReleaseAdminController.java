@@ -9,6 +9,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +29,14 @@ public class ClientReleaseAdminController {
 
     @GetMapping
     public List<ClientReleaseDto.Release> list() { return service.list(); }
+
+    /** Recovery metadata for one immutable queue identity. PUBLISHED alone does not
+     * prove Windows retention succeeded: an uncertain publish must explicitly retry
+     * the same ID/publish operation, never create or upload a replacement identity. */
+    @GetMapping("/{id}")
+    public ResponseEntity<ClientReleaseDto.Release> get(@PathVariable("id") UUID id) {
+        return ResponseEntity.ok().header("Cache-Control", "private, no-store").body(service.get(id));
+    }
 
     @PostMapping
     @StepUpExempt("只创建登录用户不可见的客户端版本草稿，不发布、不执行软件；最终发布另须密码再认证")

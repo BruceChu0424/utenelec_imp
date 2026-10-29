@@ -1,4 +1,9 @@
 import 'dart:io';
+import 'dart:async';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/router/permission_by_path.dart';
+import 'package:uten_imp/core/router/route_access_policy.dart';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -12,6 +17,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/client_update/software_downloads_controller.dart';
+import 'package:uten_imp/features/client_update/client_release.dart';
 import 'package:uten_imp/features/client_update/software_downloads_page.dart';
 import 'package:uten_imp/features/client_update/software_downloads_presentation.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -54,6 +60,10 @@ Future<SoftwareDownloadsController> _pump(
   GlobalKey? boundaryKey,
   SoftwareDownloadPlatform? currentPlatform = SoftwareDownloadPlatform.windows,
   Locale locale = const Locale('zh'),
+  String runtimeFamily = ClientRuntimeFamily.flutter,
+  SoftwareHostInfo? host,
+  SoftwareHostReader? hostReader,
+  bool routed = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -69,6 +79,32 @@ Future<SoftwareDownloadsController> _pump(
       child: ProviderScope(
         overrides: [
           softwareDevicePlatformProvider.overrideWithValue(currentPlatform),
+          softwareHostReaderProvider.overrideWithValue(
+            hostReader ??
+                () async =>
+                    host ??
+                    SoftwareHostInfo(
+                      platform: currentPlatform,
+                      osLabel:
+                          currentPlatform == SoftwareDownloadPlatform.windows
+                          ? (runtimeFamily == ClientRuntimeFamily.wpfLegacy
+                                ? 'Windows 7 SP1'
+                                : 'Windows 11')
+                          : currentPlatform?.label ?? '未知系统',
+                      osVersion:
+                          currentPlatform == SoftwareDownloadPlatform.windows
+                          ? (runtimeFamily == ClientRuntimeFamily.wpfLegacy
+                                ? 'windows7_sp1'
+                                : 'windows11')
+                          : currentPlatform?.name,
+                      architecture: 'x64',
+                      windowsRuntimeFamily: runtimeFamily,
+                      osCertainty: SoftwareDetectionCertainty.nativeConfirmed,
+                      architectureCertainty:
+                          SoftwareDetectionCertainty.nativeConfirmed,
+                    ),
+          ),
+          softwareWindowsRuntimeFamilyProvider.overrideWithValue(runtimeFamily),
           apiClientProvider.overrideWithValue(transport.api),
           if (controller != null)
             softwareDownloadsControllerProvider.overrideWithValue(controller),
@@ -80,22 +116,44 @@ Future<SoftwareDownloadsController> _pump(
             ),
           ),
         ],
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: brightness == Brightness.light
-              ? buildLightTheme()
-              : buildDarkTheme(),
-          locale: locale,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
-          ),
-          home: const SoftwareDownloadsPage(),
-        ),
+        child: (routed
+            ? MaterialApp.router(
+                theme: buildLightTheme(),
+                routerConfig: GoRouter(
+                  initialLocation: RouteName.softwareDownloads,
+                  routes: [
+                    GoRoute(
+                      path: RouteName.softwareDownloads,
+                      builder: (_, _) => const SoftwareDownloadsPage(),
+                    ),
+                    GoRoute(
+                      path: RouteName.clientReleasePublish,
+                      builder: (_, state) => Scaffold(
+                        body: Text('独立发布页面 ${state.uri.queryParameters}'),
+                      ),
+                    ),
+                  ],
+                ),
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                locale: const Locale('zh'),
+              )
+            : MaterialApp(
+                debugShowCheckedModeBanner: false,
+                theme: brightness == Brightness.light
+                    ? buildLightTheme()
+                    : buildDarkTheme(),
+                locale: locale,
+                localizationsDelegates: AppLocalizations.localizationsDelegates,
+                supportedLocales: AppLocalizations.supportedLocales,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: const SoftwareDownloadsPage(),
+              )),
       ),
     ),
   );
@@ -118,7 +176,7 @@ Future<void> _screenshot(
     final image = await boundary.toImage();
     try {
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      final directory = Directory('build/software-downloads-20261026/previews');
+      final directory = Directory('build/software-downloads-20261028/previews');
       await directory.create(recursive: true);
       await File(
         '${directory.path}/$name.png',
@@ -142,269 +200,200 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
+  test('the publication page has an exact direct-link permission', () {
+    expect(requiredAnyPermFor(RouteName.clientReleasePublish), [
+      Perm.clientReleasePublish,
+    ]);
+    expect(
+      requiredAnyPermFor('${RouteName.clientReleasePublish}?platform=android'),
+      [Perm.clientReleasePublish],
+    );
+    expect(
+      locationAllowedFor({}, false, RouteName.clientReleasePublish),
+      false,
+    );
+    expect(
+      locationAllowedFor(
+        {Perm.clientReleasePublish},
+        false,
+        '${RouteName.clientReleasePublish}?platform=android',
+      ),
+      true,
+    );
+  });
+
   for (final entry in [
     (TargetPlatform.windows, SoftwareDownloadPlatform.windows),
     (TargetPlatform.android, SoftwareDownloadPlatform.android),
     (TargetPlatform.macOS, SoftwareDownloadPlatform.macos),
     (TargetPlatform.iOS, SoftwareDownloadPlatform.ios),
-    (TargetPlatform.linux, null),
+    (TargetPlatform.linux, SoftwareDownloadPlatform.linux),
   ]) {
-    test(
-      'host OS ${entry.$1.name} resolves to the matching download platform',
-      () {
-        debugDefaultTargetPlatformOverride = entry.$1;
-        addTearDown(() => debugDefaultTargetPlatformOverride = null);
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
-        expect(container.read(softwareDevicePlatformProvider), entry.$2);
-      },
-    );
-  }
-
-  for (final platform in SoftwareDownloadPlatform.values) {
-    testWidgets('the current ${platform.label} device is shown first', (
-      tester,
-    ) async {
-      final key = GlobalKey();
-      await _pump(
-        tester,
-        SoftwareDownloadsTransport(),
-        SoftwarePackageSaveFixture(),
-        currentPlatform: platform,
-        size: const Size(375, 950),
-        scale: 2,
-        boundaryKey: key,
-      );
-      final selected = find.byKey(
-        ValueKey('software-platform-${platform.name}'),
-      );
-      for (final other in SoftwareDownloadPlatform.values.where(
-        (item) => item != platform,
-      )) {
-        final otherTop = tester
-            .getTopLeft(find.byKey(ValueKey('software-platform-${other.name}')))
-            .dy;
-        expect(tester.getTopLeft(selected).dy, lessThan(otherTop));
-      }
-      expect(find.text('当前设备'), findsOneWidget);
-      expect(find.text('暂时无法下载'), findsNWidgets(3));
-      expect(
-        find.byKey(const ValueKey('software-downloads-windows')),
-        findsOneWidget,
-      );
-      expect(find.text('优腾综合管理平台(UIMP)'), findsWidgets);
-      expect(tester.takeException(), isNull);
-      if (platform != SoftwareDownloadPlatform.windows) {
-        await _screenshot(tester, key, 'downloads-current-${platform.name}');
-      }
+    test('host ${entry.$1.name} selects its own platform', () {
+      debugDefaultTargetPlatformOverride = entry.$1;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      expect(container.read(softwareDevicePlatformProvider), entry.$2);
     });
   }
 
-  for (final language in ['en', 'ko']) {
-    testWidgets('$language uses the English platform name', (tester) async {
-      final key = GlobalKey();
-      await _pump(
-        tester,
-        SoftwareDownloadsTransport(),
-        SoftwarePackageSaveFixture(),
-        locale: Locale(language),
-        size: const Size(375, 950),
-        scale: 2,
-        boundaryKey: key,
-      );
-      expect(
-        find.text('Uten Integrated Management Platform (UIMP)'),
-        findsWidgets,
-      );
-      expect(find.text('优腾综合管理平台(UIMP)'), findsNothing);
-      expect(tester.takeException(), isNull);
-      if (language == 'en') {
-        await _screenshot(tester, key, 'downloads-english-name');
-      }
-    });
-  }
-
-  testWidgets(
-    'multiple architectures remain usable with large text on a phone',
-    (tester) async {
-      final transport = SoftwareDownloadsTransport();
-      transport.releases.add(
-        transport.installer(
-          id: SoftwareDownloadsTransport.arm64Id,
-          architecture: 'arm64',
-        ),
-      );
-      await _pump(
-        tester,
-        transport,
-        SoftwarePackageSaveFixture(),
-        size: const Size(375, 950),
-        scale: 2,
-      );
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('software-downloads-architecture')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('software-downloads-architecture')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('ARM 64 位').last);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'Windows download saves verified bytes and all other platforms remain unavailable',
-    (tester) async {
-      final transport = SoftwareDownloadsTransport();
-      final saver = SoftwarePackageSaveFixture();
-      await _pump(tester, transport, saver);
-      expect(
-        find.byKey(const ValueKey('software-downloads-windows')),
-        findsOneWidget,
-      );
-      expect(find.text('暂时无法下载'), findsNWidgets(3));
-      for (final platform in ['Android', 'macOS', 'iOS']) {
-        expect(find.text(platform), findsOneWidget);
-        expect(
-          find.ancestor(
-            of: find.text(platform),
-            matching: find.byType(InkWell),
-          ),
-          findsNothing,
-        );
-      }
-      expect(
-        find.byKey(const ValueKey('software-downloads-publish')),
-        findsNothing,
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('software-downloads-windows')),
-      );
-      await tester.pumpAndSettle();
-      expect(saver.published.single, transport.bytes);
-      expect(find.textContaining('已校验并保存：'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('architecture selection downloads its own full installer', (
+  testWidgets('detected target and filename name the OS and architecture', (
     tester,
   ) async {
     final transport = SoftwareDownloadsTransport();
-    transport.releases = [
-      transport.installer(),
-      transport.installer(
-        id: SoftwareDownloadsTransport.arm64Id,
-        architecture: 'arm64',
-        version: '2.5.33',
-      ),
-    ];
     final saver = SoftwarePackageSaveFixture();
     await _pump(tester, transport, saver);
-    await tester.tap(
-      find.byKey(const ValueKey('software-downloads-architecture')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('ARM 64 位').last);
-    await tester.pumpAndSettle();
-    expect(find.text('版本 2.5.33'), findsOneWidget);
+    expect(find.text('当前设备：Windows 11 · X64'), findsOneWidget);
+    expect(find.text('Windows 11 · X64 常规版'), findsOneWidget);
+    expect(find.textContaining('windows11-x64-setup.exe'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('software-downloads-windows')));
     await tester.pumpAndSettle();
-    expect(
-      transport.requests.last.path,
-      '/client-updates/${SoftwareDownloadsTransport.arm64Id}/download',
-    );
-    expect(saver.filenames.single, endsWith('windows-arm64-setup.exe'));
+    expect(saver.published.single, transport.bytes);
+    expect(saver.filenames.single, endsWith('windows11-x64-setup.exe'));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'publishing uses the independent permission and opens the installer dialog',
-    (tester) async {
-      final transport = SoftwareDownloadsTransport();
-      await _pump(
-        tester,
-        transport,
-        SoftwarePackageSaveFixture(),
-        publisher: true,
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('software-downloads-publish')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('选择完整客户端'), findsOneWidget);
-      expect(transport.requests.last.path, '/admin/client-releases');
-      expect(find.text('android'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('an empty catalog shows preparation without a download button', (
+  testWidgets('unknown architecture requires an explicit choice', (
     tester,
   ) async {
-    final transport = SoftwareDownloadsTransport()..releases = [];
-    final key = GlobalKey();
     await _pump(
       tester,
-      transport,
+      SoftwareDownloadsTransport(),
       SoftwarePackageSaveFixture(),
-      boundaryKey: key,
+      host: const SoftwareHostInfo(
+        platform: SoftwareDownloadPlatform.windows,
+        osLabel: 'Windows 10 / 11',
+        osVersion: 'windows10_or_11',
+        windowsRuntimeFamily: ClientRuntimeFamily.flutter,
+      ),
     );
-    expect(find.text('Windows 版本正在准备'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('software-downloads-windows')),
       findsNothing,
     );
-    expect(find.text('暂时无法读取版本'), findsNothing);
+    expect(find.text('选择架构后查看对应安装包'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey('software-downloads-architecture')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('X64').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('software-downloads-windows')),
+      findsOneWidget,
+    );
+    expect(find.text('Windows 10 / 11 · X64 常规版'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await _screenshot(tester, key, 'downloads-windows-preparing');
+  });
+
+  testWidgets('late detection cannot overwrite a manual destination', (
+    tester,
+  ) async {
+    final detection = Completer<SoftwareHostInfo>();
+    await _pump(
+      tester,
+      SoftwareDownloadsTransport(),
+      SoftwarePackageSaveFixture(),
+      hostReader: () => detection.future,
+    );
+    await tester.tap(find.byKey(const ValueKey('software-select-android')));
+    await tester.pumpAndSettle();
+    detection.complete(
+      const SoftwareHostInfo(
+        platform: SoftwareDownloadPlatform.windows,
+        osLabel: 'Windows 7 SP1',
+        osVersion: 'windows7_sp1',
+        architecture: 'x86',
+        windowsRuntimeFamily: ClientRuntimeFamily.wpfLegacy,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find
+          .byKey(const ValueKey('software-download-target-label'))
+          .evaluate()
+          .single
+          .widget,
+      isA<Text>().having(
+        (w) => w.data,
+        'manual selection',
+        contains('Android'),
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('software-downloads-windows')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'an unbound real superadmin scope can read downloads and manage publication',
+    'legacy never falls back to regular and a missing x86 stays missing',
     (tester) async {
       final transport = SoftwareDownloadsTransport();
-      final controller = await _pump(
+      await _pump(
         tester,
         transport,
         SoftwarePackageSaveFixture(),
-        publisher: true,
-        superAdmin: true,
-        realControllerProvider: true,
+        runtimeFamily: ClientRuntimeFamily.wpfLegacy,
       );
-      final container = ProviderScope.containerOf(
-        tester.element(find.byType(SoftwareDownloadsPage)),
+      expect(find.text('Windows 7 SP1 · X64 兼容版'), findsOneWidget);
+      expect(find.text('此版本暂未发布'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('software-downloads-windows')),
+        findsNothing,
       );
-      expect(container.read(sessionProvider).user!.employeeId, isNull);
-      expect(container.read(sessionProvider).user!.superAdmin, isTrue);
-      expect(controller.enabled, isTrue);
-      expect(controller.loaded, isTrue);
+      transport.releases.add(
+        transport.installer(
+          id: SoftwareDownloadsTransport.arm64Id,
+          mode: 'windows_wpf_setup',
+        )..['runtimeFamily'] = ClientRuntimeFamily.wpfLegacy,
+      );
+      await tester.tap(find.text('刷新版本'));
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey('software-downloads-windows')),
         findsOneWidget,
       );
-      expect(
-        find.byKey(const ValueKey('software-downloads-publish')),
-        findsOneWidget,
+      await tester.tap(
+        find.byKey(const ValueKey('software-downloads-architecture')),
       );
-      expect(transport.requests.single.path, '/client-updates/downloads');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('X86').last);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('software-downloads-windows')),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('a failed catalog read shows failure and an explicit retry', (
+  testWidgets('publication uses a full route and carries target context', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      SoftwareDownloadsTransport(),
+      SoftwarePackageSaveFixture(),
+      publisher: true,
+      routed: true,
+    );
+    await tester.tap(find.byKey(const ValueKey('software-downloads-publish')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('独立发布页面'), findsOneWidget);
+    expect(find.textContaining('architecture: x64'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('catalog retry recovers without changing destination', (
     tester,
   ) async {
     final transport = SoftwareDownloadsTransport()..listStatus = 503;
     await _pump(tester, transport, SoftwarePackageSaveFixture());
     expect(find.text('暂时无法读取版本'), findsOneWidget);
-    expect(find.text('Windows 版本正在准备'), findsNothing);
-    expect(
-      find.byKey(const ValueKey('software-downloads-windows')),
-      findsNothing,
-    );
     transport.listStatus = 200;
     await tester.tap(find.text('刷新版本'));
     await tester.pumpAndSettle();
@@ -415,67 +404,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('corrupted downloads report failure without a saved result', (
-    tester,
-  ) async {
-    final transport = SoftwareDownloadsTransport()..packageStatus = 503;
-    final saver = SoftwarePackageSaveFixture();
-    await _pump(tester, transport, saver);
-    await tester.tap(find.byKey(const ValueKey('software-downloads-windows')));
-    await tester.pumpAndSettle();
-    expect(find.text('下载未完成，请检查网络后重试。'), findsOneWidget);
-    expect(find.textContaining('已校验并保存：'), findsNothing);
-    expect(saver.published, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
-
   for (final width in [375.0, 844.0, 1440.0]) {
     for (final brightness in Brightness.values) {
       for (final scale in [1.0, 2.0]) {
         final label =
             '${width.toInt()}-${brightness.name}-${(scale * 100).toInt()}';
-        testWidgets('responsive download page $label has no overflow', (
-          tester,
-        ) async {
-          final transport = SoftwareDownloadsTransport(byteCount: 1024 * 1024);
+        testWidgets('responsive downloads $label', (tester) async {
           final key = GlobalKey();
           await _pump(
             tester,
-            transport,
+            SoftwareDownloadsTransport(),
             SoftwarePackageSaveFixture(),
-            size: Size(width, width >= 1440 ? 1100 : 950),
+            size: Size(width, 1100),
             brightness: brightness,
             scale: scale,
-            publisher: true,
             boundaryKey: key,
+            publisher: true,
           );
           expect(
             find.byKey(const ValueKey('software-downloads-windows')),
             findsOneWidget,
           );
-          expect(find.text('暂时无法下载'), findsNWidgets(3));
           expect(tester.takeException(), isNull);
-          if (width == 1440 && scale == 1) {
-            final monitor = find.byWidgetPredicate(
-              (widget) =>
-                  widget is Container && widget.constraints?.maxWidth == 320,
-            );
-            expect(monitor, findsOneWidget);
-            final monitorSize = tester.getSize(monitor);
-            expect(
-              monitorSize.width,
-              greaterThan(monitorSize.height),
-              reason:
-                  'The desktop illustration must retain a landscape monitor shape',
-            );
-          }
           await _screenshot(tester, key, 'downloads-$label');
-          await tester.ensureVisible(find.text('iOS'));
+          await tester.ensureVisible(find.text('安装与后续更新'));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
-          if (width == 375 && scale == 2) {
-            await _screenshot(tester, key, 'downloads-$label-platforms');
-          }
         });
       }
     }

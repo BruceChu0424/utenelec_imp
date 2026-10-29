@@ -451,14 +451,30 @@ class ApiClient {
     String path, {
     required CancelToken cancelToken,
   }) async {
-    if (!RegExp(
-      r'^/client-updates/[a-fA-F0-9-]{36}/download$',
-    ).hasMatch(path)) {
+    final packageUri = Uri.tryParse(path);
+    final rawPath = path.split('?').first;
+    final queryStart = path.indexOf('?');
+    final rawQuery = queryStart < 0 ? null : path.substring(queryStart + 1);
+    if (packageUri == null ||
+        path.codeUnits.any((unit) => unit <= 0x20 || unit > 0x7e) ||
+        packageUri.hasScheme ||
+        packageUri.hasAuthority ||
+        packageUri.hasFragment ||
+        packageUri.path != rawPath ||
+        !RegExp(
+          r'^/client-updates/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}/download$',
+        ).hasMatch(rawPath) ||
+        (packageUri.hasQuery &&
+            rawQuery != 'runtimeFamily=flutter' &&
+            rawQuery != 'runtimeFamily=wpf_legacy')) {
       throw const FormatException('Invalid client package path');
     }
     try {
       final response = await _dio.get<ResponseBody>(
-        path,
+        packageUri.path,
+        queryParameters: packageUri.hasQuery
+            ? {'runtimeFamily': packageUri.queryParameters['runtimeFamily']!}
+            : null,
         cancelToken: cancelToken,
         options: Options(
           responseType: ResponseType.stream,

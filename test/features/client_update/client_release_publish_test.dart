@@ -4,29 +4,34 @@ import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
-import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/features/client_update/client_release_publish_dialog.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/features/client_update/client_release.dart';
+import 'package:uten_imp/features/client_update/client_release_publish_page.dart';
+import 'package:uten_imp/features/client_update/client_release_publish_queue.dart';
 import 'package:uten_imp/features/client_update/client_update_tile.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 
-final _apiSource = StateProvider<ApiClient>(
-  (ref) => throw UnimplementedError(),
-);
-
+final _apiSource = StateProvider<ApiClient>((_) => throw UnimplementedError());
+late SharedPreferences _preferences;
 SessionState _identity({
   String id = 'publisher-a',
   bool admin = false,
@@ -39,8 +44,8 @@ SessionState _identity({
     id: id,
     code: id,
     name: id,
-    superAdmin: admin,
     permissions: permissions,
+    superAdmin: admin,
   ),
   actor: impersonating
       ? const AppUser(
@@ -60,56 +65,73 @@ class _Session extends SessionNotifier {
   void replace(SessionState next) => state = next;
 }
 
-class _Api extends ApiClient {
-  _Api() : super(Dio(BaseOptions(baseUrl: 'https://fixture.test/api')));
-  final creates = <Map<String, dynamic>>[];
-  final packages = <String>[];
-  final published = <String>{};
-  final uploadedSha = <String, String>{};
-  final uploadedBytes = <Uint8List>[];
-  int listCalls = 0;
-  int scopeCaptures = 0;
-  int publishCalls = 0;
-  final publishIds = <String>[];
-  int withdrawCalls = 0;
-  bool loseFirstPublishResponse = false;
-  final losePublishResponseKinds = <String>{};
-  final failPublishKinds = <String>{};
-  final failRetentionOnceKinds = <String>{};
-  final failCreateKinds = <String>{};
-  Completer<Map<String, dynamic>>? delayedCreate;
-  Completer<void>? delayedUpload;
-  String? delayedUploadKind;
-  Completer<void>? delayedScope;
-  Future<void> Function(String kind)? afterPublish;
-  final uploadProgress = <void Function(int, int)>[];
-
+class _Storage implements FormDraftStorage {
+  final records = <String, String>{};
   @override
-  Future<AuthenticatedRequestScope> captureRequestScope({
-    required bool Function() isCurrent,
-  }) async {
-    scopeCaptures++;
-    final scope = await super.captureRequestScope(isCurrent: isCurrent);
-    final delay = delayedScope;
-    if (delay != null) await delay.future;
-    await scope.verify();
-    return scope;
+  Future<Map<String, String>> readAll(String prefix) async => {
+    for (final e in records.entries)
+      if (e.key.startsWith(prefix)) e.key: e.value,
+  };
+  @override
+  Future<String?> read(String key) async => records[key];
+  @override
+  Future<void> write(String key, String value) async {
+    records[key] = value;
   }
 
-  Map<String, dynamic> _release(Map<String, dynamic> body) => {
+  @override
+  Future<void> remove(String key) async {
+    records.remove(key);
+  }
+
+  @override
+  Future<bool> compareAndSet(
+    String key, {
+    required String? expectedValue,
+    required String? value,
+  }) async {
+    if (records[key] != expectedValue) return false;
+    if (value == null) {
+      records.remove(key);
+    } else {
+      records[key] = value;
+    }
+    return true;
+  }
+}
+
+class _Api extends ApiClient {
+  _Api() : super(Dio(BaseOptions(baseUrl: 'https://fixture.test/api')));
+  final creates = <Map<String, dynamic>>[],
+      packages = <String>[],
+      publishIds = <String>[];
+  final uploadedBytes = <Uint8List>[],
+      records = <String, Map<String, dynamic>>{};
+  int listCalls = 0, withdrawCalls = 0;
+  String? rejectKind, losePublishKind;
+  Completer<void>? delayedUpload;
+  Map<String, dynamic> _view(Map<String, dynamic> body) => {
     ...body,
     'id': body['requestId'],
+    'sizeBytes': body['sizeBytes'] ?? 0,
     'installMode': body['platform'] == 'windows'
-        ? body['packageKind'] == 'installer'
+        ? body['runtimeFamily'] == ClientRuntimeFamily.wpfLegacy
+              ? body['packageKind'] == 'installer'
+                    ? 'windows_wpf_setup'
+                    : 'windows_wpf_archive'
+              : body['packageKind'] == 'installer'
               ? 'windows_setup'
               : 'windows_archive'
         : body['platform'] == 'android'
         ? 'android_package'
         : 'store',
-    'sha256': uploadedSha[body['requestId']],
-    'state': published.contains(body['requestId']) ? 'PUBLISHED' : 'DRAFT',
+    'deliveryContract': body['platform'] == 'windows'
+        ? 'paired_v1'
+        : body['platform'] == 'android'
+        ? 'audited_v1'
+        : null,
+    'state': body['state'] ?? 'DRAFT',
   };
-
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -117,11 +139,24 @@ class _Api extends ApiClient {
   }) async {
     expect(path, '/admin/client-releases');
     listCalls++;
-    final known = {
-      for (final body in creates)
-        if (published.contains(body['requestId'])) body['requestId']: body,
-    };
-    return known.values.map(_release).toList();
+    return records.values.map(_view).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final record = records[path.split('/').last];
+    if (record == null) {
+      throw ApiException(
+        'NOT_FOUND',
+        'fixture record absent',
+        httpStatus: 404,
+        hasResponseCode: true,
+      );
+    }
+    return _view(record);
   }
 
   @override
@@ -134,39 +169,31 @@ class _Api extends ApiClient {
     if (path == '/admin/client-releases') {
       final draft = Map<String, dynamic>.from(body! as Map);
       creates.add(draft);
-      if (failCreateKinds.remove(draft['packageKind'] ?? 'update')) {
-        throw ApiException('NETWORK_ERROR', 'fixture create response lost');
-      }
-      return delayedCreate?.future ?? _release(draft);
+      records.putIfAbsent(draft['requestId'] as String, () => draft);
+      return _view(records[draft['requestId']]!);
     }
+    final id = path.split('/')[3], record = records[id]!;
     if (path.endsWith('/withdraw')) {
       withdrawCalls++;
-      published.remove(path.split('/')[3]);
-      return _release(creates.last);
+      record['state'] = 'WITHDRAWN';
+      return _view(record);
     }
-    expect(path, matches(r'^/admin/client-releases/[0-9a-f-]{36}/publish$'));
-    publishCalls++;
-    final identifier = path.split('/')[3];
-    publishIds.add(identifier);
-    final draft = creates.lastWhere((body) => body['requestId'] == identifier);
-    final kind = draft['packageKind'] as String? ?? 'update';
-    if (failPublishKinds.contains(kind)) {
-      throw ApiException('CONFLICT', 'fixture package publication rejected');
-    }
-    published.add(identifier);
-    await afterPublish?.call(kind);
-    if (failRetentionOnceKinds.remove(kind)) {
+    expect(path, endsWith('/publish'));
+    publishIds.add(id);
+    if (record['packageKind'] == rejectKind) {
       throw ApiException(
-        'PRIMARY_UNAVAILABLE',
-        'fixture retention failed after publication committed',
+        'VALIDATION_FAILED',
+        'fixture publication rejected',
+        httpStatus: 400,
+        hasResponseCode: true,
       );
     }
-    if (loseFirstPublishResponse && publishCalls == 1 ||
-        losePublishResponseKinds.remove(kind)) {
-      // The command committed, but the client did not receive its receipt.
-      throw ApiException('NETWORK_ERROR', 'fixture response lost');
+    record['state'] = 'PUBLISHED';
+    if (record['packageKind'] == losePublishKind) {
+      losePublishKind = null;
+      throw NetworkException('fixture publish receipt lost');
     }
-    return _release(draft);
+    return _view(record);
   }
 
   @override
@@ -175,92 +202,80 @@ class _Api extends ApiClient {
     Uint8List bytes, {
     required void Function(int, int) onProgress,
   }) async {
-    packages.add(path);
-    expect(creates.last['platform'], anyOf('windows', 'android'));
+    final id = path.split('/')[3];
+    packages.add(id);
     uploadedBytes.add(Uint8List.fromList(bytes));
-    uploadProgress.add(onProgress);
-    uploadedSha[path.split('/')[3]] = sha256.convert(bytes).toString();
+    records[id]!['sha256'] = sha256.convert(bytes).toString();
+    records[id]!['sizeBytes'] = bytes.length;
     onProgress(bytes.length, bytes.length);
-    final kind = creates.lastWhere(
-      (body) => body['requestId'] == path.split('/')[3],
-    )['packageKind'];
-    if (delayedUpload != null &&
-        (delayedUploadKind == null || kind == delayedUploadKind)) {
-      await delayedUpload!.future;
-    }
+    await delayedUpload?.future;
   }
 }
 
-class _WindowsPackagePicker extends FilePicker {
-  _WindowsPackagePicker(
-    this.bytes, {
-    this.installer = false,
-    this.android = false,
-  });
-  final Uint8List bytes;
-  final bool installer;
-  final bool android;
-
-  @override
-  Future<FilePickerResult?> pickFiles({
-    String? dialogTitle,
-    String? initialDirectory,
-    FileType type = FileType.any,
-    List<String>? allowedExtensions,
-    void Function(FilePickerStatus)? onFileLoading,
-    bool allowCompression = true,
-    int compressionQuality = 30,
-    bool allowMultiple = false,
-    bool withData = false,
-    bool withReadStream = false,
-    bool lockParentWindow = false,
-    bool readSequential = false,
-  }) async {
-    expect(type, FileType.custom);
-    expect(allowedExtensions, [
-      android
-          ? 'apk'
-          : installer
-          ? 'exe'
-          : 'zip',
-    ]);
-    expect(withData, isTrue);
-    return FilePickerResult([
-      PlatformFile(
-        name: android
-            ? 'uten-android-universal.apk'
-            : installer
-            ? 'uten-windows-x64-setup.exe'
-            : 'uten-windows-x64.zip',
-        size: bytes.length,
-        bytes: bytes,
-      ),
-    ]);
-  }
-}
-
+final _bytes = Uint8List.fromList([0x50, 0x4b, 3, 4, 10, 20, 30, 40]);
+ClientReleasePickedFile _file(String name) =>
+    ClientReleasePickedFile.bytes(name, _bytes);
 Future<void> _pump(
   WidgetTester tester,
   _Api api,
   _Session session, {
-  Widget child = const ClientReleasePublishDialog(),
-  Size size = const Size(900, 1200),
+  Size size = const Size(1440, 1100),
   double scale = 1,
+  Brightness brightness = Brightness.light,
   GlobalKey? boundaryKey,
+  _Storage? storage,
+  List<ClientReleasePickedFile>? files,
+  String platform = 'windows',
+  String family = ClientRuntimeFamily.flutter,
+  String architecture = 'x64',
+  String kind = 'installer',
+  bool tile = false,
+  ValueChanged<List<ClientRelease>>? onPublished,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final router = GoRouter(
+    initialLocation: tile ? '/settings' : RouteName.clientReleasePublish,
+    routes: [
+      GoRoute(
+        path: '/settings',
+        builder: (_, _) => const Scaffold(body: ClientReleasePublishTile()),
+      ),
+      GoRoute(
+        path: RouteName.clientReleasePublish,
+        builder: (_, _) => ClientReleasePublishPage(
+          initialPlatform: platform,
+          initialRuntimeFamily: family,
+          initialArchitecture: architecture,
+          initialPackageKind: kind,
+          onPublished: onPublished,
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        _apiSource.overrideWith((ref) => api),
+        _apiSource.overrideWith((_) => api),
         apiClientProvider.overrideWith((ref) => ref.watch(_apiSource)),
         sessionProvider.overrideWith(() => session),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
+        apiBaseUrlProvider.overrideWithValue('https://fixture.test/api'),
+        formDraftStorageProvider.overrideWithValue(storage ?? _Storage()),
+        clientReleaseFilePickerProvider.overrideWithValue(
+          (multiple) async =>
+              files ?? [_file('uten-setup.exe'), _file('uten-update.zip')],
+        ),
       ],
-      child: MaterialApp(
-        theme: buildLightTheme(),
+      child: MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        routerConfig: router,
+        theme: brightness == Brightness.light
+            ? buildLightTheme()
+            : buildDarkTheme(),
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -270,602 +285,149 @@ Future<void> _pump(
           ).copyWith(textScaler: TextScaler.linear(scale)),
           child: RepaintBoundary(key: boundaryKey, child: app!),
         ),
-        home: Scaffold(body: child),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-Future<void> _fillStore(WidgetTester tester) async {
-  await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('ios').last);
-  await tester.pumpAndSettle();
-  final fields = find.byType(TextField);
-  await tester.enterText(fields.at(0), '2.5.28');
-  await tester.enterText(fields.at(1), '2528');
-  await tester.enterText(fields.at(2), '修复采购任务提醒');
+Future<void> _fill(WidgetTester tester) async {
+  await tester.enterText(find.widgetWithText(TextField, '版本').first, '2.5.34');
+  await tester.enterText(find.widgetWithText(TextField, '构建号').first, '2534');
   await tester.enterText(
-    fields.at(3),
-    'https://apps.apple.com/cn/app/id123456789',
+    find.widgetWithText(TextField, '发布说明').first,
+    '改进工作台与表格，保留原业务流程。',
   );
   await tester.pump();
 }
 
-Finder _publishAction() =>
-    find.byKey(const ValueKey('client-release-publish-batch'));
-
-Future<void> _publish(WidgetTester tester) async {
-  final action = _publishAction();
-  await tester.ensureVisible(action);
+Future<void> _add(WidgetTester tester, {bool single = false}) async {
+  final action = find.text(single ? '添加单个文件' : '批量添加');
+  await _reveal(tester, action);
   await tester.tap(action);
   await tester.pumpAndSettle();
 }
 
-Future<Uint8List> _fillWindows(
-  WidgetTester tester, {
-  bool installer = false,
-}) async {
-  final fields = find.byType(TextField);
-  await tester.enterText(fields.at(0), '2.5.28');
-  await tester.enterText(fields.at(1), '2528');
-  await tester.enterText(fields.at(2), 'Windows 更新验证');
-  return _chooseWindows(tester, installer: installer);
-}
-
-Future<Uint8List> _chooseWindows(
-  WidgetTester tester, {
-  bool installer = false,
-}) async {
-  // Synthetic bytes exercise UI upload/hash/retry; backend tests validate ZIP structure.
-  final bytes = Uint8List.fromList([
-    installer ? 0x4d : 0x50,
-    installer ? 0x5a : 0x4b,
-    3,
-    4,
-    10,
-    20,
-    30,
-    40,
-  ]);
-  final previousPicker = FilePicker.platform;
-  FilePicker.platform = _WindowsPackagePicker(bytes, installer: installer);
-  addTearDown(() => FilePicker.platform = previousPicker);
-  final choose = find.text(installer ? '选择完整客户端' : '选择更新包');
-  await tester.ensureVisible(choose);
-  await tester.tap(choose);
+Future<void> _reveal(WidgetTester tester, Finder target) async {
+  if (target.hitTestable().evaluate().isNotEmpty) return;
+  final element = tester.element(target);
+  final render = element.findRenderObject()!;
+  final vertical = <ScrollableState>[];
+  element.visitAncestorElements((ancestor) {
+    if (ancestor is StatefulElement && ancestor.state is ScrollableState) {
+      final state = ancestor.state as ScrollableState;
+      if (axisDirectionToAxis(state.axisDirection) == Axis.vertical) {
+        vertical.add(state);
+      }
+    }
+    return true;
+  });
+  for (final state in vertical) {
+    await state.position.ensureVisible(
+      render,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
+  }
   await tester.pumpAndSettle();
-  expect(
-    find.text(
-      installer ? 'uten-windows-x64-setup.exe' : 'uten-windows-x64.zip',
-    ),
-    findsOneWidget,
-  );
-  return bytes;
 }
 
-Finder _result(String kind) =>
-    find.byKey(ValueKey('client-release-result-$kind'));
+Future<void> _run(WidgetTester tester) async {
+  final action = find.byKey(const ValueKey('client-release-publish-batch'));
+  await _reveal(tester, action);
+  await tester.tap(action);
+  await tester.pump();
+  for (
+    var turn = 0;
+    turn < 100 && find.text('正在处理').evaluate().isNotEmpty;
+    turn++
+  ) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
+    await tester.pump(const Duration(milliseconds: 10));
+  }
+  expect(find.text('正在处理'), findsNothing);
+  await tester.pumpAndSettle();
+}
 
-Future<void> _captureDualUpload(WidgetTester tester, GlobalKey key) async {
+Future<void> _capture(WidgetTester tester, GlobalKey key, String name) async {
   if (!const bool.fromEnvironment('SOFTWARE_DOWNLOADS_SCREENSHOTS')) return;
   final boundary =
       key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
   await tester.runAsync(() async {
-    final image = await boundary.toImage();
+    final picture = await boundary.toImage();
     try {
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      final directory = Directory('build/software-downloads-20261026/previews');
+      final data = await picture.toByteData(format: ui.ImageByteFormat.png);
+      final directory = Directory('build/software-downloads-20261028/previews');
       await directory.create(recursive: true);
       await File(
-        '${directory.path}/windows-dual-upload.png',
+        '${directory.path}/$name.png',
       ).writeAsBytes(data!.buffer.asUint8List());
     } finally {
-      image.dispose();
+      picture.dispose();
     }
   });
 }
 
 void main() {
   setUpAll(() async {
-    if (const bool.fromEnvironment('SOFTWARE_DOWNLOADS_SCREENSHOTS')) {
-      await (FontLoader(
-        'NotoSansSC',
-      )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
-      await (FontLoader(
-        'MaterialIcons',
-      )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
-    }
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await (FontLoader(
+      'NotoSansSC',
+    )..addFont(rootBundle.load('assets/fonts/NotoSansSC.ttf'))).load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
   });
-  setUp(() => FilePicker.platform = _WindowsPackagePicker(Uint8List(0)));
-
-  testWidgets('Windows shows both upload areas with one shared metadata form', (
-    tester,
-  ) async {
-    final api = _Api();
-    final key = GlobalKey();
-    await _pump(
-      tester,
-      api,
-      _Session(_identity()),
-      size: const Size(1440, 1100),
-      boundaryKey: key,
-    );
-    await _fillWindows(tester, installer: true);
-    await _chooseWindows(tester);
-    expect(find.byType(TextField), findsNWidgets(3));
-    expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
-    expect(find.text('Windows 安装程序（Setup.exe）'), findsOneWidget);
-    expect(find.text('Windows 更新包（ZIP）'), findsOneWidget);
-    expect(find.text('uten-windows-x64-setup.exe'), findsOneWidget);
-    expect(find.text('uten-windows-x64.zip'), findsOneWidget);
-    expect(find.text('上传并发布'), findsOneWidget);
-    for (final kind in ['installer', 'update']) {
-      expect(
-        find.descendant(
-          of: find.byKey(ValueKey('client-release-area-$kind')),
-          matching: find.text('上传并发布'),
-        ),
-        findsNothing,
-      );
-    }
-    expect(api.creates, isEmpty);
-    expect(tester.takeException(), isNull);
-    await _captureDualUpload(tester, key);
-  });
-
   testWidgets(
-    'one footer action publishes both selected Windows packages with shared metadata and scope',
+    'settings opens a full publication route without an upload dialog',
     (tester) async {
       final api = _Api();
-      await _pump(tester, api, _Session(_identity()));
-      final setup = await _fillWindows(tester, installer: true);
-      final update = await _chooseWindows(tester);
-      final scopesBefore = api.scopeCaptures;
-      await _publish(tester);
-      expect(find.text('uten-windows-x64.zip'), findsOneWidget);
-      expect(api.creates, hasLength(2));
-      expect(api.scopeCaptures - scopesBefore, 1);
-      expect(api.creates.map((body) => body['packageKind']), [
+      await _pump(tester, api, _Session(_identity()), tile: true);
+      await tester.tap(find.byType(ClientReleasePublishTile));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientReleasePublishPage), findsOneWidget);
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('批量添加'), findsOneWidget);
+      expect(api.listCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'mixed Setup and ZIP batch uses shared metadata and distinct stable intents',
+    (tester) async {
+      final api = _Api(), storage = _Storage();
+      await _pump(tester, api, _Session(_identity()), storage: storage);
+      await _fill(tester);
+      await _add(tester);
+      await _run(tester);
+      expect(api.creates.map((r) => r['packageKind']).toSet(), {
         'installer',
         'update',
-      ]);
-      expect(api.creates[0]['requestId'], isNot(api.creates[1]['requestId']));
-      for (final key in [
-        'platform',
-        'architecture',
-        'version',
-        'buildNumber',
-        'releaseNotes',
-      ]) {
-        expect(api.creates[0][key], api.creates[1][key]);
-      }
-      expect(api.uploadedBytes, [setup, update]);
-      expect(api.published, hasLength(2));
-      expect(api.publishCalls, 2);
-      expect(find.text('客户端新版本已发布'), findsNWidgets(2));
-      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'one successful package stays published when the other fails and retries',
-    (tester) async {
-      final api = _Api()..failPublishKinds.add('update');
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await _publish(tester);
-      expect(api.published, hasLength(1));
+      });
+      expect(api.creates.map((r) => r['requestId']).toSet(), hasLength(2));
       expect(
-        find.descendant(
-          of: _result('installer'),
-          matching: find.text('客户端新版本已发布'),
+        api.creates.every(
+          (r) => r['version'] == '2.5.34' && r['buildNumber'] == 2534,
         ),
-        findsOneWidget,
+        true,
       );
-      expect(
-        find.descendant(
-          of: _result('update'),
-          matching: find.textContaining('尚未确认发布'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('客户端新版本已发布'), findsOneWidget);
-      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNotNull);
-      final installerCreates = api.creates
-          .where((body) => body['packageKind'] == 'installer')
-          .length;
-      api.failPublishKinds.clear();
-      await _publish(tester);
-      expect(
-        api.creates.where((body) => body['packageKind'] == 'installer'),
-        hasLength(installerCreates),
-      );
-      expect(api.packages, hasLength(2));
-      expect(api.published, hasLength(2));
-      expect(api.creates[1]['requestId'], api.creates[2]['requestId']);
-      expect(find.text('客户端新版本已发布'), findsNWidgets(2));
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'lost receipts retain independent Setup and ZIP request identities',
-    (tester) async {
-      final api = _Api()
-        ..losePublishResponseKinds.addAll(['installer', 'update']);
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await _publish(tester);
-      await _publish(tester);
-      expect(api.creates, hasLength(4));
-      expect(api.creates[0]['requestId'], api.creates[2]['requestId']);
-      expect(api.creates[1]['requestId'], api.creates[3]['requestId']);
-      expect(api.creates[0]['requestId'], isNot(api.creates[1]['requestId']));
-      expect(api.packages, hasLength(2));
-      expect(api.publishCalls, 4);
-      expect(api.published, hasLength(2));
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'Windows retries the same published release after pair retention fails without reuploading',
-    (tester) async {
-      final api = _Api()..failRetentionOnceKinds.add('update');
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await _publish(tester);
-      final updateId = api.creates.last['requestId'];
-      expect(api.published, hasLength(2));
-      expect(api.publishCalls, 2);
-      expect(
-        find.descendant(
-          of: _result('update'),
-          matching: find.textContaining('尚未确认发布'),
-        ),
-        findsOneWidget,
-      );
-
-      await _publish(tester);
-
-      expect(api.creates, hasLength(3));
-      expect(api.creates[1], api.creates[2]);
-      expect(
-        api.creates.map((body) => body['requestId']).toSet(),
-        hasLength(2),
-      );
-      expect(api.publishIds, [
-        api.creates.first['requestId'],
-        updateId,
-        updateId,
-      ]);
-      expect(api.packages, hasLength(2));
       expect(api.uploadedBytes, hasLength(2));
-      expect(find.text('客户端新版本已发布'), findsNWidgets(2));
+      expect(api.publishIds, hasLength(2));
+      expect(storage.records, isNotEmpty);
+      final saved = storage.records.values.join();
+      expect(saved, contains('requestId'));
+      expect(saved, isNot(contains('fixture.test/api/admin')));
+      expect(saved, isNot(contains('Uint8List')));
       expect(tester.takeException(), isNull);
+      await _run(tester);
+      expect(api.publishIds, hasLength(2));
+      expect(api.uploadedBytes, hasLength(2));
     },
   );
-
-  testWidgets(
-    'copying metadata or changing only equivalent text preserves an unknown receipt UUID',
-    (tester) async {
-      final api = _Api()..loseFirstPublishResponse = true;
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _publish(tester);
-      final fields = tester
-          .widgetList<TextField>(find.byType(TextField))
-          .toList();
-      fields[0].controller!.selection = const TextSelection(
-        baseOffset: 0,
-        extentOffset: 6,
-      );
-      fields[2].controller!.selection = const TextSelection.collapsed(
-        offset: 1,
-      );
-      await tester.enterText(find.byType(TextField).at(0), '2.5.28 ');
-      await tester.enterText(find.byType(TextField).at(1), '02528');
-      await tester.pump();
-      await _publish(tester);
-      expect(api.creates, hasLength(2));
-      expect(api.creates[0]['requestId'], api.creates[1]['requestId']);
-      expect(api.packages, hasLength(1));
-      expect(api.publishCalls, 2);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'semantic shared metadata changes start fresh identities for both selected files',
-    (tester) async {
-      final api = _Api()..failCreateKinds.addAll(['installer', 'update']);
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await _publish(tester);
-      await tester.enterText(find.byType(TextField).at(2), '新的共同更新说明');
-      await _publish(tester);
-      expect(api.creates, hasLength(4));
-      expect(api.creates[0]['requestId'], isNot(api.creates[2]['requestId']));
-      expect(api.creates[1]['requestId'], isNot(api.creates[3]['requestId']));
-      expect(api.creates[2]['releaseNotes'], '新的共同更新说明');
-      expect(api.creates[3]['releaseNotes'], '新的共同更新说明');
-      expect(api.published, hasLength(2));
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'changing architecture clears both selected files before another publication',
-    (tester) async {
-      await _pump(tester, _Api(), _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      final architecture = find.byType(DropdownButtonFormField<String>).last;
-      await tester.ensureVisible(architecture);
-      await tester.tap(architecture);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('arm64').last);
-      await tester.pumpAndSettle();
-      expect(find.text('uten-windows-x64-setup.exe'), findsNothing);
-      expect(find.text('uten-windows-x64.zip'), findsNothing);
-      expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'an active upload locks both areas and metadata and revocation fences both files',
-    (tester) async {
-      final api = _Api()..delayedUpload = Completer<void>();
-      final session = _Session(_identity());
-      await _pump(tester, api, session);
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await tester.ensureVisible(_publishAction());
-      await tester.tap(_publishAction());
-      await tester.pump();
-      expect(api.packages, hasLength(1));
-      expect(
-        tester
-            .widgetList<TextField>(find.byType(TextField))
-            .every((field) => field.enabled == false),
-        isTrue,
-      );
-      for (final kind in ['installer', 'update']) {
-        expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
-        expect(
-          tester
-              .widget<UtenButton>(
-                find.byKey(ValueKey('client-release-choose-$kind')),
-              )
-              .onPressed,
-          isNull,
-        );
-      }
-      session.replace(_identity(permissions: const []));
-      await tester.pump();
-      session.replace(_identity());
-      await tester.pump();
-      api.delayedUpload!.complete();
-      await tester.pumpAndSettle();
-      expect(api.publishCalls, 0);
-      expect(api.creates, hasLength(1));
-      expect(find.text('客户端新版本已发布'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  for (final size in [const Size(375, 1000), const Size(844, 390)]) {
-    testWidgets('dual Windows areas stay reachable at 2x text $size', (
-      tester,
-    ) async {
-      await _pump(tester, _Api(), _Session(_identity()), size: size, scale: 2);
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      final footer = tester.getRect(_publishAction());
-      for (final kind in ['installer', 'update']) {
-        await tester.ensureVisible(
-          find.byKey(ValueKey('client-release-choose-$kind')),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.getRect(_publishAction()), footer);
-        expect(_publishAction().hitTestable(), findsOneWidget);
-      }
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets(
-    'a failed first package does not prevent the other selected upload',
-    (tester) async {
-      final api = _Api()..failPublishKinds.add('installer');
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await _publish(tester);
-
-      expect(api.creates, hasLength(2));
-      expect(api.packages, hasLength(2));
-      expect(api.published, hasLength(1));
-      expect(
-        find.descendant(
-          of: _result('installer'),
-          matching: find.textContaining('尚未确认发布'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: _result('update'),
-          matching: find.text('客户端新版本已发布'),
-        ),
-        findsOneWidget,
-      );
-      final updateId = api.creates[1]['requestId'];
-      api.failPublishKinds.clear();
-      await _publish(tester);
-      expect(api.creates, hasLength(3));
-      expect(api.creates[0]['requestId'], api.creates[2]['requestId']);
-      expect(api.publishIds.where((id) => id == updateId), hasLength(1));
-      expect(api.packages, hasLength(2));
-      expect(api.published, hasLength(2));
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('a batch holds one busy operation across repeated activation', (
-    tester,
-  ) async {
-    final api = _Api()..delayedUpload = Completer<void>();
-    await _pump(tester, api, _Session(_identity()));
-    await _fillWindows(tester, installer: true);
-    await _chooseWindows(tester);
-    final captures = api.scopeCaptures;
-    await tester.tap(_publishAction());
-    await tester.tap(_publishAction());
-    await tester.pump();
-
-    expect(api.creates, hasLength(1));
-    expect(api.packages, hasLength(1));
-    expect(api.scopeCaptures - captures, 1);
-    expect(tester.widget<UtenButton>(_publishAction()).onPressed, isNull);
-    api.delayedUpload!.complete();
-    await tester.pumpAndSettle();
-    expect(api.creates, hasLength(2));
-    expect(api.publishCalls, 2);
-    expect(api.scopeCaptures - captures, 1);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a completed file cannot overwrite the next file progress', (
-    tester,
-  ) async {
-    final api = _Api()
-      ..delayedUpload = Completer<void>()
-      ..delayedUploadKind = 'update';
-    await _pump(tester, api, _Session(_identity()));
-    await _fillWindows(tester, installer: true);
-    await _chooseWindows(tester);
-    await tester.tap(_publishAction());
-    await tester.pump();
-    expect(api.packages, hasLength(2));
-    expect(api.published, hasLength(1));
-    api.uploadProgress[1](1, 2);
-    await tester.pump();
-    expect(
-      tester
-          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
-          .value,
-      0.5,
-    );
-    api.uploadProgress[0](1, 10);
-    await tester.pump();
-    expect(
-      tester
-          .widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator))
-          .value,
-      0.5,
-    );
-    api.delayedUpload!.complete();
-    await tester.pumpAndSettle();
-    expect(api.published, hasLength(2));
-    expect(tester.takeException(), isNull);
-  });
-
-  for (final boundary in ['publisher', 'actor', 'permission', 'server']) {
-    testWidgets(
-      'changing $boundary between packages stops the remaining batch',
-      (tester) async {
-        final api = _Api();
-        final replacement = _Api();
-        final session = _Session(_identity());
-        await _pump(tester, api, session);
-        await _fillWindows(tester, installer: true);
-        await _chooseWindows(tester);
-        final container = ProviderScope.containerOf(
-          tester.element(find.byType(ClientReleasePublishDialog)),
-        );
-        api.afterPublish = (kind) async {
-          if (kind != 'installer') return;
-          switch (boundary) {
-            case 'publisher':
-              session.replace(_identity(id: 'publisher-b'));
-            case 'actor':
-              session.replace(_identity(impersonating: true));
-            case 'permission':
-              session.replace(_identity(permissions: const []));
-            case 'server':
-              container.read(_apiSource.notifier).state = replacement;
-          }
-        };
-        await _publish(tester);
-        expect(api.creates, hasLength(1));
-        expect(api.packages, hasLength(1));
-        expect(api.publishCalls, 1);
-        expect(replacement.creates, isEmpty);
-        expect(find.text('客户端新版本已发布'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
-
-  testWidgets(
-    'metadata mutation cannot change an in-flight batch or send its second package',
-    (tester) async {
-      final api = _Api()..delayedUpload = Completer<void>();
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester, installer: true);
-      await _chooseWindows(tester);
-      await tester.tap(_publishAction());
-      await tester.pump();
-      expect(api.creates, hasLength(1));
-      tester.widget<TextField>(find.byType(TextField).at(2)).controller!.text =
-          'changed while pending';
-      api.delayedUpload!.complete();
-      await tester.pumpAndSettle();
-      expect(api.creates.single['releaseNotes'], 'Windows 更新验证');
-      expect(api.creates, hasLength(1));
-      expect(api.publishCalls, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('Android keeps its single APK publication flow', (tester) async {
-    final api = _Api();
-    await _pump(tester, api, _Session(_identity()));
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('android').last);
-    await tester.pumpAndSettle();
-    final fields = find.byType(TextField);
-    await tester.enterText(fields.at(0), '2.5.28');
-    await tester.enterText(fields.at(1), '2528');
-    await tester.enterText(fields.at(2), 'Android 更新验证');
-    FilePicker.platform = _WindowsPackagePicker(
-      Uint8List.fromList([1, 2, 3, 4]),
-      android: true,
-    );
-    await tester.ensureVisible(find.text('选择更新包'));
-    await tester.tap(find.text('选择更新包'));
-    await tester.pumpAndSettle();
-    expect(find.text('Windows 安装程序（Setup.exe）'), findsNothing);
-    expect(find.text('上传并发布'), findsOneWidget);
-    await _publish(tester);
-    expect(api.creates.single['platform'], 'android');
-    expect(api.creates.single['fileName'], 'uten-android-universal.apk');
-    expect(api.packages, hasLength(1));
-    expect(api.publishCalls, 1);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('software download publication uses a complete installer kind', (
+  testWidgets('single file upload preserves its exact legacy X86 target', (
     tester,
   ) async {
     final api = _Api();
@@ -873,265 +435,213 @@ void main() {
       tester,
       api,
       _Session(_identity()),
-      child: const ClientReleasePublishDialog(packageKind: 'installer'),
+      family: ClientRuntimeFamily.wpfLegacy,
+      architecture: 'x86',
+      files: [_file('legacy-setup.exe')],
     );
-    await _fillWindows(tester, installer: true);
-    await _publish(tester);
-    expect(api.creates.single['packageKind'], 'installer');
-    expect(api.creates.single['platform'], 'windows');
+    await _fill(tester);
+    await _add(tester, single: true);
+    await _run(tester);
+    expect(api.creates.single['runtimeFamily'], 'wpf_legacy');
+    expect(api.creates.single['architecture'], 'x86');
     expect(api.packages, hasLength(1));
-    expect(api.publishCalls, 1);
+    expect(api.publishIds, hasLength(1));
     expect(tester.takeException(), isNull);
   });
-  testWidgets('Windows upload hashes the selected bytes and publishes once', (
-    tester,
-  ) async {
-    final api = _Api();
-    await _pump(tester, api, _Session(_identity()));
-    final bytes = await _fillWindows(tester);
-    await _publish(tester);
-    expect(api.creates.single['platform'], 'windows');
-    expect(api.creates.single['architecture'], 'x64');
-    expect(
-      api.creates.single['expectedSha256'],
-      sha256.convert(bytes).toString(),
-    );
-    expect(api.uploadedBytes.single, bytes);
-    expect(api.packages, hasLength(1));
-    expect(api.publishCalls, 1);
-    expect(find.text('客户端新版本已发布'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets(
-    'Windows lost publication receipt retries idempotent publish without reuploading',
-    (tester) async {
-      final api = _Api()..loseFirstPublishResponse = true;
-      await _pump(tester, api, _Session(_identity()));
-      await _fillWindows(tester);
-      await _publish(tester);
-      await _publish(tester);
-      expect(api.creates, hasLength(2));
-      expect(api.creates[0]['requestId'], api.creates[1]['requestId']);
-      expect(api.packages, hasLength(1));
-      expect(api.publishCalls, 2);
-      expect(find.text('客户端新版本已发布'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'revoking permission during Windows upload prevents publication',
-    (tester) async {
-      final api = _Api()..delayedUpload = Completer<void>();
-      final session = _Session(_identity());
-      await _pump(tester, api, session);
-      await _fillWindows(tester);
-      await tester.ensureVisible(_publishAction());
-      await tester.tap(_publishAction());
-      await tester.pump();
-      expect(api.packages, hasLength(1));
-      session.replace(_identity(permissions: const []));
-      await tester.pump();
-      session.replace(_identity());
-      await tester.pump();
-      api.delayedUpload!.complete();
-      await tester.pumpAndSettle();
-      expect(api.publishCalls, 0);
-      expect(find.text('客户端新版本已发布'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'withdrawal preparation handles permission loss without an uncaught future',
-    (tester) async {
-      const id = '69fdcabe-0ae7-47cd-8d49-8136b21a4321';
-      final api = _Api()
-        ..creates.add({
-          'requestId': id,
-          'platform': 'ios',
-          'architecture': 'universal',
-          'version': '2.5.28',
-          'buildNumber': 2528,
-          'storeUrl': 'https://apps.apple.com/cn/app/id123456789',
-        })
-        ..published.add(id);
-      final session = _Session(_identity());
-      await _pump(tester, api, session);
-      api.delayedScope = Completer<void>();
-      await tester.ensureVisible(find.text('撤回发布'));
-      await tester.tap(find.text('撤回发布'));
-      await tester.pump();
-      session.replace(_identity(permissions: const []));
-      await tester.pump();
-      api.delayedScope!.complete();
-      await tester.pumpAndSettle();
-      expect(api.withdrawCalls, 0);
-      expect(find.text('撤回后，其他设备将不再收到此版本。已经更新的设备不会降级。确定撤回吗？'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'iOS store release publishes without selecting or uploading a file',
-    (tester) async {
-      final api = _Api();
-      await _pump(tester, api, _Session(_identity()));
-      await _fillStore(tester);
-      expect(find.text('选择更新包'), findsNothing);
-      await _publish(tester);
-      expect(api.creates, hasLength(1));
-      expect(api.creates.single, containsPair('platform', 'ios'));
-      expect(
-        api.creates.single,
-        containsPair('storeUrl', 'https://apps.apple.com/cn/app/id123456789'),
-      );
-      expect(api.creates.single.containsKey('fileName'), isFalse);
-      expect(api.creates.single.containsKey('expectedSha256'), isFalse);
-      expect(api.packages, isEmpty);
-      expect(api.publishCalls, 1);
-      expect(find.text('客户端新版本已发布'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'lost publication receipt recovers the same request without publishing twice',
-    (tester) async {
-      final api = _Api()..loseFirstPublishResponse = true;
-      await _pump(tester, api, _Session(_identity()));
-      await _fillStore(tester);
-      await _publish(tester);
-      expect(api.publishCalls, 1);
-      expect(find.text('客户端新版本已发布'), findsNothing);
-      await _publish(tester);
-      expect(api.creates, hasLength(2));
-      expect(api.creates[1]['requestId'], api.creates[0]['requestId']);
-      expect(api.publishCalls, 1);
-      expect(api.packages, isEmpty);
-      expect(find.text('客户端新版本已发布'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('changed publisher cannot finish a prior account draft', (
-    tester,
-  ) async {
-    final api = _Api()..delayedCreate = Completer();
-    final session = _Session(_identity());
-    await _pump(tester, api, session);
-    await _fillStore(tester);
-    await tester.ensureVisible(find.text('上传并发布'));
-    await tester.tap(find.text('上传并发布'));
-    await tester.pump();
-    expect(api.creates, hasLength(1));
-    session.replace(_identity(id: 'publisher-b'));
-    api.delayedCreate!.complete(api._release(api.creates.single));
-    await tester.pumpAndSettle();
-    expect(api.publishCalls, 0);
-    expect(api.packages, isEmpty);
-    expect(find.text('客户端新版本已发布'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  for (final (label, identity) in [
-    ('ordinary employee', _identity(permissions: const [])),
-    (
-      'employee with unrelated management permission',
-      _identity(permissions: const [Perm.authorizationManage]),
-    ),
-    (
-      'admin with only the old management permission',
-      _identity(admin: true, permissions: const [Perm.authorizationManage]),
-    ),
-    (
-      'admin without publishing permission',
-      _identity(admin: true, permissions: const []),
-    ),
-    ('impersonated publisher', _identity(impersonating: true)),
-    (
-      'publisher who must change password',
-      _identity(status: AuthStatus.mustChangePassword),
-    ),
-    ('signed out publisher', _identity(status: AuthStatus.unauthenticated)),
-  ]) {
-    testWidgets('publishing entry is hidden for $label', (tester) async {
-      final api = _Api();
-      await _pump(
-        tester,
-        api,
-        _Session(identity),
-        child: const ClientReleasePublishTile(),
-      );
-      expect(find.text('发布客户端版本'), findsNothing);
-      expect(api.creates, isEmpty);
-      expect(api.publishCalls, 0);
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets(
-    'authorized employee can open publishing without admin privileges',
+    'ledger withdrawal updates the visible result and never republishes it',
     (tester) async {
       final api = _Api();
       await _pump(
         tester,
         api,
         _Session(_identity()),
-        child: const ClientReleasePublishTile(),
+        files: [_file('setup.exe')],
       );
-      expect(find.text('发布客户端版本'), findsOneWidget);
-      await tester.tap(find.text('发布客户端版本'));
+      await _fill(tester);
+      await _add(tester, single: true);
+      await _run(tester);
+      expect(api.publishIds, hasLength(1));
+      await tester.tap(find.text('发布记录'));
       await tester.pumpAndSettle();
-      expect(find.text('选择更新包'), findsOneWidget);
-      expect(api.listCalls, 1);
+      await tester.tap(find.text('撤回'));
+      await tester.pumpAndSettle();
+      expect(find.text('撤回这个版本？'), findsOneWidget);
+      await tester.tap(find.text('确认撤回'));
+      await tester.pumpAndSettle();
+      expect(api.withdrawCalls, 1);
+      expect(find.text('已撤回'), findsOneWidget);
+      await tester.tap(find.text('发布队列'));
+      await tester.pumpAndSettle();
+      await _run(tester);
+      expect(api.publishIds, hasLength(1));
+      expect(api.creates, hasLength(1));
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('opening a publishing dialog directly cannot bypass permission', (
+  testWidgets('partial failure does not retransmit confirmed files', (
     tester,
   ) async {
-    final api = _Api();
-    await _pump(tester, api, _Session(_identity(permissions: const [])));
-    expect(find.text('发布客户端版本'), findsNothing);
-    expect(find.text('选择更新包'), findsNothing);
-    expect(api.listCalls, 0);
-    expect(api.creates, isEmpty);
+    final api = _Api()..rejectKind = 'update';
+    await _pump(tester, api, _Session(_identity()));
+    await _fill(tester);
+    await _add(tester);
+    await _run(tester);
+    expect(api.publishIds, hasLength(2));
+    expect(api.uploadedBytes, hasLength(2));
+    await _run(tester);
+    expect(api.uploadedBytes, hasLength(2));
+    expect(
+      api.publishIds.where(
+        (id) => api.records[id]!['packageKind'] == 'installer',
+      ),
+      hasLength(1),
+    );
     expect(tester.takeException(), isNull);
   });
-
   testWidgets(
-    'permission revocation closes the dialog and fences its pending draft',
+    'lost publish receipt reconciles and finishes the original Windows intent',
     (tester) async {
-      final api = _Api()..delayedCreate = Completer();
-      final session = _Session(_identity());
+      final api = _Api()..losePublishKind = 'installer';
+      final callbacks = <List<ClientRelease>>[];
       await _pump(
         tester,
         api,
-        session,
-        child: const ClientReleasePublishTile(),
+        _Session(_identity()),
+        files: [_file('setup.exe')],
+        onPublished: callbacks.add,
       );
-      await tester.tap(find.text('发布客户端版本'));
-      await tester.pumpAndSettle();
-      await _fillStore(tester);
-      await tester.ensureVisible(find.text('上传并发布'));
-      await tester.tap(find.text('上传并发布'));
-      await tester.pump();
+      await _fill(tester);
+      await _add(tester, single: true);
+      await _run(tester);
+      expect(callbacks, isEmpty);
       expect(api.creates, hasLength(1));
-      session.replace(_identity(permissions: const []));
+      expect(api.packages, hasLength(1));
+      expect(api.publishIds, hasLength(1));
+      final read = find.text('核对原状态').first;
+      await _reveal(tester, read);
+      await tester.tap(read);
       await tester.pumpAndSettle();
-      expect(find.text('发布客户端版本'), findsNothing);
-      expect(find.text('上传并发布'), findsNothing);
-      session.replace(_identity());
-      await tester.pump();
-      api.delayedCreate!.complete(api._release(api.creates.single));
-      await tester.pumpAndSettle();
-      expect(api.publishCalls, 0);
-      expect(api.packages, isEmpty);
-      expect(find.text('客户端新版本已发布'), findsNothing);
+      expect(callbacks, isEmpty);
+      await _run(tester);
+      expect(callbacks.single.single.state, 'PUBLISHED');
+      expect(api.creates, hasLength(1));
+      expect(api.packages, hasLength(1));
+      expect(api.publishIds, hasLength(2));
+      expect(api.publishIds.toSet(), hasLength(1));
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a real unbound superadmin can still manage publication', (
+    tester,
+  ) async {
+    final api = _Api();
+    await _pump(tester, api, _Session(_identity(admin: true)));
+    expect(find.text('批量添加'), findsOneWidget);
+    expect(api.listCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('late upload cannot publish for a replacement account', (
+    tester,
+  ) async {
+    final api = _Api()..delayedUpload = Completer<void>();
+    final session = _Session(_identity());
+    final storage = _Storage();
+    await _pump(
+      tester,
+      api,
+      session,
+      storage: storage,
+      files: [_file('setup.exe')],
+    );
+    await _fill(tester);
+    await _add(tester, single: true);
+    await tester.tap(
+      find.byKey(const ValueKey('client-release-publish-batch')),
+    );
+    await tester.pumpAndSettle();
+    for (var frame = 0; frame < 100 && api.packages.isEmpty; frame++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(api.packages, hasLength(1));
+    session.replace(_identity(id: 'publisher-b'));
+    await tester.pump();
+    api.delayedUpload!.complete();
+    await tester.pumpAndSettle();
+    expect(api.publishIds, isEmpty);
+    expect(find.textContaining('发布身份、权限或服务器已变化'), findsOneWidget);
+    expect(storage.records, isNotEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Android keeps APK publication as one target-specific item', (
+    tester,
+  ) async {
+    final api = _Api();
+    await _pump(
+      tester,
+      api,
+      _Session(_identity()),
+      platform: 'android',
+      architecture: 'arm64',
+      kind: 'update',
+      files: [_file('uten.apk')],
+    );
+    await _fill(tester);
+    await _add(tester, single: true);
+    await _run(tester);
+    expect(api.creates.single['platform'], 'android');
+    expect(api.creates.single['architecture'], 'arm64');
+    expect(api.packages, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+  for (final (label, identity) in [
+    ('missing permission', _identity(permissions: [])),
+    ('impersonation', _identity(impersonating: true)),
+    ('expired login', _identity(status: AuthStatus.unauthenticated)),
+  ]) {
+    testWidgets('direct page denies $label', (tester) async {
+      final api = _Api();
+      await _pump(tester, api, _Session(identity));
+      expect(api.listCalls, 0);
+      expect(find.text('批量添加'), findsNothing);
+      expect(api.creates, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  for (final width in [375.0, 844.0, 1440.0]) {
+    for (final brightness in Brightness.values) {
+      for (final scale in [1.0, 2.0]) {
+        final name =
+            'publisher-${width.toInt()}-${brightness.name}-${(scale * 100).toInt()}';
+        testWidgets('full publisher responsive $name', (tester) async {
+          final key = GlobalKey();
+          await _pump(
+            tester,
+            _Api(),
+            _Session(_identity()),
+            size: Size(width, 1100),
+            brightness: brightness,
+            scale: scale,
+            boundaryKey: key,
+          );
+          await _fill(tester);
+          await _add(tester);
+          expect(find.textContaining('文件队列'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await _capture(tester, key, name);
+          await tester.ensureVisible(
+            find.byKey(const ValueKey('client-release-publish-batch')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+  }
 }

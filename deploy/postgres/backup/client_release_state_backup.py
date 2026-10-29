@@ -30,6 +30,61 @@ TEMPORARY = re.compile(r"\.(?:upload|metadata)-[0-9a-f-]{36}\.tmp\Z")
 _helpers = None
 _registry = threading.Lock()
 _locks: dict[Path, threading.Lock] = {}
+_TARGET_ARCHITECTURES = {
+    "windows": {"x86", "x64", "arm64"},
+    "android": {"arm64", "armeabi-v7a", "x64", "universal"},
+    "ios": {"arm64", "universal"},
+    "macos": {"arm64", "x64", "universal"},
+    "linux": {"arm64", "x64", "universal"},
+}
+_WINDOWS_INSTALLER_MODES = {"windows_bundle", "windows_setup", "windows_wpf_setup"}
+_WINDOWS_MODES = _WINDOWS_INSTALLER_MODES | {"windows_archive", "windows_wpf_archive"}
+_WPF_MODES = {"windows_wpf_setup", "windows_wpf_archive"}
+
+
+def _validate_runtime_contract(release: dict) -> tuple[str, str]:
+    """Validate a release partition without normalizing or rewriting its receipt.
+
+    Legacy missing/null runtimeFamily means flutter only. A backup/restore keeps
+    the original release.json bytes, including absent/null discriminators.
+    """
+    family = release.get("runtimeFamily")
+    if family is None:
+        family = "flutter"
+    if not isinstance(family, str) or family not in {"flutter", "wpf_legacy"}:
+        raise ValueError("Invalid client runtime family")
+    platform, architecture, mode = (release.get(field) for field in ("platform", "architecture", "installMode"))
+    if (not isinstance(platform, str) or platform not in _TARGET_ARCHITECTURES
+            or not isinstance(architecture, str) or architecture not in _TARGET_ARCHITECTURES[platform]):
+        raise ValueError("Invalid client runtime platform/architecture")
+    if not isinstance(mode, str) or mode not in _WINDOWS_MODES | {"store", "android_package"}:
+        raise ValueError("Invalid client runtime install mode")
+    kind = release.get("packageKind")
+    if kind is None:
+        kind = "update"  # Legacy receipts predate the discriminator.
+    if (not isinstance(kind, str) or kind not in {"update", "installer"}
+            or (kind == "installer") != (mode in _WINDOWS_INSTALLER_MODES)
+            or mode in _WINDOWS_MODES and platform != "windows"
+            or mode == "android_package" and platform != "android"):
+        raise ValueError("Invalid client package kind/install mode")
+    if family == "wpf_legacy":
+        if platform != "windows" or architecture not in {"x86", "x64"} or mode not in _WPF_MODES:
+            raise ValueError("Invalid WPF runtime family/target/install mode")
+    elif mode in _WPF_MODES:
+        raise ValueError("Flutter runtime cannot contain a WPF install mode")
+    delivery = release.get("deliveryContract")
+    if delivery is not None:
+        if not isinstance(delivery, str) or delivery not in {"paired_v1", "audited_v1"}:
+            raise ValueError("Invalid client delivery contract")
+        if (delivery == "paired_v1" and (platform != "windows" or mode not in {"windows_setup", "windows_archive", "windows_wpf_setup", "windows_wpf_archive"})
+                or delivery == "audited_v1" and (platform != "android" or mode != "android_package" or family != "flutter")):
+            raise ValueError("Client delivery contract does not match its runtime/target")
+    if mode in {"windows_setup", "windows_wpf_setup"}:
+        filename = release.get("fileName")
+        if (not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,180}", filename)
+                or not filename.lower().endswith(".exe")):
+            raise ValueError("Windows setup requires an executable filename")
+    return family, kind
 
 
 def helpers():
@@ -129,22 +184,11 @@ def _catalog_inventory(root: Path, *, source: bool, copy_budget=None) -> list[st
         relative = folder.name + "/release.json"
         release = h._json(root, relative, MAX_METADATA_BYTES)
         if (not isinstance(release, dict) or release.get("id") != folder.name
+                or not isinstance(release.get("state"), str)
                 or release.get("state") not in {"DRAFT", "PUBLISHED", "WITHDRAWN"}
-                or release.get("installMode") not in {"store", "windows_archive", "windows_bundle", "windows_setup", "android_package"}
                 or type(release.get("sizeBytes")) is not int):
             raise ValueError("Invalid client release metadata identity/state")
-        kind = release.get("packageKind")
-        if kind is None:
-            kind = "update"  # Legacy receipts predate the discriminator.
-        if (not isinstance(kind, str) or kind not in {"update", "installer"}
-                or (kind == "installer") != (release["installMode"] in {"windows_bundle", "windows_setup"})
-                or kind == "installer" and release.get("platform") != "windows"):
-            raise ValueError("Invalid client package kind/install mode")
-        if release["installMode"] == "windows_setup":
-            filename = release.get("fileName")
-            if (not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,180}", filename)
-                    or not filename.lower().endswith(".exe")):
-                raise ValueError("Windows setup requires an executable filename")
+        _validate_runtime_contract(release)
         size, digest = release["sizeBytes"], release.get("sha256")
         mode, state = release["installMode"], release["state"]
         names.append(relative)

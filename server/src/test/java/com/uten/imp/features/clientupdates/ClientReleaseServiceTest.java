@@ -429,13 +429,13 @@ class ClientReleaseServiceTest {
     }
 
     private ClientReleaseDto.Release setupDraft(long build, String architecture, byte[] bytes) {
-        return service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "windows", architecture, "2.5.28", build,
-                "Windows 安装程序", false, "UtenIMPSetup.exe", sha(bytes), null, "installer"));
+        return ClientReleaseFixtures.legacyDraft(properties, mapper, new ClientReleaseDto.Create(UUID.randomUUID(), "windows", architecture, "2.5.28", build,
+                "Windows 安装程序", false, "UtenIMPSetup.exe", sha(bytes), null, "installer"), "windows_setup");
     }
 
     private ClientReleaseDto.Release installerDraft(long build, String architecture, byte[] zip) {
-        return service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "windows", architecture, "2.5.28", build,
-                "完整客户端", false, "uten-full.zip", sha(zip), null, "installer"));
+        return ClientReleaseFixtures.legacyDraft(properties, mapper, new ClientReleaseDto.Create(UUID.randomUUID(), "windows", architecture, "2.5.28", build,
+                "完整客户端", false, "uten-full.zip", sha(zip), null, "installer"), "windows_bundle");
     }
 
     private ClientReleaseService newService() {
@@ -444,8 +444,8 @@ class ClientReleaseServiceTest {
     }
 
     private ClientReleaseDto.Release draft(long build, byte[] zip) {
-        return service.create(new ClientReleaseDto.Create(UUID.randomUUID(), "windows", "x64", "2.5.28", build,
-                "更新说明", false, "uten.zip", sha(zip), null));
+        return ClientReleaseFixtures.legacyDraft(properties, mapper, new ClientReleaseDto.Create(UUID.randomUUID(), "windows", "x64", "2.5.28", build,
+                "更新说明", false, "uten.zip", sha(zip), null), "windows_archive");
     }
 
     private ClientReleaseDto.Release publishStore(String platform, String architecture, long build) {

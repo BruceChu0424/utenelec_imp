@@ -2,12 +2,18 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/io/file_saver.dart' as files;
 import '../../core/network/api_client.dart';
 import '../../shared/providers/authenticated_scope_provider.dart';
 import 'client_release.dart';
 import 'client_package_integrity.dart';
+import 'software_download_target.dart';
+
+typedef SoftwareStoreOpener = Future<bool> Function(Uri uri);
+Future<bool> _openStore(Uri uri) =>
+    launchUrl(uri, mode: LaunchMode.externalApplication);
 
 typedef SoftwarePackageSaver =
     Future<String> Function(
@@ -36,11 +42,13 @@ class SoftwareDownloadsController extends ChangeNotifier {
     required this.api,
     this.enabled = true,
     this.save = files.saveStream,
+    this.openStore = _openStore,
   });
 
   final ApiClient api;
   final bool enabled;
   final SoftwarePackageSaver save;
+  final SoftwareStoreOpener openStore;
   List<ClientRelease> releases = const [];
   bool loading = false;
   bool loaded = false;
@@ -48,6 +56,7 @@ class SoftwareDownloadsController extends ChangeNotifier {
   Object? downloadError;
   String? downloadingId;
   String? savedPath;
+  bool storeOpened = false;
   double progress = 0;
   bool _disposed = false;
   int _read = 0, _transfer = 0;
@@ -67,13 +76,19 @@ class SoftwareDownloadsController extends ChangeNotifier {
     try {
       final scope = await api.captureRequestScope(isCurrent: current);
       final list = await scope.run(
-        () => api.getList('/client-updates/downloads'),
+        () => api.getList(
+          '/client-updates/downloads',
+          query: {'allRuntimeFamilies': true, 'allPlatforms': true},
+        ),
       );
       await scope.verify();
       if (!current()) return;
       releases = list
+          // A download catalog must affirm publication explicitly; legacy
+          // update-check responses may retain their existing model defaults.
+          .where((json) => json['state'] == 'PUBLISHED')
           .map(ClientRelease.fromJson)
-          .where((release) => release.isWindowsInstaller)
+          .where(isSoftwareDownloadRelease)
           .toList(growable: false);
       loaded = true;
     } catch (error) {
@@ -86,11 +101,29 @@ class SoftwareDownloadsController extends ChangeNotifier {
     }
   }
 
-  Future<void> download(ClientRelease release) async {
+  Future<void> download(
+    ClientRelease release, {
+    SoftwareDownloadTarget? target,
+  }) async {
     if (_disposed || !enabled || downloadingId != null) return;
-    if (!release.isWindowsInstaller ||
-        !releases.any((item) => item.id == release.id) ||
-        !hasValidClientPackageMetadata(release)) {
+    if (!isSoftwareDownloadRelease(release) ||
+        (target != null && !isSoftwareInstallerForTarget(release, target)) ||
+        !releases.any(
+          (item) =>
+              item.id == release.id &&
+              item.platform == release.platform &&
+              item.installMode == release.installMode &&
+              item.packageKind == release.packageKind &&
+              item.version == release.version &&
+              item.buildNumber == release.buildNumber &&
+              item.storeUrl == release.storeUrl &&
+              item.runtimeFamily == release.runtimeFamily &&
+              item.architecture == release.architecture &&
+              item.sha256 == release.sha256 &&
+              item.sizeBytes == release.sizeBytes,
+        ) ||
+        (release.installMode != 'store' &&
+            !hasValidClientPackageMetadata(release))) {
       downloadError = const FormatException('安装包信息不完整，请刷新版本列表后重试');
       _notify();
       return;
@@ -101,11 +134,23 @@ class SoftwareDownloadsController extends ChangeNotifier {
     _cancel = cancellation;
     downloadingId = release.id;
     savedPath = null;
+    storeOpened = false;
     downloadError = null;
     progress = 0;
     _notify();
     try {
       final scope = await api.captureRequestScope(isCurrent: current);
+      if (release.installMode == 'store') {
+        final uri = release.trustedStoreUri;
+        if (uri == null) throw const FormatException('应用商店地址无效');
+        await scope.verify();
+        if (!current()) return;
+        final opened = await openStore(uri);
+        await scope.verify();
+        if (!opened) throw StateError('无法打开应用商店，请稍后重试');
+        if (current()) storeOpened = true;
+        return;
+      }
       final stream = await scope.run(
         () => api.getPackageStream(
           release.packagePath,
@@ -136,8 +181,7 @@ class SoftwareDownloadsController extends ChangeNotifier {
 
       final path = await save(
         verified(),
-        release.fileName ??
-            'uten-imp-${release.version}-windows-${release.architecture}-setup.exe',
+        softwareDownloadFilename(release, target: target),
         stillCurrent: current,
         verifyScope: scope.verify,
         maxBytes: maxClientPackageBytes,

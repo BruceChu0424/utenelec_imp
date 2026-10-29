@@ -1,5 +1,17 @@
 import 'dart:convert';
 
+abstract final class ClientRuntimeFamily {
+  static const flutter = 'flutter';
+  static const wpfLegacy = 'wpf_legacy';
+
+  static bool supportsWindowsArchitecture(String family, String architecture) =>
+      switch (family) {
+        flutter => const {'x86', 'x64', 'arm64'}.contains(architecture),
+        wpfLegacy => const {'x86', 'x64'}.contains(architecture),
+        _ => false,
+      };
+}
+
 class ClientRelease {
   const ClientRelease({
     required this.id,
@@ -16,6 +28,7 @@ class ClientRelease {
     this.state = 'PUBLISHED',
     this.packageKind = 'update',
     this.fileName,
+    this.runtimeFamily = ClientRuntimeFamily.flutter,
   });
 
   factory ClientRelease.fromJson(Map<String, dynamic> json) => ClientRelease(
@@ -33,6 +46,8 @@ class ClientRelease {
     state: json['state'] as String? ?? 'PUBLISHED',
     packageKind: json['packageKind'] as String? ?? 'update',
     fileName: json['fileName'] as String?,
+    runtimeFamily:
+        json['runtimeFamily'] as String? ?? ClientRuntimeFamily.flutter,
   );
 
   final String id, platform, architecture, version, releaseNotes, installMode;
@@ -42,17 +57,46 @@ class ClientRelease {
   final String? storeUrl;
   final String packageKind;
   final String? fileName;
-  String get packagePath => '/client-updates/$id/download';
+  final String runtimeFamily;
+  String get packagePath =>
+      '/client-updates/$id/download${runtimeFamily == ClientRuntimeFamily.wpfLegacy ? '?runtimeFamily=wpf_legacy' : ''}';
 
   bool get isWindowsInstaller =>
       platform == 'windows' &&
       packageKind == 'installer' &&
-      installMode == 'windows_setup' &&
+      ClientRuntimeFamily.supportsWindowsArchitecture(
+        runtimeFamily,
+        architecture,
+      ) &&
+      installMode ==
+          (runtimeFamily == ClientRuntimeFamily.wpfLegacy
+              ? 'windows_wpf_setup'
+              : 'windows_setup') &&
       state == 'PUBLISHED';
+
+  bool get isAndroidPackage =>
+      platform == 'android' &&
+      runtimeFamily == ClientRuntimeFamily.flutter &&
+      const {
+        'arm64',
+        'armeabi-v7a',
+        'x64',
+        'universal',
+      }.contains(architecture) &&
+      const {'update', 'installer'}.contains(packageKind) &&
+      installMode == 'android_package' &&
+      state == 'PUBLISHED';
+
+  bool get isTrustedStoreRelease =>
+      runtimeFamily == ClientRuntimeFamily.flutter &&
+      installMode == 'store' &&
+      state == 'PUBLISHED' &&
+      trustedStoreUri != null;
 
   bool matches(ClientInstallContext context) =>
       packageKind == 'update' &&
       platform == context.platform &&
+      runtimeFamily == context.runtimeFamily &&
       (architecture == context.architecture || architecture == 'universal') &&
       buildNumber > context.currentBuild &&
       state == 'PUBLISHED';
@@ -88,6 +132,7 @@ class ClientInstallContext {
     this.supportsInPlaceUpdate = false,
     this.requiresSystemConfirmation = false,
     this.lastUpdateFailed = false,
+    this.runtimeFamily = ClientRuntimeFamily.flutter,
   });
   factory ClientInstallContext.fromJson(Map<dynamic, dynamic> json) =>
       ClientInstallContext(
@@ -102,11 +147,14 @@ class ClientInstallContext {
           json['lastUpdateResultJson'],
           (json['currentBuild'] as num).toInt(),
         ),
+        runtimeFamily:
+            json['runtimeFamily'] as String? ?? ClientRuntimeFamily.flutter,
       );
   final String platform, architecture, currentVersion, stagingDirectory;
   final int currentBuild;
   final bool supportsInPlaceUpdate, requiresSystemConfirmation;
   final bool lastUpdateFailed;
+  final String runtimeFamily;
 
   static bool _failed(Object? value, int currentBuild) {
     if (value is! String || value.isEmpty) return false;

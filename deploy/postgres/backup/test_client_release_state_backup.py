@@ -16,6 +16,84 @@ ID = "12345678-1234-1234-1234-123456789abc"
 OTHER = "22345678-1234-1234-1234-123456789abc"
 
 
+class ClientRuntimeContractTest(unittest.TestCase):
+    """Metadata-only cases run on Windows as well as the Linux backup host."""
+
+    def release(self, **changes):
+        value = {"platform": "windows", "architecture": "x64", "installMode": "windows_archive"}
+        value.update(changes)
+        return value
+
+    def test_legacy_absent_null_and_explicit_flutter_are_not_rewritten(self):
+        for fields in ({}, {"runtimeFamily": None}, {"runtimeFamily": "flutter"}):
+            for kind in ({}, {"packageKind": None}, {"packageKind": "update"}):
+                with self.subTest(fields=fields, kind=kind):
+                    metadata = self.release(**fields, **kind)
+                    before = json.dumps(metadata, sort_keys=True)
+                    self.assertEqual(("flutter", "update"), client._validate_runtime_contract(metadata))
+                    self.assertEqual(before, json.dumps(metadata, sort_keys=True))
+
+    def test_valid_wpf_targets_and_matching_kinds(self):
+        for architecture in ("x86", "x64"):
+            for mode, kind in (("windows_wpf_setup", "installer"), ("windows_wpf_archive", "update")):
+                with self.subTest(architecture=architecture, mode=mode):
+                    value = self.release(runtimeFamily="wpf_legacy", architecture=architecture, installMode=mode,
+                                         packageKind=kind, fileName="Uten-Win7-Setup.EXE")
+                    self.assertEqual(("wpf_legacy", kind), client._validate_runtime_contract(value))
+    def test_delivery_contract_is_optional_preserved_and_target_bound(self):
+        for contract in (None, "paired_v1"):
+            value = self.release(deliveryContract=contract)
+            before = json.dumps(value, sort_keys=True)
+            self.assertEqual(("flutter", "update"), client._validate_runtime_contract(value))
+            self.assertEqual(before, json.dumps(value, sort_keys=True))
+        android = {"platform": "android", "architecture": "arm64", "installMode": "android_package",
+                   "runtimeFamily": "flutter", "deliveryContract": "audited_v1"}
+        self.assertEqual(("flutter", "update"), client._validate_runtime_contract(android))
+        for fields in ({"deliveryContract": "audited_v1"}, {"deliveryContract": "unknown"},
+                       {"deliveryContract": False}, {"deliveryContract": []},
+                       {"platform": "android", "architecture": "arm64", "installMode": "android_package", "deliveryContract": "paired_v1"}):
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                client._validate_runtime_contract(self.release(**fields))
+
+    def test_malformed_family_mode_architecture_or_platform_is_rejected(self):
+        for field, malformed in (("runtimeFamily", ["", "Flutter", "wpf", False, 1, [], {}]),
+                                 ("architecture", [None, "", "X64", "x86_64", "riscv64", [], {}]),
+                                 ("platform", [None, "", "win7", "web", [], {}]),
+                                 ("installMode", [None, "", "windows_unknown", [], {}])):
+            for value in malformed:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    client._validate_runtime_contract(self.release(**{field: value}))
+
+    def test_runtime_mode_and_target_mismatches_are_rejected(self):
+        invalid = [
+            {"runtimeFamily": "flutter", "installMode": "windows_wpf_archive"},
+            {"runtimeFamily": None, "installMode": "windows_wpf_archive"},
+            {"installMode": "windows_wpf_archive"},
+            {"runtimeFamily": "flutter", "installMode": "windows_wpf_setup", "packageKind": "installer", "fileName": "x.exe"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_archive"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_setup", "packageKind": "installer", "fileName": "x.exe"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_bundle", "packageKind": "installer"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "store"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_archive", "architecture": "arm64"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_archive", "architecture": "universal"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_archive", "platform": "android"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_archive", "packageKind": "installer"},
+            {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_setup", "packageKind": "update"},
+        ]
+        for fields in invalid:
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                client._validate_runtime_contract(self.release(**fields))
+
+    def test_wpf_setup_executable_name_and_legacy_modes_keep_their_contracts(self):
+        for filename in (None, "setup.zip", "../setup.exe", "setup.exe/", "setup\n.exe"):
+            with self.subTest(filename=filename), self.assertRaisesRegex(ValueError, "executable filename"):
+                client._validate_runtime_contract(self.release(runtimeFamily="wpf_legacy", installMode="windows_wpf_setup",
+                    packageKind="installer", fileName=filename))
+        for mode, kind in (("windows_setup", "installer"), ("windows_bundle", "installer"), ("windows_archive", "update")):
+            self.assertEqual(("flutter", kind), client._validate_runtime_contract(
+                self.release(installMode=mode, packageKind=kind, fileName="Setup.exe")))
+
+
 @unittest.skipUnless(os.name == "posix", "the paired host uses Linux POSIX record locks")
 class ClientReleaseStateTest(unittest.TestCase):
     def setUp(self):
@@ -29,11 +107,11 @@ class ClientReleaseStateTest(unittest.TestCase):
         self.target = self.root / "restored"
 
     def release(self, identifier=ID, *, state="PUBLISHED", mode="windows_archive", data=b"real package bytes", uploaded=True,
-                kind=None, filename=None):
+                kind=None, filename=None, runtime="absent", architecture="x64"):
         folder = self.source / identifier
         folder.mkdir(exist_ok=True)
         digest = hashlib.sha256(data).hexdigest() if mode != "store" else None
-        value = {"id": identifier, "platform": "windows", "architecture": "x64", "version": "2.5.28",
+        value = {"id": identifier, "platform": "windows", "architecture": architecture, "version": "2.5.28",
                  "buildNumber": 2528, "state": state, "installMode": mode,
                  "expectedSha256": digest, "sha256": digest if uploaded else None,
                  "sizeBytes": len(data) if uploaded and mode != "store" else 0,
@@ -42,10 +120,88 @@ class ClientReleaseStateTest(unittest.TestCase):
             value["packageKind"] = kind
         if filename is not None:
             value["fileName"] = filename
+        if runtime != "absent":
+            value["runtimeFamily"] = runtime
         if uploaded and mode != "store":
             (folder / "package.bin").write_bytes(data)
         (folder / "release.json").write_text(json.dumps(value), encoding="utf-8")
         return value
+
+    def test_mixed_runtime_pair_backup_preserves_metadata_and_each_binary_exactly(self):
+        fixtures = (
+            (ID, {}, b"legacy flutter update"),
+            (OTHER, {"mode": "windows_setup", "kind": "installer", "filename": "Flutter-Setup.exe", "runtime": None}, b"flutter setup"),
+            ("32345678-1234-1234-1234-123456789abc", {"mode": "windows_bundle", "kind": "installer", "runtime": "flutter"}, b"legacy flutter bundle"),
+            ("42345678-1234-1234-1234-123456789abc", {"mode": "windows_wpf_setup", "kind": "installer", "filename": "WPF-Setup.exe", "runtime": "wpf_legacy", "architecture": "x86"}, b"wpf x86 setup"),
+            ("52345678-1234-1234-1234-123456789abc", {"mode": "windows_wpf_archive", "kind": "update", "runtime": "wpf_legacy", "architecture": "x86"}, b"wpf x86 update"),
+            ("62345678-1234-1234-1234-123456789abc", {"mode": "windows_wpf_setup", "kind": "installer", "filename": "WPF-x64-Setup.exe", "runtime": "wpf_legacy"}, b"wpf x64 setup"),
+            ("72345678-1234-1234-1234-123456789abc", {"mode": "windows_wpf_archive", "kind": "update", "runtime": "wpf_legacy"}, b"wpf x64 update"),
+        )
+        originals = {}
+        for identifier, options, data in fixtures:
+            self.release(identifier, data=data, **options)
+            metadata = self.source / identifier / "release.json"
+            # Noncanonical whitespace and Unicode are audit bytes, not an invitation to normalize.
+            metadata.write_bytes(json.dumps(json.loads(metadata.read_bytes()), ensure_ascii=False, indent=3).encode("utf-8") + b"\n")
+            originals[identifier] = {"release.json": metadata.read_bytes(), "package.bin": data}
+        work, summary = self.make_pair(seed=False)
+        target = self.root / "mixed-runtime-media"
+        target.mkdir()
+        report = paired.restore_client_release_states(work, target)
+        self.assertEqual((7, 14), (report["internal"]["releases"], report["internal"]["files"]))
+        for identifier, files in originals.items():
+            for name, original in files.items():
+                self.assertEqual(original, (target / "client-releases" / identifier / name).read_bytes())
+        self.assertEqual(summary, paired.verify_set(work))
+
+    def test_withdrawn_wpf_tombstones_do_not_restore_leftover_binaries(self):
+        originals = {}
+        for identifier, mode, kind in ((ID, "windows_wpf_setup", "installer"), (OTHER, "windows_wpf_archive", "update")):
+            self.release(identifier, mode=mode, kind=kind, filename="WPF-Setup.exe", runtime="wpf_legacy")
+            metadata = self.source / identifier / "release.json"
+            value = json.loads(metadata.read_bytes())
+            value.update(state="WITHDRAWN", sha256=None, sizeBytes=0)
+            metadata.write_bytes(json.dumps(value, indent=2).encode("utf-8"))
+            originals[identifier] = metadata.read_bytes()
+        summary = client.export_client_releases(self.source, self.destination)
+        self.assertEqual((2, 2), (summary["releases"], summary["files"]))
+        client.restore_client_releases(self.destination, self.target)
+        for identifier, raw in originals.items():
+            self.assertEqual(raw, (self.target / identifier / "release.json").read_bytes())
+            self.assertFalse((self.target / identifier / "package.bin").exists())
+
+    def test_invalid_runtime_metadata_never_publishes_a_backup(self):
+        for fields in ({"runtimeFamily": []}, {"runtimeFamily": "wpf_legacy"},
+                       {"runtimeFamily": "wpf_legacy", "installMode": "windows_wpf_archive", "architecture": "arm64"},
+                       {"runtimeFamily": "flutter", "installMode": "windows_wpf_archive"}):
+            with self.subTest(fields=fields):
+                self.release(state="WITHDRAWN", uploaded=False)
+                metadata = self.source / ID / "release.json"
+                value = json.loads(metadata.read_bytes())
+                value.update(fields)
+                metadata.write_text(json.dumps(value), encoding="utf-8")
+                with self.assertRaises(ValueError):
+                    client.export_client_releases(self.source, self.destination)
+                self.assertFalse(self.destination.exists())
+                self.assertEqual([], list(self.root.glob(".market-state-*")))
+
+    def test_self_consistent_manifest_cannot_hide_runtime_mismatch_on_restore(self):
+        self.release(mode="windows_wpf_archive", kind="update", runtime="wpf_legacy")
+        client.export_client_releases(self.source, self.destination)
+        metadata = self.destination / ID / "release.json"
+        value = json.loads(metadata.read_bytes())
+        value["runtimeFamily"] = "flutter"
+        raw = json.dumps(value).encode("utf-8")
+        metadata.write_bytes(raw)
+        manifest_path = self.destination / client.MANIFEST
+        manifest = json.loads(manifest_path.read_bytes())
+        record = next(row for row in manifest["records"] if row["path"] == ID + "/release.json")
+        manifest["bytes"] += len(raw) - record["size"]
+        record.update(size=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            client.restore_client_releases(self.destination, self.target)
+        self.assertFalse(self.target.exists())
 
     def test_committed_package_and_metadata_round_trip_and_ignore_upload_work(self):
         self.release()

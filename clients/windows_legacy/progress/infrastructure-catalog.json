@@ -1,0 +1,3522 @@
+{
+  "schemaVersion": 1,
+  "baselineDate": "2026-10-28",
+  "taskUnit": "工作包，非页面数、工时或等权风险",
+  "groups": [
+    {
+      "id": "GOV",
+      "title": "范围、进度与治理",
+      "phase": "A"
+    },
+    {
+      "id": "ENV",
+      "title": "原生环境与可重复构建",
+      "phase": "A"
+    },
+    {
+      "id": "CORE",
+      "title": "公共客户端与业务安全",
+      "phase": "B"
+    },
+    {
+      "id": "UI",
+      "title": "Uten同源界面与交互",
+      "phase": "C"
+    },
+    {
+      "id": "SHELL",
+      "title": "原生外壳与通用入口",
+      "phase": "C"
+    },
+    {
+      "id": "INS",
+      "title": "安装与运行条件",
+      "phase": "F"
+    },
+    {
+      "id": "UPD",
+      "title": "本机更新与恢复",
+      "phase": "F"
+    },
+    {
+      "id": "PKG",
+      "title": "构建产物与可追溯打包",
+      "phase": "G"
+    },
+    {
+      "id": "DIST",
+      "title": "后端与各端Windows分发",
+      "phase": "G"
+    },
+    {
+      "id": "BACKUP",
+      "title": "混合运行时备份与恢复",
+      "phase": "G"
+    },
+    {
+      "id": "ARCH",
+      "title": "目标机与平台兼容",
+      "phase": "H"
+    },
+    {
+      "id": "REG",
+      "title": "回归与质量门",
+      "phase": "H"
+    },
+    {
+      "id": "HANDOFF",
+      "title": "最终交接与完成审查",
+      "phase": "H"
+    },
+    {
+      "id": "FLOW",
+      "title": "跨模块完整业务闭环",
+      "phase": "E"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "W7-GOV-001",
+      "title": "独立分支与禁止合并/部署约束",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "done",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "确认分支、工作区、main未被本任务切换；记录用户不合并主链和不部署限制。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-002",
+      "title": "完整页面/路由/动作来源盘点",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "in_progress",
+      "impactArea": "documentation",
+      "owner": "Codex",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "214页/34模块及路由分类有行号、SHA和明确的静态解析边界；退役与员工访客功能分开。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-003",
+      "title": "冻结完整工作包及阶段依赖",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "in_progress",
+      "impactArea": "documentation",
+      "owner": "Codex",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "页面、公共能力、业务闭环、双架构、交付均有稳定ID和DoD；总数由登记表计算。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-004",
+      "title": "进度更新、证据门及生成器",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "in_progress",
+      "impactArea": "documentation",
+      "owner": "Codex",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "新增/更新/勾选能校验依赖与证据；生成摘要/逐项表；不得手改复选框或静默删任务。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-005",
+      "title": "退役、别名、内嵌入口人工定界",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "逐项核对redirect/builder/调用方；N/A有来源和理由，不能把保留代码直接迁或直接删。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-006",
+      "title": "逐动作前后端契约审计",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "每个写动作核实真实DTO、权限、版本/幂等/回执；缺合同先设计增量，不能假定通用HTTP键。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-007",
+      "title": "可构建源码快照及提交链",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "todo",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "阶段源码、锁文件和生成物一致，提交明确；不混入测试包、日志、并行主树改动或凭据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-GOV-008",
+      "title": "接手续作与变更台账",
+      "group": "GOV",
+      "groupLabel": "范围、进度与治理",
+      "phase": "A",
+      "status": "in_progress",
+      "impactArea": "documentation",
+      "owner": "Codex",
+      "sources": [
+        "AGENTS.md",
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [],
+      "definitionOfDone": [
+        "接手人有分支、环境、失败命令、剩余阻断、优先ID和每次状态变化记录。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-001",
+      "title": "net48/C#7.3双架构项目",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "Core/Desktop/Tests/Updater按正确目标编译；区分AnyCPU库与明确x86/x64入口。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-002",
+      "title": "任务私有依赖锁及许可",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "BC固定版本、包SHA512、文件SHA256、实际加载库检查、MIT许可及无全局缓存修改。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-003",
+      "title": "同源版本与构建号",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "主/Core/Updater版本资源从pubspec唯一来源生成；BC保持自身版本；不得改低现有SDK版本。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-004",
+      "title": "共享SDK和现用版本隔离",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "done",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "记录SDK/主工作树只读边界，禁止降级或替换现用Win10安装/数据/更新器。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-005",
+      "title": "Release/Company身份门",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "PE marker、干净源码、构建前后输入/产物receipt一致；拒Debug/LocalTest/Unreviewed冒充。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ENV-006",
+      "title": "一键原生验证与失败可重现",
+      "group": "ENV",
+      "groupLabel": "原生环境与可重复构建",
+      "phase": "A",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/BuildVersion.targets",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-001"
+      ],
+      "definitionOfDone": [
+        "统一命令编译/执行双架构合同检查，错误退出码准确、产物隔离，含Updater和下载实际集成。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-001",
+      "title": "服务器配置和来源绑定",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "只允许审核HTTPS /api；切服失败UI与真实传输来源一致，密码和令牌不跨源。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-002",
+      "title": "托管TLS及公司CA",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "Win7不依赖缺失Schannel套件；固定CA、SAN/EKU/时间/链、RSA-GCM真实本机握手及错证拒绝。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-003",
+      "title": "统一有界HTTP传输",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "唯一framing reader；CL/TE、重复头、chunk/trailer、压缩/解压、连接/超时/取消均有界。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-004",
+      "title": "员工登录和初始OTP",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "与现有登录DTO一致，错误/锁定/MFA挑战/账户切换不串状态，不记录凭据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-005",
+      "title": "恢复会话和持久来源",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "DPAPI独立profile，恢复仅向原审核issuer；损坏、fence或不同端点不复活旧账号。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-006",
+      "title": "刷新单飞及晚到认证响应",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "普通刷新不换业务owner；页面取消不终止已开始的共享刷新；成功头交接后晚token有回收。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-007",
+      "title": "注销与待撤销队列",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "离线/存储失败先退役内存、恢复fence、原issuer无Bearer撤销；不能注销新会话。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-008",
+      "title": "数据集/权限/读范围栅栏",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "opaque proof、乱序/头体冲突/身份隔离；读revision独立于认证，403退役旧数据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-009",
+      "title": "强制改密和认证意图",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "改密不自动重放，旧结果不能覆盖新意图，首次改密前不能进工作区。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-010",
+      "title": "精确JSON与数值契约",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "所有业务数字保留精度/尾零/未知，建立跨语言样例；不能仅依赖货品私有parser。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-011",
+      "title": "通用业务提交入口",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "动作配置表达真实method/path/body/version/idempotency/回执；写不自动重放，身份校验和并发策略统一。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-012",
+      "title": "敏感操作再认证与后续MFA",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "X-Uten-Step-Up绑定同一用户/issuer/会话，空闲5分钟失效、连续操作按服务端校验续期并可复用；原冻结请求的受控继续至多一次不等于token单次消费；MFA未知写不自动重放。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-013",
+      "title": "草稿持久化与恢复",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "绑定用户/issuer/dataset/实体/版本；取消、切页、断网、重启和升级不丢输入或串他人草稿。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-014",
+      "title": "未知提交和命令回执核对",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "逐动作接真实receipt/查询；未知不得报失败后盲目重提，未提供回执的动作明确保守恢复。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-015",
+      "title": "公共分页/筛选/排序/facets",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "状态/空值/范围/序号完整，切筛选取消旧读、保留壳，不截断全量或错误本地重排。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-016",
+      "title": "附件上传与原件生命周期",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "multipart、SHA/来源、取消/重试/未知完成、权限及预览原件边界一致；不丢原字节。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-017",
+      "title": "有界流式软件包保存",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "512MiB独立sink、长度/哈希/来源校验、身份取消、原子final、只清自己的temp且内存有界。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-018",
+      "title": "加密导出及报告任务",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "POST密码仅body，过滤/列投影/权限一致，下载绑定上下文、流式/完整性和未知结果处理。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-019",
+      "title": "PDF预览和原生打印",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "字体/分页/纸张/选中范围与完整快照，打印取消和重复点击；x86/x64 provider均可用。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-020",
+      "title": "会话快照与委派/单据能力",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "消费auth/me.session、权限范围和allowedActions，不能仅靠全局permissions推断写能力。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-021",
+      "title": "设备审计与原生上下文",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "设备身份/平台/OS信息来源真实，审计不承载伪造安全边界，不发送额外敏感数据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-022",
+      "title": "偏好、账号/服务器历史与语言",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "lib/core/network/api_client.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001"
+      ],
+      "definitionOfDone": [
+        "独立profile；保留现有选择/重开行为、多语言及公司品牌配置，不复用Flutter凭据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-001",
+      "title": "设计tokens生成与漂移门",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "圆角/间距/配色/字号/控件几何取owning Dart源，有provenance，手改或源变化会失败。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-002",
+      "title": "窗口与真实圆角裁切",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "控件10/表格12/卡16/对话框20按角色；子内容真裁切、Win7 GDI区域、无句柄泄漏。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-003",
+      "title": "表单/密码/下拉/校验控件",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "尺寸和字段提示一致，显示名称不泄露类型名、无双padding，IME/焦点/禁用和验证可用。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-004",
+      "title": "公共表格完整交互",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "自然行高、表头/单元格角色、虚拟化、列宽/排序/筛选/多选/快捷键、状态保存。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-005",
+      "title": "公共层级树及选择器",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "UUID关系、层级指引、懒加载/展开/同级Ctrl切换、选中保留和弹层行为一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-006",
+      "title": "对话框/详情/浮层导航",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "统一20/16/12角色，取消/返回/焦点/二次操作保护，窗口和详情页一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-007",
+      "title": "状态/数量/来源呈现",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "逐模块显式状态映射，文字与底色配套，未知与零分开，不按文案猜业务状态色。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-008",
+      "title": "缩放/DPI/字体/低分辨率",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "100/125/150%及系统/应用缩放，caption独立几何、老GPU/低内存不裁切或卡住。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-009",
+      "title": "键盘/鼠标/复制/可访问性",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "Tab/Enter/Escape/快捷键/右键/选择和工具提示，与当前有效组件行为对照。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-010",
+      "title": "路由/深链/返回与标签生命周期",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "参数/returnTo/来源恢复、多个实体实例、保留输入及权限退役，不统一导航到占位页。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-011",
+      "title": "主题/公司品牌与语言",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "浅/深色、公司覆盖、字体fallback和中英韩等现役语言逐项对照。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UI-012",
+      "title": "跨版本视觉与交互对照",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/theme/uten_tokens.dart",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-GOV-002"
+      ],
+      "definitionOfDone": [
+        "相同数据/权限/窗口尺度对照Flutter与WPF；保存截图、操作路径和差异结论。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-001",
+      "title": "登录及强制改密原生外壳",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "品牌45:55、窗口按钮、输入/OTP/改密，前后端错误与重开状态。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-002",
+      "title": "完整工作台权限模块导航",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "现有所有有效模块/徽章/分组/待办链接有真实能力，不能只展示货品两个按钮。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-003",
+      "title": "个人中心与偏好入口",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "员工自身档案/申请/文件/工资等来源正确，权限与生命周期一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-004",
+      "title": "通知及跨模块待办定位",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "未读/已读/广播/来源单据，定位参数正确、不落未迁页面或丢业务上下文。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-005",
+      "title": "Windows下载原生入口",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "当前family/真实OS位数、已发布包筛选、保存验证、旧defaultFlutter不混用。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-006",
+      "title": "本机检查更新与草稿退出门",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "只查自身legacy+进程arch，更高build，编辑/下载未结束不退出，不强杀业务进程。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-SHELL-007",
+      "title": "全局错误/离线/重连体验",
+      "group": "SHELL",
+      "groupLabel": "原生外壳与通用入口",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lib/core/router/app_router.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-004",
+        "W7-UI-001"
+      ],
+      "definitionOfDone": [
+        "错误分层、退避/只读重试、未知写不重放，保留用户输入与表格壳。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-001",
+      "title": "目标OS/SP/架构识别",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "Win7SP1 x86/x64，Win8.1范围明示；拒ARM/Server/Win8.0/未审核OS，准确理由。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-002",
+      "title": ".NET4.8检测与前置条件",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "正确HKLM视图/Release阈值、未装运行时路径；不静默改共享环境。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-003",
+      "title": "两架构payload同源绑定",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "同一版本/commit，两份真实PE/CLR与依赖一致，不能仅看目录名。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-004",
+      "title": "bootstrap专用安装与保护",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "in_progress",
+      "impactArea": "delivery",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "安装固定client_updater EXE/config，和Update ZIP分离且不可被ZIP替换。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-005",
+      "title": "独立安装/profile/快捷方式",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "AppId/目录/凭据/命名隔离，/DIR及链接不能覆盖现用Win10或别的用户文件。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-006",
+      "title": "真实编译向导与安装重装",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "验证Inno源码和实际向导、首次安装/覆盖/卸载、权限和路径，不是只测策略函数。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-007",
+      "title": "安装失败/中断/旧版保全",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "任意组件失败保留现有安装和业务数据，重试/恢复可重复，无盲目全盘清理。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-INS-008",
+      "title": "Win7两架构安装验收",
+      "group": "INS",
+      "groupLabel": "安装与运行条件",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/installer/windows_wpf_installer.iss"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-ENV-003"
+      ],
+      "definitionOfDone": [
+        "真正Win7 SP1 x86及x64干净/常用环境，分别记录安装、启动、重装和卸载证据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-001",
+      "title": "legacy更新元数据检查",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "家族/当前进程arch/build/mode/显式PUBLISHED和SHA/size严格，不接Flutter包。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-002",
+      "title": "有界包下载和取消保旧",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "复用CORE-017，不在RAM整包、错误不破坏旧final，令牌不跟随外链。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-003",
+      "title": "指令目录/父进程/ready握手",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "私有GUID job，schema/PID/starttime/exe锚定，完整预检后ready才正常退出。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-004",
+      "title": "ZIP/manifest/PE完整预检",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "固定6文件、显式update/family/arch、SHA/size/version、路径/ADS/大小写/zipbomb、拒降级。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-005",
+      "title": "更新单写锁与并发外改",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "排他句柄/锁，失败不覆盖并发更改，不允许两个helper同时写同一安装。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-006",
+      "title": "备份/日志/回滚可恢复",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "逐批准文件备份、故障恢复/未知状态证据；不宣称断电事务，不盲目重启半更新。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-007",
+      "title": "取消/窗口关闭不误应用",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "任何UI取消/账号变化/超时写cancel协议，helper不能等父稍后关闭就继续偷偷安装。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-008",
+      "title": "整体bootstrap/测试接入",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "RootTests真正引用Updater并执行；build脚本部署helper；与同一个producer ZIP集成核验。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-009",
+      "title": "重启后版本/profile核对",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "成功重启锚定main，版本和六文件一致、凭据/草稿保全，失败显示真实恢复路径。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-UPD-010",
+      "title": "Win7 x86/x64真实更新矩阵",
+      "group": "UPD",
+      "groupLabel": "本机更新与恢复",
+      "phase": "F",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-017",
+        "W7-INS-004"
+      ],
+      "definitionOfDone": [
+        "正常、取消、坏包、权限不足、磁盘/断电/进程占用、外改和回滚分别目标机验收。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-001",
+      "title": "六文件候选ZIP生产器",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "fixed family/platform/arch/version/显式kind和全文件哈希，与server/updater同一合同。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-002",
+      "title": "源码/配置/产物receipt",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "干净commit、构建前后源码hash、批准Company配置原字节、六输出hash及marker，防混包。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-003",
+      "title": "Company与Debug/LocalTest门",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "PE Comments严格Release/Company，不靠目录名；BC独立版本pin，非法输入failclosed。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-004",
+      "title": "完整Setup构建器",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "同源双payload+bootstrap、经审核编译器、外层身份/版本校验，不能只交ZIP或脚本。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-005",
+      "title": "冻结/二次校验/原子输出",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "候选生成时冻结输入与重验，故障/并发保持原输出，不把临时包留作正式包。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-006",
+      "title": "各支持组合双包配对",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "每个runtime+arch都列版本/commit/哈希/大小/说明与安装/更新相配；未验收不能算交付。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-007",
+      "title": "签名/信誉/许可与来源",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "in_progress",
+      "impactArea": "delivery",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "第三方license、签名条件和工具来源真实；无证书不能写已签名/消除SmartScreen。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-PKG-008",
+      "title": "候选与正式输出/清理隔离",
+      "group": "PKG",
+      "groupLabel": "构建产物与可追溯打包",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/tools/package_wpf.py",
+        "clients/windows_legacy/tools/build_windows_wpf.ps1"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-003",
+        "W7-ENV-005"
+      ],
+      "definitionOfDone": [
+        "LocalTest/候选/正式单独命名目录，禁止上传localhost/debug；无授权不发布。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-001",
+      "title": "runtimeFamily模型向后兼容",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "旧缺/null默认flutter，新legacy仅合法platform/arch；旧构造/旧API不破。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-002",
+      "title": "版本推荐和查询隔离",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "defaultFlutter不变；legacy显式query，严格family/arch/build，下载拒错family。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-003",
+      "title": "上传包模式与结构检查",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "WPF独立setup/archive、PE/CLR/六文件/版本/ReleaseCompany；不执行上传程序集。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-004",
+      "title": "幂等/构建号/发布完整组",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "按platform+family+arch隔离草稿意图、单调和双包配对，不跨版本误匹配。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-005",
+      "title": "清理/撤回/保旧边界",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "仅新完整组成功后清本组旧二进制；失败保旧，不能清Win10/其他架构/业务数据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-006",
+      "title": "Flutter Windows下载/发布适配",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "版本+架构圆角控件、真实已发布包、无包无按钮，普通自动更新字段/行为保持。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-007",
+      "title": "WPF Windows下载/更新适配",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "和Flutter共用新契约，真实保存/核验及helper而非链接回Web；状态和权限正确。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-008",
+      "title": "权限/错误/多运行时端到端",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "真实接口层、权限/角色、错误/取消、下载两链路、publisher再认证、无跨源/跨family。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-DIST-009",
+      "title": "现网部署及兼容回滚门",
+      "group": "DIST",
+      "groupLabel": "后端与各端Windows分发",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "lib/features/client_update/software_downloads_page.dart"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "新service+backup helper成组；旧JAR不能对混合catalog发布/清理；当前不得擅自部署。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-BACKUP-001",
+      "title": "历史/新family元数据合同",
+      "group": "BACKUP",
+      "groupLabel": "混合运行时备份与恢复",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "backend",
+      "owner": "待认领",
+      "sources": [
+        "deploy/postgres/backup/client_release_state_backup.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-DIST-001"
+      ],
+      "definitionOfDone": [
+        "旧缺/null解释flutter，WPF mode/kind/arch严格，原metadata bytes不重写。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-BACKUP-002",
+      "title": "双运行时包字节冷恢复",
+      "group": "BACKUP",
+      "groupLabel": "混合运行时备份与恢复",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "deploy/postgres/backup/client_release_state_backup.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-DIST-001"
+      ],
+      "definitionOfDone": [
+        "两arch双包/历史记录导出核验恢复原字节、SHA与审计身份一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-BACKUP-003",
+      "title": "withdrawn/tombstone不复活",
+      "group": "BACKUP",
+      "groupLabel": "混合运行时备份与恢复",
+      "phase": "G",
+      "status": "implemented",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "deploy/postgres/backup/client_release_state_backup.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-DIST-001"
+      ],
+      "definitionOfDone": [
+        "sha=null/size0及残留字节规则正确，旧记录保留且不给已清理包下载。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-BACKUP-004",
+      "title": "锁/并发/已有目录拒绝",
+      "group": "BACKUP",
+      "groupLabel": "混合运行时备份与恢复",
+      "phase": "G",
+      "status": "in_progress",
+      "impactArea": "delivery",
+      "owner": "Codex",
+      "sources": [
+        "deploy/postgres/backup/client_release_state_backup.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-DIST-001"
+      ],
+      "definitionOfDone": [
+        "真实POSIX+JavaFileChannel互锁、恢复仅新空目录、活动上传/备份不互毁。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-BACKUP-005",
+      "title": "现场备份恢复与回滚回执",
+      "group": "BACKUP",
+      "groupLabel": "混合运行时备份与恢复",
+      "phase": "G",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "deploy/postgres/backup/client_release_state_backup.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-DIST-001"
+      ],
+      "definitionOfDone": [
+        "配套集合/目录/版本/权限/锁和下载实测；无现场回执不报部署成功。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-001",
+      "title": "当前源码x86完整本机套件",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "delivery",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "显式PE32/32BITREQUIRED、Core/UI/download/updater完整runner，不以孤立harness替代。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-002",
+      "title": "当前源码x64完整本机套件",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "delivery",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "显式PE32+、全部公共/业务/安装更新测试，和x86同一输入源码。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-003",
+      "title": "Win7 x86运行环境实测",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "SP1/NET4.8/补丁/CPU/RAM/GPU/DPI/TLS/打印真实记录与启动运行。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-004",
+      "title": "Win7 x64运行环境实测",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "与x86独立记录，不能以Win11运行x64/32兼容进程当Win7验收。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-005",
+      "title": "Win8.1适用范围验证",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "只有宣称支持的组合测试、NET和TLS/UI行为；不顺带宣称Win8.0或ARM。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-006",
+      "title": "长时间/低内存/旧GPU响应性",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "大表/树/批量/附件/后台恢复，观察帧/内存/句柄，不能用截断业务降负载。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-007",
+      "title": "DPI/IME/多屏/输入设备",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "100/125/150%、中文输入、键盘/鼠标/焦点和窗口切换，保留输入。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-ARCH-008",
+      "title": "外网/VPN/证书/断网组合",
+      "group": "ARCH",
+      "groupLabel": "目标机与平台兼容",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "clients/windows_legacy/installer/wpf_install_policy.py"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-ENV-006"
+      ],
+      "definitionOfDone": [
+        "审核端点、TLS/CA/主机名/MFA及错误拒绝；不降低现网cipher或跟随坏证书传密码。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-001",
+      "title": "原有Flutter客户端更新回归",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "frontend",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "当前Win10路径、默认请求/双包/权限/切服/下载保全；新字段不改变旧行为。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-002",
+      "title": "发布后端既有+新隔离回归",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "backend",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "当前源码完整clientupdates检查/服务/保留/流程测试，不用旧classes冒充。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-003",
+      "title": "混合备份跨环境回归",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "backend",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "Windows与POSIX覆盖区别、Java互锁缺口单独列出，不能把skip写pass。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-004",
+      "title": "现有业务后端未改变证明",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "业务计算/事务/权限不因client分发改动变化；必要契约增量同步各客户端样例。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-005",
+      "title": "全页面视觉/交互与语言对照",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "全部适用页和对话框/状态/品牌，不只登录截图；差异有结论。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-006",
+      "title": "跨模块链回归及数据账核对",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "按FLOW任务真实测试数据闭环，数量/金额/归属/回执可追溯。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-007",
+      "title": "静态检查/构建/漂移全门",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "shared",
+      "owner": "Codex",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "C#/Dart/Java/Python当前输入构建+分析，token/coverage/依赖/receipt均不过期。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-REG-008",
+      "title": "错误/取消/重启/并发系统矩阵",
+      "group": "REG",
+      "groupLabel": "回归与质量门",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "test/features/client_update"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-006"
+      ],
+      "definitionOfDone": [
+        "每种动作处理方式有样例与证据，未知写不盲重试，身份退役不串数据。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-001",
+      "title": "逐任务证据和当前源码绑定",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "in_progress",
+      "impactArea": "documentation",
+      "owner": "Codex",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "每项完成都有命令/环境/结果/源码指纹/限制，日志可重跑，不只口头。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-002",
+      "title": "全功能/双架构验收清单关闭",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "适用任务DoD与目标机证据全闭合；N/A有证据，不能缩小范围伪完成。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-003",
+      "title": "正式支持组合与双包清单",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "delivery",
+      "owner": "待认领",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "列全部platform/family/arch的源码/版本/build/哈希/签名/验收状态。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-004",
+      "title": "残余风险与恢复手册",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "所有限制、回滚及恢复操作、需外部条件可执行；不把candidate说正式。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-005",
+      "title": "可续作源码提交与环境说明",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "接手人能从准确commit还原环境/锁/生成物/构建测试，保留未解决项。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-HANDOFF-006",
+      "title": "保持独立分支不合主链",
+      "group": "HANDOFF",
+      "groupLabel": "最终交接与完成审查",
+      "phase": "H",
+      "status": "todo",
+      "impactArea": "documentation",
+      "owner": "待认领",
+      "sources": [
+        "docs/99-项目治理/Win7兼容版/00-总实施计划与交接入口.md"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-GOV-004"
+      ],
+      "definitionOfDone": [
+        "完成审查后仍不merge main、不擅自push发布/部署，等待用户后续明确指示。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-001",
+      "title": "基础资料新增→编辑→状态→引用",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "真实UUID/字段保留、作用范围/权限、历史、批量/导出打印，至少一完整可写模块先闭合。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-002",
+      "title": "采购需求→订货→审批→到货→库存",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "来源/单位/币种/差异量、允许动作、版本和财务/仓储核对一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-003",
+      "title": "委外申请→下单→领料→回厂→结算",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "分批/直接材料/按工序/归属/退回/差异和撤回路径按真实合同。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-004",
+      "title": "生产分析→BOM→任务→领料→报工",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "精度/替代/齐套/库存归属/分配/超领/回执，不在客户端重算权威。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-005",
+      "title": "仓库预计→到货→质检→入库→领用",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "超量隔离、先入库后质检、库位/叶仓、批量和恢复身份正确。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-006",
+      "title": "库存盘点→复核→调整→台账",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "快照/历史/单位、审核版本、未知提交与账实对应。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-007",
+      "title": "财务采购审批→支付/对账",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "共享任务、expectedVersion/claim等真实字段、币种税率/汇率和权限边界。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-008",
+      "title": "销售报价→核价→订单→财务确认",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "退回/改价/确认/撤销，来源与版本/claim、输出单据一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-009",
+      "title": "品质检查→判定→处置→回流",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "检验单/批次/记录、补料/返工/退回、allowedActions及原件。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-010",
+      "title": "HR档案→修改申请→审核→账号生命周期",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "组织/员工/岗位/移交/禁用、别名历史、不可重做既有数据修复。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-011",
+      "title": "权限/模板/数据范围→读写/导出",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "委派/模拟只读、撤权退役、角色/部门/多人归属与审计，不能只看按钮。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-012",
+      "title": "报销→附件→审批→支付",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "原附件/金额/发票/组织范围、草稿及未知提交，拒绝/撤回一致。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-013",
+      "title": "工资条/成本/费用敏感读取",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "财务遮罩/授权/审计/导出和密码，数据不能跨身份缓存。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-014",
+      "title": "通知/建议/询盘→办理→回执",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "来源深链、发布/阅读/处理权限、附件/历史，不落空占位页。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-015",
+      "title": "访客员工审批→被访→保安办理",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "保留员工功能，门户退役另分类；扫码/手工/黑名单权限与流程。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-016",
+      "title": "公司文件→授权→版本/原件",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "上传下载/目录/权限/历史/并发/取消/原件字节及更新不删附件。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-017",
+      "title": "业务导出/打印完整性闭环",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "筛选与列投影、密码、完整快照、大文件/真实打印、取消/重复/权限撤销。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-FLOW-018",
+      "title": "编辑中切服/注销/断网/重启/升级",
+      "group": "FLOW",
+      "groupLabel": "跨模块完整业务闭环",
+      "phase": "E",
+      "status": "todo",
+      "impactArea": "shared",
+      "owner": "待认领",
+      "sources": [
+        "lib/core/router/route_names.dart",
+        "server/src/main/java/com/uten/imp/features"
+      ],
+      "nativeTargets": [],
+      "dependencies": [
+        "W7-CORE-011",
+        "W7-CORE-012",
+        "W7-CORE-013",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "跨模块草稿/owner/版本/回执保全，不能丢输入或让旧响应复活。",
+        "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
+      ],
+      "evidence": [],
+      "notes": "",
+      "lastUpdated": "2026-10-28"
+    }
+  ]
+}

@@ -314,6 +314,40 @@ void main() {
     },
   );
 
+  test(
+    'optional persisted request proof keeps existing job consumers compatible',
+    () {
+      const id = '44444444-4444-4444-4444-444444444444';
+      final job = ReportExportJob.fromJson({
+        'id': id,
+        'domain': 'master',
+        'report': 'unit',
+        'format': 'xlsx',
+        'status': 'SUCCEEDED',
+        'cancelRequested': false,
+        'rows': 12,
+        'bytes': 4096,
+        'request': {
+          'id': id,
+          'domain': 'master',
+          'report': 'unit',
+          'format': 'xlsx',
+          'parameters': {'filter': '{"keyword":"M&1","nullFields":["name"]}'},
+          'sort': null,
+          'order': null,
+          'columnProjection': null,
+        },
+      });
+      expect(job.id, id);
+      expect(job.domain, 'master');
+      expect(job.report, 'unit');
+      expect(job.status, 'SUCCEEDED');
+      expect(job.rows, 12);
+      expect(job.bytes, 4096);
+      expect(job.cancelRequested, isFalse);
+    },
+  );
+
   const masterEndpoints = {
     '/master/goods/export': 'goods',
     '/master/clients/export': 'client',

@@ -382,8 +382,9 @@ def allowed_skip(case, method, runtime_platform=None):
     # The WPF package inspector and runtime-family tests read a pinned private
     # BouncyCastle fixture that lives outside the repository; by design CI either
     # provides it via -Duten.wpf.dependencyFixtureRoot or every fixture-backed
-    # case reports this skip. The reason text is unique to WindowsWpfFixture.
-    if reason.startswith("Pinned private WPF dependency fixture is unavailable: "):
+    # case reports this skip. The reason text is unique to WindowsWpfFixture and
+    # arrives wrapped in the JUnit assumption preamble, so match by containment.
+    if "Pinned private WPF dependency fixture is unavailable: " in reason:
         return True
     if method["id"] == WORKBOOK_REVIEW:
         return (method.get("system_property_gates") == [{"named": WORKBOOK_PROPERTY, "matches": ".+"}]

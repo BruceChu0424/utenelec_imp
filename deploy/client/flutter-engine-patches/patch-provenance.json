@@ -1,0 +1,22 @@
+{
+  "engineRevision": "77e2e94772b6eb43759e34ed1ad7da4674e19cab",
+  "dartRevision": "d684a576a6aa954ae107a03b2b4e1d61c3bebe93",
+  "runtimePatch": "flutter-3.44.2-safe-accessibility-tree.patch",
+  "portablePatchSha256": "8f9150a212cecf5899fce6139b92d1f3a92a5efe5a940af1c4e2f34a98af9882",
+  "originalBuildPatchSha256": "1145eed9991f8aaa11e868362d1736d3f96f0768630a6b70ecaa0ccbb70a4f7b",
+  "sameBeforeAfterGitBlobIds": true,
+  "reverseApplyCheckAgainstBuiltSource": true,
+  "format": "LF unified diff with zero context; git apply --unidiff-zero",
+  "buildAdaptations": [
+    {
+      "patch": "windows-sdk-version-override.patch",
+      "sha256": "682be19c2107652e4efa5aded87c80a8f83af707a95759b0615e3c958ff567f1",
+      "scope": "build tooling only"
+    },
+    {
+      "patch": "dart-clang-cl-frame-pointer.patch",
+      "sha256": "ebc410670e64e8bd02ced9301ab42d0aade03f424835aa4059e7ff96caeb8a74",
+      "scope": "build tooling only"
+    }
+  ]
+}

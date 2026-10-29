@@ -1,0 +1,8 @@
+diff --git a/engine/src/build/toolchain/win/setup_toolchain.py b/engine/src/build/toolchain/win/setup_toolchain.py
+index 521c24398ef..2056976fa2f 100644
+--- a/engine/src/build/toolchain/win/setup_toolchain.py
++++ b/engine/src/build/toolchain/win/setup_toolchain.py
+@@ -25 +25,2 @@ SCRIPT_DIR = os.path.dirname(__file__)
+-SDK_VERSION = '10.0.22621.0'
++# Task-local build environment override. Keep the upstream default unchanged.
++SDK_VERSION = os.environ.get('UTEN_ENGINE_WINDOWS_SDK_VERSION', '10.0.22621.0')

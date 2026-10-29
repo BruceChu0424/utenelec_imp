@@ -33,7 +33,8 @@ public class ClientPackageInspector {
     public ClientPackageInspector(ObjectMapper mapper) { this.mapper = mapper; }
 
     void inspect(Path file, ClientReleaseDto.Release release) throws IOException {
-        if ("windows_setup".equals(release.installMode())) {
+        ClientRuntimeFamily.requireMode(release);
+        if (ClientRuntimeFamily.setupMode(release.runtimeFamily()).equals(release.installMode())) {
             WindowsSetupInspector.inspect(file, release);
             return;
         }
@@ -78,10 +79,13 @@ public class ClientPackageInspector {
     private void inspectWindows(ZipFile zip, Map<String, ZipArchiveEntry> files, ClientReleaseDto.Release release)
             throws IOException {
         boolean installer = "installer".equals(release.packageKind());
-        if (!files.keySet().containsAll(Set.of("uten_imp.exe", "flutter_windows.dll", "data/app.so",
+        boolean wpf = ClientRuntimeFamily.WPF_LEGACY.equals(release.runtimeFamily());
+        if (wpf && (!files.keySet().containsAll(WindowsWpfPackageInspector.REQUIRED) || !files.containsKey(MANIFEST)))
+            throw invalid("WPF 更新包缺少原生程序、托管库、许可、正式连接配置或版本清单");
+        if (!wpf && (!files.keySet().containsAll(Set.of("uten_imp.exe", "flutter_windows.dll", "data/app.so",
                 "data/icudtl.dat", MANIFEST)) || files.keySet().stream().noneMatch(name -> name.startsWith("data/flutter_assets/")))
-            throw invalid("Windows 更新包缺少程序、Flutter 运行库、资源或版本清单");
-        if (installer && (!files.containsKey(UPDATER) || files.get(UPDATER).getSize() <= 0))
+            ) throw invalid("Windows 更新包缺少程序、Flutter 运行库、资源或版本清单");
+        if (!wpf && installer && (!files.containsKey(UPDATER) || files.get(UPDATER).getSize() <= 0))
             throw invalid("Windows 完整客户端缺少首装更新器，请选择专用完整客户端 ZIP");
         ZipArchiveEntry manifestEntry = files.get(MANIFEST);
         if (manifestEntry.getSize() > 8388608) throw invalid("Windows 更新清单过大");
@@ -91,22 +95,28 @@ public class ClientPackageInspector {
         } catch (JsonProcessingException malformed) {
             throw invalid("Windows 更新清单不是有效的 JSON 文件");
         }
-        if (manifest == null || manifest.path("schemaVersion").asInt(-1) != 1
+        if (manifest == null || !manifest.isObject() || manifest.path("schemaVersion").asInt(-1) != 1
+                || wpf && (!manifest.path("schemaVersion").isIntegralNumber() || !manifest.path("buildNumber").isIntegralNumber()
+                    || !manifest.path("version").isTextual() || !manifest.path("runtimeFamily").isTextual()
+                    || !manifest.path("packageKind").isTextual())
                 || !"windows".equals(manifest.path("platform").asText())
                 || !release.architecture().equals(manifest.path("architecture").asText())
                 || manifest.path("buildNumber").asLong(-1) != release.buildNumber()
                 || !release.packageKind().equals(manifest.path("packageKind").asText("update"))
-                || !"uten_imp.exe".equals(manifest.path("executable").asText())
+                || !release.runtimeFamily().equals(manifest.path("runtimeFamily").asText("flutter"))
+                || wpf && !release.version().equals(manifest.path("version").asText())
+                || !(wpf ? WindowsWpfPackageInspector.EXECUTABLE : "uten_imp.exe").equals(manifest.path("executable").asText())
                 || !manifest.path("files").isArray())
             throw invalid("Windows 软件清单的平台、架构、包类型或构建号与发布信息不一致");
         Set<String> recorded = new HashSet<>();
         for (JsonNode item : manifest.path("files")) {
             String name = safePath(item.path("path").asText());
-            if (name.length() > 230 || !("uten_imp.exe".equals(name) || name.startsWith("data/")
-                    || name.matches("[^/]+\\.dll") || installer && UPDATER.equals(name)))
+            if (name.length() > 230 || !(wpf ? WindowsWpfPackageInspector.allowedFile(name)
+                    : "uten_imp.exe".equals(name) || name.startsWith("data/") || name.matches("[^/]+\\.dll") || installer && UPDATER.equals(name)))
                 throw invalid("Windows 软件包包含程序运行目录以外的文件");
             ZipArchiveEntry entry = files.get(name);
             if (MANIFEST.equals(name) || !recorded.add(name) || entry == null
+                    || wpf && (!item.path("path").isTextual() || !item.path("size").isIntegralNumber() || !item.path("sha256").isTextual())
                     || item.path("size").asLong(-1) != entry.getSize()
                     || !item.path("sha256").asText().matches("[0-9a-f]{64}"))
                 throw invalid("Windows 更新包的文件清单不完整或格式不正确");
@@ -124,10 +134,12 @@ public class ClientPackageInspector {
                 throw invalid("Windows 更新包中文件的校验值与清单不一致");
         }
         if (recorded.size() != files.size() - 1) throw invalid("Windows 更新包包含未登记在清单内的文件");
+        if (wpf) WindowsWpfPackageInspector.inspect(zip, files, release, mapper);
     }
 
     private static boolean isWindowsPackage(ClientReleaseDto.Release release) {
-        return "windows_archive".equals(release.installMode()) || "windows_bundle".equals(release.installMode());
+        return "windows_archive".equals(release.installMode()) || "windows_bundle".equals(release.installMode())
+                || "windows_wpf_archive".equals(release.installMode());
     }
 
     private static String safePath(String name) {

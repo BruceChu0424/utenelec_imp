@@ -1,0 +1,173 @@
+# 本机更新与恢复
+
+由唯一进度登记表生成。
+
+## W7-UPD-001
+
+- [ ] **legacy更新元数据检查** — 源码已实现/待整合验证
+
+影响：`shared`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 家族/当前进程arch/build/mode/显式PUBLISHED和SHA/size严格，不接Flutter包。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-002
+
+- [ ] **有界包下载和取消保旧** — 源码已实现/待整合验证
+
+影响：`shared`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 复用CORE-017，不在RAM整包、错误不破坏旧final，令牌不跟随外链。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-003
+
+- [ ] **指令目录/父进程/ready握手** — 源码已实现/待整合验证
+
+影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 私有GUID job，schema/PID/starttime/exe锚定，完整预检后ready才正常退出。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-004
+
+- [ ] **ZIP/manifest/PE完整预检** — 源码已实现/待整合验证
+
+影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 固定6文件、显式update/family/arch、SHA/size/version、路径/ADS/大小写/zipbomb、拒降级。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-005
+
+- [ ] **更新单写锁与并发外改** — 源码已实现/待整合验证
+
+影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 排他句柄/锁，失败不覆盖并发更改，不允许两个helper同时写同一安装。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-006
+
+- [ ] **备份/日志/回滚可恢复** — 源码已实现/待整合验证
+
+影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 逐批准文件备份、故障恢复/未知状态证据；不宣称断电事务，不盲目重启半更新。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+
+## W7-UPD-007
+
+- [ ] **取消/窗口关闭不误应用** — 源码已实现/待整合验证
+
+影响：`shared`；负责人：Codex；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 任何UI取消/账号变化/超时写cancel协议，helper不能等父稍后关闭就继续偷偷安装。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：`docs/99-项目治理/Win7兼容版/03-安装更新与双架构验证交接.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`。
+
+接续/限制：取消和明确apply授权双门已实现，主runner双架构Updater194通过；真实父进程ready/退出及生产Execute仍待验证。。
+
+## W7-UPD-008
+
+- [ ] **整体bootstrap/测试接入** — 进行中
+
+影响：`delivery`；负责人：Codex；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. RootTests真正引用Updater并执行；build脚本部署helper；与同一个producer ZIP集成核验。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：`docs/99-项目治理/Win7兼容版/04-当前接手记录.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`。
+
+接续/限制：Root整体runner含Updater双架构通过；构建脚本实际生成同架构bootstrap，仍需同producer包整合与安装路径验收。。
+
+## W7-UPD-009
+
+- [ ] **重启后版本/profile核对** — 未开始
+
+影响：`shared`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 成功重启锚定main，版本和六文件一致、凭据/草稿保全，失败显示真实恢复路径。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：按依赖与DoD继续，完成后登记证据。
+
+## W7-UPD-010
+
+- [ ] **Win7 x86/x64真实更新矩阵** — 未开始
+
+影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+
+源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
+
+完成条件：
+
+1. 正常、取消、坏包、权限不足、磁盘/断电/进程占用、外改和回滚分别目标机验收。
+2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：按依赖与DoD继续，完成后登记证据。

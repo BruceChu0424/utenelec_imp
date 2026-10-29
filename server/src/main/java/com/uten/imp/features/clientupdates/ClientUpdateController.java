@@ -27,20 +27,30 @@ public class ClientUpdateController {
 
     @GetMapping("/downloads")
     @PreAuthorize(ClientReleaseService.DOWNLOADS_EXPRESSION)
-    public ResponseEntity<List<ClientReleaseDto.Release>> downloads() {
-        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store").body(service.downloads());
+    public ResponseEntity<List<ClientReleaseDto.Release>> downloads(
+            @RequestParam(value = "runtimeFamily", defaultValue = "flutter") String runtimeFamily,
+            @RequestParam(value = "allRuntimeFamilies", defaultValue = "false") boolean allRuntimeFamilies) {
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store").body(service.downloads(runtimeFamily, allRuntimeFamilies));
     }
+
+    public ResponseEntity<List<ClientReleaseDto.Release>> downloads() { return downloads("flutter", false); }
 
     @GetMapping("/check")
     public ResponseEntity<ClientReleaseDto.Check> check(@RequestParam("platform") String platform,
-            @RequestParam("architecture") String architecture, @RequestParam("currentBuildNumber") long currentBuildNumber) {
+            @RequestParam("architecture") String architecture, @RequestParam("currentBuildNumber") long currentBuildNumber,
+            @RequestParam(value = "runtimeFamily", defaultValue = "flutter") String runtimeFamily) {
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "private, no-store")
-                .body(service.check(platform, architecture, currentBuildNumber));
+                .body(service.check(platform, architecture, currentBuildNumber, runtimeFamily));
+    }
+
+    public ResponseEntity<ClientReleaseDto.Check> check(String platform, String architecture, long currentBuildNumber) {
+        return check(platform, architecture, currentBuildNumber, "flutter");
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<Resource> download(@PathVariable("id") UUID id) {
-        ClientReleaseService.Download download = service.download(id);
+    public ResponseEntity<Resource> download(@PathVariable("id") UUID id,
+            @RequestParam(value = "runtimeFamily", defaultValue = "flutter") String runtimeFamily) {
+        ClientReleaseService.Download download = service.download(id, runtimeFamily);
         var release = download.release();
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).contentLength(release.sizeBytes())
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
@@ -50,4 +60,6 @@ public class ClientUpdateController {
                 .header("X-Checksum-Sha256", release.sha256())
                 .body(new InputStreamResource(download.stream()));
     }
+
+    public ResponseEntity<Resource> download(UUID id) { return download(id, "flutter"); }
 }

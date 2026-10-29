@@ -18,6 +18,7 @@ import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/client_update/client_release_publish_dialog.dart';
+import 'package:uten_imp/features/client_update/client_release.dart';
 import 'package:uten_imp/features/client_update/client_update_tile.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -100,7 +101,11 @@ class _Api extends ApiClient {
     ...body,
     'id': body['requestId'],
     'installMode': body['platform'] == 'windows'
-        ? body['packageKind'] == 'installer'
+        ? body['runtimeFamily'] == ClientRuntimeFamily.wpfLegacy
+              ? body['packageKind'] == 'installer'
+                    ? 'windows_wpf_setup'
+                    : 'windows_wpf_archive'
+              : body['packageKind'] == 'installer'
               ? 'windows_setup'
               : 'windows_archive'
         : body['platform'] == 'android'
@@ -395,7 +400,7 @@ void main() {
     await _fillWindows(tester, installer: true);
     await _chooseWindows(tester);
     expect(find.byType(TextField), findsNWidgets(3));
-    expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(2));
+    expect(find.byType(DropdownButtonFormField<String>), findsNWidgets(3));
     expect(find.text('Windows 安装程序（Setup.exe）'), findsOneWidget);
     expect(find.text('Windows 更新包（ZIP）'), findsOneWidget);
     expect(find.text('uten-windows-x64-setup.exe'), findsOneWidget);
@@ -892,6 +897,7 @@ void main() {
     await _publish(tester);
     expect(api.creates.single['platform'], 'windows');
     expect(api.creates.single['architecture'], 'x64');
+    expect(api.creates.single.containsKey('runtimeFamily'), isFalse);
     expect(
       api.creates.single['expectedSha256'],
       sha256.convert(bytes).toString(),
@@ -902,6 +908,38 @@ void main() {
     expect(find.text('客户端新版本已发布'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'an explicit WPF publication stays in its family and offers only x86 or x64',
+    (tester) async {
+      final api = _Api();
+      await _pump(
+        tester,
+        api,
+        _Session(_identity()),
+        child: const ClientReleasePublishDialog(
+          initialRuntimeFamily: ClientRuntimeFamily.wpfLegacy,
+        ),
+      );
+      expect(find.text('Windows 7 SP1 / 8.1 兼容版'), findsOneWidget);
+      final architecture = find.byType(DropdownButtonFormField<String>).last;
+      await tester.ensureVisible(architecture);
+      await tester.tap(architecture);
+      await tester.pumpAndSettle();
+      expect(find.text('arm64'), findsNothing);
+      await tester.tap(find.text('x86').last);
+      await tester.pumpAndSettle();
+      await _fillWindows(tester);
+      await _publish(tester);
+      expect(
+        api.creates.single['runtimeFamily'],
+        ClientRuntimeFamily.wpfLegacy,
+      );
+      expect(api.creates.single['architecture'], 'x86');
+      expect(api.creates.single['packageKind'], 'update');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'Windows lost publication receipt retries idempotent publish without reuploading',

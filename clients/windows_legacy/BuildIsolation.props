@@ -1,0 +1,6 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><UtenBuildScope Condition="'$(UtenBuildScope)' == ''">default</UtenBuildScope></PropertyGroup>
+  <Target Name="ValidateUtenBuildScope" BeforeTargets="PrepareForBuild">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(UtenBuildScope)', '^[A-Za-z0-9][A-Za-z0-9_-]{0,40}$'))" Text="UtenBuildScope must be a simple task-owned build identifier, never a path."/>
+  </Target>
+</Project>

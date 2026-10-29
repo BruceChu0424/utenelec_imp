@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\BuildIsolation.props" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{9FC37E48-AF39-4671-AFAD-E365597E96D8}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Uten.Legacy.Core</RootNamespace>
+    <AssemblyName>Uten.Legacy.Core</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion>
+    <Deterministic>true</Deterministic>
+    <OutputPath Condition=" '$(OutputPath)' == '' ">..\..\..\build\windows-wpf\Core\$(Platform)\$(Configuration)\</OutputPath>
+    <BaseIntermediateOutputPath>..\..\..\build\windows-wpf\Core\obj\$(UtenBuildScope)\$(Platform)\</BaseIntermediateOutputPath>
+    <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Configuration)\</IntermediateOutputPath>
+    <DebugSymbols Condition=" '$(Configuration)' == 'Debug' ">true</DebugSymbols>
+    <Optimize Condition=" '$(Configuration)' == 'Release' ">true</Optimize>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="BouncyCastle.Cryptography">
+      <HintPath>..\..\..\build\windows-wpf\dependencies\BouncyCastle.Cryptography.2.7.0\lib\net461\BouncyCastle.Cryptography.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ClientConfiguration.cs" />
+    <Compile Include="Models.cs" />
+    <Compile Include="CompanyCertificatePolicy.cs" />
+    <Compile Include="SessionStore.cs" />
+    <Compile Include="SessionCoordinator.cs" />
+    <Compile Include="MutationModels.cs" />
+    <Compile Include="MutationCoordinator.cs" />
+    <Compile Include="MutationWirePermit.cs" />
+    <Compile Include="Tests\MutationContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="ClientPackageDownload.cs" />
+    <Compile Include="HttpResponseSink.cs" />
+    <Compile Include="Tests\ClientPackageDownloadChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="ReadScopeRevisionState.cs" />
+    <Compile Include="Tests\ReadScopeRevisionChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="ManagedCertificateValidator.cs" />
+    <Compile Include="ManagedTlsHttpHandler.cs" />
+    <Compile Include="ManagedHttp11.cs" />
+    <Compile Include="Tests\ManagedTlsChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\ManagedHttp11Checks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\CoreContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <EmbeddedResource Include="..\..\..\assets\security\uten-imp-root-ca.crt">
+      <LogicalName>Uten.Legacy.Core.uten-imp-root-ca.crt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Import Project="..\BuildVersion.targets" />
+</Project>

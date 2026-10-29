@@ -28,6 +28,7 @@ class SoftwareDownloadsPage extends ConsumerStatefulWidget {
 
 class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
   String _architecture = 'x64';
+  String _runtimeFamily = ClientRuntimeFamily.flutter;
   DialogOpportunity? _resultOpportunity;
 
   @override
@@ -64,7 +65,9 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
         await UtenNotify.alert(
           context,
           title: '安装程序已下载',
-          message: kIsWeb
+          message: release.runtimeFamily == ClientRuntimeFamily.wpfLegacy
+              ? '安装程序已校验${kIsWeb ? '并交给浏览器下载' : '并保存到：\n$saved'}。请在 Windows 7 SP1 / 8.1 电脑上打开安装；使用范围及后续更新方式请查看该版本的发布说明。'
+              : kIsWeb
               ? '安装程序已校验并交给浏览器下载。请从浏览器下载列表找到 Setup.exe，在 Windows 电脑上打开并完成首次安装。以后可在软件内直接更新。'
               : '已校验并保存到：\n$saved\n\n在 Windows 电脑上双击 Setup.exe 完成首次安装。以后在软件内点击“立即更新”，自动使用原安装位置。',
           confirmLabel: '知道了',
@@ -96,6 +99,7 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
   @override
   void initState() {
     super.initState();
+    _runtimeFamily = ref.read(softwareWindowsRuntimeFamilyProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) ref.read(softwareDownloadsControllerProvider).load();
     });
@@ -106,8 +110,10 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (_) =>
-          const ClientReleasePublishDialog(packageKind: 'installer'),
+      builder: (_) => ClientReleasePublishDialog(
+        packageKind: 'installer',
+        initialRuntimeFamily: _runtimeFamily,
+      ),
     );
     if (mounted &&
         identical(controller, ref.read(softwareDownloadsControllerProvider))) {
@@ -149,11 +155,11 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
       body: ListenableBuilder(
         listenable: controller,
         builder: (context, _) {
-          final release =
-              controller.releases
-                  .where((item) => item.architecture == _architecture)
-                  .firstOrNull ??
-              controller.releases.firstOrNull;
+          final release = selectWindowsInstaller(
+            controller.releases,
+            runtimeFamily: _runtimeFamily,
+            architecture: _architecture,
+          );
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s24),
             child: UtenContentContainer(
@@ -169,15 +175,25 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
                     key: const ValueKey('software-platform-windows'),
                     controller: controller,
                     release: release,
+                    runtimeFamily: _runtimeFamily,
+                    architecture: _architecture,
                     currentDevice:
                         currentPlatform == SoftwareDownloadPlatform.windows,
                     onArchitectureChanged: (value) =>
                         setState(() => _architecture = value),
+                    onRuntimeFamilyChanged: (value) => setState(() {
+                      _runtimeFamily = value;
+                      if (!windowsDownloadArchitectures(
+                        value,
+                      ).contains(_architecture)) {
+                        _architecture = 'x64';
+                      }
+                    }),
                     onDownload: (release) =>
                         unawaited(_download(controller, release)),
                   ),
                   const SizedBox(height: UtenSpacing.s24),
-                  const _InstallationGuide(),
+                  _InstallationGuide(runtimeFamily: _runtimeFamily),
                   const SizedBox(height: UtenSpacing.s32),
                   _OtherPlatforms(excluded: currentPlatform),
                   const SizedBox(height: UtenSpacing.s24),
@@ -260,13 +276,18 @@ class _WindowsPanel extends StatelessWidget {
     super.key,
     required this.controller,
     required this.release,
+    required this.runtimeFamily,
+    required this.architecture,
     required this.onArchitectureChanged,
+    required this.onRuntimeFamilyChanged,
     required this.currentDevice,
     required this.onDownload,
   });
   final SoftwareDownloadsController controller;
   final ClientRelease? release;
+  final String runtimeFamily, architecture;
   final ValueChanged<String> onArchitectureChanged;
+  final ValueChanged<String> onRuntimeFamilyChanged;
   final bool currentDevice;
   final ValueChanged<ClientRelease> onDownload;
 
@@ -275,6 +296,7 @@ class _WindowsPanel extends StatelessWidget {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final downloading = controller.downloadingId != null;
+    final legacy = runtimeFamily == ClientRuntimeFamily.wpfLegacy;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceContainerLowest,
@@ -316,11 +338,93 @@ class _WindowsPanel extends StatelessWidget {
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(
-                '将优腾完整客户端保存到电脑，\n用熟悉的账号继续办公。',
+                legacy
+                    ? '适用于 Windows 7 SP1 / 8.1。\n可用功能与更新方式以该版本的发布说明为准。'
+                    : '将优腾完整客户端保存到电脑，\n用熟悉的账号继续办公。',
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: colors.onSurfaceVariant,
                   height: 1.7,
                 ),
+              ),
+              const SizedBox(height: UtenSpacing.s24),
+              LayoutBuilder(
+                builder: (context, targetBounds) {
+                  final width = targetBounds.maxWidth >= 600
+                      ? (targetBounds.maxWidth - UtenSpacing.s12) / 2
+                      : targetBounds.maxWidth;
+                  return Wrap(
+                    spacing: UtenSpacing.s12,
+                    runSpacing: UtenSpacing.s12,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: UtenDropdownScrollScope(
+                          nativeDropdown: true,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'software-downloads-runtime-$runtimeFamily',
+                            ),
+                            initialValue: runtimeFamily,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Windows 版本',
+                            ),
+                            items: [
+                              for (final family in [
+                                ClientRuntimeFamily.flutter,
+                                ClientRuntimeFamily.wpfLegacy,
+                              ])
+                                DropdownMenuItem(
+                                  value: family,
+                                  child: Text(windowsRuntimeLabel(family)),
+                                ),
+                            ],
+                            onChanged: downloading
+                                ? null
+                                : (value) {
+                                    if (value != null) {
+                                      onRuntimeFamilyChanged(value);
+                                    }
+                                  },
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        key: const ValueKey('software-downloads-architecture'),
+                        width: width,
+                        child: UtenDropdownScrollScope(
+                          nativeDropdown: true,
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey(
+                              'software-downloads-target-$runtimeFamily-$architecture',
+                            ),
+                            initialValue: architecture,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: '电脑架构',
+                            ),
+                            items: [
+                              for (final target in windowsDownloadArchitectures(
+                                runtimeFamily,
+                              ))
+                                DropdownMenuItem(
+                                  value: target,
+                                  child: Text(_architectureLabel(target)),
+                                ),
+                            ],
+                            onChanged: downloading
+                                ? null
+                                : (value) {
+                                    if (value != null) {
+                                      onArchitectureChanged(value);
+                                    }
+                                  },
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: UtenSpacing.s24),
               if (release != null) ...[
@@ -337,45 +441,10 @@ class _WindowsPanel extends StatelessWidget {
                       '${(release!.sizeBytes / 1048576).toStringAsFixed(1)} MB',
                       style: theme.textTheme.bodyMedium,
                     ),
-                    if (controller.releases.length > 1)
-                      UtenDropdownScrollScope(
-                        nativeDropdown: true,
-                        child: SizedBox(
-                          width: (bounds.maxWidth - UtenSpacing.s24 * 2)
-                              .clamp(0.0, 260.0)
-                              .toDouble(),
-                          child: DropdownButton<String>(
-                            isExpanded: true,
-                            key: const ValueKey(
-                              'software-downloads-architecture',
-                            ),
-                            value: release!.architecture,
-                            underline: const SizedBox.shrink(),
-                            items: [
-                              for (final item in controller.releases)
-                                DropdownMenuItem(
-                                  value: item.architecture,
-                                  child: Text(
-                                    _architectureLabel(item.architecture),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                            ],
-                            onChanged: downloading
-                                ? null
-                                : (value) {
-                                    if (value != null) {
-                                      onArchitectureChanged(value);
-                                    }
-                                  },
-                          ),
-                        ),
-                      )
-                    else
-                      Text(
-                        _architectureLabel(release!.architecture),
-                        style: theme.textTheme.bodyMedium,
-                      ),
+                    Text(
+                      _architectureLabel(release!.architecture),
+                      style: theme.textTheme.bodyMedium,
+                    ),
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s24),
@@ -393,7 +462,9 @@ class _WindowsPanel extends StatelessWidget {
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
-                  'Setup.exe · 双击安装，后续更新自动使用原安装位置',
+                  legacy
+                      ? 'Setup.exe · 请在所选系统与架构的电脑上安装'
+                      : 'Setup.exe · 双击安装，后续更新自动使用原安装位置',
                   style: theme.textTheme.bodySmall,
                 ),
               ] else if (controller.loading) ...[
@@ -406,14 +477,18 @@ class _WindowsPanel extends StatelessWidget {
                 const Text('正在获取可下载版本'),
               ] else ...[
                 Text(
-                  controller.loadError != null ? '暂时无法读取版本' : 'Windows 版本正在准备',
+                  controller.loadError != null
+                      ? '暂时无法读取版本'
+                      : legacy
+                      ? '兼容版暂未发布'
+                      : 'Windows 版本正在准备',
                   style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 Text(
                   controller.loadError != null
                       ? '请检查连接后重新获取。'
-                      : '正式版本发布后，即可在这里下载完整客户端。',
+                      : '当前选择：${windowsRuntimeLabel(runtimeFamily)}，${_architectureLabel(architecture)}。公司发布对应安装包后即可下载。',
                   style: theme.textTheme.bodyMedium,
                 ),
               ],
@@ -630,14 +705,20 @@ class _DesktopArtwork extends StatelessWidget {
 }
 
 class _InstallationGuide extends StatelessWidget {
-  const _InstallationGuide();
+  const _InstallationGuide({required this.runtimeFamily});
+  final String runtimeFamily;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    const steps = [
-      ('下载安装程序', '根据电脑架构选择 Windows 版本，等待下载与校验完成。'),
+    final steps = [
+      ('下载安装程序', '根据 Windows 系统版本和电脑架构选择安装包，等待下载与校验完成。'),
       ('双击完成安装', '打开 Setup.exe，按提示完成首次安装。'),
-      ('登录并保持更新', '使用本人账号登录。以后点击“立即更新”，自动下载、替换并重启，无需重新选择路径。'),
+      (
+        '登录并保持更新',
+        runtimeFamily == ClientRuntimeFamily.wpfLegacy
+            ? '使用本人账号登录；兼容版的可用功能和后续更新方式请查看对应发布说明。'
+            : '使用本人账号登录。以后点击“立即更新”，自动下载、替换并重启，无需重新选择路径。',
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

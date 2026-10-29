@@ -1,0 +1,56 @@
+<Window x:Class="Uten.Legacy.Desktop.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:Uten.Legacy.Desktop.Controls" Title="UTEN（Win7兼容验证）" Width="800" Height="540" MinWidth="480" MinHeight="480" WindowStartupLocation="CenterScreen" WindowStyle="None" ResizeMode="CanMinimize" Loaded="OnLoaded" Closing="OnClosing">
+  <controls:RoundedSurface x:Name="WindowSurface" CornerRadius="{StaticResource Uten.Radius.Card}" BorderBrush="{StaticResource Uten.Border}" BorderThickness="1" Background="{StaticResource Uten.Surface}">
+    <Grid>
+      <Grid.RowDefinitions><RowDefinition x:Name="CaptionRow" Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+      <Grid x:Name="CaptionBar" Background="White" MouseLeftButtonDown="OnCaptionDrag">
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition x:Name="CaptionBrandColumn" Width="45*"/><ColumnDefinition Width="55*"/></Grid.ColumnDefinitions><Border Background="{StaticResource Uten.LoginBrandSurface}"/></Grid>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="{StaticResource Uten.Padding.CaptionHorizontal}"><Button Content="−" Background="{StaticResource Uten.Caption.Minimize}" Style="{StaticResource Uten.CaptionButton}" Click="OnMinimize" IsTabStop="False" AutomationProperties.Name="最小化"/><Button Content="×" Background="{StaticResource Uten.Caption.Close}" Style="{StaticResource Uten.CaptionButton}" Click="OnClose" IsTabStop="False" AutomationProperties.Name="关闭"/></StackPanel>
+      </Grid>
+      <Grid x:Name="LoginPanel" Grid.Row="1">
+        <Grid.ColumnDefinitions><ColumnDefinition x:Name="BrandColumn" Width="45*"/><ColumnDefinition Width="55*"/></Grid.ColumnDefinitions>
+        <Border x:Name="BrandPanel" Background="{StaticResource Uten.LoginBrandSurface}" Padding="{StaticResource Uten.Padding.S24}"><StackPanel VerticalAlignment="Center"><Image Source="Assets/logo_ip.png" Width="220" Height="220" Stretch="Uniform"/><Image Source="Assets/logo_name.png" Width="170" Height="32" Margin="0,20,0,0" Stretch="Uniform"/></StackPanel></Border>
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <Grid Margin="24,16,24,20" MinHeight="440"><StackPanel x:Name="LoginForm" MaxWidth="340" VerticalAlignment="Center">
+            <TextBlock Text="欢迎回来" FontSize="26" FontWeight="Bold"/><TextBlock Text="使用你的员工账号继续" Margin="0,8,0,20" Foreground="{StaticResource Uten.Muted}"/>
+            <StackPanel x:Name="SignInFields">
+              <TextBlock Text="服务器" Margin="0,0,0,6"/><ComboBox x:Name="EndpointBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="OnEndpointChanged" AutomationProperties.Name="服务器"/>
+              <TextBlock Text="员工账号" Margin="0,14,0,6"/><TextBox x:Name="AccountBox" TextChanged="OnAccountChanged" MaxLength="128" AutomationProperties.Name="员工账号"/>
+              <TextBlock Text="密码" Margin="0,14,0,6"/><PasswordBox x:Name="PasswordBox" MaxLength="256" AutomationProperties.Name="密码"/>
+              <StackPanel x:Name="OtpPanel" Visibility="Collapsed"><TextBlock Text="动态验证码" Margin="0,14,0,6"/><TextBox x:Name="OtpBox" MaxLength="8" AutomationProperties.Name="动态验证码"/></StackPanel>
+              <Button x:Name="LoginButton" Content="登录" Style="{StaticResource Uten.PrimaryActionButton}" Margin="0,20,0,0" Click="OnLogin" IsDefault="True"/>
+            </StackPanel>
+            <StackPanel x:Name="ChangePasswordFields" Visibility="Collapsed">
+              <TextBlock Text="首次登录需要修改密码" FontWeight="SemiBold" Margin="0,0,0,12"/>
+              <TextBlock Text="当前密码"/><PasswordBox x:Name="OldPasswordBox" Margin="0,6,0,12" MaxLength="256" AutomationProperties.Name="当前密码"/>
+              <TextBlock Text="新密码"/><PasswordBox x:Name="NewPasswordBox" Margin="0,6,0,12" MaxLength="256" AutomationProperties.Name="新密码"/>
+              <TextBlock Text="确认新密码"/><PasswordBox x:Name="ConfirmPasswordBox" Margin="0,6,0,12" MaxLength="256" AutomationProperties.Name="确认新密码"/>
+              <Button x:Name="ChangePasswordButton" Content="修改密码并继续" Style="{StaticResource Uten.PrimaryActionButton}" Click="OnChangePassword" IsDefault="True"/>
+              <Button Content="退出登录" Margin="0,8,0,0" Click="OnLogout"/>
+            </StackPanel>
+            <TextBlock x:Name="LoginStatus" Margin="0,12,0,0" Foreground="{StaticResource Uten.Error}" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite"/>
+            <TextBlock Text="© 2026 Uten · Win7 兼容验证版" Margin="0,24,0,0" FontSize="{StaticResource Uten.FontSize.Caption}" Foreground="{StaticResource Uten.Muted}" HorizontalAlignment="Center"/>
+          </StackPanel></Grid>
+        </ScrollViewer>
+      </Grid>
+      <Grid x:Name="WorkspacePanel" Grid.Row="1" Visibility="Collapsed" Background="{StaticResource Uten.Background}">
+        <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
+        <Border Background="White" BorderBrush="{StaticResource Uten.Border}" BorderThickness="0,0,0,1"><DockPanel Margin="20,0">
+          <Image Source="Assets/logo_name.png" Width="140" Height="28" Stretch="Uniform" DockPanel.Dock="Left"/>
+          <Button Content="退出登录" Click="OnLogout" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="16,0,0,0"/>
+          <Button x:Name="CheckUpdateButton" Content="检查更新" Click="OnCheckUpdate" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          <Button Content="Windows下载" Click="OnWindowsDownloads" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          <TextBlock x:Name="UserLabel" DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource Uten.Muted}"/>
+        </DockPanel></Border>
+        <Grid Grid.Row="1"><Grid.ColumnDefinitions><ColumnDefinition Width="176"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+          <Border Background="White" BorderBrush="{StaticResource Uten.Border}" BorderThickness="0,0,1,0"><StackPanel Margin="12,20">
+            <TextBlock Text="优腾综合管理平台" FontSize="12" Foreground="{StaticResource Uten.Muted}" Margin="8,0,0,18"/>
+            <Button Content="工作台" Click="OnDashboard" HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
+            <Button x:Name="GoodsNavButton" Content="基础资料 · 货品" Click="OnGoods" HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
+          </StackPanel></Border>
+          <ContentControl x:Name="WorkspaceContent" Grid.Column="1" Margin="20"/>
+        </Grid>
+        <Border Grid.Row="2" Background="White" BorderBrush="{StaticResource Uten.Border}" BorderThickness="0,1,0,0"><DockPanel Margin="14,0"><TextBlock x:Name="ConnectionLabel" FontSize="11" VerticalAlignment="Center" Foreground="{StaticResource Uten.Muted}"/><TextBlock Text="兼容验证版" DockPanel.Dock="Right" HorizontalAlignment="Right" FontSize="11" VerticalAlignment="Center" Foreground="{StaticResource Uten.Muted}"/></DockPanel></Border>
+      </Grid>
+    </Grid>
+  </controls:RoundedSurface>
+</Window>

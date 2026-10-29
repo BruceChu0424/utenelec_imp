@@ -12,6 +12,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/client_update/software_downloads_controller.dart';
+import 'package:uten_imp/features/client_update/client_release.dart';
 import 'package:uten_imp/features/client_update/software_downloads_page.dart';
 import 'package:uten_imp/features/client_update/software_downloads_presentation.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -54,6 +55,7 @@ Future<SoftwareDownloadsController> _pump(
   GlobalKey? boundaryKey,
   SoftwareDownloadPlatform? currentPlatform = SoftwareDownloadPlatform.windows,
   Locale locale = const Locale('zh'),
+  String runtimeFamily = ClientRuntimeFamily.flutter,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -69,6 +71,7 @@ Future<SoftwareDownloadsController> _pump(
       child: ProviderScope(
         overrides: [
           softwareDevicePlatformProvider.overrideWithValue(currentPlatform),
+          softwareWindowsRuntimeFamilyProvider.overrideWithValue(runtimeFamily),
           apiClientProvider.overrideWithValue(transport.api),
           if (controller != null)
             softwareDownloadsControllerProvider.overrideWithValue(controller),
@@ -361,6 +364,62 @@ void main() {
     expect(tester.takeException(), isNull);
     await _screenshot(tester, key, 'downloads-windows-preparing');
   });
+
+  testWidgets(
+    'a legacy Windows host never falls back to the regular installer',
+    (tester) async {
+      final key = GlobalKey();
+      await _pump(
+        tester,
+        SoftwareDownloadsTransport(),
+        SoftwarePackageSaveFixture(),
+        runtimeFamily: ClientRuntimeFamily.wpfLegacy,
+        boundaryKey: key,
+      );
+      expect(find.text('Windows 7 SP1 / 8.1 兼容版'), findsOneWidget);
+      expect(find.text('兼容版暂未发布'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('software-downloads-windows')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+      await _screenshot(tester, key, 'downloads-legacy-unpublished-20261028');
+    },
+  );
+
+  testWidgets(
+    'same-architecture families stay separate and missing x86 is not replaced by x64',
+    (tester) async {
+      final transport = SoftwareDownloadsTransport();
+      transport.releases.add(
+        transport.installer(
+          id: SoftwareDownloadsTransport.arm64Id,
+          mode: 'windows_wpf_setup',
+          version: '1.0.0',
+        )..['runtimeFamily'] = ClientRuntimeFamily.wpfLegacy,
+      );
+      await _pump(
+        tester,
+        transport,
+        SoftwarePackageSaveFixture(),
+        runtimeFamily: ClientRuntimeFamily.wpfLegacy,
+      );
+      expect(find.text('版本 1.0.0'), findsOneWidget);
+      expect(find.text('版本 2.5.32'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('software-downloads-architecture')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('32 位').last);
+      await tester.pumpAndSettle();
+      expect(find.text('兼容版暂未发布'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('software-downloads-windows')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'an unbound real superadmin scope can read downloads and manage publication',

@@ -19,12 +19,18 @@ import '../../core/ui/uten_notify.dart';
 import '../../shared/providers/authenticated_scope_provider.dart';
 import 'client_release.dart';
 import 'client_release_access.dart';
+import 'software_downloads_presentation.dart';
 
 class ClientReleasePublishDialog extends ConsumerStatefulWidget {
-  const ClientReleasePublishDialog({super.key, this.packageKind = 'update'});
+  const ClientReleasePublishDialog({
+    super.key,
+    this.packageKind = 'update',
+    this.initialRuntimeFamily = ClientRuntimeFamily.flutter,
+  });
 
   /// Retained for existing callers. Windows always shows both package areas.
   final String packageKind;
+  final String initialRuntimeFamily;
   @override
   ConsumerState<ClientReleasePublishDialog> createState() => _PublishState();
 }
@@ -59,6 +65,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   final _notes = TextEditingController();
   final _store = TextEditingController();
   String _platform = 'windows', _architecture = 'x64';
+  String _runtimeFamily = ClientRuntimeFamily.flutter;
   final _packages = {'installer': _PackageIntent(), 'update': _PackageIntent()};
   Object? _metadata;
   String? _activeKind;
@@ -82,6 +89,10 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   @override
   void initState() {
     super.initState();
+    _runtimeFamily =
+        widget.initialRuntimeFamily == ClientRuntimeFamily.wpfLegacy
+        ? ClientRuntimeFamily.wpfLegacy
+        : ClientRuntimeFamily.flutter;
     _metadata = _metadataKey();
     _api = ref.read(apiClientProvider);
     _owner = ref.read(clientReleasePublisherProvider);
@@ -110,6 +121,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
   Object _metadataKey() => (
     _platform,
     _architecture,
+    _runtimeFamily,
     _version.text.trim(),
     int.tryParse(_build.text.trim()) ?? _build.text.trim(),
     _notes.text.trim(),
@@ -235,6 +247,9 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
     final metadata = Map<String, Object>.unmodifiable({
       'platform': _platform,
       'architecture': _architecture,
+      if (_platform == 'windows' &&
+          _runtimeFamily == ClientRuntimeFamily.wpfLegacy)
+        'runtimeFamily': _runtimeFamily,
       'version': version,
       'buildNumber': build,
       'releaseNotes': _notes.text.trim(),
@@ -435,7 +450,11 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
             ),
             const SizedBox(height: UtenSpacing.s8),
             Text(
-              installer ? '放在“软件下载”页面，供员工首次下载安装。' : '已安装的客户端自动获取，沿用原安装位置更新。',
+              installer
+                  ? '放在“软件下载”页面，供员工首次下载安装。'
+                  : _runtimeFamily == ClientRuntimeFamily.wpfLegacy
+                  ? '仅供对应兼容客户端更新，不会推送给 Windows 10 / 11 常规版。'
+                  : '已安装的客户端自动获取，沿用原安装位置更新。',
               style: theme.textTheme.bodySmall,
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -445,7 +464,11 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
               onPressed: _busy ? null : () => _choose(kind),
               child: Text(
                 intent.fileName ??
-                    (installer ? '选择完整客户端' : l10n.clientUpdateChooseFile),
+                    (installer
+                        ? _runtimeFamily == ClientRuntimeFamily.wpfLegacy
+                              ? '选择兼容客户端'
+                              : '选择完整客户端'
+                        : l10n.clientUpdateChooseFile),
               ),
             ),
             if (active) ...[
@@ -585,6 +608,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                     ? null
                     : (value) => setState(() {
                         _platform = value!;
+                        _runtimeFamily = ClientRuntimeFamily.flutter;
                         _architecture = value == 'windows'
                             ? 'x64'
                             : 'universal';
@@ -592,12 +616,51 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                       }),
               ),
             ),
+            if (_platform == 'windows') ...[
+              const SizedBox(height: UtenSpacing.s12),
+              UtenDropdownScrollScope(
+                nativeDropdown: true,
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey('client-release-runtime-$_runtimeFamily'),
+                  initialValue: _runtimeFamily,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Windows 客户端类型'),
+                  items: [
+                    for (final family in [
+                      ClientRuntimeFamily.flutter,
+                      ClientRuntimeFamily.wpfLegacy,
+                    ])
+                      DropdownMenuItem(
+                        value: family,
+                        child: Text(windowsRuntimeLabel(family)),
+                      ),
+                  ],
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() {
+                          _runtimeFamily = value!;
+                          if (!windowsDownloadArchitectures(
+                            value,
+                          ).contains(_architecture)) {
+                            _architecture = 'x64';
+                          }
+                          _resetFiles();
+                        }),
+                ),
+              ),
+              if (_runtimeFamily == ClientRuntimeFamily.wpfLegacy) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                const Text(
+                  '面向 Windows 7 SP1 / 8.1。请核对对应版本的功能验收与发布说明，并选择同版本、同构建号的安装包和更新 ZIP。',
+                ),
+              ],
+            ],
             const SizedBox(height: UtenSpacing.s12),
             UtenDropdownScrollScope(
               nativeDropdown: true,
               child: DropdownButtonFormField<String>(
                 key: ValueKey(
-                  'client-release-architecture-$_platform-$_architecture',
+                  'client-release-architecture-$_platform-$_architecture-$_runtimeFamily',
                 ),
                 initialValue: _architecture,
                 isExpanded: true,
@@ -607,7 +670,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                 items: [
                   for (final name
                       in _platform == 'windows'
-                          ? ['x64', 'arm64', 'x86']
+                          ? windowsDownloadArchitectures(_runtimeFamily)
                           : _platform == 'android'
                           ? ['universal', 'arm64', 'armeabi-v7a', 'x64']
                           : ['universal'])
@@ -695,7 +758,7 @@ class _PublishState extends ConsumerState<ClientReleasePublishDialog> {
                     spacing: UtenSpacing.s12,
                     children: [
                       Text(
-                        '${release.platform} ${release.architecture}  ${release.version}+${release.buildNumber}${release.platform == 'windows'
+                        '${release.platform == 'windows' ? windowsRuntimeLabel(release.runtimeFamily) : release.platform} ${release.architecture}  ${release.version}+${release.buildNumber}${release.platform == 'windows'
                             ? release.packageKind == 'installer'
                                   ? ' · Setup.exe'
                                   : ' · ZIP 更新包'

@@ -152,10 +152,11 @@ public class ClientReleaseService {
             requireDraft(release);
             long previousBuild = catalog.list(root).stream().filter(other -> other.publishedAt() != null
                             && other.platform().equals(release.platform()) && overlaps(other.architecture(), release.architecture())
+                            && other.runtimeFamily().equals(release.runtimeFamily())
                             && other.packageKind().equals(release.packageKind()))
                     .mapToLong(ClientReleaseDto.Release::buildNumber).max().orElse(0);
             if (release.buildNumber() <= previousBuild)
-                throw new ApiException(ErrorCode.CONFLICT, "构建号必须大于同平台、架构及包类型已经发布过的版本");
+                throw new ApiException(ErrorCode.CONFLICT, "构建号必须大于同平台、架构、运行时及包类型已经发布过的版本");
             if (!"store".equals(release.installMode())) validatePublishedPackage(root, release);
             ClientReleaseDto.Release published = copy(release, release.sha256(), release.sizeBytes(), "PUBLISHED", Instant.now());
             catalog.write(root, published);
@@ -171,12 +172,13 @@ public class ClientReleaseService {
         if (!"windows".equals(published.platform())) return;
         List<ClientReleaseDto.Release> releases = catalog.list(root);
         var targets = releases.stream().filter(release -> "PUBLISHED".equals(release.state())
-                && "windows".equals(release.platform()) && published.architecture().equals(release.architecture())).toList();
+                && "windows".equals(release.platform()) && published.architecture().equals(release.architecture())
+                && published.runtimeFamily().equals(release.runtimeFamily())).toList();
         var order = Comparator.comparingLong(ClientReleaseDto.Release::buildNumber);
         var installer = targets.stream().filter(release -> "installer".equals(release.packageKind())).max(order).orElse(null);
         var update = targets.stream().filter(release -> "update".equals(release.packageKind())).max(order).orElse(null);
-        if (installer == null || update == null || !"windows_setup".equals(installer.installMode())
-                || !"windows_archive".equals(update.installMode()) || installer.buildNumber() != update.buildNumber()
+        if (installer == null || update == null || !ClientRuntimeFamily.setupMode(published.runtimeFamily()).equals(installer.installMode())
+                || !ClientRuntimeFamily.archiveMode(published.runtimeFamily()).equals(update.installMode()) || installer.buildNumber() != update.buildNumber()
                 || !installer.version().equals(update.version()) || published.buildNumber() != installer.buildNumber()
                 || !published.version().equals(installer.version())) return;
 
@@ -185,6 +187,7 @@ public class ClientReleaseService {
         validatePublishedPackage(root, update);
         var obsolete = releases.stream().filter(release -> "windows".equals(release.platform())
                 && published.architecture().equals(release.architecture()) && release.publishedAt() != null
+                && published.runtimeFamily().equals(release.runtimeFamily())
                 && Set.of("PUBLISHED", "WITHDRAWN").contains(release.state())
                 && release.buildNumber() < installer.buildNumber() && !"store".equals(release.installMode())).toList();
         for (var release : obsolete) {
@@ -232,11 +235,18 @@ public class ClientReleaseService {
     }
 
     public ClientReleaseDto.Check check(String platform, String architecture, long currentBuildNumber) {
+        return check(platform, architecture, currentBuildNumber, ClientRuntimeFamily.FLUTTER);
+    }
+
+    public ClientReleaseDto.Check check(String platform, String architecture, long currentBuildNumber, String runtimeFamily) {
         authenticated();
         requireTarget(platform, architecture);
+        String family = ClientRuntimeFamily.requireKnown(runtimeFamily);
+        ClientRuntimeFamily.requireTarget(family, platform, architecture);
         if (currentBuildNumber < 0 || currentBuildNumber > Integer.MAX_VALUE) throw invalid("当前客户端构建号无效");
         ClientReleaseDto.Release latest = catalog.locked(root -> catalog.list(root).stream()
                 .filter(release -> "PUBLISHED".equals(release.state()) && release.platform().equals(platform)
+                        && release.runtimeFamily().equals(family)
                         && "update".equals(release.packageKind())
                         && (release.architecture().equals(architecture) || "universal".equals(release.architecture()))
                         && release.buildNumber() > currentBuildNumber)
@@ -248,16 +258,24 @@ public class ClientReleaseService {
 
     @PreAuthorize(DOWNLOADS_EXPRESSION)
     public List<ClientReleaseDto.Release> downloads() {
+        return downloads(ClientRuntimeFamily.FLUTTER, false);
+    }
+
+    @PreAuthorize(DOWNLOADS_EXPRESSION)
+    public List<ClientReleaseDto.Release> downloads(String runtimeFamily, boolean allRuntimeFamilies) {
         employeeDownloader();
+        String family = ClientRuntimeFamily.requireKnown(runtimeFamily);
         return catalog.locked(root -> {
             var latest = new TreeMap<String, ClientReleaseDto.Release>();
             for (var release : catalog.list(root)) {
                 if (!"PUBLISHED".equals(release.state()) || !"windows".equals(release.platform())
-                        || !"installer".equals(release.packageKind()) || !"windows_setup".equals(release.installMode())) continue;
+                        || !"installer".equals(release.packageKind())
+                        || !ClientRuntimeFamily.setupMode(release.runtimeFamily()).equals(release.installMode())
+                        || !allRuntimeFamilies && !family.equals(release.runtimeFamily())) continue;
                 Path binary = packagePath(root, release.id());
                 if (release.sha256() == null || release.sizeBytes() <= 0
                         || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS) || Files.size(binary) != release.sizeBytes()) continue;
-                latest.merge(release.architecture(), release,
+                latest.merge(release.runtimeFamily() + ":" + release.architecture(), release,
                         (previous, candidate) -> candidate.buildNumber() > previous.buildNumber() ? candidate : previous);
             }
             return List.copyOf(latest.values());
@@ -265,9 +283,15 @@ public class ClientReleaseService {
     }
 
     public Download download(UUID id) {
+        return download(id, ClientRuntimeFamily.FLUTTER);
+    }
+
+    public Download download(UUID id, String runtimeFamily) {
         authenticated();
+        String family = ClientRuntimeFamily.requireKnown(runtimeFamily);
         return catalog.locked(root -> {
             ClientReleaseDto.Release release = catalog.require(root, id);
+            if (!family.equals(release.runtimeFamily())) throw new ApiException(ErrorCode.NOT_FOUND, "此运行时下不存在该客户端包");
             if ("installer".equals(release.packageKind())) employeeDownloader();
             if (!"PUBLISHED".equals(release.state()) || "store".equals(release.installMode()))
                 throw new ApiException(ErrorCode.NOT_FOUND, "此客户端更新包当前不可下载");
@@ -281,6 +305,8 @@ public class ClientReleaseService {
     private ClientReleaseDto.Release normalize(ClientReleaseDto.Create request) {
         if (request == null || request.requestId() == null) throw invalid("请提供本次发布编号");
         requireTarget(request.platform(), request.architecture());
+        String family = ClientRuntimeFamily.requireKnown(request.runtimeFamily());
+        ClientRuntimeFamily.requireTarget(family, request.platform(), request.architecture());
         if (!Set.of("update", "installer").contains(request.packageKind())) throw invalid("客户端包类型无效");
         if ("installer".equals(request.packageKind()) && !"windows".equals(request.platform()))
             throw invalid("当前仅支持 Windows 完整客户端发布");
@@ -308,19 +334,22 @@ public class ClientReleaseService {
             if (!Set.of("windows", "android").contains(request.platform())) throw invalid("iOS 和 macOS 请填写官方应用商店更新链接");
             boolean windowsSetup = "windows".equals(request.platform()) && "installer".equals(request.packageKind())
                     && fileName != null && fileName.toLowerCase(Locale.ROOT).endsWith(".exe");
+            if (ClientRuntimeFamily.WPF_LEGACY.equals(family) && "installer".equals(request.packageKind()) && !windowsSetup)
+                throw invalid("WPF 兼容客户端首装必须使用专用 Setup.exe");
             String extension = windowsSetup ? ".exe" : "windows".equals(request.platform()) ? ".zip" : ".apk";
             if (fileName == null || !fileName.matches("[A-Za-z0-9][A-Za-z0-9._ -]{0,180}")
                     || !fileName.toLowerCase(Locale.ROOT).endsWith(extension)) throw invalid("请选择对应平台和用途的 EXE、ZIP 或 APK 文件，文件名请使用字母和数字");
             if (expectedSha == null || !expectedSha.matches("[0-9a-fA-F]{64}")) throw invalid("请提供更新包的 SHA-256 校验值");
             expectedSha = expectedSha.toLowerCase(Locale.ROOT);
             mode = "windows".equals(request.platform())
-                    ? "installer".equals(request.packageKind()) ? windowsSetup ? "windows_setup" : "windows_bundle" : "windows_archive"
+                    ? "installer".equals(request.packageKind()) ? windowsSetup ? ClientRuntimeFamily.setupMode(family) : "windows_bundle" : ClientRuntimeFamily.archiveMode(family)
                     : "android_package";
         }
         return new ClientReleaseDto.Release(request.requestId(), request.platform(), request.architecture(), request.version(),
                 request.buildNumber(), notes, request.mandatory(), fileName, expectedSha, null, 0, mode, storeUrl,
-                "store".equals(mode) ? null : "/api/client-updates/" + request.requestId() + "/download", "DRAFT", Instant.now(), null,
-                request.packageKind());
+                "store".equals(mode) ? null : "/api/client-updates/" + request.requestId() + "/download"
+                        + (ClientRuntimeFamily.WPF_LEGACY.equals(family) ? "?runtimeFamily=wpf_legacy" : ""), "DRAFT", Instant.now(), null,
+                request.packageKind(), family);
     }
 
     private static void requireTarget(String platform, String architecture) {
@@ -361,12 +390,13 @@ public class ClientReleaseService {
     private static ClientReleaseDto.Release copy(ClientReleaseDto.Release release, String sha, long size, String state, Instant published) {
         return new ClientReleaseDto.Release(release.id(), release.platform(), release.architecture(), release.version(), release.buildNumber(),
                 release.releaseNotes(), release.mandatory(), release.fileName(), release.expectedSha256(), sha, size,
-                release.installMode(), release.storeUrl(), release.downloadUrl(), state, release.createdAt(), published, release.packageKind());
+                release.installMode(), release.storeUrl(), release.downloadUrl(), state, release.createdAt(), published, release.packageKind(), release.runtimeFamily());
     }
     private static boolean sameDraft(ClientReleaseDto.Release left, ClientReleaseDto.Release right) {
         return left.platform().equals(right.platform()) && left.architecture().equals(right.architecture()) && left.version().equals(right.version())
                 && left.buildNumber() == right.buildNumber() && left.releaseNotes().equals(right.releaseNotes()) && left.mandatory() == right.mandatory()
                 && left.packageKind().equals(right.packageKind())
+                && left.runtimeFamily().equals(right.runtimeFamily())
                 && java.util.Objects.equals(left.fileName(), right.fileName()) && java.util.Objects.equals(left.expectedSha256(), right.expectedSha256())
                 && java.util.Objects.equals(left.storeUrl(), right.storeUrl());
     }

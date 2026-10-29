@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "package": "BouncyCastle.Cryptography",
+  "version": "2.7.0",
+  "targetFramework": "net461",
+  "url": "https://api.nuget.org/v3-flatcontainer/bouncycastle.cryptography/2.7.0/bouncycastle.cryptography.2.7.0.nupkg",
+  "catalog": "https://api.nuget.org/v3/catalog0/data/2026.07.30.11.13.39/bouncycastle.cryptography.2.7.0.json",
+  "packageSha512Base64": "Lys+dJthpD8quONaAkRV9ke8DgET0CwBW91NeJjMVHZGvRRNO8DkdReYFfCBOCcvMpzJeC3DuLrpRuntYnq9Iw==",
+  "license": "MIT",
+  "files": {
+    "lib/net461/BouncyCastle.Cryptography.dll": "4f96977e9c67334742c683410b3a361258219f0d3084a5e0bc10fba96cf23a0d",
+    "LICENSE.md": "be0592a6c76f398356fbf252a4fb43476fb3ca3c45331428c2f4f22c499e8311"
+  }
+}

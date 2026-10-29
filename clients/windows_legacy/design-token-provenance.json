@@ -1,0 +1,1222 @@
+{
+  "schemaVersion": 1,
+  "generator": "clients/windows_legacy/tools/sync_design_tokens.py",
+  "generatorSha256": "0636194dbfe1b0fd2632a947f80968a8ab9ae60430a54c41ccbea38391ab19d7",
+  "resource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+  "resourceSha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581",
+  "scope": "Default Flutter light theme before platform branding or display zoom; WPF device-independent units.",
+  "sourceHashFormat": "SHA-256 of exact owning source bytes",
+  "sources": [
+    {
+      "path": "lib/core/theme/uten_tokens.dart",
+      "sha256": "5c177cb01e89d85badcbd3a15a83824b3b43b553df2c8778e143d11d8d5227a0"
+    },
+    {
+      "path": "lib/core/theme/uten_colors.dart",
+      "sha256": "a373d253b3852a48a368447f486bdad24c1436a26cd4cc01898e24ca626ce3e5"
+    },
+    {
+      "path": "lib/core/theme/light_theme.dart",
+      "sha256": "c5ee4a3f47fcfc289caa9ff29c6007110c681f40c0c78ac0cff584e54ec4ada4"
+    },
+    {
+      "path": "lib/core/theme/uten_typography.dart",
+      "sha256": "126c8a85cbacc7cfe7618f701631fa4a700ee8e1c23afe4229a541f036f28025"
+    },
+    {
+      "path": "lib/shared/widgets/desktop_window_host.dart",
+      "sha256": "77fb56e9048794f3b6149264d61a1d7cd910d8dc20c1b4a8e28333fd66cd70ff"
+    },
+    {
+      "path": "lib/features/auth/widgets/desktop_login_layout.dart",
+      "sha256": "6540871a02e4ecad8372b75c5208677fd64066104e3a5e37a585ec43fe94a267"
+    }
+  ],
+  "roleMappings": [
+    {
+      "key": "Uten.Radius.Xs",
+      "type": "CornerRadius",
+      "value": "4",
+      "sourceRole": "UtenRadius.xs",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.xs",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 25,
+          "expression": "4"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.XsValue",
+      "type": "Double",
+      "value": "4",
+      "sourceRole": "UtenRadius.xs",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.xs",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 25,
+          "expression": "4"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Small",
+      "type": "CornerRadius",
+      "value": "6",
+      "sourceRole": "UtenRadius.sm",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.sm",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 28,
+          "expression": "6"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.SmallValue",
+      "type": "Double",
+      "value": "6",
+      "sourceRole": "UtenRadius.sm",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.sm",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 28,
+          "expression": "6"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Medium",
+      "type": "CornerRadius",
+      "value": "8",
+      "sourceRole": "UtenRadius.md",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.md",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 31,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.MediumValue",
+      "type": "Double",
+      "value": "8",
+      "sourceRole": "UtenRadius.md",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.md",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 31,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Control",
+      "type": "CornerRadius",
+      "value": "10",
+      "sourceRole": "UtenRadius.control",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.control",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 36,
+          "expression": "10"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.ControlValue",
+      "type": "Double",
+      "value": "10",
+      "sourceRole": "UtenRadius.control",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.control",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 36,
+          "expression": "10"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Menu",
+      "type": "CornerRadius",
+      "value": "8",
+      "sourceRole": "UtenRadius.menu",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.menu",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 48,
+          "expression": "md"
+        },
+        {
+          "symbol": "UtenRadius.md",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 31,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.MenuValue",
+      "type": "Double",
+      "value": "8",
+      "sourceRole": "UtenRadius.menu",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.menu",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 48,
+          "expression": "md"
+        },
+        {
+          "symbol": "UtenRadius.md",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 31,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Table",
+      "type": "CornerRadius",
+      "value": "12",
+      "sourceRole": "UtenRadius.table",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.table",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 49,
+          "expression": "lg"
+        },
+        {
+          "symbol": "UtenRadius.lg",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 39,
+          "expression": "12"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.TableValue",
+      "type": "Double",
+      "value": "12",
+      "sourceRole": "UtenRadius.table",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.table",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 49,
+          "expression": "lg"
+        },
+        {
+          "symbol": "UtenRadius.lg",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 39,
+          "expression": "12"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Card",
+      "type": "CornerRadius",
+      "value": "16",
+      "sourceRole": "UtenRadius.card",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.card",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 50,
+          "expression": "xl"
+        },
+        {
+          "symbol": "UtenRadius.xl",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 42,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.CardValue",
+      "type": "Double",
+      "value": "16",
+      "sourceRole": "UtenRadius.card",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.card",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 50,
+          "expression": "xl"
+        },
+        {
+          "symbol": "UtenRadius.xl",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 42,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Dialog",
+      "type": "CornerRadius",
+      "value": "20",
+      "sourceRole": "UtenRadius.dialog",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.dialog",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 51,
+          "expression": "xxl"
+        },
+        {
+          "symbol": "UtenRadius.xxl",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 45,
+          "expression": "20"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.DialogValue",
+      "type": "Double",
+      "value": "20",
+      "sourceRole": "UtenRadius.dialog",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.dialog",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 51,
+          "expression": "xxl"
+        },
+        {
+          "symbol": "UtenRadius.xxl",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 45,
+          "expression": "20"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.Pill",
+      "type": "CornerRadius",
+      "value": "999",
+      "sourceRole": "UtenRadius.pill",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.pill",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 59,
+          "expression": "999"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Radius.PillValue",
+      "type": "Double",
+      "value": "999",
+      "sourceRole": "UtenRadius.pill",
+      "resolution": [
+        {
+          "symbol": "UtenRadius.pill",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 59,
+          "expression": "999"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Height.Compact",
+      "type": "Double",
+      "value": "36",
+      "sourceRole": "UtenControlMetrics.compactHeight",
+      "resolution": [
+        {
+          "symbol": "UtenControlMetrics.compactHeight",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 136,
+          "expression": "36"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Height.Standard",
+      "type": "Double",
+      "value": "40",
+      "sourceRole": "UtenControlMetrics.standardHeight",
+      "resolution": [
+        {
+          "symbol": "UtenControlMetrics.standardHeight",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 137,
+          "expression": "40"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Height.Primary",
+      "type": "Double",
+      "value": "48",
+      "sourceRole": "UtenControlMetrics.primaryHeight",
+      "resolution": [
+        {
+          "symbol": "UtenControlMetrics.primaryHeight",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 138,
+          "expression": "48"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Height.Input",
+      "type": "Double",
+      "value": "44",
+      "sourceRole": "UtenControlMetrics.inputHeight",
+      "resolution": [
+        {
+          "symbol": "UtenControlMetrics.inputHeight",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 139,
+          "expression": "44"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Height.Cell",
+      "type": "Double",
+      "value": "32",
+      "sourceRole": "UtenControlMetrics.cellHeight",
+      "resolution": [
+        {
+          "symbol": "UtenControlMetrics.cellHeight",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 140,
+          "expression": "32"
+        }
+      ],
+      "note": "Table editor control height; not a table row-height contract."
+    },
+    {
+      "key": "Uten.Height.Caption",
+      "type": "Double",
+      "value": "36",
+      "sourceRole": "DesktopWindowHost.controlsHeight",
+      "resolution": [
+        {
+          "symbol": "DesktopWindowHost.controlsHeight",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 14,
+          "expression": "36.0"
+        }
+      ],
+      "note": "Native caption/control strip; separate from form control metrics."
+    },
+    {
+      "key": "Uten.Space.S2",
+      "type": "Double",
+      "value": "2",
+      "sourceRole": "UtenSpacing.s2",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s2",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 94,
+          "expression": "2"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S2",
+      "type": "Thickness",
+      "value": "2",
+      "sourceRole": "UtenSpacing.s2",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s2",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 94,
+          "expression": "2"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S4",
+      "type": "Double",
+      "value": "4",
+      "sourceRole": "UtenSpacing.s4",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s4",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 97,
+          "expression": "4"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S4",
+      "type": "Thickness",
+      "value": "4",
+      "sourceRole": "UtenSpacing.s4",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s4",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 97,
+          "expression": "4"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S6",
+      "type": "Double",
+      "value": "6",
+      "sourceRole": "UtenSpacing.s6",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s6",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 100,
+          "expression": "6"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S6",
+      "type": "Thickness",
+      "value": "6",
+      "sourceRole": "UtenSpacing.s6",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s6",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 100,
+          "expression": "6"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S8",
+      "type": "Double",
+      "value": "8",
+      "sourceRole": "UtenSpacing.s8",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s8",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 103,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S8",
+      "type": "Thickness",
+      "value": "8",
+      "sourceRole": "UtenSpacing.s8",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s8",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 103,
+          "expression": "8"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S12",
+      "type": "Double",
+      "value": "12",
+      "sourceRole": "UtenSpacing.s12",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s12",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 106,
+          "expression": "12"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S12",
+      "type": "Thickness",
+      "value": "12",
+      "sourceRole": "UtenSpacing.s12",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s12",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 106,
+          "expression": "12"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S16",
+      "type": "Double",
+      "value": "16",
+      "sourceRole": "UtenSpacing.s16",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s16",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 109,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S16",
+      "type": "Thickness",
+      "value": "16",
+      "sourceRole": "UtenSpacing.s16",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s16",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 109,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S20",
+      "type": "Double",
+      "value": "20",
+      "sourceRole": "UtenSpacing.s20",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s20",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 112,
+          "expression": "20"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S20",
+      "type": "Thickness",
+      "value": "20",
+      "sourceRole": "UtenSpacing.s20",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s20",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 112,
+          "expression": "20"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S24",
+      "type": "Double",
+      "value": "24",
+      "sourceRole": "UtenSpacing.s24",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s24",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 115,
+          "expression": "24"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S24",
+      "type": "Thickness",
+      "value": "24",
+      "sourceRole": "UtenSpacing.s24",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s24",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 115,
+          "expression": "24"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S32",
+      "type": "Double",
+      "value": "32",
+      "sourceRole": "UtenSpacing.s32",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s32",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 118,
+          "expression": "32"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S32",
+      "type": "Thickness",
+      "value": "32",
+      "sourceRole": "UtenSpacing.s32",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s32",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 118,
+          "expression": "32"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S40",
+      "type": "Double",
+      "value": "40",
+      "sourceRole": "UtenSpacing.s40",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s40",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 121,
+          "expression": "40"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S40",
+      "type": "Thickness",
+      "value": "40",
+      "sourceRole": "UtenSpacing.s40",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s40",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 121,
+          "expression": "40"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Space.S48",
+      "type": "Double",
+      "value": "48",
+      "sourceRole": "UtenSpacing.s48",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s48",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 124,
+          "expression": "48"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.S48",
+      "type": "Thickness",
+      "value": "48",
+      "sourceRole": "UtenSpacing.s48",
+      "resolution": [
+        {
+          "symbol": "UtenSpacing.s48",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 124,
+          "expression": "48"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Background",
+      "type": "SolidColorBrush",
+      "value": "#FFF5F7FA",
+      "sourceRole": "LightTheme.scaffoldBackgroundColor",
+      "resolution": [
+        {
+          "symbol": "LightTheme.scaffoldBackgroundColor",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 71,
+          "expression": "UtenColors.background"
+        },
+        {
+          "symbol": "UtenColors.background",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 40,
+          "expression": "Color(0xFFF5F7FA)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Surface",
+      "type": "SolidColorBrush",
+      "value": "#FFFFFFFF",
+      "sourceRole": "LightTheme.colorScheme.surface",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.surface",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 43,
+          "expression": "UtenColors.surface"
+        },
+        {
+          "symbol": "UtenColors.surface",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 41,
+          "expression": "Color(0xFFFFFFFF)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Text",
+      "type": "SolidColorBrush",
+      "value": "#FF0F172A",
+      "sourceRole": "LightTheme.colorScheme.onSurface",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.onSurface",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 44,
+          "expression": "UtenColors.textPrimary"
+        },
+        {
+          "symbol": "UtenColors.textPrimary",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 47,
+          "expression": "Color(0xFF0F172A)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Muted",
+      "type": "SolidColorBrush",
+      "value": "#FF475569",
+      "sourceRole": "LightTheme.colorScheme.onSurfaceVariant",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.onSurfaceVariant",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 50,
+          "expression": "UtenColors.textSecondary"
+        },
+        {
+          "symbol": "UtenColors.textSecondary",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 48,
+          "expression": "Color(0xFF475569)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Border",
+      "type": "SolidColorBrush",
+      "value": "#FFE2E8F0",
+      "sourceRole": "LightTheme.colorScheme.outlineVariant",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.outlineVariant",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 52,
+          "expression": "UtenColors.border"
+        },
+        {
+          "symbol": "UtenColors.border",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 52,
+          "expression": "Color(0xFFE2E8F0)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.PrimaryBrush",
+      "type": "SolidColorBrush",
+      "value": "#FF0F766E",
+      "sourceRole": "LightTheme.colorScheme.primary",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.primary",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 27,
+          "expression": "UtenColors.teal700"
+        },
+        {
+          "symbol": "UtenColors.teal700",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 31,
+          "expression": "Color(0xFF0F766E)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.PrimaryLight",
+      "type": "SolidColorBrush",
+      "value": "#FFF0FDFA",
+      "sourceRole": "UtenColors.tealSurface",
+      "resolution": [
+        {
+          "symbol": "UtenColors.tealSurface",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 134,
+          "expression": "teal50"
+        },
+        {
+          "symbol": "UtenColors.teal50",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 24,
+          "expression": "Color(0xFFF0FDFA)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Selected",
+      "type": "SolidColorBrush",
+      "value": "#FFBEDAD7",
+      "sourceRole": "UtenColors.tableSelectedRow",
+      "resolution": [
+        {
+          "symbol": "UtenColors.tableSelectedRow",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 143,
+          "expression": "Color(0xFFBEDAD7)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Error",
+      "type": "SolidColorBrush",
+      "value": "#FFB91C1C",
+      "sourceRole": "LightTheme.colorScheme.error",
+      "resolution": [
+        {
+          "symbol": "LightTheme.colorScheme.error",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 39,
+          "expression": "UtenColors.errorText"
+        },
+        {
+          "symbol": "UtenColors.errorText",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 209,
+          "expression": "Color(0xFFB91C1C)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Caption.Minimize",
+      "type": "SolidColorBrush",
+      "value": "#FFF59E0B",
+      "sourceRole": "Caption.minimize.backgroundColor",
+      "resolution": [
+        {
+          "symbol": "Caption.minimize.backgroundColor",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 109,
+          "expression": "UtenColors.warning"
+        },
+        {
+          "symbol": "UtenColors.warning",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 69,
+          "expression": "Color(0xFFF59E0B)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Caption.Close",
+      "type": "SolidColorBrush",
+      "value": "#FFEF4444",
+      "sourceRole": "Caption.close.backgroundColor",
+      "resolution": [
+        {
+          "symbol": "Caption.close.backgroundColor",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 102,
+          "expression": "UtenColors.error"
+        },
+        {
+          "symbol": "UtenColors.error",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 70,
+          "expression": "Color(0xFFEF4444)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Body",
+      "type": "Double",
+      "value": "14",
+      "sourceRole": "UtenTextTheme.bodyMedium.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.bodyMedium.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 29,
+          "expression": "14"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Value",
+      "type": "Double",
+      "value": "14",
+      "sourceRole": "UtenTextTheme.bodyMedium.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.bodyMedium.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 29,
+          "expression": "14"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Caption",
+      "type": "Double",
+      "value": "13",
+      "sourceRole": "UtenTextTheme.bodySmall.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.bodySmall.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 30,
+          "expression": "13"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Title",
+      "type": "Double",
+      "value": "18",
+      "sourceRole": "UtenTextTheme.titleLarge.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.titleLarge.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 25,
+          "expression": "18"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Subtitle",
+      "type": "Double",
+      "value": "16",
+      "sourceRole": "UtenTextTheme.titleMedium.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.titleMedium.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 26,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Heading",
+      "type": "Double",
+      "value": "24",
+      "sourceRole": "UtenTextTheme.headlineLarge.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.headlineLarge.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 22,
+          "expression": "24"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Input",
+      "type": "Double",
+      "value": "16",
+      "sourceRole": "UtenTextTheme.bodyLarge.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.bodyLarge.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 28,
+          "expression": "16"
+        }
+      ]
+    },
+    {
+      "key": "Uten.FontSize.Compact",
+      "type": "Double",
+      "value": "14",
+      "sourceRole": "UtenTextTheme.bodyMedium.fontSize",
+      "resolution": [
+        {
+          "symbol": "UtenTextTheme.bodyMedium.fontSize",
+          "source": "lib/core/theme/uten_typography.dart",
+          "line": 29,
+          "expression": "14"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Caption.HitWidth",
+      "type": "Double",
+      "value": "30",
+      "sourceRole": "Caption.hit.width",
+      "resolution": [
+        {
+          "symbol": "Caption.hit.width",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 155,
+          "expression": "30"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Caption.Diameter",
+      "type": "Double",
+      "value": "22",
+      "sourceRole": "Caption.circle.width",
+      "resolution": [
+        {
+          "symbol": "Caption.circle.width",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 161,
+          "expression": "22"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Caption.IconSize",
+      "type": "Double",
+      "value": "14",
+      "sourceRole": "Caption.icon.size",
+      "resolution": [
+        {
+          "symbol": "Caption.icon.size",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 167,
+          "expression": "14"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Padding.Button",
+      "type": "Thickness",
+      "value": "16,8,16,8",
+      "sourceRole": "LightTheme.filledButton.padding",
+      "resolution": [
+        {
+          "symbol": "LightTheme.filledButton.padding",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 164,
+          "expression": "const EdgeInsets.symmetric(horizontal: 16, vertical: 8)"
+        },
+        {
+          "symbol": "LightTheme.outlinedButton.padding",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 182,
+          "expression": "const EdgeInsets.symmetric(horizontal: 16, vertical: 8)"
+        }
+      ],
+      "note": "Omitted EdgeInsets.symmetric axes use the constructor default zero."
+    },
+    {
+      "key": "Uten.Padding.Input",
+      "type": "Thickness",
+      "value": "12,10,12,10",
+      "sourceRole": "UtenPageField.contentPadding",
+      "resolution": [
+        {
+          "symbol": "UtenPageField.contentPadding",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 190,
+          "expression": "EdgeInsets.symmetric(\n    horizontal: UtenSpacing.s12,\n    vertical: 10,\n  )"
+        },
+        {
+          "symbol": "UtenSpacing.s12",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 106,
+          "expression": "12"
+        }
+      ],
+      "note": "Omitted EdgeInsets.symmetric axes use the constructor default zero."
+    },
+    {
+      "key": "Uten.Padding.Filter",
+      "type": "Thickness",
+      "value": "8,4,8,4",
+      "sourceRole": "UtenFilterRow.contentPadding",
+      "resolution": [
+        {
+          "symbol": "UtenFilterRow.contentPadding",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 173,
+          "expression": "EdgeInsets.symmetric(\n    horizontal: cellHorizontalPadding,\n    vertical: cellVerticalPadding,\n  )"
+        },
+        {
+          "symbol": "UtenFilterRow.cellHorizontalPadding",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 169,
+          "expression": "8"
+        },
+        {
+          "symbol": "UtenFilterRow.cellVerticalPadding",
+          "source": "lib/core/theme/uten_tokens.dart",
+          "line": 170,
+          "expression": "4"
+        }
+      ],
+      "note": "Omitted EdgeInsets.symmetric axes use the constructor default zero."
+    },
+    {
+      "key": "Uten.Padding.CaptionHorizontal",
+      "type": "Thickness",
+      "value": "8,0,8,0",
+      "sourceRole": "Caption.layout.padding",
+      "resolution": [
+        {
+          "symbol": "Caption.layout.padding",
+          "source": "lib/shared/widgets/desktop_window_host.dart",
+          "line": 127,
+          "expression": "const EdgeInsets.symmetric(horizontal: 8)"
+        }
+      ],
+      "note": "Omitted EdgeInsets.symmetric axes use the constructor default zero."
+    },
+    {
+      "key": "Uten.LoginBrandSurface",
+      "type": "SolidColorBrush",
+      "value": "#FFF3F8F8",
+      "sourceRole": "DesktopLogin.brandSurface",
+      "resolution": [
+        {
+          "symbol": "DesktopLogin.brandSurface",
+          "source": "lib/features/auth/widgets/desktop_login_layout.dart",
+          "line": 109,
+          "expression": "Color.alphaBlend(\n      theme.colorScheme.primary.withValues(alpha: dark ? 0.04 : 0.05),\n      theme.colorScheme.surface,\n    )"
+        },
+        {
+          "symbol": "LightTheme.colorScheme.primary",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 27,
+          "expression": "UtenColors.teal700"
+        },
+        {
+          "symbol": "UtenColors.teal700",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 31,
+          "expression": "Color(0xFF0F766E)"
+        },
+        {
+          "symbol": "LightTheme.colorScheme.surface",
+          "source": "lib/core/theme/light_theme.dart",
+          "line": 43,
+          "expression": "UtenColors.surface"
+        },
+        {
+          "symbol": "UtenColors.surface",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 41,
+          "expression": "Color(0xFFFFFFFF)"
+        }
+      ],
+      "computation": "Color.alphaBlend, light branch, floating alpha, round channels to nearest byte (half up)"
+    }
+  ]
+}

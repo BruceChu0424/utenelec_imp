@@ -1,0 +1,1090 @@
+{
+  "schemaVersion": 1,
+  "contractId": "unit-actions-v1",
+  "auditDate": "2026-10-28",
+  "status": "source-audited-only; implementation-and-acceptance-pending",
+  "workItemIds": [
+    "W7-BIZ-037",
+    "W7-GOV-006",
+    "W7-FLOW-001"
+  ],
+  "registryDenominatorUnchanged": 349,
+  "nativeModuleComplete": false,
+  "businessRequestsExecuted": false,
+  "scope": {
+    "page": "lib/features/basic_data/pages/unit_page.dart",
+    "route": "/basicinfo/unit",
+    "dailyFields": [
+      "code",
+      "name",
+      "status"
+    ],
+    "onlineIdentity": "UUID",
+    "legacyId": "read-only provenance; online create null",
+    "controlledCompatibilityFields": [
+      "measurementDimension",
+      "massUnitCode"
+    ],
+    "actionGroups": 28,
+    "notAWorkflowCount": true
+  },
+  "actions": [
+    {
+      "id": "UNIT-A01",
+      "title": "入口与主表查询",
+      "apiOrCapability": "GET /api/master/units",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "扁平主档；UUID在线身份、legacyId仅溯源；1基page、默认20；后端code升序，不合成分类树。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 220,
+          "symbolOrNeedle": "Future<void> _loadUnits"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A02",
+      "title": "搜索、精确/空值筛选",
+      "apiOrCapability": "GET /api/master/units?keyword&code&name&status&dimension&nullFields",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "keyword服务器匹配；字段精确/nullFields白名单；dimension空值=没有profile。变更筛选清选择、退役owner、回第一页。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 290,
+          "symbolOrNeedle": "void _onFilterChanged"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A03",
+      "title": "筛选桶和空值计数",
+      "apiOrCapability": "GET /api/master/units/facets",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "code/name/status/dimension全局未软删桶及null计数；每字段最多50；桶失败不阻断列表。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitService.java",
+          "line": 345,
+          "symbolOrNeedle": "public UnitFacets facets"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A04",
+      "title": "分页、读范围与加载壳",
+      "apiOrCapability": "GET /api/master/units?page&size",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "对齐可见页/请求页、查询代次和敏感读边界；inline有dirty先保护；不让旧回复覆盖新范围。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 977,
+          "symbolOrNeedle": "onPageChange:"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A05",
+      "title": "公共表格呈现/选择/右键",
+      "apiOrCapability": "local shared table and platform-column policy",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "迁移适用列设置/列宽/顺序/显隐/固定/全屏/选择/键盘；显式三列code/name/status未设sortable，后端无sort/order。自设列另核权限投影。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 828,
+          "symbolOrNeedle": "static final _columns"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A06",
+      "title": "详情及详情动作",
+      "apiOrCapability": "GET /api/master/units/{UUID}",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "行点击/右键异步加载归属打开owner；只显示编号/名称/状态，接历史、编辑、状态、删除入口；失权退役旧弹窗。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 424,
+          "symbolOrNeedle": "Future<void> _showDetail"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A07",
+      "title": "编号可用性预检",
+      "apiOrCapability": "GET /api/master/units/code-availability?code&entityId",
+      "permissionContract": "unit:create OR unit:edit",
+      "requiredSemantics": "预检不等于预约或成功；保存再次验证全局终身编号；编辑原code不误拒；409定位code。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/MasterIdentifierAvailabilityController.java",
+          "line": 56,
+          "symbolOrNeedle": "/units/code-availability"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A08",
+      "title": "弹窗新增与草稿",
+      "apiOrCapability": "POST /api/master/units",
+      "permissionContract": "unit:create; nondefault status additionally unit:status",
+      "requiredSemantics": "日常code/name/status，默认使用；隐藏measurement两键必须省略，kg推导留服务器；只有create传draftSpec；Unknown不按同名认领。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 357,
+          "symbolOrNeedle": "Future<void> _showCreate"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A09",
+      "title": "表内追加新增/详情输入",
+      "apiOrCapability": "POST /api/master/units",
+      "permissionContract": "unit:create; nondefault status additionally unit:status",
+      "requiredSemantics": "多个新增行按原行意图；成功行移除、校验失败保留、uncertain阻止重发；本机draft key不是服务器幂等键。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 342,
+          "symbolOrNeedle": "MasterInlineCreateConfig get inlineCreation"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A10",
+      "title": "完整编辑弹窗",
+      "apiOrCapability": "PUT /api/master/units/{UUID}",
+      "permissionContract": "unit:edit always; changed status additionally unit:status",
+      "requiredSemantics": "name/status完整目标，code空/省略保留；只读status仍提交原值；measurement两键省略保留。无expectedVersion/receipt；编辑没传draftSpec。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 385,
+          "symbolOrNeedle": "Future<void> _showEdit"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A11",
+      "title": "行内名称/状态编辑",
+      "apiOrCapability": "PATCH /api/master/inline-edit/units/{UUID}",
+      "permissionContract": "unit:view + unit:edit; changed status additionally unit:status",
+      "requiredSemantics": "expected含每个改动字段原值；NOWAIT行锁比较后合并当前隐藏字段。本页只name/status，code不在inline白名单；额外员工/非访客/未锁/非强改密/非模拟限制。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterInlineEditService.java",
+          "line": 72,
+          "symbolOrNeedle": "public Object patch"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A12",
+      "title": "行内保存全部/取消/离开",
+      "apiOrCapability": "per-row shared inline POST/PATCH",
+      "permissionContract": "per-row create/edit/status authority",
+      "requiredSemantics": "保全全部模型与输入法；部分成功不重发，失败输入保留；未决原意图冻结；公共dirty/close/update退出保护，不用仅屏幕行重建。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/widgets/master_inline_page_mixin.dart",
+          "line": 137,
+          "symbolOrNeedle": "Future<void> saveInline"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A13",
+      "title": "单条启停",
+      "apiOrCapability": "POST /api/master/units/batch-status",
+      "permissionContract": "unit:status",
+      "requiredSemantics": "当前UI单条也是items一条的batch-status，有确认和逐项结果。PATCH status是真实额外API，不是当前UnitPage按钮路径；仅接PATCH不等于动作全迁。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 417,
+          "symbolOrNeedle": "Future<void> _toggleDetailStatus"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A14",
+      "title": "多选批量启停",
+      "apiOrCapability": "POST /api/master/units/batch-status",
+      "permissionContract": "unit:status",
+      "requiredSemantics": "items最多500、UUID去重，一次请求；保留逐项ok/reason，已目标可无写，失败维持选择。Unit.kind.versioned=false。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleService.java",
+          "line": 92,
+          "symbolOrNeedle": "public MasterBatchResult batchStatus"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A15",
+      "title": "单条软删除",
+      "apiOrCapability": "POST /api/master/units/batch-delete",
+      "permissionContract": "unit:delete",
+      "requiredSemantics": "当前UI单条走batch-delete；兼容DELETE /units/{id}另保留。引用保护/软删由服务器，禁止本地隐藏当作成功。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 421,
+          "symbolOrNeedle": "Future<void> _delete"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A16",
+      "title": "多选软删除/失败定位",
+      "apiOrCapability": "POST /api/master/units/batch-delete",
+      "permissionContract": "unit:delete",
+      "requiredSemantics": "最多500去重；逐项存在/引用/权限理由；样例按可见范围脱敏。Unknown保存原集合，不猜成功行、不重发已成功项。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleService.java",
+          "line": 183,
+          "symbolOrNeedle": "private MasterBatchResult deleteInternal"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A17",
+      "title": "本人操作窗口与事件日志",
+      "apiOrCapability": "GET /api/master/operation-history?entityType=units",
+      "permissionContract": "unit:view; UI entry additionally any unit write permission",
+      "requiredSemantics": "本人最近10次操作+30事件；canUndo/canRedo/blockedReason权威；operation.version不是Unit行version。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java",
+          "line": 78,
+          "symbolOrNeedle": "public History list"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A18",
+      "title": "撤回本人操作",
+      "apiOrCapability": "POST /api/master/operation-history/{opUUID}/undo?entityType=units",
+      "permissionContract": "unit:view + original action/field authority",
+      "requiredSemantics": "expectedVersion是operation版本；核对当前快照/引用/业务规则；不逆向拼PUT；同opId+version+direction的确定性查询需专项证明。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java",
+          "line": 97,
+          "symbolOrNeedle": "public History undo"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A19",
+      "title": "取消最近撤回",
+      "apiOrCapability": "POST /api/master/operation-history/{opUUID}/redo?entityType=units",
+      "permissionContract": "unit:view + original action/field authority",
+      "requiredSemantics": "只允许最近一次撤回；新操作使旧redo失效；expectedVersion及当前canRedo，不作重复保存。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java",
+          "line": 98,
+          "symbolOrNeedle": "public History redo"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A20",
+      "title": "对象版本历史/差异",
+      "apiOrCapability": "GET /api/master/record-history; GET /{revisionId}; GET /categories",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "entityType=units及recordId/cursor/size，动作/人员/日期/关键字；获取before/after、expectedHead、恢复capabilities；历史ID原文保真。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryController.java",
+          "line": 55,
+          "symbolOrNeedle": "public MasterRecordHistoryService.Entry detail"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A21",
+      "title": "恢复历史前/后版本",
+      "apiOrCapability": "POST /api/master/record-history/{revisionId}/restore?entityType=units",
+      "permissionContract": "unit:view + current unit:edit + required field/action grants",
+      "requiredSemantics": "body expectedHead+before；锁和head CAS；DEDICATED计量/授权事实走原维护；不是UnitSave的version或通用receipt。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryService.java",
+          "line": 902,
+          "symbolOrNeedle": "public void restore("
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A22",
+      "title": "加密Excel异步job",
+      "apiOrCapability": "POST/GET /api/report-export-jobs; POST /{id}/download",
+      "permissionContract": "unit:export",
+      "requiredSemantics": "UtenExportButton优先master/unit任务，冻结查询/投影及稳定job ID；取消/过期/恢复沿原job；密码只保护下载，不存journal；SUCCEEDED不等于落盘。",
+      "sourceEvidence": [
+        {
+          "source": "lib/components/buttons/uten_export_button.dart",
+          "line": 220,
+          "symbolOrNeedle": "final domain = reportExportJobDomain"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A23",
+      "title": "旧环境直连导出fallback",
+      "apiOrCapability": "POST /api/master/units/export",
+      "permissionContract": "unit:export",
+      "requiredSemantics": "任务不可用才回直POST；query同列表，body password+columnProjection；服务端REPEATABLE_READ、完整结果上限和code/name/status投影。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java",
+          "line": 79,
+          "symbolOrNeedle": "public ResponseEntity<byte[]> export"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A24",
+      "title": "完整查询打印预览",
+      "apiOrCapability": "paged GET /api/master/units + shared projection reads",
+      "permissionContract": "actual source: unit:view; embedded export separately unit:export",
+      "requiredSemantics": "冻结owner/query/列，全分页检查重复/漏行/漂移，不只当前页。打印按钮没有unit:export判定；不能把注释当已实现权限。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 786,
+          "symbolOrNeedle": "Future<UtenPrintTable> _printLoader"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A25",
+      "title": "PDF/原生打印/取消",
+      "apiOrCapability": "isolated local PDF -> printer dialog",
+      "permissionContract": "current source read/projection boundary",
+      "requiredSemantics": "完整中文字体、同表格投影/快照；切身份/筛选退役；生成、预览、选择器、实际交付分开；单位没有采购式专用print receipt。",
+      "sourceEvidence": [
+        {
+          "source": "lib/components/print/uten_print_preview.dart",
+          "line": 668,
+          "symbolOrNeedle": "Future<void> _print()"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A26",
+      "title": "刷新/错误/空列表恢复",
+      "apiOrCapability": "GET list/facets",
+      "permissionContract": "unit:view",
+      "requiredSemantics": "保持新读取胜出；失权清旧数据；校验错误保留输入；Confirmed后刷新失败不回到create重试。",
+      "sourceEvidence": [
+        {
+          "source": "lib/features/basic_data/pages/unit_page.dart",
+          "line": 844,
+          "symbolOrNeedle": "Future<void> _refresh"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A27",
+      "title": "返回/关闭/草稿/更新退出",
+      "apiOrCapability": "local shared draft/journal/exit guards",
+      "permissionContract": "same authenticated owner and current write grant",
+      "requiredSemantics": "issuer/user/dataset/read scope绑定；未知原文不删除或被新意图覆盖；恢复草稿不自动发送；dirty/busy/Unknown必须阻止不安全退出。",
+      "sourceEvidence": [
+        {
+          "source": "lib/shared/drafts/form_draft_mixin.dart",
+          "line": 725,
+          "symbolOrNeedle": "Future<R> runFormDraftSubmission"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    },
+    {
+      "id": "UNIT-A28",
+      "title": "字典及下游真实引用",
+      "apiOrCapability": "GET /api/master/units/dict + downstream owning APIs",
+      "permissionContract": "unit:view + downstream permissions",
+      "requiredSemantics": "dict全部未软删（包括禁用）按name；下游可选性另核。新增UUID用于goods.unit_id，legacyId/code/name不是关系；引用后删除/重量规则/历史保全进FLOW-001。",
+      "sourceEvidence": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitService.java",
+          "line": 396,
+          "symbolOrNeedle": "public List<UnitListItem> dict"
+        }
+      ],
+      "migrationAcceptance": "pending; source audit is not implementation"
+    }
+  ],
+  "writeContracts": {
+    "create": {
+      "method": "POST",
+      "path": "/api/master/units",
+      "permission": "unit:create",
+      "required": [
+        "name"
+      ],
+      "optional": [
+        "code",
+        "status",
+        "measurementDimension",
+        "massUnitCode"
+      ],
+      "extraStatusGrant": "nondefault explicit status requires unit:status",
+      "measurementInference": "both keys absent permits server weight-name inference; explicitnull disables inference",
+      "internalImportService": "goods:import is service/internal compatibility, not public HTTP permission",
+      "version": "none",
+      "receipt": "none"
+    },
+    "update": {
+      "method": "PUT",
+      "path": "/api/master/units/{UUID}",
+      "controllerGate": "any(unit:edit,unit:status)",
+      "effectiveServiceGate": "unit:edit always; changed status additionally unit:status",
+      "fullFields": [
+        "name",
+        "status"
+      ],
+      "code": "empty/absent keeps existing",
+      "measurement": "presence aware only for two measurement keys",
+      "version": "none",
+      "receipt": "none"
+    },
+    "status": {
+      "method": "PATCH",
+      "path": "/api/master/units/{UUID}/status",
+      "permission": "unit:status",
+      "body": {
+        "status": "使用|禁用",
+        "version": "optional Long; UnitService ignores"
+      },
+      "concurrency": "pessimistic row refresh, no expected-version enforcement",
+      "sourcePageActualPath": "single and multi source UI use POST batch-status"
+    },
+    "inline": {
+      "method": "PATCH",
+      "path": "/api/master/inline-edit/units/{UUID}",
+      "pageFields": [
+        "name",
+        "status"
+      ],
+      "apiFields": [
+        "name",
+        "status",
+        "measurementDimension",
+        "massUnitCode"
+      ],
+      "body": "expected original values perchanged field + changes",
+      "guards": "unit:view/edit; status grant ifchanged; employee-bound/nonvisitor/unlocked/notmustchangepw/nonimpersonated",
+      "version": "changed-field compare under NOWAIT lock, not monotonic Unit version",
+      "receipt": "none"
+    },
+    "batch": {
+      "status": "POST /api/master/units/batch-status",
+      "delete": "POST /api/master/units/batch-delete",
+      "maxItems": 500,
+      "item": "{id:UUID,version?:Long}; Unit kind versioned=false",
+      "result": "{succeeded,failed,results:[{id,label,ok,reason}]} after UUIDdedupe",
+      "receipt": "none"
+    }
+  },
+  "fieldPresenceCases": [
+    {
+      "operation": "update",
+      "before": "MASS/KG",
+      "input": "both keys omitted",
+      "expected": "MASS/KG preserved"
+    },
+    {
+      "operation": "create",
+      "before": "name kg",
+      "input": "both keys omitted",
+      "expected": "server parser may infer MASS/KG"
+    },
+    {
+      "operation": "create",
+      "before": "name kg",
+      "input": "both explicit null",
+      "expected": "no inference; unset"
+    },
+    {
+      "operation": "update",
+      "before": "MASS/KG",
+      "input": "massUnitCode:null only",
+      "expected": "MASS retained, mass code cleared unless in-use guard rejects"
+    },
+    {
+      "operation": "update",
+      "before": "MASS/KG",
+      "input": "measurementDimension:COUNT, mass omitted",
+      "expected": "clear mass code unless in-use guard rejects"
+    },
+    {
+      "operation": "update",
+      "before": "any",
+      "input": "COUNT+KG",
+      "expected": "validation rejected"
+    },
+    {
+      "operation": "update",
+      "before": "MASS/KG",
+      "input": "both explicit null",
+      "expected": "delete measurement profile unless in-use guard rejects"
+    },
+    {
+      "operation": "update",
+      "before": "baseline status",
+      "input": "status omitted/null",
+      "expected": "apply attempts null; NOT presence-preserve; ordinary edit must include baseline status"
+    },
+    {
+      "operation": "update",
+      "before": "existing code",
+      "input": "code blank/null/omitted",
+      "expected": "retain existing code"
+    }
+  ],
+  "measurementAuthority": {
+    "dimensions": [
+      "COUNT",
+      "MASS",
+      "LENGTH",
+      "AREA",
+      "VOLUME",
+      "OTHER"
+    ],
+    "massCodes": [
+      "G",
+      "KG",
+      "T",
+      "JIN",
+      "LB",
+      "OZ"
+    ],
+    "normalization": "trim/uppercase; empty→null",
+    "inUse": "changing into/outof MASS or MASS code with related goods nonzero stock/anymovement (includingdeleted goods) ->409",
+    "unchangedNoop": true,
+    "nonMassToNonMass": "not subject to MASS accounting restriction",
+    "doNotReimplementWeightConversion": true
+  },
+  "coreMutationIntegration": {
+    "interface": "CaptureMutationOwner -> PrepareMutation(UnitCreate|UnitUpdate|UnitStatus, stableLocalUUID, rawBodyJson, owner,resourceId?,observedStatus?) -> MutateAsync",
+    "outcomes": [
+      "NotSent",
+      "Confirmed",
+      "Rejected",
+      "Unknown"
+    ],
+    "rawBodyFrozen": true,
+    "localRequestIdIsServerIdempotencyKey": false,
+    "statusVersionContract": "AcceptedButIgnored; EnforcesExpectedVersion=false",
+    "automatic401OrStepUpReplay": false,
+    "durableMutationJournalAvailableAtHandshake": false,
+    "initialCoverage": "three typed transport/fence actions only; not all 28 groups, not complete Unit",
+    "descriptorSingleAttempt": true,
+    "explicitRejectionNextDecision": "new user decision and new local request ID; never replay old descriptor",
+    "unconfirmedDatasetBlocksPrepare": true,
+    "serverRequestIdHeader": null,
+    "serverRequestIdBodyField": null
+  },
+  "unknownReconciliation": {
+    "create": "freeze originalintent; search/name/code/history only manualevidence, no automaticownership or resend",
+    "updateOrStatus": "UUID detail proves currentstate, not originalcommand causality; matching values are not receipt",
+    "batch": "retain originalset and known peritemresults; no blind resend of confirmed/unknownitems",
+    "personalUndoRedo": "opId+expectedOperationVersion+direction maypermit deterministic nextversion/state proof only after owningconcurrency/eviction tests",
+    "recordRestore": "expectedHead protects restore only; no assumed generic receipt",
+    "exportJobs": "originaljob UUID has real GET/cancel/download state; job success isnot filedelivery"
+  },
+  "gaps": [
+    {
+      "id": "UNIT-GAP-01",
+      "title": "No Unit whole-record version in read/save; status andbatch ignoreUnit version",
+      "blocks": "crossclient stale full edit DoD"
+    },
+    {
+      "id": "UNIT-GAP-02",
+      "title": "No server commandreceipt/idempotency for create/update/status",
+      "blocks": "safe automated unknown reconciliation"
+    },
+    {
+      "id": "UNIT-GAP-03",
+      "title": "WPF durablejournal/draft absent in initialMutation",
+      "blocks": "restart/close/update retention"
+    },
+    {
+      "id": "UNIT-GAP-04",
+      "title": "Print button follows view reads; exportPermission only gates embeddedexport",
+      "blocks": "claim unit:export already protects print; owning policy decision/parity needed"
+    },
+    {
+      "id": "UNIT-GAP-05",
+      "title": "three actions omit inline/batch/history/export/print/draftcomplete paths",
+      "blocks": "Unit/FLOW done"
+    }
+  ],
+  "requiredIncrementPlan": [
+    {
+      "stage": "P1",
+      "implemented": false,
+      "scope": "server/DTO/DB",
+      "proposal": "Authoritative monotonic Unit revision mustcover unit row + measurement profile. Emit in readDTO and compare underlock. Cover allwriters: full/inline/status/batch/history/import; do not substitute personalhistory version or measurementversion."
+    },
+    {
+      "stage": "P2",
+      "implemented": false,
+      "scope": "server receipt/DB",
+      "proposal": "Explicit commandidentity+presence-sensitive payload hash boundto actor/issuer/dataset; samekey+samebody returns original result; mismatchreject. Receipt and business effect atomic; scoped readonly receiptquery. New route/DTO names not yetexisting and require owning design."
+    },
+    {
+      "stage": "P3",
+      "implemented": false,
+      "scope": "Dart + WPF + sharedpubliccallers",
+      "proposal": "Negotiate capability; shared frozenjournal, draft and recovery adapters; sameversion/commandid andpresence semantics. Migrate allpublicedit/inline/batch/history callsites, not just one WPF form."
+    },
+    {
+      "stage": "P4",
+      "implemented": false,
+      "scope": "rollout/regression",
+      "proposal": "Preserve current v0/default until coordinatedrollout. Optin alone cannotstop stale old Win10 writer clobbering newstate; legacywriter policy + bothclient regression remain mandatory. No productiondeployment authorized."
+    }
+  ],
+  "notStandaloneSourceActions": [
+    {
+      "action": "unit fileimport",
+      "reason": "no UnitPage importer; goodsimport internal create isanother workflow"
+    },
+    {
+      "action": "unit attachments",
+      "reason": "no fields/actions in UnitPage/DTO; platformcustomfilecolumns separatelyreview"
+    },
+    {
+      "action": "approve/reject",
+      "reason": "no Unit approvalstatus/endpoint, only 使用/禁用"
+    },
+    {
+      "action": "categorytree",
+      "reason": "flatmaster"
+    },
+    {
+      "action": "measurementeditor",
+      "reason": "hidden in dailyUI; controlledAPI semantics stillrequired"
+    }
+  ],
+  "workItemDoD": {
+    "W7-GOV-006": [
+      "Unit-only audit doesnotcomplete global214-page audit",
+      "everyaction+DTO+permission+presence+version/receipt+SHA recorded; proposals notpresented asimplementedAPI"
+    ],
+    "W7-BIZ-037": [
+      "all28 applicable actiongroups or individual source-basedN/A; three writes notdone",
+      "single publicMutation/Draft/REC/Export/Print/UI entries, no page-owned duplicate",
+      "Dart/WPF/server samecases + realWin7 x86/x64 interactions + Win10 defaultregression",
+      "close version/receipt/durablegaps or explicit recorded scope decision; do notsilently lowerDoD"
+    ],
+    "W7-FLOW-001": [
+      "create→UUID/detail→edit→status→actual downstream goodsreference→guardeddelete→history/output/recovery",
+      "preserve measurementinference and historicalweight; no legacy/name/code relation",
+      "cross-client races/unknown/partial outcomes through authority, notdisplay matching"
+    ]
+  },
+  "testCases": [
+    {
+      "id": "UNIT-T01",
+      "scenario": "create-only user; ordinary name/default status",
+      "expected": "UUID created, legacyId null, normalized detail",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T02",
+      "scenario": "kg omitted measurement vs explicitnull",
+      "expected": "server inference versus explicit unset preserved",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T03",
+      "scenario": "disabled create without status grant",
+      "expected": "forbidden/input retained",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T04",
+      "scenario": "edit-only unchanged status vs changed; status-only PUT",
+      "expected": "unchanged permitted; changed needs status; status-only cannot PUT",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T05",
+      "scenario": "PATCH optionalversion",
+      "expected": "onlystatus; version accepted-but-ignored explicit",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T06",
+      "scenario": "name edit of in-use MASS/KG omits measurement",
+      "expected": "preserved",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T07",
+      "scenario": "clear/change MASS with nonzero stock or anymovement including deleted goods",
+      "expected": "409; no old weight rewrite",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T08",
+      "scenario": "invalid dimension/mass combination",
+      "expected": "validation",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T09",
+      "scenario": "empty code/new duplicate name/code reserved acrosssoftdelete",
+      "expected": "auto code or real conflict; no idempotent claim",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T10",
+      "scenario": "two-client stale full PUT",
+      "expected": "currentgap exposed in isolated test; new revision contract mustprevent overwrite",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T11",
+      "scenario": "inline expected mismatch/rowlock",
+      "expected": "409 nooverwrite; unrelated hidden fields retained",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T12",
+      "scenario": "multirow create/update partial/unknown",
+      "expected": "confirmed not replayed, failed retained, unknown frozen",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T13",
+      "scenario": "batch501/dedup/missing/in-use mixed",
+      "expected": "limit and correct per-item result",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T14",
+      "scenario": "lost create/PUT/PATCH response/restart/owner change",
+      "expected": "unknown original intent; no same-name automatic claim; durable gap not hidden",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T15",
+      "scenario": "confirmed thenrefresh/checkpoint fails",
+      "expected": "confirmed retained; no duplicate create",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T16",
+      "scenario": "undo/redo stale opversion/eviction/another same-user window",
+      "expected": "capabilities and exact transition proof, otherwiseunknown",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T17",
+      "scenario": "restore stale expectedHead/DEDICATED facts",
+      "expected": "no bypass; currentperm/reference guards",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T18",
+      "scenario": "exportfilters/nulls/projection/jobs/cancel/expire/password",
+      "expected": "original job, no persistedpassword, atomicdelivery",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T19",
+      "scenario": "print unit:view-only/scopechanged/cancelprinter",
+      "expected": "document actualpermission; stale outputretired; cancel notprinted",
+      "executedByThisAudit": false
+    },
+    {
+      "id": "UNIT-T20",
+      "scenario": "Win7botharch+Win10:IME/keyboard/zoom/dirty/update/nativefiles",
+      "expected": "actual target evidence not local unit-test claim",
+      "executedByThisAudit": false
+    }
+  ],
+  "validation": {
+    "sourceAuditOnly": true,
+    "businessApiExecuted": false,
+    "testsExecuted": false,
+    "win7Uat": false,
+    "moduleDone": false
+  },
+  "sources": [
+    {
+      "source": "lib/components/buttons/uten_export_button.dart",
+      "sha256": "62f1259858b5068bb30b79c902a7f582f8926a928a8eb95deb0abeb6d5f515c0",
+      "lineCount": 506
+    },
+    {
+      "source": "lib/components/print/complete_print_snapshot.dart",
+      "sha256": "df49059cd46d1203d827d41ac950d3f743b3482ca5ca4193c582c70f7eb7e507",
+      "lineCount": 58
+    },
+    {
+      "source": "lib/components/print/uten_print_preview.dart",
+      "sha256": "d232bf45b58d257803a267fcfeb91bd25c133240125137c74a6c7ec588fc48c1",
+      "lineCount": 944
+    },
+    {
+      "source": "lib/features/basic_data/models/unit_node.dart",
+      "sha256": "057d9649fcd7af87e17d1b9b663ddf8d577655e9c1a23cbc543518a3c628d4d8",
+      "lineCount": 108
+    },
+    {
+      "source": "lib/features/basic_data/pages/unit_page.dart",
+      "sha256": "f315a1b5dd35ed8a03c4ab8c45c82d5c186c3a51c673cc4baeea10c8a6a50f37",
+      "lineCount": 993
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_batch_repository.dart",
+      "sha256": "0661cb9d1befff86aaa2e436baa0bdff670c7b08747a061357e168d5d6e9db08",
+      "lineCount": 65
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_inline_edit_repository.dart",
+      "sha256": "ae96fe61813cc06640499e15928621303fea6120e7bb2f3758e1f36514f79e5e",
+      "lineCount": 44
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_operation_history_repository.dart",
+      "sha256": "2ced28b365b3a045d6dd5a3caabc32f7fed90121f434e55907ae7a85b3d1c757",
+      "lineCount": 47
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_record_history_repository.dart",
+      "sha256": "f1d57726efb50a8921907e01f29d3a9859545245b702ab5fd7be06af218127e5",
+      "lineCount": 174
+    },
+    {
+      "source": "lib/features/basic_data/repositories/unit_repository.dart",
+      "sha256": "f94c5c745701f00795e7a054e2d1c85cd1b87bb186b30836831f31c5b4f6bab8",
+      "lineCount": 110
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "sha256": "8515723160e0e7166402e46f1f0427596dabaa174850031c74e418938210ca57",
+      "lineCount": 10364
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_detail_sheet.dart",
+      "sha256": "146ebcbfe26389026e2428d554cedca0df1634e3820d3cf93655f8d6cfa80aac",
+      "lineCount": 327
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_edit_dialog.dart",
+      "sha256": "ffe6d2242ed173bfa36cbd47a97fda4128ee0bff1e94e2f6d3ae13ac624617a2",
+      "lineCount": 1139
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_edit_owner.dart",
+      "sha256": "468a2b358e9632016c6f74578841c579bd50bededddc5e60f0391beeb7c059c2",
+      "lineCount": 203
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_inline_create.dart",
+      "sha256": "6fe45821ea02efb79050b596569b86af99a5cdb519c4a64befcabdcdbe784b4d",
+      "lineCount": 785
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_inline_edit.dart",
+      "sha256": "acee3ff7c6cfa1b59e44e5eed39cdbfc0bd8228a59d2441587664529981242dc",
+      "lineCount": 1392
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_inline_page_mixin.dart",
+      "sha256": "a4c3436fe839274cd10630f431b39660fa76baf0b0968cd6420dbcecc8de5888",
+      "lineCount": 181
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_operation_history_panel.dart",
+      "sha256": "5f2bcd030e281dccb72837a4299c4ab3d6a04ff1026f28879738e374d880ce06",
+      "lineCount": 635
+    },
+    {
+      "source": "lib/features/basic_data/widgets/master_record_history_panel.dart",
+      "sha256": "64307c7bfc995f9171e135d568cfebde7c5a231df647efb5b0b37dacc44ea6f5",
+      "lineCount": 139
+    },
+    {
+      "source": "lib/shared/drafts/form_draft_mixin.dart",
+      "sha256": "e73eacb2cebc547136542a1a8aebedad4c3af6acacbe72c102dcb690e190f005",
+      "lineCount": 1077
+    },
+    {
+      "source": "lib/shared/export/master_export_job.dart",
+      "sha256": "934efd5961ee5f55b27f88c7964dcf1110e4aebd13b1c4d26289193647832517",
+      "lineCount": 114
+    },
+    {
+      "source": "lib/shared/export/report_export_jobs.dart",
+      "sha256": "4ab9df4df3e48bb02b7b924567c0022d94886038ee535351128cbdc81a8c2e4e",
+      "lineCount": 254
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/MasterIdentifierAvailabilityController.java",
+      "sha256": "1008017cc447e5c39e492f2d2f8faf76687ba47ba3540f85db3e66f7240ca09a",
+      "lineCount": 79
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/dto/MasterStatusChangeRequest.java",
+      "sha256": "d1b98f7d76d83ea817730327ee1fdaab4a90d070bc06e3694fc3300141fd1286",
+      "lineCount": 21
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterInlineEditService.java",
+      "sha256": "ef304b726c3911483c3019c953845fd02b2889140becca75df5cbd4eb92b0dce",
+      "lineCount": 171
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java",
+      "sha256": "8b89e3780b037fea017cf87d815a4703588199b39f6950a75d9586ef6f4acff0",
+      "lineCount": 372
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryController.java",
+      "sha256": "f1acf1d32cb17bd5cf22ee33a1e763204b084091d42174894fadcabe6317458e",
+      "lineCount": 73
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryService.java",
+      "sha256": "18a70583923225b3b40714c6c0b5b5cb8f09b565479d0f0fe96263d776184625",
+      "lineCount": 2197
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterEntityKind.java",
+      "sha256": "ffb20ae7bcd880f4aeb84812f6437f1899b83c4b15050cd02040456a727fc505",
+      "lineCount": 45
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java",
+      "sha256": "f5c4163dd43e05c83888377ec53021ccd11f049c5fc6dfaa68af79b624abd265",
+      "lineCount": 162
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleService.java",
+      "sha256": "e0089a41708b2fdec3de9fa87ffe1e49e32a0eb546a874209fde18f00db9cf64",
+      "lineCount": 311
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterReferenceCatalog.java",
+      "sha256": "3570f15ed4c154020e1b0cb245b391deb1ed5ba763655cf80f285d5a555b0372",
+      "lineCount": 750
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/dto/MasterBatchRequests.java",
+      "sha256": "8c8f0c95608a6406253acfab9f1e8c9d75122bf5ecad5f892e9df4ece73e10c1",
+      "lineCount": 43
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/lifecycle/dto/MasterBatchResult.java",
+      "sha256": "8f3d26a1fa70f62a4724ef61d535c173ea5d450272b157a7f5174c0eb3bb328e",
+      "lineCount": 22
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/Unit.java",
+      "sha256": "2efa4efa66d6d38cacb4ca93176a0fc786041a6dedd4eb046d5fafd4bd7067ac",
+      "lineCount": 34
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitController.java",
+      "sha256": "e6aba08f80b8d02dd75cef0c45ea85f8a549058aa3184fdffe1e481993de0ffd",
+      "lineCount": 148
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitRepository.java",
+      "sha256": "be6524993c3955d6ea8deee0c37b79541afe06c24954161dbdc621b939f03f5f",
+      "lineCount": 36
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/UnitService.java",
+      "sha256": "7f9f0131d879d8cdef27ef7000b5ed576e73c41252cd181ba5e83f734df18397",
+      "lineCount": 512
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/dto/UnitDetail.java",
+      "sha256": "d46db494a705415409c5b749473ef482799f1ff93dabff67c3057a8f65047456",
+      "lineCount": 32
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/dto/UnitListItem.java",
+      "sha256": "ab161fa186e3bb83028b4202c54a68f459ccf57eccdb0c4b40925af67dfbea93",
+      "lineCount": 31
+    },
+    {
+      "source": "server/src/main/java/com/uten/imp/features/master/unit/dto/UnitSaveRequest.java",
+      "sha256": "6eadaba9b6612383b976206fd6309b975ae23aef0bf57ba9b1867f7f4638a036",
+      "lineCount": 54
+    },
+    {
+      "source": "server/src/main/resources/db/migration/V40__unit.sql",
+      "sha256": "5877076c1b1e51af27f0bcbb0c0c5e3a94116b7b12232784f56381b5446f0493",
+      "lineCount": 58
+    },
+    {
+      "source": "server/src/main/resources/db/migration/V885__master_operation_history.sql",
+      "sha256": "a77307f47e31771da984cd0d5c95026efc0a101e82eafd2cadd763aa96ae345d",
+      "lineCount": 334
+    },
+    {
+      "source": "server/src/test/java/com/uten/imp/features/master/unit/UnitDimensionFacetFilterTest.java",
+      "sha256": "ab966b00016938745e97bc59e9a65a58da17d3a35b9aacc9b153b7dabd0bfac8",
+      "lineCount": 165
+    },
+    {
+      "source": "server/src/test/java/com/uten/imp/features/master/unit/UnitMassUnitCodeTest.java",
+      "sha256": "b313f53b0d437edebd2240099db10552938dd34d84f9f3f99953c4a478e5accd",
+      "lineCount": 299
+    },
+    {
+      "source": "test/features/basic_data/pages/unit_inline_busy_once_test.dart",
+      "sha256": "e41e8b5d8dbefd32460a786f652cbe5c65c4ce6fcd99ca0efd4e2f795ebbfb42",
+      "lineCount": 276
+    },
+    {
+      "source": "test/features/basic_data/pages/unit_page_simple_fields_test.dart",
+      "sha256": "f6f595c6b8e86e03eea12d933a31868fb978a0ac96ab5f1fe269bece6cb3b783",
+      "lineCount": 197
+    }
+  ]
+}

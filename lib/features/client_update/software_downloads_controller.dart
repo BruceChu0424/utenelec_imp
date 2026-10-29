@@ -67,13 +67,23 @@ class SoftwareDownloadsController extends ChangeNotifier {
     try {
       final scope = await api.captureRequestScope(isCurrent: current);
       final list = await scope.run(
-        () => api.getList('/client-updates/downloads'),
+        () => api.getList(
+          '/client-updates/downloads',
+          query: {'allRuntimeFamilies': true},
+        ),
       );
       await scope.verify();
       if (!current()) return;
       releases = list
+          // A download catalog must affirm publication explicitly; legacy
+          // update-check responses may retain their existing model defaults.
+          .where((json) => json['state'] == 'PUBLISHED')
           .map(ClientRelease.fromJson)
-          .where((release) => release.isWindowsInstaller)
+          .where(
+            (release) =>
+                release.isWindowsInstaller &&
+                hasValidClientPackageMetadata(release),
+          )
           .toList(growable: false);
       loaded = true;
     } catch (error) {
@@ -89,7 +99,14 @@ class SoftwareDownloadsController extends ChangeNotifier {
   Future<void> download(ClientRelease release) async {
     if (_disposed || !enabled || downloadingId != null) return;
     if (!release.isWindowsInstaller ||
-        !releases.any((item) => item.id == release.id) ||
+        !releases.any(
+          (item) =>
+              item.id == release.id &&
+              item.runtimeFamily == release.runtimeFamily &&
+              item.architecture == release.architecture &&
+              item.sha256 == release.sha256 &&
+              item.sizeBytes == release.sizeBytes,
+        ) ||
         !hasValidClientPackageMetadata(release)) {
       downloadError = const FormatException('安装包信息不完整，请刷新版本列表后重试');
       _notify();
@@ -137,7 +154,7 @@ class SoftwareDownloadsController extends ChangeNotifier {
       final path = await save(
         verified(),
         release.fileName ??
-            'uten-imp-${release.version}-windows-${release.architecture}-setup.exe',
+            'uten-imp-${release.version}-windows-${release.runtimeFamily == ClientRuntimeFamily.wpfLegacy ? 'legacy-' : ''}${release.architecture}-setup.exe',
         stillCurrent: current,
         verifyScope: scope.verify,
         maxBytes: maxClientPackageBytes,

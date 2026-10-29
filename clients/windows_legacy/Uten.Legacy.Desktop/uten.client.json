@@ -1,0 +1,6 @@
+{
+  "endpoints": [
+    { "id": "company", "name": "公司内网", "apiBaseUrl": "https://imp.utenelec/api" }
+  ],
+  "selectedEndpointId": "company"
+}

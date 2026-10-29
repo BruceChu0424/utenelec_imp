@@ -13,7 +13,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   # GlobalCupertinoLocalizations and Cupertino widgets require this font asset.
-  cupertino_icons: ^1.0.9
+  cupertino_icons: ^2.0.0
 
   # 路由
   go_router: ^14.6.2

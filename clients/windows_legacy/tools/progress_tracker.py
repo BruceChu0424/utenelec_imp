@@ -251,7 +251,7 @@ def render(registry: dict) -> dict[Path, str]:
     tasks = registry["tasks"]
     lines = ["# Win7 兼容版逐项进度清单", "", "由 `progress/work-items.json` 生成；请通过进度工具更新，不手改复选框。",
              "", f"基线：**{stats['totalWorkPackages']} 个工作包**；完成 **{stats['done']}**；尚待实施或验证 **{stats['remainingIncludingUnverified']}**；已核实不适用 **{stats['notApplicable']}**。",
-             "", "工作包完成率不是工时/风险进度。源码存在、局部检查、本机双架构、Win7真机及正式交付分别记录；全ERP验收=" + str(stats["fullErpEquivalent"]) + "，Win7目标机验收=" + str(stats["win7Accepted"]) + "，仍不得合main。", "",
+             "", "工作包完成率不是工时/风险进度。源码存在、局部检查、本机双架构、Win7真机及正式交付分别记录；全ERP验收=" + str(stats["fullErpEquivalent"]) + "，Win7目标机验收=" + str(stats["win7Accepted"]) + "；合并和分支清理以当前明确授权及14最新记录为准，不等于完整验收或允许正式发布。", "",
              "| 状态 | 数量 |", "|---|---:|"]
     lines += [f"| {STATUSES[state]} | {stats['states'][state]} |" for state in STATUS_ORDER]
     lines += ["", "## 阶段/分组汇总", "", "| 组 | 阶段 | 总数 | DoD完成 | 尚未完成/适用性待审 |", "|---|---|---:|---:|---:|"]

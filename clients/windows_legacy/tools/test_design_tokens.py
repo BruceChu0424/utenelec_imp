@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 class DesignTokenTests(unittest.TestCase):
     def texts(self):
-        return {path: (ROOT / path).read_text(encoding="utf-8") for path in sync.SOURCES}
+        return {path: (ROOT / path).read_text(encoding="utf-8") for path in sync.source_paths(ROOT)}
 
     def values(self, texts=None):
         return {entry["key"]: entry for entry in sync.build_resources(sync.DartTokens(texts or self.texts()))}
@@ -30,6 +30,55 @@ class DesignTokenTests(unittest.TestCase):
             self.assertEqual(values["Uten.Height." + role]["value"], expected)
             self.assertNotIn("Uten.Height." + role + expected, values)
         self.assertIn("not a table row", values["Uten.Height.Cell"]["note"])
+
+    def test_private_caption_owner_is_supported_without_public_file(self):
+        texts = self.texts()
+        texts.pop(sync.PUBLIC_WINDOW_CONTROLS, None)
+        texts[sync.SOURCES[4]] = """
+class DesktopWindowHost { static const controlsHeight = 36.0; }
+class _DesktopWindowControls {
+  Object build() {
+    final close = _WindowButton(backgroundColor: UtenColors.error);
+    final minimize = _WindowButton(backgroundColor: UtenColors.warning);
+    return Material(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row()));
+  }
+}
+class _WindowButton {
+  Object build() => SizedBox(width: 30, height: 36, child: IconButton(icon: Container(
+    width: 22, height: 22, child: Icon(icon, size: 14, color: Colors.white))));
+}
+"""
+        values = self.values(texts)
+        self.assertEqual("30", values["Uten.Caption.HitWidth"]["value"])
+        self.assertEqual("22", values["Uten.Caption.Diameter"]["value"])
+        self.assertEqual("#FFEF4444", values["Uten.Caption.Close"]["value"])
+
+    def test_public_caption_owner_uses_native_branch_and_fails_without_fallback(self):
+        if sync.PUBLIC_WINDOW_CONTROLS not in self.texts():
+            self.skipTest("Clean source has no public window-control overlay; private context is covered separately")
+        texts = self.texts()
+        source = sync.PUBLIC_WINDOW_CONTROLS
+        texts[source] = texts[source].replace("nativeCircleExtent = 22;", "nativeCircleExtent = 23;")
+        values = self.values(texts)
+        self.assertEqual("23", values["Uten.Caption.Diameter"]["value"])
+        self.assertEqual("14", values["Uten.Caption.IconSize"]["value"])
+        self.assertEqual([source, source], [step["source"] for step in values["Uten.Caption.Diameter"]["resolution"]])
+        texts[source] = texts[source].replace("widget.native ? 14 : 18", "widget.native ? 14 * 2 : 18")
+        with self.assertRaisesRegex(sync.TokenError, "Unsupported public native expression"):
+            self.values(texts)
+
+    def test_source_list_uses_public_owner_only_when_present(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(sync.SOURCES, sync.source_paths(root))
+            target = root / sync.PUBLIC_WINDOW_CONTROLS
+            target.parent.mkdir(parents=True)
+            target.write_text("Unsupported public owner", encoding="utf-8")
+            self.assertIn(sync.PUBLIC_WINDOW_CONTROLS, sync.source_paths(root))
+            texts = self.texts()
+            texts[sync.PUBLIC_WINDOW_CONTROLS] = target.read_text(encoding="utf-8")
+            with self.assertRaises(sync.TokenError):
+                self.values(texts)
 
     def test_aliases_resolve_the_owning_constants_and_reject_cycles(self):
         texts = self.texts()
@@ -106,7 +155,7 @@ class DesignTokenTests(unittest.TestCase):
     def test_check_detects_output_and_source_drift_without_writing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for source in sync.SOURCES:
+            for source in sync.source_paths(ROOT):
                 target = root / source
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / source).read_bytes())
@@ -133,7 +182,7 @@ class DesignTokenTests(unittest.TestCase):
         self.assertTrue(any(item.tag == "{clr-namespace:System;assembly=mscorlib}Double" for item in dictionary))
         provenance = json.loads(rendered[sync.PROVENANCE])
         self.assertEqual(set(keys), {item["key"] for item in provenance["roleMappings"]})
-        self.assertEqual({item["path"] for item in provenance["sources"]}, set(sync.SOURCES))
+        self.assertEqual({item["path"] for item in provenance["sources"]}, set(sync.source_paths(ROOT)))
         for item in provenance["roleMappings"]:
             self.assertTrue(item["resolution"])
 

@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/print/print_pdf_document.dart';
-import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import '../../support/print_test_font.dart';
@@ -278,7 +277,7 @@ void main() {
       horizontal.position.jumpTo(horizontal.position.maxScrollExtent);
       await tester.pumpAndSettle();
       expect(horizontal.position.pixels, greaterThan(500));
-      final close = find.widgetWithText(UtenButton, '关闭');
+      final close = find.byTooltip(RegExp(r'^(关闭|Close|닫기)$'));
       await tester.ensureVisible(close);
       await tester.pumpAndSettle();
       await tester.tap(close);

@@ -308,6 +308,8 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     final decision = await showDialog<String>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(dialogContext, 'stay'),
         title: Text(_queue.hasUnknown ? '保留原发布记录后离开？' : '保存发布队列？'),
         content: Text(
           _queue.hasUnknown
@@ -315,10 +317,6 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
               : '可保存当前目标、版本与队列进度。草稿不包含文件内容、路径或认证材料。',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, 'stay'),
-            child: const Text('留在本页'),
-          ),
           if (!_queue.hasUnknown)
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, 'discard'),
@@ -817,6 +815,12 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                                                   context: context,
                                                   builder: (dialogContext) =>
                                                       UtenAlertDialog(
+                                                        showCloseButton: true,
+                                                        onClose: () =>
+                                                            Navigator.pop(
+                                                              dialogContext,
+                                                              false,
+                                                            ),
                                                         title: const Text(
                                                           '撤回这个版本？',
                                                         ),
@@ -824,16 +828,6 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                                                           '撤回后该文件不再提供下载。已发布的其他组合与原审计记录保留。',
                                                         ),
                                                         actions: [
-                                                          TextButton(
-                                                            onPressed: () =>
-                                                                Navigator.pop(
-                                                                  dialogContext,
-                                                                  false,
-                                                                ),
-                                                            child: const Text(
-                                                              '取消',
-                                                            ),
-                                                          ),
                                                           FilledButton(
                                                             onPressed: () =>
                                                                 Navigator.pop(

@@ -122,6 +122,22 @@ class WpfCandidatePackageTest(unittest.TestCase):
         self.assertFalse(self.output.parent.exists())
         self.assertFalse((self.bundle / package.MANIFEST).exists())
 
+    def test_receipt_covers_every_actual_design_owner_in_both_source_contexts(self):
+        self.assertTrue(set(package.design_source_paths(self.source)).issubset(
+            {item["path"] for item in self.state["sourceFiles"]}))
+        public = self.source / "lib/components/buttons/uten_close_button.dart"
+        public.parent.mkdir(parents=True, exist_ok=True)
+        public.write_text("synthetic public window-control source input", encoding="utf-8")
+        self.git("add", ".")
+        self.git("-c", "user.name=WPF Fixture", "-c", "user.email=fixture@example.invalid",
+                 "-c", "commit.gpgsign=false", "-c", "core.hooksPath=disabled-hooks", "commit", "-qm", "public control receipt input")
+        state = package.capture_source_state(self.source)
+        record = next(item for item in state["sourceFiles"] if item["path"] == "lib/components/buttons/uten_close_button.dart")
+        self.assertEqual(hashlib.sha256(public.read_bytes()).hexdigest(), record["sha256"])
+        public.write_text("unreviewed public control change", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "committed and clean"):
+            package.capture_source_state(self.source)
+
     def test_candidate_round_trip_exact_files_hashes_and_family(self):
         result = self.build(build=True)
         self.assertEqual("candidate", result["mode"])

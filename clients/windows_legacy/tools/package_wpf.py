@@ -29,6 +29,7 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "deploy/client"))
 from package_windows import _PeReader, inspect_executable_info
 from sync_package_contract import CONTRACT as CONTRACT_PATH, load_contract, synchronize as check_contract_consumers
+from sync_design_tokens import SOURCES as DESIGN_SOURCES, source_paths as design_source_paths
 
 CONTRACT = load_contract()
 MANIFEST = CONTRACT["manifest"]
@@ -48,14 +49,14 @@ MAX_MANIFEST_BYTES = CONTRACT["maximumManifestBytes"]
 MAX_JSON_BYTES = 8 * 1024 * 1024
 SOURCE_PATHS = ["clients/windows_legacy", "pubspec.yaml", "assets/security/uten-imp-root-ca.crt",
     "assets/fonts/NotoSansSC.ttf", "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt", "assets/images/logo_ip.png", "assets/images/logo_name.png",
-    "windows/runner/resources/app_icon.ico", "lib/core/theme"]
+    "windows/runner/resources/app_icon.ico", "lib/core/theme", *DESIGN_SOURCES]
 SOURCE_REQUIRED = {"pubspec.yaml", "clients/windows_legacy/BuildVersion.targets",
     "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt",
     "clients/windows_legacy/dependencies.lock.json",
     "clients/windows_legacy/package-contract.json",
     "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json",
     "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
-    "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj"}
+    "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj", *DESIGN_SOURCES}
 
 
 def _plain(path: Path) -> Path:
@@ -123,8 +124,9 @@ def capture_source_state(source_root: Path) -> dict:
     commit = _git(source_root, "rev-parse", "HEAD")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Cannot identify the reviewed source commit")
-    names = [name for name in _git(source_root, "ls-files", "-z", "--", *SOURCE_PATHS).split("\0") if name]
-    if not SOURCE_REQUIRED.issubset(names):
+    owning_design_sources = design_source_paths(source_root)
+    names = [name for name in _git(source_root, "ls-files", "-z", "--", *SOURCE_PATHS, *owning_design_sources).split("\0") if name]
+    if not (SOURCE_REQUIRED | set(owning_design_sources)).issubset(names):
         raise ValueError("Reviewed source is missing required WPF inputs")
     files = []
     for name in sorted(names):

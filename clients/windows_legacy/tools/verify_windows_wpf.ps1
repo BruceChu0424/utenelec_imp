@@ -45,6 +45,13 @@ function Source-Proof {
     $progressBoundary = (Join-Path $clientRoot 'progress') + [IO.Path]::DirectorySeparatorChar
     $inputs = @(Get-ChildItem -LiteralPath $clientRoot -Recurse -File)
     $inputs += @(Get-ChildItem -LiteralPath (Join-Path $workspaceRoot 'lib/core/theme') -Recurse -File -Filter '*.dart')
+    # The generator owns the input list, including the optional public window
+    # controls. Do not maintain a separate caption/login/source list here.
+    $designSourceJson = @(& $PythonPath -B (Join-Path $PSScriptRoot 'sync_design_tokens.py') --list-sources --root $workspaceRoot)
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate the authoritative design-token source inputs.' }
+    foreach ($relative in (($designSourceJson -join '') | ConvertFrom-Json)) {
+        $inputs += Get-Item -LiteralPath (Join-Path $workspaceRoot $relative) -ErrorAction Stop
+    }
     foreach ($relative in @('pubspec.yaml', 'assets/security/uten-imp-root-ca.crt', 'assets/fonts/NotoSansSC.ttf', 'assets/fonts/NotoSansSCFull.ttf', 'assets/fonts/OFL.txt',
         'assets/images/logo_ip.png', 'assets/images/logo_name.png', 'windows/runner/resources/app_icon.ico')) {
         $inputs += Get-Item -LiteralPath (Join-Path $workspaceRoot $relative) -ErrorAction Stop

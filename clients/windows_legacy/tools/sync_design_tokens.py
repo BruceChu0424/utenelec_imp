@@ -26,6 +26,14 @@ SOURCES = (
     "lib/shared/widgets/desktop_window_host.dart",
     "lib/features/auth/widgets/desktop_login_layout.dart",
 )
+PUBLIC_WINDOW_CONTROLS = "lib/components/buttons/uten_close_button.dart"
+
+
+def source_paths(root: Path) -> tuple[str, ...]:
+    """Follow the actual owner without making an absent public widget mandatory
+    for a clean historical context. Presence selects strict public parsing."""
+    return SOURCES + ((PUBLIC_WINDOW_CONTROLS,) if (root / PUBLIC_WINDOW_CONTROLS).is_file() else ())
+
 SPACING_ROLES = ("s2", "s4", "s6", "s8", "s12", "s16", "s20", "s24", "s32", "s40", "s48")
 
 
@@ -185,14 +193,19 @@ class DartTokens:
                       match.group(1).strip())
 
         caption = SOURCES[4]
-        for name, prefix, pattern in (
-            ("_WindowButton", "Caption.hit", r"=>\s*SizedBox\s*\("),
-            ("_WindowButton", "Caption.circle", r"icon\s*:\s*Container\s*\("),
-            ("_WindowButton", "Caption.icon", r"child\s*:\s*Icon\s*\("),
-            ("_DesktopWindowControls", "Caption.close", r"final\s+close\s*=\s*_WindowButton\s*\("),
-            ("_DesktopWindowControls", "Caption.minimize", r"final\s+minimize\s*=\s*_WindowButton\s*\("),
-            ("_DesktopWindowControls", "Caption.layout", r"child\s*:\s*Padding\s*\("),
-        ):
+        if PUBLIC_WINDOW_CONTROLS in self.texts:
+            self._bind_public_caption(caption)
+            private_calls = ()
+        else:
+            private_calls = (
+                ("_WindowButton", "Caption.hit", r"=>\s*SizedBox\s*\("),
+                ("_WindowButton", "Caption.circle", r"icon\s*:\s*Container\s*\("),
+                ("_WindowButton", "Caption.icon", r"child\s*:\s*Icon\s*\("),
+                ("_DesktopWindowControls", "Caption.close", r"final\s+close\s*=\s*_WindowButton\s*\("),
+                ("_DesktopWindowControls", "Caption.minimize", r"final\s+minimize\s*=\s*_WindowButton\s*\("),
+            )
+        for name, prefix, pattern in (*private_calls,
+            ("_DesktopWindowControls", "Caption.layout", r"child\s*:\s*Padding\s*\(")):
             path, start, end = self.class_scope(name)
             if path != caption:
                 raise TokenError("Caption owner moved unexpectedly")
@@ -208,6 +221,36 @@ class DartTokens:
         offset = start + match.start(1)
         self.bind("DesktopLogin.brandSurface", login, offset,
                   self.texts[login][offset:start + match.end(1)].strip())
+
+    def _bind_public_caption(self, caption):
+        public = PUBLIC_WINDOW_CONTROLS
+        owner, start, end = self.class_scope("_DesktopWindowControls")
+        if owner != caption or self.call(owner, r"UtenWindowControls\s*\(", (start, end)).get("native", (None, None))[1] != "true":
+            raise TokenError("Native caption must use the public native window controls")
+        owner, start, end = self.class_scope("_UtenWindowControlButtonState")
+        if owner != public:
+            raise TokenError("Public window-control owner moved unexpectedly")
+        code = self.code[public][start:end]
+        geometry = re.search(r"final\s+size\s*=\s*widget\.native\s*\?\s*const\s+Size\(\s*(UtenWindowControlButton\.\w+)\s*,\s*(UtenWindowControlButton\.\w+)\s*,?\s*\)\s*:\s*Size\.square", code)
+        if geometry is None:
+            raise TokenError("Unsupported public native hit geometry")
+        for group, role in ((1, "width"), (2, "height")):
+            self.bind("Caption.hit." + role, public, start + geometry.start(group), geometry.group(group))
+        for role, control in (("close", "close"), ("minimize", "minimize")):
+            matches = list(re.finditer(r"UtenWindowControl\." + control + r"\s*=>\s*(UtenColors\.\w+)\s*,", code))
+            if len(matches) != 1:
+                raise TokenError("Unsupported public window-control color: " + role)
+            match = matches[0]
+            self.bind("Caption." + role + ".backgroundColor", public, start + match.start(1), match.group(1))
+        circle = self.call(public, r"icon\s*:\s*Container\s*\(", (start, end))
+        icon = self.call(public, r"child\s*:\s*Icon\s*\(", (start, end))
+        for arguments, argument, symbol in ((circle, "width", "Caption.circle.width"),
+                (circle, "height", "Caption.circle.height"), (icon, "size", "Caption.icon.size")):
+            offset, expression = arguments.get(argument, (None, ""))
+            native = re.fullmatch(r"widget\.native\s*\?\s*([\w.]+)\s*:\s*[\w.]+", expression)
+            if native is None:
+                raise TokenError("Unsupported public native expression: " + symbol)
+            self.bind(symbol, public, offset + native.start(1), native.group(1))
 
     def declaration(self, symbol):
         if symbol not in self.declarations:
@@ -348,7 +391,7 @@ def build_resources(tokens: DartTokens):
 
 
 def artifacts(root: Path):
-    raw = {path: (root / path).read_bytes() for path in SOURCES}
+    raw = {path: (root / path).read_bytes() for path in source_paths(root)}
     tokens = DartTokens({path: value.decode("utf-8-sig") for path, value in raw.items()})
     resources = build_resources(tokens)
     lines = ["<!-- Generated by sync_design_tokens.py (write mode). Edit owning Dart sources, never this file. -->",
@@ -397,11 +440,14 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
+    mode.add_argument("--list-sources", action="store_true")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
     args = parser.parse_args()
     try:
         root = args.root.resolve()
-        if args.write:
+        if args.list_sources:
+            print(json.dumps(source_paths(root)))
+        elif args.write:
             write(root)
             print("Generated WPF design tokens and provenance from owning Dart sources.")
         else:

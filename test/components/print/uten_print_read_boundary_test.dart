@@ -215,7 +215,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('旧账号库存'), findsNothing);
       expect(_printButton(tester).onPressed, isNull);
-      await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+      await tester.tap(find.byTooltip(RegExp(r'^(关闭|Close|닫기)$')));
       await tester.pumpAndSettle();
       container
           .read(_boundary.notifier)
@@ -366,7 +366,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('旧账号库存'), findsOneWidget);
     expect(_printButton(tester).onPressed, isNotNull);
-    await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+    await tester.tap(find.byTooltip(RegExp(r'^(关闭|Close|닫기)$')));
     await tester.pumpAndSettle();
     expect(find.text('预览 · 独立报表'), findsNothing);
     expect(tester.takeException(), isNull);

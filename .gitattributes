@@ -52,6 +52,8 @@ deploy/simple/host/* text eol=lf
 *.ttf binary
 # Font manifests pin these license bytes too; Windows checkout must preserve LF.
 assets/fonts/*.txt text eol=lf
+# Generated WPF tokens are verified byte-for-byte by the shared generator.
+/clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml text eol=lf
 # Runtime provenance compares checkout bytes with the reviewed Git objects.
 services/material_forecast/requirements.in text eol=lf
 services/material_forecast/requirements*.txt text eol=lf

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generator": "clients/windows_legacy/tools/sync_design_tokens.py",
-  "generatorSha256": "950aa81273bb418184ff3f1f4ff34dc4ded4df9eab542196538183fb7a932b82",
+  "generatorSha256": "d1385b546bc55ea10cf5c7512639a98582d147d473c158df86570f17a42f2d90",
   "resource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
   "resourceSha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581",
   "scope": "Default Flutter light theme before platform branding or display zoom; WPF device-independent units.",

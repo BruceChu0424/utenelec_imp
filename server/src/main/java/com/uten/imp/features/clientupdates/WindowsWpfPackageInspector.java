@@ -11,6 +11,14 @@ import java.net.URI;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.nio.file.Path;
+import java.nio.channels.FileChannel;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.file.StandardOpenOption;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
@@ -18,19 +26,67 @@ import org.apache.commons.compress.archivers.zip.ZipFile;
 
 /** Candidate package contract only; no claim of Win7 UAT, complete ERP migration or code signing. */
 final class WindowsWpfPackageInspector {
-    static final String EXECUTABLE = "Uten.Legacy.Desktop.exe";
-    static final Set<String> REQUIRED = Set.of(EXECUTABLE, "Uten.Legacy.Core.dll", "BouncyCastle.Cryptography.dll",
-            "Uten.Legacy.Desktop.exe.config", "BouncyCastle-LICENSE.md", "uten.client.json");
+    static final String EXECUTABLE = WpfPackageContract.EXECUTABLE;
+    static final Set<String> REQUIRED = WpfPackageContract.FILES;
     private WindowsWpfPackageInspector() { }
-    static boolean allowedFile(String name) { return REQUIRED.contains(name) || "uten-wpf.ico".equals(name); }
+    static boolean allowedFile(String name) { return REQUIRED.contains(name); }
+    static void requireDirectory(Path path) throws IOException {
+        // ZIP format EOCD + maximum 16-bit comment, before ZipFile allocates entries.
+        try (var file = FileChannel.open(path, StandardOpenOption.READ)) {
+            long size = file.size();
+            int count = (int) Math.min(size, 22 + 65535);
+            var tail = ByteBuffer.allocate(count).order(ByteOrder.LITTLE_ENDIAN);
+            file.position(size - count);
+            while (tail.hasRemaining()) if (file.read(tail) < 0) throw invalid("WPF ZIP 目录截断");
+            int position = -1;
+            for (int index = count - 4; index >= 0; index--)
+                if (tail.getInt(index) == 0x06054b50) { position = index; break; }
+            if (position < 0 || position > count - 22) throw invalid("WPF ZIP 缺少有界目录");
+            int expected = REQUIRED.size() + 1;
+            long length = Integer.toUnsignedLong(tail.getInt(position + 12));
+            long offset = Integer.toUnsignedLong(tail.getInt(position + 16));
+            if (tail.getShort(position + 4) != 0 || tail.getShort(position + 6) != 0
+                    || Short.toUnsignedInt(tail.getShort(position + 8)) != expected
+                    || Short.toUnsignedInt(tail.getShort(position + 10)) != expected
+                    || length < expected * 46 || length > WpfPackageContract.MAXIMUM_CENTRAL_DIRECTORY_BYTES
+                    || offset + length != size - count + position
+                    || position + 22 + Short.toUnsignedInt(tail.getShort(position + 20)) != count)
+                throw invalid("WPF ZIP 必须为单盘、非 ZIP64、有界七条目目录");
+        }
+    }
     static void inspect(ZipFile zip, Map<String, ZipArchiveEntry> files, ClientReleaseDto.Release release, ObjectMapper mapper)
             throws IOException {
-        for (String name : Set.of(EXECUTABLE, "Uten.Legacy.Core.dll", "BouncyCastle.Cryptography.dll"))
-            WindowsManagedImageInspector.inspect(read(zip, files.get(name), 32 * 1024 * 1024), release,
-                    !EXECUTABLE.equals(name), !"BouncyCastle.Cryptography.dll".equals(name));
-        if (read(zip, files.get("BouncyCastle-LICENSE.md"), 65536).length == 0) throw invalid("WPF 客户端必须携带安全通信库许可");
-        inspectConfiguration(read(zip, files.get("uten.client.json"), 65536), mapper);
-        inspectRuntime(read(zip, files.get("Uten.Legacy.Desktop.exe.config"), 65536));
+        for (String name : Set.of(EXECUTABLE, "Uten.Legacy.Core.dll", "BouncyCastle.Cryptography.dll")) {
+            byte[] bytes = read(zip, files.get(name), WpfPackageContract.MAXIMUM_MANAGED_FILE_BYTES);
+            boolean vendor = "BouncyCastle.Cryptography.dll".equals(name);
+            if (vendor && !WpfPackageContract.DEPENDENCY_DLL_SHA256.equals(sha256(bytes))) throw invalid("WPF TLS 依赖与 schema-1 固定锁不匹配，升级依赖需完整安装包");
+            WindowsManagedImageInspector.inspect(bytes, release, !EXECUTABLE.equals(name), !vendor, vendor);
+        }
+        byte[] license = read(zip, files.get("BouncyCastle-LICENSE.md"), WpfPackageContract.MAXIMUM_LICENSE_BYTES);
+        if (!WpfPackageContract.DEPENDENCY_LICENSE_SHA256.equals(sha256(license))) throw invalid("WPF TLS 许可与固定依赖锁不匹配");
+        inspectConfiguration(read(zip, files.get("uten.client.json"), WpfPackageContract.MAXIMUM_CONFIGURATION_BYTES), mapper);
+        inspectRuntime(read(zip, files.get("Uten.Legacy.Desktop.exe.config"), WpfPackageContract.MAXIMUM_CONFIGURATION_BYTES));
+    }
+    private static String sha256(byte[] bytes) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+    static JsonNode strictJson(byte[] bytes, ObjectMapper mapper) throws IOException {
+        return mapper.copy().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(bytes);
+    }
+    private static void fields(JsonNode value, Set<String> required, Set<String> optional) {
+        if (value == null || !value.isObject()) throw invalid("WPF JSON 必须是对象");
+        for (String key : required) if (!value.has(key)) throw invalid("WPF JSON 缺少约定字段");
+        value.fieldNames().forEachRemaining(key -> { if (!required.contains(key) && !optional.contains(key)) throw invalid("WPF JSON 包含未知字段"); });
+    }
+    static void fileFields(JsonNode value) { fields(value, WpfPackageContract.FILE_RECORD_KEYS, Set.of()); }
+    static void manifestFields(JsonNode value) {
+        fields(value, WpfPackageContract.MANIFEST_REQUIRED_KEYS, WpfPackageContract.MANIFEST_OPTIONAL_KEYS);
+        if (value.has("sourceCommit") && (!value.path("sourceCommit").isTextual() || !value.path("sourceCommit").asText().matches("[0-9a-f]{40}"))
+                || value.has("candidate") && (!value.path("candidate").isBoolean() || !value.path("candidate").booleanValue())
+                || value.has("releaseReady") && (!value.path("releaseReady").isBoolean() || value.path("releaseReady").booleanValue()))
+            throw invalid("WPF 候选来源字段无效");
     }
     private static byte[] read(ZipFile zip, ZipArchiveEntry entry, int maximum) throws IOException {
         if (entry == null || entry.getSize() < 1 || entry.getSize() > maximum) throw invalid("WPF 客户端文件缺失或超出大小限制");
@@ -42,7 +98,7 @@ final class WindowsWpfPackageInspector {
     }
     private static void inspectConfiguration(byte[] bytes, ObjectMapper mapper) throws IOException {
         JsonNode root;
-        try { root = mapper.readTree(bytes); }
+        try { root = strictJson(bytes, mapper); }
         catch (com.fasterxml.jackson.core.JsonProcessingException malformed) { throw invalid("WPF 公司连接配置不是有效 JSON"); }
         if (root == null || !root.isObject() || !root.path("endpoints").isArray()
                 || root.path("endpoints").isEmpty() || root.path("endpoints").size() > 8) throw invalid("WPF 包必须携带已审核的正式公司连接配置");

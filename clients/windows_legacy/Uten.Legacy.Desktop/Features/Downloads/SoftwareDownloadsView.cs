@@ -45,6 +45,7 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         public SoftwareDownloadsView(SessionCoordinator session)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
+            SetResourceReference(StyleProperty, "Uten.Workspace");
             service = new SoftwareDownloadsService(session);
             BuildLayout();
             runtime.ItemsSource = new[] {

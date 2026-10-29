@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -40,11 +41,12 @@ class ClientUpdateControllerTest {
     }
 
     @Test void checkReturnsRawContractAndDisablesCaching() throws Exception {
-        when(service.check("android", "arm64", 27)).thenReturn(new ClientReleaseDto.Check(true, release("PUBLISHED"), 300));
+        when(service.check("android", "arm64", 27, "flutter")).thenReturn(new ClientReleaseDto.Check(true, release("PUBLISHED"), 300));
         mvc.perform(get("/api/client-updates/check").param("platform", "android").param("architecture", "arm64").param("currentBuildNumber", "27"))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "private, no-store"))
                 .andExpect(jsonPath("$.updateAvailable").value(true)).andExpect(jsonPath("$.release.buildNumber").value(28))
                 .andExpect(jsonPath("$.release.downloadUrl").value("/api/client-updates/" + id + "/download"));
+        verify(service).check("android", "arm64", 27, "flutter");
     }
 
     @Test void uploadIsRawStreamingAndCreateListPublishWithdrawUseReleaseObjects() throws Exception {
@@ -71,14 +73,14 @@ class ClientUpdateControllerTest {
 
     @Test void downloadCarriesExactLengthHashAndPrivateHeadersAndWithdrawalIs404() throws Exception {
         byte[] bytes = {1, 2, 3, 4};
-        when(service.download(id)).thenReturn(new ClientReleaseService.Download(release("PUBLISHED"), new ByteArrayInputStream(bytes)));
+        when(service.download(id, "flutter")).thenReturn(new ClientReleaseService.Download(release("PUBLISHED"), new ByteArrayInputStream(bytes)));
         mvc.perform(get("/api/client-updates/{id}/download", id)).andExpect(status().isOk())
                 .andExpect(header().string("Content-Length", "4"))
                 .andExpect(header().string("X-Checksum-Sha256", "a".repeat(64)))
                 .andExpect(header().string("Cache-Control", "private, no-store"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(content().bytes(bytes));
-        when(service.download(id)).thenThrow(new ApiException(ErrorCode.NOT_FOUND));
+        when(service.download(id, "flutter")).thenThrow(new ApiException(ErrorCode.NOT_FOUND));
         mvc.perform(get("/api/client-updates/{id}/download", id)).andExpect(status().isNotFound());
     }
 
@@ -86,13 +88,31 @@ class ClientUpdateControllerTest {
         var installer = new ClientReleaseDto.Release(id, "windows", "x64", "2.5.32", 2532, "完整客户端", false,
                 "UtenIMPSetup.exe", "a".repeat(64), "a".repeat(64), 4, "windows_setup", null,
                 "/api/client-updates/" + id + "/download", "PUBLISHED", Instant.now(), Instant.now(), "installer");
-        when(service.downloads()).thenReturn(List.of(installer));
+        when(service.downloads("flutter", false)).thenReturn(List.of(installer));
         mvc.perform(get("/api/client-updates/downloads")).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "private, no-store"))
                 .andExpect(jsonPath("$[0].id").value(id.toString()))
                 .andExpect(jsonPath("$[0].packageKind").value("installer"))
                 .andExpect(jsonPath("$[0].installMode").value("windows_setup"))
                 .andExpect(jsonPath("$[0].platform").value("windows"));
+        verify(service).downloads("flutter", false);
+    }
+
+    @Test void explicitRuntimeQueriesReachTheMatchingServiceContract() throws Exception {
+        when(service.check("windows", "x86", 2533, "wpf_legacy")).thenReturn(new ClientReleaseDto.Check(false, null, 300));
+        mvc.perform(get("/api/client-updates/check").param("platform", "windows").param("architecture", "x86")
+                .param("currentBuildNumber", "2533").param("runtimeFamily", "wpf_legacy"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.updateAvailable").value(false));
+        verify(service).check("windows", "x86", 2533, "wpf_legacy");
+        when(service.downloads("wpf_legacy", true)).thenReturn(List.of());
+        mvc.perform(get("/api/client-updates/downloads").param("runtimeFamily", "wpf_legacy").param("allRuntimeFamilies", "true"))
+                .andExpect(status().isOk()).andExpect(content().json("[]"));
+        verify(service).downloads("wpf_legacy", true);
+        byte[] bytes = {5, 6, 7, 8};
+        when(service.download(id, "wpf_legacy")).thenReturn(new ClientReleaseService.Download(release("PUBLISHED"), new ByteArrayInputStream(bytes)));
+        mvc.perform(get("/api/client-updates/{id}/download", id).param("runtimeFamily", "wpf_legacy"))
+                .andExpect(status().isOk()).andExpect(content().bytes(bytes));
+        verify(service).download(id, "wpf_legacy");
     }
 
     private ClientReleaseDto.Release release(String state) {

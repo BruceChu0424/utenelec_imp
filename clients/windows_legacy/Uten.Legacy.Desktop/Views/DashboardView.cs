@@ -26,6 +26,7 @@ namespace Uten.Legacy.Desktop.Views
         public DashboardView(SessionCoordinator session, Action openGoods)
         {
             this.session = session; this.openGoods = openGoods;
+            SetResourceReference(StyleProperty, "Uten.Workspace");
             var grid = new Grid(); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition());
             var header = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };
             refresh.Click += (s, e) => Load(); DockPanel.SetDock(refresh, Dock.Right); header.Children.Add(refresh);
@@ -92,7 +93,12 @@ namespace Uten.Legacy.Desktop.Views
             finally { if (!disposed && mine == request) refresh.IsEnabled = true; }
         }
 
-        private Border Surface(UIElement child) { return new RoundedSurface { Child = child, Background = Brush("Uten.Surface"), BorderBrush = Brush("Uten.Border"), BorderThickness = new Thickness(1), CornerRadius = (CornerRadius)FindResource("Uten.Radius.Card"), Padding = (Thickness)FindResource("Uten.Padding.S16"), Margin = new Thickness(0, 0, 0, Space("S12")) }; }
+        private Border Surface(UIElement child)
+        {
+            var surface = UtenSurfaces.Wrap(child);
+            surface.SetResourceReference(Border.PaddingProperty, "Uten.Padding.S16");
+            surface.Margin = new Thickness(0, 0, 0, Space("S12")); return surface;
+        }
         private double Space(string key) { return (double)FindResource("Uten.Space." + key); }
         private Brush Brush(string key) { return (Brush)FindResource(key); }
         private static string Text(IDictionary<string, object> value, string key) { object item; return value.TryGetValue(key, out item) && item != null ? Convert.ToString(item, System.Globalization.CultureInfo.InvariantCulture) : ""; }

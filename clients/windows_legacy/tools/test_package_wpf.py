@@ -62,7 +62,8 @@ class WpfCandidatePackageTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("synthetic source input", encoding="utf-8")
         (self.source / "pubspec.yaml").write_text("name: fixture\nversion: 1.2.3+45\n", encoding="utf-8")
-        self.lock.write_text(json.dumps({"schemaVersion": 1, "package": "BouncyCastle.Cryptography", "files": {
+        (self.source / "clients/windows_legacy/package-contract.json").write_bytes(package.CONTRACT_PATH.read_bytes())
+        self.lock.write_text(json.dumps({"schemaVersion": 1, "package": "BouncyCastle.Cryptography", "version": "2.7.0", "targetFramework": "net461", "files": {
             "lib/net461/BouncyCastle.Cryptography.dll": hashlib.sha256(self.bc).hexdigest(),
             "LICENSE.md": hashlib.sha256(license_bytes).hexdigest()}}), encoding="utf-8")
         config_bytes = json.dumps(self.config).encode("utf-8")
@@ -292,6 +293,43 @@ class WpfCandidatePackageTest(unittest.TestCase):
             self.rewrite_zip(mutation)
             with self.assertRaises(ValueError):
                 self.validate()
+
+    def test_shared_managed_and_manifest_limits_are_enforced(self):
+        self.build(build=True)
+        self.rewrite_zip(lambda entries: entries.__setitem__(package.MANIFEST,
+            entries[package.MANIFEST] + b" " * package.MAX_MANIFEST_BYTES))
+        with self.assertRaisesRegex(ValueError, "manifest exceeds"):
+            self.validate()
+        executable = self.bundle / package.EXECUTABLE
+        with executable.open("r+b") as stream:
+            stream.truncate(package.CONTRACT["maximumManagedFileBytes"] + 1)
+        with self.assertRaisesRegex(ValueError, "Managed file exceeds"):
+            package.inspect_managed(executable, executable=True)
+
+    def test_reviewed_source_contract_must_match_the_executing_tool(self):
+        path = self.source / "clients/windows_legacy/package-contract.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["contractId"] = "different-reviewed-contract"
+        path.write_text(json.dumps(value), encoding="utf-8")
+        self.git("add", ".")
+        self.git("-c", "user.name=WPF Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false",
+                 "-c", "core.hooksPath=disabled-hooks", "commit", "-qm", "different synthetic source contract")
+        with self.assertRaisesRegex(ValueError, "contract/dependency lock differs"):
+            package.capture_source_state(self.source)
+
+    def test_directory_count_zip64_and_oversized_directory_reject_before_zipfile_allocation(self):
+        self.build(build=True)
+        original = self.output.read_bytes()
+        for offset, format, number in ((8, "<H", 65535), (10, "<H", 65535),
+                                      (12, "<I", package.CONTRACT["maximumCentralDirectoryBytes"] + 1),
+                                      (4, "<H", 1)):
+            data = bytearray(original)
+            end = data.rfind(b"PK\x05\x06")
+            struct.pack_into(format, data, end + offset, number)
+            self.output.write_bytes(data)
+            with mock.patch.object(package.zipfile, "ZipFile", side_effect=AssertionError("ZIP entries allocated before directory gate")):
+                with self.assertRaisesRegex(ValueError, "bounded seven-entry"):
+                    self.validate()
 
 
 if __name__ == "__main__":

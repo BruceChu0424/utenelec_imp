@@ -11,12 +11,12 @@ namespace Uten.Legacy.Updater
     {
         internal static Dictionary<string, object> Read(byte[] bytes)
         {
-            if (bytes.Length > 65536) throw new InvalidDataException("JSON metadata exceeds its limit.");
+            if (bytes.Length > PackageContract.MaximumManifestBytes) throw new InvalidDataException("JSON metadata exceeds its limit.");
             try
             {
                 var text = new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
                 new UniqueKeys(text).Check();
-                var result = new JavaScriptSerializer { MaxJsonLength = 65536, RecursionLimit = 24 }.DeserializeObject(text) as Dictionary<string, object>;
+                var result = new JavaScriptSerializer { MaxJsonLength = PackageContract.MaximumManifestBytes, RecursionLimit = 24 }.DeserializeObject(text) as Dictionary<string, object>;
                 if (result == null) throw new InvalidDataException("Expected JSON object.");
                 return result;
             }

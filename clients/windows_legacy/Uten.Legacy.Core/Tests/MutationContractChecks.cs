@@ -60,7 +60,7 @@ namespace Uten.Legacy.Core.Tests
                 Throws<ApiException>(() => fixture.Session.PrepareMutation(MutationAction.UnitUpdate, NewId(), "{\"name\":\"a\",\"status\":null}", owner, UnitId));
                 foreach (var resource in new[] { "../users", "https://evil.test/api", "legacy-42", Guid.Empty.ToString("D") })
                     Throws<ApiException>(() => fixture.Session.PrepareMutation(MutationAction.UnitStatus, NewId(), "{\"status\":\"禁用\"}", owner, resource));
-                True(!fixture.Session.DurableMutationJournalAvailable, "in-memory foundation does not claim crash persistence");
+                True(fixture.Session.DurableMutationJournalAvailable, "private fixture explicitly injects an independent persistent store");
                 Equal(0, fixture.Writes, "preparation never writes");
             }
         }
@@ -120,7 +120,7 @@ namespace Uten.Legacy.Core.Tests
                 var result = await fixture.Session.MutateAsync(command, CancellationToken.None);
                 Equal(MutationOutcome.Confirmed, result.Outcome, "current owner receives verified unit detail");
                 Equal(UnitBody, result.ResponseJson, "response stays raw");
-                True(!result.IsDurablyRecorded, "no false durable journal");
+                True(result.IsDurablyRecorded && result.PersistenceError == null, "known completion is recorded in the private durable journal");
                 Equal(1, fixture.Writes, "exactly one write");
                 foreach (var version in new[] { "1.0", "1e0", "-1", "9223372036854775808", "true" })
                     Throws<ApiException>(() => fixture.Session.PrepareMutation(MutationAction.UnitStatus, NewId(), "{\"status\":\"禁用\",\"version\":" + version + "}", fixture.Session.CaptureMutationOwner(), UnitId));
@@ -358,6 +358,7 @@ namespace Uten.Legacy.Core.Tests
 
         private sealed class Fixture : IDisposable
         {
+            private readonly BusinessStateTestFixture state = new BusinessStateTestFixture();
             internal readonly SessionCoordinator Session;
             internal string[] Permissions = { "unit:view", "unit:create", "unit:edit", "unit:status" };
             internal int LoginExpires = 900;
@@ -398,7 +399,7 @@ namespace Uten.Legacy.Core.Tests
                         True(!request.Headers.Contains(StepUpGrant.HeaderName), "unit action does not transmit unnecessary grant");
                     }
                     return action == null ? Json(UnitBody) : await action(request, ct);
-                }), new MemoryStore());
+                }), new MemoryStore(), state.Store);
             }
             internal Task Login() { return Session.LoginAsync("UT0001", "fixture-password", null, CancellationToken.None); }
             internal MutationRequest Create(string body = "{\"name\":\"kg\"}")
@@ -406,7 +407,7 @@ namespace Uten.Legacy.Core.Tests
             private string Token(string access, int expires, bool changed)
             { return "{\"accessToken\":\"" + access + "\",\"refreshToken\":\"refresh-fixture\",\"expiresIn\":" + expires + ",\"user\":{\"id\":\"user-fixture\",\"loginAccount\":\"UT0001\",\"name\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":"
                 + JsonValue.Serialize(Permissions) + ",\"businessDatasetId\":\"" + (changed ? "33333333-3333-3333-3333-333333333333" : "11111111-1111-1111-1111-111111111111") + "\",\"businessResetGeneration\":0}}"; }
-            public void Dispose() { Session.Dispose(); }
+            public void Dispose() { Session.Dispose(); state.Dispose(); }
         }
         private sealed class Handler : HttpMessageHandler
         {

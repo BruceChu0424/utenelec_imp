@@ -25,6 +25,7 @@ namespace Uten.Legacy.Core
         private readonly ISessionStore store;
         private readonly HttpClient client;
         private readonly bool usesManagedTlsTransport;
+        private readonly IBusinessStateStore businessStateStore;
         private readonly SemaphoreSlim refreshLock = new SemaphoreSlim(1, 1);
         private readonly SemaphoreSlim revocationLock = new SemaphoreSlim(1, 1);
         private CancellationTokenSource generationCancellation = new CancellationTokenSource();
@@ -37,14 +38,19 @@ namespace Uten.Legacy.Core
         private bool disposed;
 
         public SessionCoordinator(ClientConfiguration configuration)
-            : this(configuration, new ManagedTlsHttpHandler(configuration), new DpapiSessionStore()) { }
+            : this(configuration, new ManagedTlsHttpHandler(configuration), new DpapiSessionStore(), new DpapiBusinessStateStore()) { }
 
         /// <summary>The injected handler/store are owned by this coordinator; intended for isolated tests.</summary>
         public SessionCoordinator(ClientConfiguration configuration, HttpMessageHandler handler, ISessionStore store)
+            : this(configuration, handler, store, null) { }
+
+        public SessionCoordinator(ClientConfiguration configuration, HttpMessageHandler handler, ISessionStore store,
+            IBusinessStateStore businessStateStore)
         {
             this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.store = store ?? throw new ArgumentNullException(nameof(store));
             usesManagedTlsTransport = handler is ManagedTlsHttpHandler;
+            this.businessStateStore = businessStateStore;
             client = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)), true)
             { Timeout = Timeout.InfiniteTimeSpan };
             endpoint = configuration.Endpoints.FirstOrDefault(value => value.Id == configuration.SelectedEndpointId);
@@ -671,6 +677,7 @@ namespace Uten.Legacy.Core
                 readCancellation.Dispose();
             }
             client.Dispose();
+            businessStateStore?.Dispose();
         }
 
         private sealed class Scope

@@ -32,6 +32,8 @@ namespace Uten.Legacy.Tests
                 ValidPreparationDoesNotChangeInstallation();
                 UnsafeZipAndRuntimeContracts();
                 PackageAndMetadataIdentityChecks();
+                PinnedDependencyAndCompanyPolicy();
+                DirectoryAllocationIsBounded();
                 ConcurrentChangesArePreserved();
                 ExclusiveLeasesAndControlledRollback();
                 ExplicitAuthorizationAndCancellation();
@@ -141,6 +143,101 @@ namespace Uten.Legacy.Tests
                 Equal("external-change-owned-by-fixture", File.ReadAllText(external), "external change is never overwritten");
                 True(!Directory.Exists(Path.Combine(fixture.JobRoot, "backup")), "no approved file changed before conflict decision");
             }
+        }
+        private static void PinnedDependencyAndCompanyPolicy()
+        {
+            foreach (var name in new[] { "BouncyCastle.Cryptography.dll", "BouncyCastle-LICENSE.md" })
+                using (var fixture = new Fixture())
+                {
+                    File.AppendAllText(Path.Combine(fixture.Incoming, name), "fixture-tampering");
+                    fixture.WritePackage();
+                    Throws(() => UpdateContract.PreparePackage(fixture.Plan()), "dependency DLL/license must match the one authoritative lock");
+                }
+            foreach (var marker in new[] { "", "UTEN WPF candidate; Configuration=Debug; Distribution=Company",
+                "UTEN WPF candidate; Configuration=Release; Distribution=LocalTest" })
+                using (var fixture = new Fixture())
+                {
+                    fixture.Emit("Uten.Legacy.Core", false, fixture.Incoming, "2.5.35", 2535, fixture.Architecture, marker);
+                    fixture.WritePackage();
+                    Throws(() => UpdateContract.PreparePackage(fixture.Plan()), "incoming Core requires exact compiled Release/Company provenance");
+                }
+        }
+        private static void DirectoryAllocationIsBounded()
+        {
+            foreach (var field in new[] { 4, 8, 10, 12 })
+                using (var fixture = new Fixture())
+                {
+                    var path = Path.Combine(fixture.JobRoot, "package.zip");
+                    var bytes = File.ReadAllBytes(path); int end = bytes.Length - 22;
+                    if (field == 12) Array.Copy(BitConverter.GetBytes(PackageContract.MaximumCentralDirectoryBytes + 1), 0, bytes, end + field, 4);
+                    else Array.Copy(BitConverter.GetBytes((ushort)(field == 4 ? 1 : UInt16.MaxValue)), 0, bytes, end + field, 2);
+                    File.WriteAllBytes(path, bytes);
+                    using (var file = File.OpenRead(path))
+                        Throws(() => ZipDirectory.Require(file), "central entry allocation is bounded before ZipArchive");
+                }
+        }
+
+        /// <summary>Explicit integration harness only: emits inert CLR fixtures inside one named temporary root.</summary>
+        public static void EmitProducerInputs(string integrationRoot)
+        {
+            RequireProducerRoot(integrationRoot);
+            WithEmitter(() =>
+            {
+                using (var fixture = new Fixture())
+                {
+                    var destination = Path.Combine(integrationRoot, "payload");
+                    Directory.CreateDirectory(destination);
+                    using (SafeFiles.GuardDirectories(integrationRoot, destination))
+                        foreach (var name in UpdateContract.ApprovedFiles)
+                            File.Copy(Path.Combine(fixture.Incoming, name), Path.Combine(destination, name), false);
+                }
+                return 0;
+            });
+        }
+        /// <summary>Reads the actual Python producer's ZIP, validates and applies only in a new owned temporary installation.</summary>
+        public static int RunProducerPackageChecks(string integrationRoot)
+        {
+            RequireProducerRoot(integrationRoot);
+            assertions = 0;
+            return WithEmitter(() =>
+            {
+                using (var fixture = new Fixture())
+                {
+                    var source = Path.Combine(integrationRoot, "producer.zip");
+                    using (SafeFiles.GuardDirectories(integrationRoot))
+                    using (var input = SafeFiles.Open(source, FileAccess.Read))
+                    using (var output = new FileStream(Path.Combine(fixture.JobRoot, "package.zip"), FileMode.Truncate, FileAccess.Write, FileShare.None))
+                        SafeFiles.Copy(input, output, UpdateContract.MaximumPackageBytes);
+                    var plan = fixture.Plan();
+                    var prepared = UpdateContract.PreparePackage(plan);
+                    Equal(6, prepared.Files.Count, "real producer ZIP passes exact six-file native preflight");
+                    fixture.Authorize(plan);
+                    True(UpdateExecutor.ApplyForChecks(plan, prepared).Succeeded, "real producer ZIP applies only to new fixture installation");
+                    foreach (var file in prepared.Files)
+                        Equal(file.Sha256, SafeFiles.Hash(Path.Combine(fixture.AppRoot, file.Name)), "same producer bytes installed exactly");
+                    True(!Directory.Exists(Path.Combine(fixture.AppRoot, "client_updater")), "update ZIP cannot install or replace its bootstrap");
+                    return assertions;
+                }
+            });
+        }
+        private static void RequireProducerRoot(string path)
+        {
+            var root = SafeFiles.Full(path);
+            if (!Path.GetFileName(root).StartsWith("uten-wpf-producer-link-", StringComparison.Ordinal)
+                || !SafeFiles.Same(Path.GetDirectoryName(root), Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar)))
+                throw new InvalidDataException("Producer integration accepts only its random direct temporary root.");
+            using (SafeFiles.GuardDirectories(root)) { }
+        }
+        private static int WithEmitter(Func<int> action)
+        {
+            var domain = AppDomain.CreateDomain("UtenProducerFixtureEmitter-" + Guid.NewGuid().ToString("N"), null,
+                new AppDomainSetup { ApplicationBase = AppDomain.CurrentDomain.BaseDirectory });
+            try
+            {
+                emitter = (FixtureAssemblyEmitter)domain.CreateInstanceAndUnwrap(typeof(FixtureAssemblyEmitter).Assembly.FullName, typeof(FixtureAssemblyEmitter).FullName);
+                return action();
+            }
+            finally { emitter = null; AppDomain.Unload(domain); }
         }
         private static void ExclusiveLeasesAndControlledRollback()
         {
@@ -341,18 +438,20 @@ namespace Uten.Legacy.Tests
                     var next = directory == Incoming; var version = next ? "2.5.35" : "2.5.34"; var build = next ? 2535 : 2534;
                     Emit("Uten.Legacy.Desktop", true, directory, version, build, Architecture);
                     Emit("Uten.Legacy.Core", false, directory, version, build, Architecture);
-                    Emit("BouncyCastle.Cryptography", false, directory, "2.7.0", 1, "anycpu");
-                    File.WriteAllText(Path.Combine(directory, "Uten.Legacy.Desktop.exe.config"), next ? "new-runtime-configuration" : "old-runtime-configuration");
-                    File.WriteAllText(Path.Combine(directory, "BouncyCastle-LICENSE.md"), "fixture-license");
-                    File.WriteAllText(Path.Combine(directory, "uten.client.json"), next ? "new-approved-config-fixture" : "old-approved-config-fixture");
+                    File.Copy(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BouncyCastle.Cryptography.dll"), Path.Combine(directory, "BouncyCastle.Cryptography.dll"));
+                    File.WriteAllText(Path.Combine(directory, "Uten.Legacy.Desktop.exe.config"),
+                        "<configuration><startup><supportedRuntime version=\"v4.0\" sku=\".NETFramework,Version=v4.8\"/></startup><runtime/></configuration>");
+                    File.Copy(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BouncyCastle-LICENSE.md"), Path.Combine(directory, "BouncyCastle-LICENSE.md"));
+                    File.WriteAllText(Path.Combine(directory, "uten.client.json"),
+                        "{\"endpoints\":[{\"id\":\"company\",\"name\":\"Company fixture\",\"apiBaseUrl\":\"https://company.example/api\"}],\"selectedEndpointId\":\"company\"}");
                 }
                 Manifest = new Dictionary<string, object> { { "schemaVersion", 1 }, { "platform", "windows" }, { "runtimeFamily", "wpf_legacy" },
                     { "architecture", Architecture }, { "version", "2.5.35" }, { "buildNumber", 2535 }, { "packageKind", "update" },
                     { "executable", UpdateContract.MainExecutable }, { "sourceCommit", new string('1', 40) }, { "candidate", true }, { "releaseReady", false } };
                 WritePackage();
             }
-            internal void Emit(string name, bool executable, string directory, string version, int build, string architecture)
-            { emitter.Emit(name, executable, directory, version, build, architecture); }
+            internal void Emit(string name, bool executable, string directory, string version, int build, string architecture, string marker = null)
+            { emitter.Emit(name, executable, directory, version, build, architecture, marker ?? PackageContract.CompanyReleaseMarker); }
             internal void WritePackage(string extra = null, bool linked = false)
             {
                 Manifest["files"] = UpdateContract.ApprovedFiles.Select(name => (object)new Dictionary<string, object>
@@ -362,7 +461,9 @@ namespace Uten.Legacy.Tests
                 {
                     foreach (var name in UpdateContract.ApprovedFiles)
                     {
-                        var entry = archive.CreateEntry(name);
+                        // Contract-negative fixtures need no repeated compression of the fixed
+                        // vendor DLL. Real producer integration uses package_update's deflate ZIP.
+                        var entry = archive.CreateEntry(name, CompressionLevel.NoCompression);
                         if (linked && name == UpdateContract.MainExecutable) entry.ExternalAttributes = unchecked((int)0xa1ff0000);
                         using (var output = entry.Open()) { var bytes = File.ReadAllBytes(Path.Combine(Incoming, name)); output.Write(bytes, 0, bytes.Length); }
                     }
@@ -438,10 +539,11 @@ namespace Uten.Legacy.Tests
         public sealed class FixtureAssemblyEmitter : MarshalByRefObject
         {
             public override object InitializeLifetimeService() { return null; }
-            public void Emit(string name, bool executable, string directory, string version, int build, string architecture)
+            public void Emit(string name, bool executable, string directory, string version, int build, string architecture, string marker)
             {
                 var identity = new AssemblyName(name) { Version = new Version(version + ".0") };
                 var builder = AppDomain.CurrentDomain.DefineDynamicAssembly(identity, AssemblyBuilderAccess.Save, directory);
+                builder.SetCustomAttribute(new CustomAttributeBuilder(typeof(AssemblyDescriptionAttribute).GetConstructor(new[] { typeof(string) }), new object[] { marker }));
                 builder.SetCustomAttribute(new CustomAttributeBuilder(typeof(AssemblyFileVersionAttribute).GetConstructor(new[] { typeof(string) }), new object[] { version + "." + build }));
                 builder.SetCustomAttribute(new CustomAttributeBuilder(typeof(AssemblyInformationalVersionAttribute).GetConstructor(new[] { typeof(string) }), new object[] { version + "." + build }));
                 var filename = name + (executable ? ".exe" : ".dll");

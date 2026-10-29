@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "contractId": "uten-wpf-update-v1",
+  "platform": "windows",
+  "runtimeFamily": "wpf_legacy",
+  "packageKind": "update",
+  "executable": "Uten.Legacy.Desktop.exe",
+  "manifest": "uten-client-manifest.json",
+  "architectures": [
+    "x86",
+    "x64"
+  ],
+  "files": [
+    "Uten.Legacy.Desktop.exe",
+    "Uten.Legacy.Core.dll",
+    "BouncyCastle.Cryptography.dll",
+    "Uten.Legacy.Desktop.exe.config",
+    "BouncyCastle-LICENSE.md",
+    "uten.client.json"
+  ],
+  "maximumPackageBytes": 536870912,
+  "maximumFileBytes": 536870912,
+  "maximumExpandedBytesExclusive": 1073741824,
+  "maximumManifestBytes": 65536,
+  "maximumCentralDirectoryBytes": 65536,
+  "maximumManagedFileBytes": 33554432,
+  "maximumMetadataBytes": 16777216,
+  "maximumClrVersionBytes": 256,
+  "clrHeaderBytes": 72,
+  "clrVersionPrefix": "v4.0.",
+  "companyReleaseMarker": "UTEN WPF candidate; Configuration=Release; Distribution=Company",
+  "maximumConfigurationBytes": 65536,
+  "maximumLicenseBytes": 65536,
+  "manifestRequiredKeys": [
+    "schemaVersion",
+    "platform",
+    "runtimeFamily",
+    "architecture",
+    "version",
+    "buildNumber",
+    "executable",
+    "files",
+    "packageKind"
+  ],
+  "manifestOptionalKeys": [
+    "sourceCommit",
+    "candidate",
+    "releaseReady"
+  ],
+  "fileRecordKeys": [
+    "path",
+    "size",
+    "sha256"
+  ],
+  "dependency": {
+    "lockFile": "dependencies.lock.json",
+    "package": "BouncyCastle.Cryptography",
+    "version": "2.7.0",
+    "targetFramework": "net461",
+    "dll": "BouncyCastle.Cryptography.dll",
+    "dllLockPath": "lib/net461/BouncyCastle.Cryptography.dll",
+    "license": "BouncyCastle-LICENSE.md",
+    "licenseLockPath": "LICENSE.md",
+    "architecture": "anycpu",
+    "upgradeRequires": "A new complete Setup must install the matching schema-1 bootstrap before accepting a different managed TLS dependency."
+  }
+}

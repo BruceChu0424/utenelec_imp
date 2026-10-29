@@ -38,6 +38,11 @@
     <Compile Include="MutationModels.cs" />
     <Compile Include="MutationCoordinator.cs" />
     <Compile Include="MutationWirePermit.cs" />
+    <Compile Include="BusinessStateModels.cs" />
+    <Compile Include="BusinessStateCoordinator.cs" />
+    <Compile Include="DpapiBusinessStateStore.cs" />
+    <Compile Include="Tests\BusinessStateTestFixture.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\BusinessStateContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\MutationContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ClientPackageDownload.cs" />
     <Compile Include="HttpResponseSink.cs" />

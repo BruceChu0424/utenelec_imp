@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -8,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Features.Goods;
+using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Views;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Downloads;
@@ -15,7 +17,7 @@ using Uten.Legacy.Desktop.Updates;
 
 namespace Uten.Legacy.Desktop
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, IPendingEditHost
     {
         private readonly SessionCoordinator session;
         private readonly bool rendering;
@@ -29,12 +31,14 @@ namespace Uten.Legacy.Desktop
         private string displayedDataset;
         private long displayedGeneration = -1;
         private readonly NativeWindowFrame nativeFrame = new NativeWindowFrame();
+        private readonly HashSet<Window> pendingEditors = new HashSet<Window>();
 
         public MainWindow(SessionCoordinator session, ClientConfiguration configuration, bool rendering = false)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
             this.rendering = rendering;
             InitializeComponent();
+            SetResourceReference(StyleProperty, typeof(Window));
             EndpointBox.ItemsSource = configuration.Endpoints;
             EndpointBox.SelectedValue = configuration.SelectedEndpointId;
             session.SessionChanged += OnSessionChanged;
@@ -140,6 +144,7 @@ namespace Uten.Legacy.Desktop
             UserLabel.Text = (user.Name ?? user.LoginAccount) + (user.SuperAdmin || string.IsNullOrWhiteSpace(user.Department) ? "" : " · " + user.Department);
             ConnectionLabel.Text = session.CurrentEndpoint == null ? "" : session.CurrentEndpoint.Name;
             GoodsNavButton.Visibility = user.HasPermission("goods:view") ? Visibility.Visible : Visibility.Collapsed;
+            UnitsNavButton.Visibility = user.HasPermission("unit:view") ? Visibility.Visible : Visibility.Collapsed;
             if (newOwner)
             {
                 displayedOwner = user.Id; displayedDataset = user.BusinessDatasetId;
@@ -151,12 +156,13 @@ namespace Uten.Legacy.Desktop
                 Height = Math.Min(820, SystemParameters.WorkArea.Height);
                 Left = SystemParameters.WorkArea.Left + (SystemParameters.WorkArea.Width - Width) / 2;
                 Top = SystemParameters.WorkArea.Top + (SystemParameters.WorkArea.Height - Height) / 2;
-                SetWorkspace(new DashboardView(session, OpenGoods));
+                SetWorkspace(new DashboardView(session, OpenGoods), force: true);
                 UpdateWindowFrame();
             }
-            else if (WorkspaceContent.Content is GoodsWorkspaceView && !user.HasPermission("goods:view"))
+            else if ((WorkspaceContent.Content is GoodsWorkspaceView && !user.HasPermission("goods:view"))
+                || (WorkspaceContent.Content is UnitsWorkspaceView && !user.HasPermission("unit:view")))
             {
-                SetWorkspace(new DashboardView(session, OpenGoods));
+                SetWorkspace(new DashboardView(session, OpenGoods), force: true);
             }
         }
 
@@ -207,6 +213,7 @@ namespace Uten.Legacy.Desktop
 
         private async void OnLogout(object sender, RoutedEventArgs e)
         {
+            if (!CanLeaveWorkspace()) return;
             SetBusy(true);
             DisposeWorkspace();
             try { await session.LogoutAsync(lifetime.Token); }
@@ -251,6 +258,10 @@ namespace Uten.Legacy.Desktop
         }
         private void OnDashboard(object sender, RoutedEventArgs e) { if (session.IsAuthenticated) SetWorkspace(new DashboardView(session, OpenGoods)); }
         private void OnGoods(object sender, RoutedEventArgs e) { OpenGoods(); }
+        private void OnUnits(object sender, RoutedEventArgs e)
+        {
+            if (session.CurrentUser?.HasPermission("unit:view") == true) SetWorkspace(new UnitsWorkspaceView(session));
+        }
         private void OnWindowsDownloads(object sender, RoutedEventArgs e)
         {
             if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session));
@@ -258,9 +269,7 @@ namespace Uten.Legacy.Desktop
         private async void OnCheckUpdate(object sender, RoutedEventArgs e)
         {
             if (busy || !session.IsAuthenticated || session.CurrentUser.MustChangePassword) return;
-            var exitGuard = WorkspaceContent.Content as IUpdateExitGuard;
-            if (exitGuard != null && !exitGuard.CanCloseForUpdate)
-            { ConnectionLabel.Text = "请先保存或完成当前页面操作，再检查更新。"; return; }
+            if (!CanLeaveWorkspace()) return;
             long owner = session.Generation;
             CheckUpdateButton.IsEnabled = false;
             try
@@ -277,8 +286,7 @@ namespace Uten.Legacy.Desktop
                 using (var prepared = await updates.PrepareAsync(release, lifetime.Token, progress))
                 {
                     if (closing || owner != session.Generation) return;
-                    var finalGuard = WorkspaceContent.Content as IUpdateExitGuard;
-                    if (finalGuard != null && !finalGuard.CanCloseForUpdate)
+                    if (!CanLeaveWorkspace())
                     { ConnectionLabel.Text = "当前页面仍有未完成操作，已取消本次更新退出。"; return; }
                     prepared.AuthorizeShutdown();
                     ConnectionLabel.Text = "更新预检已完成，软件正在正常退出…";
@@ -294,10 +302,31 @@ namespace Uten.Legacy.Desktop
             }
         }
         private void OpenGoods() { if (session.CurrentUser?.HasPermission("goods:view") == true) SetWorkspace(new GoodsWorkspaceView(session)); }
-        private void SetWorkspace(object view)
+        private bool CanLeaveWorkspace()
         {
+            if (pendingEditors.Count != 0)
+            { ConnectionLabel.Text = "请先完成编辑窗口的草稿保全，再退出或更新软件。"; return false; }
+            var guard = WorkspaceContent?.Content as IUpdateExitGuard;
+            if (guard == null || guard.CanCloseForUpdate) return true;
+            ConnectionLabel.Text = "请先保存草稿或完成当前操作，再离开此页面。";
+            return false;
+        }
+        public void TrackPendingEditor(Window editor)
+        {
+            if (editor == null || editor.Owner != this) throw new ArgumentException("The editor must belong to this main window.");
+            if (pendingEditors.Add(editor)) editor.Closed += OnPendingEditorClosed;
+        }
+        private void OnPendingEditorClosed(object sender, EventArgs args)
+        {
+            var editor = sender as Window;
+            if (editor == null) return;
+            editor.Closed -= OnPendingEditorClosed; pendingEditors.Remove(editor);
+        }
+        private void SetWorkspace(object view, bool force = false)
+        {
+            if (!force && !CanLeaveWorkspace()) { (view as IDisposable)?.Dispose(); return; }
             DisposeWorkspace();
-            WorkspaceContent.Margin = view is GoodsWorkspaceView ? new Thickness(0) : (Thickness)FindResource("Uten.Padding.S24");
+            WorkspaceContent.Margin = view is GoodsWorkspaceView || view is UnitsWorkspaceView ? new Thickness(0) : (Thickness)FindResource("Uten.Padding.S24");
             WorkspaceContent.Content = view;
         }
         private void DisposeWorkspace() { if (WorkspaceContent == null) return; (WorkspaceContent.Content as IDisposable)?.Dispose(); WorkspaceContent.Content = null; }
@@ -320,6 +349,13 @@ namespace Uten.Legacy.Desktop
         private void OnCaptionDrag(object sender, MouseButtonEventArgs e) { if (e.ChangedButton == MouseButton.Left && e.LeftButton == MouseButtonState.Pressed) DragMove(); }
         private void OnMinimize(object sender, RoutedEventArgs e) { WindowState = WindowState.Minimized; }
         private void OnClose(object sender, RoutedEventArgs e) { Close(); }
-        private void OnClosing(object sender, CancelEventArgs e) { if (closing) return; closing = true; revocationRetry.Stop(); lifetime.Cancel(); session.SessionChanged -= OnSessionChanged; session.ReadScopeChanged -= OnReadScopeChanged; DisposeWorkspace(); lifetime.Dispose(); }
+        private void OnClosing(object sender, CancelEventArgs e)
+        {
+            if (closing) return;
+            if (!CanLeaveWorkspace()) { e.Cancel = true; return; }
+            closing = true; revocationRetry.Stop(); lifetime.Cancel();
+            session.SessionChanged -= OnSessionChanged; session.ReadScopeChanged -= OnReadScopeChanged;
+            DisposeWorkspace(); lifetime.Dispose();
+        }
     }
 }

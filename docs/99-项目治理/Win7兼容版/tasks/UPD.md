@@ -55,9 +55,9 @@
 
 ## W7-UPD-004
 
-- [ ] **ZIP/manifest/PE完整预检** — 源码已实现/待整合验证
+- [ ] **ZIP/manifest/PE完整预检** — 本机验证/待本项最终验收
 
-影响：`delivery`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004。
+影响：`delivery`；负责人：Codex；依赖：W7-CORE-017, W7-INS-004。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs`；`clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs`。
 
@@ -66,9 +66,9 @@
 1. 固定6文件、显式update/family/arch、SHA/size/version、路径/ADS/大小写/zipbomb、拒降级。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：单一package-contract及BC锁，三方六文件/显式update/EOCD分配前边界/PECLR/Company/版本校验统一；同producer两架构native9+Java贯通，整体Updater203。无生产Execute/Win7验收。。
 
 ## W7-UPD-005
 
@@ -123,7 +123,7 @@
 
 ## W7-UPD-008
 
-- [ ] **整体bootstrap/测试接入** — 进行中
+- [ ] **整体bootstrap/测试接入** — 本机验证/待本项最终验收
 
 影响：`delivery`；负责人：Codex；依赖：W7-CORE-017, W7-INS-004。
 
@@ -134,9 +134,9 @@
 1. RootTests真正引用Updater并执行；build脚本部署helper；与同一个producer ZIP集成核验。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/04-当前接手记录.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`。
+证据：`docs/99-项目治理/Win7兼容版/04-当前接手记录.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`；`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：Root整体runner含Updater双架构通过；构建脚本实际生成同架构bootstrap，仍需同producer包整合与安装路径验收。。
+接续/限制：主runner含Updater203和真实Core/下载/Units/UI双arch通过，实际构建helper并PE匹配，同producer临时包预检/ApplyForChecks/Java成功。真实Setup安装/父进程握手/Execute仍待。。
 
 ## W7-UPD-009
 

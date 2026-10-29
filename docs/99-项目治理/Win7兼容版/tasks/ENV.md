@@ -4,9 +4,9 @@
 
 ## W7-ENV-001
 
-- [ ] **net48/C#7.3双架构项目** — 源码已实现/待整合验证
+- [x] **net48/C#7.3双架构项目** — 本项DoD完成
 
-影响：`frontend`；负责人：待认领；依赖：W7-GOV-001。
+影响：`frontend`；负责人：Codex；依赖：W7-GOV-001。
 
 源入口：`clients/windows_legacy/BuildVersion.targets`；`clients/windows_legacy/tools/build_windows_wpf.ps1`。
 
@@ -15,9 +15,9 @@
 1. Core/Desktop/Tests/Updater按正确目标编译；区分AnyCPU库与明确x86/x64入口。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：当前Core/Desktop/Tests/Updater均按net48/C#7.3完成x86/x64整体编译与执行；主程序/helper PE实测同架构，BC保留锁定AnyCPU。仅此项目构建DoD完成，Win7目标机另验。。
 
 ## W7-ENV-002
 
@@ -89,7 +89,7 @@
 
 ## W7-ENV-006
 
-- [ ] **一键原生验证与失败可重现** — 进行中
+- [x] **一键原生验证与失败可重现** — 本项DoD完成
 
 影响：`delivery`；负责人：Codex；依赖：W7-GOV-001。
 
@@ -100,6 +100,6 @@
 1. 统一命令编译/执行双架构合同检查，错误退出码准确、产物隔离，含Updater和下载实际集成。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`。
+证据：`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`；`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：手动统一双架构runner和bootstrap均通过；接续把准确命令、作用域隔离和失败码固化为可复跑入口。。
+接续/限制：统一verify_windows_wpf.ps1实际跑通all；私有GUID输出/源码前后SHA/错误码/实际bootstrap/主runner含Core与Goods24 Downloads32 Units38 Updater203 UI。缺失工具负例exit1且不编译/安装。。

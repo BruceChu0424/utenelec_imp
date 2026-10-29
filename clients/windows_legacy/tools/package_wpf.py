@@ -28,26 +28,30 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "deploy/client"))
 from package_windows import _PeReader, inspect_executable_info
+from sync_package_contract import CONTRACT as CONTRACT_PATH, load_contract, synchronize as check_contract_consumers
 
-MANIFEST = "uten-client-manifest.json"
-EXECUTABLE = "Uten.Legacy.Desktop.exe"
+CONTRACT = load_contract()
+MANIFEST = CONTRACT["manifest"]
+EXECUTABLE = CONTRACT["executable"]
 CORE = "Uten.Legacy.Core.dll"
 BC = "BouncyCastle.Cryptography.dll"
 LICENSE = "BouncyCastle-LICENSE.md"
 APP_CONFIG = EXECUTABLE + ".config"
-REQUIRED = {EXECUTABLE, CORE, BC, APP_CONFIG, LICENSE, "uten.client.json"}
+REQUIRED = set(CONTRACT["files"])
 ALLOWED = REQUIRED
 DEPENDENCY_LOCK = HERE.parent / "dependencies.lock.json"
-MARKER = "UTEN WPF candidate; Configuration=Release; Distribution=Company"
-MAX_FILE_BYTES = 512 * 1024 * 1024
-MAX_PACKAGE_BYTES = 512 * 1024 * 1024
-MAX_TOTAL_BYTES = 1024 * 1024 * 1024 - 1
+MARKER = CONTRACT["companyReleaseMarker"]
+MAX_FILE_BYTES = CONTRACT["maximumFileBytes"]
+MAX_PACKAGE_BYTES = CONTRACT["maximumPackageBytes"]
+MAX_TOTAL_BYTES = CONTRACT["maximumExpandedBytesExclusive"] - 1
+MAX_MANIFEST_BYTES = CONTRACT["maximumManifestBytes"]
 MAX_JSON_BYTES = 8 * 1024 * 1024
 SOURCE_PATHS = ["clients/windows_legacy", "pubspec.yaml", "assets/security/uten-imp-root-ca.crt",
     "assets/fonts/NotoSansSC.ttf", "assets/images/logo_ip.png", "assets/images/logo_name.png",
     "windows/runner/resources/app_icon.ico", "lib/core/theme"]
 SOURCE_REQUIRED = {"pubspec.yaml", "clients/windows_legacy/BuildVersion.targets",
     "clients/windows_legacy/dependencies.lock.json",
+    "clients/windows_legacy/package-contract.json",
     "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json",
     "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
     "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj"}
@@ -96,7 +100,7 @@ def _version(source_root: Path) -> tuple[str, int]:
         raise ValueError("Source pubspec must contain exactly one numeric version/build")
     version, raw_build = values[0]
     parts, build = tuple(int(item) for item in version.split(".")), int(raw_build)
-    if any(number > 65535 for number in parts) or not 1 <= build <= 65535:
+    if any(number > 65535 for number in parts) or not 1 <= build <= 65535 or version != ".".join(map(str, parts)):
         raise ValueError("Source version/build does not fit PE version fields")
     return version, build
 
@@ -109,6 +113,7 @@ def _git(root: Path, *arguments: str) -> str:
 
 
 def capture_source_state(source_root: Path) -> dict:
+    check_contract_consumers()
     source_root = _plain(source_root)
     if Path(_git(source_root, "rev-parse", "--show-toplevel")).resolve() != source_root:
         raise ValueError("Source root must identify the exact Git worktree")
@@ -128,6 +133,11 @@ def capture_source_state(source_root: Path) -> dict:
         if source_root not in path.parents or not path.is_file():
             raise ValueError("Tracked build input is missing or leaves the source tree")
         files.append({"path": name, "size": path.stat().st_size, "sha256": _digest(path)})
+    for source_name, owning in (("clients/windows_legacy/package-contract.json", CONTRACT_PATH),
+                               ("clients/windows_legacy/dependencies.lock.json", DEPENDENCY_LOCK)):
+        recorded = next(item for item in files if item["path"] == source_name)
+        if recorded["sha256"] != _digest(owning):
+            raise ValueError("Reviewed source contract/dependency lock differs from the executing package tool")
     version, build = _version(source_root)
     return {"schemaVersion": 1, "sourceCommit": commit, "sourceFiles": files,
             "version": version, "buildNumber": build}
@@ -135,6 +145,8 @@ def capture_source_state(source_root: Path) -> dict:
 
 def inspect_managed(path: Path, *, executable: bool) -> dict:
     """Use the existing bounded RVA reader for CLR flags and metadata version."""
+    if not 1 <= path.stat().st_size <= CONTRACT["maximumManagedFileBytes"]:
+        raise ValueError("Managed file exceeds the shared WPF contract limit")
     with path.open("rb") as stream:
         reader = _PeReader(stream, path.stat().st_size)
         dos = reader.read_at(0, 64)
@@ -143,23 +155,23 @@ def inspect_managed(path: Path, *, executable: bool) -> dict:
         if not flags & 2 or bool(flags & 0x2000) == executable:
             raise ValueError("Managed application/DLL PE characteristics differ")
         rva, size = reader.directory(14)
-        if not rva or size < 72:
+        if not rva or size != CONTRACT["clrHeaderBytes"]:
             raise ValueError("Managed CLR header is missing")
         header = reader.read_at(reader.file_offset(rva, 72), 72)
-        if struct.unpack_from("<I", header)[0] < 72:
+        if struct.unpack_from("<I", header)[0] != CONTRACT["clrHeaderBytes"]:
             raise ValueError("Managed CLR header is invalid")
         metadata_rva, metadata_size, clr_flags = struct.unpack_from("<III", header, 8)
         if not clr_flags & 1 or clr_flags & 0x10:
             raise ValueError("Expected IL-only managed code, not a native CLR entry point")
-        if metadata_size < 20 or metadata_size > 16 * 1024 * 1024:
+        if metadata_size < 20 or metadata_size > CONTRACT["maximumMetadataBytes"]:
             raise ValueError("Managed metadata is missing or oversized")
         metadata = reader.file_offset(metadata_rva, metadata_size)
         prefix = reader.read_at(metadata, 16)
         version_length = struct.unpack_from("<I", prefix, 12)[0]
-        if prefix[:4] != b"BSJB" or not 1 <= version_length <= 256 or 16 + version_length > metadata_size:
+        if prefix[:4] != b"BSJB" or not 1 <= version_length <= CONTRACT["maximumClrVersionBytes"] or 16 + version_length > metadata_size:
             raise ValueError("Managed metadata root is invalid")
         version = reader.read_at(metadata + 16, version_length).rstrip(b"\0")
-        if not version.startswith(b"v4."):
+        if not version.startswith(CONTRACT["clrVersionPrefix"].encode("ascii")):
             raise ValueError("WPF payload requires CLR v4 metadata")
         if reader.architecture == "x64" and not clr_flags & (2 | 0x20000):
             architecture = "x64"
@@ -173,7 +185,7 @@ def inspect_managed(path: Path, *, executable: bool) -> dict:
 
 
 def _configuration(path: Path) -> None:
-    if path.stat().st_size > 65536:
+    if path.stat().st_size > CONTRACT["maximumConfigurationBytes"]:
         raise ValueError("Company configuration exceeds the native client's 64 KiB limit")
     data = _read_json(path)
     if set(data) - {"endpoints", "selectedEndpointId", "requestTimeoutSeconds", "maxResponseBytes"}:
@@ -218,7 +230,7 @@ def _configuration(path: Path) -> None:
 
 def _runtime_configuration(path: Path) -> None:
     data = path.read_bytes()
-    if len(data) > 65536 or b"<!doctype" in data.lower() or b"<!entity" in data.lower():
+    if len(data) > CONTRACT["maximumConfigurationBytes"] or b"<!doctype" in data.lower() or b"<!entity" in data.lower():
         raise ValueError("Runtime configuration is oversized or contains a DTD/entity")
     try:
         document = ET.fromstring(data)
@@ -238,7 +250,7 @@ def _runtime_configuration(path: Path) -> None:
 
 
 def inspect_bundle(bundle: Path, *, architecture: str, version: str, build_number: int) -> list[dict]:
-    if architecture not in {"x86", "x64"}:
+    if architecture not in CONTRACT["architectures"]:
         raise ValueError("WPF supports only x86 and x64")
     bundle = _plain(bundle)
     if not bundle.is_dir():
@@ -272,10 +284,12 @@ def inspect_bundle(bundle: Path, *, architecture: str, version: str, build_numbe
             raise ValueError("Only compiled Release/Company candidate markers are accepted; Debug/LocalTest is forbidden")
     lock = _read_json(DEPENDENCY_LOCK)
     pins = lock.get("files", {})
-    if (lock.get("schemaVersion") != 1 or lock.get("package") != "BouncyCastle.Cryptography"
+    if (lock.get("schemaVersion") != 1 or any(lock.get(key) != CONTRACT["dependency"][key] for key in ("package", "version", "targetFramework"))
             or pins.get("lib/net461/BouncyCastle.Cryptography.dll") != _digest(paths[BC])
             or pins.get("LICENSE.md") != _digest(paths[LICENSE])):
         raise ValueError("BouncyCastle DLL/license differ from the fixed private dependency lock")
+    if paths[LICENSE].stat().st_size > CONTRACT["maximumLicenseBytes"]:
+        raise ValueError("Dependency license exceeds the shared WPF limit")
     _configuration(paths["uten.client.json"])
     _runtime_configuration(paths[APP_CONFIG])
     return [{"path": name, "size": paths[name].stat().st_size, "sha256": _digest(paths[name])} for name in sorted(paths)]
@@ -332,6 +346,7 @@ def validate_package(path: Path, *, architecture: str, version: str, build_numbe
     path = _plain(path)
     if not path.is_file() or not 1 <= path.stat().st_size <= MAX_PACKAGE_BYTES:
         raise ValueError("Candidate ZIP is absent or oversized")
+    _zip_directory(path)
     with zipfile.ZipFile(path) as archive, tempfile.TemporaryDirectory(prefix="uten-wpf-verify-") as temporary:
         entries = archive.infolist()
         names = [item.filename for item in entries]
@@ -345,6 +360,8 @@ def validate_package(path: Path, *, architecture: str, version: str, build_numbe
             if (item.flag_bits & 1 or stat.S_IFMT(mode) not in {0, stat.S_IFREG}
                     or item.is_dir() or not 1 <= item.file_size <= MAX_FILE_BYTES):
                 raise ValueError("Candidate ZIP contains an unsafe entry")
+            if item.filename == MANIFEST and item.file_size > MAX_MANIFEST_BYTES:
+                raise ValueError("Candidate manifest exceeds the shared WPF limit")
             total += item.file_size
             if total > MAX_TOTAL_BYTES:
                 raise ValueError("Expanded candidate ZIP is oversized")
@@ -358,6 +375,10 @@ def validate_package(path: Path, *, architecture: str, version: str, build_numbe
                 if received != item.file_size:
                     raise ValueError("Candidate ZIP is truncated")
         manifest = _read_json(root / MANIFEST)
+        if set(manifest) - set(CONTRACT["manifestRequiredKeys"] + CONTRACT["manifestOptionalKeys"]):
+            raise ValueError("Candidate manifest contains unknown fields")
+        if not isinstance(manifest.get("sourceCommit"), str) or not re.fullmatch(r"[0-9a-f]{40}", manifest["sourceCommit"]):
+            raise ValueError("Candidate manifest source commit is invalid")
         expected = {"schemaVersion": 1, "platform": "windows", "runtimeFamily": "wpf_legacy",
             "architecture": architecture, "version": version, "buildNumber": build_number,
             "packageKind": "update", "executable": EXECUTABLE, "candidate": True, "releaseReady": False}
@@ -368,6 +389,24 @@ def validate_package(path: Path, *, architecture: str, version: str, build_numbe
         if not _same(manifest.get("files"), files):
             raise ValueError("Candidate ZIP contents differ from their exact SHA-256 manifest")
         return manifest
+
+
+def _zip_directory(path: Path) -> None:
+    """Bound central-directory allocation before constructing zipfile.ZipFile."""
+    size = path.stat().st_size
+    with path.open("rb") as stream:
+        stream.seek(max(0, size - (22 + 65535)))
+        tail = stream.read(22 + 65535)
+    position = tail.rfind(b"PK\x05\x06")
+    if position < 0 or position + 22 > len(tail):
+        raise ValueError("Missing bounded WPF ZIP directory")
+    disk, start_disk, disk_count, total_count, length, offset, comment = struct.unpack_from("<HHHHIIH", tail, position + 4)
+    absolute = size - len(tail) + position
+    expected = len(REQUIRED) + 1
+    if (disk or start_disk or disk_count != expected or total_count != expected
+            or length < expected * 46 or length > CONTRACT["maximumCentralDirectoryBytes"]
+            or offset + length != absolute or position + 22 + comment != len(tail)):
+        raise ValueError("WPF ZIP must have one bounded seven-entry non-ZIP64 directory")
 
 
 def package_update(bundle: Path, output: Path, *, architecture: str, source_root: Path,

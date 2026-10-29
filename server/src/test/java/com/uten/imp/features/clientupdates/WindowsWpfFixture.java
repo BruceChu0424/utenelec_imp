@@ -12,10 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /** Synthetic metadata fixtures, containing no executable CLR code or ERP release artifact. */
 final class WindowsWpfFixture {
-    static final String COMPANY_RELEASE_PROVENANCE = "UTEN WPF candidate; Configuration=Release; Distribution=Company";
+    static final String COMPANY_RELEASE_PROVENANCE = WpfPackageContract.COMPANY_RELEASE_MARKER;
     private WindowsWpfFixture() { }
     static byte[] setup(long build, String architecture, String version) {
         return WindowsSetupFixture.bytes(build, architecture, version, Map.of(
@@ -53,11 +55,24 @@ final class WindowsWpfFixture {
         var files = new LinkedHashMap<String, byte[]>();
         files.put("Uten.Legacy.Desktop.exe", image(build, architecture, version, false));
         files.put("Uten.Legacy.Core.dll", image(build, architecture, version, true));
-        files.put("BouncyCastle.Cryptography.dll", image(1, architecture, "2.7.0", true));
-        files.put("BouncyCastle-LICENSE.md", "synthetic test license, not a third party distribution".getBytes(StandardCharsets.UTF_8));
+        files.put("BouncyCastle.Cryptography.dll", dependencyFixture("lib/net461/BouncyCastle.Cryptography.dll", WpfPackageContract.DEPENDENCY_DLL_SHA256));
+        files.put("BouncyCastle-LICENSE.md", dependencyFixture("LICENSE.md", WpfPackageContract.DEPENDENCY_LICENSE_SHA256));
         files.put("Uten.Legacy.Desktop.exe.config", "<configuration><startup><supportedRuntime version=\"v4.0\" sku=\".NETFramework,Version=v4.8\"/></startup></configuration>".getBytes(StandardCharsets.UTF_8));
         files.put("uten.client.json", "{\"endpoints\":[{\"id\":\"company\",\"name\":\"公司\",\"apiBaseUrl\":\"https://imp.utenelec/api\"}],\"selectedEndpointId\":\"company\"}".getBytes(StandardCharsets.UTF_8));
         return files;
+    }
+    private static byte[] dependencyFixture(String name, String expected) {
+        // The already restored private vendor bytes are read only, never loaded/executed.
+        // CI must explicitly provide this audited dependency fixture or report a skip.
+        Path root = Path.of(System.getProperty("uten.wpf.dependencyFixtureRoot",
+                "../build/windows-wpf/dependencies/BouncyCastle.Cryptography.2.7.0"));
+        Path file = root.resolve(name);
+        org.junit.jupiter.api.Assumptions.assumeTrue(Files.isRegularFile(file), "Pinned private WPF dependency fixture is unavailable: " + file);
+        try {
+            byte[] bytes = Files.readAllBytes(file);
+            if (!sha(bytes).equals(expected)) throw new IllegalStateException("Pinned WPF fixture bytes differ from the authoritative lock");
+            return bytes;
+        } catch (java.io.IOException error) { throw new IllegalStateException("Cannot read pinned WPF fixture", error); }
     }
     static byte[] update(long build, String architecture, String version) throws Exception {
         return zip(files(build, architecture, version), build, architecture, version, "wpf_legacy");

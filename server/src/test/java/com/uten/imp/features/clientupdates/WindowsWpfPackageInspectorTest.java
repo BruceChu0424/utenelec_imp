@@ -12,6 +12,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
+import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -83,6 +89,64 @@ class WindowsWpfPackageInspectorTest {
                 rejects(WindowsWpfFixture.zip(files,2533,"x64","2.5.33","wpf_legacy"),release("x64","wpf_legacy","update"));
             }
         }
+    }
+    @Test void exactSharedManifestShapeSizeAndExplicitUpdateKindAreRequired() throws Exception {
+        byte[] original = WindowsWpfFixture.update(2533, "x64", "2.5.33");
+        for (UnaryOperator<String> mutation : List.<UnaryOperator<String>>of(
+                json -> json.replace("\"packageKind\":\"update\",", ""),
+                json -> json.replace("\"packageKind\":\"update\"", "\"packageKind\":null"),
+                json -> json.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1"),
+                json -> json.replace("\"schemaVersion\":1", "\"schemaVersion\":4294967297"),
+                json -> json.replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"unexpected\":true"),
+                json -> json.replace("\"files\":[{", "\"files\":[{\"unexpected\":true,"),
+                json -> json + "{}",
+                json -> json + " ".repeat(WpfPackageContract.MAXIMUM_MANIFEST_BYTES))) {
+            rejects(rewriteManifest(original, mutation), release("x64", "wpf_legacy", "update"));
+        }
+        var ico = WindowsWpfFixture.files(2533, "x64", "2.5.33"); ico.put("uten-wpf.ico", new byte[]{1});
+        rejects(WindowsWpfFixture.zip(ico,2533,"x64","2.5.33","wpf_legacy"), release("x64","wpf_legacy","update"));
+    }
+    @Test void dependencyPinsProductVersionAndDuplicateConfigurationAreEnforced() throws Exception {
+        for (String name : List.of("BouncyCastle.Cryptography.dll", "BouncyCastle-LICENSE.md")) {
+            var files = WindowsWpfFixture.files(2533,"x64","2.5.33");
+            byte[] bytes = files.get(name).clone(); bytes[bytes.length-1] ^= 1; files.put(name, bytes);
+            rejects(WindowsWpfFixture.zip(files,2533,"x64","2.5.33","wpf_legacy"), release("x64","wpf_legacy","update"));
+        }
+        var wrongProduct = WindowsWpfFixture.files(2533,"x64","2.5.33");
+        ByteBuffer.wrap(wrongProduct.get("Uten.Legacy.Core.dll")).order(ByteOrder.LITTLE_ENDIAN).putInt(668, 1);
+        rejects(WindowsWpfFixture.zip(wrongProduct,2533,"x64","2.5.33","wpf_legacy"), release("x64","wpf_legacy","update"));
+        var duplicate = WindowsWpfFixture.files(2533,"x64","2.5.33");
+        String config = new String(duplicate.get("uten.client.json"), StandardCharsets.UTF_8);
+        duplicate.put("uten.client.json", config.replace("\"selectedEndpointId\":\"company\"",
+                "\"selectedEndpointId\":\"company\",\"selectedEndpointId\":\"company\"").getBytes(StandardCharsets.UTF_8));
+        rejects(WindowsWpfFixture.zip(duplicate,2533,"x64","2.5.33","wpf_legacy"), release("x64","wpf_legacy","update"));
+        byte[] x86Library = WindowsWpfFixture.image(1,"x86","2.7.0",true);
+        ByteBuffer.wrap(x86Library).order(ByteOrder.LITTLE_ENDIAN).putInt(3312+16,3);
+        assertThatThrownBy(() -> WindowsManagedImageInspector.inspect(x86Library, release("x86","wpf_legacy","update"),true,false,true))
+                .isInstanceOf(ApiException.class);
+    }
+    @Test void centralDirectoryAllocationIsBoundedBeforeCommonsZipFile() throws Exception {
+        byte[] original = WindowsWpfFixture.update(2533,"x64","2.5.33");
+        for (int field : List.of(4, 8, 10, 12)) {
+            byte[] bytes = original.clone(); int end = bytes.length - 22;
+            var view = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
+            if (field == 12) view.putInt(end + field, WpfPackageContract.MAXIMUM_CENTRAL_DIRECTORY_BYTES + 1);
+            else view.putShort(end + field, (short) (field == 4 ? 1 : 65535));
+            Path path = file(bytes);
+            assertThatThrownBy(() -> WindowsWpfPackageInspector.requireDirectory(path)).isInstanceOf(ApiException.class);
+        }
+    }
+    private static byte[] rewriteManifest(byte[] source, UnaryOperator<String> mutation) throws Exception {
+        var result = new ByteArrayOutputStream();
+        try (var input = new ZipInputStream(new ByteArrayInputStream(source)); var output = new ZipOutputStream(result)) {
+            for (ZipEntry entry; (entry = input.getNextEntry()) != null;) {
+                byte[] bytes = input.readAllBytes();
+                if ("uten-client-manifest.json".equals(entry.getName()))
+                    bytes = mutation.apply(new String(bytes,StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+                output.putNextEntry(new ZipEntry(entry.getName())); output.write(bytes); output.closeEntry();
+            }
+        }
+        return result.toByteArray();
     }
     private ClientReleaseDto.Release release(String arch,String family,String kind) {
         return new ClientReleaseDto.Release(UUID.randomUUID(),"windows",arch,"2.5.33",2533,"",false,

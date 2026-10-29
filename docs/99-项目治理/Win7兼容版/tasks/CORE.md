@@ -174,7 +174,7 @@
 
 ## W7-CORE-011
 
-- [ ] **通用业务提交入口** — 源码已实现/待整合验证
+- [ ] **通用业务提交入口** — 本机验证/待本项最终验收
 
 影响：`shared`；负责人：Codex；依赖：W7-ENV-001。
 
@@ -185,9 +185,9 @@
 1. 动作配置表达真实method/path/body/version/idempotency/回执；写不自动重放，身份校验和并发策略统一。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json`；`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：三个单位受控动作公共Mutation已冻结，Root双架构Core整合通过；原JSON/presence/权限/身份/禁止重放/Unknown有效。仅内存，013/014待实现，不开放完整单位写页。。
+接续/限制：三个受控单位动作已接durable journal及真实WPF表单，双进程架构验证；原JSON/presence/权限/owner/未知结果有效。其它动作迁移尚待，不标公共全覆盖done。。
 
 ## W7-CORE-012
 
@@ -208,9 +208,9 @@
 
 ## W7-CORE-013
 
-- [ ] **草稿持久化与恢复** — 未开始
+- [ ] **草稿持久化与恢复** — 本机验证/待本项最终验收
 
-影响：`shared`；负责人：待认领；依赖：W7-ENV-001。
+影响：`shared`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -219,15 +219,15 @@
 1. 绑定用户/issuer/dataset/实体/版本；取消、切页、断网、重启和升级不丢输入或串他人草稿。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：独立DPAPI草稿/owner namespace/CAS/retired lease已接单位编辑恢复；实际HWND父Close+阻塞store和双arch整体通过。其它调用方/升级与目标机仍待。。
 
 ## W7-CORE-014
 
-- [ ] **未知提交和命令回执核对** — 未开始
+- [ ] **未知提交和命令回执核对** — 本机验证/待本项最终验收
 
-影响：`shared`；负责人：待认领；依赖：W7-ENV-001。
+影响：`shared`；负责人：Codex；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -236,9 +236,9 @@
 1. 逐动作接真实receipt/查询；未知不得报失败后盲目重提，未提供回执的动作明确保守恢复。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/native-draft-package-20261028.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：Sending先持久化、跨store未知及新UUID重提保护、Confirmed本机失败不改Outcome、原目标UUID/路径只读核对已验证。无服务端receipt明确人工核对；其它动作/核对说明UI待补。。
 
 ## W7-CORE-015
 

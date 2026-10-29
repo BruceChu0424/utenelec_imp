@@ -38,6 +38,7 @@ namespace Uten.Legacy.Core
     public sealed class MutationRequest
     {
         public MutationAction Action { get; private set; }
+        public int ContractVersion { get { return 1; } }
         public string RequestId { get; private set; }
         public string Method { get; private set; }
         public string RelativePath { get; private set; }
@@ -56,6 +57,8 @@ namespace Uten.Legacy.Core
         public string ExpectedVersionJson { get; private set; }
         public bool HasMeasurementDimension { get; private set; }
         public bool HasMassUnitCode { get; private set; }
+        public string OriginDraftId { get; private set; }
+        public long? OriginDraftRevision { get; private set; }
         internal string ObservedStatus;
         internal bool Started;
         internal MutationResult Result;
@@ -75,6 +78,11 @@ namespace Uten.Legacy.Core
         }
         internal static string Hash(byte[] bytes)
         { using (var sha = SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant(); }
+        internal void LinkDraft(string draftId, long revision)
+        {
+            if (OriginDraftId != null || revision < 1) throw new InvalidOperationException("Draft linkage cannot be replaced.");
+            OriginDraftId = draftId; OriginDraftRevision = revision;
+        }
     }
 
     public sealed class MutationResult
@@ -84,15 +92,17 @@ namespace Uten.Legacy.Core
         public ApiException Error { get; private set; }
         public string ResponseJson { get; private set; }
         public bool NeedsManualReconciliation { get { return Outcome == MutationOutcome.Unknown; } }
-        public bool IsDurablyRecorded { get { return false; } }
+        public bool IsDurablyRecorded { get; private set; }
+        public ApiException PersistenceError { get; private set; }
         public string ReconciliationHint { get; private set; }
         internal MutationResult(MutationOutcome outcome, MutationRequest request, ApiException error, string response = null)
         {
             Outcome = outcome; Request = request; Error = error; ResponseJson = response;
             ReconciliationHint = outcome == MutationOutcome.Unknown
-                ? "请在原服务器、原账号和原业务数据集中人工核对单位详情及操作历史。此接口没有请求回执或强幂等键，不能凭同名记录认领结果，也不要直接再次提交。保留原请求编号和原始内容；本阶段尚无持久提交台账。"
+                ? "请在原服务器、原账号和原业务数据集中人工核对单位详情及操作历史。此接口没有请求回执或强幂等键，不能凭同名记录认领结果，也不要直接再次提交。保留原请求编号和原始内容，并核对本机提交台账的保存状态。"
                 : null;
         }
+        internal void RecordPersistence(bool saved, ApiException error) { IsDurablyRecorded = saved; PersistenceError = error; }
     }
 
     /// <summary>Memory-only grant. The server binds it to the auth session; idle five minutes,
@@ -124,9 +134,9 @@ namespace Uten.Legacy.Core
     /// Decode strings with the framework parser; never parse numeric tokens through Double.</summary>
     internal static class MutationFlatJson
     {
-        internal static Dictionary<string, FlatJsonField> Parse(string json)
+        internal static Dictionary<string, FlatJsonField> Parse(string json, int maximumBytes = 16384, bool preserveValueControls = false)
         {
-            if (json == null || new UTF8Encoding(false, true).GetByteCount(json) > 16384) throw new FormatException();
+            if (json == null || new UTF8Encoding(false, true).GetByteCount(json) > maximumBytes) throw new FormatException();
             var fields = new Dictionary<string, FlatJsonField>(StringComparer.Ordinal);
             var position = 0;
             White(json, ref position); Take(json, ref position, '{'); White(json, ref position);
@@ -134,11 +144,11 @@ namespace Uten.Legacy.Core
             else while (true)
             {
                 White(json, ref position);
-                var key = String(json, ref position);
+                var key = String(json, ref position, false);
                 White(json, ref position); Take(json, ref position, ':'); White(json, ref position);
                 var start = position;
                 object value;
-                if (position < json.Length && json[position] == '"') value = String(json, ref position);
+                if (position < json.Length && json[position] == '"') value = String(json, ref position, preserveValueControls);
                 else
                 {
                     while (position < json.Length && json[position] != ',' && json[position] != '}') position++;
@@ -159,7 +169,7 @@ namespace Uten.Legacy.Core
             if (position != json.Length) throw new FormatException();
             return fields;
         }
-        private static string String(string json, ref int position)
+        private static string String(string json, ref int position, bool preserveControls)
         {
             var start = position;
             Take(json, ref position, '"');
@@ -169,7 +179,7 @@ namespace Uten.Legacy.Core
                 if (value == '\\') { if (position >= json.Length) throw new FormatException(); position++; continue; }
                 if (value != '"') continue;
                 var result = new JavaScriptSerializer().DeserializeObject(json.Substring(start, position - start)) as string;
-                if (result == null || result.Any(Char.IsControl)) throw new FormatException();
+                if (result == null || (!preserveControls && result.Any(Char.IsControl))) throw new FormatException();
                 // Reject unpaired UTF-16 surrogates instead of silently replacing source bytes.
                 new UTF8Encoding(false, true).GetByteCount(result);
                 return result;

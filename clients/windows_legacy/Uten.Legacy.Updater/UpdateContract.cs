@@ -40,12 +40,13 @@ namespace Uten.Legacy.Updater
     /// <summary>Candidate-only package validation. No package assembly is loaded or executed.</summary>
     public static class UpdateContract
     {
-        public const string MainExecutable = "Uten.Legacy.Desktop.exe";
-        public const string ManifestName = "uten-client-manifest.json";
-        public const long MaximumPackageBytes = 512L * 1024 * 1024;
-        public const long MaximumExpandedBytes = 1024L * 1024 * 1024;
-        internal static readonly string[] ApprovedFiles = { "Uten.Legacy.Desktop.exe.config", "BouncyCastle-LICENSE.md",
-            "uten.client.json", "BouncyCastle.Cryptography.dll", "Uten.Legacy.Core.dll", MainExecutable };
+        public const string MainExecutable = PackageContract.Executable;
+        public const string ManifestName = PackageContract.Manifest;
+        public const long MaximumPackageBytes = PackageContract.MaximumPackageBytes;
+        public const long MaximumExpandedBytes = PackageContract.MaximumExpandedBytesExclusive;
+        // Main remains last; the approved set and all bounded values have one owning JSON.
+        internal static readonly string[] ApprovedFiles = PackageContract.Files
+            .OrderBy(name => name == MainExecutable ? 1 : 0).ThenBy(name => name, StringComparer.Ordinal).ToArray();
         private static readonly Regex Digest = new Regex(@"\A[0-9a-f]{64}\z", RegexOptions.CultureInvariant);
 
         public static UpdatePlan ReadInstruction(string instructionPath)
@@ -115,7 +116,7 @@ namespace Uten.Legacy.Updater
             {
                 if (package.Length != plan.SizeBytes || package.Length > MaximumPackageBytes || SafeFiles.Hash(package) != plan.Sha256)
                     throw new InvalidDataException("Update ZIP size or SHA-256 differs.");
-                package.Position = 0;
+                ZipDirectory.Require(package);
                 using (var archive = new ZipArchive(package, ZipArchiveMode.Read, true))
                 {
                     var expected = new HashSet<string>(ApprovedFiles, StringComparer.Ordinal) { ManifestName };
@@ -124,18 +125,19 @@ namespace Uten.Legacy.Updater
                     {
                         var attributes = unchecked((uint)entry.ExternalAttributes); var unixType = (attributes >> 16) & 0xF000;
                         if (!names.Add(entry.FullName) || !expected.Contains(entry.FullName) || (attributes & (0x400 | 0x10)) != 0
-                            || (unixType != 0 && unixType != 0x8000) || entry.Length < 1 || entry.Length > MaximumPackageBytes)
+                            || (unixType != 0 && unixType != 0x8000) || entry.Length < 1 || entry.Length > PackageContract.MaximumFileBytes)
                             throw new InvalidDataException("ZIP contains an unapproved, linked, duplicate or oversized entry.");
                         expanded = checked(expanded + entry.Length);
                         if (expanded >= MaximumExpandedBytes) throw new InvalidDataException("ZIP expanded size exceeds its aggregate limit.");
                     }
                     if (names.Count != expected.Count) throw new InvalidDataException("ZIP does not contain exactly the six runtime files and manifest.");
                     byte[] raw;
+                    if (archive.GetEntry(ManifestName).Length > PackageContract.MaximumManifestBytes)
+                        throw new InvalidDataException("Update manifest exceeds the shared contract limit.");
                     using (var stream = archive.GetEntry(ManifestName).Open())
-                    using (var output = new MemoryStream()) { SafeFiles.Copy(stream, output, 65536); raw = output.ToArray(); }
+                    using (var output = new MemoryStream()) { SafeFiles.Copy(stream, output, PackageContract.MaximumManifestBytes); raw = output.ToArray(); }
                     var manifest = StrictJson.Read(raw);
-                    StrictJson.Keys(manifest, new[] { "schemaVersion", "platform", "runtimeFamily", "architecture", "version", "buildNumber",
-                        "executable", "files", "packageKind" }, "sourceCommit", "candidate", "releaseReady");
+                    StrictJson.Keys(manifest, PackageContract.ManifestRequiredKeys, PackageContract.ManifestOptionalKeys);
                     if (StrictJson.Text(manifest, "packageKind", 20) != "update")
                         throw new InvalidDataException("Only update ZIPs may replace an installed runtime.");
                     if (manifest.ContainsKey("sourceCommit") && !Regex.IsMatch(StrictJson.Text(manifest, "sourceCommit", 40), @"\A[0-9a-f]{40}\z"))
@@ -156,13 +158,16 @@ namespace Uten.Legacy.Updater
                     {
                         var record = item as Dictionary<string, object>;
                         if (record == null) throw new InvalidDataException("Invalid update file record.");
-                        StrictJson.Keys(record, new[] { "path", "size", "sha256" });
+                        StrictJson.Keys(record, PackageContract.FileRecordKeys);
                         var name = StrictJson.Text(record, "path", 100);
                         if (!ApprovedFiles.Contains(name, StringComparer.Ordinal) || files.ContainsKey(name)) throw new InvalidDataException("Unapproved update file.");
                         var file = new UpdateFile { Name = name, Size = StrictJson.Integer(record, "size", 1, MaximumPackageBytes), Sha256 = RequiredDigest(record, "sha256") };
                         if (archive.GetEntry(name).Length != file.Size) throw new InvalidDataException("ZIP and manifest lengths differ.");
                         files.Add(name, file);
                     }
+                    if (files["BouncyCastle.Cryptography.dll"].Sha256 != PackageContract.DependencyDllSha256
+                        || files["BouncyCastle-LICENSE.md"].Sha256 != PackageContract.DependencyLicenseSha256)
+                        throw new InvalidDataException("Schema-1 managed TLS DLL/license differ from the authoritative dependency lock; install a new complete Setup for a dependency upgrade.");
                     var stage = SafeFiles.Child(plan.JobRoot, "stage");
                     if (Directory.Exists(stage) || File.Exists(stage)) throw new IOException("Stage already exists; preserve its recovery evidence.");
                     Directory.CreateDirectory(stage);
@@ -179,9 +184,9 @@ namespace Uten.Legacy.Updater
                                 output.Flush(true);
                             }
                         }
-                        ReadIdentity(SafeFiles.Child(stage, MainExecutable), plan.Architecture, "Uten.Legacy.Desktop", true, plan.Version, plan.BuildNumber);
-                        ReadIdentity(SafeFiles.Child(stage, "Uten.Legacy.Core.dll"), plan.Architecture, "Uten.Legacy.Core", false, plan.Version, plan.BuildNumber);
-                        ReadIdentity(SafeFiles.Child(stage, "BouncyCastle.Cryptography.dll"), plan.Architecture, "BouncyCastle.Cryptography", false);
+                        ReadIdentity(SafeFiles.Child(stage, MainExecutable), plan.Architecture, "Uten.Legacy.Desktop", true, plan.Version, plan.BuildNumber, requireCompany: true);
+                        ReadIdentity(SafeFiles.Child(stage, "Uten.Legacy.Core.dll"), plan.Architecture, "Uten.Legacy.Core", false, plan.Version, plan.BuildNumber, requireCompany: true);
+                        ReadIdentity(SafeFiles.Child(stage, "BouncyCastle.Cryptography.dll"), plan.Architecture, "BouncyCastle.Cryptography", false, requireAnyCpu: true);
                     }
                     return new PreparedUpdate { StageRoot = stage, Files = ApprovedFiles.Select(name => files[name]).ToList().AsReadOnly() };
                 }
@@ -200,11 +205,13 @@ namespace Uten.Legacy.Updater
         }
 
         internal static Tuple<string, int> ReadIdentity(string path, string architecture, string assemblyName, bool executable,
-            string expectedVersion = null, int expectedBuild = 0)
+            string expectedVersion = null, int expectedBuild = 0, bool requireAnyCpu = false, bool requireCompany = false)
         {
             using (var file = SafeFiles.Open(path, FileAccess.Read))
             using (var reader = new BinaryReader(file, Encoding.UTF8, true))
             {
+                if (file.Length < 1 || file.Length > PackageContract.MaximumManagedFileBytes)
+                    throw new InvalidDataException("Managed image exceeds the shared WPF contract limit.");
                 Func<long, int, byte[]> bytes = (offset, count) =>
                 { if (offset < 0 || count < 0 || offset > file.Length - count) throw new InvalidDataException("Truncated PE metadata."); file.Position = offset; return reader.ReadBytes(count); };
                 var dos = bytes(0, 64); if (dos[0] != 'M' || dos[1] != 'Z') throw new InvalidDataException("Missing PE header.");
@@ -230,29 +237,32 @@ namespace Uten.Legacy.Updater
                     throw new InvalidDataException("CLR metadata leaves backed PE sections.");
                 };
                 var clrSize = BitConverter.ToUInt32(optional, directories + 14 * 8 + 4);
-                if (clrSize < 72) throw new InvalidDataException("Invalid CLR header length.");
-                var clr = bytes(map(BitConverter.ToUInt32(optional, directories + 14 * 8), 72), 72);
+                if (clrSize != PackageContract.ClrHeaderBytes) throw new InvalidDataException("Invalid CLR header length.");
+                var clr = bytes(map(BitConverter.ToUInt32(optional, directories + 14 * 8), PackageContract.ClrHeaderBytes), PackageContract.ClrHeaderBytes);
                 var flags = BitConverter.ToUInt32(clr, 16);
-                if (BitConverter.ToUInt32(clr, 0) < 72 || (flags & 1) == 0 || (flags & 0x10) != 0 || (flags & 0x20000) != 0)
+                if (BitConverter.ToUInt32(clr, 0) != PackageContract.ClrHeaderBytes || (flags & 1) == 0 || (flags & 0x10) != 0 || (flags & 0x20000) != 0)
                     throw new InvalidDataException("Only IL-only managed images are accepted.");
                 var exactX86 = machine == 0x14c && magic == 0x10b && (flags & 2) != 0;
                 var exactX64 = machine == 0x8664 && magic == 0x20b && (flags & 2) == 0;
                 var anyCpu = machine == 0x14c && magic == 0x10b && (flags & 2) == 0;
+                if (requireAnyCpu && !anyCpu) throw new InvalidDataException("The fixed managed TLS dependency must be AnyCPU.");
                 if (!(architecture == "x86" ? exactX86 || !executable && anyCpu : architecture == "x64" && (exactX64 || !executable && anyCpu)))
                     throw new InvalidDataException("PE/CLR architecture differs from the installed application.");
                 var metadataSize = BitConverter.ToUInt32(clr, 12);
-                if (metadataSize < 20 || metadataSize > 16 * 1024 * 1024) throw new InvalidDataException("Invalid CLR metadata size.");
+                if (metadataSize < 20 || metadataSize > PackageContract.MaximumMetadataBytes) throw new InvalidDataException("Invalid CLR metadata size.");
                 var metadataOffset = map(BitConverter.ToUInt32(clr, 8), (int)metadataSize);
                 if (metadataOffset > file.Length - metadataSize) throw new InvalidDataException("Truncated CLR metadata region.");
                 var metadata = bytes(metadataOffset, 16);
                 var versionLength = BitConverter.ToUInt32(metadata, 12);
-                if (BitConverter.ToUInt32(metadata, 0) != 0x424a5342 || versionLength < 1 || versionLength > 256 || 16 + versionLength > metadataSize
-                    || !Encoding.ASCII.GetString(bytes(map(BitConverter.ToUInt32(clr, 8), (int)metadataSize) + 16, (int)versionLength)).StartsWith("v4.", StringComparison.Ordinal))
+                if (BitConverter.ToUInt32(metadata, 0) != 0x424a5342 || versionLength < 1 || versionLength > PackageContract.MaximumClrVersionBytes || 16 + versionLength > metadataSize
+                    || !Encoding.ASCII.GetString(bytes(map(BitConverter.ToUInt32(clr, 8), (int)metadataSize) + 16, (int)versionLength)).StartsWith(PackageContract.ClrVersionPrefix, StringComparison.Ordinal))
                     throw new InvalidDataException("Expected CLR v4 metadata.");
                 // These APIs read PE/CLR metadata; neither loads an assembly for execution.
                 var name = AssemblyName.GetAssemblyName(path);
                 if (name.Name != assemblyName) throw new InvalidDataException("Managed assembly identity differs.");
                 var info = FileVersionInfo.GetVersionInfo(path);
+                if (requireCompany && !String.Equals(info.Comments, PackageContract.CompanyReleaseMarker, StringComparison.Ordinal))
+                    throw new InvalidDataException("Only a compiled Release/Company application and Core may enter this WPF update.");
                 var product = info.FileMajorPart + "." + info.FileMinorPart + "." + info.FileBuildPart;
                 if (executable && (name.Version != new System.Version(product + ".0")
                     || info.ProductMajorPart != info.FileMajorPart || info.ProductMinorPart != info.FileMinorPart

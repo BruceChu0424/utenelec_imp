@@ -9,10 +9,10 @@ import java.util.List;
 
 /** Bounded PE/CLR metadata checks; never loads an uploaded assembly or executes its code. */
 final class WindowsManagedImageInspector {
-    static final String COMPANY_RELEASE_PROVENANCE = "UTEN WPF candidate; Configuration=Release; Distribution=Company";
+    static final String COMPANY_RELEASE_PROVENANCE = WpfPackageContract.COMPANY_RELEASE_MARKER;
     private WindowsManagedImageInspector() { }
-    static void inspect(byte[] bytes, ClientReleaseDto.Release release, boolean library, boolean applicationVersion) {
-        if (bytes.length > 32 * 1024 * 1024) throw invalid();
+    static void inspect(byte[] bytes, ClientReleaseDto.Release release, boolean library, boolean applicationVersion, boolean requireAnyCpu) {
+        if (bytes.length > WpfPackageContract.MAXIMUM_MANAGED_FILE_BYTES) throw invalid();
         var image = new WindowsSetupInspector.Data(bytes);
         if (image.word(0) != 0x5a4d) throw invalid();
         int pe = integer(image.dword(60));
@@ -33,23 +33,24 @@ final class WindowsManagedImageInspector {
                     Math.min(image.dword(position + 8), image.dword(position + 16)), image.dword(position + 20)));
         }
         long clrRva = image.dword(optional + directories + 14 * 8), clrSize = image.dword(optional + directories + 14 * 8 + 4);
-        if (clrRva == 0 || clrSize < 72 || clrSize > 4096) throw invalid();
+        if (clrRva == 0 || clrSize != WpfPackageContract.CLR_HEADER_BYTES) throw invalid();
         int clr = integer(WindowsSetupInspector.offset(sections, clrRva, clrSize));
         image.range(clr, integer(clrSize));
         long flags = image.dword(clr + 16);
-        if (image.dword(clr) != 72 || (flags & 1) == 0 || (flags & 0x10) != 0 || (flags & 0x20000) != 0) throw invalid();
+        if (image.dword(clr) != WpfPackageContract.CLR_HEADER_BYTES || (flags & 1) == 0 || (flags & 0x10) != 0 || (flags & 0x20000) != 0) throw invalid();
         boolean required32 = (flags & 2) != 0;
+        if (requireAnyCpu && (machine != 0x14c || required32)) throw invalid();
         if (machine == 0x8664 && required32 || !library && !(("x86".equals(release.architecture()) && machine == 0x14c && required32)
                 || ("x64".equals(release.architecture()) && machine == 0x8664 && !required32))) throw invalid();
         if (library && ("x86".equals(release.architecture()) && machine == 0x8664
                 || "x64".equals(release.architecture()) && required32)) throw invalid();
         long metadataRva = image.dword(clr + 8), metadataSize = image.dword(clr + 12);
-        if (metadataSize < 20 || metadataSize > 32 * 1024 * 1024) throw invalid();
+        if (metadataSize < 20 || metadataSize > WpfPackageContract.MAXIMUM_METADATA_BYTES) throw invalid();
         int metadata = integer(WindowsSetupInspector.offset(sections, metadataRva, metadataSize));
         image.range(metadata, integer(metadataSize));
         int versionBytes = integer(image.dword(metadata + 12));
-        if (image.dword(metadata) != 0x424a5342 || versionBytes < 1 || versionBytes > 1024 || versionBytes > metadataSize - 16
-                || !new String(Arrays.copyOfRange(bytes, metadata + 16, metadata + 16 + versionBytes), StandardCharsets.US_ASCII).startsWith("v4.0.")) throw invalid();
+        if (image.dword(metadata) != 0x424a5342 || versionBytes < 1 || versionBytes > WpfPackageContract.MAXIMUM_CLR_VERSION_BYTES || versionBytes > metadataSize - 16
+                || !new String(Arrays.copyOfRange(bytes, metadata + 16, metadata + 16 + versionBytes), StandardCharsets.US_ASCII).startsWith(WpfPackageContract.CLR_VERSION_PREFIX)) throw invalid();
         if (applicationVersion) inspectVersions(image, sections, optional + directories, release, library);
     }
     private static void inspectVersions(WindowsSetupInspector.Data image, List<WindowsSetupInspector.Section> sections,
@@ -80,6 +81,8 @@ final class WindowsManagedImageInspector {
                     if (value.dword(fixed) != 0xfeef04bdL || value.dword(fixed + 4) != 0x10000
                             || value.dword(fixed + 8) != ((long) version[0] << 16 | version[1])
                             || value.dword(fixed + 12) != ((long) version[2] << 16 | release.buildNumber())
+                            || value.dword(fixed + 16) != ((long) version[0] << 16 | version[1])
+                            || value.dword(fixed + 20) != ((long) version[2] << 16 | release.buildNumber())
                             || value.dword(fixed + 36) != (library ? 2 : 1)) throw invalid();
                     int strings = 0;
                     for (var info : block.children()) {

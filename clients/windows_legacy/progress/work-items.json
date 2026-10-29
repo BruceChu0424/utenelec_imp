@@ -294,9 +294,9 @@
       "group": "ENV",
       "groupLabel": "原生环境与可重复构建",
       "phase": "A",
-      "status": "implemented",
+      "status": "done",
       "impactArea": "frontend",
-      "owner": "待认领",
+      "owner": "Codex",
       "sources": [
         "clients/windows_legacy/BuildVersion.targets",
         "clients/windows_legacy/tools/build_windows_wpf.ps1"
@@ -309,9 +309,11 @@
         "Core/Desktop/Tests/Updater按正确目标编译；区分AnyCPU库与明确x86/x64入口。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
+      ],
+      "notes": "当前Core/Desktop/Tests/Updater均按net48/C#7.3完成x86/x64整体编译与执行；主程序/helper PE实测同架构，BC保留锁定AnyCPU。仅此项目构建DoD完成，Win7目标机另验。",
+      "lastUpdated": "2026-10-29T01:37:57.553524+00:00"
     },
     {
       "id": "W7-ENV-002",
@@ -421,7 +423,7 @@
       "group": "ENV",
       "groupLabel": "原生环境与可重复构建",
       "phase": "A",
-      "status": "in_progress",
+      "status": "done",
       "impactArea": "delivery",
       "owner": "Codex",
       "sources": [
@@ -437,10 +439,11 @@
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json"
+        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json",
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
       ],
-      "notes": "手动统一双架构runner和bootstrap均通过；接续把准确命令、作用域隔离和失败码固化为可复跑入口。",
-      "lastUpdated": "2026-10-29T00:46:16.449744+00:00"
+      "notes": "统一verify_windows_wpf.ps1实际跑通all；私有GUID输出/源码前后SHA/错误码/实际bootstrap/主runner含Core与Goods24 Downloads32 Units38 Updater203 UI。缺失工具负例exit1且不编译/安装。",
+      "lastUpdated": "2026-10-29T01:37:58.023126+00:00"
     },
     {
       "id": "W7-CORE-001",
@@ -698,7 +701,7 @@
       "group": "CORE",
       "groupLabel": "公共客户端与业务安全",
       "phase": "B",
-      "status": "implemented",
+      "status": "verified_local",
       "impactArea": "shared",
       "owner": "Codex",
       "sources": [
@@ -715,10 +718,11 @@
       ],
       "evidence": [
         "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md",
-        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json"
+        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json",
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
       ],
-      "notes": "三个单位受控动作公共Mutation已冻结，Root双架构Core整合通过；原JSON/presence/权限/身份/禁止重放/Unknown有效。仅内存，013/014待实现，不开放完整单位写页。",
-      "lastUpdated": "2026-10-29T00:46:14.960096+00:00"
+      "notes": "三个受控单位动作已接durable journal及真实WPF表单，双进程架构验证；原JSON/presence/权限/owner/未知结果有效。其它动作迁移尚待，不标公共全覆盖done。",
+      "lastUpdated": "2026-10-29T01:37:58.518990+00:00"
     },
     {
       "id": "W7-CORE-012",
@@ -753,9 +757,9 @@
       "group": "CORE",
       "groupLabel": "公共客户端与业务安全",
       "phase": "B",
-      "status": "todo",
+      "status": "verified_local",
       "impactArea": "shared",
-      "owner": "待认领",
+      "owner": "Codex",
       "sources": [
         "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
         "lib/core/network/api_client.dart"
@@ -768,9 +772,11 @@
         "绑定用户/issuer/dataset/实体/版本；取消、切页、断网、重启和升级不丢输入或串他人草稿。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
+      ],
+      "notes": "独立DPAPI草稿/owner namespace/CAS/retired lease已接单位编辑恢复；实际HWND父Close+阻塞store和双arch整体通过。其它调用方/升级与目标机仍待。",
+      "lastUpdated": "2026-10-29T01:37:58.995627+00:00"
     },
     {
       "id": "W7-CORE-014",
@@ -778,9 +784,9 @@
       "group": "CORE",
       "groupLabel": "公共客户端与业务安全",
       "phase": "B",
-      "status": "todo",
+      "status": "verified_local",
       "impactArea": "shared",
-      "owner": "待认领",
+      "owner": "Codex",
       "sources": [
         "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
         "lib/core/network/api_client.dart"
@@ -793,9 +799,11 @@
         "逐动作接真实receipt/查询；未知不得报失败后盲目重提，未提供回执的动作明确保守恢复。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
+      ],
+      "notes": "Sending先持久化、跨store未知及新UUID重提保护、Confirmed本机失败不改Outcome、原目标UUID/路径只读核对已验证。无服务端receipt明确人工核对；其它动作/核对说明UI待补。",
+      "lastUpdated": "2026-10-29T01:37:59.484335+00:00"
     },
     {
       "id": "W7-CORE-015",
@@ -1775,9 +1783,9 @@
       "group": "UPD",
       "groupLabel": "本机更新与恢复",
       "phase": "F",
-      "status": "implemented",
+      "status": "verified_local",
       "impactArea": "delivery",
-      "owner": "待认领",
+      "owner": "Codex",
       "sources": [
         "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
         "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs"
@@ -1791,9 +1799,11 @@
         "固定6文件、显式update/family/arch、SHA/size/version、路径/ADS/大小写/zipbomb、拒降级。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
+      ],
+      "notes": "单一package-contract及BC锁，三方六文件/显式update/EOCD分配前边界/PECLR/Company/版本校验统一；同producer两架构native9+Java贯通，整体Updater203。无生产Execute/Win7验收。",
+      "lastUpdated": "2026-10-29T01:37:59.892228+00:00"
     },
     {
       "id": "W7-UPD-005",
@@ -1882,7 +1892,7 @@
       "group": "UPD",
       "groupLabel": "本机更新与恢复",
       "phase": "F",
-      "status": "in_progress",
+      "status": "verified_local",
       "impactArea": "delivery",
       "owner": "Codex",
       "sources": [
@@ -1900,10 +1910,11 @@
       ],
       "evidence": [
         "docs/99-项目治理/Win7兼容版/04-当前接手记录.md",
-        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json"
+        "clients/windows_legacy/progress/evidence/native-checkpoint-20261028.json",
+        "clients/windows_legacy/progress/evidence/native-draft-package-20261028.json"
       ],
-      "notes": "Root整体runner含Updater双架构通过；构建脚本实际生成同架构bootstrap，仍需同producer包整合与安装路径验收。",
-      "lastUpdated": "2026-10-29T00:46:15.953699+00:00"
+      "notes": "主runner含Updater203和真实Core/下载/Units/UI双arch通过，实际构建helper并PE匹配，同producer临时包预检/ApplyForChecks/Java成功。真实Setup安装/父进程握手/Execute仍待。",
+      "lastUpdated": "2026-10-29T01:38:00.428116+00:00"
     },
     {
       "id": "W7-UPD-009",
@@ -5077,10 +5088,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md"
+        "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md",
+        "docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md"
       ],
-      "notes": "已启动单位主档全部动作合同审计；将覆盖可写/批量/历史/导出打印/恢复，不以只读或新增编辑两个按钮作完成。",
-      "lastUpdated": "2026-10-29T00:34:57.260533+00:00"
+      "notes": "原生读取/筛选/分页/facets、三写、持久草稿恢复和原提交核对已接，服务38+实际WPF双arch通过；28动作仍缺inline/batch发送、双历史、导出打印/自设列/全FLOW，不标完整。",
+      "lastUpdated": "2026-10-29T01:38:00.949500+00:00"
     },
     {
       "id": "W7-BIZ-038",

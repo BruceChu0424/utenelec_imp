@@ -52,6 +52,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         public GoodsWorkspaceView(SessionCoordinator session)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
+            SetResourceReference(StyleProperty, "Uten.Workspace");
             service = new GoodsReadService(session);
             BuildLayout();
             Loaded += OnLoaded;
@@ -105,7 +106,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var toolbar = new DockPanel { Margin = Spacing(bottom: "S12") };
-            var title = Label("货品资料", 20); title.FontWeight = FontWeights.SemiBold;
+            var title = Label("货品资料"); title.SetResourceReference(StyleProperty, "Uten.PageTitle");
             DockPanel.SetDock(title, Dock.Left); toolbar.Children.Add(title);
             var searchPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
             var searchLabel = Label("名称、编码或规格"); searchLabel.Margin = Spacing(left: "S24", right: "S8");
@@ -128,7 +129,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             var categoryTitle = Label("货品分类"); categoryTitle.SetResourceReference(MarginProperty, "Uten.Padding.S12");
             categories.SetResourceReference(Control.PaddingProperty, "Uten.Padding.S8");
             DockPanel.SetDock(categoryTitle, Dock.Top); categoryPanel.Children.Add(categoryTitle); categoryPanel.Children.Add(categories);
-            var categorySurface = Surface(categoryPanel); body.Children.Add(categorySurface);
+            var categorySurface = UtenSurfaces.Wrap(categoryPanel); body.Children.Add(categorySurface);
             var splitter = new GridSplitter { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Stretch };
             splitter.SetResourceReference(WidthProperty, "Uten.Space.S4");
             Grid.SetColumn(splitter, 1); body.Children.Add(splitter);
@@ -148,7 +149,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             headerStyle.Setters.Add(new Setter(MinHeightProperty, new DynamicResourceExtension("Uten.Height.Input")));
             headerStyle.Setters.Add(new Setter(Control.PaddingProperty, Spacing(left: "S12", right: "S12")));
             rows.ColumnHeaderStyle = headerStyle;
-            var tableSurface = Surface(rows, "Table", false);
+            var tableSurface = UtenSurfaces.Wrap(rows, UtenSurfaceRole.Table, outlined: false);
             Grid.SetColumn(tableSurface, 2); body.Children.Add(tableSurface);
             Grid.SetRow(body, 2); grid.Children.Add(body);
             var footer = new DockPanel { Margin = Spacing(top: "S8", bottom: "S8") };
@@ -170,14 +171,6 @@ namespace Uten.Legacy.Desktop.Features.Goods
             detailRetry.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
             Grid.SetRow(detail, 4); grid.Children.Add(detail);
             Content = grid;
-        }
-        private static Border Surface(UIElement child, string radiusRole = "Card", bool outlined = true)
-        {
-            var border = new RoundedSurface { Child = child, BorderThickness = new Thickness(outlined ? 1 : 0) };
-            border.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius." + radiusRole);
-            border.SetResourceReference(Border.BackgroundProperty, "Uten.Surface");
-            border.SetResourceReference(Border.BorderBrushProperty, "Uten.Border");
-            return border;
         }
         private void ConfigureColumns()
         {

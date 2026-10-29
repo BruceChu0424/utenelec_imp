@@ -96,6 +96,12 @@ Windows 按 `runtimeFamily` 区分：现有 Win10/11 为 `flutter`，Win7 WPF �
 
 ## 验证和完成条件
 
+最新本机草稿、单位写入与退出保护见[本轮接续](../../docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md)。统一原生验证入口默认dry-run，显式执行：
+
+    ./clients/windows_legacy/tools/verify_windows_wpf.ps1 -Verify -Architecture all -MsBuildPath '<已有MSBuild.exe>' -PythonPath '<已有Python.exe>'
+
+各架构bootstrap、主runner、日志和源码前后SHA在私有build目录核验，不安装/降低SDK，不生成正式包或发布。只诊断UI时Debug测试EXE可传--ui-contracts-only，不能把它当整个runner结果。
+
 当前检查包括双架构原生编译及 PE/CLR 位数、离线会话与存储竞态、读范围、UI 契约、精度/遮罩、真实本机 TLS/HTTP 以及安装/依赖/主题合同。测试不连接生产业务后端，也不导入系统证书。
 
 完整完成须逐项具备：全部适用页面与流程迁移、与现有前端同源契约样例、前后端业务链回归、Win7 SP1 x86/x64 真机交互与性能证据、现有 Win10 版本独立回归、安装及原生更新双链路验收、全部受支持组合的正式双包和授权发布回执。完成状态以这些证据为准，不能以阶段性编译或截图替代。

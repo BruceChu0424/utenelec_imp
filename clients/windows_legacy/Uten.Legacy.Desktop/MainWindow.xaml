@@ -46,6 +46,7 @@
             <TextBlock Text="优腾综合管理平台" FontSize="12" Foreground="{StaticResource Uten.Muted}" Margin="8,0,0,18"/>
             <Button Content="工作台" Click="OnDashboard" HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
             <Button x:Name="GoodsNavButton" Content="基础资料 · 货品" Click="OnGoods" HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
+            <Button x:Name="UnitsNavButton" Content="基础资料 · 单位" Click="OnUnits" HorizontalContentAlignment="Left" Margin="0,0,0,8"/>
           </StackPanel></Border>
           <ContentControl x:Name="WorkspaceContent" Grid.Column="1" Margin="20"/>
         </Grid>

@@ -21,6 +21,7 @@ $updaterProject = Join-Path $clientRoot 'Uten.Legacy.Updater/Uten.Legacy.Updater
 $policyTool = Join-Path $clientRoot 'installer/wpf_install_policy.py'
 $dependencyTool = Join-Path $clientRoot 'tools/restore_dependencies.py'
 $designTool = Join-Path $clientRoot 'tools/sync_design_tokens.py'
+$packageContractTool = Join-Path $clientRoot 'tools/sync_package_contract.py'
 $packageTool = Join-Path $clientRoot 'tools/package_wpf.py'
 $buildRoot = Join-Path $workspaceRoot 'build/windows-wpf'
 $buildArchitectures = if ($Architecture -eq 'all') { @('x86', 'x64') } else { @($Architecture) }
@@ -136,6 +137,10 @@ if ($LASTEXITCODE -ne 0) {
 & $PythonPath $designTool --check
 if ($LASTEXITCODE -ne 0) {
     throw 'Shared Uten design tokens drifted. Regenerate the WPF mapping from the owning Flutter token source; do not patch local corner values.'
+}
+& $PythonPath $packageContractTool --check
+if ($LASTEXITCODE -ne 0) {
+    throw 'Shared WPF package contract drifted. Regenerate its native/server constants from the owning contract before building.'
 }
 
 $sourceStateFile = $null

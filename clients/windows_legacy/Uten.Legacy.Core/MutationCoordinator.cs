@@ -18,7 +18,7 @@ namespace Uten.Legacy.Core
 
         /// <summary>W7-CORE-011 is an in-process safety foundation. Durable encrypted drafts,
         /// a crash-safe submit journal and receipt/manual reconciliation UI are separate work.</summary>
-        public bool DurableMutationJournalAvailable { get { return false; } }
+        public bool DurableMutationJournalAvailable { get { return businessStateStore != null; } }
 
         public MutationOwnerSnapshot CaptureMutationOwner()
         {
@@ -32,6 +32,31 @@ namespace Uten.Legacy.Core
         }
 
         public MutationRequest PrepareMutation(MutationAction action, string requestId, string bodyJson,
+            MutationOwnerSnapshot owner, string resourceId = null, string observedStatus = null)
+        {
+            var candidate = BuildMutationRequest(action, requestId, bodyJson, owner, resourceId, observedStatus);
+            lock (gate)
+            {
+                RequireMutationOwnerLocked(owner);
+                RequireMutationPermissionsLocked(candidate.RequiredPermissions);
+                MutationRequest existing;
+                if (mutationIntents.TryGetValue(candidate.RequestId, out existing))
+                {
+                    if (existing.Action != candidate.Action || existing.ResourceId != candidate.ResourceId || existing.BodyJson != bodyJson
+                        || existing.ObservedStatus != observedStatus || !SameMutationOwner(existing.Owner, owner))
+                        throw new ApiException("MUTATION_INTENT_CHANGED", "同一个提交编号不能更换内容、操作或账号。请保留原请求并为新的编辑意图生成新编号。");
+                    return existing;
+                }
+                if (mutationIntents.Count >= MaximumRetainedMutationIntents)
+                    throw new ApiException("MUTATION_JOURNAL_FULL", "本次进程保留的提交记录已到上限；请先核对待确认操作并保存记录，不能丢弃记录后继续自动提交。");
+                mutationIntents.Add(candidate.RequestId, candidate);
+                return candidate;
+            }
+        }
+
+        // The same contract validates prepared requests and decrypted journal records. Loading a
+        // record never registers it as a sendable request or gives it current-owner authority.
+        internal static MutationRequest BuildMutationRequest(MutationAction action, string requestId, string bodyJson,
             MutationOwnerSnapshot owner, string resourceId = null, string observedStatus = null)
         {
             var id = CanonicalCommandId(requestId);
@@ -78,24 +103,7 @@ namespace Uten.Legacy.Core
                 strategy = MutationVersionStrategy.AcceptedButIgnored;
             }
             else throw InvalidAction();
-            lock (gate)
-            {
-                RequireMutationOwnerLocked(owner);
-                RequireMutationPermissionsLocked(permissions);
-                MutationRequest existing;
-                if (mutationIntents.TryGetValue(id, out existing))
-                {
-                    if (existing.Action != action || existing.ResourceId != resourceId || existing.BodyJson != bodyJson
-                        || existing.ObservedStatus != observedStatus || !SameMutationOwner(existing.Owner, owner))
-                        throw new ApiException("MUTATION_INTENT_CHANGED", "同一个提交编号不能更换内容、操作或账号。请保留原请求并为新的编辑意图生成新编号。");
-                    return existing;
-                }
-                if (mutationIntents.Count >= MaximumRetainedMutationIntents)
-                    throw new ApiException("MUTATION_JOURNAL_FULL", "本次进程保留的提交记录已到上限；请先核对待确认操作并保存记录，不能丢弃记录后继续自动提交。");
-                var result = new MutationRequest(action, id, method, path, resourceId, bodyJson, owner, permissions, strategy, fields, observedStatus);
-                mutationIntents.Add(id, result);
-                return result;
-            }
+            return new MutationRequest(action, id, method, path, resourceId, bodyJson, owner, permissions, strategy, fields, observedStatus);
         }
 
         /// <summary>One descriptor gets at most one invocation. No 401, reauthentication, timeout,
@@ -105,6 +113,7 @@ namespace Uten.Legacy.Core
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             Scope scope = null;
+            var checkpointCommitted = false;
             CancellationToken readLifetime = CancellationToken.None;
             var permit = new MutationWirePermit(request, usesManagedTlsTransport, () =>
             {
@@ -129,9 +138,13 @@ namespace Uten.Legacy.Core
                     cancellationToken.ThrowIfCancellationRequested();
                     scope = CaptureLocked(); readLifetime = readCancellation.Token;
                 }
+                RequireBusinessStateStore();
                 // Refresh is shared and may rotate access credentials. It may not change this
                 // frozen command's logical owner, grants, dataset or read revision.
                 var owned = await EnsureAccessAsync(scope, false, null, cancellationToken).ConfigureAwait(false);
+                permit.ValidateBeforeDispatch();
+                await Task.Run(() => BusinessPersist(() => businessStateStore.BeginSending(request))).ConfigureAwait(false);
+                checkpointCommitted = true;
                 permit.ValidateBeforeDispatch();
                 Reply response;
                 using (var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, readLifetime))
@@ -148,17 +161,20 @@ namespace Uten.Legacy.Core
                         RetireReader(scope, new ReadRequest(request.Owner.ReadScopeRevision, 0, readLifetime));
                     if (rejected && (error.Code == "ACCOUNT_DISABLED" || error.Code == "ACCOUNT_LOCKED"
                         || error.Code == "SESSION_REPLACED")) RejectCurrent(scope, owned);
-                    return CompleteMutation(request, rejected ? MutationOutcome.Rejected : MutationOutcome.Unknown, error);
+                    return await PersistMutationCompletionAsync(CompleteMutation(request,
+                        rejected ? MutationOutcome.Rejected : MutationOutcome.Unknown, error), checkpointCommitted).ConfigureAwait(false);
                 }
                 // The verified routes return UnitDetail, not an asynchronous 202 acknowledgement.
                 if (response.Status != 200 || !ValidUnitReply(response.Text, request.ResourceId))
-                    return CompleteMutation(request, MutationOutcome.Unknown,
-                        new ApiException("MUTATION_RESPONSE_UNCONFIRMED", "服务器回复不能确认为本次单位操作结果，请先人工核对。", response.Status, true));
+                    return await PersistMutationCompletionAsync(CompleteMutation(request, MutationOutcome.Unknown,
+                        new ApiException("MUTATION_RESPONSE_UNCONFIRMED", "服务器回复不能确认为本次单位操作结果，请先人工核对。", response.Status, true)), checkpointCommitted).ConfigureAwait(false);
+                MutationResult confirmed;
                 lock (gate)
                 {
                     RequireMutationOwnerLocked(request.Owner);
-                    return CompleteMutation(request, MutationOutcome.Confirmed, null, response.Text);
+                    confirmed = CompleteMutation(request, MutationOutcome.Confirmed, null, response.Text);
                 }
+                return await PersistMutationCompletionAsync(confirmed, checkpointCommitted).ConfigureAwait(false);
             }
             catch (Exception error) when (error is ApiException || error is OperationCanceledException || error is ObjectDisposedException)
             {
@@ -173,7 +189,8 @@ namespace Uten.Legacy.Core
                     ? new ApiException("MUTATION_CANCELLED_NOT_SENT", "已取消，本次业务提交尚未发送。")
                     : new ApiException("MUTATION_CONTEXT_CLOSED", "客户端会话已关闭，本次业务提交尚未发送。");
                 else if (api.IsSubmissionUnknown) api = new ApiException("MUTATION_NOT_SENT", "会话准备未完成，本次单位操作尚未发送；请先核对会话状态。");
-                return CompleteMutation(request, sent ? MutationOutcome.Unknown : MutationOutcome.NotSent, api);
+                return await PersistMutationCompletionAsync(CompleteMutation(request,
+                    sent ? MutationOutcome.Unknown : MutationOutcome.NotSent, api), checkpointCommitted).ConfigureAwait(false);
             }
         }
 

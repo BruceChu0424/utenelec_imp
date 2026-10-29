@@ -1,0 +1,1526 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-NATIVE-DRAFT-PACKAGE-004",
+  "capturedAtUtc": "2026-10-29T01:35:19.092901+00:00",
+  "branch": "uimp/win7-wpf-client-20261028",
+  "preCheckpointHead": "d1e83824a4e765b8859be5cbf509d4434d06ef21",
+  "scope": "Development Windows 11 only; integrated native/durable drafts/package contracts, not full ERP or Win7 target acceptance",
+  "native": {
+    "SchemaVersion": 1,
+    "StartedAtUtc": "2026-10-29T01:27:45.7070925Z",
+    "BuildScope": "final-native-draft",
+    "HostOs": "Microsoft Windows NT 10.0.26300.0",
+    "Architectures": [
+      "x86",
+      "x64"
+    ],
+    "Succeeded": true,
+    "TargetPcAcceptance": false,
+    "FormalPackageCreated": false,
+    "ProductionRequestsExecuted": false,
+    "SourceFiles": [
+      {
+        "Path": "assets/fonts/NotoSansSC.ttf",
+        "Sha256": "ec2c3919ed01f7fd4ac5981664c42904d5f2241cc53401cb032ec21294d1938e"
+      },
+      {
+        "Path": "assets/images/logo_ip.png",
+        "Sha256": "0c9cdd67530527a132dcffc9210493e0f72a13d0714047c3543e60f9c7e133c4"
+      },
+      {
+        "Path": "assets/images/logo_name.png",
+        "Sha256": "a2e5b51ccbb3e232095d08f9a73cab000134737a63a54fd2c403aaf4b301e312"
+      },
+      {
+        "Path": "assets/security/uten-imp-root-ca.crt",
+        "Sha256": "e8479fe7113e0efd5d877cb5a35611454d8fd641728fedd8840e1501deb23763"
+      },
+      {
+        "Path": "clients/windows_legacy/.gitignore",
+        "Sha256": "e1605c4dec7c090ddb368ea90cc89f7b53922b4b69494f46043953c4badcd826"
+      },
+      {
+        "Path": "clients/windows_legacy/BuildIsolation.props",
+        "Sha256": "6ed6f2ab17d63d501d4461ade81901cef2543d817df3b5aea7fe15be79dec40e"
+      },
+      {
+        "Path": "clients/windows_legacy/BuildVersion.targets",
+        "Sha256": "d4562b4e06309de8afc2aec081ae596fb9fe2e8b89edc66b3594054fab0dc8dc"
+      },
+      {
+        "Path": "clients/windows_legacy/dependencies.lock.json",
+        "Sha256": "3e8f994f4836589babf5e7b960b1ec34abe2a77613f247b00ffc6c51e0fd95f6"
+      },
+      {
+        "Path": "clients/windows_legacy/design-token-provenance.json",
+        "Sha256": "25249a92e16d3a9771310ace4f45ccffb91d1bde687c45831c74749b8e361a90"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/test_wpf_installer.py",
+        "Sha256": "c63e47708be18a39819da5f1cc2a221621cbd7e82820154b82c2ae4418713fbf"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/windows_wpf_installer.iss",
+        "Sha256": "07cc308b5c228d8e073163292980f33da01145dcb3cc49aa1a0094b39a2f3fd1"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/wpf_install_policy.iss",
+        "Sha256": "b282240b5ed212ee1bb726c14946c60b60213a6c2de10f28b698526bc56385b8"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/wpf_install_policy.py",
+        "Sha256": "08b94c1996adfe106ced0e028cdb8548023cbcde1bd135ae9d3e319ef19bafdc"
+      },
+      {
+        "Path": "clients/windows_legacy/migration-coverage.json",
+        "Sha256": "5d3612ce89ddd9b61ba7a175a4fe3ef02835deaf87191bf72eadb26464d9dcb2"
+      },
+      {
+        "Path": "clients/windows_legacy/package-contract.json",
+        "Sha256": "59c1b464690806ba105c4cf67d8a85d9acabf09d424424aa8b80fd01a0bad326"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/build_windows_wpf.ps1",
+        "Sha256": "d747ae02dff7045e81b2ec89c96fc62f22093ba26190236d340622bcb177dcc9"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/business_inventory.py",
+        "Sha256": "675795e2dff28412f59b97217b1c33bb3b2ed036e6c90ff66fb572ce13f90177"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/capture_handover_state.py",
+        "Sha256": "402c8ca5ec4a368dc2f072cd84b772ddedaaf6c5b00980e78a170407911464ef"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/module_coverage.py",
+        "Sha256": "e98e3f0d464fbcad3e2a7c3f0de742d8408281140557bd1a6703bd00cd138852"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/package_wpf.py",
+        "Sha256": "9f800817a3ba40c43166442ab47a02fe1df0ee51fd4243ba8a59399cdd3c94fe"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/progress_tracker.py",
+        "Sha256": "c3f8ab0bb7251c3d9a0dec286e260bddb06cba3899cf9e7cabe76a11c92a3579"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/restore_dependencies.py",
+        "Sha256": "a9a0907cd5f523fb21337020fa18f540bd24ae7176e3d878812d52ced29cea93"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/sync_design_tokens.py",
+        "Sha256": "0636194dbfe1b0fd2632a947f80968a8ab9ae60430a54c41ccbea38391ab19d7"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/sync_package_contract.py",
+        "Sha256": "fc7caa9cc4ab274ea58cdc7632987436a34e35f488ad3e893c27a72b300f7603"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_design_tokens.py",
+        "Sha256": "b499abf0e8a265eca710d08df50197227c72334f84fae58c2d8ee01020c6ea62"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_package_contract.py",
+        "Sha256": "9856777d5a0ccb8cd14876cef5267b20d5a287c414686aee00c0f3fc41acfe9d"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_package_wpf.py",
+        "Sha256": "25690a0cd1a63a5f175e18a71337c36d82952d5b3e80bbc82ccdefdf93aca1ca"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_progress_tracker.py",
+        "Sha256": "981beeaa2e2873e0cbd5c86aa26f5b40399134e5d3ad1ad04cda12b3a0f29f88"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_restore_dependencies.py",
+        "Sha256": "310ddfaa0ea1211d2f46ca99edc190bf11729a4e5b651ed8e55c64bc217b1878"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/verify_windows_wpf.ps1",
+        "Sha256": "e8032ff19e9d56079e6289a3e1db2f6a7deb488e97c9ed3c5f3c64b252f8442f"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/verify_wpf_update_pipeline.py",
+        "Sha256": "7202716fb5d2f5bd5c7d110202a8e3916f1d2560c6c48240b2cf739e2861b15c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/BusinessStateCoordinator.cs",
+        "Sha256": "3c3ede6c00b39701e5faca283fd168d919e3a1b880eed9967a140f467e2c9f83"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/BusinessStateModels.cs",
+        "Sha256": "fb11e8ef5779d5a8db44b6dae5130d2b1a5ac0973b122b4f61d5bbedfb154796"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ClientConfiguration.cs",
+        "Sha256": "32221dc404fb2e796a9b30befaa57501f38c7d9b17072378679577ed901aeaff"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ClientPackageDownload.cs",
+        "Sha256": "2c03c63e4239ddf2384a9d07eafb3a780f235618160efe92db09a3644a9d0060"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/CompanyCertificatePolicy.cs",
+        "Sha256": "66ae8adadf1b81aa7aba6ac8d30cf2da5ab1278e07e4490baea31005421a914b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/DpapiBusinessStateStore.cs",
+        "Sha256": "0d8b6f9743a33856f2abd9d944754552f3fb82e0a711c383bcc2bb25d1ff113f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/HttpResponseSink.cs",
+        "Sha256": "4b48cd6042e604cd7bd38c3c8aaafa53f4619aca20cb54550645767f4c6f8209"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedCertificateValidator.cs",
+        "Sha256": "b131b245f7cce28090341f1a699a9ee00ad68068ab58ebddf62ece847231f8b8"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedHttp11.cs",
+        "Sha256": "c2fb824a7e4cf0faec5cb9859625270c5e483ef477e587c3a5f0e14369ac8cf1"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs",
+        "Sha256": "68683ad5d3f3e2bc11f94fb6a638f24773a7ccf52d942b7db6efab31c38bd2be"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Models.cs",
+        "Sha256": "7efdd202b3b18ec1328fa9f74d1d5b87adaac4044ea2745566f45f339767abed"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationCoordinator.cs",
+        "Sha256": "f8090bad3f9cd6fcbbab1ea604492ac5767371f170dc2d90879434dac35fc201"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationModels.cs",
+        "Sha256": "7b764332cfcd98f6a2274cf76bae7eee48b58b47364169b2a172291c2110892f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationWirePermit.cs",
+        "Sha256": "3348b0fbbc5bab1547da0c99219ba7a624003519c431bb1224fd08c3c53cee55"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
+        "Sha256": "28f7b96a2f986ff002abf2b7ff34e6495a6bce8a3ae42d345881ea698eac92e9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "Sha256": "36c2e738053e9e44480dacbea38d74af669b16fb96567db42838fd5086a909bd"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/SessionStore.cs",
+        "Sha256": "18239cc8d7c7621e41e851bcc78898349beb5c2168d99016d9c6568591066472"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/BusinessStateContractChecks.cs",
+        "Sha256": "d50c0f8a14d70ac8bf375366eef275b21824c39e2c149583cbe0ceca590336fe"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/BusinessStateTestFixture.cs",
+        "Sha256": "d208e19a4ddaaf5f9397b59d1a5312380f603a325e2108b5e27d3d8956a090e9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ClientPackageDownloadChecks.cs",
+        "Sha256": "57cb74c285f28a403c9f4442230e08c6a9544068418c553fe58046aa9e51321c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/CoreContractChecks.cs",
+        "Sha256": "29d17c49934d6db64f6de75256acd3eab438c628e88e54f767652b9888f69485"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedHttp11Checks.cs",
+        "Sha256": "54d551b2573fdb9858d63dcb0f621c745d70db7608cd4ed39d9a151625a4ef96"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedTlsChecks.cs",
+        "Sha256": "a7f8f8d774495911fca94b58c2cf85cb7c9184eb139200c6e542bd45a825ba84"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/MutationContractChecks.cs",
+        "Sha256": "17b1f9d09f29b69dc013095f0382d099b854f1ee2e6bd8fdcfe855609617b43e"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
+        "Sha256": "8b0255513abffdb6c89ecf9c9ec0102a612578ab2cf19930fd32b9e06affde75"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+        "Sha256": "a6aa92b795dde4c429bfa02c7852e473b1aafa78d462277136be1f04260e26d8"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.config",
+        "Sha256": "2fd94afb9efb7c0c99716f84efab0df9fc9987beddc6aa7223591182b64183aa"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/app.manifest",
+        "Sha256": "cdb228e87aa25b1b7754d3d2d6d4155aad0e5ea63dc202adbd4da7fd3ee84484"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml",
+        "Sha256": "833656d14c1090e4acd9a8134d8c8a9d9cf8b23d3cfd46c64fa40d5b2bdeeb33"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml.cs",
+        "Sha256": "ca8ffdf6c5b771f466cc9966a188c8b8de755d66e83bd378f12819f697e36c52"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/IPendingEditHost.cs",
+        "Sha256": "7e1388d9ee417274047343fef8734a621f8b95203571cbbb89eaa0a949ff5965"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/NativeWindowFrame.cs",
+        "Sha256": "483e4fb61307ad40bf01fbb3a7f91fc1235d7991953b2130aff7851cea5cdece"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/RoundedSurface.cs",
+        "Sha256": "9cdf1444bcca3e052add0b589e82bbf185d1161a240ab9e284a3e6720da41261"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDialogWindow.cs",
+        "Sha256": "2f7b68b999a8660c8933b409a4ddfdadf6e289aecf0abd5db75ce9388c3be8c5"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenSurfaces.cs",
+        "Sha256": "8298ca26e7151ed0b8ef4bca79c4660c295f67cbd9dfe41a1a4d2866e0c4b342"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/ClientPackageDescriptor.cs",
+        "Sha256": "67b7e7367716edbea79bc81e1ce71f37e79da14c302d3a056a3cac4f15ea972a"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/DownloadsContractChecks.cs",
+        "Sha256": "5b2b959e106d824610089b655f4a0022df5396febf942ca2e41cc35fdc6e6d4c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsService.cs",
+        "Sha256": "264da568379d084d1c15b92e0f7df0e3387ad8995790b9c476dc5c515b57d3c1"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs",
+        "Sha256": "3bc6485b6da05ccff33ec11f9e2d2767680a123c4b4655e2eebae626f104bb53"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+        "Sha256": "6d378ac8428efc742c05bf0881ef5207d8f95aeed1d53c1e3a4209fe0a442511"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+        "Sha256": "cf2dcfca6898c98d5f521cdd1b351d4bd14726d9b66d7f75fd55fa95d695bca6"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+        "Sha256": "b87de6e440016dae9065af9ca006a661565127c5a4ea074b98071e4ed4144b64"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitContractChecks.cs",
+        "Sha256": "d9b96c357b5d0537b0655d71bfcb47672d62c2dba18154f6ce88840fe2fb2171"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitEditorWindow.cs",
+        "Sha256": "85710a1d3187c1ffbb0cf1dda7c62f918a24055113938d90d39248d36241e26b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitModels.cs",
+        "Sha256": "eedf868af7ee9b83e1c83a7fd77306a38619b9e08d1fb1224dfe13a4791b4133"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitQuery.cs",
+        "Sha256": "b2943a4e4def051a6c057669477a30d36b7a1e9bff18c2a81561dc6e6af47b82"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecoveryWindow.cs",
+        "Sha256": "af8d3881e64c7927a320b88e25320e0781554b1fb33382fab3b8c975fdae4d5c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitService.cs",
+        "Sha256": "021ebe3f371c069fb532abd186ebc60883da55fa3b7ab1ceb40251d9ec55fd3c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitSupplementalContracts.cs",
+        "Sha256": "c60960cc5c1255881bac4672e5a72a63e9c46a8e24480e9e4086b843469ffb28"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+        "Sha256": "476e3d84ebdda70e2621023d8e121559421d77b706ae736267e568a6f259881a"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml",
+        "Sha256": "0ce8a9b69ed508c9e196c50aad9119082a1fbeb54b30635fd09894582a3ae15d"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "Sha256": "86e88cc94d41df42cc26442be3be453ca35dfd5de00a98eb2241ea7ef76eb1c0"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml",
+        "Sha256": "c527fac455efe987161c3139e6d4ef3a171fc6a02081d1192c75c4a5035f85cc"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+        "Sha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.xaml",
+        "Sha256": "53b93d0b08bd3e200fb8886a1549570059bf032f927630ee198a9cd03f086152"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs",
+        "Sha256": "bbd7297968d14c6a76d80a4a10154af54f5684afcd6f6c3410b24e2c2c3ad7c2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/IUpdateExitGuard.cs",
+        "Sha256": "40cb02861b1a4906caef3faaad866223c15e4c5cbf2bcb2dea89c6e0ac33cae9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/UpdatePromptWindow.cs",
+        "Sha256": "402e6eb6d75e50a47fe0a096c29ada726ecd151cb4b9bd991aaba5de4d374af9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json",
+        "Sha256": "d19c9b0adc70df3913867ff673369257bf25fc191205bcd92afc757e96862a3f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj",
+        "Sha256": "4da452bb7477a4f884e1251af483d55ca46f454478feaec09dff9f170bc3d3ff"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Views/DashboardView.cs",
+        "Sha256": "82d43b821999d3f9c0347d9fe3be39c596b709b7ab40b4983010bd34874c151f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/PackageContractFixtureHost.cs",
+        "Sha256": "c52ffc78155b71486114372ef7b307a5771a26cfb8be63e0795ad70aaaaf9a87"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "Sha256": "e8193e66b4a5f19bae0438fac0e31773e3ec604771cf222099dac044ea4220c5"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+        "Sha256": "06de67d698c50b2bd302fc458da00b93921adfa25982e55e2dc97853df64eaf9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/UpdaterContractChecks.cs",
+        "Sha256": "01a8f6176977466f51fd9a1cf40bc64fc795e5468262c07ebc77f8d649379599"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "Sha256": "f6dfa574ab572deb090c63a6303807d6a960d6d58e673cf1877072fc7f8a0e5b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/App.config",
+        "Sha256": "5f78dfa567d4b5e4a96a69c8749fee04ebf8d6be4e1114371da39f1f3a033995"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/app.manifest",
+        "Sha256": "203e09560567baac0d39f7f449906d595fe8fdbb37fcb3b336fa08c5ad48e9ac"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/PackageContract.g.cs",
+        "Sha256": "1a3f93eb6bbe6e20807c7d58138cf16e93f9d97270019662577c28f2f993e20d"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/Program.cs",
+        "Sha256": "1db6c75cf6bd526e52048d4b28ceb5ccf93001bcb73f827bc104f150f939f867"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/SafeFiles.cs",
+        "Sha256": "2f0bb307ab3478f48b90146230778e9763f0b327e3587053e48f0ff4583e12f2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/StrictJson.cs",
+        "Sha256": "5043951e01033300ebb55c7a634480a7f694dee64bcfe77da6f4d5cc1d2ce2b6"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateAuthorization.cs",
+        "Sha256": "bddf73fafb135816479a612f14d180ed142902304bbde72a197406999e0bacdb"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateContract.cs",
+        "Sha256": "b36d152cbf937c3a361bb21ab4176662e0abc2d331a3983a585ead2531065ea7"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "Sha256": "e780169489908413ee2944e809e48dcd774a45515d6c31f34bbd5602c9b854e2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/Uten.Legacy.Updater.csproj",
+        "Sha256": "cc9d9dc4cebe38fb4ca4830090c83ec94ea1184fec13dbdc17d8d0d977e7bebd"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/ZipDirectory.cs",
+        "Sha256": "772e29df8cf0e80f06ac9d6f30314d3daf24476089c40da6a35a542927ed0df7"
+      },
+      {
+        "Path": "lib/core/theme/brand_theme.dart",
+        "Sha256": "4dad0a00b0dfcc9fa330545cecbd9b3e2ff0fee82fd756adc74fd2033bbb0d30"
+      },
+      {
+        "Path": "lib/core/theme/dark_theme.dart",
+        "Sha256": "03622b5894ae21eadceebfb0916b0d781934d104a97ac689483f13f726bc4fcd"
+      },
+      {
+        "Path": "lib/core/theme/light_theme.dart",
+        "Sha256": "c5ee4a3f47fcfc289caa9ff29c6007110c681f40c0c78ac0cff584e54ec4ada4"
+      },
+      {
+        "Path": "lib/core/theme/uten_anim.dart",
+        "Sha256": "ad83a1cb535ea46f8c5469ec2638c75f5a857c43dd834ff65e0f383db2faa1b1"
+      },
+      {
+        "Path": "lib/core/theme/uten_category_tab_theme.dart",
+        "Sha256": "85df51d7f493af6c24f6d956ad562958ce24bf1af7ae2d5883c8fc0b1df01553"
+      },
+      {
+        "Path": "lib/core/theme/uten_colors.dart",
+        "Sha256": "a373d253b3852a48a368447f486bdad24c1436a26cd4cc01898e24ca626ce3e5"
+      },
+      {
+        "Path": "lib/core/theme/uten_control_theme.dart",
+        "Sha256": "78b15707474c4deb3564e4a034b022125b542631955f867957d3077f49f8f0cf"
+      },
+      {
+        "Path": "lib/core/theme/uten_page_transitions.dart",
+        "Sha256": "3c608c62d0e0cb48934e1b87c68a4c1e2cf4928c7d54e1f07fb3857b6550e453"
+      },
+      {
+        "Path": "lib/core/theme/uten_scroll_behavior.dart",
+        "Sha256": "4febde588fabcd3a5807eda089051c5070d9242105ca42a9ba2d416e4bd88927"
+      },
+      {
+        "Path": "lib/core/theme/uten_scrollbar_style.dart",
+        "Sha256": "1d1271e0535a8e68e472770fa8abd60c04815d4e3650cf90757f6335c2bb6fc8"
+      },
+      {
+        "Path": "lib/core/theme/uten_tokens.dart",
+        "Sha256": "5c177cb01e89d85badcbd3a15a83824b3b43b553df2c8778e143d11d8d5227a0"
+      },
+      {
+        "Path": "lib/core/theme/uten_typography.dart",
+        "Sha256": "126c8a85cbacc7cfe7618f701631fa4a700ee8e1c23afe4229a541f036f28025"
+      },
+      {
+        "Path": "pubspec.yaml",
+        "Sha256": "ea88b25ed3eb96ea4f72dca3d26b66c8ac04ff2ee8223d0bdec1656745f2b133"
+      },
+      {
+        "Path": "windows/runner/resources/app_icon.ico",
+        "Sha256": "aba3ae95ac5d287420d72ed9d419a7970b6ae00627da0830d3352c2333446060"
+      }
+    ],
+    "Checks": [
+      {
+        "Stage": "progress",
+        "ExitCode": 0,
+        "Log": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\progress-check.log"
+      },
+      {
+        "Stage": "bootstrap-build-and-pe",
+        "ExitCode": 0,
+        "Log": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\bootstrap-build.log"
+      },
+      {
+        "Stage": "native-contracts",
+        "Architecture": "x86",
+        "ExitCode": 0,
+        "BuildLog": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x86-build.log",
+        "TestLog": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x86-tests.log"
+      },
+      {
+        "Stage": "native-contracts",
+        "Architecture": "x64",
+        "ExitCode": 0,
+        "BuildLog": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x64-build.log",
+        "TestLog": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x64-tests.log"
+      }
+    ],
+    "CompletedAtUtc": "2026-10-29T01:31:23.5576319Z",
+    "LogFiles": [
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\bootstrap-build.log",
+        "Sha256": "f609e70e5efb0572773cc6bf775b320da835dd7efcce0aaac9d600e010948c20"
+      },
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\progress-check.log",
+        "Sha256": "20daf9ae05353f49f07f1fddb52914120f6a960a3a89664c2f97fc8e4a08107a"
+      },
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x64-build.log",
+        "Sha256": "c954e16a7e6496d2dbc1a630cd31b325c8990229b685f7b075e9443a760c7bfe"
+      },
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x64-tests.log",
+        "Sha256": "44757a5feedb1b04d58ee32162521d176aa15084aef813e7510697caf1f63fd3"
+      },
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x86-build.log",
+        "Sha256": "85b365e51484f53ec1e031fcfe7cced0549107f5a880a159c3e8365f95ae5f2b"
+      },
+      {
+        "Path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\x86-tests.log",
+        "Sha256": "d815e033ca6f6191ccbce0eb7d4579547ead2749254120a4e04d2c0057968b5c"
+      }
+    ]
+  },
+  "nativeReportSha256": "e542ab24ea2d3de0a2318c4353702d5a92f84df93004e4781160b06dd5e8a0c9",
+  "pythonTools": {
+    "tests": 52,
+    "failures": 0,
+    "exitCode": 0,
+    "log": "build/windows-wpf/final-native-tools-tests.log",
+    "sha256": "9d0549fdb67780d7062ec886e75796d70d30213d4937c61eac48dd42181bb9e5"
+  },
+  "negativeVerifierCheck": {
+    "case": "Missing compiler executable",
+    "exitCode": 1,
+    "compilerInvoked": false,
+    "installerOrSdkInstalled": false,
+    "log": "build/windows-wpf/verify-negative-missing-tool.log"
+  },
+  "backend": {
+    "totals": {
+      "tests": 68,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "reports": [
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientReleasePublicationFlowTest.xml",
+        "sha256": "3f21e1d1396147bb56d1bd41482bd31d5f9628f45c70e3d08404325813bd9a2b",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientReleaseRetentionTest.xml",
+        "sha256": "5c829b66a0f26f22bc505bf8cbcab440db26b36bd691e884ff8623a1e6843496",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientReleaseServiceTest.xml",
+        "sha256": "2c8fc581c974c8c53437788927223711a80a216027b9ecde1405574a9d12cb12",
+        "tests": 22,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientRuntimeFamilyTest.xml",
+        "sha256": "79349f34d022dd8803b1ceb6904da2786a528bcd1c6cb972456c106db3409a08",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientUpdateControllerSecurityTest.xml",
+        "sha256": "79d545e0ff74ff1617679b0278967db9a6f60c0aa5af5dfac3a03d359b3b620b",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.ClientUpdateControllerTest.xml",
+        "sha256": "06609f6810a1b47cc98a9ce5730e9892461aaf4dab3b64db07c8ab969cedf20c",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.WindowsSetupInspectorTest.xml",
+        "sha256": "2c1252470bb9837b19bfae34001e3be6c93c891e8f96c3a1cfc4a8e67539d3fa",
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "path": "build/wpf-package-contract-backend/surefire-reports/TEST-com.uten.imp.features.clientupdates.WindowsWpfPackageInspectorTest.xml",
+        "sha256": "e96140eba2aff56e2c7bab2e9b69c90537b32d245db497f0d7cf3e4fbf81f06e",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "sourceFiles": [
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientPackageInspector.java",
+        "sha256": "626718fe470e2bac34e2cbcb420b275606cc8a1a2342f103c2850f1e12d418fa"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseAdminController.java",
+        "sha256": "cd79f9447db407ddc74465d7187811616011c72d6f7b2cddd9ab50c5a980a9be"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseCatalog.java",
+        "sha256": "0f5c7dfaa7e624a0015215cd46b826fb502709eaa4caf6c3f304a429b412ef75"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseDto.java",
+        "sha256": "3a8494a6063d764e76152e4a0d86de206151d98d3aab5aea320a8d889d2b3f82"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientReleaseService.java",
+        "sha256": "bb63f10e7e011da3e35c3acf7d98e4225e6267acd881eb1c1c307591b5e221da"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientRuntimeFamily.java",
+        "sha256": "fc5acdc42fdfa199ef6d70e5cbf2331c0b50f8dbaebe8e3e68a5891ee5d0ef6e"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientUpdateController.java",
+        "sha256": "680421c4121dd751efc04e542af2e7c11bc6a7e4070f55a93c5bfe6f1f26944e"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/ClientUpdateProperties.java",
+        "sha256": "78f6da517072dc8ceaf12c57648886e91cf96fd54cf42d2ad568fa9c4bb5d955"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/WindowsManagedImageInspector.java",
+        "sha256": "7f3d3b7256fd2980c67d2c1e4ee16ec8fdb579c5e4b3d45de00805756efc6e6f"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/WindowsSetupInspector.java",
+        "sha256": "e30afe7652b4f55286be7617b2926f69cc2bc241ece0514f4595838cba514272"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/WindowsWpfPackageInspector.java",
+        "sha256": "57fe397d0e6765e498d9d07fcf183fd34624215c086180602f46bfb93c0455ed"
+      },
+      {
+        "path": "server/src/main/java/com/uten/imp/features/clientupdates/WpfPackageContract.java",
+        "sha256": "1066c81a6a1ce381d9073f9edc610652f68792396f64f858ae806acd34a60661"
+      }
+    ]
+  },
+  "sameProducerPipelines": [
+    {
+      "log": "build/windows-wpf/package-contract-x86-pipeline.log",
+      "sha256": "947e6770686854f3968be4455f99f30bf42dfeb3f42238bc89bf0bf7f94eb377",
+      "result": {
+        "fixtureOnly": true,
+        "architecture": "x86",
+        "producerSha256": "101980a42fc6f3b214fcd80d789b492d614d1cbabb863b7030c0167549a0bc92",
+        "sizeBytes": 2548755,
+        "nativeAssertions": 9,
+        "java": "PASS same-producer WPF package x86",
+        "productionExecuteRun": false,
+        "formalPackageCreated": false,
+        "win7Accepted": false
+      }
+    },
+    {
+      "log": "build/windows-wpf/package-contract-x64-pipeline.log",
+      "sha256": "65eb26cb5791dd7ebd024e790ddd7a958da81283ed488999167d656a307e1fd5",
+      "result": {
+        "fixtureOnly": true,
+        "architecture": "x64",
+        "producerSha256": "8100a14f6e7d6ea40350cba12bd5356648893d0777139e168ad0f17e66d8025c",
+        "sizeBytes": 2548767,
+        "nativeAssertions": 9,
+        "java": "PASS same-producer WPF package x64",
+        "productionExecuteRun": false,
+        "formalPackageCreated": false,
+        "win7Accepted": false
+      }
+    }
+  ],
+  "uiFixtures": [
+    "Dirty-close encrypted preservation",
+    "Retired-owner namespace separation",
+    "Confirmed exactly once and own-draft cleanup",
+    "Unknown status target UUID visible",
+    "Ordinary refresh preserves query",
+    "Retired scope clears old facets even when new facets fail",
+    "Real hidden HWND owner blocked during disk I/O and after workspace retirement",
+    "Actual typography, padding and native PNG rendering"
+  ],
+  "notProven": [
+    "Complete 28-action Unit module",
+    "All ERP business workflows",
+    "Win7 SP1 x86/x64 real target PCs",
+    "Production updater Execute and real ready/parent-exit protocol",
+    "Setup compile/install and power-loss recovery",
+    "Formal Setup/update ZIP publication and production acceptance"
+  ],
+  "mergeMainAllowed": false,
+  "productionBusinessCalls": 0,
+  "postNativeRunReleaseOnlyDelta": {
+    "changes": [
+      {
+        "path": "clients/windows_legacy/Uten.Legacy.Updater/Uten.Legacy.Updater.csproj",
+        "beforeSha256": "cc9d9dc4cebe38fb4ca4830090c83ec94ea1184fec13dbdc17d8d0d977e7bebd",
+        "afterSha256": "dd3126efe6692c24f1165e9c4c586bc81079d7b7d63196627ded9a98094f1c75"
+      }
+    ],
+    "reason": "Only conditional Release Optimize=true added to updater project after metadata inspection found unoptimized Release. Debug compiler settings unaffected; same-scope rebuilt Debug updater bytes identical in both architectures. Current Release binaries separately checked. Original native SourceFiles remain the original run facts.",
+    "debugBinaryParity": [
+      {
+        "Architecture": "x86",
+        "BeforeSha256": "3fe2ee83701f9e8d24dfd90f7397849c04b39bd02c444f40d73f83eab3e3ba05",
+        "AfterSha256": "3fe2ee83701f9e8d24dfd90f7397849c04b39bd02c444f40d73f83eab3e3ba05",
+        "Identical": true
+      },
+      {
+        "Architecture": "x64",
+        "BeforeSha256": "716a6b88098c0349a240c7bb38e7deff34bc23b01f51612d6035850380fb960f",
+        "AfterSha256": "716a6b88098c0349a240c7bb38e7deff34bc23b01f51612d6035850380fb960f",
+        "Identical": true
+      }
+    ],
+    "targetedReleaseBuildExitCode": 0,
+    "currentSourceFiles": [
+      {
+        "Path": "assets/fonts/NotoSansSC.ttf",
+        "Sha256": "ec2c3919ed01f7fd4ac5981664c42904d5f2241cc53401cb032ec21294d1938e"
+      },
+      {
+        "Path": "assets/images/logo_ip.png",
+        "Sha256": "0c9cdd67530527a132dcffc9210493e0f72a13d0714047c3543e60f9c7e133c4"
+      },
+      {
+        "Path": "assets/images/logo_name.png",
+        "Sha256": "a2e5b51ccbb3e232095d08f9a73cab000134737a63a54fd2c403aaf4b301e312"
+      },
+      {
+        "Path": "assets/security/uten-imp-root-ca.crt",
+        "Sha256": "e8479fe7113e0efd5d877cb5a35611454d8fd641728fedd8840e1501deb23763"
+      },
+      {
+        "Path": "clients/windows_legacy/.gitignore",
+        "Sha256": "e1605c4dec7c090ddb368ea90cc89f7b53922b4b69494f46043953c4badcd826"
+      },
+      {
+        "Path": "clients/windows_legacy/BuildIsolation.props",
+        "Sha256": "6ed6f2ab17d63d501d4461ade81901cef2543d817df3b5aea7fe15be79dec40e"
+      },
+      {
+        "Path": "clients/windows_legacy/BuildVersion.targets",
+        "Sha256": "d4562b4e06309de8afc2aec081ae596fb9fe2e8b89edc66b3594054fab0dc8dc"
+      },
+      {
+        "Path": "clients/windows_legacy/dependencies.lock.json",
+        "Sha256": "3e8f994f4836589babf5e7b960b1ec34abe2a77613f247b00ffc6c51e0fd95f6"
+      },
+      {
+        "Path": "clients/windows_legacy/design-token-provenance.json",
+        "Sha256": "25249a92e16d3a9771310ace4f45ccffb91d1bde687c45831c74749b8e361a90"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/test_wpf_installer.py",
+        "Sha256": "c63e47708be18a39819da5f1cc2a221621cbd7e82820154b82c2ae4418713fbf"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/windows_wpf_installer.iss",
+        "Sha256": "07cc308b5c228d8e073163292980f33da01145dcb3cc49aa1a0094b39a2f3fd1"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/wpf_install_policy.iss",
+        "Sha256": "b282240b5ed212ee1bb726c14946c60b60213a6c2de10f28b698526bc56385b8"
+      },
+      {
+        "Path": "clients/windows_legacy/installer/wpf_install_policy.py",
+        "Sha256": "08b94c1996adfe106ced0e028cdb8548023cbcde1bd135ae9d3e319ef19bafdc"
+      },
+      {
+        "Path": "clients/windows_legacy/migration-coverage.json",
+        "Sha256": "5d3612ce89ddd9b61ba7a175a4fe3ef02835deaf87191bf72eadb26464d9dcb2"
+      },
+      {
+        "Path": "clients/windows_legacy/package-contract.json",
+        "Sha256": "59c1b464690806ba105c4cf67d8a85d9acabf09d424424aa8b80fd01a0bad326"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/build_windows_wpf.ps1",
+        "Sha256": "d747ae02dff7045e81b2ec89c96fc62f22093ba26190236d340622bcb177dcc9"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/business_inventory.py",
+        "Sha256": "675795e2dff28412f59b97217b1c33bb3b2ed036e6c90ff66fb572ce13f90177"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/capture_handover_state.py",
+        "Sha256": "402c8ca5ec4a368dc2f072cd84b772ddedaaf6c5b00980e78a170407911464ef"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/module_coverage.py",
+        "Sha256": "e98e3f0d464fbcad3e2a7c3f0de742d8408281140557bd1a6703bd00cd138852"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/package_wpf.py",
+        "Sha256": "9f800817a3ba40c43166442ab47a02fe1df0ee51fd4243ba8a59399cdd3c94fe"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/progress_tracker.py",
+        "Sha256": "c3f8ab0bb7251c3d9a0dec286e260bddb06cba3899cf9e7cabe76a11c92a3579"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/restore_dependencies.py",
+        "Sha256": "a9a0907cd5f523fb21337020fa18f540bd24ae7176e3d878812d52ced29cea93"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/sync_design_tokens.py",
+        "Sha256": "0636194dbfe1b0fd2632a947f80968a8ab9ae60430a54c41ccbea38391ab19d7"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/sync_package_contract.py",
+        "Sha256": "fc7caa9cc4ab274ea58cdc7632987436a34e35f488ad3e893c27a72b300f7603"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_design_tokens.py",
+        "Sha256": "b499abf0e8a265eca710d08df50197227c72334f84fae58c2d8ee01020c6ea62"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_package_contract.py",
+        "Sha256": "9856777d5a0ccb8cd14876cef5267b20d5a287c414686aee00c0f3fc41acfe9d"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_package_wpf.py",
+        "Sha256": "25690a0cd1a63a5f175e18a71337c36d82952d5b3e80bbc82ccdefdf93aca1ca"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_progress_tracker.py",
+        "Sha256": "981beeaa2e2873e0cbd5c86aa26f5b40399134e5d3ad1ad04cda12b3a0f29f88"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/test_restore_dependencies.py",
+        "Sha256": "310ddfaa0ea1211d2f46ca99edc190bf11729a4e5b651ed8e55c64bc217b1878"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/verify_windows_wpf.ps1",
+        "Sha256": "e8032ff19e9d56079e6289a3e1db2f6a7deb488e97c9ed3c5f3c64b252f8442f"
+      },
+      {
+        "Path": "clients/windows_legacy/tools/verify_wpf_update_pipeline.py",
+        "Sha256": "7202716fb5d2f5bd5c7d110202a8e3916f1d2560c6c48240b2cf739e2861b15c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/BusinessStateCoordinator.cs",
+        "Sha256": "3c3ede6c00b39701e5faca283fd168d919e3a1b880eed9967a140f467e2c9f83"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/BusinessStateModels.cs",
+        "Sha256": "fb11e8ef5779d5a8db44b6dae5130d2b1a5ac0973b122b4f61d5bbedfb154796"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ClientConfiguration.cs",
+        "Sha256": "32221dc404fb2e796a9b30befaa57501f38c7d9b17072378679577ed901aeaff"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ClientPackageDownload.cs",
+        "Sha256": "2c03c63e4239ddf2384a9d07eafb3a780f235618160efe92db09a3644a9d0060"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/CompanyCertificatePolicy.cs",
+        "Sha256": "66ae8adadf1b81aa7aba6ac8d30cf2da5ab1278e07e4490baea31005421a914b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/DpapiBusinessStateStore.cs",
+        "Sha256": "0d8b6f9743a33856f2abd9d944754552f3fb82e0a711c383bcc2bb25d1ff113f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/HttpResponseSink.cs",
+        "Sha256": "4b48cd6042e604cd7bd38c3c8aaafa53f4619aca20cb54550645767f4c6f8209"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedCertificateValidator.cs",
+        "Sha256": "b131b245f7cce28090341f1a699a9ee00ad68068ab58ebddf62ece847231f8b8"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedHttp11.cs",
+        "Sha256": "c2fb824a7e4cf0faec5cb9859625270c5e483ef477e587c3a5f0e14369ac8cf1"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs",
+        "Sha256": "68683ad5d3f3e2bc11f94fb6a638f24773a7ccf52d942b7db6efab31c38bd2be"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Models.cs",
+        "Sha256": "7efdd202b3b18ec1328fa9f74d1d5b87adaac4044ea2745566f45f339767abed"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationCoordinator.cs",
+        "Sha256": "f8090bad3f9cd6fcbbab1ea604492ac5767371f170dc2d90879434dac35fc201"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationModels.cs",
+        "Sha256": "7b764332cfcd98f6a2274cf76bae7eee48b58b47364169b2a172291c2110892f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/MutationWirePermit.cs",
+        "Sha256": "3348b0fbbc5bab1547da0c99219ba7a624003519c431bb1224fd08c3c53cee55"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
+        "Sha256": "28f7b96a2f986ff002abf2b7ff34e6495a6bce8a3ae42d345881ea698eac92e9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+        "Sha256": "36c2e738053e9e44480dacbea38d74af669b16fb96567db42838fd5086a909bd"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/SessionStore.cs",
+        "Sha256": "18239cc8d7c7621e41e851bcc78898349beb5c2168d99016d9c6568591066472"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/BusinessStateContractChecks.cs",
+        "Sha256": "d50c0f8a14d70ac8bf375366eef275b21824c39e2c149583cbe0ceca590336fe"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/BusinessStateTestFixture.cs",
+        "Sha256": "d208e19a4ddaaf5f9397b59d1a5312380f603a325e2108b5e27d3d8956a090e9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ClientPackageDownloadChecks.cs",
+        "Sha256": "57cb74c285f28a403c9f4442230e08c6a9544068418c553fe58046aa9e51321c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/CoreContractChecks.cs",
+        "Sha256": "29d17c49934d6db64f6de75256acd3eab438c628e88e54f767652b9888f69485"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedHttp11Checks.cs",
+        "Sha256": "54d551b2573fdb9858d63dcb0f621c745d70db7608cd4ed39d9a151625a4ef96"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ManagedTlsChecks.cs",
+        "Sha256": "a7f8f8d774495911fca94b58c2cf85cb7c9184eb139200c6e542bd45a825ba84"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/MutationContractChecks.cs",
+        "Sha256": "17b1f9d09f29b69dc013095f0382d099b854f1ee2e6bd8fdcfe855609617b43e"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
+        "Sha256": "8b0255513abffdb6c89ecf9c9ec0102a612578ab2cf19930fd32b9e06affde75"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+        "Sha256": "a6aa92b795dde4c429bfa02c7852e473b1aafa78d462277136be1f04260e26d8"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.config",
+        "Sha256": "2fd94afb9efb7c0c99716f84efab0df9fc9987beddc6aa7223591182b64183aa"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/app.manifest",
+        "Sha256": "cdb228e87aa25b1b7754d3d2d6d4155aad0e5ea63dc202adbd4da7fd3ee84484"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml",
+        "Sha256": "833656d14c1090e4acd9a8134d8c8a9d9cf8b23d3cfd46c64fa40d5b2bdeeb33"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml.cs",
+        "Sha256": "ca8ffdf6c5b771f466cc9966a188c8b8de755d66e83bd378f12819f697e36c52"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/IPendingEditHost.cs",
+        "Sha256": "7e1388d9ee417274047343fef8734a621f8b95203571cbbb89eaa0a949ff5965"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/NativeWindowFrame.cs",
+        "Sha256": "483e4fb61307ad40bf01fbb3a7f91fc1235d7991953b2130aff7851cea5cdece"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/RoundedSurface.cs",
+        "Sha256": "9cdf1444bcca3e052add0b589e82bbf185d1161a240ab9e284a3e6720da41261"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDialogWindow.cs",
+        "Sha256": "2f7b68b999a8660c8933b409a4ddfdadf6e289aecf0abd5db75ce9388c3be8c5"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenSurfaces.cs",
+        "Sha256": "8298ca26e7151ed0b8ef4bca79c4660c295f67cbd9dfe41a1a4d2866e0c4b342"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/ClientPackageDescriptor.cs",
+        "Sha256": "67b7e7367716edbea79bc81e1ce71f37e79da14c302d3a056a3cac4f15ea972a"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/DownloadsContractChecks.cs",
+        "Sha256": "5b2b959e106d824610089b655f4a0022df5396febf942ca2e41cc35fdc6e6d4c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsService.cs",
+        "Sha256": "264da568379d084d1c15b92e0f7df0e3387ad8995790b9c476dc5c515b57d3c1"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs",
+        "Sha256": "3bc6485b6da05ccff33ec11f9e2d2767680a123c4b4655e2eebae626f104bb53"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs",
+        "Sha256": "6d378ac8428efc742c05bf0881ef5207d8f95aeed1d53c1e3a4209fe0a442511"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs",
+        "Sha256": "cf2dcfca6898c98d5f521cdd1b351d4bd14726d9b66d7f75fd55fa95d695bca6"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs",
+        "Sha256": "b87de6e440016dae9065af9ca006a661565127c5a4ea074b98071e4ed4144b64"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitContractChecks.cs",
+        "Sha256": "d9b96c357b5d0537b0655d71bfcb47672d62c2dba18154f6ce88840fe2fb2171"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitEditorWindow.cs",
+        "Sha256": "85710a1d3187c1ffbb0cf1dda7c62f918a24055113938d90d39248d36241e26b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitModels.cs",
+        "Sha256": "eedf868af7ee9b83e1c83a7fd77306a38619b9e08d1fb1224dfe13a4791b4133"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitQuery.cs",
+        "Sha256": "b2943a4e4def051a6c057669477a30d36b7a1e9bff18c2a81561dc6e6af47b82"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecoveryWindow.cs",
+        "Sha256": "af8d3881e64c7927a320b88e25320e0781554b1fb33382fab3b8c975fdae4d5c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitService.cs",
+        "Sha256": "021ebe3f371c069fb532abd186ebc60883da55fa3b7ab1ceb40251d9ec55fd3c"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitSupplementalContracts.cs",
+        "Sha256": "c60960cc5c1255881bac4672e5a72a63e9c46a8e24480e9e4086b843469ffb28"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs",
+        "Sha256": "476e3d84ebdda70e2621023d8e121559421d77b706ae736267e568a6f259881a"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml",
+        "Sha256": "0ce8a9b69ed508c9e196c50aad9119082a1fbeb54b30635fd09894582a3ae15d"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "Sha256": "86e88cc94d41df42cc26442be3be453ca35dfd5de00a98eb2241ea7ef76eb1c0"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Controls.xaml",
+        "Sha256": "c527fac455efe987161c3139e6d4ef3a171fc6a02081d1192c75c4a5035f85cc"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+        "Sha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.xaml",
+        "Sha256": "53b93d0b08bd3e200fb8886a1549570059bf032f927630ee198a9cd03f086152"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/ClientUpdateCoordinator.cs",
+        "Sha256": "bbd7297968d14c6a76d80a4a10154af54f5684afcd6f6c3410b24e2c2c3ad7c2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/IUpdateExitGuard.cs",
+        "Sha256": "40cb02861b1a4906caef3faaad866223c15e4c5cbf2bcb2dea89c6e0ac33cae9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Updates/UpdatePromptWindow.cs",
+        "Sha256": "402e6eb6d75e50a47fe0a096c29ada726ecd151cb4b9bd991aaba5de4d374af9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/uten.client.json",
+        "Sha256": "d19c9b0adc70df3913867ff673369257bf25fc191205bcd92afc757e96862a3f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj",
+        "Sha256": "4da452bb7477a4f884e1251af483d55ca46f454478feaec09dff9f170bc3d3ff"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Desktop/Views/DashboardView.cs",
+        "Sha256": "82d43b821999d3f9c0347d9fe3be39c596b709b7ab40b4983010bd34874c151f"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/PackageContractFixtureHost.cs",
+        "Sha256": "c52ffc78155b71486114372ef7b307a5771a26cfb8be63e0795ad70aaaaf9a87"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+        "Sha256": "e8193e66b4a5f19bae0438fac0e31773e3ec604771cf222099dac044ea4220c5"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+        "Sha256": "06de67d698c50b2bd302fc458da00b93921adfa25982e55e2dc97853df64eaf9"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/UpdaterContractChecks.cs",
+        "Sha256": "01a8f6176977466f51fd9a1cf40bc64fc795e5468262c07ebc77f8d649379599"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Tests/Uten.Legacy.Tests.csproj",
+        "Sha256": "f6dfa574ab572deb090c63a6303807d6a960d6d58e673cf1877072fc7f8a0e5b"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/App.config",
+        "Sha256": "5f78dfa567d4b5e4a96a69c8749fee04ebf8d6be4e1114371da39f1f3a033995"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/app.manifest",
+        "Sha256": "203e09560567baac0d39f7f449906d595fe8fdbb37fcb3b336fa08c5ad48e9ac"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/PackageContract.g.cs",
+        "Sha256": "1a3f93eb6bbe6e20807c7d58138cf16e93f9d97270019662577c28f2f993e20d"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/Program.cs",
+        "Sha256": "1db6c75cf6bd526e52048d4b28ceb5ccf93001bcb73f827bc104f150f939f867"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/SafeFiles.cs",
+        "Sha256": "2f0bb307ab3478f48b90146230778e9763f0b327e3587053e48f0ff4583e12f2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/StrictJson.cs",
+        "Sha256": "5043951e01033300ebb55c7a634480a7f694dee64bcfe77da6f4d5cc1d2ce2b6"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateAuthorization.cs",
+        "Sha256": "bddf73fafb135816479a612f14d180ed142902304bbde72a197406999e0bacdb"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateContract.cs",
+        "Sha256": "b36d152cbf937c3a361bb21ab4176662e0abc2d331a3983a585ead2531065ea7"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/UpdateExecutor.cs",
+        "Sha256": "e780169489908413ee2944e809e48dcd774a45515d6c31f34bbd5602c9b854e2"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/Uten.Legacy.Updater.csproj",
+        "Sha256": "dd3126efe6692c24f1165e9c4c586bc81079d7b7d63196627ded9a98094f1c75"
+      },
+      {
+        "Path": "clients/windows_legacy/Uten.Legacy.Updater/ZipDirectory.cs",
+        "Sha256": "772e29df8cf0e80f06ac9d6f30314d3daf24476089c40da6a35a542927ed0df7"
+      },
+      {
+        "Path": "lib/core/theme/brand_theme.dart",
+        "Sha256": "4dad0a00b0dfcc9fa330545cecbd9b3e2ff0fee82fd756adc74fd2033bbb0d30"
+      },
+      {
+        "Path": "lib/core/theme/dark_theme.dart",
+        "Sha256": "03622b5894ae21eadceebfb0916b0d781934d104a97ac689483f13f726bc4fcd"
+      },
+      {
+        "Path": "lib/core/theme/light_theme.dart",
+        "Sha256": "c5ee4a3f47fcfc289caa9ff29c6007110c681f40c0c78ac0cff584e54ec4ada4"
+      },
+      {
+        "Path": "lib/core/theme/uten_anim.dart",
+        "Sha256": "ad83a1cb535ea46f8c5469ec2638c75f5a857c43dd834ff65e0f383db2faa1b1"
+      },
+      {
+        "Path": "lib/core/theme/uten_category_tab_theme.dart",
+        "Sha256": "85df51d7f493af6c24f6d956ad562958ce24bf1af7ae2d5883c8fc0b1df01553"
+      },
+      {
+        "Path": "lib/core/theme/uten_colors.dart",
+        "Sha256": "a373d253b3852a48a368447f486bdad24c1436a26cd4cc01898e24ca626ce3e5"
+      },
+      {
+        "Path": "lib/core/theme/uten_control_theme.dart",
+        "Sha256": "78b15707474c4deb3564e4a034b022125b542631955f867957d3077f49f8f0cf"
+      },
+      {
+        "Path": "lib/core/theme/uten_page_transitions.dart",
+        "Sha256": "3c608c62d0e0cb48934e1b87c68a4c1e2cf4928c7d54e1f07fb3857b6550e453"
+      },
+      {
+        "Path": "lib/core/theme/uten_scroll_behavior.dart",
+        "Sha256": "4febde588fabcd3a5807eda089051c5070d9242105ca42a9ba2d416e4bd88927"
+      },
+      {
+        "Path": "lib/core/theme/uten_scrollbar_style.dart",
+        "Sha256": "1d1271e0535a8e68e472770fa8abd60c04815d4e3650cf90757f6335c2bb6fc8"
+      },
+      {
+        "Path": "lib/core/theme/uten_tokens.dart",
+        "Sha256": "5c177cb01e89d85badcbd3a15a83824b3b43b553df2c8778e143d11d8d5227a0"
+      },
+      {
+        "Path": "lib/core/theme/uten_typography.dart",
+        "Sha256": "126c8a85cbacc7cfe7618f701631fa4a700ee8e1c23afe4229a541f036f28025"
+      },
+      {
+        "Path": "pubspec.yaml",
+        "Sha256": "ea88b25ed3eb96ea4f72dca3d26b66c8ac04ff2ee8223d0bdec1656745f2b133"
+      },
+      {
+        "Path": "windows/runner/resources/app_icon.ico",
+        "Sha256": "aba3ae95ac5d287420d72ed9d419a7970b6ae00627da0830d3352c2333446060"
+      }
+    ],
+    "currentReleaseInspection": {
+      "schemaVersion": 1,
+      "inspectionUtc": "2026-10-29T01:44:08.2051853Z",
+      "expectedConfiguration": "Release",
+      "expectedDistribution": "Unreviewed",
+      "sourceVersion": "2.5.34+2534",
+      "expectedAssemblyVersion": "2.5.34.0",
+      "expectedFileAndProductVersion": "2.5.34.2534",
+      "assemblyCount": 6,
+      "passed": true,
+      "metadataOnly": true,
+      "applicationEntryPointsInvoked": false,
+      "companyProfileAccessed": false,
+      "packagesCreated": false,
+      "method": "Independent Windows PowerShell/.NET Framework ReflectionOnly process per file; existing .NET 4.8 reference-only dependencies; raw PE/CLR headers and FileVersionInfo read from original file",
+      "allowedReleaseDebuggableModes": 2,
+      "allowedReleaseDebuggableModesMeaning": "IgnoreSymbolStoreSequencePoints only; JIT tracking, EditAndContinue and DisableOptimizations absent",
+      "resolvedFinding": {
+        "issue": "Updater Release lacked Optimize=true and originally emitted DebuggableModes=263",
+        "resolved": true,
+        "finalUpdaterDebuggableModes": 2,
+        "initialEvidence": [
+          "release-x86-updater-initial-unoptimized.json",
+          "release-x64-updater-initial-unoptimized.json"
+        ],
+        "rootDebugParityEvidence": "../../release-only-delta-debug-parity.json"
+      },
+      "buildLog": {
+        "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\final-native-release-build.log",
+        "sha256": "f609e70e5efb0572773cc6bf775b320da835dd7efcce0aaac9d600e010948c20"
+      },
+      "inspector": {
+        "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\verification\\ce8d7a9d-3123-4dfb-9e48-0999d7913621\\inspect-release-assembly.ps1",
+        "sha256": "5404dadd78a36bfc7005e02ec5b9a61699b25c056f3d1ff01ebd50515e1aa4ba"
+      },
+      "records": [
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x64\\Uten.Legacy.Core.dll",
+          "expectedArchitecture": "x64",
+          "lengthBytes": 162304,
+          "sha256": "ae6a82d57814d1a9dbf4e3010a0dfa5cf93c68a73646883e6b7cf62bdd04625a",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Core",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x8664",
+            "optionalHeaderMagic": "0x20b",
+            "bitness": 64,
+            "clrFlags": "0x00000001",
+            "ilOnly": true,
+            "requires32Bit": false,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 121,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        },
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x64\\Uten.Legacy.Desktop.exe",
+          "expectedArchitecture": "x64",
+          "lengthBytes": 5050880,
+          "sha256": "e31433f3a02d7abdee1a791fcbfb4df5541120cb88e155cbe8b5d9dca0af225d",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Desktop",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x8664",
+            "optionalHeaderMagic": "0x20b",
+            "bitness": 64,
+            "clrFlags": "0x00000001",
+            "ilOnly": true,
+            "requires32Bit": false,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 135,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        },
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x64\\client_updater\\Uten.Legacy.Updater.exe",
+          "expectedArchitecture": "x64",
+          "lengthBytes": 43520,
+          "sha256": "a9565458ebf428470e9f9eb7f4092a47bb29d991eb91987df643aeef5b237530",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Updater",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x8664",
+            "optionalHeaderMagic": "0x20b",
+            "bitness": 64,
+            "clrFlags": "0x00000001",
+            "ilOnly": true,
+            "requires32Bit": false,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 24,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        },
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x86\\Uten.Legacy.Core.dll",
+          "expectedArchitecture": "x86",
+          "lengthBytes": 163328,
+          "sha256": "a71f7ef90ac31ae5627b396d4b8c3027c0b6c0c51baea488b17a962042825370",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Core",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x014c",
+            "optionalHeaderMagic": "0x10b",
+            "bitness": 32,
+            "clrFlags": "0x00000003",
+            "ilOnly": true,
+            "requires32Bit": true,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 121,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        },
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x86\\Uten.Legacy.Desktop.exe",
+          "expectedArchitecture": "x86",
+          "lengthBytes": 5051904,
+          "sha256": "66f1648c2637799e35e6c8f81b1523aee0861f0acda982d70da99136045e5855",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Desktop",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x014c",
+            "optionalHeaderMagic": "0x10b",
+            "bitness": 32,
+            "clrFlags": "0x00000003",
+            "ilOnly": true,
+            "requires32Bit": true,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 135,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        },
+        {
+          "schemaVersion": 1,
+          "path": "C:\\Users\\bruce\\.codex\\worktrees\\win7-compat-auto-detect\\uten_imp\\build\\windows-wpf\\x86\\client_updater\\Uten.Legacy.Updater.exe",
+          "expectedArchitecture": "x86",
+          "lengthBytes": 44032,
+          "sha256": "f023a6777a30e22b68295d36231c5c26b1d6b28dc5717fe16a144186fbc4df24",
+          "inspectionMethod": "Windows PowerShell .NET Framework ReflectionOnlyLoadFrom + bounded raw PE metadata reads; no application entry point invoked",
+          "assemblyName": "Uten.Legacy.Updater",
+          "assemblyVersion": "2.5.34.0",
+          "fileVersion": "2.5.34.2534",
+          "productVersion": "2.5.34.2534",
+          "productName": "UTEN Win7 WPF",
+          "assemblyInformationalVersion": "2.5.34.2534",
+          "rawPE": {
+            "machine": "0x014c",
+            "optionalHeaderMagic": "0x10b",
+            "bitness": 32,
+            "clrFlags": "0x00000003",
+            "ilOnly": true,
+            "requires32Bit": true,
+            "prefers32Bit": false,
+            "clrMetadataVersion": "v4.0.30319"
+          },
+          "targetFramework": ".NETFramework,Version=v4.8",
+          "description": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "fileComments": "UTEN WPF candidate; Configuration=Release; Distribution=Unreviewed",
+          "assemblyConfiguration": null,
+          "debuggableModes": 2,
+          "inappropriateDebugMetadata": false,
+          "totalTypeCount": 24,
+          "forbiddenTypes": [],
+          "passed": true,
+          "failures": []
+        }
+      ]
+    },
+    "releaseInspectionSha256": "efd95267b7ec79f2fa4326b9b1aae01fbdd9b86bd68fab62e3e39bce0dd0daf8",
+    "releaseBuildLog": "build/windows-wpf/final-native-release-build.log",
+    "releaseBuildLogSha256": "f609e70e5efb0572773cc6bf775b320da835dd7efcce0aaac9d600e010948c20",
+    "originalUnoptimizedFailureEvidence": [
+      {
+        "path": "build/windows-wpf/verification/ce8d7a9d-3123-4dfb-9e48-0999d7913621/release-x86-updater-initial-unoptimized.json",
+        "sha256": "3bd90a6b4dc57167c4c46e6df17711876302e7775f31110bc2279e537549ecae"
+      },
+      {
+        "path": "build/windows-wpf/verification/ce8d7a9d-3123-4dfb-9e48-0999d7913621/release-x64-updater-initial-unoptimized.json",
+        "sha256": "a086f8ce4df9b5e1834651db24aa49ac771ad602c90e43deba721d2d25b187c3"
+      }
+    ]
+  }
+}

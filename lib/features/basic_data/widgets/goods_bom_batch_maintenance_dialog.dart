@@ -378,6 +378,10 @@ class _BatchMaintenanceDialogState
     return PopScope(
       canPop: !_busy,
       child: UtenAlertDialog(
+        showCloseButton: _recoveringCommit,
+        closeEnabled: !_busy,
+        closeTooltip: _l10n.goodsBomBatchCloseVerify,
+        onClose: () => Navigator.of(context).pop(),
         key: const Key('goods-bom-batch-dialog'),
         maxWidth: 760,
         title: Text(_title),
@@ -508,15 +512,12 @@ class _BatchMaintenanceDialogState
           ),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: _busy ? null : () => Navigator.of(context).pop(),
-            child: Text(
-              _recoveringCommit
-                  ? _l10n.goodsBomBatchCloseVerify
-                  : _l10n.commonCancel,
+          if (!_recoveringCommit)
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+              child: Text(_l10n.commonCancel),
             ),
-          ),
           UtenButton(
             key: const Key('goods-bom-batch-submit'),
             type: _remove || _overwrite

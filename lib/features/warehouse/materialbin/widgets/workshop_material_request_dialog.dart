@@ -3,6 +3,7 @@
 // 只列整批领料的料; 每行填数量(几袋)或重量 (数量按每袋净重自动算重量), 同时显示
 // "仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤"。提交只生成申请, 服务端通知该仓仓管。
 // 提交失败保留输入; 原样再点提交用同一个请求号, 服务端不会重复登记。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -250,10 +251,9 @@ class _WorkshopMaterialRequestPanelState
               ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
               : '选择要申请的物料。数量填几袋，重量按每袋净重自动算出；也可以直接改重量。提交后通知仓库发到本车间内料仓。',
           actions: [
-            IconButton(
+            UtenCloseButton(
               tooltip: '关闭',
               onPressed: _saving ? null : () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close),
             ),
           ],
         ),

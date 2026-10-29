@@ -4,17 +4,17 @@
 
 ## W7-BIZ-149 · lib/features/stock/counts/pages/stock_count_review_page.dart
 
-模块 `stock`；1415 行；SHA256 `a5172554d8ffed5c66000a627b2ade01f056ec53342189588cdd33e14e35f65d`。
+模块 `stock`；1411 行；SHA256 `72257c08c9b526abc8a94cae078da37058e8376b6db2b996f75af5f2a5cb1268`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | StockCountReviewPage @44 (page-class)<br>_StockCountReviewPageState @72 (state-class)<br>StockCountOldValue @1310 (supporting-class) |
-| 真实路由绑定 | /warehouse/stock-count-review；router @1644；builder ['StockCountReviewPage']；redirect None<br>/stock/count-requests；router @1682；builder ['StockCountReviewPage']；redirect None<br>/finance/stock-count-review；router @1689；builder ['StockCountReviewPage']；redirect None |
+| 页面/状态类 | StockCountReviewPage @44 (page-class)<br>_StockCountReviewPageState @72 (state-class)<br>StockCountOldValue @1306 (supporting-class) |
+| 真实路由绑定 | /warehouse/stock-count-review；router @1645；builder ['StockCountReviewPage']；redirect None<br>/stock/count-requests；router @1683；builder ['StockCountReviewPage']；redirect None<br>/finance/stock-count-review；router @1690；builder ['StockCountReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | stock:count:finance_review @124；定义 lib/shared/auth/permissions.dart:222<br>stock:count:warehouse_review @125；定义 lib/shared/auth/permissions.dart:223<br>stock:count:submit @126；定义 lib/shared/auth/permissions.dart:221<br>goods:edit @1281；定义 lib/shared/auth/permissions.dart:135<br>goods:bom:edit @1282；定义 lib/shared/auth/permissions.dart:536 |
+| 权限 | stock:count:finance_review @124；定义 lib/shared/auth/permissions.dart:222<br>stock:count:warehouse_review @125；定义 lib/shared/auth/permissions.dart:223<br>stock:count:submit @126；定义 lib/shared/auth/permissions.dart:221<br>goods:edit @1277；定义 lib/shared/auth/permissions.dart:135<br>goods:bom:edit @1278；定义 lib/shared/auth/permissions.dart:536 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/basic_data/repositories/goods_issue_method_repository.dart；接口：/master/goods/issue-method/batch、/master/goods/{goodsId}/issue-method/preview<br>lib/features/stock/counts/repositories/stock_count_request_repository.dart；接口：/stock/count-requests |
-| 动作处理 | update @94 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>_removeDetailHistory @160 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @173 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @181 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @206 [method-declaration-candidate] 提示 ['remove']；void _removeDetailHistory() {<br>remove @210 [action-like-invocation] 提示 ['remove']；entry?.remove();<br>removeWhere @267 [action-like-invocation] 提示 ['remove']；_selectedRequestIds.removeWhere((id) => !visible.contains(id));<br>remove @393 [action-like-invocation] 提示 ['remove']；_setupPreviews.remove(line.goodsId);<br>remove @394 [action-like-invocation] 提示 ['remove']；_setupErrors.remove(line.goodsId);<br>remove @417 [action-like-invocation] 提示 ['remove']；setState(() => _setupLoading.remove(line.goodsId));<br>_confirmDecision @440 [action-like-invocation] 提示 ['confirm']；reason = await _confirmDecision(<br>approve @468 [action-like-invocation] 提示 ['approve']；'approve' => await repo.approve(<br>reject @474 [action-like-invocation] 提示 ['reject']；'reject' => await repo.reject(<br>cancel @480 [action-like-invocation] 提示 ['cancel']；_ => await repo.cancel(<br>_approveSelected @526 [method-declaration-candidate] 提示 ['approve']；Future<void> _approveSelected() async {<br>approveBatch @564 [action-like-invocation] 提示 ['approve']；.approveBatch(<br>_removeDetailHistory @697 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>canConfirmWorkshopMaterialFirstUse @1288 [action-like-invocation] 提示 ['confirm']；(line) => canConfirmWorkshopMaterialFirstUse(<br>_confirmDecision @1344 [method-declaration-candidate] 提示 ['confirm']；Future<String?> _confirmDecision( |
+| 动作处理 | update @94 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>_removeDetailHistory @160 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @173 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @181 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @206 [method-declaration-candidate] 提示 ['remove']；void _removeDetailHistory() {<br>remove @210 [action-like-invocation] 提示 ['remove']；entry?.remove();<br>removeWhere @267 [action-like-invocation] 提示 ['remove']；_selectedRequestIds.removeWhere((id) => !visible.contains(id));<br>remove @393 [action-like-invocation] 提示 ['remove']；_setupPreviews.remove(line.goodsId);<br>remove @394 [action-like-invocation] 提示 ['remove']；_setupErrors.remove(line.goodsId);<br>remove @417 [action-like-invocation] 提示 ['remove']；setState(() => _setupLoading.remove(line.goodsId));<br>_confirmDecision @440 [action-like-invocation] 提示 ['confirm']；reason = await _confirmDecision(<br>approve @468 [action-like-invocation] 提示 ['approve']；'approve' => await repo.approve(<br>reject @474 [action-like-invocation] 提示 ['reject']；'reject' => await repo.reject(<br>cancel @480 [action-like-invocation] 提示 ['cancel']；_ => await repo.cancel(<br>_approveSelected @526 [method-declaration-candidate] 提示 ['approve']；Future<void> _approveSelected() async {<br>approveBatch @564 [action-like-invocation] 提示 ['approve']；.approveBatch(<br>_removeDetailHistory @697 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>canConfirmWorkshopMaterialFirstUse @1284 [action-like-invocation] 提示 ['confirm']；(line) => canConfirmWorkshopMaterialFirstUse(<br>_confirmDecision @1340 [method-declaration-candidate] 提示 ['confirm']；Future<String?> _confirmDecision( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/master/MasterIdentifierAvailabilityController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsBomPasteController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsIssueMethodController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsPeriodicBomPreparationController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostSheetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsBomImportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceAnalysisController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsSubcontractSupplierController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleWorkspaceController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/stock/StockQueryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-150 · lib/features/stock/counts/pages/stock_count_session_page.dart
 
-模块 `stock`；1070 行；SHA256 `ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4`。
+模块 `stock`；1070 行；SHA256 `7107a1f2ff0582b27ee83b4bf7b5f6aea6c6d1cf1e59e581531ba12917c31598`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _WarehouseStash @53 (supporting-class)<br>_StashInputRead @60 (supporting-class)<br>StockCountSessionPage @67 (page-class)<br>_StockCountSessionPageState @75 (state-class) |
-| 真实路由绑定 | /stock/count-session；router @1675；builder ['StockCountSessionPage']；redirect None |
+| 真实路由绑定 | /stock/count-session；router @1676；builder ['StockCountSessionPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | InstantInventoryOverviewPage @31 (page-class)<br>_InstantInventoryOverviewPageState @46 (state-class) |
-| 真实路由绑定 | /stock/instant-inventory/overview；router @1160；builder ['InstantInventoryOverviewPage']；redirect None |
+| 真实路由绑定 | /stock/instant-inventory/overview；router @1161；builder ['InstantInventoryOverviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_report:view @371；定义 lib/shared/auth/permissions.dart:237 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -58,13 +58,13 @@
 
 ## W7-BIZ-152 · lib/features/stock/pages/instant_inventory_page.dart
 
-模块 `stock`；1198 行；SHA256 `a240daabd4732b3b9675b038d82e11fbc4c20860283af7ab11348b880333a23f`。
+模块 `stock`；1198 行；SHA256 `0352e3564cbc9a0273856637778195a36d8c9629cff2c0de73cd0e10c5779e15`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | InstantInventoryPage @83 (page-class)<br>_InstantInventoryPageState @97 (state-class) |
-| 真实路由绑定 | /stock/instant-inventory；router @1168；builder ['InstantInventoryPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:1142","routerLine":1142,"path":"/stock/balance","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, _) => RouteName.stockInstantInventory","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1149","routerLine":1149,"path":"/stock/movement","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, state) {\n              final goodsId =\n                  state.uri.queryParameters['goodsId']?.trim() ?? '';\n              return goodsId.isEmpty\n                  ? RouteName.stockInstantInventory\n                  : RouteName.stockItemDetail(goodsId, tab: 'ledger');\n            }","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /stock/instant-inventory；router @1169；builder ['InstantInventoryPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:1143","routerLine":1143,"path":"/stock/balance","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, _) => RouteName.stockInstantInventory","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1150","routerLine":1150,"path":"/stock/movement","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, state) {\n              final goodsId =\n                  state.uri.queryParameters['goodsId']?.trim() ?? '';\n              return goodsId.isEmpty\n                  ? RouteName.stockInstantInventory\n                  : RouteName.stockItemDetail(goodsId, tab: 'ledger');\n            }","status":"possible alias; 需人工核实"} |
 | 权限 | material_category:view @118；定义 lib/shared/auth/permissions.dart:130<br>stock:view @177；定义 lib/shared/auth/permissions.dart:217<br>goods:view @178；定义 lib/shared/auth/permissions.dart:134<br>goods:edit @179；定义 lib/shared/auth/permissions.dart:135<br>stock_report:export @979；定义 lib/shared/auth/permissions.dart:238<br>stock_report:export @997；定义 lib/shared/auth/permissions.dart:238 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/basic_data/repositories/master_inline_edit_repository.dart；接口：/master/inline-edit/{entityType}/{Uri.encodeComponent(id)}<br>lib/features/basic_data/repositories/product_category_repository.dart；接口：/master/material-categories、/master/material-categories/prefix-availability、/master/material-categories/tree、/master/material-categories/{id}、/master/material-categories/{id}/delete-preview、/master/material-categories/{id}/prefix-preview、/master/material-categories/{id}/subtree<br>lib/features/stock/repositories/stock_query_repository.dart；接口：/stock/balances、/stock/balances/adjust、/stock/goods/{Uri.encodeComponent(goodsId)}/inventory-context、/stock/shelf-labels、/stock/shelf-labels/layout、/stock/shelf-labels/racks |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | StockItemDetailPage @23 (page-class)<br>_StockItemDetailPageState @44 (state-class) |
-| 真实路由绑定 | /stock/item/:goodsId；router @1181；builder ['StockItemDetailPage']；redirect None |
+| 真实路由绑定 | /stock/item/:goodsId；router @1182；builder ['StockItemDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

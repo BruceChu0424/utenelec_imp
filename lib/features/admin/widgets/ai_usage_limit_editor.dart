@@ -6,6 +6,7 @@
 // - 保存要求再认证(403 REAUTH_REQUIRED → 网络层弹统一密码框后自动重发一次),
 //   本面板不自己问密码; 保存期间挂遮罩防双击。
 // - 开启「停用」时先弹二次确认(danger 按钮); 恢复启用不需要确认。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -499,10 +500,9 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
+          UtenCloseButton(
             key: const ValueKey('ai-usage-limit-close'),
             tooltip: l10n.aiSettingsClose,
-            icon: const Icon(Icons.close_rounded),
             onPressed: onClose ?? () => Navigator.of(context).maybePop(),
           ),
         ],

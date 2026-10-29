@@ -149,6 +149,7 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
               ? '安装程序已校验并交给浏览器下载。请从浏览器下载列表找到 Setup.exe，在 Windows 电脑上打开并完成首次安装。以后可在软件内直接更新。'
               : '已校验并保存到：\n$saved\n\n在 Windows 电脑上双击 Setup.exe 完成首次安装。以后在软件内点击“立即更新”，自动使用原安装位置。',
           confirmLabel: '知道了',
+          confirmAsClose: true,
           icon: Icons.check_circle_outline_rounded,
           interruptSignal: opportunity,
         );
@@ -160,6 +161,7 @@ class _DownloadsState extends ConsumerState<SoftwareDownloadsPage> {
               message: '请检查网络与本机可用空间后重试。未通过校验的文件不会作为安装程序保存。',
               confirmLabel: '重试下载',
               cancelLabel: '关闭',
+              cancelAsClose: true,
               icon: Icons.error_outline_rounded,
               interruptSignal: opportunity,
             ) ==

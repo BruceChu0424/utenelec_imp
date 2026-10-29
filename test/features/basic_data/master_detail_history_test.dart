@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -225,7 +226,7 @@ Future<void> _apply(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('关闭'));
+  await tester.tap(find.byType(UtenCloseButton).last);
   await tester.pumpAndSettle();
 }
 

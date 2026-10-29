@@ -155,7 +155,12 @@ void main() {
       expect(q['includeRelated'], isTrue);
       expect(q['keyword'], '螺丝');
     }
-    await tester.tap(find.byKey(const ValueKey('goods-picker-item-r')));
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('goods-picker-item-r')),
+        matching: find.text('螺丝接线式插座'),
+      ),
+    );
     await tester.pump();
     await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();

@@ -66,9 +66,9 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         UUID document = UUID.randomUUID();
         UUID firstItem = UUID.randomUUID(), secondItem = UUID.randomUUID();
         List<Row> items = java.util.stream.Stream.of(firstItem, secondItem).map(item -> {
-            Object[] raw = java.util.Arrays.copyOf(row("SALES", "SALES_SHIPMENT", document, "SALES_PENDING", ACTOR, true), 28);
+            Object[] raw = java.util.Arrays.copyOf(row("SALES", "SALES_SHIPMENT", document, "SALES_PENDING", ACTOR, true), 29);
             Object[] line = {item.toString(), item, 1, "SAME-GOODS", "相同货品", "规格", "本色", "kg", new BigDecimal("2.5"), new BigDecimal("1.2")};
-            System.arraycopy(line, 0, raw, 18, line.length);
+            System.arraycopy(line, 0, raw, 19, line.length);
             return fixture.service.map(raw, access);
         }).toList();
         assertThat(items).extracting(Row::rowKey).containsExactly("SALES:SALES_SHIPMENT:" + document + ":" + firstItem,
@@ -110,7 +110,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         verify(rows).setParameter("limit", 2);
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(f.em, times(4)).createNativeQuery(sql.capture());
-        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,id", "OFFSET :offset")
+        assertThat(sql.getAllValues().get(1)).contains("UNION ALL", "FROM filtered", "ORDER BY bill_no ASC", "source_type,record_type,bill_no,id", "OFFSET :offset")
                 .doesNotContain("ORDER BY keyword_rank,bill_no ASC");
         assertThat(sql.getAllValues().get(3)).contains("GROUP BY bill_no", "LIMIT 500");
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
@@ -285,7 +285,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
 
     private static Object[] row(String source, String record, UUID id, String status, UUID maker, boolean actionable) {
         return new Object[]{source, record, id, "SAME-NUMBER", "SOURCE-1", LocalDate.of(2026, 10, 1),
-                "往来单位", "原材料仓", "经办人", 1, status, maker,
+                "往来单位", "原材料仓", "经办人", "制单人", 1, status, maker,
                 status.endsWith("APPROVED") || status.endsWith("SHIPPED") ? 1 : 0,
                 status.equals("DRAW_PARTIAL") ? 1 : status.equals("DRAW_SHIPPED") ? 2 : 0,
                 7L, null, true, actionable};
@@ -309,7 +309,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
             ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
             when(tasks.canAccessWarehouseTasks()).thenReturn(production);
             service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit,
-                    mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class));
+                    mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class),
+                    new com.fasterxml.jackson.databind.ObjectMapper());
         }
     }
 }

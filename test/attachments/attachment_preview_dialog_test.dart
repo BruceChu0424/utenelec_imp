@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
@@ -23,9 +26,15 @@ Future<void> _pumpPreview(
   double textScale = 1.0,
   ScrollBehavior? scrollBehavior,
   FutureOr<void> Function()? onDownload,
+  Locale? locale,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      locale: locale,
+      localizationsDelegates: locale == null
+          ? null
+          : AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       scrollBehavior: scrollBehavior,
       home: MediaQuery(
         data: MediaQueryData(
@@ -47,6 +56,63 @@ Future<void> _pumpPreview(
 }
 
 void main() {
+  for (final fixture in [
+    (const Locale('en'), 'Download original'),
+    (const Locale('ko'), '원본 다운로드'),
+  ]) {
+    testWidgets('localized download reflows at 375 width ${fixture.$1}', (
+      tester,
+    ) async {
+      const size = Size(375, 812);
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pumpPreview(
+        tester,
+        bytes: _utf8('文件内容'),
+        name: '公司资料说明.txt',
+        contentType: 'text/plain',
+        size: size,
+        textScale: 2,
+        locale: fixture.$1,
+      );
+      expect(find.text(fixture.$2), findsOneWidget);
+      expect(find.byTooltip(fixture.$2), findsOneWidget);
+      expect(find.byTooltip('关闭'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final size in [const Size(1200, 850), const Size(375, 812)]) {
+    testWidgets('preview keeps close and expand adjacent at $size', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pumpPreview(
+        tester,
+        bytes: _utf8('文件内容'),
+        name: '公司资料说明.txt',
+        contentType: 'text/plain',
+        size: size,
+        textScale: size.width < 600 ? 2 : 1,
+      );
+      expect(find.byType(UtenWindowControls), findsOneWidget);
+      final group = find.byType(UtenWindowControls);
+      expect(
+        find.descendant(of: group, matching: find.byTooltip('下载原件')),
+        findsNothing,
+      );
+      final close = tester.getRect(find.byTooltip('关闭'));
+      final expand = tester.getRect(find.byTooltip('全屏'));
+      expect(expand.right, closeTo(close.left, 0.01));
+      expect(close.right, closeTo(tester.getRect(group).right, 0.01));
+      expect(close.center.dy, expand.center.dy);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'original download awaits one request and recovers from failure',
     (tester) async {
@@ -61,19 +127,20 @@ void main() {
           return pending.future;
         },
       );
+      UtenButton downloadButton() => tester.widget<UtenButton>(
+        find.descendant(
+          of: find.byTooltip('下载原件'),
+          matching: find.byType(UtenButton),
+        ),
+      );
+      expect(downloadButton().type, UtenButtonType.tonal);
+      expect(downloadButton().size, UtenButtonSize.small);
+      expect(downloadButton().icon, Icons.download_rounded);
       await tester.tap(find.byTooltip('下载原件'));
       await tester.pump();
       expect(requests, 1);
-      expect(
-        tester
-            .widget<IconButton>(
-              find.byWidgetPredicate(
-                (widget) => widget is IconButton && widget.tooltip == '下载原件',
-              ),
-            )
-            .onPressed,
-        isNull,
-      );
+      expect(downloadButton().isLoading, isTrue);
+      expect(downloadButton().onPressed, isNull);
       expect(
         tester
             .widget<IconButton>(
@@ -84,20 +151,22 @@ void main() {
             .onPressed,
         isNull,
       );
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      pending.completeError(ApiException('FORBIDDEN', '资料权限已变化'));
-      await tester.pumpAndSettle();
-      expect(find.text('资料权限已变化'), findsOneWidget);
       expect(
         tester
             .widget<IconButton>(
               find.byWidgetPredicate(
-                (widget) => widget is IconButton && widget.tooltip == '下载原件',
+                (widget) => widget is IconButton && widget.tooltip == '全屏',
               ),
             )
             .onPressed,
-        isNotNull,
+        isNull,
       );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      pending.completeError(ApiException('FORBIDDEN', '资料权限已变化'));
+      await tester.pumpAndSettle();
+      expect(find.text('资料权限已变化'), findsOneWidget);
+      expect(downloadButton().isLoading, isFalse);
+      expect(downloadButton().onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     },
   );

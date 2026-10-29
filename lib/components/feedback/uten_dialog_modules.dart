@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
@@ -106,102 +109,63 @@ class UtenDialogSettingTile extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
               child: LayoutBuilder(
-                builder: (context, bounds) {
-                  const leadingExtent = 52.0;
-                  const leadingGap = UtenSpacing.s16;
-                  const trailingGap = UtenSpacing.s12;
-                  final available = bounds.hasBoundedWidth
+                builder: (context, bounds) => _SettingTileContent(
+                  availableWidth: bounds.hasBoundedWidth
                       ? bounds.maxWidth
-                      : MediaQuery.sizeOf(context).width;
-                  final controlExtent = UtenControlMetrics.minimumHitExtent(
+                      : MediaQuery.sizeOf(context).width,
+                  minimumTextWidth: UtenControlMetrics.minimumHitExtent(
                     context,
-                  );
-                  final trailingExtent = trailing == null
-                      ? 24.0
-                      : controlExtent;
-                  // Decoration never takes the last readable control-width of
-                  // text. A single Wrap keeps native controls mounted when the
-                  // row flows vertically; it does not duplicate their state.
-                  final showLeading =
-                      available >=
-                      leadingExtent +
-                          leadingGap +
-                          trailingGap +
-                          trailingExtent +
-                          controlExtent;
-                  final inlineTextWidth =
-                      available -
-                      (showLeading ? leadingExtent + leadingGap : 0) -
-                      trailingExtent -
-                      trailingGap;
-                  final stacked = inlineTextWidth < controlExtent;
-                  return Wrap(
-                    runSpacing: UtenSpacing.s8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (showLeading)
-                        Padding(
-                          padding: const EdgeInsets.only(right: leadingGap),
-                          child: Container(
-                            width: leadingExtent,
-                            height: leadingExtent,
-                            decoration: BoxDecoration(
-                              color: scheme.primary.withValues(
-                                alpha: dark ? 0.13 : 0.07,
-                              ),
-                              borderRadius: UtenRadius.controlAll,
-                            ),
-                            child: Icon(
-                              icon,
-                              size: 28,
-                              color: selected || !showBorder
-                                  ? scheme.primary
-                                  : scheme.onSurfaceVariant,
-                            ),
+                  ),
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: scheme.primary.withValues(
+                          alpha: dark ? 0.13 : 0.07,
+                        ),
+                        borderRadius: UtenRadius.controlAll,
+                      ),
+                      child: Icon(
+                        icon,
+                        size: 28,
+                        color: selected || !showBorder
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DefaultTextStyle.merge(
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: scheme.onSurface,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
                           ),
+                          child: title,
                         ),
-                      SizedBox(
-                        width: stacked ? available : inlineTextWidth,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            DefaultTextStyle.merge(
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                color: scheme.onSurface,
-                                fontWeight: FontWeight.w700,
-                                height: 1.35,
-                              ),
-                              child: title,
-                            ),
-                            if (subtitle != null) ...[
-                              const SizedBox(height: UtenSpacing.s4),
-                              DefaultTextStyle.merge(
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                  height: 1.45,
-                                ),
-                                child: subtitle!,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      Padding(
-                        padding: EdgeInsets.only(
-                          left: stacked ? 0 : trailingGap,
-                        ),
-                        child:
-                            trailing ??
-                            Icon(
-                              Icons.chevron_right_rounded,
+                        if (subtitle != null) ...[
+                          const SizedBox(height: UtenSpacing.s4),
+                          DefaultTextStyle.merge(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: scheme.onSurfaceVariant,
-                              size: 24,
+                              height: 1.45,
                             ),
-                      ),
-                    ],
-                  );
-                },
+                            child: subtitle!,
+                          ),
+                        ],
+                      ],
+                    ),
+                    trailing ??
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          color: scheme.onSurfaceVariant,
+                          size: 24,
+                        ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -251,3 +215,148 @@ class UtenDialogOptionCard extends StatelessWidget {
     ),
   );
 }
+
+/// Measures the real trailing control before assigning the remaining text width.
+/// The three child Elements stay mounted when their layout changes at a resize.
+class _SettingTileContent extends MultiChildRenderObjectWidget {
+  const _SettingTileContent({
+    required this.availableWidth,
+    required this.minimumTextWidth,
+    required super.children,
+  });
+  final double availableWidth;
+  final double minimumTextWidth;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSettingTileContent(this, Directionality.of(context));
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    covariant _RenderSettingTileContent renderObject,
+  ) => renderObject.configure(this, Directionality.of(context));
+}
+
+class _RenderSettingTileContent extends RenderBox
+    with
+        ContainerRenderObjectMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        >,
+        RenderBoxContainerDefaultsMixin<
+          RenderBox,
+          ContainerBoxParentData<RenderBox>
+        > {
+  _RenderSettingTileContent(this._config, this._direction);
+  _SettingTileContent _config;
+  TextDirection _direction;
+
+  void configure(_SettingTileContent config, TextDirection direction) {
+    _config = config;
+    _direction = direction;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! ContainerBoxParentData<RenderBox>) {
+      child.parentData = _SettingTileParentData();
+    }
+  }
+
+  Size _layout(BoxConstraints limits, {required bool dry}) {
+    Size measure(RenderBox child, BoxConstraints box) {
+      if (dry) return child.getDryLayout(box);
+      child.layout(box, parentUsesSize: true);
+      return child.size;
+    }
+
+    final leading = firstChild!;
+    final body = childAfter(leading)!;
+    final trailing = lastChild!;
+    final width = limits.constrainWidth(_config.availableWidth);
+    final trailingSize = measure(trailing, BoxConstraints(maxWidth: width));
+    const leadingExtent = 52.0;
+    const leadingGap = UtenSpacing.s16;
+    const trailingGap = UtenSpacing.s12;
+    final showLeading =
+        width >=
+        leadingExtent +
+            leadingGap +
+            trailingGap +
+            trailingSize.width +
+            _config.minimumTextWidth;
+    final leadingWidth = showLeading ? leadingExtent + leadingGap : 0.0;
+    final inlineWidth = width - leadingWidth - trailingGap - trailingSize.width;
+    final stacked = inlineWidth < _config.minimumTextWidth;
+    measure(
+      leading,
+      BoxConstraints.tight(
+        showLeading ? const Size(leadingExtent, leadingExtent) : Size.zero,
+      ),
+    );
+    final bodySize = measure(
+      body,
+      BoxConstraints.tightFor(
+        width: stacked ? width : math.max(0.0, inlineWidth),
+      ),
+    );
+    final contentHeight = stacked
+        ? bodySize.height + UtenSpacing.s8 + trailingSize.height
+        : math.max(
+            showLeading ? leadingExtent : 0.0,
+            math.max(bodySize.height, trailingSize.height),
+          );
+    final result = limits.constrain(Size(width, contentHeight));
+    if (!dry) {
+      void place(RenderBox child, double x, double y) {
+        (child.parentData! as ContainerBoxParentData<RenderBox>).offset =
+            Offset(
+              _direction == TextDirection.rtl
+                  ? result.width - x - child.size.width
+                  : x,
+              y,
+            );
+      }
+
+      place(leading, 0, (result.height - leading.size.height) / 2);
+      place(
+        body,
+        stacked ? 0 : leadingWidth,
+        stacked ? 0 : (result.height - bodySize.height) / 2,
+      );
+      place(
+        trailing,
+        stacked ? 0 : width - trailingSize.width,
+        stacked
+            ? bodySize.height + UtenSpacing.s8
+            : (result.height - trailingSize.height) / 2,
+      );
+    }
+    return result;
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _layout(constraints, dry: true);
+  @override
+  void performLayout() => size = _layout(constraints, dry: false);
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    var child = firstChild;
+    while (child != null) {
+      if (!child.size.isEmpty) {
+        final data = child.parentData! as ContainerBoxParentData<RenderBox>;
+        context.paintChild(child, offset + data.offset);
+      }
+      child = childAfter(child);
+    }
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+}
+
+class _SettingTileParentData extends ContainerBoxParentData<RenderBox> {}

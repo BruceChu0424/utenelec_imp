@@ -37,6 +37,7 @@ import '../../../components/layout/uten_detail_action_layout.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/web_update/web_update_safety.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -250,6 +251,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   bool _leavingBom = false;
   final Object _bomNavigationOwner = Object();
 
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    busy: widget.busy || _savingBasic || _bomInteracting || _leavingBom,
+    // Existing-goods forms and BOM sessions also own in-memory input outside
+    // the persistence-backed draft used when creating a goods master.
+    blocked: _mode != _GoodsDetailMode.view || _bomEditing,
+  );
+
   bool get _historyBlocked =>
       widget.busy ||
       _savingBasic ||
@@ -318,8 +326,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     // A distinct owner preserves that form guard while covering router.go,
     // replacement and browser route changes on an existing goods detail.
     FormDraftNavigation.unregister(_bomNavigationOwner);
+    webUpdateSafety.register(_bomNavigationOwner, _reloadSafety);
     final route = goRouterPageStateOrNull(context);
     if (route == null) return;
+    FormDraftNavigation.registerReloadSafety(
+      _bomNavigationOwner,
+      route.uri.path,
+      _reloadSafety,
+    );
     FormDraftNavigation.register(
       _bomNavigationOwner,
       route.uri.path,
@@ -327,12 +341,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           !mounted ||
           await (_bomKey.currentState?.finishEditing() ?? Future.value(true)),
       pageKey: route.pageKey,
+      reloadSafety: _reloadSafety,
     );
   }
 
   @override
   void dispose() {
     FormDraftNavigation.unregister(_bomNavigationOwner);
+    FormDraftNavigation.unregisterReloadSafety(_bomNavigationOwner);
     super.dispose();
   }
 
@@ -1053,6 +1069,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
 
   @override
   Widget build(BuildContext context) {
+    webUpdateSafety.changed();
     return PopScope<Object?>(
       canPop: !_bomEditing,
       onPopInvokedWithResult: (didPop, result) {

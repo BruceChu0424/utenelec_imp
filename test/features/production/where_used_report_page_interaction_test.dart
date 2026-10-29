@@ -283,6 +283,8 @@ class _WhereUsedApi extends ApiClient {
               'id': _materialId,
               'code': richActual ? 'RAW-ABS01' : 'MAT-001',
               'name': richActual ? 'ABS 注塑原料' : 'A 螺丝',
+              'colorName': '本色',
+              'series': richActual ? 'ABS' : '6M',
               'model': richActual ? 'ABS-100' : 'M3',
               'spec': richActual ? '通用级注塑颗粒' : '镀锌',
               'status': '启用',
@@ -1713,7 +1715,7 @@ void main() {
       await tester.tap(find.byKey(const Key('where-used-basis')));
       await tester.pumpAndSettle();
       expect(find.textContaining('当前可用的已知关系 ='), findsOneWidget);
-      await tester.tap(find.text('关闭').last);
+      await tester.tap(find.byTooltip('关闭').last);
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsOneWidget);
       expect(tester.takeException(), isNull);

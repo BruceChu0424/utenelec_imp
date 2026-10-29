@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -396,9 +397,15 @@ void main() {
     },
   );
 
-  for (final requested in [false, true]) {
+  for (final filter in const [
+    (requested: false, label: '物料齐套 · 去领料', value: 'DRAW_FULL_KIT'),
+    (requested: false, label: '部分物料可领 · 去领料', value: 'DRAW_PARTIAL'),
+    (requested: false, label: '仅缺 1 种本车间自产件', value: 'SAME_WORKSHOP_MAKE_ONLY'),
+    (requested: true, label: '已提交领料 · 待仓库发料', value: 'DRAW_REQUESTED'),
+  ]) {
+    final requested = filter.requested;
     testWidgets(
-      'manual draw state $requested has distinct color and server filter',
+      'manual draw ${filter.value} has distinct color and server filter',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(1600, 1000));
         addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -444,19 +451,13 @@ void main() {
         );
         await tester.tap(find.text('状态'));
         await tester.pumpAndSettle();
-        // 表头筛选桶 2026-09-20 起叫「物料可领 · 去领料」（持续生产行也在本桶，
-        // 桶名不宣称齐套）；行内徽章仍是各自的阶段文案。
-        await tester.tap(
-          find.text(requested ? '已提交领料 · 待仓库发料' : '物料可领 · 去领料').last,
-        );
+        // 齐套与部分可领分别请求服务端筛选，仍复用原领料入口。
+        await tester.tap(find.text(filter.label).last);
         await tester.pumpAndSettle();
         final query = requests
             .lastWhere((r) => r.path == '/production/workshop-tasks')
             .queryParameters;
-        expect(
-          query['preparationFilter'],
-          requested ? 'DRAW_REQUESTED' : 'DRAW_NOT_REQUESTED',
-        );
+        expect(query['preparationFilter'], filter.value);
         expect(query['page'], 1);
         if (!requested) {
           await tester.tap(find.text('产品 A'));
@@ -1059,7 +1060,7 @@ void main() {
       expect(find.textContaining('计划 plan-'), findsNothing);
       expect(find.text('车间任务详情'), findsOneWidget);
       expect(find.text('查看生产计划'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
 
       // 等待物料分类：未齐行仍能问「为什么不能开工」，但没有「查看物料进度」。

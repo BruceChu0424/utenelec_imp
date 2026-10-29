@@ -1207,6 +1207,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
   ) => showDialog<void>(
     context: context,
     builder: (context) => UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.pop(context),
       maxWidth: 640,
       scrollable: false,
       title: Text('${line.goodsName} · 用途及 BOM 影响'),
@@ -1222,12 +1224,6 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-      ],
     ),
   );
 

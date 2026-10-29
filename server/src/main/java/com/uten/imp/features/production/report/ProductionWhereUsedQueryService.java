@@ -637,6 +637,7 @@ public class ProductionWhereUsedQueryService {
         String sql = categoryCte + """
                 matched_goods AS MATERIALIZED (
                     SELECT goods.id, goods.code, goods.name, goods.model, goods.spec,
+                           goods.color_id, goods.series,
                            goods.status, goods.source_type, goods.auto_created, goods.is_deleted,
                            category.name AS category_name,
                            COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id,
@@ -657,8 +658,10 @@ public class ProductionWhereUsedQueryService {
                        goods.auto_created, goods.is_deleted,
                        source.current_bom, source.bom_issue, source.production_history,
                        source.subcontract_history,
-                       goods.total_count, goods.category_id, goods.match_rank
+                       goods.total_count, goods.category_id, goods.match_rank,
+                       color.name AS color_name, goods.series
                 FROM matched_goods goods
+                LEFT JOIN colors color ON color.id = goods.color_id
                 CROSS JOIN LATERAL (
                     SELECT
                         EXISTS (
@@ -793,7 +796,8 @@ public class ProductionWhereUsedQueryService {
                     truth(row[8]), truth(row[9]), truth(row[10]), truth(row[11]),
                     truth(row[12]), truth(row[13]),
                     normalizedKeyword.isEmpty()?null:((Number)row[16]).intValue(),
-                    normalizedKeyword.isEmpty()?null:(((Number)row[16]).intValue()<GoodsSearchPolicy.RELATED_RANK_OFFSET?"PRIMARY":"RELATED")));
+                    normalizedKeyword.isEmpty()?null:(((Number)row[16]).intValue()<GoodsSearchPolicy.RELATED_RANK_OFFSET?"PRIMARY":"RELATED"),
+                    text(row[17]), text(row[18])));
         }
         long total = rows.isEmpty()
                 ? (safePage == 1 ? 0L : countWhereUsedMaterials(normalizedKeyword, normalizedCategory,search))

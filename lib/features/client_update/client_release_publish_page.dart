@@ -10,6 +10,7 @@ import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
 import '../../core/network/api_client.dart';
+import '../../core/web_update/web_update_safety.dart';
 import '../../core/network/server_config.dart';
 import '../../core/router/nav_helpers.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -109,6 +110,22 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
       identical(ref.read(apiClientProvider), _api) &&
       ref.read(sensitiveReadBoundaryProvider) == _boundary &&
       ref.read(apiBaseUrlProvider) == _server;
+
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    dirty: _queue.hasWork,
+    busy:
+        _queue.busy ||
+        _choosing ||
+        _discarding ||
+        _draftTimer?.isActive == true,
+    // Drafts omit local package bytes. Checkpointing metadata cannot authorize
+    // automatic reload of a file or unknown-submit session.
+    blocked:
+        !_ready ||
+        _queue.hasUnknown ||
+        _storageError != null ||
+        (_hadInput && !_exitAllowed && !_discarded),
+  );
   @override
   void initState() {
     super.initState();
@@ -128,6 +145,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
       checkpoint: _checkpoint,
     );
     _queue.addListener(_queueChanged);
+    webUpdateSafety.register(this, _reloadSafety);
     for (final controller in [_version, _build, _notes, _store]) {
       controller.addListener(_contextChanged);
     }
@@ -165,6 +183,12 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
         clientReleasePublishRoute,
         _confirmLeave,
         pageKey: route?.pageKey,
+        reloadSafety: _reloadSafety,
+      );
+      FormDraftNavigation.registerReloadSafety(
+        this,
+        clientReleasePublishRoute,
+        _reloadSafety,
       );
       setState(() {
         _ready = true;
@@ -200,6 +224,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
 
   void _queueChanged() {
     if (!mounted) return;
+    webUpdateSafety.changed();
     setState(() {});
     if (_ready && !_retired && !_discarding && !_discarded) {
       _draftTimer?.cancel();
@@ -359,6 +384,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
   void dispose() {
     _draftTimer?.cancel();
     FormDraftNavigation.unregister(this);
+    FormDraftNavigation.unregisterReloadSafety(this);
     _queue.removeListener(_queueChanged);
     if (!_discarded && (_hadInput || _queue.items.isNotEmpty)) {
       unawaited(_saveDraft().catchError((Object _) {}));
@@ -372,6 +398,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
 
   @override
   Widget build(BuildContext context) {
+    webUpdateSafety.changed();
     ref.watch(clientReleasePublisherProvider);
     ref.watch(apiClientProvider);
     ref.watch(sensitiveReadBoundaryProvider);

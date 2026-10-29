@@ -74,6 +74,8 @@ abstract final class UtenCenterAlert {
     UtenAlertLevel level = UtenAlertLevel.normal,
     String? confirmLabel,
     String? cancelLabel,
+    bool cancelAsClose = false,
+    bool confirmAsClose = false,
     bool? barrierDismissible,
     bool blockSystemBack = false,
     Listenable? interruptSignal,
@@ -84,6 +86,7 @@ abstract final class UtenCenterAlert {
     VoidCallback? onCancel,
   }) {
     assert(message != null || content != null, 'message 与 content 至少传一个');
+    assert(!cancelAsClose || !confirmAsClose);
 
     // 性能档：lite 档压缩进场动画时长（读一次即可，弹窗不需要监听）
     final dismissible = barrierDismissible ?? (level != UtenAlertLevel.urgent);
@@ -108,6 +111,8 @@ abstract final class UtenCenterAlert {
             level: level,
             confirmLabel: confirmLabel,
             cancelLabel: cancelLabel,
+            cancelAsClose: cancelAsClose,
+            confirmAsClose: confirmAsClose,
             icon: icon,
             maxWidth: maxWidth,
             maxHeight: maxHeight,
@@ -233,6 +238,8 @@ class _CenterAlertDialog extends StatelessWidget {
     this.content,
     this.confirmLabel,
     this.cancelLabel,
+    this.cancelAsClose = false,
+    this.confirmAsClose = false,
     this.icon,
     this.maxWidth = 520,
     this.maxHeight = 520,
@@ -246,6 +253,8 @@ class _CenterAlertDialog extends StatelessWidget {
   final UtenAlertLevel level;
   final String? confirmLabel;
   final String? cancelLabel;
+  final bool cancelAsClose;
+  final bool confirmAsClose;
   final IconData? icon;
   final double maxWidth;
   final double maxHeight;
@@ -258,6 +267,16 @@ class _CenterAlertDialog extends StatelessWidget {
     final accent = level.accent;
     final isUrgent = level == UtenAlertLevel.urgent;
     return UtenAlertDialog(
+      showCloseButton: cancelAsClose || confirmAsClose,
+      closeTooltip: confirmAsClose ? confirmLabel : cancelLabel,
+      onClose: () {
+        Navigator.pop(context, confirmAsClose);
+        if (confirmAsClose) {
+          onConfirm?.call();
+        } else {
+          onCancel?.call();
+        }
+      },
       maxWidth: maxWidth,
       constraints: BoxConstraints(maxHeight: maxHeight),
       shape: RoundedRectangleBorder(
@@ -284,7 +303,7 @@ class _CenterAlertDialog extends StatelessWidget {
           ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
-        if (cancelLabel != null)
+        if (cancelLabel != null && !cancelAsClose)
           UtenButton(
             type: UtenButtonType.ghost,
             size: UtenButtonSize.large,
@@ -294,15 +313,16 @@ class _CenterAlertDialog extends StatelessWidget {
             },
             child: Text(cancelLabel!),
           ),
-        UtenButton(
-          type: isUrgent ? UtenButtonType.danger : UtenButtonType.primary,
-          size: UtenButtonSize.large,
-          onPressed: () {
-            Navigator.pop(context, true);
-            onConfirm?.call();
-          },
-          child: Text(confirmLabel ?? (isUrgent ? '已知悉' : '确认')),
-        ),
+        if (!confirmAsClose)
+          UtenButton(
+            type: isUrgent ? UtenButtonType.danger : UtenButtonType.primary,
+            size: UtenButtonSize.large,
+            onPressed: () {
+              Navigator.pop(context, true);
+              onConfirm?.call();
+            },
+            child: Text(confirmLabel ?? (isUrgent ? '已知悉' : '确认')),
+          ),
       ],
     );
   }

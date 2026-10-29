@@ -44,6 +44,8 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.of(context).pop(),
       maxWidth: 880,
       scrollable: false,
       key: ValueKey('workshop-task-detail-${task.segmentId}'),
@@ -242,13 +244,7 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
         ),
       ),
       actionsPadding: const EdgeInsets.all(UtenSpacing.s16),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
-        ...actions,
-      ],
+      actions: [...actions],
     );
   }
 }

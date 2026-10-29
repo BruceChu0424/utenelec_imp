@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -997,11 +998,10 @@ class _MaterialMarketPickerState extends State<_MaterialMarketPicker> {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
-              IconButton(
+              UtenCloseButton(
                 key: const Key('material-market-picker-close'),
                 onPressed: () => Navigator.pop(context),
                 tooltip: materialMarketText(context, 'close'),
-                icon: const Icon(Icons.close),
               ),
             ],
           ),

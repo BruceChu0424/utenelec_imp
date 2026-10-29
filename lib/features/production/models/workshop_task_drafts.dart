@@ -1,5 +1,21 @@
 import '../../../shared/drafts/form_draft.dart';
 
+/// A new material selection resumes only its own unsent input. Any unknown
+/// submission on the same source task must instead resume the original command.
+bool workshopDrawDraftMatchesSelection(
+  FormDraft draft,
+  Set<String>? drawItemIds,
+) {
+  if (drawItemIds == null || draft.hasUnknownSubmission) return true;
+  final storedIds = Uri.tryParse(draft.route)?.queryParameters['drawItemIds']
+      ?.split(',')
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  return storedIds != null &&
+      storedIds.length == drawItemIds.length &&
+      storedIds.every(drawItemIds.contains);
+}
+
 /// Only the editor's source execution segments bind a checkpoint to a task.
 /// Receiving tasks, goods IDs and material issue IDs are never source identity.
 bool workshopTaskDraftMatches(FormDraft draft, String segmentId) {

@@ -1117,20 +1117,10 @@ abstract class _MaterialAnalysisCandidatesState
                         ],
                       ),
                     ),
-                    IconButton(
-                      constraints: BoxConstraints.tightFor(
-                        width: UtenControlMetrics.minimumHitExtent(
-                          sheetContext,
-                          desktop: 48,
-                        ),
-                        height: UtenControlMetrics.minimumHitExtent(
-                          sheetContext,
-                          desktop: 48,
-                        ),
-                      ),
+                    UtenCloseButton(
+                      desktopHitExtent: 48,
                       tooltip: '关闭',
                       onPressed: () => Navigator.of(sheetContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
                     ),
                   ],
                 ),

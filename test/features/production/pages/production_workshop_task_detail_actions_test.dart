@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -14,11 +15,13 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/providers/production_department_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/features/production/repositories/production_draw_request_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
+import '../support/production_draw_request_fixture.dart';
 
 const _permissions = {
   Perm.productionExecutionView,
@@ -32,6 +35,69 @@ final _livePermissionsProvider = StateProvider<Set<String>>(
 );
 
 void main() {
+  testWidgets('单击物料单元格按当前任务查看，无操作权限保持只读', (tester) async {
+    final server = _DetailServer([
+      _task('a', status: 'READY', canDraw: true, issued: false),
+    ]);
+    await _mount(
+      tester,
+      server,
+      category: '开工准备',
+      permissions: {Perm.productionExecutionView},
+    );
+    await tester.tap(find.byKey(const ValueKey('workshop-material-summary-a')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('workshop-material-dialog-a')),
+      findsOneWidget,
+    );
+    expect(find.text('任务物料'), findsOneWidget);
+    expect(find.byKey(const Key('workshop-material-continue')), findsNothing);
+    expect(server.writes, isEmpty);
+    expect(server.previewLoads, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('物料弹窗多选只传当前工单的真实来源进入原领料核对页', (tester) async {
+    final server =
+        _DetailServer([
+            _task('a', status: 'READY', canDraw: true, issued: false),
+            _task('b', status: 'READY', canDraw: true, issued: false),
+          ])
+          ..materials = [
+            {
+              'demandId': 'demand-a',
+              'goodsName': '铝件',
+              'state': 'DRAWABLE',
+              'requestableQty': 3,
+            },
+            {
+              'demandId': 'short-a',
+              'goodsName': '待产壳体',
+              'state': 'SHORT_MAKE',
+              'shortageQty': 1,
+            },
+          ];
+    await _mount(tester, server, category: '开工准备');
+    await tester.tap(find.byKey(const ValueKey('workshop-material-summary-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('workshop-material-select-all')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('workshop-material-continue')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('workshop-material-dialog-a')),
+      findsNothing,
+    );
+    expect(find.text('领料任务 a / 7'), findsOneWidget);
+    expect(
+      server.drawLocations.single.queryParameters['drawItemIds'],
+      'line-a',
+    );
+    expect(server.writes, isEmpty, reason: '查看和选料不能直接提交领料');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('准备可领物料仅显示领料，关闭详情后进入当前任务领料汇总', (tester) async {
     final server = _DetailServer([
       _task('a', status: 'READY', canDraw: true, issued: false),
@@ -196,7 +262,7 @@ void main() {
     await _openDetail(tester, '产品 A');
     expect(_action('draw', 'a'), findsNothing);
     expect(_action('start', 'a'), findsNothing);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     await selectFilterSegment(tester, '生产中');
     await tester.pumpAndSettle();
@@ -303,19 +369,22 @@ Future<ProviderContainer> _mount(
       ),
       GoRoute(
         path: '/production/workshop-tasks/draw-request',
-        builder: (context, state) => Scaffold(
-          body: Column(
-            children: [
-              Text(
-                '领料任务 ${state.uri.queryParameters['segmentIds']} / ${state.uri.queryParameters['versions']}',
-              ),
-              TextButton(
-                onPressed: () => context.pop(),
-                child: const Text('领料返回'),
-              ),
-            ],
-          ),
-        ),
+        builder: (context, state) {
+          server.drawLocations.add(state.uri);
+          return Scaffold(
+            body: Column(
+              children: [
+                Text(
+                  '领料任务 ${state.uri.queryParameters['segmentIds']} / ${state.uri.queryParameters['versions']}',
+                ),
+                TextButton(
+                  onPressed: () => context.pop(),
+                  child: const Text('领料返回'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
       GoRoute(
         path: '/production/daily-reports/new',
@@ -373,6 +442,9 @@ Future<ProviderContainer> _mount(
       ),
       productionPlanRepositoryProvider.overrideWithValue(
         ProductionPlanRepository(server.api),
+      ),
+      productionDrawRequestRepositoryProvider.overrideWithValue(
+        ProductionDrawRequestRepository(server.api),
       ),
       productionDailyReportRepositoryProvider.overrideWithValue(
         ProductionDailyReportRepository(server.api),
@@ -450,14 +522,20 @@ class _DetailServer {
             await draftGate!.future;
           }
           Object data;
-          if (request.method == 'POST') {
+          if (request.path ==
+              '/production/workshop-tasks/draw-request/preview') {
+            previewLoads++;
+            data = productionDrawRequestFixture();
+            final lines = (data as Map<String, dynamic>)['lines'] as List;
+            (lines.first as Map<String, dynamic>)['demandId'] = 'demand-a';
+          } else if (request.method == 'POST') {
             writes.add(request);
             data = <String, dynamic>{};
           } else if (request.path == '/production/workshop-tasks') {
             taskLoads++;
             data = _page(tasks);
           } else if (request.path.endsWith('/materials')) {
-            data = <Object>[];
+            data = materials;
           } else if (request.path == '/production/daily-reports') {
             data = _page(
               claimedQty > 0
@@ -496,6 +574,9 @@ class _DetailServer {
   late final ApiClient api;
   final writes = <RequestOptions>[];
   final reportLocations = <Uri>[];
+  final drawLocations = <Uri>[];
+  List<Map<String, dynamic>> materials = [];
+  int previewLoads = 0;
   String? reviewOrigin;
   int taskLoads = 0;
   double claimedQty = 0;

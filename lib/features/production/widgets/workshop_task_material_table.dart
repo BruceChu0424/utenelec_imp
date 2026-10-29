@@ -1,11 +1,14 @@
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_collapsible_content.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_execution_workbench.dart';
 import '../repositories/production_execution_workbench_repository.dart';
@@ -19,6 +22,12 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
     required this.segmentId,
     this.unitFallback,
     this.compact = false,
+    this.materialRows,
+    this.showAllInitially = false,
+    this.compactScrollable = false,
+    this.selectableDemandIds = const {},
+    this.selectedDemandIds = const {},
+    this.onSelectedDemandIdsChanged,
   });
 
   final String segmentId;
@@ -26,6 +35,16 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
 
   /// 任务弹窗默认只展示物料身份、状态和关键数量，其余到料事实逐行展开。
   final bool compact;
+
+  /// A containing read scope may load facts together with a draw preview.
+  final List<ProductionWorkshopTaskMaterial>? materialRows;
+  final bool showAllInitially;
+
+  /// For a bounded dialog viewport, mount compact rows only as they enter view.
+  final bool compactScrollable;
+  final Set<String> selectableDemandIds;
+  final Set<String> selectedDemandIds;
+  final ValueChanged<Set<String>>? onSelectedDemandIdsChanged;
 
   @override
   ConsumerState<WorkshopTaskMaterialTable> createState() =>
@@ -41,6 +60,7 @@ class _WorkshopTaskMaterialTableState
   @override
   void initState() {
     super.initState();
+    _showAllMaterials = widget.showAllInitially;
     _future = _load();
   }
 
@@ -49,14 +69,19 @@ class _WorkshopTaskMaterialTableState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.segmentId != widget.segmentId) {
       _expandedDemandIds.clear();
-      _showAllMaterials = false;
+      _showAllMaterials = widget.showAllInitially;
+      _future = _load();
+    } else if (!listEquals(oldWidget.materialRows, widget.materialRows)) {
       _future = _load();
     }
   }
 
-  Future<List<ProductionWorkshopTaskMaterial>> _load() => ref
-      .read(productionExecutionWorkbenchRepositoryProvider)
-      .workshopTaskMaterials(widget.segmentId);
+  Future<List<ProductionWorkshopTaskMaterial>> _load() =>
+      widget.materialRows != null
+      ? Future.value(widget.materialRows!)
+      : ref
+            .read(productionExecutionWorkbenchRepositoryProvider)
+            .workshopTaskMaterials(widget.segmentId);
 
   @override
   Widget build(BuildContext context) {
@@ -111,6 +136,17 @@ class _WorkshopTaskMaterialTableState
         }
         if (widget.compact) {
           final visibleRows = _showAllMaterials ? rows : rows.take(1).toList();
+          if (widget.compactScrollable) {
+            return ListView.separated(
+              key: const Key('workshop-task-material-table'),
+              padding: EdgeInsets.zero,
+              itemCount: visibleRows.length,
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: UtenSpacing.s8),
+              itemBuilder: (context, index) =>
+                  _compactRow(context, visibleRows[index]),
+            );
+          }
           return Column(
             key: const Key('workshop-task-material-table'),
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -119,7 +155,7 @@ class _WorkshopTaskMaterialTableState
                 if (index > 0) const SizedBox(height: UtenSpacing.s8),
                 _compactRow(context, visibleRows[index]),
               ],
-              if (rows.length > 1) ...[
+              if (rows.length > 1 && !widget.showAllInitially) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 FilledButton.tonalIcon(
                   key: const Key('workshop-task-material-toggle-all'),
@@ -150,6 +186,12 @@ class _WorkshopTaskMaterialTableState
           tableKey: 'production.workshopTask.materials',
           embedded: true,
           rowKeyOf: (row) => row.demandId,
+          selectable: widget.onSelectedDemandIdsChanged != null,
+          idOf: (row) => widget.selectableDemandIds.contains(row.demandId)
+              ? row.demandId
+              : null,
+          selectedIds: widget.selectedDemandIds,
+          onSelectedIdsChanged: widget.onSelectedDemandIdsChanged,
           platformBinding: PlatformTableBinding(
             tableKey: 'production.workshopTask.materials',
             scope: 'view_production',
@@ -330,11 +372,30 @@ class _WorkshopTaskMaterialTableState
       row.goodsCode,
       if (row.colorName?.trim().isNotEmpty == true) row.colorName!,
     ].where((value) => value.isNotEmpty).join(' · ');
+    final selectionEnabled = widget.onSelectedDemandIdsChanged != null;
+    final selectable = widget.selectableDemandIds.contains(row.demandId);
+    final selected = widget.selectedDemandIds.contains(row.demandId);
+    void toggleSelection(bool? value) {
+      if (!selectable) return;
+      final next = Set<String>.of(widget.selectedDemandIds);
+      if (value == true) {
+        next.add(row.demandId);
+      } else {
+        next.remove(row.demandId);
+      }
+      widget.onSelectedDemandIdsChanged?.call(next);
+    }
+
     return Container(
       key: ValueKey('workshop-task-material-row-${row.demandId}'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
+        color: selected ? utenTableSelectedRowColor(theme) : null,
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant,
+        ),
         borderRadius: UtenRadius.mdAll,
       ),
       child: Column(
@@ -342,7 +403,7 @@ class _WorkshopTaskMaterialTableState
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final identityBlock = Column(
+              final identityContent = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -378,8 +439,29 @@ class _WorkshopTaskMaterialTableState
                       ),
                     ],
                   ),
+                  if (selectionEnabled) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(row.sourceLabel, style: theme.textTheme.bodySmall),
+                  ],
                 ],
               );
+              final identityBlock = selectionEnabled
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Checkbox(
+                          key: ValueKey(
+                            'workshop-material-select-${row.demandId}',
+                          ),
+                          value: selected,
+                          semanticLabel: '选择${row.goodsName}',
+                          onChanged: selectable ? toggleSelection : null,
+                        ),
+                        const SizedBox(width: UtenSpacing.s4),
+                        Expanded(child: identityContent),
+                      ],
+                    )
+                  : identityContent;
               final quantities = Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -390,6 +472,17 @@ class _WorkshopTaskMaterialTableState
                   Expanded(
                     child: _compactFact(context, '已领', row.issuedQty, row),
                   ),
+                  if (selectionEnabled) ...[
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: _compactFact(
+                        context,
+                        '可领',
+                        row.requestableQty,
+                        row,
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: UtenSpacing.s8),
                   Expanded(
                     child: _compactFact(

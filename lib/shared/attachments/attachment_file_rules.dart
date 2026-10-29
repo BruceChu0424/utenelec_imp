@@ -3,12 +3,15 @@
 // 新建单据的保存前暂存（PendingAttachmentController）共用同一套规则，避免两处漂移；
 // 服务端 AttachmentService.validateUpload + AttachmentContentInspector 仍是最终裁决。
 //
-// 2026-09-11 三张表合一（唯一真源 = 下方 _rules）：
+// 普通业务附件的上传白名单 = 下方 _rules；资料库媒体登记于 _mediaRules，
+// 未知资料格式以 octet-stream 保存，不扩大普通业务附件白名单。
+// 统一能力表区分：
 //   1. 可上传 —— 业务确有需要，且服务端能按魔数把「声明类型」和「真实内容」对上；
 //   2. 可预览 —— 客户端能忠实渲染（图片/PDF/文本/CSV/压缩包清单），
 //      或服务端 LibreOffice 能忠实转成 PDF；
 //   3. 服务端转换 —— LibreOffice 打得开的办公文档。
-// 三者是包含关系：服务端转换 ⊂ 可预览 ⊂ 可上传。渲染不了也转不了的（tiff/heic/7z/rar）
+// 在各自业务上传策略内，服务端转换 ⊂ 可预览 ⊂ 可上传。
+// 渲染不了也转不了的（tiff/heic/7z/rar/CDR/模型原件）
 // 只登记上传能力、预览记为 none，行内图标直接显示「下载」，绝不承诺一个会失败的预览。
 
 import '../../core/theme/uten_tokens.dart';
@@ -59,6 +62,10 @@ enum AttachmentPreviewKind {
 
   /// 压缩包：只列条目，不解压。
   archive,
+
+  /// 已核验原件在本机/浏览器播放；编码支持以当前平台为准。
+  video,
+  audio,
 
   /// 服务端 LibreOffice 转 PDF 后再走 PDF 通道。
   serverPdf,
@@ -292,6 +299,67 @@ final Map<String, AttachmentTypeRule> _byExtension = {
     for (final extension in rule.extensions) extension: rule,
 };
 
+// 公司资料库的媒体原件。独立于普通业务附件上传白名单，预览和图标共用。
+const List<AttachmentTypeRule> _mediaRules = [
+  AttachmentTypeRule(
+    extensions: ['mp4', 'm4v'],
+    contentType: 'video/mp4',
+    kind: AttachmentFileKind.video,
+    preview: AttachmentPreviewKind.video,
+  ),
+  AttachmentTypeRule(
+    extensions: ['webm'],
+    contentType: 'video/webm',
+    kind: AttachmentFileKind.video,
+    preview: AttachmentPreviewKind.video,
+  ),
+  AttachmentTypeRule(
+    extensions: ['mov'],
+    contentType: 'video/quicktime',
+    kind: AttachmentFileKind.video,
+    preview: AttachmentPreviewKind.video,
+  ),
+  AttachmentTypeRule(
+    extensions: ['mp3'],
+    contentType: 'audio/mpeg',
+    kind: AttachmentFileKind.audio,
+    preview: AttachmentPreviewKind.audio,
+  ),
+  AttachmentTypeRule(
+    extensions: ['wav'],
+    contentType: 'audio/wav',
+    kind: AttachmentFileKind.audio,
+    preview: AttachmentPreviewKind.audio,
+  ),
+  AttachmentTypeRule(
+    extensions: ['ogg', 'oga'],
+    contentType: 'audio/ogg',
+    kind: AttachmentFileKind.audio,
+    preview: AttachmentPreviewKind.audio,
+  ),
+];
+
+AttachmentTypeRule? _mediaRule(String name) {
+  final extension = attachmentExtension(name);
+  for (final rule in _mediaRules) {
+    if (rule.extensions.contains(extension)) return rule;
+  }
+  return null;
+}
+
+/// 仅资料库上传使用；不能扩大普通单据附件白名单。
+String? guessAttachmentMediaContentType(String name) =>
+    _mediaRule(name)?.contentType;
+
+/// 本地播放副本的固定后缀，与上传/预览媒体登记同源。
+String? attachmentMediaFileExtension(String contentType) {
+  final normalized = _normalizeContentType(contentType);
+  for (final rule in _mediaRules) {
+    if (rule.contentType == normalized) return rule.extensions.first;
+  }
+  return null;
+}
+
 final Map<String, AttachmentTypeRule> _byContentType = {
   for (final rule in _rules) rule.contentType: rule,
 };
@@ -308,6 +376,8 @@ String attachmentExtension(String name) {
 AttachmentTypeRule? attachmentTypeRule(String name, String? contentType) {
   final byExtension = _byExtension[attachmentExtension(name)];
   if (byExtension != null) return byExtension;
+  final media = _mediaRule(name);
+  if (media != null) return media;
   final normalized = _normalizeContentType(contentType);
   if (normalized == null) return null;
   return _byContentType[normalized];
@@ -323,6 +393,10 @@ String? guessAttachmentContentType(String name) =>
 
 /// 预览通道：行内图标、提示文案与预览弹窗共用同一判断，图标不会承诺一个会失败的预览。
 AttachmentPreviewKind attachmentPreviewKind(String name, String? contentType) {
+  // 不透明原件不可因重命名为 .docx/.png 等而交给解析器。
+  if (_normalizeContentType(contentType) == 'application/octet-stream') {
+    return AttachmentPreviewKind.none;
+  }
   final rule = attachmentTypeRule(name, contentType);
   if (rule != null) return rule.preview;
   // 登记表外的历史附件：按大类兜底，宁可少承诺。
@@ -377,6 +451,8 @@ String formatAttachmentSize(int bytes) {
 
 /// 文件类型 → 图标与主色。颜色固定取品牌外的功能色，深浅色模式均以 14% 透明度做底。
 enum AttachmentFileKind {
+  video(Icons.movie_outlined, Color(0xFF0D9488), '视频'),
+  audio(Icons.audio_file_outlined, Color(0xFF0D9488), '音频'),
   image(Icons.image_rounded, Color(0xFF8B5CF6), '图片'),
   pdf(Icons.picture_as_pdf_rounded, Color(0xFFEF4444), 'PDF'),
   word(Icons.description_rounded, Color(0xFF3B82F6), '文档'),

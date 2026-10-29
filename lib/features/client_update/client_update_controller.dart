@@ -5,10 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/web_update/web_update_safety.dart';
 import '../../shared/providers/session_provider.dart';
 import 'client_package_download.dart';
 import 'client_release.dart';
 import 'client_update_bridge.dart';
+import 'client_staged_update.dart';
+
+final clientUpdateBridgeProvider = Provider((ref) => ClientUpdateBridge());
 
 enum ClientUpdateStage {
   idle,
@@ -24,16 +28,29 @@ final clientUpdateControllerProvider = Provider<ClientUpdateController>((ref) {
   ref.watch(sessionProvider.select((s) => (s.status, s.user?.id, s.actor?.id)));
   final controller = ClientUpdateController(
     api: ref.watch(apiClientProvider),
-    bridge: ClientUpdateBridge(),
+    bridge: ref.watch(clientUpdateBridgeProvider),
+    stagedUpdates: ref.watch(clientStagedUpdateStoreProvider),
+    canInstall: () => webUpdateSafety.safeToReload,
   );
   ref.onDispose(controller.dispose);
   return controller;
 });
 
 class ClientUpdateController extends ChangeNotifier {
-  ClientUpdateController({required this.api, required this.bridge});
+  ClientUpdateController({
+    required this.api,
+    required this.bridge,
+    ClientStagedUpdateStore? stagedUpdates,
+    bool Function()? canInstall,
+  }) : stagedUpdates = stagedUpdates ?? ClientStagedUpdateStore(''),
+       _canInstall = canInstall ?? (() => true);
   final ApiClient api;
   final ClientUpdateBridge bridge;
+  final ClientStagedUpdateStore stagedUpdates;
+  final bool Function() _canInstall;
+  bool waitingForSafeInstall = false;
+  bool get hasStagedUpdate =>
+      stagedUpdates.update?.release.id == release?.id && release != null;
   ClientInstallContext? installed;
   ClientRelease? release;
   ClientUpdateStage stage = ClientUpdateStage.idle;
@@ -104,6 +121,7 @@ class ClientUpdateController extends ChangeNotifier {
       release = candidate != null && candidate.matches(installed!)
           ? candidate
           : null;
+      stagedUpdates.reconcile(release);
       hasSuccessfulCheck = true;
       lastCheckedAt = DateTime.now();
       stage = release == null
@@ -127,6 +145,44 @@ class ClientUpdateController extends ChangeNotifier {
     final candidate = release;
     final context = installed;
     if (_disposed || busy || candidate == null || context == null) return;
+    if (candidate.installMode != 'store') {
+      await prepareUpdate();
+      if (!_disposed && hasStagedUpdate) await installPrepared();
+      return;
+    }
+    try {
+      final scope = await api.captureRequestScope(isCurrent: () => !_disposed);
+      await scope.verify();
+      if (!_canInstall()) {
+        waitingForSafeInstall = true;
+        _notify();
+        return;
+      }
+      final uri = candidate.trustedStoreUri;
+      if (uri == null ||
+          !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw StateError('Store unavailable');
+      }
+      stage = ClientUpdateStage.installerOpened;
+    } catch (failure) {
+      if (_disposed) return;
+      error = failure;
+      stage = ClientUpdateStage.failed;
+    }
+    _notify();
+  }
+
+  Future<void> prepareUpdate() async {
+    final candidate = release;
+    final context = installed;
+    if (_disposed ||
+        busy ||
+        candidate == null ||
+        context == null ||
+        candidate.installMode == 'store' ||
+        hasStagedUpdate) {
+      return;
+    }
     error = null;
     progress = 0;
     stage = ClientUpdateStage.downloading;
@@ -134,43 +190,39 @@ class ClientUpdateController extends ChangeNotifier {
     String? packagePath;
     try {
       final scope = await api.captureRequestScope(isCurrent: () => !_disposed);
-      if (candidate.installMode == 'store') {
-        final uri = candidate.trustedStoreUri;
-        if (uri == null ||
-            !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-          throw StateError('Store unavailable');
-        }
-        stage = ClientUpdateStage.installerOpened;
-      } else {
-        if (!context.supportsInPlaceUpdate ||
-            (context.platform == 'windows' &&
-                candidate.installMode != 'windows_archive') ||
-            (context.platform == 'android' &&
-                candidate.installMode != 'android_package') ||
-            !{'windows', 'android'}.contains(context.platform)) {
-          throw UnsupportedError('Native updater unavailable');
-        }
-        _download = CancelToken();
-        final stream = await scope.run(
-          () => api.getPackageStream(
-            candidate.packagePath,
-            cancelToken: _download!,
-          ),
-        );
-        packagePath = await saveClientPackage(stream, context, candidate, (
-          value,
-        ) {
-          progress = value;
-          _notify();
-        }, () => !_disposed && scope.isCurrent);
-        await scope.verify();
-        if (_disposed) return;
-        stage = ClientUpdateStage.installing;
-        _notify();
-        await bridge.install(packagePath, candidate);
-        if (_disposed) return;
-        stage = ClientUpdateStage.installerOpened;
+      if (!context.supportsInPlaceUpdate ||
+          (context.platform == 'windows' &&
+              candidate.installMode != 'windows_archive') ||
+          (context.platform == 'android' &&
+              candidate.installMode != 'android_package') ||
+          !{'windows', 'android'}.contains(context.platform)) {
+        throw UnsupportedError('Native updater unavailable');
       }
+      _download = CancelToken();
+      final stream = await scope.run(
+        () => api.getPackageStream(
+          candidate.packagePath,
+          cancelToken: _download!,
+        ),
+      );
+      packagePath = await saveClientPackage(stream, context, candidate, (
+        value,
+      ) {
+        progress = value;
+        _notify();
+      }, () => !_disposed && scope.isCurrent);
+      await scope.verify();
+      if (_disposed) return;
+      stagedUpdates.stage(
+        StagedClientUpdate(
+          endpoint: stagedUpdates.endpoint,
+          path: packagePath,
+          release: candidate,
+          context: context,
+        ),
+      );
+      packagePath = null;
+      stage = ClientUpdateStage.available;
     } catch (e) {
       if (packagePath != null) {
         try {
@@ -186,6 +238,46 @@ class ClientUpdateController extends ChangeNotifier {
       _download = null;
     }
     _notify();
+  }
+
+  Future<bool> installPrepared({
+    bool automatic = false,
+    bool Function()? additionalSafety,
+  }) async {
+    if (_disposed || busy || !hasStagedUpdate) return false;
+    bool safe() =>
+        !_disposed && _canInstall() && (additionalSafety?.call() ?? true);
+    if (!safe()) {
+      waitingForSafeInstall = true;
+      _notify();
+      return false;
+    }
+    try {
+      final scope = await api.captureRequestScope(isCurrent: () => !_disposed);
+      stage = ClientUpdateStage.installing;
+      waitingForSafeInstall = false;
+      _notify();
+      final applied = await stagedUpdates.apply(
+        bridge: bridge,
+        isSafe: safe,
+        verifySession: scope.verify,
+        automatic: automatic,
+      );
+      if (_disposed) return false;
+      stage = applied
+          ? ClientUpdateStage.installerOpened
+          : ClientUpdateStage.available;
+      waitingForSafeInstall = !applied;
+      _notify();
+      return applied;
+    } catch (failure) {
+      if (!_disposed) {
+        error = failure;
+        stage = ClientUpdateStage.failed;
+        _notify();
+      }
+      return false;
+    }
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 // 批量发货面板（SOP §一9，订单列表「批量发货」用）。
 //
@@ -13,6 +14,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_panel_header.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/inputs/uten_search_bar.dart';
@@ -454,15 +456,15 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
     final names = ref.watch(salesMasterNameServiceProvider);
     if (_readerRetired) {
       return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(UtenSpacing.s16),
-            child: Text('账号、权限或服务器已变化，请关闭并重新打开；已发出的开单结果需在原账号核查。'),
-          ),
-          UtenButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
+          UtenPanelHeader(title: '批量发货', onClose: () => Navigator.pop(context)),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(UtenSpacing.s16),
+                child: Text('账号、权限或服务器已变化，请关闭并重新打开；已发出的开单结果需在原账号核查。'),
+              ),
+            ),
           ),
         ],
       );
@@ -507,11 +509,10 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
                     ),
                   ),
                 const Spacer(),
-                IconButton(
+                UtenCloseButton(
                   onPressed: canChangeQuery
                       ? () => Navigator.pop(context)
                       : null,
-                  icon: const Icon(Icons.close),
                 ),
               ],
             ),

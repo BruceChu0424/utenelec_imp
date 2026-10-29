@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ChangePasswordPage @22 (page-class)<br>_ChangePasswordPageState @35 (state-class) |
-| 真实路由绑定 | /change-password；router @486；builder ['ChangePasswordPage']；redirect None |
+| 真实路由绑定 | /change-password；router @487；builder ['ChangePasswordPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | LoginPage @42 (page-class)<br>_LoginPageState @51 (state-class) |
-| 真实路由绑定 | /login；router @479；builder ['LoginPage']；redirect None |
+| 真实路由绑定 | /login；router @480；builder ['LoginPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | RemoteMfaPage @27 (page-class)<br>_MfaSession @38 (supporting-class)<br>_MfaSessionState @44 (state-class) |
-| 真实路由绑定 | /settings/remote-mfa；router @598；builder ['RemoteMfaPage']；redirect None |
+| 真实路由绑定 | /settings/remote-mfa；router @599；builder ['RemoteMfaPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

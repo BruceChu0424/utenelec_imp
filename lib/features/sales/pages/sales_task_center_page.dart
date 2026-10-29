@@ -25,6 +25,7 @@
 //
 // 旧路由 /sales/progress 与 /sales/:seg 列表页保留（通知深链、新建页「草稿(N)」
 // 按钮、行级跳转直达）。进页面不预选大类（未选显示引导空态，不发请求）。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -194,13 +195,15 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
         appBar: UtenAppBar(
           title: '销售任务中心',
           showPagePermissionAction: false,
-          leading: route?.impliesAppBarDismissal == true
-              ? route!.fullscreenDialog
-                    ? const CloseButton()
-                    : UtenBackButton(
-                        onPressed: () => Navigator.maybePop(context),
-                      )
+          leading:
+              route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+              ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
               : null,
+          actions: [
+            if (route?.impliesAppBarDismissal == true &&
+                route!.fullscreenDialog)
+              UtenCloseButton(onPressed: () => Navigator.maybePop(context)),
+          ],
         ),
         body: Center(
           child: Text('暂无已授权的销售页面，请联系主管开通。', style: theme.textTheme.bodyMedium),

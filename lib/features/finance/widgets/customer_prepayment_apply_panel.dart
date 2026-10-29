@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -298,10 +299,9 @@ class _CustomerPrepaymentApplyPanelState
         title: '应用客户预收',
         showPagePermissionAction: false,
         actions: [
-          IconButton(
+          UtenCloseButton(
             tooltip: '关闭',
             onPressed: _busy ? null : () => Navigator.pop(context, _lastResult),
-            icon: const Icon(Icons.close_rounded),
           ),
         ],
       ),

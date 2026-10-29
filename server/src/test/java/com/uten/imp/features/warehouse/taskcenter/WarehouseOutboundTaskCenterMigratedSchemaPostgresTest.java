@@ -53,7 +53,8 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
                 "sales_shipments", "sales_shipment_items", "subcontract_material_issues", "subcontract_material_issue_items",
                 "subcontract_material_plan_items", "subcontract_material_plans", "stock_documents", "stock_document_items",
                 "production_material_discovery_requests", "production_material_discovery_lines",
-                "production_planning_package_document_items", "production_execution_segments", "production_plans");
+                "production_planning_package_document_items", "production_execution_segments", "production_plans",
+                "production_planning_package_documents", "production_material_demands");
         jdbc = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true));
     }
     @AfterEach void rollback() throws Exception {
@@ -188,6 +189,79 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
     @Test void malformedFixtureBindingsFailBeforeAnyDatabaseWrite() {
         assertThatThrownBy(() -> execute("SELECT 1", "missingValue"))
                 .isInstanceOf(IllegalArgumentException.class).hasMessage("Fixture values must contain complete key/value pairs");
+    }
+
+    /** 生产工单列（2026-10-29 用户批注）：领料单按三条权威链路聚合工单号，非领料行为空。 */
+    @Test void productionOrderNoAggregatesSegmentCodesAcrossAllAuthoritativeLinks() throws Exception {
+        UUID warehouse = UUID.randomUUID(), document = UUID.randomUUID(), item = UUID.randomUUID();
+        UUID packageSegment = UUID.randomUUID(), itemSegment = UUID.randomUUID(), plainSegment = UUID.randomUUID();
+        UUID packagePlan = UUID.randomUUID(), itemPlan = UUID.randomUUID();
+        execute("INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,maker_id,status,issue_status,is_closed,is_deleted)"
+                        + " VALUES(:id,'DRAW','LL-1','2026-10-28',:warehouse,:owner,-1,0,FALSE,FALSE)",
+                "id", document, "warehouse", warehouse, "owner", ACTOR);
+        execute("INSERT INTO stock_documents(id,doc_type,bill_no,bill_date,warehouse_id,maker_id,status,issue_status,is_closed,is_deleted)"
+                        + " VALUES(:id,'OTHER_OUT','OTHER-1','2026-10-28',:warehouse,:owner,-1,0,FALSE,FALSE)",
+                "id", UUID.randomUUID(), "warehouse", warehouse, "owner", ACTOR);
+        execute("INSERT INTO stock_document_items(id,doc_id,line_no,qty,is_deleted,execution_segment_id)"
+                + " VALUES(:id,:document,1,2,FALSE,:segment)",
+                "id", item, "document", document, "segment", itemSegment);
+        execute("INSERT INTO production_execution_segments(id,plan_id,segment_code,status,is_deleted)"
+                + " VALUES(:id,:plan,:code,'READY',FALSE)",
+                "id", packageSegment, "plan", packagePlan, "code", "GD-" + packageSegment.toString().substring(0, 4));
+        execute("INSERT INTO production_execution_segments(id,plan_id,segment_code,status,is_deleted)"
+                + " VALUES(:id,:plan,:code,'READY',FALSE)",
+                "id", itemSegment, "plan", itemPlan, "code", "GD-" + itemSegment.toString().substring(0, 4));
+        execute("INSERT INTO production_execution_segments(id,segment_code,status,is_deleted)"
+                + " VALUES(:id,:code,'READY',FALSE)",
+                "id", plainSegment, "code", "GD-" + plainSegment.toString().substring(0, 4));
+        // 计划包单据链路（文档级）与计划包明细-需求链路（行级）都指向同一工单时应去重；
+        // 红冲领料单可见性走 provenance 分支（production_planning_package_document_items）。
+        execute("INSERT INTO production_planning_package_documents(id,document_type,document_id,execution_segment_id)"
+                + " VALUES(:id,'DRAW',:document,:segment)", "id", UUID.randomUUID(), "document", document, "segment", packageSegment);
+        execute("INSERT INTO production_planning_package_document_items(id,document_type,document_id,document_item_id,demand_id)"
+                + " VALUES(:id,'DRAW',:document,:item,:demand)", "id", UUID.randomUUID(), "document", document,
+                "item", item, "demand", UUID.randomUUID());
+
+        var filter = new Filter("DRAW", null, null, null, null, null, null, 1, 20, null, null, TaskView.ALL);
+        var plan = WarehouseOutboundTaskCenterSql.build(filter,
+                new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(false, Set.of(ACTOR))),
+                WarehouseTaskScope.ALL, ACTOR.toString());
+        var rows = jdbc.queryForList(plan.rowsSql(), parameters(plan).addValue("limit", 20).addValue("offset", 0L));
+        assertThat(rows).hasSize(1);
+        assertThat(rows.getFirst().get("bill_no")).isEqualTo("LL-1");
+        // string_agg 按工单号字典序聚合去重（两条链路指向的两个工单都出现）。
+        var expectedCodes = java.util.stream.Stream.of(
+                        "GD-" + packageSegment.toString().substring(0, 4),
+                        "GD-" + itemSegment.toString().substring(0, 4))
+                .sorted().toList();
+        assertThat((String) rows.getFirst().get("production_order_no"))
+                .isEqualTo(String.join("、", expectedCodes));
+        // 逐单 {code,planId} 载荷同源聚合（弹窗按单跳生产计划详情的通道）。
+        var ordersJson = new ObjectMapper().readTree((String) rows.getFirst().get("production_orders"));
+        assertThat(ordersJson.size()).isEqualTo(2);
+        for (var order : ordersJson) {
+            if (order.get("code").asText().equals(expectedCodes.getFirst())) {
+                assertThat(order.get("planId").asText()).isEqualTo(
+                        expectedCodes.getFirst().endsWith(packageSegment.toString().substring(0, 4))
+                                ? packagePlan.toString() : itemPlan.toString());
+            }
+        }
+
+        // 按生产工单排序走外层 LATERAL 投影列（列搜索不开放该列：值不在 source_rows CTE）。
+        var sorted = WarehouseOutboundTaskCenterSql.build(
+                new Filter("DRAW", null, null, null, null, null, null, 1, 20, "productionOrderNo", "desc", TaskView.ALL),
+                new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(false, Set.of(ACTOR))),
+                WarehouseTaskScope.ALL, ACTOR.toString());
+        assertThat(jdbc.queryForList(sorted.rowsSql(), parameters(sorted).addValue("limit", 20).addValue("offset", 0L))).hasSize(1);
+
+        // 非领料行（其它出库）在生产工单列上保持为空，不影响可见性。
+        var other = WarehouseOutboundTaskCenterSql.build(
+                new Filter("OTHER", null, null, null, null, null, null, 1, 20, null, null, TaskView.ALL),
+                new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(false, Set.of(ACTOR))),
+                WarehouseTaskScope.ALL, ACTOR.toString());
+        var otherRows = jdbc.queryForList(other.rowsSql(), parameters(other).addValue("limit", 20).addValue("offset", 0L));
+        assertThat(otherRows).hasSize(1);
+        assertThat(otherRows.getFirst().get("production_order_no")).isNull();
     }
 
     private void execute(String sql, Object... parameters) {

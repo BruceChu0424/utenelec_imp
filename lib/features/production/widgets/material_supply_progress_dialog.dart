@@ -84,6 +84,8 @@ class _MaterialSupplyProgressDialogState
       _ => '供给全链路进度',
     };
     return UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.of(context).pop(),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -122,13 +124,6 @@ class _MaterialSupplyProgressDialogState
               )
             : _buildTimeline(theme, _progress!),
       ),
-      actions: [
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
     );
   }
 

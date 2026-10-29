@@ -4,6 +4,7 @@
 // - 保存带乐观锁 version: 期间被别人改过服务端回 409, 面板留在原地提示。
 // - 读/写被拒(401/403)时服务端会话已换人: 面板自行关闭并回调 onDenied, 由宿主清数据。
 // - 面板不重复问密码: 保存要求再认证时网络层弹统一密码框后自动重发一次。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -244,10 +245,9 @@ class _AiBillingEditorState extends ConsumerState<AiBillingEditor> {
                     ),
                   ),
                 ),
-                IconButton(
+                UtenCloseButton(
                   tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                   onPressed: _busy ? null : _close,
-                  icon: const Icon(Icons.close_rounded),
                 ),
               ],
             ),

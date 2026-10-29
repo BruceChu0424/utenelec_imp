@@ -94,7 +94,10 @@ extension MaterialAnalysisOwnershipOverlay on ProductionMaterialAnalysisView {
       autoConfirmedRouteCount: autoConfirmedRouteCount,
       pendingAutoConfirmRouteCount: pendingAutoConfirmRouteCount,
       overproductionDefaults: overproductionDefaults,
+      aggregateRecipeKeysByMaterialLineId: aggregateRecipeKeysByMaterialLineId,
+      hasAggregateRecipeKeys: hasAggregateRecipeKeys,
       analysisNo: analysisNo,
+      salesRequirements: salesRequirements,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_section_header.dart';
 // 库存余额详情只读；目标数量/重量统一到即时库存的盘点模式送审。
@@ -82,10 +83,9 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
                     info: '数量和重量变更由盘点审批处理。普通仓由财务审核，车间内料仓由仓库审核，批准前库存保持不变。',
                   ),
                 ),
-                IconButton(
+                UtenCloseButton(
                   tooltip: '关闭',
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
                 ),
               ],
             ),

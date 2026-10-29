@@ -304,18 +304,14 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
     if (!_isCurrent) {
       return UtenAlertDialog(
         title: const Text('称样窗口已失效'),
+        showCloseButton: true,
+        closeButtonKey: const ValueKey('weight-sample-close-invalid'),
+        onClose: () => Navigator.of(context).pop(),
         content: Text(
           _saveOutcomeUnknown || _busy
               ? '账号、服务器或权限已变化。保存请求可能已完成，请先核对结果，勿重复提交。'
               : '账号、服务器或权限已变化，请关闭后重新打开。',
         ),
-        actions: [
-          UtenButton(
-            key: const ValueKey('weight-sample-close-invalid'),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final theme = Theme.of(context);

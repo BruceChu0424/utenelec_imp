@@ -122,10 +122,6 @@ class _ApplicationDetailBody extends StatelessWidget {
           UtenDialogActions(
             padding: const EdgeInsets.only(top: UtenSpacing.s16),
             children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
               if ((document?.canView ?? false) &&
                   (document?.number ?? '').isNotEmpty) ...[
                 FilledButton.tonalIcon(

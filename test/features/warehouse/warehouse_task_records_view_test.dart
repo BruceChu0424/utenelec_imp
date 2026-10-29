@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -58,6 +59,7 @@ WarehouseTaskCenterRecord warehouseTestRecord({
   bool canHandle = false,
   Map<String, dynamic> data = const {},
   WarehouseTaskLine? line,
+  String? productionOrderNo,
 }) => WarehouseTaskCenterRecord(
   rowKey: '$source:$record:$id${line == null ? '' : ':${line.key}'}',
   id: id,
@@ -68,6 +70,7 @@ WarehouseTaskCenterRecord warehouseTestRecord({
   tone: 'accent',
   billNo: billNo,
   sourceDocNo: 'SOURCE-$billNo',
+  productionOrderNo: productionOrderNo,
   warehouseName: '原料仓',
   partyName: '示例往来方',
   responsibleName: '仓管甲',
@@ -426,6 +429,10 @@ Future<_Harness> _pump(
       ),
       GoRoute(
         path: '/warehouse/quality-results/:receiptType/:receiptId',
+        builder: (_, state) => target(state),
+      ),
+      GoRoute(
+        path: '/production/plans/:id',
         builder: (_, state) => target(state),
       ),
     ],
@@ -986,7 +993,7 @@ void main() {
         isFalse,
       );
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
     },
   );
@@ -2091,6 +2098,176 @@ void main() {
     await _doubleTap(tester, 'OTHER-CREATED');
     expect(harness.opened.single.path, '/warehouse/OTHER_OUT/new');
     expect(harness.opened.single.queryParameters['draftId'], 'other-creation');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('默认排序=业务日期倒序：表头指示与列表请求显式一致', (tester) async {
+    final gateway = WarehouseTaskRecordsFakeGateway([
+      warehouseTestRecord(
+        source: 'SALES',
+        record: 'SALES_SHIPMENT',
+        id: 'sales-1',
+        billNo: 'SALES-1',
+      ),
+    ]);
+    await _pump(tester, gateway);
+    expect(_table(tester).sortColumn, 'businessDate');
+    expect(_table(tester).sortAscending, isFalse);
+    expect(gateway.calls.first.sort, 'businessDate');
+    expect(gateway.calls.first.order, 'desc');
+    expect(
+      gateway.calls.every(
+        (call) => call.sort == 'businessDate' && call.order == 'desc',
+      ),
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('生产工单列只在出库方向出现，列序紧跟来源单据之后', (tester) async {
+    final draw = warehouseTestRecord(
+      source: 'DRAW',
+      record: 'STOCK_DOC',
+      id: 'draw-1',
+      billNo: 'LL-1',
+      productionOrderNo: 'GD-2601',
+      line: const WarehouseTaskLine(
+        key: 'line-1',
+        goodsName: '面板',
+        goodsCode: 'G-1',
+        unitName: '件',
+        quantity: 3,
+      ),
+    );
+    await _pump(tester, WarehouseTaskRecordsFakeGateway([draw]));
+    expect(find.text('生产工单'), findsOneWidget);
+    expect(find.text('GD-2601'), findsOneWidget);
+    final columns = _table(tester).columns;
+    final sourceIndex = columns.indexWhere(
+      (column) => column.key == 'sourceDocNo',
+    );
+    final orderIndex = columns.indexWhere(
+      (column) => column.key == 'productionOrderNo',
+    );
+    expect(orderIndex, sourceIndex + 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('入库方向不显示生产工单列', (tester) async {
+    final returned = warehouseTestRecord(
+      source: 'RETURN',
+      record: 'STOCK_DOCUMENT',
+      id: 'return-1',
+      billNo: 'TL-1',
+    );
+    await _pump(
+      tester,
+      WarehouseTaskRecordsFakeGateway([returned]),
+      spec: const _ViewSpec(
+        direction: WarehouseTaskDirection.inbound,
+        sources: warehouseTestInboundSources,
+      ),
+    );
+    expect(find.text('生产工单'), findsNothing);
+    expect(
+      _table(tester).columns.any(
+        (column) => column.key == 'productionOrderNo',
+      ),
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('工具条提供预览打印与下载表格，预览按当前筛选取数', (tester) async {
+    final rows = [
+      for (var index = 1; index <= 3; index++)
+        warehouseTestRecord(
+          source: 'DRAW',
+          record: 'STOCK_DOC',
+          id: 'draw-$index',
+          billNo: 'LL-$index',
+          productionOrderNo: 'GD-260$index',
+        ),
+    ];
+    final gateway = WarehouseTaskRecordsFakeGateway(rows);
+    await _pump(tester, gateway);
+    expect(find.text('预览打印'), findsOneWidget);
+    expect(find.text('下载表格'), findsOneWidget);
+    await tester.tap(find.text('预览打印'));
+    await tester.pumpAndSettle();
+    // 预览加载与列表同一筛选口径（来源/视图/排序），按 100 行/页翻页。
+    final previewCall = gateway.calls.last;
+    expect(previewCall.direction, WarehouseTaskDirection.outbound);
+    expect(previewCall.source, 'ALL');
+    expect(previewCall.view, WarehouseTaskView.active);
+    expect(previewCall.sort, 'businessDate');
+    expect(previewCall.order, 'desc');
+    expect(previewCall.page, 1);
+    expect(find.text('GD-2601'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('生产工单格多值截断，弹窗列全部并可按单跳计划详情', (tester) async {
+    final draw = warehouseTestRecord(
+      source: 'DRAW',
+      record: 'STOCK_DOC',
+      id: 'draw-9',
+      billNo: 'LL-9',
+      productionOrderNo: 'GD-A、GD-B、GD-C',
+      data: const {
+        'productionOrders': [
+          {'code': 'GD-A', 'planId': 'plan-1'},
+          {'code': 'GD-B', 'planId': 'plan-2'},
+          {'code': 'GD-C', 'planId': null},
+        ],
+      },
+    );
+    final gateway = WarehouseTaskRecordsFakeGateway([draw]);
+    final harness = await _pump(
+      tester,
+      gateway,
+      permissions: {
+        Perm.stockDocView,
+        Perm.productionPlanView,
+      },
+    );
+    // 格内只显示第 1 个 +「等 N 个」，不撑宽表格；其余只在弹窗里。
+    expect(find.text('GD-A 等 3 个'), findsOneWidget);
+    expect(find.text('GD-B'), findsNothing);
+    expect(find.text('GD-C'), findsNothing);
+    await tester.tap(find.text('GD-A 等 3 个'));
+    await tester.pumpAndSettle();
+    expect(find.text('生产工单（LL-9）'), findsOneWidget);
+    expect(find.text('GD-A'), findsOneWidget);
+    expect(find.text('GD-B'), findsOneWidget);
+    expect(find.text('GD-C'), findsOneWidget);
+    // 带计划身份且有权看计划的前两个可跳详情；GD-C 无 planId 不出现入口。
+    expect(find.text('查看详情'), findsNWidgets(2));
+    await tester.tap(find.byKey(const ValueKey('multi-value-detail-GD-A')));
+    await tester.pumpAndSettle();
+    expect(harness.opened.single.path, '/production/plans/plan-1');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('生产工单格少量工单原样显示且仍可弹窗', (tester) async {
+    final draw = warehouseTestRecord(
+      source: 'DRAW',
+      record: 'STOCK_DOC',
+      id: 'draw-10',
+      billNo: 'LL-10',
+      productionOrderNo: 'GD-ONE',
+    );
+    await _pump(
+      tester,
+      WarehouseTaskRecordsFakeGateway([draw]),
+      permissions: {Perm.stockDocView},
+    );
+    expect(find.text('GD-ONE'), findsOneWidget);
+    await tester.tap(find.text('GD-ONE'));
+    await tester.pumpAndSettle();
+    expect(find.text('生产工单（LL-10）'), findsOneWidget);
+    // 载荷缺失（无 productionOrders）时不提供跳转入口，仅展示。
+    expect(find.text('查看详情'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

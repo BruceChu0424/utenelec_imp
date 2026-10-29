@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/web_update/web_update_safety.dart';
+import '../buttons/uten_close_button.dart';
 
 /// 可拖动、可缩放、可收起成悬浮球的无蒙版浮窗（2026-10-19「添加组件弹窗改浮窗核对」，
 /// 同日按用户反馈改为页面内常驻浮层，并带缩起/展开动画）。
@@ -55,6 +57,25 @@ class UtenFloatingWindow extends StatefulWidget {
 
 class UtenFloatingWindowState extends State<UtenFloatingWindow>
     with TickerProviderStateMixin {
+  bool _tickerVisible = true;
+  bool _routeVisible = true;
+
+  WebUpdateSafetyState _reloadSafety() {
+    var visible = mounted && _tickerVisible && _routeVisible;
+    if (visible) {
+      context.visitAncestorElements((ancestor) {
+        final widget = ancestor.widget;
+        if (widget is Offstage && widget.offstage ||
+            widget is Visibility && !widget.visible ||
+            widget is Opacity && widget.opacity == 0) {
+          visible = false;
+          return false;
+        }
+        return true;
+      });
+    }
+    return WebUpdateSafetyState(blocked: visible);
+  }
   static const double _handleThickness = 6;
   static const double _cornerExtent = 14;
   static const double _areaMargin = 8;
@@ -91,6 +112,10 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   @override
   void initState() {
     super.initState();
+    // This surface is not a Navigator route and may contain unregistered raw
+    // editors. Keep automatic reload/install waiting until the owner closes it,
+    // including while it is collapsed to its floating button.
+    webUpdateSafety.register(this, _reloadSafety);
     // morph 结束（收起完成/展开完成）时主动重建一次，让 build 从过渡帧切回
     // 球/窗口的稳态路径；过渡帧里内容以 Opacity 淡出，不重建就还会挂在树上。
     _morph.addStatusListener((status) {
@@ -103,7 +128,16 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tickerVisible = TickerMode.valuesOf(context).enabled;
+    _routeVisible = ModalRoute.isCurrentOf(context) ?? true;
+    webUpdateSafety.changed();
+  }
+
+  @override
   void dispose() {
+    webUpdateSafety.unregister(this);
     _morphCurve.dispose();
     _morph.dispose();
     super.dispose();
@@ -293,6 +327,7 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
 
   @override
   Widget build(BuildContext context) {
+    webUpdateSafety.changed();
     final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, area) {
@@ -589,18 +624,14 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
         children: [
           Expanded(child: dragArea),
           if (widget.headerTrailing != null) widget.headerTrailing!,
-          IconButton(
-            key: _collapseButtonKey,
-            tooltip: '缩小成悬浮球',
-            icon: const Icon(Icons.compress_rounded),
-            onPressed: _collapseFromButton,
-          ),
           Padding(
             padding: const EdgeInsets.only(right: UtenSpacing.s8),
-            child: IconButton(
-              tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-              icon: const Icon(Icons.close_rounded),
-              onPressed: widget.onClose,
+            child: UtenWindowControls(
+              minimizeButtonKey: _collapseButtonKey,
+              minimizeTooltip: '缩小成悬浮球',
+              showMinimize: true,
+              onMinimize: _collapseFromButton,
+              onClose: widget.onClose,
             ),
           ),
         ],

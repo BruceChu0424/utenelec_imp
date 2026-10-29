@@ -944,6 +944,8 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
     // 到货异常详情弹窗：文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
     return SelectionArea(
       child: UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.of(context).pop(),
         maxWidth: 920,
         scrollable: false,
         title: Row(
@@ -1077,10 +1079,6 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
           if (onStockIn != null)
             UtenButton(
               key: ValueKey('warehouse-arrival-exception-stock-in-${task.id}'),

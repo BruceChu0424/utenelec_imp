@@ -14,6 +14,14 @@
 - medium+ 正文通过 `Expanded` + `UtenContentContainer` 填满导航右侧可用区域，保留响应式 gutter；外壳和业务页面正文均无固定最大宽度，导航收起后表单、详情、通知、个人页面与表格随腾出的空间扩宽；
 - 2026-09-20 起窗口逻辑宽 >1920 时由 `app.dart` 根部的 `UtenDisplayZoomBox` 整体等比放大（画布定在 1920），2560 宽显示器看到的外壳/工作台与 1920 一致，不再出现两侧大留白（见 [02 §3.3.1](../00-项目准则/02-响应式与多端适配.md)）；字号档同样走整体缩放。
 
+### 桌面窗口顶栏与四角（2026-10-28）
+
+Windows / macOS 共用 `DesktopWindowHost` 的 36 逻辑像素控制区。按 `frontend-design` 和现有主题实现：浅色导航白底通过公共 `DesktopWindowHeaderSurface` 延伸到窗口顶边，仅覆盖侧栏对应宽度，右侧维持内容背景；深色跟随导航主题。延伸区域直接取侧栏实际布局与变换，展开、收起动画、窗口尺寸和个人界面倍率变化时保持对齐，不占用额外布局空间，也不接收点击或拖动。离开导航外壳的独立页面不保留这块底色，普通弹窗仍保留。缩放容器在 100% 与其他倍率间保持相同结构，避免重新挂接 Navigator、编辑器与浮层。
+
+两端原生窗口统一处理普通态四个 16 逻辑像素圆角，不能只在 Flutter 内画圆角而留下不透明窗口底角。Windows 最大化取消区域裁切，还原后恢复，并按 DPI 更新；macOS 普通窗口及 zoom 保留圆角，原生全屏取消、退出后恢复。登录窗口沿用同一原生入口。桌面窗口按钮继续复用公共 `UtenWindowControls`。
+
+回归入口：`test/shared/widgets/desktop_window_header_surface_test.dart`（真实侧栏、浅深主题、倍率、动画、尺寸变化、路由/弹窗和原生操作调用）、`desktop_window_host_test.dart`、`test/core/platform/desktop_window_test.dart` 与 `test/core/responsive/display_zoom*`，连同登录、灾备导航和外壳保活共 169 项 Flutter 回归通过，定向静态分析无问题。Windows 原生源码通过 MSVC 严格编译及 8 项隐藏 HWND 区域验证。记录位于 `output/desktop-window-chrome-20261028/verification.json`；Flutter 测试不代替 macOS 原生编译和两端实机拖拽、吸附、全屏验收。本次未生成或发布客户端包。
+
 ## 二、主导航与页面保活
 
 2026-09-30 起，大屏导航底部提供“收起导航栏 / 展开导航栏”按钮（含 Tooltip 与展开状态语义）。收起后保留四个图标、当前选中态与角标，鼠标悬停可看名称。收起偏好在当前外壳会话内保留，业务路由切换和临时缩窄窗口不会重置；重新进入外壳按屏宽 / 字号恢复默认。窄屏或大字号仍自动使用图标栏，不强行展开；compact 继续使用底部胶囊。外壳在展开、手动收起和自动图标态均不限制正文最大宽度，页面内普通 / `narrow` / `wide` 容器同样随父容器扩宽。切换仅改变导航宽度，内容组件树不换层，保留当前页面输入与滚动位置。回归见 `test/main_shell_navigation_collapse_test.dart`。

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -295,7 +296,7 @@ void main() {
       final harness = _Harness(allow: false);
       await harness.open(tester);
       expect(find.text('撤回本登记批'), findsNothing);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(harness.changed, isFalse);
       expect(harness.api.posts, isEmpty);

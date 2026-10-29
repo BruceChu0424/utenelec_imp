@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -203,12 +204,11 @@ class _PostingStyleRolePanelState extends ConsumerState<PostingStyleRolePanel> {
                     onPressed: _saving == null ? _load : null,
                     icon: const Icon(Icons.refresh),
                   ),
-                  IconButton(
+                  UtenCloseButton(
                     tooltip: '关闭',
                     onPressed: _saving == null
                         ? () => Navigator.of(context).pop()
                         : null,
-                    icon: const Icon(Icons.close),
                   ),
                 ],
               ),

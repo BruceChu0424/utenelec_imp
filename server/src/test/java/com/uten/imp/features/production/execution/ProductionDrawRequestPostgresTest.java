@@ -158,6 +158,7 @@ class ProductionDrawRequestPostgresTest {
         assertThat(preview.documentCount()).isEqualTo(2);
         assertThat(preview.summaries()).hasSize(2);
         assertThat(preview.lines()).extracting(Line::warehouseId).containsExactly(WH_A, WH_B);
+        assertThat(preview.lines()).extracting(Line::demandId).containsExactly(ITEM_A, ITEM_B);
         assertThat(requested(DRAW_A)).isFalse();
         assertThat(requested(DRAW_B)).isFalse();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM production_execution_segment_events", Integer.class)).isZero();
@@ -181,6 +182,9 @@ class ProductionDrawRequestPostgresTest {
 
     @Test void selectedQuantityKeepsDemandAndUnselectedWarehouseForTheNextRequest() {
         Preview original = preview();
+        assertThat(ProductionDrawRequestService.selectLines(original.lines(),
+                List.of(new Selection(ITEM_A, new BigDecimal("2"))))).extracting(Line::demandId)
+                .containsExactly(ITEM_A);
         SubmitRequest first = new SubmitRequest(List.of(new Item(SEGMENT, 1L)), "partial-draw-01",
                 original.fingerprint(), List.of(new Selection(ITEM_A, new BigDecimal("2"))));
         assertThat(commit(first).documentIds()).containsExactly(DRAW_A);

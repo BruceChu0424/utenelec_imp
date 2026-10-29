@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
 import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/models/company_file_upload.dart';
+import 'package:uten_imp/features/company_files/models/company_file_upload_rules.dart';
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
@@ -89,6 +90,8 @@ class _Attachments extends AttachmentService {
   int rawCount = 0, confirmCount = 0, presignCount = 0;
   bool loseConfirmationResponse = false;
   Attachment confirmation = _receipt;
+  final declaredTypes = <String>[];
+  final declaredNames = <String>[];
   Object? presignFailure;
   List<Attachment> receipts = [];
   @override
@@ -110,12 +113,14 @@ class _Attachments extends AttachmentService {
     required int sizeBytes,
   }) async {
     presignCount++;
+    declaredTypes.add(contentType);
+    declaredNames.add(fileName);
     if (presignFailure != null) throw presignFailure!;
-    return const PresignResult(
+    return PresignResult(
       storageKey: 'private/original',
       url: '/raw/private',
       method: 'PUT',
-      contentType: 'text/plain',
+      contentType: contentType,
       headers: {},
       formFields: {},
       confirmToken: 'private-token',
@@ -179,6 +184,44 @@ void main() {
       expect(attachments.rawCount, 1);
       expect(attachments.confirmCount, 1);
       expect(phases, contains(CompanyFileUploadState.verifying));
+    },
+  );
+
+  test(
+    'an opaque design original reconciles a lost receipt without reupload',
+    () async {
+      final repository = _Repository();
+      final attachments = _Attachments()..loseConfirmationResponse = true;
+      final file = CompanyFileUpload(
+        name: '品牌设计.cdr',
+        bytes: Uint8List.fromList([97, 98, 99]),
+        contentType: companyFileUploadContentType('品牌设计.cdr'),
+      );
+      final scope = await _scope();
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: scope,
+        parentId: 'design',
+        onChanged: () {},
+      );
+      expect(file.state, CompanyFileUploadState.unknown);
+      expect(repository.completeCount, 0);
+      await file.send(
+        repository: repository,
+        attachments: attachments,
+        scope: scope,
+        parentId: 'design',
+        onChanged: () {},
+      );
+      expect(file.complete, isTrue);
+      expect(attachments.declaredTypes, ['application/octet-stream']);
+      expect(attachments.declaredNames, ['品牌设计.cdr']);
+      expect(attachments.presignCount, 1);
+      expect(attachments.rawCount, 1);
+      expect(attachments.confirmCount, 1);
+      expect(repository.reserveCount, 1);
+      expect(repository.completeCount, 1);
     },
   );
 

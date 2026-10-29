@@ -1,5 +1,6 @@
 // ADR-117 车间侧：缺的料计划还没下单 → 状态列「等计划下单」、物料列点名、
 // 详情弹窗里「催计划」，以及冷却、没权限、计划其实已下单(服务端 409)这些边角。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -344,7 +345,7 @@ void main() {
     );
     expect(find.textContaining('已催 1 次'), findsOneWidget);
     expect(find.textContaining('王师傅'), findsOneWidget);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
 
     final gesture = await tester.startGesture(

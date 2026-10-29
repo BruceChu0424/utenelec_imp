@@ -5,6 +5,7 @@
 //  - 「新增地址」展开内联表单，提交即入库并自动选中回填；
 //  - 删除按钮仅持 client_address:delete 者可见，删除前二次确认（后端仍独立鉴权）；
 //  - 空态说明学习规则：保存出货单后会自动记住本次填写的地址。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -341,10 +342,9 @@ class _ClientShipAddressSheetState
                           ],
                         ),
                       ),
-                      IconButton(
+                      UtenCloseButton(
                         tooltip: '关闭',
                         onPressed: _busy ? null : () => _close(),
-                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),

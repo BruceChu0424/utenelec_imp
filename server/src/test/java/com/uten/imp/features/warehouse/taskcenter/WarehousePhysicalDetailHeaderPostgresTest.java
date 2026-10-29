@@ -62,7 +62,7 @@ class WarehousePhysicalDetailHeaderPostgresTest {
         var production=mock(ProductionStockTaskAccessPolicy.class);var workshop=mock(WorkshopMaterialScope.class);
         inbound=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper().findAndRegisterModules(),current,scopes,stock,production,workshop);
         var em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
-        outbound=new WarehouseOutboundTaskCenterQueryService(em,stock,current,scopes,production,mock(AuditDetailViewRecorder.class),workshop);
+        outbound=new WarehouseOutboundTaskCenterQueryService(em,stock,current,scopes,production,mock(AuditDetailViewRecorder.class),workshop,new ObjectMapper());
     }
     @AfterEach void rollback()throws Exception{if(connection!=null){connection.rollback();connection.close();}}
 

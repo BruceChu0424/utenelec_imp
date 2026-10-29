@@ -16,6 +16,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
@@ -514,7 +515,7 @@ void main() {
     expect(find.byKey(const ValueKey('dashboard-more-todo-t0')), findsNothing);
     expect(find.text('收起'), findsNothing);
 
-    await tester.tap(find.byType(CloseButton));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('dashboard-more-todo-t2')), findsNothing);
     expect(find.byKey(const ValueKey('dashboard-todo-t2')), findsNothing);
@@ -636,7 +637,7 @@ void main() {
     expect(find.text('隐藏报销审批'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('dashboard-todo-more')));
     await tester.pumpAndSettle();
-    expect(find.byType(CloseButton), findsOneWidget);
+    expect(find.byType(UtenCloseButton), findsOneWidget);
     expect(panelBarrier, findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('dashboard-more-todo-hidden')));
     await tester.pumpAndSettle();
@@ -647,7 +648,7 @@ void main() {
       'status': 'pending',
       'returnTo': '/dashboard',
     });
-    expect(find.byType(CloseButton), findsNothing);
+    expect(find.byType(UtenCloseButton), findsNothing);
     expect(panelBarrier, findsNothing);
     expect(router.canPop(), isFalse);
     expect(tester.takeException(), isNull);

@@ -2,11 +2,55 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
+  testWidgets('explicit window group replaces the default header close', (
+    tester,
+  ) async {
+    var closed = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLightTheme(),
+        home: Scaffold(
+          body: UtenDialogHeader(
+            title: const Text('文件预览'),
+            trailing: IconButton(
+              tooltip: '下载',
+              onPressed: () {},
+              icon: const Icon(Icons.download_outlined),
+            ),
+            showCloseButton: true,
+            onClose: () => throw StateError('default close must be replaced'),
+            windowControls: UtenWindowControls(
+              onClose: () => closed = true,
+              closeTooltip: '关闭',
+              showExpand: true,
+              onExpand: () {},
+              expandTooltip: '全屏',
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byTooltip('关闭'), findsOneWidget);
+    final download = tester.getRect(find.byTooltip('下载'));
+    final group = tester.getRect(find.byType(UtenWindowControls));
+    final close = tester.getRect(find.byTooltip('关闭'));
+    final expand = tester.getRect(find.byTooltip('全屏'));
+    expect(download.right, lessThanOrEqualTo(group.left));
+    expect(expand.right, closeTo(close.left, 0.01));
+    expect(close.right, closeTo(group.right, 0.01));
+    expect(close.center.dy, expand.center.dy);
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final width in [560.0, 160.0]) {
     for (final textScale in [1.0, 2.0]) {
       for (final dark in [false, true]) {

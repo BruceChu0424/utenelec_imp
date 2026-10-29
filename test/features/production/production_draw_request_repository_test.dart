@@ -7,6 +7,27 @@ import 'package:uten_imp/features/production/repositories/production_draw_reques
 import 'support/production_draw_request_fixture.dart';
 
 void main() {
+  test('dialog source restriction never expands same-material sources', () {
+    final json = productionDrawRequestFixture();
+    ((json['lines'] as List).first as Map<String, dynamic>)['demandId'] =
+        'demand-a';
+    final preview = ProductionDrawRequestPreview.fromJson(json);
+    final limited = preview.restrictToDrawItems({'line-b'});
+    expect(limited.fingerprint, preview.fingerprint);
+    expect(
+      limited.requestItems.map((item) => item.toJson()),
+      preview.requestItems.map((item) => item.toJson()),
+    );
+    expect(limited.lines.map((line) => line.drawItemId), ['line-b']);
+    expect(limited.summaries.single.qty, 4);
+    expect(limited.selectionsFor(limited.summaries.single, 4).single.toJson(), {
+      'drawItemId': 'line-b',
+      'quantity': 4.0,
+    });
+    expect(preview.lines.first.demandId, 'demand-a');
+    expect(preview.restrictToDrawItems({}).lines, isEmpty);
+    expect(preview.restrictToDrawItems({'stale-id'}).summaries, isEmpty);
+  });
   test(
     'partial request retains exact DRAW source UUIDs and quantity',
     () async {

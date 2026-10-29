@@ -1,110 +1,110 @@
-#uten-web-update-banner {
+#uten-web-update-dialog {
   position: fixed;
-  right: max(16px, env(safe-area-inset-right));
-  bottom: max(16px, env(safe-area-inset-bottom));
+  inset: 0;
   z-index: 2147483646;
-  display: flex;
-  gap: 20px;
-  align-items: center;
-  width: min(680px, calc(100vw - 32px));
+  display: grid;
+  place-items: center;
+  overflow: auto;
   box-sizing: border-box;
-  padding: 16px;
-  color: #101828;
-  background: #ffffff;
-  border: 1px solid #d0d5dd;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgb(16 24 40 / 18%);
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
+    max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  background: rgb(11 42 49 / 34%);
+  color: #142d36;
   font-family: inherit;
 }
-
-.uten-web-update-copy {
+.uten-web-update-card {
+  width: min(520px, 100%);
+  box-sizing: border-box;
+  padding: 28px;
+  border: 1px solid #c5dedb;
+  border-top: 5px solid #008f85;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 24px 80px rgb(10 38 44 / 24%);
+}
+.uten-web-update-brand {
   display: grid;
-  flex: 1;
-  gap: 4px;
-  min-width: 0;
-  font-size: 16px;
-  line-height: 1.5;
+  justify-items: start;
+  gap: 5px;
+  padding-bottom: 22px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid #e0ecea;
 }
-
-.uten-web-update-copy strong {
+.uten-web-update-brand strong { font-size: 17px; line-height: 1.5; }
+.uten-web-update-brand span { color: #546e76; font-size: 14px; line-height: 1.5; }
+.uten-web-update-card h2 { margin: 0 0 12px; font-size: 23px; line-height: 1.4; }
+.uten-web-update-card h2 span { font: inherit; white-space: nowrap; }
+.uten-web-update-card p {
+  min-height: 3.2em;
+  margin: 0 0 24px;
   font-size: 16px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
-
-.uten-web-update-actions {
+.uten-web-update-card .uten-web-update-suggestion { min-height: 0; margin-bottom: 8px; }
+.uten-web-update-card .uten-web-update-current-version { min-height: 0; margin-bottom: 18px; color: #546e76; font-size: 13px; }
+.uten-web-update-card .uten-web-update-countdown {
   display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  min-height: 0;
+  margin: -6px 0 16px;
 }
-
-.uten-web-update-actions button {
+.uten-web-update-card .uten-web-update-countdown[hidden] { display: none; }
+.uten-web-update-card .uten-web-update-countdown strong {
+  color: #087e75;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.uten-web-update-card .uten-web-update-countdown span { color: #546e76; font-size: 15px; }
+.uten-web-update-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 10px; }
+.uten-web-update-preference {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-height: 44px;
-  padding: 0 16px;
-  border-radius: 8px;
-  font: 600 16px/1 inherit;
+  margin: -8px 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
   cursor: pointer;
 }
-
-.uten-web-update-secondary {
-  color: #344054;
-  background: #ffffff;
-  border: 1px solid #d0d5dd;
+.uten-web-update-preference input { width: 18px; height: 18px; margin: 0; accent-color: #087e75; }
+.uten-web-update-preference input:focus-visible { outline: 3px solid #3bbfae; outline-offset: 3px; }
+.uten-web-update-actions button {
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
 }
-
-.uten-web-update-primary {
-  color: #ffffff;
-  background: #027a48;
-  border: 1px solid #027a48;
+.uten-web-update-secondary { color: #244b53; background: #ffffff; border: 1px solid #b5cbc8; }
+.uten-web-update-primary { color: #ffffff; background: #087e75; border: 1px solid #087e75; }
+.uten-web-update-actions button:focus-visible { outline: 3px solid #3bbfae; outline-offset: 3px; }
+.uten-web-update-actions button:disabled { cursor: default; opacity: 0.5; }
+@media (max-width: 480px) {
+  .uten-web-update-card { padding: 22px; }
+  .uten-web-update-actions { display: grid; grid-template-columns: 1fr; }
+  .uten-web-update-actions .uten-web-update-primary { grid-row: 1; }
 }
-
-.uten-web-update-actions button:focus-visible {
-  outline: 3px solid #84caff;
-  outline-offset: 2px;
+@media (max-height: 480px) {
+  #uten-web-update-dialog { align-items: start; }
 }
-
-.uten-web-update-actions button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-@media (max-width: 640px) {
-  #uten-web-update-banner {
-    right: 12px;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    left: 12px;
-    display: grid;
-    width: auto;
-    gap: 12px;
-  }
-
-  .uten-web-update-actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
 @media (prefers-color-scheme: dark) {
-  #uten-web-update-banner {
-    color: #f2f4f7;
-    background: #1d2939;
-    border-color: #475467;
-  }
-
-  .uten-web-update-secondary {
-    color: #f2f4f7;
-    background: #344054;
-    border-color: #667085;
-  }
-
-  .uten-web-update-primary {
-    background: #039855;
-    border-color: #039855;
-  }
+  #uten-web-update-dialog { color: #eaf4f3; background: rgb(4 16 21 / 60%); }
+  .uten-web-update-card { background: #17333d; border-color: #42616a; border-top-color: #42c9b4; }
+  .uten-web-update-brand { border-color: #36545f; }
+  .uten-web-update-brand span { color: #b6ccce; }
+  .uten-web-update-card .uten-web-update-current-version { color: #b6ccce; }
+  .uten-web-update-card .uten-web-update-countdown strong { color: #42c9b4; }
+  .uten-web-update-card .uten-web-update-countdown span { color: #b6ccce; }
+  .uten-web-update-secondary { color: #eaf4f3; background: #203f48; border-color: #63818a; }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  #uten-web-update-banner,
-  .uten-web-update-actions button {
-    scroll-behavior: auto;
-    transition: none;
-  }
+  #uten-web-update-dialog, .uten-web-update-actions button { scroll-behavior: auto; transition: none; }
 }

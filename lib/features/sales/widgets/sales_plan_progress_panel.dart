@@ -585,6 +585,8 @@ class _ProgressList extends ConsumerWidget {
   ) => showDialog<void>(
     context: context,
     builder: (dialogContext) => UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.of(dialogContext).pop(),
       maxWidth: 720,
       scrollable: false,
       title: Text('${line.goodsName ?? line.goodsCode ?? '产品'} · 进度来源'),
@@ -600,12 +602,6 @@ class _ProgressList extends ConsumerWidget {
           ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
     ),
   );
 

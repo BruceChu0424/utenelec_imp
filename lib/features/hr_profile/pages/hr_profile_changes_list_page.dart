@@ -28,6 +28,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -517,9 +518,16 @@ class _HrProfileChangesListPageState
       width: 280,
       info: '本批修改涉及的员工档案字段（顿号连接）；双击行可查看逐字段新旧值对比。',
       // 展示中文字段名（单一来源 ProfileFieldPolicy），机器码不露给用户。
+      // 屏幕格走多值截断+弹窗口径（2026-10-29）；value（导出）保留全量。
       value: (m) => m.fieldCodes
           .map((c) => ProfileFieldPolicy.labelOf(l10n, c))
           .join('、'),
+      cellBuilder: (context, m) => UtenMultiValueCell(
+        values: [
+          for (final code in m.fieldCodes) ProfileFieldPolicy.labelOf(l10n, code),
+        ],
+        title: '变更字段',
+      ),
     ),
     MasterColumnDef(
       key: 'submittedAt',

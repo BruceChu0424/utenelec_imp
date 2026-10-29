@@ -2,6 +2,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/material_aggregate_order.dart';
 
 void main() {
+  test(
+    'one material exceeding the order-group limit is rejected explicitly',
+    () {
+      expect(
+        () => materialAggregateRequestWindow(
+          {'many-rules': 1000},
+          requestGroupsByKey: {'many-rules': 501},
+        ),
+        throwsArgumentError,
+      );
+    },
+  );
   test('25000 source intents are submitted in bounded whole-group windows', () {
     final remaining = {for (var i = 0; i < 500; i++) 'material-$i': 50};
     final sizes = <int>[], seen = <String>{};

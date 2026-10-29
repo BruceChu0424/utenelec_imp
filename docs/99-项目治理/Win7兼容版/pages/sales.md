@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocDetailPage @97 (page-class)<br>_SalesDocDetailPageState @112 (state-class)<br>_KV @3280 (supporting-class)<br>_LineActionSheet @3292 (supporting-class)<br>_LineActionSheetState @3314 (state-class) |
-| 真实路由绑定 | /sales/:seg/:id；router @1840；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/:id；router @1841；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_shipment:reject @227；定义 lib/shared/auth/permissions.dart:314<br>sales_order:change_qty @239；定义 lib/shared/auth/permissions.dart:580<br>sales_order:stop @242；定义 lib/shared/auth/permissions.dart:579<br>sales_order:change_planned @246；定义 lib/shared/auth/permissions.dart:303<br>sales_order:cancel @271；定义 lib/shared/auth/permissions.dart:581<br>warehouse_sales_outbound:execute @294；定义 lib/shared/auth/permissions.dart:318<br>sales_return_quality:view @309；定义 lib/shared/auth/permissions.dart:325<br>sales_return_quality:correct @316；定义 lib/shared/auth/permissions.dart:745<br>sales_return_quality:dispose @323；定义 lib/shared/auth/permissions.dart:746<br>sales_quote:view @723；定义 lib/shared/auth/permissions.dart:297<br>sales_order:priority @1170；定义 lib/shared/auth/permissions.dart:308<br>sales_order:reallocate @1174；定义 lib/shared/auth/permissions.dart:311<br>finance:view:all @1402；定义 lib/shared/auth/permissions.dart:486<br>customer_prepayment:view @1403；定义 lib/shared/auth/permissions.dart:468<br>sales_shipment_finance:view @1547；定义 lib/shared/auth/permissions.dart:448<br>sales_quote:view @1809；定义 lib/shared/auth/permissions.dart:297<br>sales_shipment:view @2940；定义 lib/shared/auth/permissions.dart:312<br>purchase_order:view @2944；定义 lib/shared/auth/permissions.dart:93<br>subcontract_order:view @2948；定义 lib/shared/auth/permissions.dart:335<br>production_plan:view @2952；定义 lib/shared/auth/permissions.dart:374<br>production_material_analysis:view @2956；定义 lib/shared/auth/permissions.dart:388<br>sales_quote:view @2974；定义 lib/shared/auth/permissions.dart:297 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocEditPage @141 (page-class)<br>_SalesDocEditPageState @169 (state-class) |
-| 真实路由绑定 | /sales/:seg/new；router @1807；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @1830；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/new；router @1808；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @1831；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @313；定义 lib/shared/auth/permissions.dart:302<br>sales_quote:view @2904；定义 lib/shared/auth/permissions.dart:297<br>sales_quote:create @2904；定义 lib/shared/auth/permissions.dart:571<br>currency:create @4818；定义 lib/shared/auth/permissions.dart:554<br>settlement_method:create @4821；定义 lib/shared/auth/permissions.dart:567 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _SalesDocSeg @71 (supporting-class)<br>SalesDocListPage @99 (page-class)<br>_SalesDocListPageState @130 (state-class) |
-| 真实路由绑定 | /sales/:seg；router @1852；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg；router @1853；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @179；定义 lib/shared/auth/permissions.dart:302<br>sales_order:price:view @181；定义 lib/shared/auth/permissions.dart:302<br>sales_quote_finance:view @182；定义 lib/shared/auth/permissions.dart:462<br>sales_order:price:view @184；定义 lib/shared/auth/permissions.dart:302<br>sales_shipment_finance:view @185；定义 lib/shared/auth/permissions.dart:448<br>sales_shipment:create @361；定义 lib/shared/auth/permissions.dart:582<br>sales_quote:convert @366；定义 lib/shared/auth/permissions.dart:574<br>sales_order:create @367；定义 lib/shared/auth/permissions.dart:575 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesHubPage @42 (page-class)<br>_Entry @212 (supporting-class)<br>_EntryTile @239 (supporting-class) |
-| 真实路由绑定 | /sales；router @1757；builder ['SalesHubPage']；redirect None |
+| 真实路由绑定 | /sales；router @1758；builder ['SalesHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -76,12 +76,12 @@
 
 ## W7-BIZ-139 · lib/features/sales/pages/sales_order_progress_page.dart
 
-模块 `sales`；1026 行；SHA256 `00a18746bcf904f2d01f5eb6a42ea421c1f0c58f56011d488cce067c6fad11c8`。
+模块 `sales`；1026 行；SHA256 `268227da168ebad1c26596d5579f829bfa2664aaf9d520d3d8f9781b4b2d75a9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _ProgressSeg @84 (supporting-class)<br>SalesOrderProgressPage @132 (page-class)<br>_SalesOrderProgressPageState @152 (state-class) |
-| 真实路由绑定 | /sales/progress；router @1793；builder ['SalesOrderProgressPage']；redirect None |
+| 真实路由绑定 | /sales/progress；router @1794；builder ['SalesOrderProgressPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:delete @204；定义 lib/shared/auth/permissions.dart:576<br>sales_order:cancel @431；定义 lib/shared/auth/permissions.dart:581<br>sales_shipment:create @508；定义 lib/shared/auth/permissions.dart:582<br>sales_order:edit @514；定义 lib/shared/auth/permissions.dart:301<br>sales_order:edit @530；定义 lib/shared/auth/permissions.dart:301 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -94,17 +94,17 @@
 
 ## W7-BIZ-140 · lib/features/sales/pages/sales_report_page.dart
 
-模块 `sales`；1107 行；SHA256 `67fe91d979a129f2a1b788255e52a3f74cb9cea7cd69ab2ddf8c283bd589db62`。
+模块 `sales`；1103 行；SHA256 `4d46c0077776a0c081310f4fddf193ae8058242015b8964177f06f9714e24d5d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesReportPage @64 (page-class)<br>_SalesReportPageState @72 (state-class)<br>SalesClientDetailDialog @722 (supporting-class)<br>_SalesClientDetailDialogState @753 (state-class) |
-| 真实路由绑定 | detail；router @1771；builder ['SalesReportPage']；redirect None<br>summary；router @1777；builder ['SalesReportPage']；redirect None |
+| 真实路由绑定 | detail；router @1772；builder ['SalesReportPage']；redirect None<br>summary；router @1778；builder ['SalesReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_report:export @640；定义 lib/shared/auth/permissions.dart:327<br>sales_report:export @649；定义 lib/shared/auth/permissions.dart:327 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @133 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @163 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @210 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @321 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @432 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @436 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @635 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @647 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @703 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith(<br>addPostFrameCallback @783 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>remove @933 [action-like-invocation] 提示 ['remove']；_headers.remove(key);<br>_printLoader @949 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @953 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @1041 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton( |
+| 动作处理 | addPostFrameCallback @133 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @163 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @210 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @321 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @432 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @436 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @635 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @647 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @703 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith(<br>addPostFrameCallback @783 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>remove @933 [action-like-invocation] 提示 ['remove']；_headers.remove(key);<br>_printLoader @949 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @953 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @1037 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesScarcityPage @30 (page-class)<br>_SalesScarcityPageState @43 (state-class) |
-| 真实路由绑定 | /sales/scarcity；router @1785；builder ['SalesScarcityPage']；redirect None |
+| 真实路由绑定 | /sales/scarcity；router @1786；builder ['SalesScarcityPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -130,18 +130,18 @@
 
 ## W7-BIZ-142 · lib/features/sales/pages/sales_task_center_page.dart
 
-模块 `sales`；323 行；SHA256 `2b1a1657a3b4eccc4b9b8f4516fc5dd3ac85e695b5898cac77bec32f38a9895b`。
+模块 `sales`；326 行；SHA256 `5be191a4f67751c5123e3bb6794dc17c95a9cd97f7373f5d0960ee23ff3bf5da`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | _GroupSpec @52 (supporting-class)<br>SalesTaskCenterPage @66 (page-class)<br>_SalesTaskCenterPageState @77 (state-class)<br>_GroupPlaceholder @313 (supporting-class) |
-| 真实路由绑定 | /sales/tasks；router @1800；builder ['SalesTaskCenterPage']；redirect None |
+| 页面/状态类 | _GroupSpec @53 (supporting-class)<br>SalesTaskCenterPage @67 (page-class)<br>_SalesTaskCenterPageState @78 (state-class)<br>_GroupPlaceholder @316 (supporting-class) |
+| 真实路由绑定 | /sales/tasks；router @1801；builder ['SalesTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | CloseButton @199 [action-like-invocation] 提示 ['close']；? const CloseButton() |
+| 动作处理 | UtenCloseButton @205 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.maybePop(context)), |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/shared/drafts/form_drafts_page.dart` (sharedComponents)；`lib/shared/providers/document_status_counts_provider.dart` (sharedComponents)；`lib/shared/providers/draft_counts_provider.dart` (sharedComponents)；`lib/features/sales/models/sales_doc.dart` (models)；`lib/features/sales/pages/sales_doc_list_page.dart` (other)；`lib/features/sales/pages/sales_order_progress_page.dart` (other)；`lib/features/sales/config/sales_doc_config.dart` (other)。
+直接源依赖：`lib/components/buttons/uten_close_button.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/shared/drafts/form_drafts_page.dart` (sharedComponents)；`lib/shared/providers/document_status_counts_provider.dart` (sharedComponents)；`lib/shared/providers/draft_counts_provider.dart` (sharedComponents)；`lib/features/sales/models/sales_doc.dart` (models)；`lib/features/sales/pages/sales_doc_list_page.dart` (other)；`lib/features/sales/pages/sales_order_progress_page.dart` (other)；`lib/features/sales/config/sales_doc_config.dart` (other)。

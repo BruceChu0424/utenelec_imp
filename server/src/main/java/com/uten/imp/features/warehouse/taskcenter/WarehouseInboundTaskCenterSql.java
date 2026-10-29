@@ -79,7 +79,7 @@ final class WarehouseInboundTaskCenterSql {
                 + TaskKeywordSearch.rankNamesFirst(keyword, new String[]{}, new String[]{"goods_names"},
                         new String[]{"bill_no", "source_doc_no"}, "goods_codes")
                 + " AS keyword_rank FROM inbound_source_rows WHERE "
-                + TaskKeywordSearch.condition(keyword, "search_text", "warehouse_name", "responsible_name", "party_name")
+                + TaskKeywordSearch.condition(keyword, "search_text", "warehouse_name", "responsible_name", "maker_name", "party_name")
                 + " AND (" + headers + "))\n";
     }
 
@@ -163,6 +163,7 @@ final class WarehouseInboundTaskCenterSql {
                        expectation.bill_no_snapshot AS bill_no, NULL::text AS source_doc_no,
                        COALESCE(expectation.expected_date,(expectation.created_at AT TIME ZONE 'Asia/Shanghai')::date) AS business_date, supplier.name AS party_name,
                        selected_warehouse.name AS warehouse_name, owner.full_name AS responsible_name,
+                       NULL::text AS maker_name,
                        facts.line_count,
                        expectation.order_type || '_' || CASE
                          WHEN facts.exception_count > 0 THEN 'EXCESS_PENDING_FINANCE'
@@ -233,7 +234,8 @@ final class WarehouseInboundTaskCenterSql {
                 SELECT exception.id, exception.order_type AS source_type, 'ARRIVAL_EXCEPTION'::text AS record_type,
                        exception.receipt_bill_no_snapshot AS bill_no, exception.order_bill_no_snapshot AS source_doc_no,
                        (exception.detected_at AT TIME ZONE 'Asia/Shanghai')::date AS business_date, supplier.name AS party_name,
-                       warehouse.name AS warehouse_name, detector.full_name AS responsible_name, 1 AS line_count,
+                       warehouse.name AS warehouse_name, detector.full_name AS responsible_name, NULL::text AS maker_name,
+                       1 AS line_count,
                        exception.order_type || '_EXCEPTION_' || exception.status AS workflow_status,
                        'ARRIVAL_EXCEPTION'::text AS action, exception.id AS target_id,
                        jsonb_strip_nulls(jsonb_build_object('exceptionId',exception.id,
@@ -284,7 +286,8 @@ final class WarehouseInboundTaskCenterSql {
         return ("""
                 SELECT h.id, '%s'::text AS source_type, '%s_RECEIPT'::text AS record_type,
                        h.bill_no, h.source_doc_no, h.bill_date AS business_date, supplier.name AS party_name,
-                       COALESCE(physical.warehouse_name,warehouse.name) AS warehouse_name, COALESCE(NULLIF(h.maker_name,''),maker.full_name) AS responsible_name,
+                       COALESCE(physical.warehouse_name,warehouse.name) AS warehouse_name, NULL::text AS responsible_name,
+                       COALESCE(NULLIF(h.maker_name,''),maker.full_name) AS maker_name,
                        physical.line_count, '%s_' || (%s) AS workflow_status,
                        CASE WHEN h.status=1 AND inspection.receipt_id IS NOT NULL
                             THEN 'QUALITY_RESULT' ELSE 'HISTORY_DETAIL' END AS action, h.id AS target_id,
@@ -373,7 +376,8 @@ final class WarehouseInboundTaskCenterSql {
                             ELSE 'FINISHED_COUNT' END AS record_type,
                        COALESCE(task.document_no,task.report_nos) AS bill_no, task.plan_no AS source_doc_no,
                        task.document_date AS business_date, NULL::text AS party_name,
-                       COALESCE(physical.warehouse_name,task.warehouse_name) AS warehouse_name, NULL::text AS responsible_name, 1 AS line_count,
+                       COALESCE(physical.warehouse_name,task.warehouse_name) AS warehouse_name, NULL::text AS responsible_name,
+                       NULL::text AS maker_name, 1 AS line_count,
                        CASE WHEN task.task_stage='ARRIVAL_REGISTRATION' THEN 'FINISHED_READY_REGISTER'
                             WHEN task.residual_task THEN 'FINISHED_RESIDUAL_COUNT'
                             ELSE 'FINISHED_READY_COUNT' END AS workflow_status,
@@ -430,7 +434,8 @@ final class WarehouseInboundTaskCenterSql {
                 SELECT registration.id, 'FINISHED'::text AS source_type, 'FINISHED_REGISTRATION'::text AS record_type,
                        report.bill_no, sheet.sheet_no AS source_doc_no, report.bill_date AS business_date,
                        NULL::text AS party_name, registration.warehouse_name_snapshot AS warehouse_name,
-                       registration.receiver_name_snapshot AS responsible_name, facts.line_count,
+                       registration.receiver_name_snapshot AS responsible_name, NULL::text AS maker_name,
+                       facts.line_count,
                        CASE WHEN reversal.id IS NOT NULL THEN 'FINISHED_REGISTRATION_REVERSED'
                             WHEN report.status<>1 THEN 'FINISHED_SOURCE_REVERSED'
                             WHEN facts.active_count>0 AND facts.decided_count>0 THEN 'FINISHED_FQC_PARTIAL'
@@ -510,7 +515,8 @@ final class WarehouseInboundTaskCenterSql {
                        CASE document.doc_type WHEN 'FINISHED_IN' THEN 'FINISHED' WHEN 'WDRAW' THEN 'RETURN'
                             ELSE 'OTHER' END AS source_type, 'STOCK_DOCUMENT'::text AS record_type,
                        document.bill_no, document.source_doc_no, document.bill_date AS business_date,
-                       NULL::text AS party_name, COALESCE(physical.warehouse_name,warehouse.name) AS warehouse_name, maker.full_name AS responsible_name,
+                       NULL::text AS party_name, COALESCE(physical.warehouse_name,warehouse.name) AS warehouse_name,
+                       COALESCE(worker.full_name,'') AS responsible_name, maker.full_name AS maker_name,
                        physical.line_count,
                        CASE document.doc_type WHEN 'FINISHED_IN' THEN 'FINISHED_' WHEN 'WDRAW' THEN 'RETURN_'
                             ELSE 'OTHER_' END || CASE
@@ -541,6 +547,7 @@ final class WarehouseInboundTaskCenterSql {
                 FROM (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 LEFT JOIN employees maker ON maker.id=document.maker_id
+                LEFT JOIN employees worker ON worker.id=document.worker_id
                 LEFT JOIN LATERAL (
                     SELECT 1 AS line_count,item.id AS item_id,
                            concat_ws(' ',item.goods_code_snapshot,item.goods_name_snapshot,goods.code,goods.name) AS goods_text,

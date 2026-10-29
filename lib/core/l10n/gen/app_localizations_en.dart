@@ -12743,11 +12743,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get goodsImportTemplateHint =>
-      'Use an exported goods file to create or update records. Category (join its path with -) and goods name are required; code may be blank or the column may be removed. Keep the system identifier when updating. A blank or missing code keeps the original; an unused new code goes to review. Clear the system identifier for a new row and optionally enter a code. If an old identifier is absent from this database, match by code or create a record; a blank code is assigned automatically. Reused codes require the current goods identifier.';
+      'Use an exported goods file as a template. Category and goods name are required; use / between category levels. Keep the system identifier when updating existing goods. A blank or missing code keeps the original; a valid new code goes to review. To make copies, choose Create goods: original identifiers are ignored for matching and independent records are created. Leave codes blank for automatic assignment or enter valid new codes; occupied codes cause errors.';
 
   @override
   String get goodsImportMergeHint =>
-      'The system identifier selects the original goods; otherwise the code matches existing goods. When both are blank, each row creates new goods with an automatic code. A new code also creates a new variant. Names never identify goods, so colors, materials and specifications may differ. Updates fill missing values; review other differences and choose replace or ignore. Blank cells keep existing values. Deleted goods with the same code are restored from the file.';
+      'Update and mixed imports match existing goods only by a system identifier in the current database, never by code or name. A missing or unmatched identifier creates new goods in mixed mode and causes an error in update mode. New goods get automatic codes when blank; occupied codes cause errors. Changing category with the original identifier moves the original goods and BOM. Choose Create goods for copies. Empty values are filled; differences replace values by default, with a keep-original option for each row. Blank import cells keep existing values. Restore deleted goods in mixed mode with their original identifiers.';
 
   @override
   String get goodsImportUndoHint =>
@@ -13519,11 +13519,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get companyFilesUploadAccessTitle => 'Access for uploaded files';
 
   @override
-  String get companyFilesUploadAccessHint =>
-      'These settings are saved separately on each selected file and can be changed individually later.';
+  String get companyFilesSelectedFiles => 'Selected files';
 
   @override
-  String get companyFilesSelectedFiles => 'Selected files';
+  String get companyFilesAddFiles => 'Add more files';
+
+  @override
+  String get companyFilesRemoveSelectedFile => 'Remove selected file';
+
+  @override
+  String get companyFilesNoFilesSelected => 'No files selected';
+
+  @override
+  String get companyFilesAddFilesFailed =>
+      'Unable to add files. Please select them again.';
+
+  @override
+  String get companyFilesAlreadySelected =>
+      'A file with this name is already selected. Remove it before adding it again.';
 
   @override
   String get companyFilesCreateAccessHint =>

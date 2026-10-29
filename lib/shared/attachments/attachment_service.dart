@@ -12,17 +12,23 @@ import '../../core/network/api_client.dart';
 import '../../core/network/company_tls.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/api_mutation_reload_safety.dart';
 import '../../core/performance/responsive_data_codec.dart';
 import 'attachment.dart';
 
 class AttachmentService {
-  AttachmentService(this._api, {Dio? externalDio})
-    : _externalDio = externalDio ?? createCompanyDio(BaseOptions()),
-      _ownsExternalDio = externalDio == null;
+  AttachmentService(
+    this._api, {
+    Dio? externalDio,
+    ApiMutationReloadSafety? reloadSafety,
+  }) : _externalDio = externalDio ?? createCompanyDio(BaseOptions()),
+       _ownsExternalDio = externalDio == null,
+       _reloadSafety = reloadSafety ?? apiMutationReloadSafety;
 
   final ApiClient _api;
   final Dio _externalDio;
   final bool _ownsExternalDio;
+  final ApiMutationReloadSafety _reloadSafety;
   static const _base = '/attachments';
 
   void dispose() {
@@ -95,7 +101,7 @@ class AttachmentService {
     String? category,
     bool Function()? canContinue,
     Future<void> Function(PresignResult)? onPresigned,
-  }) async {
+  }) => _reloadSafety.track(() async {
     void checkScope() {
       if (canContinue != null && !canContinue()) {
         throw StateError('身份或上传权限已变化，原附件保留在本机');
@@ -130,7 +136,7 @@ class AttachmentService {
       sizeBytes: bytes.length,
       category: category,
     );
-  }
+  });
 
   Future<List<Attachment>> list({
     required String ownerType,
@@ -179,7 +185,10 @@ class AttachmentService {
   Future<Uint8List> employeeAvatarBytes(String employeeId) =>
       _api.getBytes(ApiEndpoints.employeeAvatar(employeeId));
 
-  Future<void> uploadBytes(PresignResult upload, Uint8List bytes) async {
+  Future<void> uploadBytes(
+    PresignResult upload,
+    Uint8List bytes,
+  ) => _reloadSafety.track(() async {
     final uploadUrl = upload.url;
     if (uploadUrl.startsWith('http://') || uploadUrl.startsWith('https://')) {
       // OSS 预签名 URL（跨域）：独立 Dio 直传，不带本应用鉴权头。
@@ -211,9 +220,11 @@ class AttachmentService {
         },
       );
     }
-  }
+  });
 
-  Future<Uint8List> downloadBytes(Attachment attachment) async {
+  Future<Uint8List> downloadBytes(
+    Attachment attachment,
+  ) => _reloadSafety.trackRead(() async {
     if (attachment.isReadOnly) {
       return _api.getBytes(
         '$_base/${Uri.encodeComponent(attachment.id)}/history/download',
@@ -250,7 +261,7 @@ class AttachmentService {
       );
     }
     return bytes;
-  }
+  });
 
   static void _requireInternalRawPath(String url) {
     // Never pass scheme-relative URLs, traversal or another API route to the
@@ -296,7 +307,7 @@ class AttachmentService {
     required String contentType,
     required int sizeBytes,
     String? category,
-  }) async {
+  }) => _reloadSafety.track(() async {
     final r = await _api.post(
       '$_base/confirm',
       body: {
@@ -311,7 +322,7 @@ class AttachmentService {
       },
     );
     return Attachment.fromJson(r);
-  }
+  });
 }
 
 final attachmentServiceProvider = Provider<AttachmentService>((ref) {

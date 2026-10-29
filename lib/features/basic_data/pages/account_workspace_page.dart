@@ -861,6 +861,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
       epoch,
       (context) => SelectionArea(
         child: UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
           key: const Key('master-batch-outcome'),
           scrollable: false,
           title: Text(
@@ -898,12 +900,6 @@ class _AccountPageState extends ConsumerState<AccountPage>
               ),
             ),
           ),
-          actions: [
-            UtenButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('知道了'),
-            ),
-          ],
         ),
       ),
     );

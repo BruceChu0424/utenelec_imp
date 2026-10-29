@@ -298,6 +298,15 @@ class _ServerUpdateSourceEditorState
     return PopScope(
       canPop: !_saving,
       child: UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _saving
+            ? null
+            : () {
+                if (_current && !_saving) Navigator.pop(context);
+              },
+        closeEnabled: !_saving,
+        closeButtonKey: const ValueKey('server-source-close'),
+        closeTooltip: _outcomeUnknown ? l.serverUpdateCloseTemporarily : '关闭',
         key: const ValueKey('server-source-dialog'),
         alignment: Alignment.center,
         maxWidth: 800,
@@ -446,18 +455,6 @@ class _ServerUpdateSourceEditorState
           ),
         ),
         actions: [
-          UtenButton(
-            key: const ValueKey('server-source-close'),
-            type: UtenButtonType.secondary,
-            onPressed: _saving
-                ? null
-                : () {
-                    if (_current && !_saving) Navigator.pop(context);
-                  },
-            child: Text(
-              _outcomeUnknown ? l.serverUpdateCloseTemporarily : '关闭',
-            ),
-          ),
           UtenButton(
             key: const ValueKey('server-source-save'),
             onPressed: _enabled && _source != null ? _save : null,

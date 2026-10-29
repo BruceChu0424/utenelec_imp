@@ -288,12 +288,92 @@ class AggregateMaterialOrderPreviewServiceTest {
         }
         GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(members,"20",false))),view(products,all)).groups().getFirst();
         assertThat(result.blockedReason()).isNull();
+        var sameKeys=view(products,all).aggregateRecipeKeysByMaterialLineId();
+        assertThat(sameKeys.get(members.getFirst().materialLineId())).isEqualTo(sameKeys.get(members.getLast().materialLineId()));
         // 共享子件按排序后第一条来源的采用量展开(20 件 × 该来源的真实用量)。
         int first=members.get(0).materialLineId().toString().compareTo(members.get(1).materialLineId().toString())<0?0:1;
         assertThat(result.sharedBomChildren().getFirst().requiredQty()).isEqualByComparingTo(qty(adopted[first]).multiply(qty("20")));
         when(all.get(3).designBomQty()).thenReturn(qty("3"));
+        var differentKeys=view(products,all).aggregateRecipeKeysByMaterialLineId();
+        assertThat(differentKeys.get(members.getFirst().materialLineId())).isNotEqualTo(differentKeys.get(members.getLast().materialLineId()));
         assertThat(service().resolve(ANALYSIS,request(List.of(group(members,"20",false))),view(products,all)).groups().getFirst().blockedReason())
                 .contains("冻结组件规则不同");
+    }
+
+    @Test void serverRecipePartitionsCanBeSubmittedTogetherWithoutChangingQuantitiesOrOriginalSources() {
+        List<MaterialView> members=new ArrayList<>(),all=new ArrayList<>();
+        UUID inputGoods=UUID.randomUUID();
+        for(int index=0;index<3;index++) {
+            UUID source=UUID.randomUUID();
+            MaterialView parent=material(source,"p"+index,"10");members.add(parent);all.add(parent);
+            MaterialView child=material(source,"p"+index+"/edge","1");
+            when(child.parentNodeKey()).thenReturn("p"+index);when(child.goodsId()).thenReturn(inputGoods);
+            when(child.level()).thenReturn(2);when(child.controlStage()).thenReturn("START");
+            when(child.consumptionBasis()).thenReturn("PER_UNIT");
+            when(child.bomQty()).thenReturn(qty(index==2?"3":"2"));when(child.basisOutputQty()).thenReturn(BigDecimal.ONE);
+            when(child.allowPartialPackage()).thenReturn(true);all.add(child);
+        }
+        AnalysisView snapshot=view(List.of(),all);
+        Map<UUID,String> keys=snapshot.aggregateRecipeKeysByMaterialLineId();
+        var partitions=members.stream().collect(java.util.stream.Collectors.groupingBy(row->keys.get(row.materialLineId())));
+        assertThat(partitions).hasSize(2);
+        List<GroupInput> inputs=new ArrayList<>();
+        for(var partition:partitions.entrySet()) {
+            GroupInput base=group(partition.getValue(),Integer.toString(partition.getValue().size()*10),false);
+            inputs.add(new GroupInput(partition.getKey(),base.materialLineIds(),base.route(),base.qty(),base.allowPublicExtra(),
+                    base.departmentId(),base.workerId(),base.teamDepartmentId(),base.billDate(),base.deliveryDate(),base.productNo(),
+                    base.allowedOverproductionRate(),base.safetyQty(),base.materialLineIds().stream().collect(java.util.stream.Collectors.toMap(id->id,id->qty("10")))));
+        }
+        Preview preview=service().resolve(ANALYSIS,request(inputs),snapshot);
+        assertThat(preview.groups()).hasSize(2).allSatisfy(group->{
+            assertThat(group.blockedReason()).isNull();assertThat(group.publicExtraQty()).isZero();
+            assertThat(group.sources()).allSatisfy(source->{
+                assertThat(source.allocatedQty()).isEqualByComparingTo("10");
+                assertThat(source.originalMaterialLineIds()).containsExactly(source.materialLineId());
+            });
+        });
+        assertThat(preview.groups().stream().map(GroupPreview::requestedQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("30");
+        assertThat(preview.groups().stream().flatMap(group->group.sources().stream()).map(SourcePreview::materialLineId))
+                .containsExactlyInAnyOrderElementsOf(members.stream().map(MaterialView::materialLineId).toList());
+        // Changing a frozen rule after review must change the same command fingerprint.
+        when(all.get(1).hardGate()).thenReturn(true);
+        assertThat(service().resolve(ANALYSIS,request(inputs),snapshot).previewFingerprint()).isNotEqualTo(preview.previewFingerprint());
+    }
+
+    @Test void recipeProjectionFollowsLiveAliasTargetsAndDoesNotPublishConflictingOrUnknownProof() {
+        MaterialView original=material(UUID.randomUUID(),"original","0");
+        MaterialView live=material(UUID.randomUUID(),"live","5");
+        MaterialView retired=material(UUID.randomUUID(),"retired","0");
+        MaterialView child=material(live.analysisLineId(),"live/edge","1");
+        when(child.parentNodeKey()).thenReturn("live");when(child.level()).thenReturn(2);when(child.bomQty()).thenReturn(BigDecimal.ONE);
+        when(original.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(retired.requiredQty()).thenReturn(BigDecimal.ZERO);when(retired.actionable()).thenReturn(false);
+        when(retired.requirementState()).thenReturn("DELEGATED_TO_MAKE_CHILD");
+        var targetIds=List.of(retired.materialLineId(),live.materialLineId());
+        when(original.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                qty("5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),
+                targetIds,true));
+        AnalysisView snapshot=view(List.of(),List.of(original,retired,live,child));
+        Map<UUID,String> keys=snapshot.aggregateRecipeKeysByMaterialLineId();
+        assertThat(keys.get(original.materialLineId())).isEqualTo(keys.get(live.materialLineId()));
+        assertThat(keys.get(original.materialLineId())).isNotEqualTo(keys.get(retired.materialLineId()));
+        // Restored demand at the original has a different recipe from the live target.
+        when(original.requiredQty()).thenReturn(qty("1"));
+        assertThat(snapshot.aggregateRecipeKeysByMaterialLineId()).doesNotContainKey(original.materialLineId());
+        when(original.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(original.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                qty("5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),List.of(UUID.randomUUID()),true));
+        assertThat(snapshot.aggregateRecipeKeysByMaterialLineId()).doesNotContainKey(original.materialLineId());
+    }
+
+    @Test void cyclicRecipesStayVisibleWithoutAdvertisingAMergeKeyAndRemainRejectedByAdmission() {
+        MaterialView parent=material(UUID.randomUUID(),"parent","1");
+        MaterialView child=material(parent.analysisLineId(),"child","1");
+        when(child.parentNodeKey()).thenReturn("parent");when(parent.parentNodeKey()).thenReturn("child");
+        AnalysisView snapshot=view(List.of(),List.of(parent,child));
+        assertThat(snapshot.aggregateRecipeKeysByMaterialLineId()).isEmpty();
+        assertThatThrownBy(()->service().resolve(ANALYSIS,request(List.of(group(List.of(parent),"1",false))),snapshot))
+                .isInstanceOf(ApiException.class).hasMessageContaining("组件结构存在循环");
     }
 
     /** ADR-129 §2.10：没填允许超产比例按货品默认，读不到默认时明确拒绝，不再静默按 0。 */

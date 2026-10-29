@@ -8,7 +8,6 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -147,17 +146,6 @@ class _SubcontractApplicationKitDialogState
                     ),
                   ),
                 ),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenDialogActions(
-                padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.ghost,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('关闭'),
-                  ),
-                ],
-              ),
             ],
           ),
         ),

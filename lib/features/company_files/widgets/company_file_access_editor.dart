@@ -42,13 +42,9 @@ class CompanyFileScopeBoundary extends StatelessWidget {
       isCurrent: isCurrent,
       child: child,
       invalidatedBuilder: (context) => UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context),
         title: Text(l.companyFilesPermissionDenied),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(l.companyFilesClose),
-          ),
-        ],
       ),
     );
   }

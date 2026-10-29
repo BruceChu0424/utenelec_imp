@@ -697,101 +697,121 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     }
   }
 
-  // 屏幕预览的工具条与纸面可以滚动；PDF 的纸张、字号和分页保持原契约。
+  // 标题与关闭固定可达，工具条与纸面继续滚动；PDF 的纸张、字号和分页保持原契约。
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final table = _table;
+    final previewTitle = _invalidated ? '预览已失效' : '预览 · ${widget.title}';
     return UtenDialogFrame(
       maxWidth: 1080,
       fillHeight: true,
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: NestedScrollView(
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          SliverToBoxAdapter(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                UtenDialogHeader(
-                  title: Text(_invalidated ? '预览已失效' : '预览 · ${widget.title}'),
-                  icon: Icons.print_outlined,
-                  showCloseButton: true,
-                  onClose: () => Navigator.of(context).pop(),
-                ),
-                UtenDialogActions(
-                  showDivider: false,
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
-                  children: [
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      size: UtenButtonSize.small,
-                      icon: Icons.print_outlined,
-                      isLoading: _printing,
-                      onPressed:
-                          (table == null || table.rows.isEmpty || _printing)
-                          ? null
-                          : _print,
-                      child: const Text('打印'),
-                    ),
-                    if (widget.exportEndpoint != null)
-                      UtenExportButton(
-                        endpoint: widget.exportEndpoint!,
-                        report: widget.exportReport ?? '',
-                        queryParams: widget.exportQuery ?? const {},
-                        bodyParams: {
-                          ...?widget.exportBody,
-                          if (widget.projection != null)
-                            'columnProjection': widget.projection!.toJson(),
-                        },
-                        filename: widget.exportFilename ?? widget.title,
-                        requiredPermission: widget.exportPermission,
-                        enabled: !_invalidated,
-                        prepareExport: () async {
-                          final version = _contextVersion;
-                          return UtenExportSelection(
-                            stillCurrent: () => _isCurrent(version),
-                          );
-                        },
-                        label: '下载Excel',
-                      ),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.close_rounded,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('关闭'),
-                    ),
-                  ],
-                ),
-                const Divider(height: 1),
-              ],
-            ),
-          ),
-        ],
-        body: Container(
-          color: theme.colorScheme.surfaceContainerHighest,
-          child: _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Text(_error!),
-                )
-              : table == null
-              ? const SizedBox(
-                  height: 160,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              : Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    primary: false,
-                    child: SizedBox(
-                      width: 1000,
-                      child: _paperSelection(_a4Pages(theme, table)),
-                    ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compactHeader = constraints.maxHeight < 360;
+          return Column(
+            children: [
+              UtenDialogHeader(
+                title: Tooltip(
+                  message: previewTitle,
+                  child: Text(
+                    previewTitle,
+                    maxLines: compactHeader ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-        ),
+                icon: compactHeader ? null : Icons.print_outlined,
+                padding: compactHeader
+                    ? const EdgeInsets.fromLTRB(16, 8, 8, 8)
+                    : null,
+                showCloseButton: true,
+                onClose: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: NestedScrollView(
+                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                    SliverToBoxAdapter(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          UtenDialogActions(
+                            showDivider: false,
+                            padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
+                            children: [
+                              UtenButton(
+                                type: UtenButtonType.tonal,
+                                size: UtenButtonSize.small,
+                                icon: Icons.print_outlined,
+                                isLoading: _printing,
+                                onPressed:
+                                    (table == null ||
+                                        table.rows.isEmpty ||
+                                        _printing)
+                                    ? null
+                                    : _print,
+                                child: const Text('打印'),
+                              ),
+                              if (widget.exportEndpoint != null)
+                                UtenExportButton(
+                                  endpoint: widget.exportEndpoint!,
+                                  report: widget.exportReport ?? '',
+                                  queryParams: widget.exportQuery ?? const {},
+                                  bodyParams: {
+                                    ...?widget.exportBody,
+                                    if (widget.projection != null)
+                                      'columnProjection': widget.projection!
+                                          .toJson(),
+                                  },
+                                  filename:
+                                      widget.exportFilename ?? widget.title,
+                                  requiredPermission: widget.exportPermission,
+                                  enabled: !_invalidated,
+                                  prepareExport: () async {
+                                    final version = _contextVersion;
+                                    return UtenExportSelection(
+                                      stillCurrent: () => _isCurrent(version),
+                                    );
+                                  },
+                                  label: '下载Excel',
+                                ),
+                            ],
+                          ),
+                          const Divider(height: 1),
+                        ],
+                      ),
+                    ),
+                  ],
+                  body: Container(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    child: _error != null
+                        ? Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s16),
+                            child: Text(_error!),
+                          )
+                        : table == null
+                        ? const SizedBox(
+                            height: 160,
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        : Padding(
+                            padding: const EdgeInsets.all(UtenSpacing.s16),
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              primary: false,
+                              child: SizedBox(
+                                width: 1000,
+                                child: _paperSelection(_a4Pages(theme, table)),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

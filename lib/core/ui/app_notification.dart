@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/inputs/uten_field_message.dart';
+import '../../components/buttons/uten_close_button.dart';
 import '../network/api_error.dart';
 import '../network/api_exception.dart';
 import '../theme/uten_colors.dart';
@@ -871,19 +872,11 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                       ),
                   ],
                 ),
-                trailing: IconButton(
-                  icon: Icon(
-                    Icons.close_rounded,
-                    color: fg,
-                    size: 18,
-                    semanticLabel: '关闭通知',
-                  ),
+                trailing: UtenCloseButton(
                   onPressed: _dismiss,
-                  tooltip: hasOverlay ? '关闭通知' : null,
-                  constraints: const BoxConstraints(
-                    minWidth: 48,
-                    minHeight: 48,
-                  ),
+                  tooltip: '关闭通知',
+                  showTooltip: hasOverlay,
+                  desktopHitExtent: 48,
                 ),
               ), // UtenTopBannerCard
             ), // Dismissible

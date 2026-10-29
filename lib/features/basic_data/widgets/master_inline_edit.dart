@@ -20,6 +20,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/web_update/web_update_safety.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../shared/drafts/form_draft_navigation.dart';
@@ -1300,16 +1301,32 @@ class MasterInlineEditGuard<T> extends StatefulWidget {
 
 class _MasterInlineEditGuardState<T> extends State<MasterInlineEditGuard<T>> {
   bool _routerGuard = false;
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    dirty: widget.controller.dirty,
+    busy:
+        widget.controller.busy ||
+        widget.controller.preparing ||
+        widget.controller._validationPending.isNotEmpty,
+    blocked:
+        widget.controller._creation.hasUncertain ||
+        widget.controller._leaveDecision != null,
+  );
+
+  void _reloadSafetyChanged() => webUpdateSafety.changed();
   @override
   void initState() {
     super.initState();
     _activeMasterEditGuards.add(this);
+    widget.controller.addListener(_reloadSafetyChanged);
+    webUpdateSafety.register(this, _reloadSafety);
   }
 
   @override
   void dispose() {
     _activeMasterEditGuards.remove(this);
+    widget.controller.removeListener(_reloadSafetyChanged);
     FormDraftNavigation.unregister(this);
+    FormDraftNavigation.unregisterReloadSafety(this);
     super.dispose();
   }
 
@@ -1321,15 +1338,22 @@ class _MasterInlineEditGuardState<T> extends State<MasterInlineEditGuard<T>> {
     // Imperative routes have no independent GoRouter page identity. Resolve
     // that boundary before the lookup can subscribe to a parent registry.
     FormDraftNavigation.unregister(this);
+    webUpdateSafety.register(this, _reloadSafety);
     _routerGuard = false;
     if (ModalRoute.of(context)?.settings is! Page) return;
     try {
       final state = GoRouterState.of(context);
+      FormDraftNavigation.registerReloadSafety(
+        this,
+        state.uri.path,
+        _reloadSafety,
+      );
       FormDraftNavigation.register(
         this,
         state.uri.path,
         confirmLeave,
         pageKey: state.pageKey,
+        reloadSafety: _reloadSafety,
       );
       _routerGuard = true;
     } catch (_) {
@@ -1340,6 +1364,11 @@ class _MasterInlineEditGuardState<T> extends State<MasterInlineEditGuard<T>> {
   @override
   void didUpdateWidget(covariant MasterInlineEditGuard<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_reloadSafetyChanged);
+      widget.controller.addListener(_reloadSafetyChanged);
+      webUpdateSafety.changed();
+    }
     if (oldWidget.authorityKey != widget.authorityKey) {
       widget.controller.invalidateAuthority();
       WidgetsBinding.instance.addPostFrameCallback((_) {

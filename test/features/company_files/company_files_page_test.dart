@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/rendering.dart';
@@ -16,7 +17,9 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu_policy.dart';
+import 'package:uten_imp/components/inputs/uten_drop_target.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
@@ -34,6 +37,7 @@ import 'package:uten_imp/features/company_files/widgets/company_file_detail_row.
 import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_dialogs.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
+import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/attachment_preview_dialog.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -402,6 +406,8 @@ class _TextAttachments extends AttachmentService {
 
 class _CopyAttachments extends _TextAttachments {
   int presignCount = 0, rawCount = 0, confirmCount = 0;
+  String expectedContentType = 'text/plain';
+  final uploadedNames = <String>[];
   final owners = <String>[];
   final receipts = <String, Attachment>{};
 
@@ -421,9 +427,11 @@ class _CopyAttachments extends _TextAttachments {
   }) async {
     presignCount++;
     owners.add(ownerId);
-    expect(ownerType, 'COMPANY_FILE');
-    expect(sizeBytes, 3);
-    expect(contentType, 'text/plain');
+    // These callbacks can run while the drop test is pumping another zone.
+    expectSync(ownerType, 'COMPANY_FILE');
+    expectSync(sizeBytes, 3);
+    expectSync(contentType, expectedContentType);
+    uploadedNames.add(fileName);
     return PresignResult(
       storageKey: 'private/$ownerId',
       url: '/raw/$ownerId',
@@ -438,7 +446,7 @@ class _CopyAttachments extends _TextAttachments {
   @override
   Future<void> uploadBytes(PresignResult upload, Uint8List bytes) async {
     rawCount++;
-    expect(bytes, [97, 98, 99]);
+    expectSync(bytes, [97, 98, 99]);
   }
 
   @override
@@ -467,6 +475,63 @@ class _CopyAttachments extends _TextAttachments {
     receipts[ownerId] = receipt;
     return receipt;
   }
+}
+
+class _LibraryPicker extends FilePicker {
+  _LibraryPicker(this.files, {this.cancel = false, this.gate});
+  final List<PlatformFile> files;
+  final bool cancel;
+  final Completer<FilePickerResult?>? gate;
+  int calls = 0;
+  FileType? requestedType;
+  List<String>? requestedExtensions;
+  bool? requestedMultiple, requestedReadStream, requestedCompression;
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    void Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    calls++;
+    requestedType = type;
+    requestedExtensions = allowedExtensions;
+    requestedMultiple = allowMultiple;
+    requestedReadStream = withReadStream;
+    requestedCompression = allowCompression;
+    if (gate != null) return gate!.future;
+    return cancel ? null : FilePickerResult(files);
+  }
+}
+
+PlatformFile _selectedUploadFile(String name) =>
+    PlatformFile(name: name, size: 3, readStream: Stream.value([97, 98, 99]));
+
+Finder _selectedUploadName(String name) => find.descendant(
+  of: find.byKey(const ValueKey('company-upload-selected-files')),
+  matching: find.text(name),
+);
+
+void _expectNoUploadWrites(
+  _Repository repository,
+  _CopyAttachments attachments,
+) {
+  expect(repository.reservations, isEmpty);
+  expect(repository.completions, isEmpty);
+  expect(repository.accessWrites, 0);
+  expect(repository.passwordWrites, 0);
+  expect(attachments.presignCount, 0);
+  expect(attachments.rawCount, 0);
+  expect(attachments.confirmCount, 0);
 }
 
 Future<ProviderContainer> _mount(
@@ -602,6 +667,7 @@ Future<void> _paste(WidgetTester tester) async {
 Future<void> _confirmCopy(
   WidgetTester tester, {
   bool requireBothDialogs = true,
+  String copyName = '说明副本.txt',
 }) async {
   final nameDialog = find.byType(CompanyFileNameDialog);
   if (requireBothDialogs) expect(nameDialog, findsOneWidget);
@@ -609,7 +675,7 @@ Future<void> _confirmCopy(
     final name = find
         .descendant(of: nameDialog, matching: find.byType(EditableText))
         .first;
-    await tester.enterText(name, '说明副本.txt');
+    await tester.enterText(name, copyName);
     await _tap(tester, find.text('粘贴').hitTestable());
   }
   final accessDialog = find.byType(CompanyFileUploadAccessDialog);
@@ -632,6 +698,369 @@ void main() {
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
+  setUp(() => FilePicker.platform = _LibraryPicker([]));
+
+  testWidgets('all-format picker preserves design and model originals', (
+    tester,
+  ) async {
+    final repository = _Repository()..items = [];
+    final attachments = _CopyAttachments()
+      ..expectedContentType = 'application/octet-stream';
+    const names = ['品牌设计.CDR', '零件.dwg', '模型.STEP', '场景.blend', '无扩展名原件'];
+    final originalPicker = FilePicker.platform;
+    final picker = _LibraryPicker([
+      for (final name in names)
+        PlatformFile(
+          name: name,
+          size: 3,
+          readStream: Stream.value([97, 98, 99]),
+        ),
+    ]);
+    FilePicker.platform = picker;
+    addTearDown(() => FilePicker.platform = originalPicker);
+    await _mount(tester, repository, attachments: attachments);
+    await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+    expect(picker.requestedType, FileType.any);
+    expect(picker.requestedExtensions, isNull);
+    expect(picker.requestedMultiple, isTrue);
+    expect(picker.requestedReadStream, isTrue);
+    expect(picker.requestedCompression, isFalse);
+    expect(find.byType(CompanyFileUploadAccessDialog), findsOneWidget);
+    expect(find.textContaining('支持所有格式上传'), findsNothing);
+    expect(find.byType(AttachmentKindIcon), findsWidgets);
+    await _capture(tester, 'all-format-upload-access');
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(repository.reservations.map((r) => r.name), names);
+    expect(attachments.uploadedNames, names);
+    expect(attachments.rawCount, names.length);
+    expect(attachments.confirmCount, names.length);
+    expect(repository.completions, hasLength(names.length));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('drop upload uses the same opaque original contract', (
+    tester,
+  ) async {
+    final repository = _Repository()..items = [];
+    final attachments = _CopyAttachments()
+      ..expectedContentType = 'application/octet-stream';
+    await _mount(tester, repository, attachments: attachments);
+    final target = tester.widget<UtenDropTarget>(find.byType(UtenDropTarget));
+    target.onFiles([
+      PlatformFile(
+        name: '打印模型.stl',
+        size: 3,
+        bytes: Uint8List.fromList([97, 98, 99]),
+      ),
+    ]);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byType(CompanyFileUploadAccessDialog), findsOneWidget);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(attachments.uploadedNames, ['打印模型.stl']);
+    expect(repository.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('upload selection removes adds and deduplicates before writing', (
+    tester,
+  ) async {
+    final repository = _Repository()..items = [];
+    final attachments = _CopyAttachments();
+    FilePicker.platform = _LibraryPicker([
+      _selectedUploadFile('remove.txt'),
+      _selectedUploadFile('keep.txt'),
+    ]);
+    await _mount(tester, repository, attachments: attachments);
+    await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+    _expectNoUploadWrites(repository, attachments);
+
+    await _tap(tester, find.byKey(const ValueKey('company-upload-remove-0')));
+    expect(_selectedUploadName('remove.txt'), findsNothing);
+    expect(_selectedUploadName('keep.txt'), findsOneWidget);
+    final additional = _LibraryPicker([
+      _selectedUploadFile(' keep.TXT '),
+      _selectedUploadFile('added.txt'),
+      _selectedUploadFile('remove.txt'),
+      _selectedUploadFile('added.txt'),
+    ]);
+    FilePicker.platform = additional;
+    await _tap(tester, find.byKey(const ValueKey('company-upload-add-files')));
+    expect(additional.calls, 1);
+    for (final name in ['keep.txt', 'added.txt', 'remove.txt']) {
+      expect(_selectedUploadName(name), findsOneWidget);
+    }
+    expect(_selectedUploadName(' keep.TXT '), findsNothing);
+    _expectNoUploadWrites(repository, attachments);
+
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    expect(attachments.uploadedNames, ['keep.txt', 'added.txt', 'remove.txt']);
+    expect(repository.reservations.map((value) => value.name), [
+      'keep.txt',
+      'added.txt',
+      'remove.txt',
+    ]);
+    expect(repository.reservationRequestIds.toSet(), hasLength(3));
+    expect(attachments.rawCount, 3);
+    expect(repository.completions, hasLength(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('upload selection picker cancellation preserves private draft', (
+    tester,
+  ) async {
+    final repository = _Repository()..items = [];
+    final attachments = _CopyAttachments();
+    FilePicker.platform = _LibraryPicker([_selectedUploadFile('private.txt')]);
+    await _mount(tester, repository, attachments: attachments);
+    await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+    await _tap(tester, find.byKey(const Key('initial-access-inherit')));
+    await _tap(tester, find.byKey(const Key('initial-access-password-switch')));
+    await tester.enterText(
+      _input('initial-access-password'),
+      'Private-draft-123',
+    );
+    await tester.enterText(
+      _input('initial-access-password-repeat'),
+      'Private-draft-123',
+    );
+    final canceledPicker = _LibraryPicker([], cancel: true);
+    FilePicker.platform = canceledPicker;
+    final addFiles = find.byKey(const ValueKey('company-upload-add-files'));
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await Scrollable.ensureVisible(tester.element(addFiles), alignment: .5);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+    }
+    await tester.tap(addFiles);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(canceledPicker.calls, 1);
+    expect(_selectedUploadName('private.txt'), findsOneWidget);
+    expect(
+      tester
+          .widget<EditableText>(_input('initial-access-password'))
+          .controller
+          .text,
+      'Private-draft-123',
+    );
+    expect(
+      tester
+          .widget<EditableText>(_input('initial-access-password-repeat'))
+          .controller
+          .text,
+      'Private-draft-123',
+    );
+    _expectNoUploadWrites(repository, attachments);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    final access =
+        repository.reservations.single.access! as CompanyFileInitialAccessDraft;
+    expect(access.inheritPermissions, isTrue);
+    expect(access.rules, isEmpty);
+    expect(access.password, 'Private-draft-123');
+    expect(attachments.uploadedNames, ['private.txt']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'upload selection cancellation discards local additions without writes',
+    (tester) async {
+      final repository = _Repository()..items = [];
+      final attachments = _CopyAttachments();
+      FilePicker.platform = _LibraryPicker([
+        _selectedUploadFile('initial.txt'),
+      ]);
+      await _mount(tester, repository, attachments: attachments);
+      await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+      FilePicker.platform = _LibraryPicker([_selectedUploadFile('added.txt')]);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(_selectedUploadName('added.txt'), findsOneWidget);
+      _expectNoUploadWrites(repository, attachments);
+      await _tap(
+        tester,
+        find
+            .descendant(
+              of: find.byType(CompanyFileUploadAccessDialog),
+              matching: find.text('取消'),
+            )
+            .hitTestable(),
+      );
+      expect(find.byType(CompanyFileUploadAccessDialog), findsNothing);
+      _expectNoUploadWrites(repository, attachments);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('upload selection empty list can add again before confirming', (
+    tester,
+  ) async {
+    final repository = _Repository()..items = [];
+    final attachments = _CopyAttachments();
+    FilePicker.platform = _LibraryPicker([_selectedUploadFile('again.txt')]);
+    await _mount(tester, repository, attachments: attachments);
+    await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+    await _tap(tester, find.byKey(const ValueKey('company-upload-remove-0')));
+    expect(_selectedUploadName('again.txt'), findsNothing);
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const ValueKey('company-initial-access-confirm')),
+          )
+          .onPressed,
+      isNull,
+    );
+    _expectNoUploadWrites(repository, attachments);
+    FilePicker.platform = _LibraryPicker([_selectedUploadFile('again.txt')]);
+    await _tap(tester, find.byKey(const ValueKey('company-upload-add-files')));
+    expect(_selectedUploadName('again.txt'), findsOneWidget);
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    expect(attachments.uploadedNames, ['again.txt']);
+    expect(repository.reservations, hasLength(1));
+    expect(repository.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'upload selection copy removal avoids source read and accepts local replacement',
+    (tester) async {
+      final repository = _Repository()..items = [_textEntry()];
+      final attachments = _CopyAttachments();
+      await _mount(tester, repository, attachments: attachments);
+      await _copySource(tester);
+      await _paste(tester);
+      final nameDialog = find.byType(CompanyFileNameDialog);
+      await tester.enterText(
+        find
+            .descendant(of: nameDialog, matching: find.byType(EditableText))
+            .first,
+        'copy.txt',
+      );
+      await _tap(tester, find.text('粘贴').hitTestable());
+      expect(_selectedUploadName('copy.txt'), findsOneWidget);
+      expect(attachments.downloadCount, 0);
+      _expectNoUploadWrites(repository, attachments);
+      await _tap(tester, find.byKey(const ValueKey('company-upload-remove-0')));
+      FilePicker.platform = _LibraryPicker([
+        _selectedUploadFile('replacement.txt'),
+      ]);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(_selectedUploadName('copy.txt'), findsNothing);
+      expect(_selectedUploadName('replacement.txt'), findsOneWidget);
+      expect(attachments.downloadCount, 0);
+      _expectNoUploadWrites(repository, attachments);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+      );
+      expect(attachments.downloadCount, 0);
+      expect(attachments.reads, isEmpty);
+      expect(attachments.uploadedNames, ['replacement.txt']);
+      expect(repository.reservations.single.name, 'replacement.txt');
+      expect(repository.completions, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'upload selection rejects late picker results after identity A B A',
+    (tester) async {
+      final repository = _Repository()..items = [];
+      final attachments = _CopyAttachments();
+      FilePicker.platform = _LibraryPicker([
+        _selectedUploadFile('initial.txt'),
+      ]);
+      final container = await _mount(
+        tester,
+        repository,
+        attachments: attachments,
+      );
+      await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+      final gate = Completer<FilePickerResult?>();
+      final latePicker = _LibraryPicker([], gate: gate);
+      FilePicker.platform = latePicker;
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(latePicker.calls, 1);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('company-initial-access-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+      container.read(_testIdentity.notifier).state = _identity('B');
+      await tester.pump();
+      container.read(_testIdentity.notifier).state = _identity('A');
+      await tester.pump();
+      gate.complete(FilePickerResult([_selectedUploadFile('late.txt')]));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.text('late.txt'), findsNothing);
+      _expectNoUploadWrites(repository, attachments);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'folder symbols keep Windows yellow in ${dark ? 'dark' : 'light'} theme',
+      (tester) async {
+        await _mount(tester, _Repository(), dark: dark);
+        final expected = dark
+            ? UtenFileColors.folderOnDark
+            : UtenFileColors.folder;
+        for (final data in [
+          Icons.folder_rounded,
+          Icons.folder_copy_outlined,
+          Icons.folder_open_outlined,
+        ]) {
+          final icons = tester.widgetList<Icon>(find.byIcon(data));
+          expect(icons, isNotEmpty);
+          expect(icons.every((icon) => icon.color == expected), isTrue);
+        }
+        await _capture(
+          tester,
+          dark ? 'folder-yellow-dark' : 'folder-yellow-light',
+        );
+        await _tap(tester, find.byKey(const ValueKey('forms')));
+        final details = find.byType(CompanyFileIcon);
+        expect(details, findsWidgets);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'page input translates display pages to zero-based file queries',
     (tester) async {
@@ -1272,6 +1701,35 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('pasting a design original uses the same opaque upload policy', (
+    tester,
+  ) async {
+    final repository = _Repository()
+      ..items = [
+        const CompanyFile(
+          id: 'text',
+          name: '品牌设计.cdr',
+          kind: 'FILE',
+          version: 1,
+          attachmentId: 'receipt',
+          contentType: 'application/x-coreldraw',
+          sizeBytes: 3,
+          allowedActions: _actions,
+        ),
+      ];
+    final attachments = _CopyAttachments()
+      ..expectedContentType = 'application/octet-stream';
+    await _mount(tester, repository, attachments: attachments);
+    await _copySource(tester);
+    await _paste(tester);
+    await _confirmCopy(tester, copyName: '品牌设计副本.cdr');
+    expect(attachments.uploadedNames, ['品牌设计副本.cdr']);
+    expect(attachments.rawCount, 1);
+    expect(attachments.confirmCount, 1);
+    expect(repository.completions, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('paste rechecks source access before reading private content', (
     tester,

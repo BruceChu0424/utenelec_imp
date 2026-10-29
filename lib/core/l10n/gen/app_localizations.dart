@@ -21971,13 +21971,13 @@ abstract class AppLocalizations {
   /// No description provided for @goodsImportTemplateHint.
   ///
   /// In zh, this message translates to:
-  /// **'可使用「导出货品」文件作为新增或更新模板；必填列为类别(用 - 拼分类路径)和货品名称，编号可留空或删除整列。更新时保留系统标识；编号留空或缺列保留原号，改为未占用的新编号会进入差异核对。新增行清空系统标识，可填写新编号。旧文件的系统标识在当前库不存在时，按编号匹配或新增；编号也为空时自动编号。曾被复用的编号必须通过当前货品系统标识确认。'**
+  /// **'可使用「导出货品」文件作为模板；类别和货品名称必填，分类路径建议用「 / 」连接。修改已有货品时保留其系统标识；编号留空或缺列保留原号，可用的新编号进入差异核对。制作副本请选「新建货品」，原系统标识不参与匹配，系统生成独立身份；编号须留空自动生成或填写可用的新编号，已占用编号会报错。'**
   String get goodsImportTemplateHint;
 
   /// No description provided for @goodsImportMergeHint.
   ///
   /// In zh, this message translates to:
-  /// **'系统标识确定原货品；没有系统标识时按编号匹配。两者都为空时新增货品并自动编号；新编号也可新增同名、不同颜色、材质或规格的货品，名称不用于匹配身份。更新时空值自动补齐，非空差异在整页中选择替换或忽略；导入空白不清空已有值。同编号已删除货品按清单内容恢复。'**
+  /// **'修改、混合导入仅凭当前库的系统标识匹配原货品，编号和名称不用于匹配。混合导入中无标识或标识未匹配时新建，修改导入会报错。新建编号留空自动生成，填写已占用编号会报错。保留原标识更改类别会移动原货品及 BOM；制作副本请选择「新建货品」。空值自动补齐，差异默认替换，可逐行保留原值；导入空白不清空已有值。恢复已删除货品须使用混合导入及原系统标识。'**
   String get goodsImportMergeHint;
 
   /// No description provided for @goodsImportUndoHint.
@@ -23354,17 +23354,41 @@ abstract class AppLocalizations {
   /// **'上传文件的访问设置'**
   String get companyFilesUploadAccessTitle;
 
-  /// No description provided for @companyFilesUploadAccessHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'此设置会分别保存到本次选择的每份文件，之后可单独修改。'**
-  String get companyFilesUploadAccessHint;
-
   /// No description provided for @companyFilesSelectedFiles.
   ///
   /// In zh, this message translates to:
   /// **'已选文件'**
   String get companyFilesSelectedFiles;
+
+  /// No description provided for @companyFilesAddFiles.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续添加文件'**
+  String get companyFilesAddFiles;
+
+  /// No description provided for @companyFilesRemoveSelectedFile.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除已选文件'**
+  String get companyFilesRemoveSelectedFile;
+
+  /// No description provided for @companyFilesNoFilesSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未选择文件'**
+  String get companyFilesNoFilesSelected;
+
+  /// No description provided for @companyFilesAddFilesFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法添加文件，请重新选择。'**
+  String get companyFilesAddFilesFailed;
+
+  /// No description provided for @companyFilesAlreadySelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选择同名文件，请先移除后重新添加。'**
+  String get companyFilesAlreadySelected;
 
   /// No description provided for @companyFilesCreateAccessHint.
   ///

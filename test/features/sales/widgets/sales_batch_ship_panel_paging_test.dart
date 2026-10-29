@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -445,7 +446,7 @@ void main() {
     final pending = Completer<void>();
     final api = _Api(total: 1)..pageGate = pending;
     await _open(tester, api);
-    await tester.tap(find.byIcon(Icons.close).first);
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     pending.complete();
     await tester.pumpAndSettle();

@@ -30,7 +30,8 @@ void main() {
         allocationHelp,
       );
       expect(find.text(allocationHelp), findsNothing);
-      expect(find.text('XD-001、XD-002'), findsWidgets);
+      // 多值列全站口径（2026-10-29）：格内截断为首个 +「等 N 个」；全量在弹窗里。
+      expect(find.text('XD-001 等 2 个'), findsWidgets);
       final allocationHint = find.byWidgetPredicate(
         (widget) =>
             widget is UtenFieldHintIcon && widget.info == allocationHelp,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -498,7 +499,10 @@ void main() {
 
         final dialog = find.byType(WarehouseTaskPhysicalDetailDialog);
         await tester.tap(
-          find.descendant(of: dialog, matching: find.text('关闭')),
+          find.descendant(
+            of: dialog,
+            matching: find.byType(UtenCloseButton).last,
+          ),
         );
         await tester.pumpAndSettle();
         expect(dialog, findsNothing);
@@ -661,7 +665,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(WarehouseTaskPhysicalDetailDialog),
-          matching: find.text('关闭'),
+          matching: find.byType(UtenCloseButton).last,
         ),
       );
       await tester.pumpAndSettle();

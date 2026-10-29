@@ -351,6 +351,11 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
         hint: '松开鼠标检测 Excel',
         onFiles: _replaceQueueAndDetect,
         child: UtenAlertDialog(
+          showCloseButton: true,
+          onClose: (_committing || _detecting || _reviewing)
+              ? null
+              : () => Navigator.pop(context),
+          closeEnabled: !_committing && !_detecting && !_reviewing,
           scrollable: false,
           title: Row(
             children: [
@@ -373,12 +378,6 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
           ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
-            TextButton(
-              onPressed: (_committing || _detecting || _reviewing)
-                  ? null
-                  : () => Navigator.pop(context),
-              child: const Text('关闭'), // TODO(l10n): 补 arb
-            ),
             if (_result == null && _report == null && _bytes == null)
               FilledButton(
                 onPressed: _committing || _detecting || _reviewing

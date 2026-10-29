@@ -66,7 +66,8 @@ class ProductionWhereUsedQueryServiceTest {
                 true,
                 false,
                 37L,
-                categoryId.toString(), 1
+                categoryId.toString(), 1,
+                "Copper red", "Connector series"
         }));
         when(em.createNativeQuery(anyString())).thenReturn(query);
 
@@ -91,6 +92,8 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(option.subcontractHistory()).isFalse();
             assertThat(option.searchRank()).isEqualTo(1);
             assertThat(option.searchMatchKind()).isEqualTo("PRIMARY");
+            assertThat(option.colorName()).isEqualTo("Copper red");
+            assertThat(option.series()).isEqualTo("Connector series");
         });
         assertThat(result.getTotal()).isEqualTo(37L);
         assertThat(result.getTotalPages()).isEqualTo(2);
@@ -122,6 +125,7 @@ class ProductionWhereUsedQueryServiceTest {
         String matchedPageSql = compactSql.substring(matchedStart, outerSelectStart);
         assertThat(matchedPageSql)
                 .contains("COUNT(*) OVER() AS total_count")
+                .contains("goods.color_id, goods.series")
                 .contains("goods.code ILIKE :materialKeyword ESCAPE")
                 .contains("goods.name ILIKE :materialKeyword ESCAPE")
                 .contains("ORDER BY match_rank, goods.is_deleted ASC, "
@@ -138,7 +142,8 @@ class ProductionWhereUsedQueryServiceTest {
         String pageEnrichmentSql = compactSql.substring(
                 outerSelectStart, outerOrderStart);
         assertThat(pageEnrichmentSql)
-                .contains("FROM matched_goods goods CROSS JOIN LATERAL")
+                .contains("FROM matched_goods goods LEFT JOIN colors color ON color.id = goods.color_id CROSS JOIN LATERAL")
+                .contains("color.name AS color_name, goods.series")
                 .contains("source.current_bom, source.bom_issue, source.production_history")
                 .contains("goods_bom_items")
                 .contains("production_plan_costs")
@@ -235,7 +240,8 @@ class ProductionWhereUsedQueryServiceTest {
         Query pageQuery = chainableQuery();
         when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 UUID.randomUUID(), "OLD-1", "Historical good", null, null, "DISABLED", "MIGRATED",
-                "Child category", true, true, false, false, false, false, 1L, categoryId.toString(), 0
+                "Child category", true, true, false, false, false, false, 1L, categoryId.toString(), 0,
+                null, null
         }));
         when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
 
@@ -248,6 +254,8 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(item.deleted()).isTrue();
             assertThat(item.currentBom()).isFalse();
             assertThat(item.productionHistory()).isFalse();
+            assertThat(item.colorName()).isNull();
+            assertThat(item.series()).isNull();
         });
         verify(pageQuery).setParameter("categoryId", categoryId);
         verify(pageQuery).setParameter("__limit", 50);
@@ -275,7 +283,8 @@ class ProductionWhereUsedQueryServiceTest {
         Query pageQuery = chainableQuery();
         when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 UUID.randomUUID(), "OLD", "Old material", null, null, "DISABLED", null,
-                null, true, true, false, false, false, false, 1L, "history-uncategorized", 0
+                null, true, true, false, false, false, false, 1L, "history-uncategorized", 0,
+                "Historical color", "Historical series"
         }));
         when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
 
@@ -284,6 +293,8 @@ class ProductionWhereUsedQueryServiceTest {
         assertThat(result.getItems()).singleElement().satisfies(item -> {
             assertThat(item.categoryId()).isEqualTo("history-uncategorized");
             assertThat(item.deleted()).isTrue();
+            assertThat(item.colorName()).isEqualTo("Historical color");
+            assertThat(item.series()).isEqualTo("Historical series");
         });
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());

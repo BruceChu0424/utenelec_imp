@@ -133,6 +133,7 @@ class ProductionDrawRequestLine extends ProductionDrawRequestSummary {
     required this.segmentId,
     required this.drawId,
     required this.drawItemId,
+    this.demandId,
     this.drawNo,
     required super.warehouseId,
     required super.goodsId,
@@ -149,6 +150,7 @@ class ProductionDrawRequestLine extends ProductionDrawRequestSummary {
   final String segmentId;
   final String drawId;
   final String drawItemId;
+  final String? demandId;
   final String? drawNo;
 
   factory ProductionDrawRequestLine.fromJson(Map<String, dynamic> json) =>
@@ -156,6 +158,7 @@ class ProductionDrawRequestLine extends ProductionDrawRequestSummary {
         segmentId: json['segmentId'] as String,
         drawId: json['drawId'] as String,
         drawItemId: json['drawItemId'] as String,
+        demandId: json['demandId'] as String?,
         drawNo: json['drawNo'] as String?,
         warehouseId: json['warehouseId'] as String,
         warehouseName: json['warehouseName'] as String?,
@@ -213,6 +216,47 @@ class ProductionDrawRequestPreview {
 
   ProductionDrawRequestTask? taskFor(String segmentId) =>
       tasks.where((task) => task.segmentId == segmentId).firstOrNull;
+
+  /// Limit this review to exact source rows chosen in the material dialog.
+  /// Keep the original fingerprint and task versions: the server still checks
+  /// the complete authoritative preview before accepting the selected lines.
+  ProductionDrawRequestPreview restrictToDrawItems(Set<String> drawItemIds) {
+    final selectedLines = lines
+        .where((line) => drawItemIds.contains(line.drawItemId))
+        .toList(growable: false);
+    final selectedSummaries = <ProductionDrawRequestSummary>[];
+    for (final summary in summaries) {
+      final sources = selectedLines.where(summary.matches).toList();
+      if (sources.isEmpty) continue;
+      selectedSummaries.add(
+        ProductionDrawRequestSummary(
+          warehouseId: summary.warehouseId,
+          goodsId: summary.goodsId,
+          qty: double.parse(
+            sources
+                .fold<double>(0, (total, row) => total + row.qty)
+                .toStringAsFixed(4),
+          ),
+          warehouseName: summary.warehouseName,
+          goodsCode: summary.goodsCode,
+          goodsName: summary.goodsName,
+          colorId: summary.colorId,
+          colorName: summary.colorName,
+          unitId: summary.unitId,
+          unitName: summary.unitName,
+        ),
+      );
+    }
+    return ProductionDrawRequestPreview(
+      fingerprint: fingerprint,
+      taskCount: taskCount,
+      documentCount: selectedLines.map((line) => line.drawId).toSet().length,
+      lineCount: selectedLines.length,
+      tasks: tasks,
+      lines: selectedLines,
+      summaries: selectedSummaries,
+    );
+  }
 
   /// Resolve an edited summary to original UUIDs, never to names or new demand.
   /// Stable ordering makes the displayed source split and retries identical.

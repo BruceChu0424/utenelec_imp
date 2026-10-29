@@ -149,9 +149,12 @@ class CompanyUpgradePreservationTest(unittest.TestCase):
         self.assertIn("if (releaseMode && web)", api)
         self.assertIn("Web release API_BASE_URL must use same-origin /api.", api)
         update = source("web/update_check.js")
-        self.assertIn("window.location.reload()", update)
+        self.assertIn("window.location.replace(url.toString())", update)
         self.assertIn('credentials: "same-origin"', update)
-        self.assertIn("系统不会自动刷新", update)
+        self.assertIn("utenWebUpdateSafetyProbe", update)
+        self.assertIn("IDLE_MS", update)
+        self.assertIn("url.searchParams.set(RELEASE_PARAM", update)
+        self.assertIn("new URL(window.location.href)", update)
         # Flutter's versioned asset cache may be refreshed. User storage must
         # not be cleared as part of the static-asset update path.
         for path in (ROOT / "web").glob("*"):

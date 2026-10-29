@@ -2,7 +2,6 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_section_header.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../core/constants/app_info.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -328,6 +327,8 @@ class _ReleaseNotesDialog extends StatelessWidget {
       child: UtenAlertDialog(
         scrollable: false,
         title: Text('${l10n.releaseNotesTitle} · $version'),
+        showCloseButton: true,
+        onClose: () => Navigator.of(context).pop(),
         content: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 560,
@@ -354,13 +355,6 @@ class _ReleaseNotesDialog extends StatelessWidget {
             ),
           ),
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(l10n.releaseNotesClose),
-          ),
-        ],
       ),
     );
   }

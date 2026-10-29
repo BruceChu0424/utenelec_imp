@@ -25,9 +25,22 @@ class UtenTableCellAction extends StatelessWidget {
     this.tooltip,
     this.maxLines = 1,
     this.error = false,
+  }) : textSpan = null;
+
+  /// 保留摘要内各段业务颜色，交互、键盘焦点与普通文字动作共用同一入口。
+  const UtenTableCellAction.rich({
+    super.key,
+    required this.label,
+    required InlineSpan this.textSpan,
+    this.onPressed,
+    this.icon,
+    this.tooltip,
+    this.maxLines = 1,
+    this.error = false,
   });
 
   final String label;
+  final InlineSpan? textSpan;
   final VoidCallback? onPressed;
   final IconData? icon;
   final String? tooltip;
@@ -46,12 +59,19 @@ class UtenTableCellAction extends StatelessWidget {
         : onPressed == null
         ? theme.colorScheme.onSurfaceVariant
         : theme.colorScheme.primary;
-    final content = Text(
-      label,
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(color: color, fontWeight: FontWeight.w600),
-    );
+    final content = textSpan == null
+        ? Text(
+            label,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          )
+        : Text.rich(
+            textSpan!,
+            semanticsLabel: label,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+          );
     final row = icon == null
         ? content
         : Row(

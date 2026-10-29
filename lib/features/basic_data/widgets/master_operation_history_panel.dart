@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -367,6 +368,10 @@ class _MasterOperationHistoryPanelState
                       ),
                     ),
                     UtenFieldHintIcon(info: l10n.goodsHistoryHint, dense: true),
+                    UtenCloseButton(
+                      tooltip: l10n.goodsHistoryClose,
+                      onPressed: _busy ? null : () => Navigator.pop(context),
+                    ),
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s8),
@@ -377,10 +382,6 @@ class _MasterOperationHistoryPanelState
                       key: const ValueKey('master-history-refresh'),
                       onPressed: _busy || _loading || !canOpen ? null : _load,
                       child: Text(l10n.commonRefresh),
-                    ),
-                    TextButton(
-                      onPressed: _busy ? null : () => Navigator.pop(context),
-                      child: Text(l10n.goodsHistoryClose),
                     ),
                   ],
                 ),

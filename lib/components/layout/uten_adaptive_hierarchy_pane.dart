@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../buttons/uten_close_button.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
@@ -174,11 +175,7 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
                             ),
-                            IconButton(
-                              tooltip: '返回内容',
-                              onPressed: _close,
-                              icon: const Icon(Icons.close_rounded),
-                            ),
+                            UtenCloseButton(tooltip: '返回内容', onPressed: _close),
                           ],
                         ),
                       ),

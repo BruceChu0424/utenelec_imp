@@ -489,19 +489,14 @@ class _WarehouseQualityBatchStockInPageState
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.of(dialogContext).pop(),
         title: const Text('批量入库失败'),
         content: _MessagePanel(
           message: message,
           icon: Icons.error_outline_rounded,
         ),
         actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            size: UtenButtonSize.large,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
       ),
     );
   }

@@ -232,6 +232,105 @@ class CompanyFileUploadPostgresTest {
         assertThat(library.detail(entry.id()).pending()).isTrue();
     }
 
+    @Test void arbitraryDesignModelAndExtensionlessOriginalsUseTheCompleteProtocolWithoutConversion()throws Exception {
+        Entry parent=folder();
+        byte[] bytes=new byte[]{'R','I','F','F',0,1,2,3,'C','D','R','X',0,(byte)0xff,0x7f};
+        for(String name:List.of("设计原件.CDR","机械部件.step","装配.sldasm","工程.blend","无扩展名","storage-only.docx")) {
+            Entry entry=reserve(parent.id(),name);var grant=presign(entry,"application/octet-stream",bytes);
+            raw(grant,"application/octet-stream",bytes);var original=confirm(entry,grant,"application/octet-stream",bytes);
+            assertThat(confirm(entry,grant,"application/octet-stream",bytes).id()).isEqualTo(original.id());
+            Entry published=publish(entry,original);
+            assertThat(published.pending()).isFalse();
+            assertThat(original.contentType()).isEqualTo("application/octet-stream");
+            assertThat(original.sha256()).isEqualTo(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+            mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type","application/octet-stream"))
+                    .andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.startsWith("attachment;")))
+                    .andExpect(header().string("X-Content-Type-Options","nosniff"))
+                    .andExpect(content().bytes(bytes));
+            assertThatThrownBy(()->attachmentService.openPreviewSource(original.id()))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                    .hasMessageContaining("下载原件");
+        }
+    }
+
+    @Test void opaqueFilesStillFailClosedWhenMalwareIsFoundOrTheScannerIsUnavailable()throws Exception {
+        Entry infected=reserve(folder().id(),"扫描测试.cdr");
+        byte[] eicar="\u0000EICAR-STANDARD-ANTIVIRUS-TEST-FILE".getBytes(StandardCharsets.US_ASCII);
+        var infectedGrant=presign(infected,"application/octet-stream",eicar);raw(infectedGrant,"application/octet-stream",eicar);
+        mvc.perform(post("/api/attachments/confirm").contentType("application/json")
+                .content(json.writeValueAsBytes(request(infected,infectedGrant,"application/octet-stream",eicar))))
+                .andExpect(status().isUnprocessableContent());
+        assertThat(db.queryForObject("SELECT status FROM attachment_upload_sessions WHERE storage_key=?",String.class,infectedGrant.storageKey())).isEqualTo("REJECTED");
+        assertThat(db.queryForObject("SELECT count(*) FROM attachments WHERE owner_id=?",Integer.class,infected.id())).isZero();
+        mvc.perform(get("/api/attachments/raw/"+infectedGrant.storageKey())).andExpect(status().isNotFound());
+
+        Entry waiting=reserve(folder().id(),"稍后确认.step");byte[] bytes={0,1,2,3,4};
+        var waitingGrant=presign(waiting,"application/octet-stream",bytes);raw(waitingGrant,"application/octet-stream",bytes);
+        doThrow(new MalwareScanUnavailableException("isolated fixture unavailable")).when(scanner).scan(any(),anyLong());
+        mvc.perform(post("/api/attachments/confirm").contentType("application/json")
+                .content(json.writeValueAsBytes(request(waiting,waitingGrant,"application/octet-stream",bytes))))
+                .andExpect(status().isBadRequest());
+        assertThat(db.queryForObject("SELECT status FROM attachment_upload_sessions WHERE storage_key=?",String.class,waitingGrant.storageKey())).isEqualTo("PENDING");
+        assertThat(db.queryForObject("SELECT count(*) FROM attachments WHERE owner_id=?",Integer.class,waiting.id())).isZero();
+    }
+
+    @Test void mediaOriginalsRetainTheirVerifiedContainerTypeAndOriginalBytes()throws Exception {
+        Entry entry=reserve(folder().id(),"培训录像.mp4");
+        byte[] bytes={0,0,0,24,'f','t','y','p','i','s','o','m',0,0,0,0,'m','p','4','2',0,0,0,0};
+        var grant=presign(entry,"video/mp4",bytes);raw(grant,"video/mp4",bytes);
+        var original=confirm(entry,grant,"video/mp4",bytes);publish(entry,original);
+        assertThat(original.contentType()).isEqualTo("video/mp4");
+        mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isOk())
+                .andExpect(header().string("Content-Type","video/mp4"))
+                .andExpect(content().bytes(bytes));
+    }
+
+    @Test void libraryFormatsDoNotWidenBusinessAttachmentIntakeOrSkipTheSizeLimit()throws Exception {
+        for(String type:List.of("application/octet-stream","video/mp4","audio/mpeg")) {
+            mvc.perform(post("/api/attachments/presign").contentType("application/json")
+                    .content(json.writeValueAsBytes(new AttachmentPresignRequest(
+                            "SALES_ORDER",UUID.randomUUID(),"business-file.cdr",type,10L))))
+                    .andExpect(status().isUnprocessableContent());
+        }
+        Entry entry=reserve(folder().id(),"超额原件.cdr");
+        mvc.perform(post("/api/attachments/presign").contentType("application/json")
+                .content(json.writeValueAsBytes(new AttachmentPresignRequest(
+                        "COMPANY_FILE",entry.id(),entry.name(),"application/octet-stream",25L*1024*1024+1))))
+                .andExpect(status().is(413));
+        assertThat(db.queryForObject("SELECT count(*) FROM attachment_upload_sessions WHERE owner_id=?",Integer.class,entry.id())).isZero();
+    }
+
+    @Test void unsupportedMediaVariantsArchiveAsOpaqueAndKeepTheSignedDeclarationIdempotent()throws Exception {
+        var originals=List.of(
+                new Document("legacy.mov","video/quicktime",new byte[]{0,0,0,8,'w','i','d','e',0,0,0,16,'m','d','a','t',0,1,2,3,4,5,6,7}),
+                new Document("av1.mp4","video/mp4",new byte[]{0,0,0,24,'f','t','y','p','a','v','0','1',0,0,0,0,'a','v','0','1','i','s','o','m'}),
+                new Document("unrecognized.wav","audio/wav",new byte[]{0,1,2,3,4,5}));
+        Entry parent=folder();
+        for(var document:originals) {
+            Entry entry=reserve(parent.id(),document.name());var grant=presign(entry,document.type(),document.bytes());
+            raw(grant,document.type(),document.bytes());var original=confirm(entry,grant,document.type(),document.bytes());
+            assertThat(original.contentType()).isEqualTo("application/octet-stream");
+            assertThat(original.sha256()).isEqualTo(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(document.bytes())));
+            assertThat(confirm(entry,grant,document.type(),document.bytes()).id()).isEqualTo(original.id());
+            assertThat(db.queryForObject("SELECT content_type FROM attachment_upload_sessions WHERE storage_key=?",String.class,grant.storageKey())).isEqualTo(document.type());
+            // Replaying a different declaration with the same token must still fail before identity reconciliation.
+            mvc.perform(post("/api/attachments/confirm").contentType("application/json")
+                    .content(json.writeValueAsBytes(request(entry,grant,"application/octet-stream",document.bytes()))))
+                    .andExpect(status().isForbidden());
+            Entry published=publish(entry,original);
+            assertThat(published.contentType()).isEqualTo("application/octet-stream");
+            mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isOk())
+                    .andExpect(header().string("Content-Type","application/octet-stream"))
+                    .andExpect(header().string("Content-Disposition",org.hamcrest.Matchers.startsWith("attachment;")))
+                    .andExpect(header().string("X-Content-Type-Options","nosniff"))
+                    .andExpect(content().bytes(document.bytes()));
+            assertThatThrownBy(()->attachmentService.openPreviewSource(original.id()))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("下载原件");
+        }
+        verify(scanner,times(originals.size())).scan(any(),anyLong());
+    }
+
     @Test void scannerUnavailableNeverPublishesAndKeepsTheSameReservationRetryable()throws Exception {
         Entry entry=reserve(folder().id(),"retry.txt");byte[] bytes="retry same original".getBytes(StandardCharsets.UTF_8);
         var grant=presign(entry,"text/plain",bytes);raw(grant,"text/plain",bytes);
@@ -257,9 +356,11 @@ class CompanyFileUploadPostgresTest {
         mvc.perform(post("/api/attachments/confirm").contentType("application/json").content(json.writeValueAsBytes(forged))).andExpect(status().isForbidden());
     }
 
-    @Test void passwordRevocationAndRecycleAreEnforcedOnGenericRawAndHistoryDownloadRoutes()throws Exception {
-        Entry parent=folder();Entry entry=reserve(parent.id(),"confidential.txt");byte[] bytes="confidential".getBytes(StandardCharsets.UTF_8);
-        var grant=presign(entry,"text/plain",bytes);raw(grant,"text/plain",bytes);var original=confirm(entry,grant,"text/plain",bytes);Entry published=publish(entry,original);
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"text/plain","application/octet-stream"})
+    void passwordRevocationAndRecycleAreEnforcedOnGenericRawAndHistoryDownloadRoutes(String type)throws Exception {
+        Entry parent=folder();Entry entry=reserve(parent.id(),type.equals("text/plain")?"confidential.txt":"confidential.cdr");byte[] bytes="confidential".getBytes(StandardCharsets.UTF_8);
+        var grant=presign(entry,type,bytes);raw(grant,type,bytes);var original=confirm(entry,grant,type,bytes);Entry published=publish(entry,original);
         Entry locked=library.setPassword(parent.id(),new Password("private-folder-password",parent.version()));
         mvc.perform(get("/api/attachments/raw/"+grant.storageKey())).andExpect(status().isNotFound());
         mvc.perform(get("/api/attachments/"+original.id()+"/history/download")).andExpect(status().isNotFound());

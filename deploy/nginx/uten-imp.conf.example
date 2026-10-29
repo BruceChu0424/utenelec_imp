@@ -165,7 +165,7 @@ server {
     # REQUIRED: both local and cloud Web builds upload to the same private OSS
     # bucket. Replace __OSS_PUBLIC_HOST__ with that bucket's exact public
     # virtual-host name; keep the matching OSS CORS origins equally narrow.
-    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' https://__OSS_PUBLIC_HOST__; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob: https://__OSS_PUBLIC_HOST__; manifest-src 'self'; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' https://__OSS_PUBLIC_HOST__; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob: https://__OSS_PUBLIC_HOST__; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
     add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
     add_header Referrer-Policy "no-referrer" always;
     add_header X-Content-Type-Options "nosniff" always;

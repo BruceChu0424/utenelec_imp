@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -197,7 +198,7 @@ void main() {
           });
           expect(request['sort'], 'amount');
           expect(request['order'], 'desc');
-          await tester.tap(find.text('关闭'));
+          await tester.tap(find.byType(UtenCloseButton));
           await tester.pumpAndSettle();
         } else {
           expect(api.creates, isEmpty);
@@ -424,7 +425,7 @@ void main() {
         expect(request, isNot(contains('password')));
         expect(api.downloads, isEmpty);
         expect(masterExportJobReport(entry.key), entry.value);
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton));
         await tester.pumpAndSettle();
       },
     );
@@ -618,7 +619,7 @@ void main() {
     expect(api.creates.single['parameters'], {'dateFrom': '2026-10-01'});
     expect(api.creates.single, isNot(contains('password')));
     expect(api.downloads, isEmpty);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
   });
 
@@ -678,7 +679,7 @@ void main() {
           'search.goods': '加工件',
         });
         expect(api.downloads, isEmpty);
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton));
         await tester.pumpAndSettle();
       },
     );

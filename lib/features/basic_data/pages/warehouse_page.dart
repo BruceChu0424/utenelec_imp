@@ -26,6 +26,7 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_employee_multi_picker.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_table_cell_auto_width.dart';
 import '../../../components/print/uten_print_preview.dart';
@@ -918,6 +919,11 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         label: '负责人',
         width: 160,
         value: (w) => _keeperLabel(w.id),
+        // 屏幕格走多值截断+弹窗口径（2026-10-29）；value（导出/详情统计）保留全量。
+        cellBuilder: (context, w) => UtenMultiValueCell(
+          values: _keeperNames[w.id] ?? const <String>[],
+          title: '仓库负责人',
+        ),
       ),
     ];
   }

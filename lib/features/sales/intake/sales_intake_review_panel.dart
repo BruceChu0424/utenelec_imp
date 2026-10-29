@@ -7,6 +7,7 @@
 //     (名称(编号) · 颜色 · 系列 + 理由)、「从货品资料选择…」、组合件「拆成 N 行」、
 //     「设为货品英文名」; 底部固定一行汇总 + 一个大按钮「全部导入 (N 行)」。
 // 界面不出现置信度数字、识别方式、服务商/模型等技术词。行多时按需构建(SliverList)。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
@@ -1729,11 +1730,10 @@ class _PanelHeader extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       icon: Icons.auto_awesome_rounded,
-      trailing: IconButton(
+      trailing: UtenCloseButton(
+        desktopHitExtent: 48,
         tooltip: closeTooltip,
-        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         onPressed: onClose,
-        icon: const Icon(Icons.close_rounded),
       ),
     );
   }

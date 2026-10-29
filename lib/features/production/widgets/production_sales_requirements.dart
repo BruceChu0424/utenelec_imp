@@ -95,15 +95,11 @@ class ProductionSalesRequirementsButton extends StatelessWidget {
       onPressed: () => showDialog<void>(
         context: context,
         builder: (context) => UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
           maxWidth: 720,
           title: Text(l10n.productionSalesRequirements),
           content: ProductionSalesRequirements(requirements: requirements),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(l10n.productionRequirementsClose),
-            ),
-          ],
         ),
       ),
     );

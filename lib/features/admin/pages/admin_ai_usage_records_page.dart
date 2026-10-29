@@ -9,6 +9,7 @@
 //   * 路由 /admin/* 要求 authorization:manage; 服务端 Controller 另校验 superAdmin;
 //     页内再叠超管门禁(会话/快照/服务器/权限任一变化即失效, 与用量看板同款)。
 //   * 读端点不写数据; 保存计费走抽屉(服务端要求再认证, 网络层弹统一密码框)。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 
@@ -1270,10 +1271,9 @@ class _RecordDetailPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              IconButton(
+              UtenCloseButton(
                 tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                 onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.close_rounded),
               ),
             ],
           ),

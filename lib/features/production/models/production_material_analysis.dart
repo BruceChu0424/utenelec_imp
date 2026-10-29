@@ -448,6 +448,8 @@ class ProductionMaterialAnalysisView {
     this.autoConfirmedRouteCount = 0,
     this.pendingAutoConfirmRouteCount = 0,
     this.overproductionDefaults = const {},
+    this.aggregateRecipeKeysByMaterialLineId = const {},
+    this.hasAggregateRecipeKeys = false,
     this.analysisNo,
     this.salesRequirements = const {},
   });
@@ -468,6 +470,11 @@ class ProductionMaterialAnalysisView {
   final String? fqcRecoveryAuthorizationId;
   final Map<String, String> planningBlockedReasons;
   final Map<String, double> overproductionDefaults;
+
+  /// Opaque server production-rule identities used only to partition orders.
+  /// The server validates the frozen rules again before any write.
+  final Map<String, String> aggregateRecipeKeysByMaterialLineId;
+  final bool hasAggregateRecipeKeys;
   final Map<String, List<ProductionSalesRequirement>> salesRequirements;
 
   /// 分析编号（WL+日期+日流水，V719）：页面顶部事实卡与「计划单号」同源。
@@ -514,6 +521,7 @@ class ProductionMaterialAnalysisView {
         MaterialAnalysisSupplyAction.fromJson,
       ),
       salesRequirements: _analysisSalesRequirements(json),
+      aggregateRecipeKeys: _analysisRecipeKeys(json),
     );
   }
 
@@ -579,6 +587,17 @@ class ProductionMaterialAnalysisView {
       }
     }
     work.ensureCurrent();
+    final aggregateRecipeKeys = <String, String>{};
+    if (json['aggregateRecipeKeysByMaterialLineId']
+        case final Map<Object?, Object?> keys) {
+      for (final entry in keys.entries) {
+        _readAnalysisRecipeKey(aggregateRecipeKeys, entry.key, entry.value);
+        await work.checkpoint();
+      }
+    } else if (json['aggregateRecipeKeysByMaterialLineId'] != null) {
+      throw const FormatException('物料分析生产规则分组格式无效');
+    }
+    work.ensureCurrent();
     return _fromDecodedRows(
       json,
       products: products,
@@ -586,6 +605,7 @@ class ProductionMaterialAnalysisView {
       warehouses: warehouses,
       supplyActions: supplyActions,
       salesRequirements: salesRequirements,
+      aggregateRecipeKeys: aggregateRecipeKeys,
     );
   }
 
@@ -596,6 +616,7 @@ class ProductionMaterialAnalysisView {
     required List<ProductionMaterialAnalysisWarehouse> warehouses,
     required List<MaterialAnalysisSupplyAction> supplyActions,
     required Map<String, List<ProductionSalesRequirement>> salesRequirements,
+    required Map<String, String> aggregateRecipeKeys,
   }) {
     return ProductionMaterialAnalysisView(
       analysisId: _string(json['analysisId'] ?? json['id']) ?? '',
@@ -634,8 +655,40 @@ class ProductionMaterialAnalysisView {
       },
       analysisNo: _string(json['analysisNo']),
       salesRequirements: salesRequirements,
+      aggregateRecipeKeysByMaterialLineId: Map.unmodifiable(
+        aggregateRecipeKeys,
+      ),
+      hasAggregateRecipeKeys:
+          json['aggregateRecipeKeysByMaterialLineId'] != null,
     );
   }
+}
+
+Map<String, String> _analysisRecipeKeys(Map<String, dynamic> json) {
+  final raw = json['aggregateRecipeKeysByMaterialLineId'];
+  if (raw == null) return const {};
+  if (raw is! Map<Object?, Object?>) {
+    throw const FormatException('物料分析生产规则分组格式无效');
+  }
+  final result = <String, String>{};
+  for (final entry in raw.entries) {
+    _readAnalysisRecipeKey(result, entry.key, entry.value);
+  }
+  return result;
+}
+
+void _readAnalysisRecipeKey(
+  Map<String, String> result,
+  Object? line,
+  Object? rule,
+) {
+  if (line is! String ||
+      line.trim().isEmpty ||
+      rule is! String ||
+      rule.trim().isEmpty) {
+    throw const FormatException('物料分析生产规则分组格式无效');
+  }
+  result[line] = rule;
 }
 
 ({

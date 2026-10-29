@@ -99,7 +99,7 @@ public class AttachmentService implements AttachmentAccessPort {
         String ownerType = normalizeOwnerType(request.ownerType());
         String fileName = request.fileName().trim();
         String contentType = normalizeContentType(request.contentType());
-        validateUpload(fileName, contentType, request.sizeBytes());
+        validateUpload(ownerType, fileName, contentType, request.sizeBytes());
         policy(ownerType).requireCanUpload(request.ownerId(), user);
 
         PresignedUpload upload = storage.presignUpload(new UploadRequest(
@@ -124,7 +124,7 @@ public class AttachmentService implements AttachmentAccessPort {
         String ownerType = normalizeOwnerType(request.ownerType());
         String fileName = request.originalName().trim();
         String contentType = normalizeContentType(request.contentType());
-        validateUpload(fileName, contentType, request.sizeBytes());
+        validateUpload(ownerType, fileName, contentType, request.sizeBytes());
 
         Grant grant = uploadGrants.verifySigned(request.confirmToken());
         requireGrantMatches(grant, request.storageKey(), ownerType, request.ownerId(),
@@ -169,7 +169,7 @@ public class AttachmentService implements AttachmentAccessPort {
 
             AttachmentContentInspector.Inspection inspection;
             try {
-                inspection = AttachmentContentInspector.inspect(
+                inspection = AttachmentContentInspector.inspectForOwner(ownerType,
                         objectStorage.openForValidation(request.storageKey(), stagingObject.versionId()),
                         stagingObject.size(), fileName, contentType);
             } catch (ApiException invalidContent) {
@@ -201,7 +201,7 @@ public class AttachmentService implements AttachmentAccessPort {
             }
             Attachment entity = confirmTransaction.persist(
                     session.id(), grant, user, ownerPolicy, stagingObject, finalObject,
-                    StringUtils.hasText(actualContentType) ? actualContentType : contentType,
+                    inspection.effectiveContentType(),
                     inspection.sha256(), scan, request.category(), session.storageProvider());
             return toDto(entity);
         } catch (MalwareScanUnavailableException unavailable) {
@@ -351,6 +351,12 @@ public class AttachmentService implements AttachmentAccessPort {
         requireClean(attachment);
         requireDownloadAuthority(user, attachment);
         policy(attachment.getOwnerType()).requireCanDownload(attachment.getOwnerId(), user);
+        // Opaque library originals are storage-only, even if later renamed to an Office suffix.
+        // Never let an arbitrary binary enter LibreOffice through extension-based legacy fallback.
+        if (AttachmentContentInspector.isOpaqueCompanyFile(
+                attachment.getOwnerType(), normalizeContentType(attachment.getContentType()))) {
+            throw new ApiException(ErrorCode.BUSINESS, "此格式暂不支持预览，请下载原件查看");
+        }
         audit.logExplicit(user.getId(), user.getLoginAccount(),
                 "attachment_preview", "attachments", id.toString(), "success");
         return new PreviewSource(attachment.getId(), attachment.getOriginalName(),
@@ -438,7 +444,7 @@ public class AttachmentService implements AttachmentAccessPort {
         String contentType = normalizeContentType(rawContentType);
         requireGrantMatches(grant, storageKey, grant.ownerType(), grant.ownerId(), user.getId(),
                 grant.originalName(), contentType, contentLength);
-        validateUpload(grant.originalName(), contentType, contentLength);
+        validateUpload(grant.ownerType(), grant.originalName(), contentType, contentLength);
         policy(grant.ownerType()).requireCanUpload(grant.ownerId(), user);
         AttachmentUploadSessionStore.UploadSession session = uploadSessions.findByStorageKey(storageKey);
         if (session == null || !session.matches(grant) || !"PENDING".equals(session.status())) {
@@ -559,7 +565,7 @@ public class AttachmentService implements AttachmentAccessPort {
         }
     }
 
-    private void validateUpload(String fileName, String contentType, long size) {
+    private void validateUpload(String ownerType, String fileName, String contentType, long size) {
         if (!StringUtils.hasText(fileName)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写附件名称");
         }
@@ -567,7 +573,8 @@ public class AttachmentService implements AttachmentAccessPort {
         if (!StringUtils.hasText(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择附件类型");
         }
-        boolean allowed = properties.getAllowedContentTypes().stream()
+        boolean allowed = AttachmentContentInspector.isLibraryUploadType(ownerType, normalized)
+                || properties.getAllowedContentTypes().stream()
                 .anyMatch(allowedType -> allowedType.equalsIgnoreCase(normalized));
         if (!allowed) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -602,7 +609,12 @@ public class AttachmentService implements AttachmentAccessPort {
                 && Objects.equals(attachment.getOwnerType(), grant.ownerType())
                 && Objects.equals(attachment.getOwnerId(), grant.ownerId())
                 && Objects.equals(attachment.getOriginalName(), grant.originalName())
-                && Objects.equals(attachment.getContentType(), grant.contentType())
+                && (Objects.equals(attachment.getContentType(), grant.contentType())
+                    // The server may archive an unsupported library media variant as opaque.
+                    // The signed grant/session retain the original declaration for raw PUT and
+                    // uncertain-confirm retries; every other immutable binding still must match.
+                    || AttachmentContentInspector.isOpaqueCompanyFile(attachment.getOwnerType(), attachment.getContentType())
+                       && AttachmentContentInspector.isCompanyMediaType(grant.ownerType(), grant.contentType()))
                 && attachment.getSizeBytes() == grant.sizeBytes();
     }
 

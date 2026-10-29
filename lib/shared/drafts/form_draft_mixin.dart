@@ -14,6 +14,7 @@ import '../../core/performance/json_value_snapshot.dart';
 import '../../core/performance/responsive_data_codec.dart';
 import '../../core/router/nav_helpers.dart';
 import '../../core/ui/app_notification.dart';
+import '../../core/web_update/web_update_safety.dart';
 
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/session_provider.dart';
@@ -232,6 +233,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool _draftSubmissionPending = false;
   bool _draftSubmissionBlocked = false;
   bool _draftSkipResume = false;
+  bool _draftReloadDirty = false;
+  bool _draftReloadUnknown = false;
   String _draftId = const Uuid().v4();
   String? _draftRevision;
   String _draftRoute = '';
@@ -254,6 +257,21 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _flushDraftQuietly,
   );
 
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    dirty:
+        !_draftFinished && (_draftReloadDirty || _draftCaptureDebounce != null),
+    busy: formDraftBusy || _draftRestoring || _draftWriting != null,
+    blocked:
+        !_draftFinished &&
+        (!_draftReady ||
+            _draftError != null ||
+            _draftRestoreBlocked ||
+            _draftSubmissionBlocked ||
+            _draftSubmissionPending ||
+            _draftReloadUnknown ||
+            _draftIdentityChanged),
+  );
+
   Future<void> initializeFormDraft() async {
     if (!formDraftEnabled ||
         _draftReady ||
@@ -268,6 +286,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _draftServer = ref.read(apiBaseUrlProvider);
     super.setState(() => _draftRestoring = true);
     _draftBaseline = _captureDraftSnapshot();
+    _draftReloadDirty = false;
     _draftRoute = formDraftSpec.route;
     String? resumeId = _draftSkipResume ? null : formDraftResumeId;
     ValueKey<String>? pageKey = formDraftRouterPageKey;
@@ -350,6 +369,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           _draftRoute,
           _confirmDraftExit,
           pageKey: pageKey,
+          reloadSafety: _reloadSafety,
         );
         WidgetsBinding.instance.addObserver(_draftLifecycleObserver);
         _removeDraftLifecycle = registerFormDraftLifecycle(_flushDraftQuietly);
@@ -462,12 +482,14 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   @override
   void setState(VoidCallback fn) {
     super.setState(fn);
+    webUpdateSafety.changed();
     if (_draftReady && !_draftRestoring && !_draftFinished) {
       markFormDraftChanged();
     }
   }
 
   void markFormDraftChanged() {
+    webUpdateSafety.changed();
     if (!_draftReady ||
         _draftRestoring ||
         _draftFinished ||
@@ -503,6 +525,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
       _captureDraftChangeNow();
     });
+    webUpdateSafety.changed();
   }
 
   void _captureDraftChangeNow() {
@@ -515,9 +538,11 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       }
       _draftExitAllowed = false;
       _draftPendingSnapshot = snapshot;
+      webUpdateSafety.changed();
       _flushDraftQuietly();
     } catch (error) {
       _draftError = error;
+      webUpdateSafety.changed();
     }
   }
 
@@ -671,13 +696,20 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   Map<String, dynamic> _captureDraftSnapshot() {
     final grids = captureFormDraftPlatformFields();
-    return snapshotJsonValue({
-          ...captureDeferredJsonValues(captureFormDraft),
-          '_platformGridDrafts': ?grids,
-          if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
-          formDraftUnknownSubmissionKey: formDraftHasUnknownSubmission,
-        })
-        as Map<String, dynamic>;
+    final snapshot =
+        snapshotJsonValue({
+              ...captureDeferredJsonValues(captureFormDraft),
+              '_platformGridDrafts': ?grids,
+              if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
+              formDraftUnknownSubmissionKey: formDraftHasUnknownSubmission,
+            })
+            as Map<String, dynamic>;
+    // Reuse the editor's existing capture; idle probes never serialize or walk
+    // the whole document. Locally autosaved input still blocks an app restart.
+    _draftReloadDirty =
+        _draftBaseline != null && !jsonValuesEqual(snapshot, _draftBaseline);
+    _draftReloadUnknown = snapshot[formDraftUnknownSubmissionKey] == true;
+    return snapshot;
   }
 
   // These positions only bind metadata to the same local draft's row codecs;
@@ -946,7 +978,18 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   Widget withFormDraft(Widget child) {
-    if (!formDraftEnabled) return child;
+    if (!formDraftEnabled) {
+      FormDraftNavigation.unregisterReloadSafety(this);
+      return child;
+    }
+    // Dialog-hosted editors also participate before asynchronous initialization
+    // and do not depend on having a GoRouter route registration.
+    FormDraftNavigation.registerReloadSafety(
+      this,
+      goRouterPageStateOrNull(context)?.uri.path ?? formDraftSpec.route,
+      _reloadSafety,
+    );
+    webUpdateSafety.changed();
     if (_draftIdentityChanged) {
       return const Material(
         child: Center(child: Text('登录身份或服务器已变化，请重新进入页面。原草稿保留在原账号下。')),
@@ -1055,6 +1098,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _removeDraftLifecycle?.call();
     WidgetsBinding.instance.removeObserver(_draftLifecycleObserver);
     FormDraftNavigation.unregister(this);
+    FormDraftNavigation.unregisterReloadSafety(this);
     _draftScopeSubscription?.close();
     _draftReadBoundarySubscription?.close();
     for (final item in _draftListeners) {

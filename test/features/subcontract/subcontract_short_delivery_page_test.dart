@@ -1,4 +1,5 @@
 // ADR-098 委外回厂短交判定页：待判定段渲染、两种判定弹窗与请求体、通知深链打开详情。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/components/data_display/uten_status_badge.dart'
@@ -376,7 +377,7 @@ void main() {
     expect(find.text('过程记录'), findsOneWidget);
     expect(find.textContaining('仓库登记发现短交'), findsOneWidget);
     expect(find.byKey(const Key('short-delivery-detail-accept')), findsNothing);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     // 容差内的短交不在红色「待判定」段，在中性「容差内待结案」段。
     expect(find.text('无判定权限'), findsNothing);

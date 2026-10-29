@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/network/session_event_bus.dart';
 import 'package:uten_imp/shared/providers/session_kick_notice_host.dart';
 
@@ -15,9 +16,10 @@ void main() {
     expect(find.text('当前设备已下线'), findsOneWidget);
     expect(find.text('账号已在「网页端 · Chrome」登录，本设备已自动下线'), findsOneWidget);
     expect(find.textContaining('同一账号同时只能在一处在线'), findsOneWidget);
-    expect(find.text('知道了'), findsOneWidget);
+    expect(find.text('知道了'), findsNothing);
+    expect(find.byType(UtenCloseButton), findsOneWidget);
 
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(find.text('当前设备已下线'), findsNothing);
   });

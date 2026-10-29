@@ -29,7 +29,17 @@ public record WhereUsedMaterialOption(
         boolean productionHistory,
         boolean subcontractHistory,
         @JsonInclude(JsonInclude.Include.NON_NULL) Integer searchRank,
-        @JsonInclude(JsonInclude.Include.NON_NULL) String searchMatchKind) {
+        @JsonInclude(JsonInclude.Include.NON_NULL) String searchMatchKind,
+        String colorName,
+        String series) {
+    public WhereUsedMaterialOption(UUID id, String code, String name, String model, String spec,
+            String status, String sourceType, String categoryName, String categoryId, boolean autoCreated,
+            boolean deleted, boolean currentBom, boolean bomIssue, boolean productionHistory, boolean subcontractHistory,
+            Integer searchRank, String searchMatchKind) {
+        this(id,code,name,model,spec,status,sourceType,categoryName,categoryId,autoCreated,deleted,
+                currentBom,bomIssue,productionHistory,subcontractHistory,searchRank,searchMatchKind,null,null);
+    }
+
     public WhereUsedMaterialOption(UUID id, String code, String name, String model, String spec,
             String status, String sourceType, String categoryName, String categoryId, boolean autoCreated,
             boolean deleted, boolean currentBom, boolean bomIssue, boolean productionHistory, boolean subcontractHistory) {

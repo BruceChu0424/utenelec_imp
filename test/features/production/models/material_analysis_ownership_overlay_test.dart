@@ -51,6 +51,11 @@ void main() {
         merged.overproductionDefaults,
         same(current.overproductionDefaults),
       );
+      expect(
+        merged.aggregateRecipeKeysByMaterialLineId,
+        same(current.aggregateRecipeKeysByMaterialLineId),
+      );
+      expect(merged.hasAggregateRecipeKeys, isTrue);
       expect(merged.analysisNo, current.analysisNo);
       expect(merged.fqcReplenishmentOnly, isTrue);
       expect(merged.fqcRecoveryAuthorizationId, 'recovery-proof');
@@ -265,6 +270,8 @@ ProductionMaterialAnalysisView _current() => ProductionMaterialAnalysisView(
   planningBlockedReasons: const {'other': 'blocked'},
   routeResetCount: 3,
   overproductionDefaults: const {'g': 0.2},
+  aggregateRecipeKeysByMaterialLineId: const {'a': 'frozen', 'b': 'frozen'},
+  hasAggregateRecipeKeys: true,
   analysisNo: 'WL-test',
   supplyActions: const [
     MaterialAnalysisSupplyAction(

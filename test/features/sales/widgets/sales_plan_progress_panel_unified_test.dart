@@ -4,6 +4,7 @@
 // 数量」输入列——数量在出货单明细里填写）；行单击只切换勾选不弹窗（弹窗只由
 // 「查看进度」触发）；右下悬浮按钮经 scope.createShipment 按可发量预填跳转。
 // 本文件锁定以上契约。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -124,7 +125,7 @@ void main() {
         await tester.tap(find.text('查看进度').first);
         await tester.pumpAndSettle();
         expect(find.text('产品甲 · 进度来源'), findsOneWidget);
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
 
         // 上面 ensureVisible 把表体横滚过去了：首列是冻结列（钉在视口左缘），

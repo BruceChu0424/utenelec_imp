@@ -109,6 +109,8 @@ Map<String, dynamic> _item({
   required String id,
   required String code,
   required String name,
+  String? colorName,
+  String? series,
   String categoryId = 'material-root',
   bool currentBom = false,
   bool bomIssue = false,
@@ -121,6 +123,8 @@ Map<String, dynamic> _item({
   'id': id,
   'code': code,
   'name': name,
+  'colorName': ?colorName,
+  'series': ?series,
   'model': 'M-86',
   'spec': '10A',
   'status': status,
@@ -193,6 +197,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.queries.single, containsPair('categoryId', 'material-root'));
       expect(api.queries.single.containsKey('keyword'), isFalse);
+      final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+        find.byKey(const Key('goods-picker-paged-list')),
+      );
+      expect(table.items.single.colorName, isNull);
+      expect(table.items.single.series, isNull);
       await tester.tap(_row('raw'));
       await tester.pump();
       expect(selected, isNull);
@@ -215,6 +224,8 @@ void main() {
               id: 'history',
               code: 'OLD-1',
               name: '历史螺丝',
+              colorName: '米白色',
+              series: '6M',
               categoryId: 'history-uncategorized',
               currentBom: true,
               bomIssue: true,
@@ -238,11 +249,15 @@ void main() {
       expect(table.columns.map((column) => column.label), [
         '物料名称',
         '编号',
+        '颜色',
+        '系列',
         '分类',
         '状态 / 提示',
         '关联依据',
       ]);
       expect(table.tableKey, isNull);
+      expect(find.text('米白色'), findsOneWidget);
+      expect(find.text('6M'), findsOneWidget);
       expect(find.text('当前 BOM · 生产历史 · 委外历史'), findsOneWidget);
       for (final label in ['BOM 异常', '状态：禁用', '自动占位', '已删除']) {
         expect(find.text(label), findsOneWidget);
@@ -253,6 +268,8 @@ void main() {
       await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(selected?.id, 'history');
+      expect(selected?.colorName, '米白色');
+      expect(selected?.series, '6M');
       expect(selected?.status, '禁用');
       expect(selected?.autoCreated, isTrue);
       expect(selected?.categoryId, 'history-uncategorized');
@@ -342,7 +359,7 @@ void main() {
         containsPair('categoryId', 'history-uncategorized'),
       );
       expect(find.byKey(_sheetKey), findsOneWidget);
-      await tester.tap(_row('orphan'));
+      await tester.tap(find.text('无分类历史物料'));
       await tester.pump();
       await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();

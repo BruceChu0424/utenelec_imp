@@ -14,6 +14,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -378,13 +379,11 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
       key: 'salesOrderNos',
       label: '销售订单号',
       width: 190,
+      // textOf（导出/复制/编辑态）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
       textOf: (row) =>
           row.salesOrderNos.isEmpty ? '—' : row.salesOrderNos.join('、'),
-      cellBuilder: (context, row) => Text(
-        row.salesOrderNos.isEmpty ? '—' : row.salesOrderNos.join('、'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      cellBuilder: (context, row) =>
+          UtenMultiValueCell(values: row.salesOrderNos, title: '销售订单号'),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'receivableOriginal',

@@ -252,7 +252,7 @@ public class ProductionDrawRequestService {
                        item.goods_code_snapshot, item.goods_name_snapshot, item.color_id, color.name,
                        item.unit_id, unit.name, fn_production_draw_item_effective_qty(item.id), document.status,
                        fn_production_draw_item_requested_qty(item.id),
-                       COALESCE(warehouse.is_line_side, FALSE)
+                       COALESCE(warehouse.is_line_side, FALSE), demand.id
                 FROM production_planning_package_documents mapping
                 JOIN (SELECT * FROM stock_documents archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('stock_documents',archive_origin.id)) document ON document.id=mapping.document_id
                   AND document.doc_type='DRAW' AND NOT document.is_deleted AND document.status IN (0,1)
@@ -280,7 +280,7 @@ public class ProductionDrawRequestService {
             if (Boolean.TRUE.equals(row[16])) continue;
             lines.add(new Line(uuid(row[0]), uuid(row[1]), str(row[2]), uuid(row[3]),
                     uuid(row[4]), str(row[5]), uuid(row[6]), str(row[7]), str(row[8]),
-                    uuid(row[9]), str(row[10]), uuid(row[11]), str(row[12]), qty));
+                    uuid(row[9]), str(row[10]), uuid(row[11]), str(row[12]), qty, uuid(row[17])));
         }
         if (segmentsWithDraws.size() != items.size()) {
             throw conflict("所选任务目前没有需要仓库发料的未申请明细，请刷新任务；车间直送料会自动投入");
@@ -346,7 +346,7 @@ public class ProductionDrawRequestService {
             }
             Line selected = new Line(line.segmentId(), line.drawId(), line.drawNo(), line.drawItemId(),
                     line.warehouseId(), line.warehouseName(), line.goodsId(), line.goodsCode(), line.goodsName(),
-                    line.colorId(), line.colorName(), line.unitId(), line.unitName(), selection.quantity());
+                    line.colorId(), line.colorName(), line.unitId(), line.unitName(), selection.quantity(), line.demandId());
             if (result.putIfAbsent(line.drawItemId(), selected) != null) throw validation("同一领料行不能重复选择");
         }
         return List.copyOf(result.values());

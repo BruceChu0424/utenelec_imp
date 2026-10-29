@@ -1169,11 +1169,7 @@ class _AuditDetailHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: '关闭',
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded),
-              ),
+              UtenCloseButton(tooltip: '关闭', onPressed: onClose),
             ],
           ),
           if (onLocateRequest != null) ...[

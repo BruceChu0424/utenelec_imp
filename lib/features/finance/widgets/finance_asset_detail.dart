@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -994,13 +995,9 @@ class _FinanceAssetActionInputState
                         ),
                       ),
                     ),
-                    IconButton(
-                      constraints: const BoxConstraints(
-                        minWidth: 48,
-                        minHeight: 48,
-                      ),
+                    UtenCloseButton(
+                      desktopHitExtent: 48,
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
                       tooltip: '关闭',
                     ),
                   ],

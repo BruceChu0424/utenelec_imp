@@ -16,6 +16,7 @@ import 'connection_recovery.dart';
 import 'data_write_revision.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
+import 'api_mutation_reload_safety.dart';
 import 'authenticated_request_scope.dart';
 import 'native_facet_routes.dart';
 import 'interceptors/auth_interceptor.dart';
@@ -34,13 +35,31 @@ import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
 
 class ApiClient {
-  ApiClient(this._dio, {this.streamingDownloads = false});
+  ApiClient(
+    this._dio, {
+    this.streamingDownloads = false,
+    ApiMutationReloadSafety? reloadSafety,
+  }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety;
 
   final Dio _dio;
   final bool streamingDownloads;
+  final ApiMutationReloadSafety _reloadSafety;
+
+  Future<T> _trackPost<T>(String path, Future<T> Function() action) =>
+      isNativeFacetPath(path)
+      ? _reloadSafety.trackRead(action)
+      : _reloadSafety.track(action);
 
   /// Read one already-authorized export artifact, without accumulating its body.
   Stream<Uint8List> downloadExportStream(
+    String path, {
+    Object? body,
+    bool Function()? stillCurrent,
+  }) => _reloadSafety.trackReadStream(
+    () => _downloadExportStream(path, body: body, stillCurrent: stillCurrent),
+  );
+
+  Stream<Uint8List> _downloadExportStream(
     String path, {
     Object? body,
     bool Function()? stillCurrent,
@@ -110,27 +129,27 @@ class ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<dynamic>(path, queryParameters: query);
       return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// 用于后端直接返回 JSON 数组的接口（如部门树）。
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<dynamic>(path, queryParameters: query);
       return _asMapList(r.data);
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// Optional enrichment read with one bounded attempt and real cancellation.
   ///
@@ -142,7 +161,7 @@ class ApiClient {
     Map<String, dynamic>? query,
     required Duration receiveTimeout,
     CancelToken? cancelToken,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<dynamic>(
         path,
@@ -157,7 +176,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// Reads endpoints that return a JSON string array, such as UUID/code lists.
   ///
@@ -166,7 +185,7 @@ class ApiClient {
   Future<List<String>> getStringList(
     String path, {
     Map<String, dynamic>? query,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<dynamic>(path, queryParameters: query);
       final data = r.data;
@@ -191,7 +210,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// Read-only POST computation (a preview that carries a request body) that
   /// the caller can abandon: [cancelToken] aborts the transport when the page
@@ -202,7 +221,7 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     CancelToken? cancelToken,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.post<dynamic>(
         path,
@@ -214,14 +233,14 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
-  }) async {
+  }) => _trackPost(path, () async {
     try {
       final r = await _dio.post<dynamic>(
         path,
@@ -233,13 +252,13 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// Exact read-only candidate endpoints retain their typed legacy form filters.
   Future<Map<String, dynamic>> postForm(
     String path, {
     required Map<String, dynamic> body,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     if (!isNativeFacetPath(path)) {
       throw ApiException('VALIDATION_FAILED', '只读候选接口无效');
     }
@@ -261,7 +280,7 @@ class ApiClient {
     } on DioException catch (error) {
       throw _convert(error);
     }
-  }
+  });
 
   /// 已知的长事务端点（如人事对账）用：同 [post]，但用 [receiveTimeout] 覆盖
   /// network_policy.dart 的全局 45s 接收超时。单独成方法而非给 [post] 加可选参数，
@@ -271,7 +290,7 @@ class ApiClient {
     String path, {
     Object? body,
     required Duration receiveTimeout,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       final r = await _dio.post<dynamic>(
         path,
@@ -282,54 +301,51 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// POST 且响应为 JSON 数组（如批量生成结果列表）。
-  Future<List<Map<String, dynamic>>> postList(
-    String path, {
-    Object? body,
-  }) async {
-    try {
-      final r = await _dio.post<dynamic>(path, data: body);
-      final data = r.data;
-      if (data is List) {
-        return data.cast<Map<String, dynamic>>();
-      }
-      if (data is Map && data['data'] is List) {
-        return (data['data'] as List).cast<Map<String, dynamic>>();
-      }
-      return const [];
-    } on DioException catch (e) {
-      throw _convert(e);
-    }
-  }
+  Future<List<Map<String, dynamic>>> postList(String path, {Object? body}) =>
+      _trackPost(path, () async {
+        try {
+          final r = await _dio.post<dynamic>(path, data: body);
+          final data = r.data;
+          if (data is List) {
+            return data.cast<Map<String, dynamic>>();
+          }
+          if (data is Map && data['data'] is List) {
+            return (data['data'] as List).cast<Map<String, dynamic>>();
+          }
+          return const [];
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
 
   /// PUT 且响应为 JSON 数组（整体替换后回读列表）。
-  Future<List<Map<String, dynamic>>> putList(
-    String path, {
-    Object? body,
-  }) async {
-    try {
-      final r = await _dio.put<dynamic>(path, data: body);
-      final data = r.data;
-      if (data is List) return data.cast<Map<String, dynamic>>();
-      if (data is Map && data['data'] is List) {
-        return (data['data'] as List).cast<Map<String, dynamic>>();
-      }
-      return const [];
-    } on DioException catch (e) {
-      throw _convert(e);
-    }
-  }
+  Future<List<Map<String, dynamic>>> putList(String path, {Object? body}) =>
+      _reloadSafety.track(() async {
+        try {
+          final r = await _dio.put<dynamic>(path, data: body);
+          final data = r.data;
+          if (data is List) return data.cast<Map<String, dynamic>>();
+          if (data is Map && data['data'] is List) {
+            return (data['data'] as List).cast<Map<String, dynamic>>();
+          }
+          return const [];
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
 
-  Future<Map<String, dynamic>> put(String path, {Object? body}) async {
-    try {
-      final r = await _dio.put<dynamic>(path, data: body);
-      return _objectResponse(r);
-    } on DioException catch (e) {
-      throw _convert(e);
-    }
-  }
+  Future<Map<String, dynamic>> put(String path, {Object? body}) =>
+      _reloadSafety.track(() async {
+        try {
+          final r = await _dio.put<dynamic>(path, data: body);
+          return _objectResponse(r);
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
 
   /// PUT with explicit query parameters. Kept separate so existing test/API
   /// subclasses overriding [put] remain source-compatible.
@@ -337,7 +353,7 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       final r = await _dio.put<dynamic>(
         path,
@@ -348,7 +364,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// 上传原始字节（附件直传本地后端 raw 端点；OSS 由调用方用独立 Dio 直传预签名 URL）。
   Future<void> putBytes(
@@ -356,7 +372,7 @@ class ApiClient {
     Uint8List bytes,
     String contentType, {
     Map<String, String>? headers,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       await _dio.put<dynamic>(
         path,
@@ -366,7 +382,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// 上传原始字节(POST, octet-stream)并返回 JSON——货品导入 detect/commit、
   /// 公共 AI 作业提交(ADR-133)用。
@@ -381,7 +397,7 @@ class ApiClient {
     Map<String, String>? headers,
     Duration? sendTimeout,
     Duration? receiveTimeout,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       final r = await _dio.post<dynamic>(
         path,
@@ -399,7 +415,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// multipart 文件上传并返回 JSON（报销发票 OCR 识别等单文件直传后端端点）。
   Future<Map<String, dynamic>> postMultipartFile(
@@ -408,7 +424,7 @@ class ApiClient {
     String filename,
     String contentType, {
     Duration? receiveTimeout,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       final form = FormData.fromMap({
         'file': MultipartFile.fromBytes(
@@ -429,10 +445,10 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// 下载原始字节（附件本地后端 raw 端点流式下载）。
-  Future<Uint8List> getBytes(String path) async {
+  Future<Uint8List> getBytes(String path) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.get<List<int>>(
         path,
@@ -442,7 +458,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
   /// Client packages stay in a stream instead of retaining a desktop bundle in
   /// memory. Only API-relative paths are accepted; credentials never follow an
@@ -469,6 +485,7 @@ class ApiClient {
             rawQuery != 'runtimeFamily=wpf_legacy')) {
       throw const FormatException('Invalid client package path');
     }
+    final lease = _reloadSafety.beginRead();
     try {
       final response = await _dio.get<ResponseBody>(
         packageUri.path,
@@ -487,9 +504,16 @@ class ApiClient {
         ),
       );
       if (response.data == null) throw const FormatException('Empty package');
-      return response.data!.stream;
+      return lease.hold(
+        response.data!.stream,
+        cancelled: cancelToken.whenCancel,
+      );
     } on DioException catch (e) {
+      lease.complete();
       throw _convert(e);
+    } catch (_) {
+      lease.complete();
+      rethrow;
     }
   }
 
@@ -497,7 +521,7 @@ class ApiClient {
     String path,
     Uint8List bytes, {
     required void Function(int, int) onProgress,
-  }) async {
+  }) => _reloadSafety.track(() async {
     try {
       await _dio.put<dynamic>(
         path,
@@ -514,16 +538,17 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  }
+  });
 
-  Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
-    try {
-      final r = await _dio.patch<dynamic>(path, data: body);
-      return _objectResponse(r);
-    } on DioException catch (e) {
-      throw _convert(e);
-    }
-  }
+  Future<Map<String, dynamic>> patch(String path, {Object? body}) =>
+      _reloadSafety.track(() async {
+        try {
+          final r = await _dio.patch<dynamic>(path, data: body);
+          return _objectResponse(r);
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
 
   /// 后端 200 空体（void 接口）时 Dio 给的是 '' 而不是 null，
   /// 直接 `as Map` 会抛 TypeError —— 保存其实成功了却提示失败。
@@ -549,13 +574,14 @@ class ApiClient {
   }
 
   /// [query] 作为查询参数发送(例如乐观锁版本号 `?version=`)。
-  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
-    try {
-      await _dio.delete<dynamic>(path, queryParameters: query);
-    } on DioException catch (e) {
-      throw _convert(e);
-    }
-  }
+  Future<void> delete(String path, {Map<String, dynamic>? query}) =>
+      _reloadSafety.track(() async {
+        try {
+          await _dio.delete<dynamic>(path, queryParameters: query);
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
 
   /// 下载二进制（Excel 导出用）：POST [path]，可选密码走 [body]，过滤/排序走 [query]，
   /// 以 bytes 接收。AuthInterceptor 自动管 401 刷新。错误体（bytes）尝试解 JSON 取业务消息。
@@ -563,7 +589,7 @@ class ApiClient {
     String path, {
     Object? body,
     Map<String, dynamic>? query,
-  }) async {
+  }) => _reloadSafety.trackRead(() async {
     try {
       final r = await _dio.post<List<int>>(
         path,
@@ -578,7 +604,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convertBytes(e);
     }
-  }
+  });
 
   /// bytes 响应的错误转换：业务错误体可能是 UTF-8 JSON 字节，尝试解出 ApiError 取消息。
   ApiException _convertBytes(DioException e) {

@@ -6,7 +6,7 @@ const materialAggregateMaxSources = 10000;
 
 /// Packs whole independent material intents into one request, preserving order.
 /// A material draft always stays inside one request. When its sources differ in
-/// workshop, worker or overproduction rate it is sent as several request groups
+/// frozen production rules, workshop, worker or overproduction rate it is sent as several request groups
 /// (ADR-120 §8); [requestGroupsByKey] carries that count so the window never
 /// exceeds the server's group limit. Missing entries count as one group.
 List<String> materialAggregateRequestWindow(
@@ -19,6 +19,14 @@ List<String> materialAggregateRequestWindow(
         entry.value,
         entry.key,
         'material source scope must be 1..$materialAggregateMaxSources',
+      );
+    }
+    final weight = requestGroupsByKey[entry.key] ?? 1;
+    if (weight < 1 || weight > materialAggregateMaxGroups) {
+      throw ArgumentError.value(
+        weight,
+        entry.key,
+        'material order groups must be 1..$materialAggregateMaxGroups',
       );
     }
   }

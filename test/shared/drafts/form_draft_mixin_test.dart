@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/web_update/web_update_safety.dart';
 import 'package:uten_imp/core/network/interceptors/remote_mfa_interceptor.dart';
 import 'package:uten_imp/core/network/remote_mfa_coordinator.dart';
 import 'package:uten_imp/features/auth/widgets/remote_mfa_prompt.dart';
@@ -348,6 +349,71 @@ Future<({GoRouter router, ProviderContainer container})> pumpEditor(
 }
 
 void main() {
+  testWidgets(
+    'reload safety covers initializing, autosaved input and active submission',
+    (tester) async {
+      final readGate = Completer<void>();
+      final storage = MemoryDraftStorage()..readGate = readGate.future;
+      final env = await pumpEditor(tester, storage, settle: false);
+      webUpdateSafety.setReady(true);
+      expect(webUpdateSafety.snapshot.safeToReload, isFalse);
+      readGate.complete();
+      await tester.pumpAndSettle();
+      expect(FormDraftNavigation.hasReloadSafetyForPath('/new'), isTrue);
+      expect(webUpdateSafety.snapshot.safeToReload, isTrue);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      final captures = editor.captures;
+      webUpdateSafety.snapshot;
+      webUpdateSafety.snapshot;
+      expect(
+        editor.captures,
+        captures,
+        reason: 'idle probes never recapture the form',
+      );
+      await tester.enterText(find.byKey(const Key('input')), '待提交的工程资料');
+      expect(webUpdateSafety.snapshot.dirty, isTrue);
+      await editor.saveFormDraftNow();
+      expect(storage.records, isNotEmpty);
+      expect(
+        webUpdateSafety.snapshot.dirty,
+        isTrue,
+        reason: 'local autosave is not business submission',
+      );
+      editor.busy = true;
+      expect(webUpdateSafety.snapshot.busy, isTrue);
+      editor.busy = false;
+      await tester.enterText(find.byKey(const Key('input')), '');
+      await editor.saveFormDraftNow();
+      expect(webUpdateSafety.snapshot.safeToReload, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+      expect(FormDraftNavigation.hasReloadSafetyForPath('/new'), isFalse);
+    },
+  );
+
+  testWidgets(
+    'unknown submission blocks restart until explicit verified completion',
+    (tester) async {
+      final env = await pumpEditor(tester, MemoryDraftStorage());
+      webUpdateSafety.setReady(true);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await expectLater(
+        editor.runFormDraftSubmission<void>(
+          () async => throw NetworkTimeoutException(),
+        ),
+        throwsA(isA<NetworkTimeoutException>()),
+      );
+      await tester.pumpAndSettle();
+      expect(webUpdateSafety.snapshot.blocked, isTrue);
+      await editor.completeFormDraft();
+      expect(webUpdateSafety.snapshot.safeToReload, isTrue);
+      await tester.pumpWidget(const SizedBox.shrink());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
   testWidgets(
     'a malformed later platform row cannot partly restore earlier user input',
     (tester) async {

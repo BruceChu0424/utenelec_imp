@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangeDetailPage @37 (page-class)<br>_HrProfileChangeDetailPageState @46 (state-class) |
-| 真实路由绑定 | /hr/profile-changes/:id；router @2284；builder ['HrProfileChangeDetailPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes/:id；router @2285；builder ['HrProfileChangeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-080 · lib/features/hr_profile/pages/hr_profile_changes_list_page.dart
 
-模块 `hr_profile`；553 行；SHA256 `cc70056df766e45ac4fb3959b98b133ac73f03403cd23e1d8e6d5aa20dbe3479`。
+模块 `hr_profile`；553 行；SHA256 `c108baed4a5675e5bb6dbaa7fe528aa483e07a0625a1ed12bbcd82fd449e3453`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangesListPage @59 (page-class)<br>_HrProfileChangesListPageState @67 (state-class) |
-| 真实路由绑定 | /hr/profile-changes；router @2279；builder ['HrProfileChangesListPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes；router @2280；builder ['HrProfileChangesListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

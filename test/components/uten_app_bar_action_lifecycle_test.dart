@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
@@ -317,7 +318,7 @@ void main() {
       expect(find.text('999.99'), findsNothing);
       expect(find.text('原品名'), findsNothing);
       expect(find.text('原数量'), findsNothing);
-      await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+      await tester.tap(find.byType(UtenCloseButton).hitTestable());
       await tester.pumpAndSettle();
       expect(find.text('预览 · 当前表头'), findsNothing);
       expect(find.byTooltip('关闭操作面板'), findsNothing);

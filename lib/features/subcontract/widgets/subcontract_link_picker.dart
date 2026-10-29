@@ -153,6 +153,8 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(dialogContext),
         icon: const Icon(Icons.lock_outline_rounded),
         title: const Text('新增发料审核暂不可用'),
         content: Text(
@@ -160,12 +162,6 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           '$kSubcontractMaterialIssueHistoricalCompatibilityNote',
         ),
         actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('知道了'),
-          ),
-        ],
       ),
     );
     return null;

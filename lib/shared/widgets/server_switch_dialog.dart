@@ -51,6 +51,8 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
     final theme = Theme.of(context);
     return UtenAlertDialog(
       scrollable: false,
+      showCloseButton: kIsWeb,
+      onClose: () => Navigator.of(context).pop(),
       headingIcon: Icons.dns_outlined,
       title: Row(
         children: [
@@ -131,12 +133,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: kIsWeb
-          ? [
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('知道了'),
-              ),
-            ]
+          ? null
           : [
               TextButton(
                 onPressed: _busy ? null : _resetToDefault,

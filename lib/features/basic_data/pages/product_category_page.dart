@@ -43,6 +43,7 @@ import '../repositories/master_inline_edit_repository.dart';
 import '../repositories/goods_facet_repository.dart';
 import '../repositories/product_category_repository.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/category_deletion_safety.dart';
 import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_mode_picker.dart';
@@ -316,21 +317,27 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       context.appInfo(systemUncategorizedCategoryProtectionMessage);
       return;
     }
-    ProductCategoryDeletePreview? preview;
+    final ProductCategoryDeletePreview preview;
     try {
       preview = await shellRunCategoryTask(
         '正在检查删除范围…',
         () =>
             ref.read(productCategoryRepositoryProvider).deletePreview(node.id),
       );
+    } on ApiException catch (error) {
+      if (mounted && current()) {
+        await _showDeleteError('无法确认删除范围，请重试后再删除。\n${error.message}');
+      }
+      return;
     } catch (_) {
-      preview = null; // 预览失败不阻塞：退回无计数的通用确认。
+      if (mounted && current()) {
+        await _showDeleteError('无法确认删除范围，请重试后再删除。');
+      }
+      return;
     }
     if (!mounted || !current()) return;
 
-    final hasCascade =
-        preview != null &&
-        (preview.descendantCount > 0 || preview.goodsCount > 0);
+    final hasCascade = preview.descendantCount > 0 || preview.goodsCount > 0;
     final confirm = await showReadOwnedDialog<bool>(
       ref: ref,
       context: context,
@@ -360,16 +367,18 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (preview!.descendantCount > 0)
+                    if (preview.descendantCount > 0)
                       Text(
                         '• ${preview.descendantCount} 个子分类',
                       ), // TODO(l10n): 补 arb
                     if (preview.goodsCount > 0)
                       Text('• ${preview.goodsCount} 个货品'), // TODO(l10n): 补 arb
                     const SizedBox(height: UtenSpacing.s4),
-                    const Text(
-                      '以上将随该分类一并删除。可在操作记录中撤回，仍需满足当前权限和引用规则。', // TODO(l10n): 补 arb
-                      style: TextStyle(color: UtenColors.error),
+                    Text(
+                      preview.goodsCount > 0
+                          ? '以上分类和货品将一并删除，这些货品的组装信息（BOM）也会删除。可在操作记录中撤回，仍需满足当前权限和引用规则。'
+                          : '以上将随该分类一并删除。可在操作记录中撤回，仍需满足当前权限和引用规则。', // TODO(l10n): 补 arb
+                      style: const TextStyle(color: UtenColors.error),
                     ),
                   ],
                 ),
@@ -411,9 +420,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     }
     if (!mounted || !current()) return;
     shellAfterCategoryDeleted(node.id);
-    final msg =
-        (preview != null &&
-            (preview.descendantCount > 0 || preview.goodsCount > 0))
+    final msg = (preview.descendantCount > 0 || preview.goodsCount > 0)
         ? '已删除分类(含 ${preview.descendantCount} 个子分类、${preview.goodsCount} 个货品)'
         : '分类已删除';
     if (mounted && current()) context.appSuccess(msg); // TODO(l10n): 补 arb
@@ -421,26 +428,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   }
 
   /// 删除失败的错误对话框（显式弹窗，而非顶部 toast），展示后端返回的原因。
-  Future<void> _showDeleteError(String message) {
-    return showDialog<void>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const UtenDialogHeading(
-          title: Text('删除失败'), // TODO(l10n): 补 arb
-          icon: Icons.error_outline_rounded,
-          danger: true,
-        ),
-        content: Text(message),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'), // TODO(l10n): 补 arb
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _showDeleteError(String message) =>
+      showCategoryDeleteError(context, message);
 
   @override
   void initState() {

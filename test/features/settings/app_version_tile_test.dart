@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/settings/widgets/app_version_tile.dart';
 
@@ -43,7 +44,7 @@ void main() {
     expect(find.textContaining('AI 使用权限改为单独授权'), findsOneWidget);
     expect(find.textContaining('修改敏感权限时需要再次验证身份'), findsOneWidget);
     expect(find.textContaining('统一应用和安装包的版本信息'), findsOneWidget);
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
   });
@@ -75,7 +76,7 @@ void main() {
     }
     expect(find.textContaining(l10n.release2511Platform), findsNothing);
     expect(find.textContaining(l10n.release254QuantityPrecision), findsNothing);
-    await tester.tap(find.text(l10n.releaseNotesClose));
+    await tester.tap(find.byType(UtenCloseButton));
     await tester.pumpAndSettle();
     await pump(tester, version: 'v2.5.16');
     expect(find.text(l10n.releaseNotesUnavailable), findsOneWidget);
@@ -100,7 +101,7 @@ void main() {
       }
       expect(find.textContaining(l10n.release2517Lifecycle), findsNothing);
       expect(find.textContaining(l10n.release2511Platform), findsNothing);
-      await tester.tap(find.text(l10n.releaseNotesClose));
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
       await pump(tester, version: 'v2.5.17');
       expect(find.textContaining(l10n.release2517Lifecycle), findsOneWidget);
@@ -317,12 +318,9 @@ void main() {
               const Offset(0, -10000),
             );
             await tester.pumpAndSettle();
-            expect(
-              find.text(l10n.releaseNotesClose).hitTestable(),
-              findsOneWidget,
-            );
+            expect(find.byType(UtenCloseButton).last, findsOneWidget);
             expect(tester.takeException(), isNull);
-            await tester.tap(find.text(l10n.releaseNotesClose));
+            await tester.tap(find.byType(UtenCloseButton));
             await tester.pumpAndSettle();
           }
         },
@@ -412,8 +410,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text('知道了').hitTestable(), findsOneWidget);
-      await tester.tap(find.text('知道了'));
+      expect(find.byType(UtenCloseButton).last, findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
     }
   });

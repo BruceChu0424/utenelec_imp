@@ -9,8 +9,8 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DashboardPage @38 (page-class) |
-| 真实路由绑定 | /dashboard；router @555；builder ['DashboardPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:549","routerLine":549,"path":"/","targetConstants":["dashboard"],"redirectExpression":"(_, _) => RouteName.dashboard","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /dashboard；router @556；builder ['DashboardPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:550","routerLine":550,"path":"/","targetConstants":["dashboard"],"redirectExpression":"(_, _) => RouteName.dashboard","status":"possible alias; 需人工核实"} |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |

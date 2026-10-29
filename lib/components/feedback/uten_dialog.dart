@@ -1,5 +1,7 @@
 // UtenDialog - 确认对话框（UtenButton 动作 + 主题适配 + 按钮居中）
 // 文档：docs/02-组件库/UtenDialog.md
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../buttons/uten_button.dart';
@@ -53,13 +55,19 @@ class UtenAlertDialog extends AlertDialog {
     this.headingIcon,
     this.showCloseButton = false,
     this.onClose,
+    this.closeEnabled = true,
+    this.closeButtonKey,
+    this.closeTooltip,
   });
 
   final double maxWidth;
   final Widget? subtitle;
   final IconData? headingIcon;
   final bool showCloseButton;
-  final VoidCallback? onClose;
+  final FutureOr<void> Function()? onClose;
+  final bool closeEnabled;
+  final Key? closeButtonKey;
+  final String? closeTooltip;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -87,7 +95,7 @@ class UtenAlertDialog extends AlertDialog {
               child: content!,
             );
       Widget header() => UtenDialogHeader(
-        title: title!,
+        title: title ?? const SizedBox.shrink(),
         subtitle: subtitle,
         leading: icon == null
             ? null
@@ -102,7 +110,11 @@ class UtenAlertDialog extends AlertDialog {
             headingIcon ??
             (title is Text && icon == null ? Icons.info_outline_rounded : null),
         showCloseButton: showCloseButton,
-        onClose: onClose ?? () => Navigator.maybePop(context),
+        closeButtonKey: closeButtonKey,
+        closeTooltip: closeTooltip,
+        onClose: closeEnabled
+            ? onClose ?? () => Navigator.maybePop(context)
+            : null,
         padding: titlePadding?.resolve(Directionality.of(context)),
       );
       AlertDialog alert(
@@ -110,10 +122,10 @@ class UtenAlertDialog extends AlertDialog {
         bool? canScroll,
         EdgeInsets? margins,
       }) => AlertDialog(
-        icon: title == null ? icon : null,
+        icon: title == null && !showCloseButton ? icon : null,
         iconPadding: iconPadding,
         iconColor: iconColor,
-        title: title == null
+        title: title == null && !showCloseButton
             ? null
             : (canScroll ?? scrollable)
             ? header()
@@ -133,7 +145,7 @@ class UtenAlertDialog extends AlertDialog {
             contentPadding ??
             EdgeInsets.fromLTRB(
               compact ? 12 : 24,
-              title == null ? 24 : 0,
+              title == null && !showCloseButton ? 24 : 0,
               compact ? 12 : 24,
               24,
             ),
@@ -393,6 +405,7 @@ abstract final class UtenDialog {
     required Widget content,
     String? confirmLabel,
     String? cancelLabel,
+    bool confirmAsClose = false,
     VoidCallback? onConfirm,
     bool danger = false,
     bool waitForExit = false,
@@ -404,6 +417,12 @@ abstract final class UtenDialog {
       // 弹窗文字可框选复制（准则 §3.4 局部包裹：弹窗是独立路由，自带 region，
       // 不与页面 region 嵌套；TextField 不受影响，自带原生选择）。
       child: UtenAlertDialog(
+        showCloseButton: confirmAsClose,
+        closeTooltip: confirmLabel,
+        onClose: () {
+          Navigator.pop(ctx, true);
+          onConfirm?.call();
+        },
         maxWidth: 520,
         title: UtenDialogHeading(
           title: Text(title),
@@ -435,21 +454,23 @@ abstract final class UtenDialog {
         // 按钮整体居中（全仓弹窗统一规范）
         actionsAlignment: MainAxisAlignment.center,
         actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(cancelLabel ?? '取消'),
-          ),
-          UtenButton(
-            type: danger ? UtenButtonType.danger : UtenButtonType.primary,
-            size: UtenButtonSize.large,
-            onPressed: () {
-              Navigator.pop(ctx, true);
-              onConfirm?.call();
-            },
-            child: Text(confirmLabel ?? '确认'),
-          ),
+          if (!confirmAsClose)
+            UtenButton(
+              type: UtenButtonType.secondary,
+              size: UtenButtonSize.large,
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(cancelLabel ?? '取消'),
+            ),
+          if (!confirmAsClose)
+            UtenButton(
+              type: danger ? UtenButtonType.danger : UtenButtonType.primary,
+              size: UtenButtonSize.large,
+              onPressed: () {
+                Navigator.pop(ctx, true);
+                onConfirm?.call();
+              },
+              child: Text(confirmLabel ?? '确认'),
+            ),
         ],
       ),
     );

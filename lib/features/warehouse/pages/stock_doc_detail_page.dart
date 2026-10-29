@@ -1862,6 +1862,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
           children: [
             UtenSummaryField(label: '制单员', value: d.makerName),
             UtenSummaryField(label: '制单时间', value: utenFmtIsoTime(d.createdAt)),
+            if (d.workerName?.isNotEmpty == true)
+              UtenSummaryField(
+                label: widget.docType == StockDocType.draw ? '领料负责人' : '经办人',
+                value: d.workerName,
+              ),
           ],
         ),
         if (d.remark?.isNotEmpty == true)

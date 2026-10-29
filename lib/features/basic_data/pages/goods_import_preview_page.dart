@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_review_input_cell.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
@@ -124,6 +125,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   int _revision = 0;
   int _categoryRevision = 0;
   bool _checking = false;
+  bool _confirmingMoves = false;
   late bool _dirty = widget.needsValidation;
   String? _message;
   String? _category;
@@ -393,7 +395,7 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
   }
 
   Future<void> _confirm() async {
-    if (_checking || _dirty || _selected.isEmpty) return;
+    if (_checking || _confirmingMoves || _dirty || _selected.isEmpty) return;
     final selected = _selected.map(int.parse).toSet();
     if (!selected.every(_ready.contains)) return;
     final remaining = _rows
@@ -437,6 +439,15 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
       }
     }
     if (!mounted || confirmedReport.planId?.isNotEmpty != true) return;
+    final revision = _revision;
+    if (!await _confirmCategoryMoves(confirmedReport, selected) ||
+        !mounted ||
+        _dirty ||
+        revision != _revision ||
+        selected.length != _selected.length ||
+        !selected.every((row) => _selected.contains('$row'))) {
+      return;
+    }
     Navigator.of(context).pop(
       GoodsImportPreviewDecision(
         report: confirmedReport,
@@ -453,6 +464,74 @@ class _GoodsImportPreviewPageState extends State<GoodsImportPreviewPage> {
         hasRemaining: remaining.isNotEmpty,
       ),
     );
+  }
+
+  Future<bool> _confirmCategoryMoves(
+    GoodsImportReport report,
+    Set<int> selected,
+  ) async {
+    if (widget.mode == GoodsImportMode.createOnly) return true;
+    final moves = [
+      for (final row in report.reviewRows)
+        if (selected.contains(row.rowNum))
+          for (final change in row.changes)
+            if (change.field == 'categoryId' &&
+                (!change.isConflict || _replacesConflicts(row.rowNum)))
+              (row, change),
+    ];
+    if (moves.isEmpty) return true;
+    _confirmingMoves = true;
+    try {
+      return await showDialog<bool>(
+            context: context,
+            builder: (dialogContext) => UtenAlertDialog(
+              maxWidth: 600,
+              title: UtenDialogHeading(
+                icon: Icons.drive_file_move_outline,
+                title: Text('将移动 ${moves.length} 个已有货品'),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '这些行沿用原货品身份，从原分类移到新分类，原有组装信息（BOM）随货品移动。'
+                      '文件中另行指定的组装信息ID仍按导入内容处理。'
+                      '若要制作副本，请取消并改用「新建货品」或「复制货品」。',
+                    ),
+                    for (final (row, change) in moves.take(8)) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text('${row.code} ${row.name}'),
+                      Text('原分类：${change.oldValue ?? '未分类'}'),
+                      Text('新分类：${change.newValue ?? row.categoryPath}'),
+                    ],
+                    if (moves.length > 8) ...[
+                      const SizedBox(height: UtenSpacing.s12),
+                      Text('另有 ${moves.length - 8} 个货品，完整路径见导入预览。'),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                UtenButton(
+                  key: const ValueKey('goods-import-move-cancel'),
+                  type: UtenButtonType.secondary,
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('继续核对'),
+                ),
+                UtenButton(
+                  key: const ValueKey('goods-import-move-confirm'),
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('确认移动并导入'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    } finally {
+      _confirmingMoves = false;
+    }
   }
 
   String _reviewFingerprint(GoodsImportReport report, Set<int> selected) =>

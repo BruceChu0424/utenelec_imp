@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -935,7 +936,7 @@ void main() {
     final originalKeys = gateway.lastBatchCommand!.batches
         .map((entry) => entry.idempotencyKey)
         .toList();
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     // 失败后批量页保留：输入与幂等键原样，供原请求重试。
     expect(

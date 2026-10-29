@@ -46,7 +46,7 @@ final class WarehouseWorkshopMaterialTaskProjection {
         return """
                 SELECT 'DRAW','WORKSHOP_REQUISITION',requisition.id,requisition.request_no,physical.bill_no,
                        (requisition.requested_at AT TIME ZONE 'Asia/Shanghai')::date,
-                       workshop.name,COALESCE(warehouse.name,''),requester.full_name,1,
+                       workshop.name,COALESCE(warehouse.name,''),NULL::text,requester.full_name,1,
                        'DRAW_WORKSHOP_' || CASE WHEN line.fulfilled_qty>0 THEN 'DONE' ELSE requisition.status END,
                        concat_ws(' ',requisition.request_no,workshop.name,goods.code,goods.name,color.name),
                        NULL::uuid,NULL::int,NULL::int,requisition.row_version,requisition.id,TRUE,
@@ -62,7 +62,7 @@ final class WarehouseWorkshopMaterialTaskProjection {
                        requisition.request_no AS bill_no,physical.bill_no AS source_doc_no,
                        (requisition.requested_at AT TIME ZONE 'Asia/Shanghai')::date AS business_date,
                        workshop.name AS party_name,COALESCE(warehouse.name,'') AS warehouse_name,
-                       requester.full_name AS responsible_name,1 AS line_count,
+                       NULL::text AS responsible_name,requester.full_name AS maker_name,1 AS line_count,
                        'RETURN_WORKSHOP_' || CASE WHEN line.fulfilled_qty>0 THEN 'DONE' ELSE requisition.status END AS workflow_status,
                        'WORKSHOP_REQUISITION'::text AS action,requisition.id AS target_id,
                        jsonb_build_object('requisitionId',requisition.id,'requisitionLineId',line.id,

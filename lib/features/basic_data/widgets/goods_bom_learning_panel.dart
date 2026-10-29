@@ -13,6 +13,7 @@
 //   学习记录，面板就地换上，并通知组装信息页签重读。
 //
 // [bomActualUsageTip] 与组装信息表格「真实使用数量」悬停说明共用。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -225,10 +226,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
                   onPressed: _relearning == null ? _refresh : null,
                   icon: const Icon(Icons.refresh),
                 ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close),
-                ),
+                UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
               ],
             ),
             const SizedBox(height: UtenSpacing.s16),

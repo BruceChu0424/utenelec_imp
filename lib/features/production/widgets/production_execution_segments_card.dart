@@ -1636,10 +1636,6 @@ class _ExecutionSegmentDetail extends StatelessWidget {
             ),
             UtenDialogActions(
               children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
-                ),
                 if (canStart &&
                     segment.startRoute == null &&
                     const [

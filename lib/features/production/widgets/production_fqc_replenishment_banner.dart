@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -448,10 +449,9 @@ class _ProductionFqcReplenishmentBannerState
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ),
-                      IconButton(
+                      UtenCloseButton(
                         tooltip: '关闭',
                         onPressed: () => Navigator.pop(sheetContext),
-                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),

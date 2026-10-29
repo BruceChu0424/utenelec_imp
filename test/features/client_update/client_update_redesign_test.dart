@@ -29,6 +29,8 @@ import 'package:uten_imp/features/client_update/client_update_page.dart';
 import 'package:uten_imp/features/client_update/client_update_tile.dart';
 import 'package:uten_imp/shared/providers/performance_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 import '../../support/audit_screenshot_support.dart';
 
@@ -160,6 +162,9 @@ class _Harness {
       ProviderScope(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(_preferences),
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
           performanceProvider.overrideWith(() => _Tier(tier)),
           clientUpdateControllerProvider.overrideWithValue(controller),
           apiClientProvider.overrideWithValue(api),

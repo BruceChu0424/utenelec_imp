@@ -1,6 +1,7 @@
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +22,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/read_scope_revision.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -44,10 +46,15 @@ class ProductionDrawRequestPage extends ConsumerStatefulWidget {
     super.key,
     required this.segmentIds,
     this.expectedVersions = const {},
+    this.initialDrawItemIds,
   });
 
   final List<String> segmentIds;
   final Map<String, int> expectedVersions;
+
+  /// Null keeps the usual complete task review. A material-dialog selection
+  /// restricts sources by their UUID, including an explicitly empty selection.
+  final Set<String>? initialDrawItemIds;
 
   @override
   ConsumerState<ProductionDrawRequestPage> createState() =>
@@ -67,18 +74,31 @@ class _ProductionDrawRequestPageState
   final _selected = <String>{};
   final _quantities = <String, TextEditingController>{};
   final _quantityErrors = <String, String>{};
+  int _loadGeneration = 0;
 
   bool _draftSubmissionPending = false;
+  String? _submissionKey;
   @override
   bool get formDraftEnabled => true;
   @override
   bool get formDraftBusy => _saving || _uncertain;
   @override
+  bool get formDraftHasUnknownSubmission =>
+      _uncertain || _draftSubmissionPending;
+  @override
+  bool get formDraftCanReplaySubmission => _submissionKey != null;
+  @override
   FormDraftSpec get formDraftSpec => FormDraftCatalog.productionDraw.spec(
     title: '新建车间领料申请',
     route: Uri(
       path: RouteName.productionDrawRequest,
-      queryParameters: {'segmentIds': widget.segmentIds.join(',')},
+      queryParameters: {
+        'segmentIds': widget.segmentIds.join(','),
+        if (widget.initialDrawItemIds != null)
+          'drawItemIds': (widget.initialDrawItemIds!.toList()..sort()).join(
+            ',',
+          ),
+      },
     ).toString(),
   );
   @override
@@ -102,6 +122,7 @@ class _ProductionDrawRequestPageState
       for (final entry in _quantities.entries) entry.key: entry.value.text,
     },
     'uncertain': _uncertain || _draftSubmissionPending,
+    'submissionKey': _submissionKey,
     'rejected': _rejected,
     'preview': _preview == null
         ? null
@@ -133,6 +154,7 @@ class _ProductionDrawRequestPageState
                   'segmentId': row.segmentId,
                   'drawId': row.drawId,
                   'drawItemId': row.drawItemId,
+                  'demandId': row.demandId,
                   'drawNo': row.drawNo,
                 },
             ],
@@ -161,10 +183,44 @@ class _ProductionDrawRequestPageState
       ..clear()
       ..addAll(draftStrings(data['selected']));
     _uncertain = data['uncertain'] == true;
+    _submissionKey = data['submissionKey'] as String?;
+    if (_uncertain) {
+      final preview = _preview;
+      if (preview == null || _selected.isEmpty) {
+        throw const FormatException('原领料提交记录未完整恢复，请保留草稿核对');
+      }
+      final items = preview.requestItems
+        ..sort((a, b) => a.segmentId.compareTo(b.segmentId));
+      final lines = _requestLines(preview);
+      if (lines.isEmpty) {
+        throw const FormatException('原领料来源未完整恢复，请保留草稿核对');
+      }
+      final key = _requestKey(preview, items, lines);
+      if (_submissionKey != null && _submissionKey != key) {
+        throw const FormatException('原领料内容与提交标识不一致，请保留草稿核对');
+      }
+      // Legacy checkpoints contain the exact original preview and quantities;
+      // reconstruct the same deterministic key without reading new sources.
+      _submissionKey = key;
+    }
     _rejected = data['rejected'] == true;
     _loadError = null;
     if (_uncertain) _submitError = '上次领料提交结果尚未确认，请重试原批次；来源、版本和数量保持原提交内容。';
     if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant ProductionDrawRequestPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!setEquals(oldWidget.segmentIds.toSet(), widget.segmentIds.toSet()) ||
+        !mapEquals(oldWidget.expectedVersions, widget.expectedVersions) ||
+        !setEquals(oldWidget.initialDrawItemIds, widget.initialDrawItemIds)) {
+      // A router may reuse this State for another query. Keep its original
+      // draft/unknown command with its owner instead of applying a new target
+      // to an in-flight response or silently replacing reviewed quantities.
+      _loadGeneration++;
+      invalidateFormDraftIdentity();
+    }
   }
 
   @override
@@ -185,11 +241,20 @@ class _ProductionDrawRequestPageState
   @override
   void initState() {
     super.initState();
+    // The first preview belongs to this reader too; draft initialization after
+    // loading must not adopt a different operator's response or selected rows.
+    startFormDraftIdentityGuard();
+    ref.listenManual(readScopeRevisionProvider, (previous, next) {
+      if (previous != next) invalidateFormDraftIdentity();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load({bool currentVersions = false}) async {
-    if (_saving || _uncertain || !mounted) return;
+    if (_saving || _uncertain || !formDraftIdentityIsCurrent) return;
+    final generation = ++_loadGeneration;
+    bool current() =>
+        formDraftIdentityIsCurrent && generation == _loadGeneration;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -212,7 +277,7 @@ class _ProductionDrawRequestPageState
           ids.length > ProductionDrawRequestRepository.batchLimit) {
         throw const FormatException('请返回我的车间任务，选择 1 至 50 个可领料任务');
       }
-      final preview = await ref
+      final fullPreview = await ref
           .read(productionDrawRequestRepositoryProvider)
           .preview([
             for (final id in ids)
@@ -223,7 +288,10 @@ class _ProductionDrawRequestPageState
                     : widget.expectedVersions[id],
               ),
           ]);
-      if (mounted) {
+      final preview = widget.initialDrawItemIds == null
+          ? fullPreview
+          : fullPreview.restrictToDrawItems(widget.initialDrawItemIds!);
+      if (current()) {
         for (final controller in _quantities.values) {
           controller.dispose();
         }
@@ -246,13 +314,13 @@ class _ProductionDrawRequestPageState
         });
       }
     } on ApiException catch (error) {
-      if (mounted) setState(() => _loadError = _errorMessage(error));
+      if (current()) setState(() => _loadError = _errorMessage(error));
     } on FormatException catch (error) {
-      if (mounted) setState(() => _loadError = error.message);
+      if (current()) setState(() => _loadError = error.message);
     } catch (_) {
-      if (mounted) setState(() => _loadError = '领料汇总加载失败，请重新加载');
+      if (current()) setState(() => _loadError = '领料汇总加载失败，请重新加载');
     } finally {
-      if (mounted) {
+      if (current()) {
         setState(() => _loading = false);
         await initializeFormDraft();
       }
@@ -260,6 +328,7 @@ class _ProductionDrawRequestPageState
   }
 
   String? get _blocked {
+    if (!formDraftIdentityIsCurrent) return '登录或数据范围已变化，请返回后重新打开';
     if (!_hasPermission) return '当前账号没有查看并提交车间领料的权限';
     if (_loading) return '正在加载领料汇总';
     if (_saving) return '正在提交领料，请稍候';
@@ -308,6 +377,15 @@ class _ProductionDrawRequestPageState
         ),
   ]..sort((a, b) => a.drawItemId.compareTo(b.drawItemId));
 
+  String _requestKey(
+    ProductionDrawRequestPreview preview,
+    List<ProductionDrawRequestItem> items,
+    List<ProductionDrawRequestSelection> lines,
+  ) => businessIdempotencyKey(
+    'workshop-draw',
+    '${preview.fingerprint}|${items.map((item) => '${item.segmentId}:${item.expectedVersion}').join('|')}|${lines.map((line) => '${line.drawItemId}:${line.quantity}').join('|')}',
+  );
+
   Future<void> _submit() async {
     if (_blocked != null) return;
     final preview = _preview!;
@@ -316,18 +394,17 @@ class _ProductionDrawRequestPageState
     final lines = _requestLines(preview);
     // A lost response retries the exact reviewed intent, including after a
     // navigation back to an unchanged preview. Never mint a second request key.
-    final key = businessIdempotencyKey(
-      'workshop-draw',
-      '${preview.fingerprint}|${items.map((item) => '${item.segmentId}:${item.expectedVersion}').join('|')}|${lines.map((line) => '${line.drawItemId}:${line.quantity}').join('|')}',
-    );
+    final key = _requestKey(preview, items, lines);
     setState(() {
       _saving = true;
       _submitError = null;
+      _submissionKey = key;
     });
     var dispatched = false;
     try {
       _draftSubmissionPending = true;
       await saveFormDraftNow();
+      if (!formDraftIdentityIsCurrent) return;
       dispatched = true;
       final result = await ref
           .read(productionDrawRequestRepositoryProvider)
@@ -337,8 +414,9 @@ class _ProductionDrawRequestPageState
             previewFingerprint: preview.fingerprint,
             lines: lines,
           );
+      if (!formDraftIdentityIsCurrent) return;
       await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       refreshAfterProductionPlanGenerated(ref);
       invalidateWarehouseTaskCounts(ref);
       bumpListRefresh(ref, StockDocType.draw.refreshKey);
@@ -355,7 +433,7 @@ class _ProductionDrawRequestPageState
         context.go(RouteName.productionWorkshopTasks);
       }
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!formDraftIdentityIsCurrent) return;
       final uncertain =
           error is NetworkException ||
           error is NetworkTimeoutException ||
@@ -371,7 +449,7 @@ class _ProductionDrawRequestPageState
             : '${_errorMessage(error)}。请重新加载并核对领料汇总。';
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!formDraftIdentityIsCurrent) return;
       setState(() {
         if (dispatched) {
           _uncertain = true;
@@ -705,6 +783,8 @@ class _ProductionDrawRequestPageState
   ) => showDialog<void>(
     context: context,
     builder: (context) => UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.pop(context),
       maxWidth: 920,
       scrollable: false,
       title: Text('${_label(summary.goodsName)} · 任务来源'),
@@ -793,12 +873,6 @@ class _ProductionDrawRequestPageState
           emptyMessage: '暂无任务来源',
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
-      ],
     ),
   );
 

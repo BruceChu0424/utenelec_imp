@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_close_button.dart';
 import 'uten_dialog_action_scope.dart';
 import 'uten_dialog_action_layout.dart';
 
@@ -175,9 +178,11 @@ class UtenDialogHeader extends StatelessWidget {
     this.icon,
     this.leading,
     this.trailing,
+    this.windowControls,
     this.onClose,
     this.showCloseButton = false,
     this.closeTooltip,
+    this.closeButtonKey,
     this.padding,
   });
 
@@ -186,9 +191,14 @@ class UtenDialogHeader extends StatelessWidget {
   final IconData? icon;
   final Widget? leading;
   final Widget? trailing;
-  final VoidCallback? onClose;
+
+  /// A single adjacent control group after business actions. When supplied,
+  /// this replaces the default close button rather than rendering it twice.
+  final Widget? windowControls;
+  final FutureOr<void> Function()? onClose;
   final bool showCloseButton;
   final String? closeTooltip;
+  final Key? closeButtonKey;
   final EdgeInsetsGeometry? padding;
 
   @override
@@ -224,21 +234,16 @@ class UtenDialogHeader extends StatelessWidget {
               const SizedBox(width: UtenSpacing.s8),
               trailing!,
             ],
-            if (showCloseButton) ...[
+            if (windowControls != null || showCloseButton) ...[
               const SizedBox(width: UtenSpacing.s8),
-              IconButton(
-                tooltip:
-                    closeTooltip ??
-                    MaterialLocalizations.of(context).closeButtonTooltip,
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded, size: 20),
-                color: theme.colorScheme.onSurfaceVariant,
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints.tightFor(
-                  width: UtenControlMetrics.minimumHitExtent(context),
-                  height: UtenControlMetrics.minimumHitExtent(context),
-                ),
-              ),
+              windowControls ??
+                  UtenCloseButton(
+                    key: closeButtonKey,
+                    tooltip:
+                        closeTooltip ??
+                        MaterialLocalizations.of(context).closeButtonTooltip,
+                    onPressed: onClose,
+                  ),
             ],
           ],
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/responsive/display_zoom.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_close_button.dart';
 import '../inputs/uten_field_hint_icon.dart';
 
 /// Decorative panel spacing stays stable in window pixels when the user changes
@@ -62,7 +63,6 @@ class UtenPanelHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final closeExtent = UtenControlMetrics.minimumHitExtent(context);
     return Padding(
       padding: UtenPanelSpacing.header(context),
       child: Row(
@@ -100,17 +100,10 @@ class UtenPanelHeader extends StatelessWidget {
             ),
           ),
           ...actions,
-          IconButton(
+          UtenCloseButton(
             key: closeButtonKey,
             tooltip: closeTooltip,
             onPressed: onClose,
-            icon: const Icon(Icons.close_rounded),
-            constraints: BoxConstraints.tightFor(
-              width: closeExtent,
-              height: closeExtent,
-            ),
-            padding: EdgeInsets.zero,
-            visualDensity: VisualDensity.standard,
           ),
         ],
       ),

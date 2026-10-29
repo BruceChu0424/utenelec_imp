@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -580,7 +581,7 @@ void main() {
           await _confirm(tester, action);
           await tester.pumpAndSettle();
           if (action == _Action.batch) {
-            await tester.tap(find.text('知道了'));
+            await tester.tap(find.byType(UtenCloseButton).last);
             await tester.pumpAndSettle();
           }
           expect(env.wire.mutations, hasLength(1));
@@ -594,7 +595,7 @@ void main() {
           await tester.tap(_retry(action));
           await tester.pumpAndSettle();
           if (action == _Action.batch) {
-            await tester.tap(find.text('知道了'));
+            await tester.tap(find.byType(UtenCloseButton).last);
             await tester.pumpAndSettle();
           }
           expect(env.wire.mutations, hasLength(2));
@@ -629,7 +630,7 @@ void main() {
       expect(find.text('批量入库失败'), findsOneWidget);
       final reads = env.wire.reads.length;
       _replace(env.session, env.credentials);
-      await tester.tap(find.text('知道了'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(env.wire.reads, hasLength(reads));
       expect(env.wire.mutations, hasLength(1));
@@ -688,7 +689,7 @@ void main() {
           await _confirm(tester, action);
           await tester.pumpAndSettle();
           if (action == _Action.batch) {
-            await tester.tap(find.text('知道了'));
+            await tester.tap(find.byType(UtenCloseButton).last);
             await tester.pumpAndSettle();
           }
           expect(env.wire.mutations, hasLength(1));

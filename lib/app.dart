@@ -20,6 +20,8 @@ import 'core/theme/dark_theme.dart';
 import 'core/theme/light_theme.dart';
 import 'core/theme/uten_control_theme.dart';
 import 'core/theme/uten_scroll_behavior.dart';
+import 'core/web_update/app_update_safety_host.dart';
+import 'core/web_update/web_update_branding.dart';
 import 'core/ui/app_notification.dart';
 import 'core/ui/connection_recovery_banner.dart';
 import 'features/admin/widgets/impersonation_banner.dart';
@@ -71,6 +73,7 @@ class UtenApp extends ConsumerWidget {
     });
     final themeMode = ref.watch(themeProvider);
     final branding = ref.watch(platformBrandingSnapshotProvider);
+    syncWebUpdateBranding(branding, ref.watch(apiBaseUrlProvider));
     ref.watch(platformWindowTitleSyncProvider);
     final locale = ref.watch(localeProvider);
     final fontScale = ref.watch(fontScaleProvider);
@@ -142,6 +145,7 @@ class UtenApp extends ConsumerWidget {
                 child: ServerMaintenanceHost(
                   child: Column(
                     children: [
+                      AppUpdateSafetyHost(router: router),
                       // 通知目标路由桥（不渲染）：导航到有通知指向的路由时自动已读。
                       const NoticeRouteReadBridge(),
                       // 敏感操作再认证宿主 (不渲染)：服务端要求重新输入密码时弹统一密码框 (ADR-110)。
@@ -164,7 +168,11 @@ class UtenApp extends ConsumerWidget {
                           session.actor?.id,
                           ref.watch(apiBaseUrlProvider),
                         )),
-                        enabled: session.isLoggedIn && !impersonating,
+                        enabled:
+                            !impersonating &&
+                            (session.isLoggedIn ||
+                                session.status == AuthStatus.unauthenticated),
+                        authenticated: session.isLoggedIn,
                         dialogContext: () => appNavigatorKey.currentContext,
                       ),
                       // V459 登录检查门（不渲染）：登录后拉待审，有则弹居中审核弹窗。

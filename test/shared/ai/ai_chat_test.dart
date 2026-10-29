@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -1134,9 +1135,36 @@ void main() {
       expect(find.text(l10n.aiChatPrivacyNotice), findsOneWidget);
       expect(find.text(l10n.aiChatBoundary), findsOneWidget);
       expect(find.text(l10n.aiChatCancel), findsNothing);
-      await tester.tap(find.text(l10n.aiChatInfoDone));
+      final close = find.byKey(const ValueKey('ai-chat-info-close'));
+      expect(close, findsOneWidget);
+      expect(find.text(l10n.aiChatInfoDone), findsNothing);
+      final dialogRoute = ModalRoute.of(tester.element(close))!;
+      await tester.tap(close);
       await tester.pumpAndSettle();
+      expect(await dialogRoute.popped, isTrue);
       expect(find.text(l10n.aiChatPrivacyNotice), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'privacy close cannot dismiss a new identity after its route ends',
+    (tester) async {
+      final harness = await _pump(tester);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-info')));
+      await tester.pumpAndSettle();
+      final staleClose = tester
+          .widget<UtenAlertDialog>(find.byType(UtenAlertDialog))
+          .onClose!;
+      harness.container.read(harness.identity.notifier).state = _identity(
+        user: 'replacement-user',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-chat-info-close')), findsNothing);
+      await staleClose();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('business-surface')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

@@ -3,7 +3,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
@@ -46,6 +45,10 @@ Future<void> showMasterBatchOutcome(
         child: UtenAlertDialog(
           scrollable: false,
           key: const Key('master-batch-outcome'),
+          showCloseButton: true,
+          onClose: () {
+            if (ctx.mounted) Navigator.pop(ctx);
+          },
           title: Text(
             result.succeeded == 0
                 ? '$action失败：${result.failed} 个$noun没有处理'
@@ -84,15 +87,6 @@ Future<void> showMasterBatchOutcome(
               ),
             ),
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              onPressed: () {
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('知道了'), // TODO(l10n): 补 arb
-            ),
-          ],
         ),
       );
       return dialogScopeBuilder?.call(ctx, dialog) ?? dialog;

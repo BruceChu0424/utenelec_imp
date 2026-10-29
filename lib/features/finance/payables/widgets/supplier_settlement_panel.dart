@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -630,15 +631,14 @@ class _SupplierSettlementDetailPanelState
       appBar: UtenAppBar(
         title: '供应商月结详情',
         showPagePermissionAction: false,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: _writing ? null : () => Navigator.of(context).pop(),
-        ),
         actions: [
           UtenRefreshButton(
             enabled: !_writing,
             busy: _loading,
             onRefresh: _load,
+          ),
+          UtenCloseButton(
+            onPressed: _writing ? null : () => Navigator.of(context).pop(),
           ),
         ],
       ),

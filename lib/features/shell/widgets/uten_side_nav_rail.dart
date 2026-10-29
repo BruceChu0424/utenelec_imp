@@ -20,6 +20,7 @@ import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/widgets/desktop_window_host.dart';
 
 /// 桌面 / 平板端左侧导航栏。
 ///
@@ -96,7 +97,7 @@ class UtenSideNavRail extends StatelessWidget {
       desktop: 48,
     );
 
-    return DecoratedBox(
+    return DesktopWindowHeaderSurface(
       decoration: BoxDecoration(
         color:
             theme.navigationRailTheme.backgroundColor ??

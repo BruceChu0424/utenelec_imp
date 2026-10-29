@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -219,10 +220,9 @@ class _GoodsPriceFacetPickerState extends ConsumerState<GoodsPriceFacetPicker>
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
-                          IconButton(
+                          UtenCloseButton(
                             onPressed: () => Navigator.pop(context),
                             tooltip: priceText(context, 'close'),
-                            icon: const Icon(Icons.close),
                           ),
                         ],
                       ),

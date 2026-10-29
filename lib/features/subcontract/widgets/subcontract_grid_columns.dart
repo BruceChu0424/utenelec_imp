@@ -20,6 +20,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/required_field_decoration.dart'
     show applyAutofillHint;
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -525,21 +526,20 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         key: 'source',
         label: '申请来源',
         width: 150,
+        // textOf（导出/复制）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
         textOf: (row) => row.sourceDocs
             .map((source) => source.billNo)
             .whereType<String>()
             .where((no) => no.isNotEmpty)
             .toSet()
             .join('、'),
-        cellBuilder: (context, row) {
-          final sources = row.sourceDocs
-              .map((source) => source.billNo)
-              .whereType<String>()
-              .where((no) => no.isNotEmpty)
-              .toSet()
-              .join('、');
-          return Text(sources.isEmpty ? '—' : sources);
-        },
+        cellBuilder: (context, row) => UtenMultiValueCell(
+          values: [
+            for (final source in row.sourceDocs)
+              if (source.billNo?.isNotEmpty == true) source.billNo!,
+          ],
+          title: '申请来源',
+        ),
       ),
     if (cfg.itemHasStockPlace)
       EditableGridColumn<SubcontractGridRow>(

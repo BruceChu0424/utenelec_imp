@@ -9,7 +9,7 @@
   "sources": [
     {
       "path": "lib/core/theme/uten_tokens.dart",
-      "sha256": "5c177cb01e89d85badcbd3a15a83824b3b43b553df2c8778e143d11d8d5227a0"
+      "sha256": "1bce41de083f08f430293322ca089842b97f8dbeaeeb7f24133e950888edea49"
     },
     {
       "path": "lib/core/theme/uten_colors.dart",
@@ -25,11 +25,15 @@
     },
     {
       "path": "lib/shared/widgets/desktop_window_host.dart",
-      "sha256": "7597543d5be6408ca2b12b43ec0fe1a13ab71465560dd47a76cd433298e12c8b"
+      "sha256": "cc438487dcaecd0004eb2be14d0ad7f4516b43849ff488f8fe92487afbfac58b"
     },
     {
       "path": "lib/features/auth/widgets/desktop_login_layout.dart",
       "sha256": "6540871a02e4ecad8372b75c5208677fd64066104e3a5e37a585ec43fe94a267"
+    },
+    {
+      "path": "lib/components/buttons/uten_close_button.dart",
+      "sha256": "54d120f4ef7ede567dee287300dea1898921f49013759487a46a9f09561904db"
     }
   ],
   "roleMappings": [
@@ -42,7 +46,7 @@
         {
           "symbol": "UtenRadius.xs",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 25,
+          "line": 35,
           "expression": "4"
         }
       ]
@@ -56,7 +60,7 @@
         {
           "symbol": "UtenRadius.xs",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 25,
+          "line": 35,
           "expression": "4"
         }
       ]
@@ -70,7 +74,7 @@
         {
           "symbol": "UtenRadius.sm",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 28,
+          "line": 38,
           "expression": "6"
         }
       ]
@@ -84,7 +88,7 @@
         {
           "symbol": "UtenRadius.sm",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 28,
+          "line": 38,
           "expression": "6"
         }
       ]
@@ -98,7 +102,7 @@
         {
           "symbol": "UtenRadius.md",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 31,
+          "line": 41,
           "expression": "8"
         }
       ]
@@ -112,7 +116,7 @@
         {
           "symbol": "UtenRadius.md",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 31,
+          "line": 41,
           "expression": "8"
         }
       ]
@@ -126,7 +130,7 @@
         {
           "symbol": "UtenRadius.control",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 36,
+          "line": 46,
           "expression": "10"
         }
       ]
@@ -140,7 +144,7 @@
         {
           "symbol": "UtenRadius.control",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 36,
+          "line": 46,
           "expression": "10"
         }
       ]
@@ -154,13 +158,13 @@
         {
           "symbol": "UtenRadius.menu",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 48,
+          "line": 58,
           "expression": "md"
         },
         {
           "symbol": "UtenRadius.md",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 31,
+          "line": 41,
           "expression": "8"
         }
       ]
@@ -174,13 +178,13 @@
         {
           "symbol": "UtenRadius.menu",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 48,
+          "line": 58,
           "expression": "md"
         },
         {
           "symbol": "UtenRadius.md",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 31,
+          "line": 41,
           "expression": "8"
         }
       ]
@@ -194,13 +198,13 @@
         {
           "symbol": "UtenRadius.table",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 49,
+          "line": 59,
           "expression": "lg"
         },
         {
           "symbol": "UtenRadius.lg",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 39,
+          "line": 49,
           "expression": "12"
         }
       ]
@@ -214,13 +218,13 @@
         {
           "symbol": "UtenRadius.table",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 49,
+          "line": 59,
           "expression": "lg"
         },
         {
           "symbol": "UtenRadius.lg",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 39,
+          "line": 49,
           "expression": "12"
         }
       ]
@@ -234,13 +238,13 @@
         {
           "symbol": "UtenRadius.card",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 50,
+          "line": 60,
           "expression": "xl"
         },
         {
           "symbol": "UtenRadius.xl",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 42,
+          "line": 52,
           "expression": "16"
         }
       ]
@@ -254,13 +258,13 @@
         {
           "symbol": "UtenRadius.card",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 50,
+          "line": 60,
           "expression": "xl"
         },
         {
           "symbol": "UtenRadius.xl",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 42,
+          "line": 52,
           "expression": "16"
         }
       ]
@@ -274,13 +278,13 @@
         {
           "symbol": "UtenRadius.dialog",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 51,
+          "line": 61,
           "expression": "xxl"
         },
         {
           "symbol": "UtenRadius.xxl",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 45,
+          "line": 55,
           "expression": "20"
         }
       ]
@@ -294,13 +298,13 @@
         {
           "symbol": "UtenRadius.dialog",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 51,
+          "line": 61,
           "expression": "xxl"
         },
         {
           "symbol": "UtenRadius.xxl",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 45,
+          "line": 55,
           "expression": "20"
         }
       ]
@@ -314,7 +318,7 @@
         {
           "symbol": "UtenRadius.pill",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 59,
+          "line": 69,
           "expression": "999"
         }
       ]
@@ -328,7 +332,7 @@
         {
           "symbol": "UtenRadius.pill",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 59,
+          "line": 69,
           "expression": "999"
         }
       ]
@@ -342,7 +346,7 @@
         {
           "symbol": "UtenControlMetrics.compactHeight",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 136,
+          "line": 146,
           "expression": "36"
         }
       ]
@@ -356,7 +360,7 @@
         {
           "symbol": "UtenControlMetrics.standardHeight",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 137,
+          "line": 147,
           "expression": "40"
         }
       ]
@@ -370,7 +374,7 @@
         {
           "symbol": "UtenControlMetrics.primaryHeight",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 138,
+          "line": 148,
           "expression": "48"
         }
       ]
@@ -384,7 +388,7 @@
         {
           "symbol": "UtenControlMetrics.inputHeight",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 139,
+          "line": 149,
           "expression": "44"
         }
       ]
@@ -398,7 +402,7 @@
         {
           "symbol": "UtenControlMetrics.cellHeight",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 140,
+          "line": 150,
           "expression": "32"
         }
       ],
@@ -413,7 +417,7 @@
         {
           "symbol": "DesktopWindowHost.controlsHeight",
           "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 13,
+          "line": 12,
           "expression": "36.0"
         }
       ],
@@ -428,7 +432,7 @@
         {
           "symbol": "UtenSpacing.s2",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 94,
+          "line": 104,
           "expression": "2"
         }
       ]
@@ -442,7 +446,7 @@
         {
           "symbol": "UtenSpacing.s2",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 94,
+          "line": 104,
           "expression": "2"
         }
       ]
@@ -456,7 +460,7 @@
         {
           "symbol": "UtenSpacing.s4",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 97,
+          "line": 107,
           "expression": "4"
         }
       ]
@@ -470,7 +474,7 @@
         {
           "symbol": "UtenSpacing.s4",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 97,
+          "line": 107,
           "expression": "4"
         }
       ]
@@ -484,7 +488,7 @@
         {
           "symbol": "UtenSpacing.s6",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 100,
+          "line": 110,
           "expression": "6"
         }
       ]
@@ -498,7 +502,7 @@
         {
           "symbol": "UtenSpacing.s6",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 100,
+          "line": 110,
           "expression": "6"
         }
       ]
@@ -512,7 +516,7 @@
         {
           "symbol": "UtenSpacing.s8",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 103,
+          "line": 113,
           "expression": "8"
         }
       ]
@@ -526,7 +530,7 @@
         {
           "symbol": "UtenSpacing.s8",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 103,
+          "line": 113,
           "expression": "8"
         }
       ]
@@ -540,7 +544,7 @@
         {
           "symbol": "UtenSpacing.s12",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 106,
+          "line": 116,
           "expression": "12"
         }
       ]
@@ -554,7 +558,7 @@
         {
           "symbol": "UtenSpacing.s12",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 106,
+          "line": 116,
           "expression": "12"
         }
       ]
@@ -568,7 +572,7 @@
         {
           "symbol": "UtenSpacing.s16",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 109,
+          "line": 119,
           "expression": "16"
         }
       ]
@@ -582,7 +586,7 @@
         {
           "symbol": "UtenSpacing.s16",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 109,
+          "line": 119,
           "expression": "16"
         }
       ]
@@ -596,7 +600,7 @@
         {
           "symbol": "UtenSpacing.s20",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 112,
+          "line": 122,
           "expression": "20"
         }
       ]
@@ -610,7 +614,7 @@
         {
           "symbol": "UtenSpacing.s20",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 112,
+          "line": 122,
           "expression": "20"
         }
       ]
@@ -624,7 +628,7 @@
         {
           "symbol": "UtenSpacing.s24",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 115,
+          "line": 125,
           "expression": "24"
         }
       ]
@@ -638,7 +642,7 @@
         {
           "symbol": "UtenSpacing.s24",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 115,
+          "line": 125,
           "expression": "24"
         }
       ]
@@ -652,7 +656,7 @@
         {
           "symbol": "UtenSpacing.s32",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 118,
+          "line": 128,
           "expression": "32"
         }
       ]
@@ -666,7 +670,7 @@
         {
           "symbol": "UtenSpacing.s32",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 118,
+          "line": 128,
           "expression": "32"
         }
       ]
@@ -680,7 +684,7 @@
         {
           "symbol": "UtenSpacing.s40",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 121,
+          "line": 131,
           "expression": "40"
         }
       ]
@@ -694,7 +698,7 @@
         {
           "symbol": "UtenSpacing.s40",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 121,
+          "line": 131,
           "expression": "40"
         }
       ]
@@ -708,7 +712,7 @@
         {
           "symbol": "UtenSpacing.s48",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 124,
+          "line": 134,
           "expression": "48"
         }
       ]
@@ -722,7 +726,7 @@
         {
           "symbol": "UtenSpacing.s48",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 124,
+          "line": 134,
           "expression": "48"
         }
       ]
@@ -909,8 +913,8 @@
       "resolution": [
         {
           "symbol": "Caption.minimize.backgroundColor",
-          "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 114,
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 112,
           "expression": "UtenColors.warning"
         },
         {
@@ -929,8 +933,8 @@
       "resolution": [
         {
           "symbol": "Caption.close.backgroundColor",
-          "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 107,
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 111,
           "expression": "UtenColors.error"
         },
         {
@@ -1061,8 +1065,14 @@
       "resolution": [
         {
           "symbol": "Caption.hit.width",
-          "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 175,
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 129,
+          "expression": "UtenWindowControlButton.nativeWidth"
+        },
+        {
+          "symbol": "UtenWindowControlButton.nativeWidth",
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 53,
           "expression": "30"
         }
       ]
@@ -1075,8 +1085,14 @@
       "resolution": [
         {
           "symbol": "Caption.circle.width",
-          "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 181,
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 174,
+          "expression": "UtenWindowControlButton.nativeCircleExtent"
+        },
+        {
+          "symbol": "UtenWindowControlButton.nativeCircleExtent",
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 52,
           "expression": "22"
         }
       ]
@@ -1089,8 +1105,8 @@
       "resolution": [
         {
           "symbol": "Caption.icon.size",
-          "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 187,
+          "source": "lib/components/buttons/uten_close_button.dart",
+          "line": 185,
           "expression": "14"
         }
       ]
@@ -1125,13 +1141,13 @@
         {
           "symbol": "UtenPageField.contentPadding",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 190,
+          "line": 200,
           "expression": "EdgeInsets.symmetric(\n    horizontal: UtenSpacing.s12,\n    vertical: 10,\n  )"
         },
         {
           "symbol": "UtenSpacing.s12",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 106,
+          "line": 116,
           "expression": "12"
         }
       ],
@@ -1146,19 +1162,19 @@
         {
           "symbol": "UtenFilterRow.contentPadding",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 173,
+          "line": 183,
           "expression": "EdgeInsets.symmetric(\n    horizontal: cellHorizontalPadding,\n    vertical: cellVerticalPadding,\n  )"
         },
         {
           "symbol": "UtenFilterRow.cellHorizontalPadding",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 169,
+          "line": 179,
           "expression": "8"
         },
         {
           "symbol": "UtenFilterRow.cellVerticalPadding",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 170,
+          "line": 180,
           "expression": "4"
         }
       ],
@@ -1173,7 +1189,7 @@
         {
           "symbol": "Caption.layout.padding",
           "source": "lib/shared/widgets/desktop_window_host.dart",
-          "line": 147,
+          "line": 202,
           "expression": "const EdgeInsets.symmetric(horizontal: 8)"
         }
       ],

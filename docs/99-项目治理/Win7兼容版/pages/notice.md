@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeDetailPage @30 (page-class)<br>_Content @92 (supporting-class)<br>_CompleteTodoButton @458 (supporting-class)<br>_CompleteTodoButtonState @468 (state-class) |
-| 真实路由绑定 | /notice/:id；router @731；builder ['NoticeDetailPage']；redirect None |
+| 真实路由绑定 | /notice/:id；router @732；builder ['NoticeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeListPage @41 (page-class)<br>_NoticeListPageState @52 (state-class) |
-| 真实路由绑定 | /notice；router @699；builder ['NoticeListPage']；redirect None |
+| 真实路由绑定 | /notice；router @700；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,12 +40,12 @@
 
 ## W7-BIZ-086 · lib/features/notice/pages/notice_publish_page.dart
 
-模块 `notice`；936 行；SHA256 `e3dd37223ec8c93744fa6407b3b12c166738bc9a585ea1f2a435a37ba1b39a8a`。
+模块 `notice`；936 行；SHA256 `ad982b49a6903dd1a10dbe3e6494ecf8b6764996e639f1e769cf60568e05df12`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @873 (supporting-class)<br>_CelebrationTemplateCurator @891 (supporting-class) |
-| 真实路由绑定 | /notice/publish；router @711；builder ['NoticePublishPage']；redirect None |
+| 真实路由绑定 | /notice/publish；router @712；builder ['NoticePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -3,8 +3,12 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/web_update/web_update_safety.dart';
+
 /// One guard registration per editor instance; pushed lookup pages keep it alive.
 class FormDraftNavigation {
+  static final _reloadSafetyPaths = <Object, String>{};
+  static final _guardSafetyOwners = <Object, Object>{};
   static final _guards =
       <
         Object,
@@ -20,15 +24,49 @@ class FormDraftNavigation {
     String path,
     Future<bool> Function() leave, {
     ValueKey<String>? pageKey,
+    WebUpdateSafetyState Function()? reloadSafety,
   }) {
     _guards[owner] = (
       path: Uri.parse(path).path,
       pageKey: pageKey,
       leave: leave,
     );
+    final safetyOwner = _guardSafetyOwners.putIfAbsent(owner, Object.new);
+    if (reloadSafety == null) {
+      _reloadSafetyPaths.remove(safetyOwner);
+      webUpdateSafety.register(safetyOwner, _unknownReloadSafety);
+    } else {
+      registerReloadSafety(safetyOwner, path, reloadSafety);
+    }
   }
 
-  static void unregister(Object owner) => _guards.remove(owner);
+  static WebUpdateSafetyState _unknownReloadSafety() =>
+      const WebUpdateSafetyState(blocked: true);
+
+  static bool hasReloadSafetyForPath(String path) {
+    final normalized = Uri.parse(path).path;
+    return _reloadSafetyPaths.values.contains(normalized);
+  }
+
+  static void registerReloadSafety(
+    Object owner,
+    String path,
+    WebUpdateSafetyState Function() probe,
+  ) {
+    _reloadSafetyPaths[owner] = Uri.parse(path).path;
+    webUpdateSafety.register(owner, probe);
+  }
+
+  static void unregisterReloadSafety(Object owner) {
+    _reloadSafetyPaths.remove(owner);
+    webUpdateSafety.unregister(owner);
+  }
+
+  static void unregister(Object owner) {
+    _guards.remove(owner);
+    final safetyOwner = _guardSafetyOwners.remove(owner);
+    if (safetyOwner != null) unregisterReloadSafety(safetyOwner);
+  }
 
   static Future<bool> onExit(BuildContext context, GoRouterState state) async {
     final guards = _guards.values

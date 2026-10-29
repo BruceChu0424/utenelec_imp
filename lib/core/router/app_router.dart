@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../components/buttons/uten_back_button.dart';
+import '../../components/buttons/uten_close_button.dart';
 import '../../components/layout/uten_app_bar.dart';
 import 'editor_resource_key.dart';
 import '../../features/client_update/client_update_navigation.dart';
@@ -22,6 +23,7 @@ import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
 
 import '../l10n/gen/app_localizations.dart';
+import '../web_update/update_safety_navigation.dart';
 import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
@@ -411,7 +413,10 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     navigatorKey: appNavigatorKey,
-    observers: [ref.watch(clientUpdateNavigationProvider)],
+    observers: [
+      ref.watch(clientUpdateNavigationProvider),
+      ref.watch(rootUpdateSafetyNavigationProvider),
+    ],
     // 2026-09-25 入口选择页退役：平台定位公司内部，应用直接落在员工登录页；
     // 访客门户前端同步下线（后端能力保留，将来另做独立入口）。
     initialLocation: RouteName.login,
@@ -537,6 +542,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       ShellRoute(
+        observers: [ref.watch(shellUpdateSafetyNavigationProvider)],
         // ⚠️ SelectionArea 已下线：Flutter 框架 bug（web 端 SelectableRegion 在
         // 动态内容重建时 _flushInactiveSelections 抛 ConcurrentModificationError），
         // 全局包裹会让轮询/表格刷新在拖选文字时崩掉整个调度帧，表现为"点了没反应"。
@@ -2418,11 +2424,14 @@ class _ErrorPage extends StatelessWidget {
       appBar: UtenAppBar(
         title: '页面不存在',
         showPagePermissionAction: false,
-        leading: route?.impliesAppBarDismissal == true
-            ? route!.fullscreenDialog
-                  ? const CloseButton()
-                  : UtenBackButton(onPressed: () => Navigator.maybePop(context))
+        leading:
+            route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+            ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
             : null,
+        actions: [
+          if (route?.impliesAppBarDismissal == true && route!.fullscreenDialog)
+            UtenCloseButton(onPressed: () => Navigator.maybePop(context)),
+        ],
       ),
       body: Center(child: Text(l10n.commonError)),
     );
@@ -2440,11 +2449,14 @@ class _AccessDeniedPage extends StatelessWidget {
       appBar: UtenAppBar(
         title: '无权访问',
         showPagePermissionAction: false,
-        leading: route?.impliesAppBarDismissal == true
-            ? route!.fullscreenDialog
-                  ? const CloseButton()
-                  : UtenBackButton(onPressed: () => Navigator.maybePop(context))
+        leading:
+            route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+            ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
             : null,
+        actions: [
+          if (route?.impliesAppBarDismissal == true && route!.fullscreenDialog)
+            UtenCloseButton(onPressed: () => Navigator.maybePop(context)),
+        ],
       ),
       body: Center(
         child: ConstrainedBox(

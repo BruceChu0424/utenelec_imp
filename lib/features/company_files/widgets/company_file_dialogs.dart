@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -14,6 +15,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/attachment_file_rules.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/company_file.dart';
@@ -197,13 +199,25 @@ class CompanyFileUploadAccessDialog extends StatelessWidget {
     required this.scope,
     required this.boundary,
     required this.selectedNames,
+    this.onRemoveFile,
+    this.onAddFiles,
     this.initialAccess = const CompanyFileInitialAccessDraft.everyoneVisible(),
   });
 
   final CompanyFileRepository repository;
   final AuthenticatedRequestScope scope;
   final SensitiveReadBoundary boundary;
+
+  /// Initial selection snapshot. File bytes remain owned by the caller.
   final List<String> selectedNames;
+
+  /// Synchronously removes the caller's matching pending file before the
+  /// dialog removes its copied name at the same current index.
+  final void Function(int index)? onRemoveFile;
+
+  /// Returns only newly accepted names after the caller's size and identity
+  /// checks. Cancelling file selection returns an empty list.
+  final Future<List<String>> Function()? onAddFiles;
   final CompanyFileInitialAccessDraft initialAccess;
 
   @override
@@ -215,6 +229,8 @@ class CompanyFileUploadAccessDialog extends StatelessWidget {
       scope: scope,
       boundary: boundary,
       selectedNames: selectedNames,
+      onRemoveFile: onRemoveFile,
+      onAddFiles: onAddFiles,
       initialAccess: initialAccess,
     ),
   );
@@ -227,6 +243,8 @@ class _CompanyFileInitialEntryDialog extends StatefulWidget {
     required this.boundary,
     required this.initialAccess,
     this.selectedNames,
+    this.onRemoveFile,
+    this.onAddFiles,
     this.initialName = '',
     this.initialDescription = '',
   });
@@ -236,6 +254,8 @@ class _CompanyFileInitialEntryDialog extends StatefulWidget {
   final SensitiveReadBoundary boundary;
   final CompanyFileInitialAccessDraft initialAccess;
   final List<String>? selectedNames;
+  final void Function(int index)? onRemoveFile;
+  final Future<List<String>> Function()? onAddFiles;
   final String initialName;
   final String initialDescription;
 
@@ -252,7 +272,15 @@ class _CompanyFileInitialEntryDialogState
     text: widget.initialDescription,
   );
   late CompanyFileInitialAccessDraft _access = widget.initialAccess;
+  late final List<String>? _names = widget.selectedNames == null
+      ? null
+      : List.of(widget.selectedNames!);
   bool _saving = false;
+  bool _adding = false;
+  int _selectionGeneration = 0;
+
+  bool get _busy => _saving || _adding;
+  bool get _current => mounted && widget.scope.isCurrent;
 
   @override
   void dispose() {
@@ -261,11 +289,12 @@ class _CompanyFileInitialEntryDialogState
     _name.dispose();
     _description.dispose();
     _access = const CompanyFileInitialAccessDraft.inherited();
+    _names?.clear();
     super.dispose();
   }
 
   void _save() {
-    if (_saving || !widget.scope.isCurrent) return;
+    if (_busy || !_current || _names?.isEmpty == true) return;
     if (!_validateAndReveal(_form, context)) return;
     setState(() => _saving = true);
     Navigator.pop(
@@ -280,12 +309,54 @@ class _CompanyFileInitialEntryDialogState
     );
   }
 
+  void _removeFile(int index, int generation) {
+    final names = _names, remove = widget.onRemoveFile;
+    if (_busy ||
+        !_current ||
+        names == null ||
+        remove == null ||
+        generation != _selectionGeneration ||
+        index < 0 ||
+        index >= names.length) {
+      return;
+    }
+    remove(index);
+    if (!_current) return;
+    setState(() {
+      names.removeAt(index);
+      _selectionGeneration++;
+    });
+  }
+
+  Future<void> _addFiles() async {
+    final add = widget.onAddFiles;
+    if (_busy || !_current || _names == null || add == null) return;
+    setState(() => _adding = true);
+    try {
+      final added = await add();
+      if (!_current || added.isEmpty) return;
+      setState(() {
+        _names.addAll(added);
+        _selectionGeneration++;
+      });
+    } catch (error) {
+      if (mounted && widget.scope.isCurrent) {
+        final l = AppLocalizations.of(context);
+        context.appError(
+          error is ApiException ? error.message : l.companyFilesAddFilesFailed,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _adding = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final names = widget.selectedNames;
+    final names = _names, generation = _selectionGeneration;
     return PopScope(
-      canPop: !_saving,
+      canPop: !_busy,
       child: UtenAlertDialog(
         maxWidth: 640,
         title: Text(
@@ -299,14 +370,12 @@ class _CompanyFileInitialEntryDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                names == null
-                    ? l.companyFilesCreateAccessHint
-                    : l.companyFilesUploadAccessHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: UtenSpacing.s16),
               if (names == null) ...[
+                Text(
+                  l.companyFilesCreateAccessHint,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: UtenSpacing.s16),
                 UtenInput(
                   key: const ValueKey('company-folder-name'),
                   label: l.companyFilesName,
@@ -334,28 +403,81 @@ class _CompanyFileInitialEntryDialogState
                 ),
                 const Divider(height: UtenSpacing.s32),
               ] else ...[
-                Text(
-                  '${l.companyFilesSelectedFiles} (${names.length})',
-                  style: Theme.of(context).textTheme.titleSmall,
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: UtenSpacing.s12,
+                  runSpacing: UtenSpacing.s8,
+                  children: [
+                    Text(
+                      '${l.companyFilesSelectedFiles} (${names.length})',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (widget.onAddFiles != null)
+                      UtenButton(
+                        key: const ValueKey('company-upload-add-files'),
+                        type: UtenButtonType.secondary,
+                        icon: Icons.add,
+                        isLoading: _adding,
+                        onPressed: _busy ? null : _addFiles,
+                        child: Text(l.companyFilesAddFiles),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: UtenSpacing.s8),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 120),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (final name in names)
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: UtenSpacing.s4,
-                            ),
-                            child: Text(name, overflow: TextOverflow.ellipsis),
+                if (names.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s16,
+                    ),
+                    child: Text(l.companyFilesNoFilesSelected),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight:
+                          UtenControlMetrics.minimumHitExtent(context) * 4 +
+                          UtenSpacing.s8 * 3,
+                    ),
+                    child: ListView.separated(
+                      key: const ValueKey('company-upload-selected-files'),
+                      primary: false,
+                      shrinkWrap: true,
+                      itemCount: names.length,
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(height: UtenSpacing.s8),
+                      itemBuilder: (_, index) => Row(
+                        children: [
+                          AttachmentKindIcon(
+                            kind: AttachmentFileKind.of(names[index], null),
                           ),
-                      ],
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: Tooltip(
+                              message: names[index],
+                              child: Text(
+                                names[index],
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          if (widget.onRemoveFile != null) ...[
+                            const SizedBox(width: UtenSpacing.s8),
+                            // User-requested shared close style removes only
+                            // the local selection; server delete is unchanged.
+                            UtenCloseButton(
+                              key: ValueKey('company-upload-remove-$index'),
+                              tooltip: l.companyFilesRemoveSelectedFile,
+                              onPressed: _busy
+                                  ? null
+                                  : () => _removeFile(index, generation),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 const Divider(height: UtenSpacing.s32),
               ],
               Text(
@@ -368,7 +490,7 @@ class _CompanyFileInitialEntryDialogState
                 scope: widget.scope,
                 boundary: widget.boundary,
                 initialValue: widget.initialAccess,
-                enabled: !_saving,
+                enabled: !_busy,
                 onChanged: (value) => _access = value,
               ),
             ],
@@ -376,12 +498,12 @@ class _CompanyFileInitialEntryDialogState
         ),
         actions: [
           TextButton(
-            onPressed: _saving ? null : () => Navigator.pop(context),
+            onPressed: _busy ? null : () => Navigator.pop(context),
             child: Text(l.companyFilesCancel),
           ),
           UtenButton(
             key: const ValueKey('company-initial-access-confirm'),
-            onPressed: _saving ? null : _save,
+            onPressed: _busy || names?.isEmpty == true ? null : _save,
             child: Text(
               names == null ? l.companyFilesCreate : l.companyFilesUpload,
             ),
@@ -1083,6 +1205,7 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                   : folders.isEmpty
                   ? UtenEmpty(
                       icon: Icons.folder_outlined,
+                      iconColor: UtenFileColors.folderOf(context),
                       message: l.companyFilesEmpty,
                     )
                   : ListView.builder(
@@ -1090,7 +1213,7 @@ class _CompanyFileMoveDialogState extends State<CompanyFileMoveDialog> {
                       itemBuilder: (_, i) => ListTile(
                         leading: Icon(
                           Icons.folder_rounded,
-                          color: Theme.of(context).colorScheme.primary,
+                          color: UtenFileColors.folderOf(context),
                         ),
                         title: Text(folders[i].name),
                         trailing: const Icon(Icons.chevron_right),

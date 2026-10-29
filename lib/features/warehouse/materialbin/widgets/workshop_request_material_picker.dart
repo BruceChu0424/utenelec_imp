@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -343,10 +344,9 @@ class _RequestMaterialPickerState extends ConsumerState<_RequestMaterialPicker>
       showPagePermissionAction: false,
       title: '选择申请物料',
       actions: [
-        IconButton(
+        UtenCloseButton(
           tooltip: '关闭',
           onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.close),
         ),
       ],
     ),

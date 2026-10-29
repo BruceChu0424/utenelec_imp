@@ -11,7 +11,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Computes a server-trusted SHA-256 and rejects obvious extension/magic-byte mismatches. */
+/** Computes a server-trusted SHA-256 and rejects typed extension/container mismatches.
+ * Opaque company-library originals are storage-only and are still length checked and malware scanned.
+ */
 final class AttachmentContentInspector {
 
     /**
@@ -58,6 +60,28 @@ final class AttachmentContentInspector {
             Map.entry("text/xml", Set.of("xml")),
             Map.entry("application/json", Set.of("json")));
 
+    /** These additional types belong to the company library, not business attachment intake. */
+    private static final Map<String, Set<String>> MEDIA_EXTENSIONS = Map.of(
+            "video/mp4", Set.of("mp4", "m4v"),
+            "video/webm", Set.of("webm"),
+            "video/quicktime", Set.of("mov"),
+            "audio/mpeg", Set.of("mp3"),
+            "audio/wav", Set.of("wav"),
+            "audio/ogg", Set.of("ogg", "oga"));
+
+    static boolean isOpaqueCompanyFile(String ownerType, String contentType) {
+        return "COMPANY_FILE".equals(ownerType) && "application/octet-stream".equals(contentType);
+    }
+
+    static boolean isLibraryUploadType(String ownerType, String contentType) {
+        return "COMPANY_FILE".equals(ownerType)
+                && ("application/octet-stream".equals(contentType) || MEDIA_EXTENSIONS.containsKey(contentType));
+    }
+
+    static boolean isCompanyMediaType(String ownerType, String contentType) {
+        return "COMPANY_FILE".equals(ownerType) && MEDIA_EXTENSIONS.containsKey(contentType);
+    }
+
     /** 需要全量「可打印字节」扫描的类型（二进制可能藏在头部之后）。 */
     private static final Set<String> TEXT_CONTENT_TYPES = Set.of(
             "text/plain", "text/csv", "text/markdown", "text/xml",
@@ -73,8 +97,16 @@ final class AttachmentContentInspector {
 
     static Inspection inspect(InputStream input, long expectedSize,
                               String fileName, String contentType) {
+        return inspectForOwner(null, input, expectedSize, fileName, contentType);
+    }
+
+    static Inspection inspectForOwner(String ownerType, InputStream input, long expectedSize,
+                                     String fileName, String contentType) {
         try (InputStream in = input) {
-            requireExtension(fileName, contentType);
+            // Arbitrary library formats have no parser contract. They remain opaque, rather than
+            // guessing a trusted image/Office type from user-controlled bytes or a name suffix.
+            boolean opaque = isOpaqueCompanyFile(ownerType, contentType);
+            if (!opaque) requireExtension(fileName, contentType, "COMPANY_FILE".equals(ownerType));
             boolean textOnly = TEXT_CONTENT_TYPES.contains(contentType);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] prefix = new byte[PREFIX_LIMIT];
@@ -102,9 +134,22 @@ final class AttachmentContentInspector {
             if (count != expectedSize) {
                 throw invalid("附件对象在校验期间发生变化，请重新上传");
             }
-            requireMagic(prefix, prefixLength, contentType, allText);
-            com.uten.imp.common.files.ImageDimensionGuard.requireSafe(prefix, prefixLength, contentType, false);
-            return new Inspection(HexFormat.of().formatHex(digest.digest()), count);
+            String effectiveContentType = contentType;
+            if (!opaque) {
+                if (isCompanyMediaType(ownerType, contentType)) {
+                    try {
+                        requireMagic(prefix, prefixLength, contentType, allText);
+                    } catch (ApiException unsupportedContainer) {
+                        // A media suffix does not prove a supported container/codec. Archive the
+                        // exact original, but never grant it a parser/preview MIME by its suffix.
+                        effectiveContentType = "application/octet-stream";
+                    }
+                } else {
+                    requireMagic(prefix, prefixLength, contentType, allText);
+                }
+                com.uten.imp.common.files.ImageDimensionGuard.requireSafe(prefix, prefixLength, contentType, false);
+            }
+            return new Inspection(HexFormat.of().formatHex(digest.digest()), count, effectiveContentType);
         } catch (ApiException e) {
             throw e;
         } catch (com.uten.imp.common.storage.StorageResourceUnavailableException busy) {
@@ -116,8 +161,9 @@ final class AttachmentContentInspector {
         }
     }
 
-    private static void requireExtension(String fileName, String contentType) {
+    private static void requireExtension(String fileName, String contentType, boolean library) {
         Set<String> allowed = EXTENSIONS.get(contentType);
+        if (allowed == null && library) allowed = MEDIA_EXTENSIONS.get(contentType);
         int dot = fileName.lastIndexOf('.');
         String extension = dot < 0 || dot == fileName.length() - 1
                 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
@@ -160,11 +206,34 @@ final class AttachmentContentInspector {
                     && atBytes(value, length, 4, 0x1a, 0x07);
             case "text/plain", "text/csv", "text/markdown", "text/xml", "application/json" ->
                     allText && length > 0;
+            case "video/mp4" -> isMp4(value, length);
+            case "video/quicktime" -> atAscii(value, length, 4, "ftyp") && atAscii(value, length, 8, "qt  ");
+            case "video/webm" -> starts(value, length, 0x1a, 0x45, 0xdf, 0xa3)
+                    && containsAscii(value, length, "webm");
+            case "audio/mpeg" -> startsAscii(value, length, "ID3")
+                    || length >= 2 && (value[0] & 0xff) == 0xff && (value[1] & 0xe0) == 0xe0
+                    && (value[1] & 0x06) != 0;
+            case "audio/wav" -> startsAscii(value, length, "RIFF") && atAscii(value, length, 8, "WAVE");
+            case "audio/ogg" -> startsAscii(value, length, "OggS");
             default -> false;
         };
         if (!valid) {
             throw invalid("文件实际内容与声明类型不一致");
         }
+    }
+
+    private static boolean isMp4(byte[] value, int length) {
+        if (!atAscii(value, length, 4, "ftyp") || length < 12) return false;
+        String brand = new String(value, 8, 4, java.nio.charset.StandardCharsets.US_ASCII);
+        return Set.of("isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42",
+                "avc1", "dash", "M4V ", "MSNV").contains(brand);
+    }
+
+    private static boolean containsAscii(byte[] value, int length, String expected) {
+        for (int offset = 4; offset + expected.length() <= length; offset++) {
+            if (atAscii(value, length, offset, expected)) return true;
+        }
+        return false;
     }
 
     /** HEIF/HEIC：ISO-BMFF 容器，偏移 4 是 "ftyp"，紧接着 4 字节 brand。 */
@@ -261,6 +330,6 @@ final class AttachmentContentInspector {
         return new ApiException(ErrorCode.VALIDATION_FAILED, message);
     }
 
-    record Inspection(String sha256, long size) {
+    record Inspection(String sha256, long size, String effectiveContentType) {
     }
 }

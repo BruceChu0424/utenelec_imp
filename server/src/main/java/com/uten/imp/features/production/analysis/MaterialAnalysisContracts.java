@@ -589,6 +589,12 @@ public final class MaterialAnalysisContracts {
             salesRequirements = salesRequirements == null ? Map.of() : Map.copyOf(salesRequirements);
         }
 
+        /** Server-owned recipe partitions; absent keys must never be guessed by clients. */
+        @JsonProperty(value="aggregateRecipeKeysByMaterialLineId",access=JsonProperty.Access.READ_ONLY)
+        public Map<UUID,String> aggregateRecipeKeysByMaterialLineId() {
+            return AggregateMaterialProductionRules.keys(this);
+        }
+
         public AnalysisView(UUID analysisId, String status, long version,
                 String fingerprint, String analysisFingerprint, UUID warehouseId,
                 List<UUID> warehouseIds, OffsetDateTime analyzedAt,

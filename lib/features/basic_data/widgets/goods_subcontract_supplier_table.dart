@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -350,10 +351,9 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      IconButton(
+                      UtenCloseButton(
                         onPressed: () => Navigator.pop(context),
                         tooltip: priceText(context, 'close'),
-                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),

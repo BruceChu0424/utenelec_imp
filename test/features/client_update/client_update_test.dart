@@ -25,6 +25,8 @@ import 'package:uten_imp/features/client_update/client_update_host.dart';
 import 'package:uten_imp/features/client_update/client_update_page.dart';
 import 'package:uten_imp/features/client_update/client_update_navigation.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 late SharedPreferences preferences;
 
@@ -109,7 +111,12 @@ Widget app(
   double scale = 1,
   ClientUpdateNavigation? navigation,
 }) => ProviderScope(
-  overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+  overrides: [
+    sharedPreferencesProvider.overrideWithValue(preferences),
+    platformBrandingSnapshotProvider.overrideWithValue(
+      PlatformBranding.defaults,
+    ),
+  ],
   child: MaterialApp(
     debugShowCheckedModeBanner: false,
     navigatorObservers: [?navigation],
@@ -380,7 +387,7 @@ void main() {
     }
 
     await login('login-one');
-    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.text('有新的版本（2.5.28）'), findsOneWidget);
     expect(find.text(release.releaseNotes), findsNothing);
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
@@ -393,16 +400,16 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本'), findsNothing);
+    expect(find.text('有新的版本（2.5.28）'), findsNothing);
     await login('login-two');
-    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.text('有新的版本（2.5.28）'), findsOneWidget);
     await tester.tap(find.text('稍后'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(minutes: 5));
     await tester.pumpAndSettle();
-    expect(find.text('发现新版本'), findsNothing);
+    expect(find.text('有新的版本（2.5.28）'), findsNothing);
     await login('login-three');
-    expect(find.text('发现新版本'), findsOneWidget);
+    expect(find.text('有新的版本（2.5.28）'), findsOneWidget);
     await tester.tap(find.text('稍后'));
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox.shrink());
@@ -447,7 +454,7 @@ void main() {
       );
       await tester.pump(const Duration(seconds: 2));
       await tester.pumpAndSettle();
-      expect(find.text('发现新版本'), findsOneWidget);
+      expect(find.text('有新的版本（2.5.28）'), findsOneWidget);
       expect(find.text(release.releaseNotes), findsNothing);
       await tester.tap(find.text('稍后'));
       await tester.pumpAndSettle();

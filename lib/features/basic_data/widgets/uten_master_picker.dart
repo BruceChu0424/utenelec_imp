@@ -493,12 +493,18 @@ class _MasterPickerSheetState<TItem>
   Widget build(BuildContext context) {
     if (_readerRetired) {
       return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('账号、权限或服务器已变化，请关闭后重新选择'),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
+          UtenPanelHeader(
+            title: _spec.title,
+            onClose: () => Navigator.of(context).pop(),
+          ),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(UtenSpacing.s16),
+                child: Text('账号、权限或服务器已变化，请关闭后重新选择'),
+              ),
+            ),
           ),
         ],
       );

@@ -96,13 +96,17 @@ class MasterCategorySearchPostgresTest extends AuthSessionPostgresTestSupport {
     @Test
     void namesPrecedeCodesCategoryMatchesAndHiddenNotesBeforePagination() throws Exception {
         String token = adminToken(), word = "QR" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        UUID root = category(null, "检索根"), direct = category(root, word), other = category(root, "其他");
-        // Force the exact record into the larger UUID category: UUID-only relocation must fail this case.
-        if (direct.toString().compareTo(other.toString()) > 0) {
-            UUID swap = direct; direct = other; other = swap;
-            jdbc.update("UPDATE material_categories SET name=? WHERE id=?", word, direct);
-            jdbc.update("UPDATE material_categories SET name='其他' WHERE id=?", other);
-        }
+        UUID root = category(null, "检索根");
+        UUID leftParent = category(root, "检索左分支"), rightParent = category(root, "检索右分支");
+        // Equal leaf names are legal across parents; never swap same-parent names through a duplicate intermediate state.
+        UUID left = category(leftParent, word), right = category(rightParent, word);
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM material_categories WHERE id IN (?,?) AND name=?",
+                Integer.class, left, right, word));
+        UUID direct = left.toString().compareTo(right.toString()) < 0 ? left : right;
+        UUID other = direct.equals(left) ? right : left;
+        // Exact goods hits live in the larger UUID category, so UUID-only relocation must fail this case.
+        assertTrue(direct.toString().compareTo(other.toString()) < 0);
+        jdbc.update("UPDATE material_categories SET name=? WHERE id=?", "其他", other);
         UUID code = goods(other, word, "完整编号命中", null, null);
         UUID name = goods(other, "A1-" + UUID.randomUUID(), word, null, null);
         UUID branch = goods(direct, "A0-" + UUID.randomUUID(), "分类下实际货品", null, null);

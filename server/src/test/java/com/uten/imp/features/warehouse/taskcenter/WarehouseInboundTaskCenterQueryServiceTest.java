@@ -115,7 +115,13 @@ class WarehouseInboundTaskCenterQueryServiceTest {
     void detailAuditIsWrittenOnlyAfterAScopeAuthorizedPhysicalLookupSucceeds() {
         var service=mock(WarehouseInboundTaskCenterQueryService.class);
         var audit=mock(com.uten.imp.audit.AuditDetailViewRecorder.class);
-        var controller=new WarehouseInboundTaskCenterController(service,audit);
+        var controller=new WarehouseInboundTaskCenterController(service,
+                mock(WarehouseTaskCenterExportService.class),
+                mock(com.uten.imp.common.export.XlsxExportService.class),
+                mock(com.uten.imp.common.export.WorkbookDownloadService.class),
+                mock(com.uten.imp.audit.AuditService.class),
+                mock(SecurityContextCurrentUser.class),
+                audit);
         UUID id=UUID.randomUUID();
         String key="PURCHASE:EXPECTATION:"+id;
         when(service.detail(key,null,1,50)).thenThrow(new ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN,"越界"));

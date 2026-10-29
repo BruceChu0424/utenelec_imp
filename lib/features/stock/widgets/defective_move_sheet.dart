@@ -5,6 +5,7 @@
 // 同一面板内重试沿用同一个提交键, 不会重复过账。发出后结果未知(超时/断网/5xx)时内容锁定,
 // 只能按原内容重试(服务端对同键不同内容回 409, 不会把改过的数量当成已办成)。
 // 「转不良品仓」不被预留挡住; 转走后已经没有实物的预留由服务端列出, 这里提醒办理人。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -235,10 +236,9 @@ class _DefectiveMoveSheetState extends ConsumerState<DefectiveMoveSheet> {
                       ? l10n.defectiveMoveToDefectiveExplain
                       : l10n.defectiveMoveReleaseExplain,
                 ),
-                IconButton(
+                UtenCloseButton(
                   tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
                   onPressed: () => Navigator.of(context).pop(false),
-                  icon: const Icon(Icons.close_rounded),
                 ),
               ],
             ),

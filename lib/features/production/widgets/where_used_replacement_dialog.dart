@@ -221,6 +221,10 @@ class _ReplacementDialogState extends ConsumerState<_ReplacementDialog> {
     return PopScope(
       canPop: !_busy,
       child: UtenAlertDialog(
+        showCloseButton: _recoveringCommit,
+        closeEnabled: !_busy,
+        closeTooltip: l10n.whereUsedCloseAndVerify,
+        onClose: () => Navigator.of(context).pop(),
         key: const Key('where-used-replacement-dialog'),
         title: Text(
           preview == null
@@ -313,19 +317,12 @@ class _ReplacementDialogState extends ConsumerState<_ReplacementDialog> {
           ),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: _busy
-                ? null
-                : () => Navigator.of(
-                    context,
-                  ).pop(_recoveringCommit ? null : false),
-            child: Text(
-              _recoveringCommit
-                  ? l10n.whereUsedCloseAndVerify
-                  : l10n.commonCancel,
+          if (!_recoveringCommit)
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+              child: Text(l10n.commonCancel),
             ),
-          ),
           UtenButton(
             key: const Key('where-used-replacement-confirm'),
             isLoading: _busy,

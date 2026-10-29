@@ -66,6 +66,24 @@ const _nameConflict = GoodsImportReviewRow(
   ],
 );
 
+const _categoryMove = GoodsImportReviewRow(
+  rowKey: 'goods:2',
+  rowNum: 2,
+  code: '001',
+  name: '单联开关',
+  categoryPath: '成品 / 旧系列 / 白色',
+  matchType: 'UUID',
+  changes: [
+    GoodsImportChange(
+      field: 'categoryId',
+      label: '类别',
+      oldValue: '成品 / 旧系列 / 白色',
+      newValue: '成品 / V3 / 白色',
+      kind: 'CONFLICT',
+    ),
+  ],
+);
+
 GoodsImportReport _report({
   GoodsImportCorrections corrections = const {},
   Set<int> excluded = const {},
@@ -672,6 +690,67 @@ void main() {
     expect(result.value, isNull);
     expect(_table(tester).items.length, 3);
     expect(find.text('货品资料已有变化，请重新核对后确认'), findsOneWidget);
+  });
+
+  for (final narrow in [false, true]) {
+    testWidgets('已有货品分类迁移须说明移动和复制区别并再次确认 ${narrow ? '窄屏' : '桌面'}', (
+      tester,
+    ) async {
+      final result = _Result();
+      await _open(
+        tester,
+        result: result,
+        mode: GoodsImportMode.mixed,
+        report: _report(
+          source: [_source.first],
+          changes: const [_categoryMove],
+        ),
+        size: narrow ? const Size(390, 1100) : const Size(1440, 900),
+        scale: narrow ? 2 : 1,
+      );
+      final confirm = find.byKey(
+        const ValueKey('goods-import-preview-confirm'),
+      );
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(result.value, isNull);
+      expect(find.text('将移动 1 个已有货品'), findsOneWidget);
+      expect(find.textContaining('沿用原货品身份'), findsOneWidget);
+      expect(find.textContaining('原有组装信息（BOM）随货品移动'), findsOneWidget);
+      expect(find.textContaining('若要制作副本'), findsOneWidget);
+      expect(find.text('原分类：成品 / 旧系列 / 白色'), findsOneWidget);
+      expect(find.text('新分类：成品 / V3 / 白色'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('goods-import-move-cancel')));
+      await tester.pumpAndSettle();
+      expect(result.value, isNull);
+      expect(find.byType(GoodsImportPreviewPage), findsOneWidget);
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('goods-import-move-confirm')));
+      await tester.pumpAndSettle();
+      expect(result.value!.replaceRowKeys, {'goods:2'});
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('保留原值的分类差异不提示迁移也不替换', (tester) async {
+    final result = _Result();
+    await _open(
+      tester,
+      result: result,
+      mode: GoodsImportMode.updateOnly,
+      report: _report(source: [_source.first], changes: const [_categoryMove]),
+    );
+    await tester.tap(find.byKey(const ValueKey('goods-import-keep-selected')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('goods-import-preview-confirm')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('将移动 1 个已有货品'), findsNothing);
+    expect(result.value!.replaceRowKeys, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

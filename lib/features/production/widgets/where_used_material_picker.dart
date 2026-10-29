@@ -194,6 +194,20 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
       columnSearchEnabled: false,
     ),
     MasterColumnDef(
+      key: 'colorName',
+      label: '颜色',
+      width: 100,
+      value: (goods) => goods.colorName,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
+      key: 'series',
+      label: '系列',
+      width: 100,
+      value: (goods) => goods.series,
+      columnSearchEnabled: false,
+    ),
+    MasterColumnDef(
       key: 'category',
       label: '分类',
       width: 140,
@@ -317,6 +331,8 @@ class _WhereUsedMaterial {
     required this.id,
     required this.code,
     required this.name,
+    required this.colorName,
+    required this.series,
     required this.model,
     required this.spec,
     required this.status,
@@ -336,6 +352,8 @@ class _WhereUsedMaterial {
   final String id;
   final String code;
   final String name;
+  final String colorName;
+  final String series;
   final String model;
   final String spec;
   final String status;
@@ -356,6 +374,8 @@ class _WhereUsedMaterial {
         id: _asText(json['id']),
         code: _asText(json['code']),
         name: _asText(json['name']),
+        colorName: _asText(json['colorName']),
+        series: _asText(json['series']),
         model: _asText(json['model']),
         spec: _asText(json['spec']),
         status: _asText(json['status']),
@@ -376,6 +396,8 @@ class _WhereUsedMaterial {
     id: id,
     code: code.isEmpty ? null : code,
     name: name.isEmpty ? null : name,
+    colorName: colorName.isEmpty ? null : colorName,
+    series: series.isEmpty ? null : series,
     spec: spec.isEmpty ? null : spec,
     model: model.isEmpty ? null : model,
     status: status.isEmpty ? null : status,

@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
 
@@ -61,7 +62,7 @@ void main() {
 
   testWidgets('连续输错到上限：提示暂停，输入框与确认按钮都不可用', (tester) async {
     var calls = 0;
-    await _open(tester, (password) async {
+    final result = await _open(tester, (password) async {
       calls++;
       throw ApiException('REAUTH_LOCKED', '密码输错次数过多，请 15 分钟后再试');
     });
@@ -77,10 +78,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('密码输错次数过多，请 15 分钟后再试'), findsOneWidget);
-    expect(find.text('关闭'), findsOneWidget);
+    expect(find.byType(UtenCloseButton), findsOneWidget);
+    expect(find.text('取消'), findsNothing);
     await tester.tap(find.byKey(const Key('reauth-confirm')));
     await tester.pumpAndSettle();
     expect(calls, 1);
+    await tester.tap(find.byType(UtenCloseButton));
+    await tester.pumpAndSettle();
+    expect(await result, isNull);
   });
 
   testWidgets('空密码不发请求；取消返回 null', (tester) async {

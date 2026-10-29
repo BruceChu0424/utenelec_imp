@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/effects/celebration_particles.dart';
-import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/performance/performance_tier.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -65,6 +65,15 @@ class _CelebrationLoginDialog extends ConsumerWidget {
                     child: CelebrationParticleField(animated: !tier.isLite),
                   ),
                   CelebrationMascot(type: celebration.type, size: 150),
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: UtenCloseButton(
+                      key: const Key('celebration-login-close'),
+                      onPressed: () =>
+                          Navigator.of(context, rootNavigator: true).pop(),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -86,17 +95,6 @@ class _CelebrationLoginDialog extends ConsumerWidget {
                 style: theme.textTheme.bodyLarge,
               ),
             ],
-            const SizedBox(height: UtenSpacing.s20),
-            UtenDialogActions(
-              padding: const EdgeInsets.only(top: UtenSpacing.s16),
-              children: [
-                UtenButton(
-                  onPressed: () =>
-                      Navigator.of(context, rootNavigator: true).pop(),
-                  child: Text(l10n.celebrationDismiss),
-                ),
-              ],
-            ),
           ],
         ),
       ),

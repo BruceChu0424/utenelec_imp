@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -325,11 +326,13 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('委外超耗责任决定'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          tooltip: '关闭',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          UtenCloseButton(
+            tooltip: '关闭',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(
@@ -637,10 +640,10 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('选择抵销目标'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
@@ -891,10 +894,10 @@ class _LossFulfillmentEditorState
     return Scaffold(
       appBar: AppBar(
         title: Text('登记履约 · ${widget.resolution.typeLabel}'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
+        ],
       ),
       body: SafeArea(
         child: ListView(

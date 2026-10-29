@@ -4,12 +4,12 @@
 
 ## W7-BIZ-146 · lib/features/settings/pages/device_audit_receipts_page.dart
 
-模块 `settings`；452 行；SHA256 `1bc8f44dd5acf8e3aa115bb8dd86611cce29f8f540b13c8531f6eca55cd7daf6`。
+模块 `settings`；452 行；SHA256 `58766bd7ecca8ff686c6877ecc4772e988bb473d72bc81fde8d86ebf3055cfc2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | DeviceAuditReceiptsPage @26 (page-class)<br>_DeviceAuditReceiptsPageState @41 (state-class)<br>_IntroCard @189 (supporting-class)<br>_DeviceProfileCard @201 (supporting-class)<br>_SearchCard @239 (supporting-class)<br>_ReceiptResultCard @301 (supporting-class)<br>_Fact @390 (supporting-class)<br>_CopyFact @417 (supporting-class) |
-| 真实路由绑定 | /settings/device-receipts；router @590；builder ['DeviceAuditReceiptsPage']；redirect None |
+| 真实路由绑定 | /settings/device-receipts；router @591；builder ['DeviceAuditReceiptsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | ApiEndpoints.adminAuditLocalReceiptVerification @148 → /admin/audit-logs/local-receipt-verifications/{operationId} |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-147 · lib/features/settings/pages/settings_page.dart
 
-模块 `settings`；352 行；SHA256 `91b7b66a5645404c99604e64deb6340af1a20494b2a1793f055e48e3be423d6d`。
+模块 `settings`；352 行；SHA256 `def88b0f98b2a48a8f258571437361348c47da0c27319453b81f62e75fae14be`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SettingsPage @42 (page-class)<br>_LogoutTile @291 (supporting-class)<br>_LogoutTileState @298 (state-class) |
-| 真实路由绑定 | /settings；router @585；builder ['SettingsPage']；redirect None |
+| 真实路由绑定 | /settings；router @586；builder ['SettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | audit_log:view @52；定义 lib/shared/auth/permissions.dart:45 |
 | 接口常量 | 未静态确认；不能当作不存在 |

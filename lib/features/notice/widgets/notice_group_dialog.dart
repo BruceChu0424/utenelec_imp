@@ -1,4 +1,5 @@
 // Same-object stacks unfold into full notification cards on a dimmed stage.
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -197,9 +198,8 @@ class _NoticeGroupPanelState extends State<_NoticeGroupPanel> {
                 '共 ${notices.length} 条${unread > 0 ? ' · 未读 $unread 条' : ' · 全部已读'}，未读排在前面',
               ),
               icon: Icons.notifications_none_rounded,
-              trailing: IconButton(
+              trailing: UtenCloseButton(
                 onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(Icons.close_rounded),
                 tooltip: '收起相关通知',
               ),
             ),

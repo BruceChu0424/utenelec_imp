@@ -90,6 +90,10 @@ class _WarehouseTaskPhysicalDetailDialogState
     'weight',
   };
 
+  /// 人名列在两个口径都可能为空；空值统一显示为「—」。
+  static String _person(String? value) =>
+      value == null || value.isEmpty ? '—' : value;
+
   WarehouseTaskCenterRecord? _registrationRow(Map<String, dynamic>? detail) {
     final original = widget.row;
     if (!widget.allowFinishedRegistrationReversal ||
@@ -390,6 +394,9 @@ class _WarehouseTaskPhysicalDetailDialogState
     return PopScope<bool>(
       canPop: !_reversing,
       child: UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _reversing ? null : () => Navigator.pop(context, false),
+        closeEnabled: !_reversing,
         maxWidth: 920,
         scrollable: false,
         title: Text(_invalidated ? '单据详情' : row.statusLabel),
@@ -419,6 +426,9 @@ class _WarehouseTaskPhysicalDetailDialogState
                       '单据：${row.billNo ?? '—'}    来源：${row.sourceDocNo ?? '—'}',
                     ),
                     Text('仓库：${row.warehouseName ?? '未确定'}    明细：$total 行'),
+                    Text(
+                      '负责人：${_person(row.responsibleName)}    制单人：${_person(row.makerName)}',
+                    ),
                     if (_reversalMessage != null) ...[
                       Text(_reversalMessage!),
                       if (_uncertain && _pendingReason != null)
@@ -539,10 +549,6 @@ class _WarehouseTaskPhysicalDetailDialogState
                     : '撤回本登记批',
               ),
             ),
-          TextButton(
-            onPressed: _reversing ? null : () => Navigator.pop(context, false),
-            child: const Text('关闭'),
-          ),
         ],
       ),
     );

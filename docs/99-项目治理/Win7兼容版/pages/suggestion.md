@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionDetailPage @29 (page-class)<br>_Content @55 (supporting-class)<br>_ReplyComposer @240 (supporting-class)<br>_ReplyComposerState @249 (state-class)<br>_ReplyCard @359 (supporting-class) |
-| 真实路由绑定 | /suggestion/:id；router @749；builder ['SuggestionDetailPage']；redirect None |
+| 真实路由绑定 | /suggestion/:id；router @750；builder ['SuggestionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | suggestion:reply @139；定义 lib/shared/auth/permissions.dart:497 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionListPage @42 (page-class)<br>_SuggestionListPageState @49 (state-class) |
-| 真实路由绑定 | /suggestion；router @739；builder ['SuggestionListPage']；redirect None |
+| 真实路由绑定 | /suggestion；router @740；builder ['SuggestionListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,12 +40,12 @@
 
 ## W7-BIZ-164 · lib/features/suggestion/pages/suggestion_new_page.dart
 
-模块 `suggestion`；238 行；SHA256 `3fa186f9bc3c968815a9b2fecc08e63912117ff390fc5597410cbd8933523a89`。
+模块 `suggestion`；238 行；SHA256 `1b4c5685b298e6d56bfcfff1e2296bd27db40b5dc0deacd89e6065bc635a5390`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SuggestionNewPage @24 (page-class)<br>_SuggestionNewPageState @31 (state-class) |
-| 真实路由绑定 | /suggestion/new；router @744；builder ['SuggestionNewPage']；redirect None |
+| 真实路由绑定 | /suggestion/new；router @745；builder ['SuggestionNewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -92,6 +92,7 @@ public class AggregateMaterialOrderPreviewService {
             }
         }
         var safetyAdmission=new SafetyAdmission(safetyConfirmations,earliestSafetyDepth,safetyDepthByGroup);
+        var productionRules=new AggregateMaterialProductionRules(children);
         List<GroupPreview> result=new ArrayList<>();
         for(GroupInput group:request.groups()) {
             if(group==null||group.clientGroupKey()==null||group.clientGroupKey().isBlank()||!clientKeys.add(group.clientGroupKey()))throw invalid("汇总行标识缺失或重复");
@@ -150,7 +151,7 @@ public class AggregateMaterialOrderPreviewService {
                 if(anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType()))pending=pending.max(number(anchor.remainingQty()));
                 requestedPrivateCaps.put(id,requested.min(pending));
             });
-            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials,safetyAdmission);
+            GroupPreview resolved=resolveGroup(analysisId,request,group,members,products,actions,children,productionRules,view.overproductionDefaults(),makeBudget,externalBudget,originalScope,requestedPrivateCaps,materials,safetyAdmission);
             if(!compatibilityKeys.add(resolved.compatibilityKey()))throw invalid("同一物料及相同办理规则只能提交一组，请合并来源和总量后重新核对");
             result.add(resolved);
         }
@@ -191,6 +192,7 @@ public class AggregateMaterialOrderPreviewService {
 
     private GroupPreview resolveGroup(UUID analysisId,PreviewRequest request,GroupInput input,List<MaterialView> members,
             Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions,Map<String,List<MaterialView>> children,
+            AggregateMaterialProductionRules productionRules,
             Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials,
             SafetyAdmission safetyAdmission) {
         boolean canGenerate=access.hasAuthority("production_material_analysis:generate");
@@ -200,12 +202,12 @@ public class AggregateMaterialOrderPreviewService {
         MaterialView first=members.getFirst();
         String reason=null;
         if(!Set.of("BUY","MAKE","SUBCONTRACT").contains(Objects.toString(input.route(),"")))throw invalid("汇总供应方式不正确");
-        List<String> recipe=recipe(first,children);
+        List<String> recipe=productionRules.recipe(first);
         for(MaterialView member:members) {
             if(member.level()==0)throw invalid("顶层产品请按产品办理，保留原产品及销售订单来源；物料汇总只办理组件");
             if(!Objects.equals(first.goodsId(),member.goodsId())||!Objects.equals(first.colorId(),member.colorId())||!Objects.equals(first.unitId(),member.unitId()))throw invalid("不同货品、颜色或单位不能合并为一行下单");
             if(!member.routeConfirmed()||!input.route().equals(member.sourceConfirmed()))reason="来源供应方式不一致或尚未确认，请先核对供应方式";
-            if(!recipe.equals(recipe(member,children)))reason="相同物料的冻结组件规则不同，请按生产规则分别办理";
+            if(!recipe.equals(productionRules.recipe(member)))reason="相同物料的冻结组件规则不同，请按生产规则分别办理";
             if(!AggregateMaterialSourceEligibility.hasOrderingContext(member,products,actions))
                 reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
         }
@@ -445,28 +447,6 @@ public class AggregateMaterialOrderPreviewService {
                     child.bomQty(),child.basisOutputQty(),child.allowPartialPackage(),required));
         }
         result.sort(Comparator.comparing(ChildPreview::relativeBomPath));return result;
-    }
-
-    private static List<String> recipe(MaterialView parent,Map<String,List<MaterialView>> children) {
-        return recipe(parent,children,new HashSet<>());
-    }
-
-    /**
-     * 配方键按设计使用数量(ADR-129 §2.5)：真实使用数量随学习变化，按它做键会让后续追加找不到
-     * 原批次；本批的子件需求仍按各行实际采用的用量(bomQty)展开。
-     */
-    private static List<String> recipe(MaterialView parent,Map<String,List<MaterialView>> children,Set<UUID> visiting) {
-        if(!visiting.add(parent.materialLineId()))throw conflict("组件结构存在循环，请先刷新并核对组件表");
-        List<String> result=new ArrayList<>();
-        for(MaterialView child:children.getOrDefault(nodeRef(parent.analysisLineId(),parent.nodeKey()),List.of())) {
-            List<String> fields=new ArrayList<>();
-            add(fields,relativePath(parent.nodeKey(),child.nodeKey()),child.goodsId(),child.colorId(),child.unitId(),child.controlStage(),
-                    child.consumptionBasis(),child.designBomQty()==null?child.bomQty():child.designBomQty(),
-                    child.basisOutputQty(),child.allowPartialPackage(),child.hardGate(),child.sourceConfirmed(),child.routeConfirmed());
-            fields.addAll(recipe(child,children,visiting));result.add(CanonicalFingerprint.sha256(fields));
-        }
-        visiting.remove(parent.materialLineId());
-        result.sort(String::compareTo);return List.copyOf(result);
     }
 
     static String previewFingerprint(PreviewRequest request,List<GroupPreview> groups) {

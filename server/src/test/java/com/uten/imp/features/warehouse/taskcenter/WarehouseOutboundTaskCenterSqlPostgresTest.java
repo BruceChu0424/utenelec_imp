@@ -404,6 +404,31 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         assertThat(jdbc.queryForList(withdrawn.facetsSql(), parameters(withdrawn))).hasSize(3);
     }
 
+    @Test
+    void responsibleAndMakerAreSeparateColumnsInsteadOfLeaderShadowingMaker() {
+        UUID leader = UUID.randomUUID();
+        jdbc.update("INSERT INTO employees(id,full_name,is_deleted) VALUES(:id,'车间负责人',FALSE)", Map.of("id", leader));
+        stock(UUID.randomUUID(), "OTHER_OUT", "RESP-BOTH", ACTOR, WAREHOUSE_A, 0, 0);
+        jdbc.update("UPDATE stock_documents SET worker_id=:worker WHERE bill_no='RESP-BOTH'", Map.of("worker", leader));
+        stock(UUID.randomUUID(), "OTHER_OUT", "RESP-MAKER-ONLY", ACTOR, WAREHOUSE_A, 0, 0);
+        sale(UUID.randomUUID(), "RESP-SALES", WAREHOUSE_A);
+        jdbc.update("UPDATE sales_shipments SET sender_id=:sender,maker_id=:maker WHERE bill_no='RESP-SALES'",
+                Map.of("sender", leader, "maker", ACTOR));
+        var all = plan("ALL", null, null, null, null, full(), WarehouseTaskScope.ALL, "");
+        Map<String, Object> responsible = new LinkedHashMap<>();
+        Map<String, Object> maker = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows(all, 1, 50)) {
+            responsible.put((String) row.get("bill_no"), row.get("responsible_name"));
+            maker.put((String) row.get("bill_no"), row.get("maker_name"));
+        }
+        assertThat(responsible.get("RESP-BOTH")).isEqualTo("车间负责人");
+        assertThat(maker.get("RESP-BOTH")).isEqualTo("本人员工");
+        assertThat(responsible.get("RESP-MAKER-ONLY")).isEqualTo("");
+        assertThat(maker.get("RESP-MAKER-ONLY")).isEqualTo("本人员工");
+        assertThat(responsible.get("RESP-SALES")).isEqualTo("车间负责人");
+        assertThat(maker.get("RESP-SALES")).isEqualTo("本人员工");
+    }
+
     private static WarehouseOutboundTaskCenterSql.Access full() {
         return new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(true, Set.of()));
     }

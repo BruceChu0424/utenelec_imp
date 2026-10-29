@@ -260,6 +260,7 @@ class _WorkshopMaterialSetupPageState
       title: l10n.wmSetupOpeningGuideTitle,
       content: Text(l10n.wmSetupOpeningGuideBody),
       confirmLabel: l10n.wmSetupOpeningGuideOk,
+      confirmAsClose: true,
     );
   }
 }

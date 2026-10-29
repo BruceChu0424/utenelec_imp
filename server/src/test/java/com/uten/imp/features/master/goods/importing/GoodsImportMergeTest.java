@@ -6,6 +6,8 @@ import com.uten.imp.application.port.GoodsMasterWriteAccessPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.master.color.ColorRepository;
 import com.uten.imp.features.master.goods.Goods;
+import com.uten.imp.features.master.goods.GoodsBomItemRepository;
+import com.uten.imp.features.master.goods.GoodsBomPasteService;
 import com.uten.imp.features.master.goods.GoodsRepository;
 import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
@@ -111,25 +113,76 @@ class GoodsImportMergeTest {
         assertEquals(0, result.ignoredCount());
     }
 
-    @Test void reviewedCategoryCellCorrectionMovesExistingGoodsToTheResolvedCategory() throws Exception {
+    @Test void fullSlashPathWithExistingUuidKeepsTheSameCategoryAndDoesNotWrite() throws Exception {
         Fixture f = fixture();
-        var target = category("转入分类");
-        var categories = (MaterialCategoryRepository) ReflectionTestUtils.getField(f.service, "categoryRepo");
-        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of(f.category, target));
-        byte[] file = workbook("G1", "现有货品", "", "", "", f.goods.getId().toString());
-        Map<Integer, Map<String, String>> cells = Map.of(2, Map.of("categoryPath", "转入分类"));
+        var transfer = incidentCategoryTransfer(f);
+        f.goods.setCategory(transfer.target());
+        byte[] file = workbookWithCategory(f, "货品资料/成品/新建/新建01");
 
-        var report = f.service.detect(file, Map.of(), Set.of(), cells, GoodsImportMode.UPDATE_ONLY);
+        var report = f.service.detect(file, Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
 
         assertTrue(report.errors().isEmpty(), report.errors().toString());
-        assertEquals("转入分类", report.previewRows().getFirst().categoryPath());
-        assertTrue(report.reviewRows().getFirst().changes().stream().anyMatch(change ->
-                change.field().equals("categoryId") && change.newValue().equals("转入分类")));
-        f.service.commit(report.planId(), file, "move.xlsx", Set.of("goods:2"), Map.of(), Set.of(), cells,
-                GoodsImportMode.UPDATE_ONLY);
+        assertEquals(1, report.unchangedRows());
+        assertEquals(0, report.addedRows());
+        assertTrue(report.reviewRows().isEmpty());
+        assertTrue(report.willCreateCategories().isEmpty(), "a slash path must not become one literal root name");
+        assertEquals(List.of("货品资料", "成品", "新建", "新建01"),
+                report.previewRows().getFirst().categorySegments());
+        var result = f.service.commit(report.planId(), file, "same-category.xlsx", Set.of(),
+                Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
 
-        assertEquals(target.getId(), captured(f).getCategoryId());
+        assertEquals(1, result.unchangedCount());
+        assertNull(result.batchId());
+        verifyNoInteractions(f.goodsService, transfer.categoryService(), transfer.bomRows(), transfer.bomPaste());
+    }
+
+    @Test void fullSlashCategoryRelocationWithoutReplacementSelectionKeepsExistingGoodsAndBom() throws Exception {
+        Fixture f = fixture();
+        var transfer = incidentCategoryTransfer(f);
+        UUID originalCategory = f.goods.getCategory().getId();
+        byte[] file = workbookWithCategory(f, "货品资料/成品/新建/新建01");
+
+        var report = f.service.detect(file, Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertEquals(f.goods.getId(), report.reviewRows().getFirst().goodsId());
+        assertEquals(List.of(new GoodsImportReviewRow.Change("categoryId", "类别",
+                "货品资料 / 成品 / 亚美尼（80N灰色）", "货品资料/成品/新建/新建01", "CONFLICT")),
+                report.reviewRows().getFirst().changes());
+        var result = f.service.commit(report.planId(), file, "unselected-category.xlsx", Set.of(),
+                Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
+
+        assertEquals(1, result.ignoredCount());
+        assertEquals(0, result.importedCount());
+        assertNull(result.batchId());
+        assertEquals(originalCategory, f.goods.getCategory().getId());
+        verifyNoInteractions(f.goodsService, transfer.categoryService(), transfer.bomRows(), transfer.bomPaste());
+    }
+
+    @Test void reviewedFullSlashCategoryRelocationMovesTheSameGoodsIdentityWithoutReplacingBom() throws Exception {
+        Fixture f = fixture();
+        var transfer = incidentCategoryTransfer(f);
+        UUID originalGoodsId = f.goods.getId();
+        byte[] file = workbookWithCategory(f, "货品资料/成品/新建/新建01");
+
+        var report = f.service.detect(file, Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
+
+        assertTrue(report.errors().isEmpty(), report.errors().toString());
+        assertTrue(report.willCreateCategories().isEmpty());
+        assertEquals(List.of("货品资料", "成品", "新建", "新建01"),
+                report.previewRows().getFirst().categorySegments());
+        assertTrue(report.reviewRows().getFirst().changes().stream().anyMatch(change ->
+                change.field().equals("categoryId") && change.kind().equals("CONFLICT")));
+        var result = f.service.commit(report.planId(), file, "move.xlsx", Set.of("goods:2"),
+                Map.of(), Set.of(), Map.of(), GoodsImportMode.UPDATE_ONLY);
+
+        assertEquals(transfer.target().getId(), captured(f).getCategoryId());
+        verify(f.goodsService).updateImported(eq(originalGoodsId), any());
         verify(f.goodsService, never()).saveImported(any());
+        assertEquals(1, result.updatedCount());
+        assertEquals(0, result.createdCount());
+        assertEquals(0, result.createdCategories());
+        verifyNoInteractions(transfer.categoryService(), transfer.bomRows(), transfer.bomPaste());
     }
 
     @Test void reviewedNewCategoryCellCreatesOnlyTheMissingDescendantAndMovesTheSameGoodsIdentity() throws Exception {
@@ -638,6 +691,38 @@ class GoodsImportMergeTest {
         return request.getValue();
     }
     private static GoodsSaveRequest capturedAgain(Fixture f) { return captured(f); }
+
+    private static IncidentCategoryTransfer incidentCategoryTransfer(Fixture f) {
+        var root = category("货品资料");
+        var products = category("成品"); products.setParent(root);
+        var intermediate = category("新建"); intermediate.setParent(products);
+        var target = category("新建01"); target.setParent(intermediate);
+        f.category.setName("亚美尼（80N灰色）"); f.category.setParent(products);
+        var categories = (MaterialCategoryRepository) ReflectionTestUtils.getField(f.service, "categoryRepo");
+        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc())
+                .thenReturn(List.of(root, products, intermediate, target, f.category));
+        var categoryService = mock(com.uten.imp.features.master.materialcategory.MaterialCategoryService.class);
+        var bomRows = mock(GoodsBomItemRepository.class);
+        var bomPaste = mock(GoodsBomPasteService.class);
+        ReflectionTestUtils.setField(f.service, "categoryService", categoryService);
+        ReflectionTestUtils.setField(f.service, "bomRepo", bomRows);
+        ReflectionTestUtils.setField(f.service, "bomPaste", bomPaste);
+        return new IncidentCategoryTransfer(target, categoryService, bomRows, bomPaste);
+    }
+
+    private static byte[] workbookWithCategory(Fixture f, String path) throws Exception {
+        try (var book = new XSSFWorkbook(new java.io.ByteArrayInputStream(workbook(
+                f.goods.getCode(), f.goods.getName(), "", "", "", f.goods.getId().toString())));
+             var out = new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(1).getCell(2).setCellValue(path);
+            book.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private record IncidentCategoryTransfer(MaterialCategory target,
+            com.uten.imp.features.master.materialcategory.MaterialCategoryService categoryService,
+            GoodsBomItemRepository bomRows, GoodsBomPasteService bomPaste) { }
 
     private static Fixture fixture() {
         authorities("goods:import", "goods:edit", "goods:sales:edit", "goods:purchase:edit");

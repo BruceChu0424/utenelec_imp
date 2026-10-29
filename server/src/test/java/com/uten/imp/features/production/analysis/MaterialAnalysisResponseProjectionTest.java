@@ -34,6 +34,23 @@ class MaterialAnalysisResponseProjectionTest {
     private final UUID warehouse = UUID.randomUUID();
     private final String materialKey = UUID.randomUUID() + "|NONE|" + UUID.randomUUID();
 
+    @Test void serverOwnedRecipeKeysSurviveLegacyAndBothCompressedRepresentations() throws Exception {
+        var first=material("recipe-a",stock("0"));
+        var second=material("recipe-b",stock("0"));
+        var view=view(List.of(first,second));
+        JsonNode expected=wireTree(view.aggregateRecipeKeysByMaterialLineId());
+        assertEquals(2,expected.size());
+        assertEquals(expected.get(first.materialLineId().toString()),expected.get(second.materialLineId().toString()));
+        for(JsonNode snapshot:List.of(wireTree(view),wireTree(MaterialAnalysisResponseProjection.project(view)),
+                wireTree(MaterialAnalysisSparseProjection.project(view)))) {
+            assertEquals(expected,snapshot.path("aggregateRecipeKeysByMaterialLineId"));
+        }
+        ObjectNode replay=(ObjectNode)wireTree(view);
+        for(JsonNode row:replay.path("flatMaterials"))((ObjectNode)row).remove("nodeRole");
+        replay.set("aggregateRecipeKeysByMaterialLineId",json.valueToTree(Map.of(first.materialLineId(),"untrusted-replay-key")));
+        assertEquals(expected,wireTree(json.treeToValue(replay,AnalysisView.class).aggregateRecipeKeysByMaterialLineId()));
+    }
+
     @Test void everyProductKeepsAllPlanReferencesAcrossLegacyAndCompressedResponses() throws Exception {
         var references = List.of(new PlanReference(UUID.randomUUID(), "PP-002", 1),
                 new PlanReference(UUID.randomUUID(), "PP-001", 0));

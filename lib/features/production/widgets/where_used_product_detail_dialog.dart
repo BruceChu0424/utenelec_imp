@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -350,11 +351,7 @@ class _DialogHeader extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: onClose,
-            icon: const Icon(Icons.close_rounded),
-          ),
+          UtenCloseButton(tooltip: '关闭', onPressed: onClose),
         ],
       ),
     );
@@ -597,11 +594,6 @@ class _DialogActions extends StatelessWidget {
           spacing: UtenSpacing.s8,
           runSpacing: UtenSpacing.s8,
           children: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: onClose,
-              child: const Text('关闭'),
-            ),
             if (showStockLink)
               Semantics(
                 button: true,

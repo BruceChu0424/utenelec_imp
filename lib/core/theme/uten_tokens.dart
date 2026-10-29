@@ -10,6 +10,16 @@ import 'package:flutter/material.dart';
 
 import '../responsive/display_zoom.dart';
 
+/// File-system symbols keep their familiar color independently of brand
+/// selection and action colors. Both themes use Windows-style folder yellow.
+abstract final class UtenFileColors {
+  static const Color folder = Color(0xFFE5AD32);
+  static const Color folderOnDark = Color(0xFFFFCC57);
+
+  static Color folderOf(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? folderOnDark : folder;
+}
+
 /// Uten 圆角 token
 ///
 /// 提供 double 常量（用于自定义圆角组合）与对应的 BorderRadius 快捷 getter。

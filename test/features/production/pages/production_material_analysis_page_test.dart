@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'package:uten_imp/components/layout/uten_pagination.dart';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
@@ -8689,7 +8690,7 @@ void main() {
       await tester.tap(find.text('查看物料详情'));
       await tester.pumpAndSettle();
       expect(find.text('外箱依赖'), findsWidgets);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(row, findsOneWidget);
       expect(tester.widget<Checkbox>(selection).value, isTrue);
@@ -9657,7 +9658,7 @@ Future<void> _openMaterialTableDetails(
 }
 
 Future<void> _closeMaterialTableDetails(WidgetTester tester) async {
-  await tester.tap(find.text('关闭').last);
+  await tester.tap(find.byType(UtenCloseButton).last);
   await tester.pumpAndSettle();
 }
 

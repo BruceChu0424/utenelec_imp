@@ -960,13 +960,14 @@ class _SettlementTermsDialogState
               ),
               UtenDialogActions(
                 children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    onPressed: _saving
-                        ? null
-                        : () => Navigator.of(context).pop(),
-                    child: Text(canEdit ? '取消' : '关闭'),
-                  ),
+                  if (canEdit)
+                    UtenButton(
+                      type: UtenButtonType.secondary,
+                      onPressed: _saving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('取消'),
+                    ),
                   if (canEdit)
                     UtenButton(
                       isLoading: _saving,

@@ -149,7 +149,9 @@ class UtenDisplayZoomBox extends StatelessWidget {
             child: child,
           ),
         );
-        if (zoom == 1) return content;
+        // Keep the same ancestors at 100% as at other factors. Reparenting the
+        // routed Navigator during layout would also move its active overlays
+        // and can discard editor focus when crossing the standard factor.
         return OverflowBox(
           alignment: Alignment.topLeft,
           minWidth: canvas.width,

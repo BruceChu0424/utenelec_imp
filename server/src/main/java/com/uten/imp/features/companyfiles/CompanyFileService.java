@@ -1212,7 +1212,7 @@ public class CompanyFileService {
     static void requireSameFileExtension(String original, String renamed) {
         String expected = extension(original);
         String actual = extension(renamed);
-        if (expected.isEmpty() || actual.isEmpty() || !expected.equalsIgnoreCase(actual))
+        if (!expected.equalsIgnoreCase(actual))
             throw invalid("文件扩展名必须与上传原件一致，重命名时请只修改文件名主体并保留格式后缀");
     }
 

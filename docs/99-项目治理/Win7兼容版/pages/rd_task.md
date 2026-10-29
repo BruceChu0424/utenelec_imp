@@ -4,12 +4,12 @@
 
 ## W7-BIZ-134 · lib/features/rd_task/pages/rd_task_page.dart
 
-模块 `rd_task`；1165 行；SHA256 `3355b019e4076aa80d7195a124bf4a1f6be22c34ab2b3d9193b06559c2bf6817`。
+模块 `rd_task`；1165 行；SHA256 `7aa794b7fa7243360b1146e69ce1c82f986e09320b1198758cd8760790c70750`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | RdTaskPage @92 (page-class)<br>_RdTaskPageState @102 (state-class)<br>_RdTaskListPanel @231 (supporting-class)<br>_RdTaskListPanelState @242 (state-class)<br>_DesktopTaskTable @850 (supporting-class)<br>_ResolveBar @1076 (supporting-class) |
-| 真实路由绑定 | /rd/tasks；router @1001；builder ['RdTaskPage']；redirect None |
+| 真实路由绑定 | /rd/tasks；router @1002；builder ['RdTaskPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | rd_task:resolve @297；定义 lib/shared/auth/permissions.dart:513 |
 | 接口常量 | 未静态确认；不能当作不存在 |

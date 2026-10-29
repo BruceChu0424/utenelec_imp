@@ -1,4 +1,6 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -25,11 +27,18 @@ import 'package:uten_imp/features/production/providers/production_execution_refr
 import 'package:uten_imp/features/production/repositories/production_draw_request_repository.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_epoch_provider.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/shared/providers/list_refresh_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/drafts/form_draft.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../support/production_draw_request_fixture.dart';
 import '../../../support/audit_screenshot_support.dart';
+import '../../../shared/drafts/memory_form_draft_storage.dart';
 
 const _permissions = {
   Perm.productionExecutionView,
@@ -37,6 +46,22 @@ const _permissions = {
 };
 const _submitKey = Key('production-draw-request-submit');
 const _captureScreenshots = bool.fromEnvironment('DRAW_REQUEST_SCREENSHOTS');
+
+class _DrawSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'worker',
+      code: 'CJ1',
+      name: '车间',
+      permissions: [
+        Perm.productionExecutionView,
+        Perm.productionExecutionStart,
+      ],
+    ),
+  );
+}
 
 class _Repository extends ProductionDrawRequestRepository {
   _Repository() : super(ApiClient(Dio()));
@@ -91,6 +116,11 @@ Future<ProviderContainer> _pump(
   Size size = const Size(1400, 900),
   List<String> segmentIds = const ['b', 'a'],
   Map<String, int> versions = const {'a': 6, 'b': 6},
+  Set<String>? initialDrawItemIds,
+  bool authenticated = false,
+  MemoryFormDraftStorage? draftStorage,
+  ValueNotifier<Set<String>>? sourceChanges,
+  String? resumeId,
   bool dark = false,
   double textScale = 1,
   GlobalKey? captureKey,
@@ -106,14 +136,27 @@ Future<ProviderContainer> _pump(
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final router = GoRouter(
-    initialLocation: '/draw-request',
+    initialLocation: Uri(
+      path: RouteName.productionDrawRequest,
+      queryParameters: {'draftId': ?resumeId},
+    ).toString(),
     routes: [
       GoRoute(
-        path: '/draw-request',
-        builder: (_, _) => ProductionDrawRequestPage(
-          segmentIds: segmentIds,
-          expectedVersions: versions,
-        ),
+        path: RouteName.productionDrawRequest,
+        builder: (_, _) => sourceChanges == null
+            ? ProductionDrawRequestPage(
+                segmentIds: segmentIds,
+                expectedVersions: versions,
+                initialDrawItemIds: initialDrawItemIds,
+              )
+            : ValueListenableBuilder<Set<String>>(
+                valueListenable: sourceChanges,
+                builder: (_, selected, _) => ProductionDrawRequestPage(
+                  segmentIds: segmentIds,
+                  expectedVersions: versions,
+                  initialDrawItemIds: selected,
+                ),
+              ),
       ),
       GoRoute(
         path: RouteName.productionWorkshopTasks,
@@ -136,6 +179,9 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (authenticated) sessionProvider.overrideWith(_DrawSession.new),
+        if (draftStorage != null)
+          formDraftStorageProvider.overrideWithValue(draftStorage),
         sharedPreferencesProvider.overrideWithValue(preferences),
         productionDrawRequestRepositoryProvider.overrideWithValue(repository),
         currentPermissionsProvider.overrideWithValue(permissions),
@@ -183,6 +229,136 @@ Future<ProviderContainer> _pump(
 }
 
 void main() {
+  testWidgets(
+    'reused page cannot apply an old preview to changed source selection',
+    (tester) async {
+      final changes = ValueNotifier<Set<String>>({'line-b'});
+      addTearDown(changes.dispose);
+      final repository = _Repository()..previewGate = Completer<void>();
+      await _pump(tester, repository, sourceChanges: changes, settle: false);
+      changes.value = {'line-a'};
+      await tester.pump();
+      repository.previewGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(_submitKey), findsNothing);
+      expect(find.textContaining('登录身份或服务器已变化'), findsOneWidget);
+      expect(repository.submissions, isEmpty);
+      expect(repository.previews, hasLength(1));
+    },
+  );
+  for (final scopeOnly in [false, true]) {
+    testWidgets(
+      'late selected-source preview is rejected after ${scopeOnly ? 'read scope' : 'login'} changes',
+      (tester) async {
+        final repository = _Repository()..previewGate = Completer<void>();
+        final container = await _pump(
+          tester,
+          repository,
+          initialDrawItemIds: {'line-b'},
+          authenticated: true,
+          settle: false,
+        );
+        if (scopeOnly) {
+          container.read(readScopeRevisionProvider.notifier).state++;
+        } else {
+          container.read(sessionEpochProvider.notifier).state++;
+        }
+        repository.previewGate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byKey(_submitKey), findsNothing);
+        expect(find.textContaining('登录身份或服务器已变化'), findsOneWidget);
+        expect(repository.submissions, isEmpty);
+      },
+    );
+  }
+  testWidgets(
+    'scope invalidation during submit retains original unknown command draft',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final pending = Completer<ProductionDrawRequestResult>();
+      final repository = _Repository()..pendingSubmit = pending;
+      final container = await _pump(
+        tester,
+        repository,
+        initialDrawItemIds: {'line-b'},
+        authenticated: true,
+        draftStorage: storage,
+      );
+      await tester.tap(find.byKey(_submitKey));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(repository.submissions, hasLength(1));
+      expect(storage.records, hasLength(1));
+      final before = storage.records.values.single;
+      final saved = FormDraft.fromJson(
+        jsonDecode(before) as Map<String, dynamic>,
+      );
+      expect(saved.hasUnknownSubmission, isTrue);
+      expect((saved.data['preview'] as Map)['lines'], [
+        containsPair('drawItemId', 'line-b'),
+      ]);
+      container.read(readScopeRevisionProvider.notifier).state++;
+      pending.complete(
+        ProductionDrawRequestResult.fromJson(
+          productionDrawRequestResultFixture,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.submissions, hasLength(1));
+      expect(
+        storage.records.values.single,
+        before,
+        reason: '旧命令响应不能清除或覆盖原账号的未知提交证据',
+      );
+      expect(find.text('我的车间任务已刷新'), findsNothing);
+      expect(find.byKey(_submitKey), findsNothing);
+      final replay = _Repository();
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _pump(
+        tester,
+        replay,
+        initialDrawItemIds: {'line-b'},
+        authenticated: true,
+        draftStorage: storage,
+        resumeId: saved.id,
+      );
+      expect(find.text('重试领料'), findsOneWidget);
+      await tester.tap(find.byKey(_submitKey));
+      await tester.pumpAndSettle();
+      expect(replay.submissions, hasLength(1));
+      expect(
+        replay.submissions.single,
+        repository.submissions.single,
+        reason: '重开草稿只重放原fingerprint/版本/来源/数量/幂等标识',
+      );
+    },
+  );
+  testWidgets(
+    'material dialog selection submits only the chosen original source',
+    (tester) async {
+      final repository = _Repository();
+      await _pump(tester, repository, initialDrawItemIds: {'line-b'});
+      await tester.tap(find.byKey(_submitKey));
+      await tester.pumpAndSettle();
+      expect(repository.submissions.single['lines'], [
+        {'drawItemId': 'line-b', 'quantity': 4.0},
+      ]);
+      expect(
+        repository.submissions.single['previewFingerprint'],
+        'preview-fingerprint',
+      );
+    },
+  );
+
+  testWidgets('explicit empty dialog selection never turns into select all', (
+    tester,
+  ) async {
+    final repository = _Repository();
+    await _pump(tester, repository, initialDrawItemIds: {});
+    expect(find.byKey(_submitKey), findsNothing);
+    expect(find.text('暂无可领物料'), findsOneWidget);
+    expect(repository.submissions, isEmpty);
+  });
   // 2026-09-21 用户口径「批量领料也要和别的页面一样有中间的加载弹窗」: 车间任务页
   // 点「批量领料」是跳到本页, 遮罩挂着跳会把本页整片盖住(root Overlay 裸 entry),
   // 所以实际加载遮罩由目标页首屏持有，网络完成后必须撤下。
@@ -251,7 +427,7 @@ void main() {
       await tester.pumpAndSettle();
       // 2026-10-10 数量内联口径：单位撤销独立列，待申请量/本次领料数字直接带单位。
       expect(find.text('1.5 个'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(_submitKey));
       await tester.pumpAndSettle();

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/search/keyword_search.dart';
@@ -294,7 +295,7 @@ void main() {
       );
       expect(retained.initialValues, edit.initialValues);
       expect(find.widgetWithText(UtenButton, '保存'), findsNothing);
-      await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       await _open(tester, repository);
       final view = _form(tester);
@@ -311,7 +312,7 @@ void main() {
         expect(after[index].width, closeTo(before[index].width, 0.01));
       }
       expect(find.widgetWithText(UtenButton, '保存'), findsNothing);
-      await tester.tap(find.widgetWithText(UtenButton, '关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(repository.writes, isEmpty);
       expect(tester.takeException(), isNull);

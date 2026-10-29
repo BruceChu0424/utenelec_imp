@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../core/io/file_saver.dart';
+import '../../components/buttons/uten_button.dart';
+import '../../components/buttons/uten_close_button.dart';
+import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_exception.dart';
 import '../../components/layout/uten_content_scrollbar.dart';
 import '../../components/layout/uten_scroll_gutter.dart';
@@ -14,6 +17,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'attachment_archive_listing.dart';
 import 'attachment_delimited_text.dart';
 import 'attachment_file_rules.dart';
+import 'attachment_media_preview.dart';
 import 'attachment_preview_parser.dart';
 
 /// 附件内嵌预览（2026-09-09 起，2026-09-11 扩到办公常见类型）。
@@ -37,6 +41,7 @@ class AttachmentPreviewDialog extends StatefulWidget {
     required this.name,
     required this.contentType,
     this.onDownload,
+    this.mediaSourceLoader,
   });
 
   /// 已取到的字节：原件，或服务端转换后的 PDF。
@@ -46,6 +51,9 @@ class AttachmentPreviewDialog extends StatefulWidget {
 
   /// 自定义「下载」动作；不传则直接把手上的字节存盘。
   final FutureOr<void> Function()? onDownload;
+
+  @visibleForTesting
+  final AttachmentMediaSourceLoader? mediaSourceLoader;
 
   /// 行内「预览」能力矩阵的唯一入口（与列表图标、提示同源）。
   static bool canPreview(String name, String? contentType) =>
@@ -67,6 +75,10 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   late final AttachmentPreviewKind _kind;
   late final Future<AttachmentPreviewPayload> _payload;
   final PdfViewerController _pdf = PdfViewerController();
+  // Keep the FutureBuilder and its loaded body across window/fullscreen frames.
+  // A completed Future still reports one waiting frame when newly mounted.
+  final GlobalKey _contentKey = GlobalKey(debugLabel: 'attachment-content');
+  final GlobalKey _mediaKey = GlobalKey(debugLabel: 'attachment-media');
 
   int? _page;
   int _pageCount = 0;
@@ -140,6 +152,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     final theme = Theme.of(context);
     final kindIcon = AttachmentFileKind.of(widget.name, widget.contentType);
     final content = Semantics(
+      key: _contentKey,
       container: true,
       label: '附件预览 ${widget.name}',
       child: CallbackShortcuts(
@@ -218,6 +231,12 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
     AttachmentPreviewPayload? payload,
   ) {
     final subtitle = _subtitle(payload);
+    final downloadLabel =
+        Localizations.of<AppLocalizations>(
+          context,
+          AppLocalizations,
+        )?.companyFilesDownload ??
+        '下载原件';
     final tools = Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: UtenSpacing.s4,
@@ -226,28 +245,18 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
           label: attachmentTypeLabel(widget.name, widget.contentType),
           color: kind.color,
         ),
-        IconButton(
-          tooltip: _fullscreen ? '退出全屏' : '全屏',
-          icon: Icon(
-            _fullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-            size: 20,
+        Tooltip(
+          message: downloadLabel,
+          child: UtenButton(
+            type: UtenButtonType.tonal,
+            size: UtenButtonSize.small,
+            icon: Icons.download_rounded,
+            isLoading: _downloading,
+            onPressed: _downloading || _converted && widget.onDownload == null
+                ? null
+                : _download,
+            child: Text(downloadLabel),
           ),
-          onPressed: _downloading
-              ? null
-              : () => setState(() => _fullscreen = !_fullscreen),
-        ),
-        IconButton(
-          tooltip: '下载原件',
-          icon: _downloading
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.download_outlined, size: 20),
-          onPressed: _downloading || _converted && widget.onDownload == null
-              ? null
-              : _download,
         ),
       ],
     );
@@ -273,9 +282,16 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
                     ),
               icon: kind.icon,
               trailing: compact ? null : tools,
-              showCloseButton: true,
-              closeTooltip: '关闭',
-              onClose: _downloading ? null : _close,
+              windowControls: UtenWindowControls(
+                closeTooltip: '关闭',
+                onClose: _downloading ? null : _close,
+                showExpand: true,
+                expandTooltip: _fullscreen ? '退出全屏' : '全屏',
+                expanded: _fullscreen,
+                onExpand: _downloading
+                    ? null
+                    : () => setState(() => _fullscreen = !_fullscreen),
+              ),
             ),
             if (compact)
               Padding(
@@ -324,6 +340,8 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
         if (_pageCount <= 0) return null;
         return '第 ${_page ?? 1} / $_pageCount 页';
       case AttachmentPreviewKind.image:
+      case AttachmentPreviewKind.video:
+      case AttachmentPreviewKind.audio:
       case AttachmentPreviewKind.serverPdf:
       case AttachmentPreviewKind.none:
         return formatAttachmentSize(widget.bytes.length);
@@ -387,6 +405,17 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
 
   Widget _body(ThemeData theme, AttachmentPreviewPayload payload) {
     switch (_kind) {
+      case AttachmentPreviewKind.video:
+      case AttachmentPreviewKind.audio:
+        return AttachmentMediaPreview(
+          key: _mediaKey,
+          bytes: widget.bytes,
+          contentType:
+              widget.contentType ??
+              guessAttachmentMediaContentType(widget.name)!,
+          audioOnly: _kind == AttachmentPreviewKind.audio,
+          sourceLoader: widget.mediaSourceLoader,
+        );
       case AttachmentPreviewKind.pdf:
         return PdfViewer(
           PdfDocumentRefData(widget.bytes, sourceName: widget.name),

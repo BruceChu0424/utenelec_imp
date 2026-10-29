@@ -25,6 +25,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -420,6 +421,11 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     width: 150,
     info: '本单全部明细项的报销类别（去重，顿号连接）。',
     value: (claim) => _categoryText(claim),
+    // 屏幕格走多值截断+弹窗口径（2026-10-29）；value（导出/筛选）保留全量。
+    cellBuilder: (context, claim) => UtenMultiValueCell(
+      values: [for (final item in claim.items) item.category.label],
+      title: '报销类别',
+    ),
   ),
   MasterColumnDef(
     key: 'totalAmount',

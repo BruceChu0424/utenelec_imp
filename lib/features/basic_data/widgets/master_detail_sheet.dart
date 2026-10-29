@@ -291,11 +291,6 @@ class _MasterDetailBody extends StatelessWidget {
             },
             child: const Text('删除'), // TODO(l10n): 补 arb
           ),
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () => _act(context),
-          child: const Text('关闭'), // TODO(l10n): 补 arb
-        ),
       ],
     );
   }

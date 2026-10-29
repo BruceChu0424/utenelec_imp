@@ -15,6 +15,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/router/page_navigation_session.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
+import '../buttons/uten_close_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_adaptive_panel.dart';
 import 'uten_app_bar_action_scope.dart';
@@ -152,8 +153,87 @@ class _UtenAppBarState extends State<UtenAppBar> {
         theme.dividerTheme.color ??
         (isDark ? UtenColors.darkBorder : UtenColors.divider);
 
+    final windowActions = <Widget>[];
+    // Layout wrappers must not hide a close control in the business overflow
+    // menu or keep it in a legacy leading slot. Lift only known layout leaves;
+    // callbacks and state stay on the original keyed control.
+    Widget? separateWindowControls(Widget? source) {
+      if (source == null) return null;
+      if (source is UtenCloseButton || source is UtenWindowControls) {
+        windowActions.add(source);
+        return null;
+      }
+      if (source is Padding) {
+        final child = separateWindowControls(source.child);
+        if (identical(child, source.child)) return source;
+        return child == null
+            ? null
+            : Padding(key: source.key, padding: source.padding, child: child);
+      }
+      if (source is SizedBox) {
+        final child = separateWindowControls(source.child);
+        if (identical(child, source.child)) return source;
+        return child == null
+            ? null
+            : SizedBox(
+                key: source.key,
+                width: source.width,
+                height: source.height,
+                child: child,
+              );
+      }
+      if (source is Align) {
+        final child = separateWindowControls(source.child);
+        if (identical(child, source.child)) return source;
+        return child == null
+            ? null
+            : Align(
+                key: source.key,
+                alignment: source.alignment,
+                widthFactor: source.widthFactor,
+                heightFactor: source.heightFactor,
+                child: child,
+              );
+      }
+      if (source is Row || source is UtenAppBarActionRow) {
+        final children = source is Row
+            ? source.children
+            : (source as UtenAppBarActionRow).children;
+        final remaining = [
+          for (final child in children) separateWindowControls(child),
+        ].whereType<Widget>().toList();
+        if (remaining.length == children.length &&
+            List.generate(
+              children.length,
+              (index) => identical(remaining[index], children[index]),
+            ).every((same) => same)) {
+          return source;
+        }
+        if (remaining.isEmpty) return null;
+        return source is Row
+            ? Row(
+                key: source.key,
+                mainAxisAlignment: source.mainAxisAlignment,
+                mainAxisSize: source.mainAxisSize,
+                crossAxisAlignment: source.crossAxisAlignment,
+                textDirection: source.textDirection,
+                verticalDirection: source.verticalDirection,
+                textBaseline: source.textBaseline,
+                spacing: source.spacing,
+                children: remaining,
+              )
+            : UtenAppBarActionRow(key: source.key, children: remaining);
+      }
+      return source;
+    }
+
+    final explicitBusinessActions = [
+      for (final action in actions ?? const <Widget>[])
+        separateWindowControls(action),
+    ].whereType<Widget>().toList();
+    final pageLeading = separateWindowControls(leading);
     final pageActions = <Widget>[
-      ...?actions,
+      ...explicitBusinessActions,
       if (showPagePermissionAction)
         PagePermissionAction(scope: pagePermissionScopeFromContext(context)),
     ];
@@ -191,9 +271,6 @@ class _UtenAppBarState extends State<UtenAppBar> {
                 (icon.icon == Icons.refresh ||
                     icon.icon == Icons.refresh_rounded)
             ? '刷新'
-            : icon is Icon &&
-                  (icon.icon == Icons.close || icon.icon == Icons.close_rounded)
-            ? '关闭'
             : source.tooltip ?? '操作');
         return UtenAppBarActionButton(
           key: source.key,
@@ -254,6 +331,30 @@ class _UtenAppBarState extends State<UtenAppBar> {
     final appBar = LayoutBuilder(
       builder: (context, constraints) {
         final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final windowWidth = windowActions.fold<double>(0, (width, action) {
+          if (action is UtenCloseButton) {
+            return width +
+                (action.native
+                    ? UtenWindowControlButton.nativeWidth
+                    : UtenControlMetrics.minimumHitExtent(
+                        context,
+                        desktop: action.desktopHitExtent,
+                      ));
+          }
+          final controls = action as UtenWindowControls;
+          final count =
+              1 +
+              (controls.showMinimize ? 1 : 0) +
+              (controls.showExpand ? 1 : 0);
+          return width +
+              count *
+                  (controls.native
+                      ? UtenWindowControlButton.nativeWidth
+                      : UtenControlMetrics.minimumHitExtent(
+                          context,
+                          desktop: UtenControlMetrics.compactHeight,
+                        ));
+        });
         // Reserve readable title space, then measure the actual action labels.
         // A fixed phone breakpoint misses crowded tablet/desktop windows and
         // enlarged text. Hidden presentations retain their state and callbacks.
@@ -263,12 +364,16 @@ class _UtenAppBarState extends State<UtenAppBar> {
         );
         final availableActionWidth =
             (constraints.maxWidth -
-                    (leading != null || showBackButton ? kToolbarHeight : 0))
+                    windowWidth -
+                    (pageLeading != null || showBackButton
+                        ? kToolbarHeight
+                        : 0))
                 .clamp(0.0, constraints.maxWidth);
-        final actionBudget = (constraints.maxWidth - titleBudget - 80).clamp(
-          (112 * textScale).clamp(0.0, availableActionWidth),
-          availableActionWidth,
-        );
+        final actionBudget =
+            (constraints.maxWidth - titleBudget - 80 - windowWidth).clamp(
+              (112 * textScale).clamp(0.0, availableActionWidth),
+              availableActionWidth,
+            );
         final expandedActions = UtenAppBarActionRow(
           // 顶栏动作间隙全站统一 4px（2026-10-18 口径）：此前各动作自带 0/4/8
           // 不等水平内边距，相邻按钮间隙忽大忽小；现在动作自身一律零内边距，
@@ -294,30 +399,32 @@ class _UtenAppBarState extends State<UtenAppBar> {
               : EdgeInsets.zero,
           title: _buildTitleArea(context, theme, isDark),
           leading:
-              leading ??
+              pageLeading ??
               (showBackButton
                   ? const UtenBackButton()
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
           // 返回键只占可见圆形，标题间隔独立留白，不扩大返回点击区域。
           // 非返回型 leading 沿用 AppBar 的默认槽宽和标题间距。
-          leadingWidth: (showBackButton || leading is UtenBackButton)
+          leadingWidth: (showBackButton || pageLeading is UtenBackButton)
               ? UtenBackButton.slotWidth(context)
-              : (leading == null && !showBackButton ? 0 : null),
-          titleSpacing: (showBackButton || leading is UtenBackButton)
+              : (pageLeading == null && !showBackButton ? 0 : null),
+          titleSpacing: (showBackButton || pageLeading is UtenBackButton)
               ? UtenBackButton.titleGap
               : null,
           actions: [
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: actionBudget),
-              child: UtenFitOrCompact(
-                expanded: expandedActions,
-                compact: compactAction,
-                forceCompact:
-                    (actions?.isNotEmpty ?? false) &&
-                    constraints.maxWidth < 600 * textScale,
+            if (presentedActions.isNotEmpty)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: actionBudget),
+                child: UtenFitOrCompact(
+                  expanded: expandedActions,
+                  compact: compactAction,
+                  forceCompact:
+                      explicitBusinessActions.isNotEmpty &&
+                      constraints.maxWidth < 600 * textScale,
+                ),
               ),
-            ),
+            ...windowActions,
           ],
           centerTitle: centerTitle,
           backgroundColor: blurred
@@ -497,10 +604,9 @@ class _UtenAppBarState extends State<UtenAppBar> {
                           style: Theme.of(panelContext).textTheme.titleMedium,
                         ),
                       ),
-                      IconButton(
+                      UtenCloseButton(
                         tooltip: '关闭操作面板',
                         onPressed: () => Navigator.of(panelContext).pop(),
-                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),

@@ -341,7 +341,9 @@ class CompanyFileIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final kind = AttachmentFileKind.of(entry.name, entry.contentType);
-    final color = entry.isFolder ? scheme.primary : kind.color;
+    final color = entry.isFolder
+        ? UtenFileColors.folderOf(context)
+        : kind.color;
     return Stack(
       clipBehavior: Clip.none,
       children: [

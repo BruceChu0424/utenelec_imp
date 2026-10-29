@@ -395,7 +395,7 @@ void main() {
   });
 
   testWidgets(
-    'multi-file guidance opens at the import title without selecting files',
+    'multi-file and identity guidance opens before selecting files',
     (tester) async {
       final repo = _Repository();
       await _open(tester, repo, pick: false);
@@ -410,6 +410,11 @@ void main() {
       await tester.tap(hint);
       await tester.pumpAndSettle();
       expect(find.textContaining(note), findsOneWidget);
+      expect(find.textContaining('编号和名称不用于匹配'), findsOneWidget);
+      expect(find.textContaining('系统生成独立身份'), findsOneWidget);
+      expect(find.textContaining('填写已占用编号会报错'), findsOneWidget);
+      expect(find.textContaining('没有系统标识时按编号匹配'), findsNothing);
+      expect(find.textContaining('同编号已删除货品按清单内容恢复'), findsNothing);
       expect(repo.detections, 0);
       expect(repo.commits, 0);
       expect(picker.selections, 0);

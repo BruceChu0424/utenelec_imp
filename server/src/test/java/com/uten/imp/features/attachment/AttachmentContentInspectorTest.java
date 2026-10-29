@@ -40,6 +40,92 @@ class AttachmentContentInspectorTest {
     }
 
     @Test
+    void arbitraryLibraryOriginalsAreHashedWithoutChoosingAParserAndOtherOwnersStayRestricted() throws Exception {
+        byte[] opaque = new byte[]{0, (byte) 0xff, 0x01, 'M', 'Z', 0, 0x7f};
+        for (String name : java.util.List.of("设计原稿.CDR", "部件.step", "装配.sldasm", "无扩展名", "renamed.docx")) {
+            var result = AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                    new ByteArrayInputStream(opaque), opaque.length, name, "application/octet-stream");
+            assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(opaque)), result.sha256());
+            assertEquals(opaque.length, result.size());
+        }
+        assertThrows(ApiException.class, () -> AttachmentContentInspector.inspectForOwner("SALES_ORDER",
+                new ByteArrayInputStream(opaque), opaque.length, "设计.cdr", "application/octet-stream"));
+        assertThrows(ApiException.class, () -> AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                new ByteArrayInputStream(opaque), opaque.length, "设计.cdr", "application/msword"));
+        assertThrows(ApiException.class, () -> AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                new ByteArrayInputStream(opaque), opaque.length - 1L, "设计.cdr", "application/octet-stream"));
+    }
+
+    @Test
+    void libraryMediaTypesCheckContainerAndExtensionWithoutWideningBusinessUploads() {
+        var fixtures = java.util.Map.of(
+                "video.mp4|video/mp4", new byte[]{0,0,0,24,'f','t','y','p','i','s','o','m'},
+                "video.m4v|video/mp4", new byte[]{0,0,0,24,'f','t','y','p','M','4','V',' '},
+                "video.mov|video/quicktime", new byte[]{0,0,0,24,'f','t','y','p','q','t',' ',' '},
+                "video.webm|video/webm", new byte[]{0x1a,0x45,(byte)0xdf,(byte)0xa3,0x42,(byte)0x82,(byte)0x84,'w','e','b','m'},
+                "audio.mp3|audio/mpeg", new byte[]{'I','D','3',4,0,0,0,0,0,0},
+                "audio.wav|audio/wav", new byte[]{'R','I','F','F',0,0,0,0,'W','A','V','E'},
+                "audio.ogg|audio/ogg", new byte[]{'O','g','g','S',0,0,0,0},
+                "audio.oga|audio/ogg", new byte[]{'O','g','g','S',0,0,0,0});
+        fixtures.forEach((key, bytes) -> {
+            String[] parts = key.split("\\|");
+            var recognized = AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                    new ByteArrayInputStream(bytes), bytes.length, parts[0], parts[1]);
+            assertEquals(bytes.length, recognized.size());
+            assertEquals(parts[1], recognized.effectiveContentType());
+            assertThrows(ApiException.class, () -> AttachmentContentInspector.inspectForOwner("SALES_ORDER",
+                    new ByteArrayInputStream(bytes), bytes.length, parts[0], parts[1]));
+            byte[] fake = "not the declared media container".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            assertEquals("application/octet-stream", AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                    new ByteArrayInputStream(fake), fake.length, parts[0], parts[1]).effectiveContentType());
+        });
+    }
+
+    @Test
+    void unrecognizedMediaVariantsRemainOpaqueWithoutRelaxingTypedOfficeOrImageInspection() {
+        byte[] legacyMov={0,0,0,8,'w','i','d','e',0,0,0,16,'m','d','a','t',0,1,2,3,4,5,6,7};
+        byte[] av1Mp4={0,0,0,24,'f','t','y','p','a','v','0','1',0,0,0,0,'a','v','0','1','i','s','o','m'};
+        for(var original:java.util.Map.of("legacy.mov|video/quicktime",legacyMov,"av1.mp4|video/mp4",av1Mp4).entrySet()) {
+            String[] parts=original.getKey().split("\\|");byte[] bytes=original.getValue();
+            var result=AttachmentContentInspector.inspectForOwner("COMPANY_FILE",new ByteArrayInputStream(bytes),bytes.length,parts[0],parts[1]);
+            assertEquals("application/octet-stream",result.effectiveContentType());
+            assertEquals(bytes.length,result.size());
+        }
+        assertThrows(ApiException.class,()->AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                new ByteArrayInputStream(legacyMov),legacyMov.length,"not-image.png","image/png"));
+        assertThrows(ApiException.class,()->AttachmentContentInspector.inspectForOwner("COMPANY_FILE",
+                new ByteArrayInputStream(legacyMov),legacyMov.length,"not-office.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+    }
+
+    @Test
+    void aMediaDowngradeOnlyRelaxesTheCompanyMediaMimeBinding() {
+        var owner=java.util.UUID.randomUUID();var actor=java.util.UUID.randomUUID();
+        var grant=new AttachmentUploadGrantService.Grant("immutable-key","COMPANY_FILE",owner,actor,
+                "legacy.mov","video/quicktime",24,java.time.Instant.now().plusSeconds(60));
+        var attachment=new Attachment();attachment.setStorageKey(grant.storageKey());attachment.setOwnerType(grant.ownerType());
+        attachment.setOwnerId(owner);attachment.setOriginalName(grant.originalName());attachment.setSizeBytes(grant.sizeBytes());
+        attachment.setContentType("application/octet-stream");
+        org.junit.jupiter.api.Assertions.assertTrue(AttachmentService.sameBinding(attachment,grant));
+        attachment.setOriginalName("different.mov");
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,grant));
+        attachment.setOriginalName(grant.originalName());attachment.setSizeBytes(25);
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,grant));
+        attachment.setSizeBytes(grant.sizeBytes());attachment.setOwnerId(java.util.UUID.randomUUID());
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,grant));
+        attachment.setOwnerId(owner);attachment.setStorageKey("another-key");
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,grant));
+        attachment.setStorageKey(grant.storageKey());
+        var imageGrant=new AttachmentUploadGrantService.Grant(grant.storageKey(),grant.ownerType(),owner,actor,
+                grant.originalName(),"image/png",grant.sizeBytes(),grant.expiresAt());
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,imageGrant));
+        attachment.setOwnerType("SALES_ORDER");
+        var businessGrant=new AttachmentUploadGrantService.Grant(grant.storageKey(),attachment.getOwnerType(),owner,actor,
+                grant.originalName(),grant.contentType(),grant.sizeBytes(),grant.expiresAt());
+        org.junit.jupiter.api.Assertions.assertFalse(AttachmentService.sameBinding(attachment,businessGrant));
+    }
+
+    @Test
     void extensionMustAgreeWithDeclaredType() {
         ApiException failure = assertThrows(ApiException.class, () ->
                 AttachmentContentInspector.inspect(

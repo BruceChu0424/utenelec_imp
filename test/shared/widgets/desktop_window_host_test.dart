@@ -42,24 +42,28 @@ void main() {
     messenger.setMockMethodCallHandler(_channel, null);
   });
 
-  for (final platform in [TargetPlatform.windows, TargetPlatform.macOS]) {
+  for (final platform in [
+    TargetPlatform.windows,
+    TargetPlatform.macOS,
+    TargetPlatform.linux,
+  ]) {
     _desktopTestWidgets(
-      '${platform.name}: login controls follow native ordering',
+      '${platform.name}: login controls end with close at the top right',
       (tester) async {
         await _pump(tester, controller);
 
         final close = tester.getCenter(find.byKey(_closeKey));
         final minimize = tester.getCenter(find.byKey(_minimizeKey));
         final drag = tester.getCenter(find.byKey(_dragKey));
-        if (platform == TargetPlatform.macOS) {
-          expect(close.dx, lessThan(minimize.dx));
-          expect(minimize.dx, lessThan(drag.dx));
-        } else {
-          expect(drag.dx, lessThan(minimize.dx));
-          expect(minimize.dx, lessThan(close.dx));
-        }
-        expect(find.byTooltip('Close'), findsOneWidget);
-        expect(find.byTooltip('Minimize'), findsOneWidget);
+        expect(minimize.dx, lessThan(close.dx));
+        expect(close.dx - minimize.dx, 30);
+        expect(drag.dx, lessThan(minimize.dx));
+        expect(
+          tester.getRect(find.byKey(_closeKey)).right,
+          tester.view.physicalSize.width / tester.view.devicePixelRatio - 8,
+        );
+        expect(find.bySemanticsLabel('Close'), findsOneWidget);
+        expect(find.bySemanticsLabel('Minimize'), findsOneWidget);
         expect(calls.map((call) => (call.method, call.arguments)), [
           ('setMode', 'login'),
         ]);
@@ -68,7 +72,7 @@ void main() {
     );
 
     _desktopTestWidgets(
-      '${platform.name}: main controls keep native ordering and content clear',
+      '${platform.name}: main group ends with close at top right and keeps content clear',
       (tester) async {
         await _pump(
           tester,
@@ -80,20 +84,14 @@ void main() {
         final minimize = tester.getRect(find.byKey(_minimizeKey));
         final maximize = tester.getRect(find.byKey(_maximizeKey));
         final drag = tester.getRect(find.byKey(_dragKey));
-        if (platform == TargetPlatform.macOS) {
-          expect(close.right, lessThanOrEqualTo(minimize.left));
-          expect(minimize.right, lessThanOrEqualTo(maximize.left));
-          expect(maximize.right, lessThanOrEqualTo(drag.left));
-        } else {
-          expect(drag.right, lessThanOrEqualTo(minimize.left));
-          expect(minimize.right, lessThanOrEqualTo(maximize.left));
-          expect(maximize.right, lessThanOrEqualTo(close.left));
-          expect(
-            close.right,
-            tester.view.physicalSize.width / tester.view.devicePixelRatio - 8,
-          );
-        }
-        expect(find.byTooltip('Maximize'), findsOneWidget);
+        expect(minimize.right, maximize.left);
+        expect(maximize.right, close.left);
+        expect(drag.right, lessThanOrEqualTo(minimize.left));
+        expect(
+          close.right,
+          tester.view.physicalSize.width / tester.view.devicePixelRatio - 8,
+        );
+        expect(find.bySemanticsLabel('Maximize'), findsOneWidget);
         expect(
           tester.getTopLeft(find.byType(_DraftEditor)),
           const Offset(0, DesktopWindowHost.controlsHeight),
@@ -200,10 +198,10 @@ void main() {
       await tester.tap(find.byKey(_minimizeKey));
       await tester.tap(find.byKey(_maximizeKey));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Restore'), findsOneWidget);
+      expect(find.bySemanticsLabel('Restore'), findsOneWidget);
       await tester.tap(find.byKey(_maximizeKey));
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Maximize'), findsOneWidget);
+      expect(find.bySemanticsLabel('Maximize'), findsOneWidget);
       await tester.tap(find.byKey(_closeKey));
       await tester.pumpAndSettle();
       expect(calls.map((call) => call.method), [
@@ -287,10 +285,28 @@ void main() {
         await delivered.future;
       });
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Restore'), findsOneWidget);
+      expect(find.bySemanticsLabel('Restore'), findsOneWidget);
       expect(tester.state(find.byType(_DraftEditor)), same(editor));
       expect(editor.text.text, '保留未提交内容');
       expect(editor.focus.hasFocus, isTrue);
+    },
+  );
+
+  _desktopTestWidgets(
+    'native control hover retains labels without a native tooltip',
+    (tester) async {
+      await _pump(tester, controller, mode: DesktopWindowMode.main);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer();
+      try {
+        await mouse.moveTo(tester.getCenter(find.byKey(_maximizeKey)));
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(find.bySemanticsLabel('Maximize'), findsOneWidget);
+        expect(find.byType(Tooltip), findsNothing);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await mouse.removePointer();
+      }
     },
   );
 
@@ -333,11 +349,14 @@ void _desktopTestWidgets(
   String description,
   WidgetTesterCallback callback, {
   TargetPlatform platform = TargetPlatform.windows,
-}) => testWidgets(
-  description,
-  callback,
-  variant: TargetPlatformVariant.only(platform),
-);
+}) => testWidgets(description, (tester) async {
+  final semantics = tester.ensureSemantics();
+  try {
+    await callback(tester);
+  } finally {
+    semantics.dispose();
+  }
+}, variant: TargetPlatformVariant.only(platform));
 
 Future<void> _pump(
   WidgetTester tester,

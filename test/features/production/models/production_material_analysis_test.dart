@@ -1,7 +1,82 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 
 void main() {
+  test(
+    'production recipe identities survive sync and responsive parsing',
+    () async {
+      final wire = <String, dynamic>{
+        'analysisId': 'analysis',
+        'aggregateRecipeKeysByMaterialLineId': {
+          for (var index = 0; index < 1000; index++)
+            'source-$index': 'frozen-recipe-${index % 2}',
+        },
+      };
+      final sync = ProductionMaterialAnalysisView.fromJson(wire);
+      var inputHandled = false;
+      Timer.run(() => inputHandled = true);
+      final responsive =
+          await ProductionMaterialAnalysisView.fromJsonResponsive(
+            wire,
+            budget: UiWorkBudget(maxItems: 32),
+          );
+      expect(inputHandled, isTrue);
+      expect(
+        responsive.aggregateRecipeKeysByMaterialLineId,
+        sync.aggregateRecipeKeysByMaterialLineId,
+      );
+      expect(responsive.aggregateRecipeKeysByMaterialLineId, hasLength(1000));
+      expect(responsive.hasAggregateRecipeKeys, isTrue);
+      expect(
+        ProductionMaterialAnalysisView.fromJson(
+          {},
+        ).aggregateRecipeKeysByMaterialLineId,
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'cancelled recipe decoding never publishes incomplete grouping keys',
+    () async {
+      var current = true;
+      Timer.run(() => current = false);
+      await expectLater(
+        ProductionMaterialAnalysisView.fromJsonResponsive({
+          'aggregateRecipeKeysByMaterialLineId': {
+            for (var index = 0; index < 1000; index++)
+              'source-$index': 'recipe',
+          },
+        }, budget: UiWorkBudget(maxItems: 32, isCurrent: () => current)),
+        throwsA(isA<UiWorkCancelled>()),
+      );
+    },
+  );
+
+  test('malformed recipe identities never silently merge sources', () async {
+    for (final raw in [
+      ['recipe'],
+      {'source': ''},
+      {'source': 1},
+      {'': 'recipe'},
+    ]) {
+      final wire = <String, dynamic>{
+        'aggregateRecipeKeysByMaterialLineId': raw,
+      };
+      expect(
+        () => ProductionMaterialAnalysisView.fromJson(wire),
+        throwsFormatException,
+      );
+      await expectLater(
+        ProductionMaterialAnalysisView.fromJsonResponsive(wire),
+        throwsFormatException,
+      );
+    }
+  });
+
   test('large plan and purchase wire quantities use exact decimal proofs', () {
     const exact = '9999999999999.9999';
     expect(

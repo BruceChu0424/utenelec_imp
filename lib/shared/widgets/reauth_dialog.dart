@@ -125,6 +125,9 @@ class _ReauthDialogState extends State<ReauthDialog> {
         title: Text('请确认是你本人'),
         icon: Icons.lock_outline_rounded,
       ),
+      showCloseButton: _locked,
+      closeEnabled: !_busy,
+      onClose: () => Navigator.of(context).pop(),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Column(
@@ -166,11 +169,12 @@ class _ReauthDialogState extends State<ReauthDialog> {
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
-        UtenButton(
-          type: UtenButtonType.ghost,
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: Text(_locked ? '关闭' : '取消'),
-        ),
+        if (!_locked)
+          UtenButton(
+            type: UtenButtonType.ghost,
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
         UtenButton(
           key: const Key('reauth-confirm'),
           onPressed: _busy || _locked ? null : () => unawaited(_confirm()),

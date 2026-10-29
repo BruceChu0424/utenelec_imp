@@ -1,0 +1,650 @@
+[
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/buttons/uten_close_button.dart",
+    "owner": "_UtenWindowControlButtonState.build",
+    "fingerprint": "1bd958020c69d91aed788f9c0c242e615e45b8086a66a9abffd683a9c3ef761d",
+    "count": 1,
+    "reason": "The sole public close primitive maps its close role to the approved X glyph."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/data_display/uten_selection_summary_pill.dart",
+    "owner": "UtenSelectionSummaryPill.build",
+    "fingerprint": "b53efa6364b49c0fb8f3e4bb9908b95666534eb98e741a901d5ec056172847e5",
+    "count": 1,
+    "reason": "Clears the selected-row summary; does not dismiss a window."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/feedback/uten_progress_timeline.dart",
+    "owner": "_TimelineTile.build",
+    "fingerprint": "19757fa3a66f7e3a49d185257a0aa336aba4a47832506809da3a345cb6d277f9",
+    "count": 1,
+    "reason": "Displays a rejected timeline status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/inputs/uten_dropdown_field.dart",
+    "owner": "_UtenDropdownFieldState._buildOverlay",
+    "fingerprint": "3e7c0c4f0366fb9bd4eaa766aa2ebf9b5a3bb03abd7a55e40e5d0029712d1717",
+    "count": 1,
+    "reason": "Clears the dropdown overlay search text while preserving the overlay."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/inputs/uten_employee_picker.dart",
+    "owner": "_UtenEmployeePickerState.build",
+    "fingerprint": "617611561253378e8637db23138dd873069959ddf1fcee7b4d60cdb771829478",
+    "count": 1,
+    "reason": "Clears the selected employee value."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/inputs/uten_reference_picker_field.dart",
+    "owner": "_UtenReferencePickerFieldState.build",
+    "fingerprint": "e5ffdfc578ed8c5b6bb3cd6d2a26ccc27beac3ba7560e2844e47d3ff641e64a3",
+    "count": 1,
+    "reason": "Clears a reference field value with its current permission guard."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/inputs/uten_search_bar.dart",
+    "owner": "_UtenSearchBarState._decoration",
+    "fingerprint": "2883367ea79d026e3392cdb3b13abfbbf45a6a8dbbb289455f96e11d52c94209",
+    "count": 1,
+    "reason": "Clears search input."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/layout/uten_editable_grid.dart",
+    "owner": "_UtenEditableGridState._rowCellOrMenuRegion",
+    "fingerprint": "d9dc5604d6a863a6c2183c8c8a5a05631cdfef486615d703e7a7bb10fc432df0",
+    "count": 1,
+    "reason": "Cancels inline grid editing; the grid and page remain open."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/layout/uten_editable_grid.dart",
+    "owner": "_DataRow",
+    "fingerprint": "2f9615455148040e1d083fcb2a093990628001ea790099d7ba4fc378734d0bcc",
+    "count": 1,
+    "reason": "Default icon for removing a grid row, not window chrome."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/layout/uten_table_column_kit.dart",
+    "owner": "UtenColumnSearchSuffix.build",
+    "fingerprint": "aa578837b300cafa226c43f45d237c258deb11a472d8127dbc6b03ae8e57ecd3",
+    "count": 1,
+    "reason": "Clears a column keyword filter."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/layout/uten_table_column_kit.dart",
+    "owner": "_DragHideBadge.build",
+    "fingerprint": "156d5b8940d4dd2276e0507dd72484e1a4da6c961ecbdba378ffbfbe18dee7ae",
+    "count": 1,
+    "reason": "Noninteractive drag-to-hide column badge."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/pages/admin_ai_settings_page.dart",
+    "owner": "_StatusHero.build",
+    "fingerprint": "c83e21cb7c57b4b8fbe7fc96d35dd6c9d0a468c235d1eece9554539bf30183fd",
+    "count": 1,
+    "reason": "Displays an AI connection test failure status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/pages/admin_permissions_page.dart",
+    "owner": "_EmployeePermTabState._batchSummary",
+    "fingerprint": "56312fd91f17975d2c87d224e3a75aa7e58d3030e1723b49f71066f9174e8218",
+    "count": 1,
+    "reason": "Removes an employee from the authorization selection."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/pages/admin_permissions_page.dart",
+    "owner": "_EmployeePermTabState._listColumn",
+    "fingerprint": "b206be522245d9d0d0df677aad98e4535487f9cc5300b2b76f8a509ff1deb5c0",
+    "count": 1,
+    "reason": "Exits employee multi-select mode without closing the page."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/pages/audit_device_evidence.dart",
+    "owner": "_DeviceCompareRow.build",
+    "fingerprint": "827fac50da600f3fa64875b9efcf858be2597ca14dd7f5a8fe4c0a6a42ba0c7c",
+    "count": 1,
+    "reason": "Displays device-evidence comparison mismatch status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/pages/audit_overview_widgets.dart",
+    "owner": "_AuditListHeader.build",
+    "fingerprint": "6b4a85e9a913b82dd705e50dec7516d4b8c2665459c49b25f9e12abbd6f4bf60",
+    "count": 1,
+    "reason": "Clears the audit-card drill-down filter."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/widgets/admin_department_perm_view.dart",
+    "owner": "_AdminDepartmentPermViewState._batchSummary",
+    "fingerprint": "6cf04ade4c0928d331a5d0c0f85b3da1f9a0befd08deaf89b8d67861b7c2a104",
+    "count": 1,
+    "reason": "Removes a department from the authorization selection."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/widgets/admin_department_perm_view.dart",
+    "owner": "_AdminDepartmentPermViewState._departmentDirectory",
+    "fingerprint": "f8f71d95e2db8971593f4fa1e06694ac0fedd9e8c55526f2b81144a5ec6c33a4",
+    "count": 1,
+    "reason": "Exits department multi-select mode without closing the page."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/widgets/ai_connection_test_view.dart",
+    "owner": "_StepRow.build",
+    "fingerprint": "3155e46b2ebc15e349e3a9fe3216fbfc0f1e6517539768c7bcc6dcf4bde830d7",
+    "count": 1,
+    "reason": "Displays an AI connection test failure status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/admin/widgets/ai_provider_card.dart",
+    "owner": "_LastTest.build",
+    "fingerprint": "81c1a996d27164dffd2aeabd7ba9b5a2400c40002bbd36f664a81034516ff31a",
+    "count": 1,
+    "reason": "Displays the last AI provider test failure status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/auth/widgets/account_field.dart",
+    "owner": "_Dropdown.build",
+    "fingerprint": "860ad25243db94d5083c2d0c1d1b3358b049ed58fd03e3318f5d49852bff04d4",
+    "count": 1,
+    "reason": "Deletes a remembered account entry from the dropdown."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/pages/master_record_history_page.dart",
+    "owner": "_HistoryPageState._scopeFilter",
+    "fingerprint": "7f689890c17c980830b3c055a0462c9165b5389de09fdc76b2fcb89702260ab8",
+    "count": 1,
+    "reason": "Clears a master-record history scope filter."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/pages/party_detail_page.dart",
+    "owner": "_PartyDetailPageState._actions",
+    "fingerprint": "f28ff01241d8b6ca9a97728076d3620c82f78544104b4ca055e6f5ece4814f85",
+    "count": 1,
+    "reason": "Cancels an inline party edit and returns to the same detail page."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/category_page_shell.dart",
+    "owner": "CategoryPageShell._buildGlobalSearchBox",
+    "fingerprint": "fb8ce44f7097981b008c609c2ee82f66628037fd64fe812c7ef9ba778250b3e2",
+    "count": 1,
+    "reason": "Clears the category search scope after the existing draft guard."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart",
+    "owner": "_BatchMaintenanceDialogState._componentRow",
+    "fingerprint": "9fb41970aef421ee803c531a77e3bad10b7fde41291a783be2ffb998190f38bb",
+    "count": 1,
+    "reason": "Removes a BOM component from the batch selection."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+    "owner": "_BomItemAddDialogState._pickedTable",
+    "fingerprint": "4028748705f4679b46828ccfddf7d4848044b62daea24d4469528b62ebb8bc8e",
+    "count": 1,
+    "reason": "Removes a picked BOM component row."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+    "owner": "_GoodsCostEditor._priceEditor",
+    "fingerprint": "c5d279d49f9eec563acddb1eed0d4ce9f2178b3896314f05c533eec42736a8b0",
+    "count": 1,
+    "reason": "Marks a cost cell not applicable and clears its price input."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/goods_detail_body.dart",
+    "owner": "_OwningWarehousePickerFieldState.build",
+    "fingerprint": "600a4ae25133fa4e02acfabb2a2be95d323e6590d9e2a06b2bf46e508e182f0e",
+    "count": 1,
+    "reason": "Clears the owning warehouse field."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/goods_inline_edit.dart",
+    "owner": "_GoodsInlineWarehouseFieldState.build",
+    "fingerprint": "8055935e363f3884574ca6fbb5eff59c72b5cb6f952fce5a1415448ffe84b2f9",
+    "count": 1,
+    "reason": "Clears the inline owning warehouse field."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/packaging_picker_field.dart",
+    "owner": "_PackagingPickerFieldState.build",
+    "fingerprint": "8b8bbe2e1e1961616562ff3298ec9d996cecd168aac74b874b7ac96db82d843f",
+    "count": 1,
+    "reason": "Clears the selected packaging value."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+    "owner": "_GoodsPickerSheetState._buildSelectedPanelOverlay",
+    "fingerprint": "d9955318b64ad985cd1fc3db3c59c95c51464c3d964cc6b2afcfacbe567bc04f",
+    "count": 1,
+    "reason": "Removes a goods item from the current multi-selection."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/uten_goods_picker.dart",
+    "owner": "_GoodsPickerSheetState._buildUnifiedSearch",
+    "fingerprint": "525e7c4841d8439f77f24e5f275ac072b08f3e747f10a88dee1d5a7180d20967",
+    "count": 1,
+    "reason": "Clears the selected category search scope."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/basic_data/widgets/uten_master_picker.dart",
+    "owner": "_UtenMasterPickerFieldState.build",
+    "fingerprint": "bcf47126e20a1111a7de4f2c30b63e9c51b956d6c8ada0c9e13589a812d2cd04",
+    "count": 1,
+    "reason": "Clears the master reference field."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/company_files/pages/company_files_page.dart",
+    "owner": "_CompanyFilesPageState._backgroundEntries",
+    "fingerprint": "4af7dff7a5f5901a6248fade08738914bd5dc88774cc9881c8cc8e5efa8c02ab",
+    "count": 1,
+    "reason": "Clears the company-file clipboard state."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/company_files/pages/company_files_page.dart",
+    "owner": "_CompanyFilesPageState._columnFilterChips",
+    "fingerprint": "cb7577b42600c1807e208da41dbda8d80e7ead0bf9fa2460646f0dd3c9a8504a",
+    "count": 1,
+    "reason": "A removable filter-chip delete glyph clears a company-file column filter."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/company_files/widgets/company_file_access_editor.dart",
+    "owner": "_CompanyFileInitialAccessEditorState._readers",
+    "fingerprint": "55095eee23b885aa0adce1a0e14db7c51389cdabcd32d8b6c584310362747282",
+    "count": 1,
+    "reason": "Removes an initial company-file access rule."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/company_files/widgets/company_file_dialogs.dart",
+    "owner": "_CompanyFileAccessDialogState.build",
+    "fingerprint": "0a12dc36863f80ba62b719cb68f77c99df27a21af87b51e6bb9ee5953996e341",
+    "count": 1,
+    "reason": "Removes a company-file access rule."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/department/widgets/uten_department_picker.dart",
+    "owner": "_UtenDepartmentPickerState.build",
+    "fingerprint": "9384ccb5328171ba0ea9820678fdeb1f20014a01598499ad20e8f8e6a3908f02",
+    "count": 1,
+    "reason": "Compact department field clear selection action."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/department/widgets/uten_department_picker.dart",
+    "owner": "_UtenDepartmentPickerState.build",
+    "fingerprint": "50e76ecfac9de352d632c155a9d2a4e60050dd96c5858e579a695662fb1a10de",
+    "count": 1,
+    "reason": "Standard department field clear selection action."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/employee/widgets/department_employee_picker.dart",
+    "owner": "_DepartmentEmployeePickerFieldState.build",
+    "fingerprint": "812e004bc0fd80d32869675ed9b04b3d18bc587472b35fb76268d2626c16cfb8",
+    "count": 1,
+    "reason": "Clears the department employee reference field."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/expense/pages/expense_approval_detail_page.dart",
+    "owner": "_ExpenseApprovalDetailPageState.build",
+    "fingerprint": "fd4f9c1ba8c4d6556016f9fefacc5401c5aa3a6b9d70fa32b98edccd11e249f3",
+    "count": 1,
+    "reason": "Rejects an expense approval through its business decision callback."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/expense/pages/expense_approval_list_page.dart",
+    "owner": "_ExpenseApprovalListPageState._batchActions",
+    "fingerprint": "e874ffab69e225adfaf7c9d98e0775e8d5bf6ba1e0ef583fd5c9c78730079677",
+    "count": 1,
+    "reason": "Rejects selected expense approvals through the batch business callback."
+  },
+  {
+    "kind": "semantic-close-button",
+    "path": "lib/features/finance/widgets/finance_asset_posting_panel.dart",
+    "owner": "_FinanceAssetPostingPanelState._periodSection",
+    "fingerprint": "899911b00bed414653684f9c72e351d400cfce78be894d16346bbabd628bc14e",
+    "count": 1,
+    "reason": "Closes or reopens an accounting period via _periodAction; it is not Navigator dismissal."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/finance/widgets/finance_date_range_filter.dart",
+    "owner": "FinanceDateRangeFilter.field",
+    "fingerprint": "d42459f6028fe2e4268d26c2ea6a58449d2c7b4b8fb98f729ff050ff939f1808",
+    "count": 1,
+    "reason": "Clears one draft endpoint of a finance date range."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+    "owner": "_HrProfileChangesListPageState._batchActions",
+    "fingerprint": "d1a4375f73f7806efb4e91420cd7eafcb44e0315d99ec0b76339f2efc762b0b8",
+    "count": 1,
+    "reason": "Rejects selected HR profile changes."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/payroll/pages/payroll_review_page.dart",
+    "owner": "_PayrollReviewPageState._actionBar",
+    "fingerprint": "cce72d8016cc75225148e9e19f31e0f5df0b9dd19683d35a605002b9ac7ed67a",
+    "count": 1,
+    "reason": "Rejects a payroll batch via _BatchAction.reject."
+  },
+  {
+    "kind": "raw-cross-glyph",
+    "path": "lib/features/production/pages/material_analysis_material_table.dart",
+    "owner": "_MaterialAnalysisMaterialTableState._reportMaterialTableSubmit",
+    "fingerprint": "85ca984425cfbe7a555cea73faaa04b6f90f487d1c42e0e14e4421626d05785c",
+    "count": 1,
+    "reason": "A failed-step status marker in a textual material submission summary."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/pages/production_board_page.dart",
+    "owner": "_PlanPanelState._dateRange",
+    "fingerprint": "a131b541c2cb998098ee892d5adb661611d8e08ee0bc36a2b5585ccb182cc1cb",
+    "count": 1,
+    "reason": "Clears the production-board date filter."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/pages/production_material_analysis_history_page.dart",
+    "owner": "_ProductionMaterialAnalysisHistoryPageState._statusIcon",
+    "fingerprint": "1ea4e44bca35ff58ba427d108ac0784025e83bedca9ce30e87236ec876d86fd6",
+    "count": 1,
+    "reason": "Displays cancelled analysis history status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/pages/production_material_analysis_page.dart",
+    "owner": "_ProductionMaterialAnalysisPageState.build",
+    "fingerprint": "e167b3d683794a8ef790e8e4cf68029ba688a1fbfde68eec4f640358cdbf71d0",
+    "count": 1,
+    "reason": "Cancels a persisted material analysis business object."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/pages/production_plan_detail_page.dart",
+    "owner": "_ProductionPlanDetailPageState._showPlanningPackageResult",
+    "fingerprint": "eca88fd8f3d16d74fe1eb29f9e9c7b61a13155e0e317be89b7854bff29ec93fb",
+    "count": 1,
+    "reason": "Chooses the explicit cancel lifecycle command in a planning-package decision; preserves its typed result."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/material_manual_demand_editor.dart",
+    "owner": "materialManualDemandGridColumns",
+    "fingerprint": "7a0cf8cd9ea10cea4d630677864d247d3a56f3284a07f94a05a24e61d31e5229",
+    "count": 1,
+    "reason": "Clears a manual-demand line date override back to its header date."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/material_preparation_status_style.dart",
+    "owner": "MaterialPreparationStatusStyle",
+    "fingerprint": "30b934a6d3933d38f98821850ab3bda9addb1d51b59ce8cd54ba40839c3c0912",
+    "count": 1,
+    "reason": "Displays cancelled preparation status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/material_supply_progress_dialog.dart",
+    "owner": "_ProgressStepTile.build",
+    "fingerprint": "19757fa3a66f7e3a49d185257a0aa336aba4a47832506809da3a345cb6d277f9",
+    "count": 1,
+    "reason": "Displays a rejected material-supply progress step."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/production_daily_grid_columns.dart",
+    "owner": "dailyGridColumns",
+    "fingerprint": "f77850406a948145f5960665088a0af51d6344ef6b595e52bd7d4900defcce42",
+    "count": 1,
+    "reason": "Clears a production-daily source field."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/production_daily_product_details_card.dart",
+    "owner": "_ProductionDailyProductDetailsCardState._allocationTable",
+    "fingerprint": "f54e80b9bc0f01b39fe7e2c2bed18fe0c7074660bef29a92303467fffe4ae00c",
+    "count": 1,
+    "reason": "Removes an output allocation destination from a daily report."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/production/widgets/production_fqc_replenishment_banner.dart",
+    "owner": "_statusIcon",
+    "fingerprint": "1ea4e44bca35ff58ba427d108ac0784025e83bedca9ce30e87236ec876d86fd6",
+    "count": 1,
+    "reason": "Displays a cancelled FQC replenishment status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+    "owner": "_QualityInspectionRecordsPageState._buildFilters",
+    "fingerprint": "ed11edd0db0e5dd9d258a9201ad91d2b7d20e845a58981d3e652973cdd2e4de0",
+    "count": 1,
+    "reason": "Clears quality inspection date filtering."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
+    "owner": "_decisionIcon",
+    "fingerprint": "adb9f9abf6d91141fbe918a653b3cd03d74735639dd2968d875498901e8cb8ba",
+    "count": 1,
+    "reason": "Displays a failed quality-inspection decision."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+    "owner": "_SalesDocDetailPageState._quoteActions",
+    "fingerprint": "88ddb38fd302a7e950ed851aaff7c6473403b4c68e928c49983275de728ec3c1",
+    "count": 1,
+    "reason": "Cancels a sales quote business object."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+    "owner": "_SalesDocDetailPageState._actions",
+    "fingerprint": "2df3e688d9a8621a2bb112d1d18cf7243d0d5321e7b28b587676f21cbdde901a",
+    "count": 1,
+    "reason": "Uses a cancel/delete business icon for a sales document command."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/pages/sales_doc_detail_page.dart",
+    "owner": "_SalesDocDetailPageState._actions",
+    "fingerprint": "3c984730b394c8eda3bd5ed893a9a81c69e8ba25e16e95a57ef504d01a9708a9",
+    "count": 1,
+    "reason": "Executes a sales document cancellation business command."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/pages/sales_order_progress_page.dart",
+    "owner": "_SalesOrderProgressPageState._rowMenuItems",
+    "fingerprint": "3300a0142ac029dad9a430a63828edfd7fc795ab1ba2d8d32b1ec1ac2c0835c7",
+    "count": 1,
+    "reason": "Cancels a rejected sales order business object."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/widgets/sales_batch_ship_panel.dart",
+    "owner": "_BatchShipSheetState.build",
+    "fingerprint": "1c5ba1bde59b4e23c0e02d85aaaab8b13dfddbce2af6155a38ddc4dc85f3bc5e",
+    "count": 1,
+    "reason": "Clears the selected client and reloads batch-shipment candidates."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/security/pages/visitor_check_result_page.dart",
+    "owner": "_VisitorCheckResultPageState.build",
+    "fingerprint": "0a378d0b1dcc67c868e6664454e46723dd68dd224ca6d26986f662bc59a7bb87",
+    "count": 1,
+    "reason": "Displays a failed visitor credential check result."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/visitor/pages/visitor_application_detail_page.dart",
+    "owner": "_StepRow._actionIcon",
+    "fingerprint": "cdce73c212c9e67b1a6275e60ca7a72cf0d8a5fdf2776c838fd6556b4ec92f91",
+    "count": 1,
+    "reason": "Displays rejected visitor application action status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/visitor/widgets/visitor_status_ui.dart",
+    "owner": "visitorStatusIcon",
+    "fingerprint": "d312e7ca76dc6cbe20edbd577d35b1f4485312ec6123b7082acad1c99d2bdd3b",
+    "count": 1,
+    "reason": "Displays rejected visitor application status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+    "owner": "_MyVisitorsPageState.build",
+    "fingerprint": "8fb524a94210007e6e1a2c54dbb62c652baf589ae8cdd6203cf5b2e8e5d9f4e1",
+    "count": 1,
+    "reason": "Rejects a visitor application through its business decision callback."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+    "owner": "_VisitorApprovalListPageState._batchActions",
+    "fingerprint": "1c70d4453ab83e82a32516d20ded2e0cb5ddd80497c65bd3ff450da2bfb2cb5f",
+    "count": 1,
+    "reason": "Rejects selected visitor approvals through the batch decision callback."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+    "owner": "_WorkshopMaterialBinPageState._historyTable",
+    "fingerprint": "4e8c10b267f8d25717c27912de43600fe7eb0815db677aee07fb376a822b6b7f",
+    "count": 1,
+    "reason": "Cancels a workshop material requisition business object."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+    "owner": "_WarehouseTaskRecordsViewState.build",
+    "fingerprint": "49d350907ea00dcd13ea0742c46f22e0fb151e4fcde190dcef146d87dbd2f201",
+    "count": 1,
+    "reason": "Clears the warehouse record date range."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
+    "owner": "_ActionPanel.build",
+    "fingerprint": "65c4523dd654fb16037c0d53973772aff53d008e7be4ce6ede56799063fe5eb1",
+    "count": 1,
+    "reason": "Closes a website inquiry business object through its authorized status mutation."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/shared/ai/ai_progress_dialog.dart",
+    "owner": "_AiProgressDialogState.build",
+    "fingerprint": "39165ea37f4d42af18b21ed6880b0e34a45ce4e588de16e21bf1dfef34b731b4",
+    "count": 1,
+    "reason": "Cancels an AI job rather than merely dismissing its progress window."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/shared/ai/chat/ai_chat_action_card.dart",
+    "owner": "_AiChatActionCardState._status",
+    "fingerprint": "0f32f0336046c9d4674f4c83669f91fae7d0e61e9ce2743346c3e8330654dce1",
+    "count": 1,
+    "reason": "Displays a cancelled AI chat action status."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/shared/ai/chat/ai_chat_overlay.dart",
+    "owner": "_ChatSessionState._composer",
+    "fingerprint": "2026c0516ce2434ce3c8e04f25f02d818fc1c7e7078b90d8ece16ce83817369f",
+    "count": 1,
+    "reason": "Removes an attached chat input file."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/shared/attachments/pending_attachment_section.dart",
+    "owner": "_FileCardState.build",
+    "fingerprint": "7e062b527f74814a16371d2ea4acdf5838340db21d4d47b0f0d4d5fa00945881",
+    "count": 1,
+    "reason": "Removes a pending attachment before upload."
+  },
+  {
+    "kind": "raw-cross-glyph",
+    "path": "lib/shared/business_columns/business_column.dart",
+    "owner": "BusinessColumn.symbol",
+    "fingerprint": "1a3e33ce6438b2b55911b17e4deb42abfb97fcaa45463bdda92e9eb3fdc8ec70",
+    "count": 1,
+    "reason": "The arithmetic multiplication operator symbol."
+  },
+  {
+    "kind": "raw-cross-glyph",
+    "path": "lib/shared/measurement/widgets/weigh_count_dialog.dart",
+    "owner": "_WeighCountPanelState._tareRow",
+    "fingerprint": "94fa775f9ddb6d703ea93696829bb7e3619607421dc63306db44356d3150c4c1",
+    "count": 1,
+    "reason": "A multiplication sign between weighing/counting quantities."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/shared/platform_tables/platform_table_picker.dart",
+    "owner": "_PlatformColumnPickerState._stepEditor",
+    "fingerprint": "b3eacb37286412a255025eb694d2c4ce7ba3e41a48401149362f6db407299c9e",
+    "count": 1,
+    "reason": "Deletes one platform formula step."
+  },
+  {
+    "kind": "raw-cross-glyph",
+    "path": "lib/shared/platform_tables/platform_table_picker.dart",
+    "owner": "_PlatformColumnPickerState._formulaPreview",
+    "fingerprint": "1a3e33ce6438b2b55911b17e4deb42abfb97fcaa45463bdda92e9eb3fdc8ec70",
+    "count": 1,
+    "reason": "The arithmetic multiplication operator in a formula preview."
+  },
+  {
+    "kind": "semantic-close-button",
+    "path": "lib/features/notice/widgets/review_pending_dialog.dart",
+    "owner": "_ManualNoticeCard.build",
+    "fingerprint": "b479ce350dae95876df31abd63c1cf9b1d41aedcd591c77704f5e76fdcfc5f2d",
+    "count": 1,
+    "reason": "Explicit notice acknowledgement: _dismissManual calls markNoticeReadContainer, records popup acknowledgement and removes that notice. This is not a pure window dismiss; preserve its business receipt."
+  }
+]

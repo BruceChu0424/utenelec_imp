@@ -59,7 +59,23 @@ class MaintenanceNginxTest(unittest.TestCase):
                                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     try:
                         fixture.wait_listener()
-                        self.assertEqual(200, fixture.request(work, '/', authorized=False)[0])
+                        code, headers, body = fixture.request(work, '/', authorized=False)
+                        self.assertEqual(200, code)
+                        self.assertEqual(b'APPLICATION', body)
+                        policy = {
+                            directive.split()[0]: directive.split()[1:]
+                            for directive in headers['Content-Security-Policy'].split(';')
+                            if directive.strip()
+                        }
+                        # Private media is fetched and verified by the application
+                        # before a local blob is handed to the browser player.
+                        # Keep this permission scoped to media, without permitting
+                        # remote players, arbitrary hosts or blob scripts.
+                        self.assertEqual(["'self'", 'blob:'], policy['media-src'])
+                        self.assertEqual(["'self'"], policy['default-src'])
+                        self.assertEqual(["'none'"], policy['object-src'])
+                        self.assertNotIn('blob:', policy['script-src'])
+                        self.assertNotIn('*', policy['connect-src'])
                         # No backend is started: this is independent of Spring,
                         # the database and authentication authority.
                         code, headers, body = fixture.request(work, '/api/system/maintenance', authorized=False)

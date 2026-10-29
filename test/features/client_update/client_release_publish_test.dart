@@ -18,6 +18,9 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/features/client_update/client_release.dart';
 import 'package:uten_imp/features/client_update/client_release_publish_page.dart';
@@ -25,6 +28,7 @@ import 'package:uten_imp/features/client_update/client_release_publish_queue.dar
 import 'package:uten_imp/features/client_update/client_update_tile.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
+import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -243,7 +247,7 @@ Future<void> _pump(
         path: '/settings',
         builder: (_, _) => const Scaffold(body: ClientReleasePublishTile()),
       ),
-      GoRoute(
+      DraftAwareGoRoute(
         path: RouteName.clientReleasePublish,
         builder: (_, _) => ClientReleasePublishPage(
           initialPlatform: platform,
@@ -467,6 +471,26 @@ void main() {
       await tester.tap(find.text('撤回'));
       await tester.pumpAndSettle();
       expect(find.text('撤回这个版本？'), findsOneWidget);
+      final withdrawPrompt = find.byType(UtenAlertDialog);
+      final withdrawClose = find.descendant(
+        of: withdrawPrompt,
+        matching: find.byType(UtenCloseButton),
+      );
+      expect(withdrawClose.hitTestable(), findsOneWidget);
+      expect(
+        find.descendant(of: withdrawPrompt, matching: find.text('关闭')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: withdrawPrompt, matching: find.text('取消')),
+        findsNothing,
+      );
+      await tester.tap(withdrawClose);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsNothing);
+      expect(api.withdrawCalls, 0);
+      await tester.tap(find.text('撤回'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('确认撤回'));
       await tester.pumpAndSettle();
       expect(api.withdrawCalls, 1);
@@ -500,6 +524,99 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'shared page navigation and alert close preserve the former popup close protection',
+    (tester) async {
+      final api = _Api()..delayedUpload = Completer<void>();
+      final storage = _Storage();
+      await _pump(
+        tester,
+        api,
+        _Session(_identity()),
+        tile: true,
+        storage: storage,
+        files: [_file('setup.exe')],
+      );
+      await tester.tap(find.byType(ClientReleasePublishTile));
+      await tester.pumpAndSettle();
+      final back = find.byType(UtenBackButton);
+      expect(back.hitTestable(), findsOneWidget);
+      await tester.tap(back);
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientReleasePublishPage), findsNothing);
+      expect(find.byType(ClientReleasePublishTile), findsOneWidget);
+
+      await tester.tap(find.byType(ClientReleasePublishTile));
+      await tester.pumpAndSettle();
+      await _fill(tester);
+      await _add(tester, single: true);
+      final publish = find.byKey(
+        const ValueKey('client-release-publish-batch'),
+      );
+      await _reveal(tester, publish);
+      await tester.tap(publish);
+      await tester.pump();
+      for (var frame = 0; frame < 100 && api.packages.isEmpty; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(api.packages, hasLength(1));
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientReleasePublishPage), findsOneWidget);
+      expect(find.text('正在完成当前文件或提交状态，请稍候再离开。'), findsOneWidget);
+      expect(api.publishIds, isEmpty);
+      expect(
+        tester
+            .widgetList<TextField>(find.byType(TextField))
+            .every((field) => field.enabled == false),
+        isTrue,
+      );
+
+      api.delayedUpload!.complete();
+      for (var frame = 0; frame < 100 && api.publishIds.isEmpty; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+      expect(api.publishIds, hasLength(1));
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      final confirmation = find.byType(UtenAlertDialog);
+      expect(confirmation, findsOneWidget);
+      final close = find.descendant(
+        of: confirmation,
+        matching: find.byType(UtenCloseButton),
+      );
+      expect(close.hitTestable(), findsOneWidget);
+      expect(
+        find.descendant(of: confirmation, matching: find.text('关闭')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: confirmation, matching: find.text('留在本页')),
+        findsNothing,
+      );
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsNothing);
+      expect(find.byType(ClientReleasePublishPage), findsOneWidget);
+      expect(api.creates, hasLength(1));
+      expect(api.publishIds, hasLength(1));
+
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('保存草稿'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientReleasePublishPage), findsNothing);
+      expect(storage.records, isNotEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'lost publish receipt reconciles and finishes the original Windows intent',
     (tester) async {

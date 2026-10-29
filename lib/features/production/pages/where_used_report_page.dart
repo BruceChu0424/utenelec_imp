@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -964,9 +965,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           children: [
             ListTile(
               title: const Text('关系依据说明'),
-              trailing: TextButton(
+              trailing: UtenCloseButton(
                 onPressed: () => Navigator.of(panelContext).pop(),
-                child: const Text('关闭'),
+                tooltip: '关闭',
               ),
             ),
             Expanded(
@@ -1014,9 +1015,9 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
                 title: Text(
                   _mode == _TraceResultMode.actual ? '筛选实际追溯' : '筛选 BOM 与历史关系',
                 ),
-                trailing: TextButton(
+                trailing: UtenCloseButton(
                   onPressed: () => Navigator.of(panelContext).pop(),
-                  child: const Text('关闭'),
+                  tooltip: '关闭',
                 ),
               ),
               Expanded(

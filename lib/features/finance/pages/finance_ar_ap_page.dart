@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -317,8 +318,13 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
           info: '查找完整销售单来源组；命中后保留该台账全部来源，不截成单个匹配项',
           label: '销售订单号',
           width: 190,
+          // value（筛选/导出）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
           value: (it) =>
               it.salesOrderNos.isEmpty ? '—' : it.salesOrderNos.join('、'),
+          cellBuilder: (context, it) => UtenMultiValueCell(
+            values: it.salesOrderNos,
+            title: '销售订单号',
+          ),
         ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 sourceDocNo 白名单/桶）。

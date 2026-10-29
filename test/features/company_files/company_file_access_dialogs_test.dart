@@ -9,15 +9,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/company_files/models/company_file.dart';
 import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_dialogs.dart';
+import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
@@ -115,10 +120,17 @@ Future<T?> _show<T>(WidgetTester tester, Widget child) {
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.pumpAndSettle();
+  await _reveal(tester, finder);
   await tester.tap(finder);
   await tester.pumpAndSettle();
+}
+
+Future<void> _reveal(WidgetTester tester, Finder finder) async {
+  // Recompute after the inner and outer scroll views have both laid out.
+  for (var attempt = 0; attempt < 2; attempt++) {
+    await Scrollable.ensureVisible(tester.element(finder), alignment: .5);
+    await tester.pumpAndSettle();
+  }
 }
 
 Finder _input(String key) => find.descendant(
@@ -157,6 +169,357 @@ void main() {
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
+
+  for (final layout in [
+    (name: 'desktop', size: const Size(1200, 1000), scale: 1.0, dark: false),
+    (name: 'mobile-200', size: const Size(360, 780), scale: 2.0, dark: true),
+    (
+      name: 'landscape-200',
+      size: const Size(844, 390),
+      scale: 2.0,
+      dark: false,
+    ),
+  ]) {
+    testWidgets(
+      'upload selected-file icons fit ${layout.name} without a top hint',
+      (tester) async {
+        final mounted = await _mount(
+          tester,
+          size: layout.size,
+          scale: layout.scale,
+          dark: layout.dark,
+        );
+        final result = _show<CompanyFileInitialAccessDraft>(
+          tester,
+          CompanyFileUploadAccessDialog(
+            repository: _Repository(),
+            scope: mounted.scope,
+            boundary: _boundary('A'),
+            selectedNames: const [
+              '公司公文模板.docx',
+              '宣传图片.jpg',
+              '培训演示.mp4',
+              '包装结构与品牌设计原件-保留完整文件名和扩展名.cdr',
+            ],
+            onRemoveFile: (_) {},
+            onAddFiles: () async => ['追加设计文件.step'],
+          ),
+        );
+        await tester.pumpAndSettle();
+        final fileList = find.byKey(
+          const ValueKey('company-upload-selected-files'),
+        );
+        expect(fileList, findsOneWidget);
+        final visibleKinds = tester
+            .widgetList<AttachmentKindIcon>(
+              find.descendant(
+                of: fileList,
+                matching: find.byType(AttachmentKindIcon),
+              ),
+            )
+            .map((icon) => icon.kind);
+        expect(visibleKinds, isNotEmpty);
+        expect(visibleKinds.first, AttachmentFileKind.word);
+        if (layout.name == 'desktop') {
+          final listRect = tester.getRect(fileList);
+          final lastRemove = tester.getRect(
+            find.byKey(const ValueKey('company-upload-remove-3')),
+          );
+          expect(lastRemove.top, greaterThanOrEqualTo(listRect.top));
+          expect(lastRemove.bottom, lessThanOrEqualTo(listRect.bottom));
+        }
+        expect(find.textContaining('支持所有格式上传'), findsNothing);
+        expect(find.text('仅影响这份文件或文件夹，不会修改系统总权限。'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _capture(tester, 'upload-selected-icons-${layout.name}');
+        await _reveal(tester, fileList);
+        await tester.scrollUntilVisible(
+          find.text('包装结构与品牌设计原件-保留完整文件名和扩展名.cdr'),
+          80,
+          scrollable: find.descendant(
+            of: fileList,
+            matching: find.byType(Scrollable),
+          ),
+        );
+        expect(find.text('包装结构与品牌设计原件-保留完整文件名和扩展名.cdr'), findsOneWidget);
+        await _tap(
+          tester,
+          find.byKey(const ValueKey('company-upload-remove-3')),
+        );
+        expect(find.text('已选文件 (3)'), findsOneWidget);
+        await _tap(
+          tester,
+          find.byKey(const ValueKey('company-upload-add-files')),
+        );
+        expect(find.text('已选文件 (4)'), findsOneWidget);
+        await _tap(
+          tester,
+          find.byKey(const ValueKey('company-initial-access-confirm')),
+        );
+        expect(await result, isA<CompanyFileInitialAccessDraft>());
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'upload selection removes exact rows and re-adds after empty or cancelled selection',
+    (tester) async {
+      final state = await _mount(tester), repo = _Repository();
+      final source = ['原件一.cdr', '原件二.step', '原件三.docx'];
+      final removed = <String>[];
+      var additions = 0;
+      final result = _show<CompanyFileInitialAccessDraft>(
+        tester,
+        CompanyFileUploadAccessDialog(
+          repository: repo,
+          scope: state.scope,
+          boundary: _boundary('A'),
+          selectedNames: source,
+          onRemoveFile: (index) => removed.add(source.removeAt(index)),
+          onAddFiles: () async {
+            if (++additions == 1) return [];
+            source.add('重新选择的原件.blend');
+            return ['重新选择的原件.blend'];
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final staleRemove = tester
+          .widget<UtenCloseButton>(
+            find.byKey(const ValueKey('company-upload-remove-2')),
+          )
+          .onPressed!;
+      await _tap(tester, find.byKey(const ValueKey('company-upload-remove-1')));
+      await Future<void>.sync(staleRemove);
+      expect(source, ['原件一.cdr', '原件三.docx']);
+      expect(removed, ['原件二.step']);
+      await _tap(tester, find.byKey(const ValueKey('company-upload-remove-0')));
+      await _tap(tester, find.byKey(const ValueKey('company-upload-remove-0')));
+      expect(source, isEmpty);
+      expect(find.text('尚未选择文件'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('company-initial-access-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await _capture(tester, 'upload-selection-empty');
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(find.text('尚未选择文件'), findsOneWidget);
+      expect(source, isEmpty);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(find.text('已选文件 (1)'), findsOneWidget);
+      expect(source, ['重新选择的原件.blend']);
+      expect(repo.saves, 0);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+      );
+      expect(await result, isA<CompanyFileInitialAccessDraft>());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'adding files preserves edited ACL and password while fencing selection and dismissal',
+    (tester) async {
+      final state = await _mount(tester);
+      final added = Completer<List<String>>();
+      var removeCount = 0, addCount = 0;
+      final result = _show<CompanyFileInitialAccessDraft>(
+        tester,
+        CompanyFileUploadAccessDialog(
+          repository: _Repository(),
+          scope: state.scope,
+          boundary: _boundary('A'),
+          selectedNames: const ['保留的原件.cdr'],
+          onRemoveFile: (_) => removeCount++,
+          onAddFiles: () {
+            addCount++;
+            return added.future;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byKey(const Key('initial-access-specific')));
+      await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
+      await _tap(tester, find.text('张明'));
+      await _tap(
+        tester,
+        find.byKey(const Key('initial-access-password-switch')),
+      );
+      const password = 'Synthetic-selected-password!';
+      await tester.enterText(_input('initial-access-password'), password);
+      await tester.enterText(
+        _input('initial-access-password-repeat'),
+        password,
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      final addButton = find.byKey(const ValueKey('company-upload-add-files'));
+      await _reveal(tester, addButton);
+      await tester.tap(addButton);
+      await tester.pump();
+      expect(addCount, 1);
+      expect(tester.widget<UtenButton>(addButton).onPressed, isNull);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('company-initial-access-confirm')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<UtenCloseButton>(
+              find.byKey(const ValueKey('company-upload-remove-0')),
+            )
+            .onPressed,
+        isNull,
+      );
+      final cancel = find.widgetWithText(TextButton, '取消');
+      expect(tester.widget<TextButton>(cancel).onPressed, isNull);
+      final context = tester.element(addButton);
+      expect(await Navigator.of(context).maybePop(), isTrue);
+      await tester.pump();
+      expect(find.byType(CompanyFileUploadAccessDialog), findsOneWidget);
+      expect(removeCount, 0);
+      added.complete(['新增的文件.docx']);
+      await tester.pumpAndSettle();
+      expect(find.text('已选文件 (2)'), findsOneWidget);
+      expect(
+        tester
+            .widget<EditableText>(_input('initial-access-password'))
+            .controller
+            .text,
+        password,
+      );
+      expect(
+        tester
+            .widget<EditableText>(_input('initial-access-password-repeat'))
+            .controller
+            .text,
+        password,
+      );
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+      );
+      final draft = (await result)!;
+      expect(draft.inheritPermissions, isFalse);
+      expect(draft.password, password);
+      expect(draft.rules.single.subjectId, 'alice');
+      expect(draft.rules.single.actions, {'view', 'download'});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed additions keep selected files and protected access drafts',
+    (tester) async {
+      final state = await _mount(tester);
+      final access = CompanyFileInitialAccessDraft(
+        inheritPermissions: false,
+        rules: const [
+          CompanyFileAccessRule(
+            subjectType: 'DEPARTMENT',
+            subjectId: 'hr',
+            subjectName: '人事部',
+          ),
+        ],
+        password: 'Synthetic-file-password!',
+      );
+      final result = _show<CompanyFileInitialAccessDraft>(
+        tester,
+        CompanyFileUploadAccessDialog(
+          repository: _Repository(),
+          scope: state.scope,
+          boundary: _boundary('A'),
+          selectedNames: const ['未丢失的原件.cdr'],
+          initialAccess: access,
+          onRemoveFile: (_) {},
+          onAddFiles: () async => throw ApiException(
+            'PICK_FAILED',
+            '文件读取失败，请重新选择。',
+            httpStatus: 400,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-upload-add-files')),
+      );
+      expect(
+        state.container
+            .read(appNotificationProvider)
+            .map((notice) => notice.message),
+        contains('文件读取失败，请重新选择。'),
+      );
+      expect(find.text('未丢失的原件.cdr'), findsOneWidget);
+      expect(find.text('已选文件 (1)'), findsOneWidget);
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+      );
+      expect((await result)!.toJson(), access.toJson());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'identity A B A retires late file additions and stale remove actions',
+    (tester) async {
+      final state = await _mount(tester), added = Completer<List<String>>();
+      var removes = 0;
+      final result = _show<CompanyFileInitialAccessDraft>(
+        tester,
+        CompanyFileUploadAccessDialog(
+          repository: _Repository(),
+          scope: state.scope,
+          boundary: _boundary('A'),
+          selectedNames: const ['旧身份私有文件.cdr'],
+          onRemoveFile: (_) => removes++,
+          onAddFiles: () => added.future,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final staleRemove = tester
+          .widget<UtenCloseButton>(
+            find.byKey(const ValueKey('company-upload-remove-0')),
+          )
+          .onPressed!;
+      await tester.tap(find.byKey(const ValueKey('company-upload-add-files')));
+      await tester.pump();
+      state.container.read(_identity.notifier).state = _boundary('B');
+      await tester.pump();
+      state.container.read(_identity.notifier).state = _boundary('A');
+      added.complete(['不应出现的晚到原件.step']);
+      await Future<void>.sync(staleRemove);
+      await tester.pumpAndSettle();
+      expect(removes, 0);
+      expect(find.text('旧身份私有文件.cdr'), findsNothing);
+      expect(find.text('不应出现的晚到原件.step'), findsNothing);
+      expect(
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+        findsNothing,
+      );
+      expect(find.text('访问权限已变化，请刷新后重试'), findsOneWidget);
+      await _tap(tester, find.byType(UtenCloseButton).last);
+      expect(await result, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'new folder defaults to everyone-visible draft without system actions',

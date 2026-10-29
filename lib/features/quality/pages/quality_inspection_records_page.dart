@@ -2,6 +2,7 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:flutter/material.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -937,11 +938,7 @@ class _QualityInspectionRecordDetailPanelState
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              UtenAppBarActionButton(
-                label: '关闭',
-                icon: Icons.close_rounded,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
+              UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
             ],
           ),
         ),

@@ -252,11 +252,13 @@ class _GlReportLineBindingsDialogState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const UtenDialogHeader(
+                  UtenDialogHeader(
                     padding: EdgeInsets.zero,
                     icon: Icons.account_tree_outlined,
-                    title: Text('附表取数设置'),
-                    trailing: UtenFieldHintIcon(
+                    title: const Text('附表取数设置'),
+                    showCloseButton: true,
+                    onClose: () => Navigator.pop(context, _changed),
+                    trailing: const UtenFieldHintIcon(
                       info: '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
                       dense: true,
                     ),
@@ -325,10 +327,6 @@ class _GlReportLineBindingsDialogState
                           child: const Text('按默认名单补齐'),
                         ),
                       ],
-                      FilledButton(
-                        onPressed: () => Navigator.pop(context, _changed),
-                        child: const Text('关闭'),
-                      ),
                     ],
                   ),
                 ],

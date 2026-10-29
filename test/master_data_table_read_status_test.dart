@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -172,7 +173,12 @@ void main() {
         findsOneWidget,
       );
       expect(_dialogText('尚未取得本次查询的数据。重试只会重新读取数据。'), findsOneWidget);
-      await tester.tap(_dialogText('关闭'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenAlertDialog),
+          matching: find.byType(UtenCloseButton),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('货品名称'), findsOneWidget);
       expect(tester.takeException(), isNull);

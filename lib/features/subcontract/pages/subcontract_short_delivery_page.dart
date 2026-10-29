@@ -976,6 +976,8 @@ class _CaseDetailDialog extends StatelessWidget {
     final unit = row.unitName;
     final canAct = row.canDecide && row.isOpen;
     return UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.pop(context),
       scrollable: false,
       title: Text('短交案件 · ${row.orderBillNo}'),
       content: ConstrainedBox(
@@ -1068,11 +1070,6 @@ class _CaseDetailDialog extends StatelessWidget {
       ),
       actionsAlignment: MainAxisAlignment.center,
       actions: [
-        UtenButton(
-          type: UtenButtonType.ghost,
-          onPressed: () => Navigator.pop(context),
-          child: const Text('关闭'),
-        ),
         if (canAct) ...[
           UtenButton(
             key: const Key('short-delivery-detail-wait'),

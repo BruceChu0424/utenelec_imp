@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
@@ -237,10 +238,10 @@ class _SupplierSettlementCreatePanelState
     return Scaffold(
       appBar: AppBar(
         title: const Text('生成供应商月结批次'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
+        ],
       ),
       body: SafeArea(
         child: ListView(

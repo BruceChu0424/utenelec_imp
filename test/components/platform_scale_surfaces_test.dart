@@ -4,6 +4,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/data_display/uten_gauge_ring.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
@@ -342,8 +343,8 @@ void main() {
       expect(find.text('完整物料名称'), findsOneWidget);
       expect(find.text('12345'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.ensureVisible(find.text('关闭'));
-      await tester.tap(find.text('关闭'));
+      expect(find.byType(UtenCloseButton).hitTestable(), findsOneWidget);
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
       expect(find.text('预览 · 供应商明细与物料统计'), findsNothing);
       expect(tester.takeException(), isNull);

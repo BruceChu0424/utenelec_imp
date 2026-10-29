@@ -73,6 +73,7 @@ import '../../../shared/paging/paged_query_identity.dart';
 import '../../../shared/paging/paged_read_window_binding.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -96,6 +97,7 @@ import '../widgets/production_material_settlement_sheet.dart';
 import '../widgets/segment_material_change_dialog.dart';
 import '../widgets/start_confirmation_sheet.dart';
 import '../widgets/workshop_task_material_table.dart';
+import '../widgets/workshop_task_material_dialog.dart';
 import '../widgets/workshop_task_detail_dialog.dart';
 import '../widgets/workshop_task_material_bin_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -1439,13 +1441,17 @@ class _ProductionWorkshopTasksPageState
 
   Future<bool> _resumeLocalOperation(
     List<ProductionExecutionWorkbenchSegment> tasks,
-    Set<String> paths,
-  ) async {
+    Set<String> paths, {
+    Set<String>? drawItemIds,
+  }) async {
     final drafts = taskDraftsFor(
       ref.read(formDraftCategoryProvider(_draftScope)),
       matches: (draft) =>
           paths.contains(Uri.parse(draft.route).path) &&
-          tasks.any((task) => workshopTaskDraftMatches(draft, task.segmentId)),
+          tasks.any(
+            (task) => workshopTaskDraftMatches(draft, task.segmentId),
+          ) &&
+          workshopDrawDraftMatchesSelection(draft, drawItemIds),
     );
     if (drafts.isEmpty) return false;
     setState(() => _navigating = true);
@@ -1646,13 +1652,15 @@ class _ProductionWorkshopTasksPageState
       .toList(growable: false);
 
   Future<void> _requestDraw(
-    List<ProductionExecutionWorkbenchSegment> tasks,
-  ) async {
+    List<ProductionExecutionWorkbenchSegment> tasks, {
+    Set<String>? drawItemIds,
+  }) async {
     if (!_canStart || _navigating || tasks.isEmpty) return;
+    if (drawItemIds != null && drawItemIds.isEmpty) return;
     if (await _resumeLocalOperation(tasks, {
       RouteName.productionDrawRequest,
       ProductionMaterialDiscoveryRequestPage.route,
-    })) {
+    }, drawItemIds: drawItemIds)) {
       return;
     }
     if (!mounted) return;
@@ -1699,6 +1707,8 @@ class _ProductionWorkshopTasksPageState
       queryParameters: {
         'segmentIds': tasks.map((task) => task.segmentId).join(','),
         'versions': tasks.map((task) => task.lockVersion).join(','),
+        if (drawItemIds != null)
+          'drawItemIds': (drawItemIds.toList()..sort()).join(','),
       },
     ).toString();
     setState(() => _navigating = true);
@@ -2139,6 +2149,34 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
+  Future<void> _openMaterials(ProductionExecutionWorkbenchSegment task) async {
+    if (_navigating || _loading) return;
+    final epoch = ref.read(exportContextEpochProvider);
+    Set<String>? selected;
+    setState(() => _navigating = true);
+    try {
+      selected = await showWorkshopTaskMaterialDialog(
+        context,
+        task: task,
+        canRequestDraw:
+            _canStart &&
+            _routeAllowsKitActions(task) &&
+            _canRequestDrawTask(task),
+        isCurrent: () =>
+            mounted && epoch == ref.read(exportContextEpochProvider),
+      );
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+    if (!mounted ||
+        epoch != ref.read(exportContextEpochProvider) ||
+        selected == null ||
+        selected.isEmpty) {
+      return;
+    }
+    await _requestDraw([task], drawItemIds: selected);
+  }
+
   Widget _detailMaterialSummary(
     BuildContext context,
     ProductionExecutionWorkbenchSegment task,
@@ -2187,14 +2225,10 @@ class _ProductionWorkshopTasksPageState
             }[segmentId];
             if (task == null) {
               return UtenAlertDialog(
+                showCloseButton: true,
+                onClose: () => Navigator.of(dialogContext).pop(),
                 title: const Text('车间任务详情'),
                 content: const Text('任务已更新，请关闭后重新打开'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(),
-                    child: const Text('关闭'),
-                  ),
-                ],
               );
             }
             final preparing = const {
@@ -2844,7 +2878,7 @@ class _ProductionWorkshopTasksPageState
           '${task.productUnitName ?? ''}'
           '，已预留可产 ${_taskQuantity(task.materialPreparedOutputQty)}${task.productUnitName ?? ''}',
       if (fromBin) '塑料等整批领料的料另由车间内料仓供给，不算在上面的种数里',
-      '双击本行查看每种物料的数量',
+      '点击查看物料明细',
     ];
     return lines.join('\n');
   }
@@ -3035,10 +3069,18 @@ class _ProductionWorkshopTasksPageState
                                   count: 0,
                                 ),
                                 MasterFacetBucket(
-                                  value: 'DRAW_NOT_REQUESTED',
-                                  // 持续生产分次到料的行也落在本桶（部分已备可领），
-                                  // 桶名不宣称齐套（2026-09-20 用户口径）。
-                                  label: '物料可领 · 去领料',
+                                  value: 'DRAW_FULL_KIT',
+                                  label: '物料齐套 · 去领料',
+                                  count: 0,
+                                ),
+                                MasterFacetBucket(
+                                  value: 'DRAW_PARTIAL',
+                                  label: '部分物料可领 · 去领料',
+                                  count: 0,
+                                ),
+                                MasterFacetBucket(
+                                  value: 'SAME_WORKSHOP_MAKE_ONLY',
+                                  label: '仅缺 1 种本车间自产件',
                                   count: 0,
                                 ),
                                 MasterFacetBucket(
@@ -3519,7 +3561,7 @@ class _ProductionWorkshopTasksPageState
       value: (task) => task.analysisNo ?? '—',
     ),
     // 「物料」列（ADR-095，2026-09-20 用户口径「车间内流转的货品数量怎么统计、
-    // 显示在哪里」）：逐种事实的一行摘要，悬停逐桶解释，双击行看每种物料的数量。
+    // 显示在哪里」）：逐种事实的一行摘要，单击查看明细并选择可领物料。
     // 生产中也显示——持续生产在原任务继续领料/直送，仍要看还缺什么。
     if (status != 'COMPLETED')
       MasterColumnDef(
@@ -3530,7 +3572,7 @@ class _ProductionWorkshopTasksPageState
             '每种物料只落一个桶：已领到车间 / 缺(等采购委外到货或等自制子件完成)/ '
             '可领(已备好待提交领料)/ 待发(已提交待仓库发料)。自制子件做完可能直送'
             '本车间也可能入库后领料，只有真正交到本任务后才算「已领」。缺=红、可领=蓝。'
-            '双击行查看每种物料的数量。',
+            '点击查看明细并选择可领物料。',
         value: _materialSummaryText,
         cellBuilder: (context, task) {
           final theme = Theme.of(context);
@@ -3550,31 +3592,29 @@ class _ProductionWorkshopTasksPageState
             _MaterialSummaryTone.plain => null,
           };
           final parts = _materialSummaryParts(task);
-          return Tooltip(
-            message: _materialSummaryTooltip(task),
-            child: Text.rich(
-              TextSpan(
-                style: base,
-                children: [
-                  for (var index = 0; index < parts.length; index++) ...[
-                    if (index > 0) const TextSpan(text: ' · '),
-                    TextSpan(
-                      text: parts[index].$1,
-                      style: toneColor(parts[index].$2) == null
-                          ? null
-                          : TextStyle(
-                              color: toneColor(parts[index].$2),
-                              fontWeight: FontWeight.w700,
-                            ),
-                    ),
-                  ],
+          return UtenTableCellAction.rich(
+            key: ValueKey('workshop-material-summary-${task.segmentId}'),
+            label: _materialSummaryText(task),
+            tooltip: _materialSummaryTooltip(task),
+            onPressed: _navigating || _loading
+                ? null
+                : () => _openMaterials(task),
+            textSpan: TextSpan(
+              style: base,
+              children: [
+                for (var index = 0; index < parts.length; index++) ...[
+                  if (index > 0) const TextSpan(text: ' · '),
+                  TextSpan(
+                    text: parts[index].$1,
+                    style: toneColor(parts[index].$2) == null
+                        ? null
+                        : TextStyle(
+                            color: toneColor(parts[index].$2),
+                            fontWeight: FontWeight.w700,
+                          ),
+                  ),
                 ],
-              ),
-              key: ValueKey('workshop-material-summary-${task.segmentId}'),
-              // 单行（2026-10-06 行高统一口径）：两行物料摘要把整行撑高，
-              // 全量明细已有上方 Tooltip 与双击行详情兜底。
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              ],
             ),
           );
         },

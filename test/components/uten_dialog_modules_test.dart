@@ -6,6 +6,56 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
+  for (final rtl in [false, true]) {
+    for (final trailingWidth in <double?>[null, 116]) {
+      testWidgets(
+        'wide settings reserve actual control width rtl=$rtl trailing=$trailingWidth',
+        (tester) async {
+          final control = Switch(value: true, onChanged: (_) {});
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildLightTheme(),
+              home: Scaffold(
+                body: Directionality(
+                  textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
+                  child: Center(
+                    child: SizedBox(
+                      width: 400,
+                      child: UtenDialogSettingTile(
+                        icon: Icons.notifications_outlined,
+                        title: const Text('开关设置'),
+                        onTap: () {},
+                        trailing: trailingWidth == null
+                            ? control
+                            : SizedBox(
+                                width: trailingWidth,
+                                child: Align(
+                                  alignment: AlignmentDirectional.centerEnd,
+                                  child: control,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final title = tester.getRect(find.text('开关设置'));
+          final native = tester.getRect(find.byType(Switch));
+          expect(tester.getSize(find.byType(UtenDialogSettingTile)).height, 84);
+          expect(native.center.dy, closeTo(title.center.dy, 0.001));
+          expect(
+            rtl ? native.right < title.left : native.left > title.right,
+            isTrue,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'setting cards retain one native control and focus across narrow wrapping',
     (tester) async {

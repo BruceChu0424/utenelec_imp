@@ -365,11 +365,6 @@ class _SubcontractDrawTaskDetailDialogState
             onPressed: idle ? () => _withdraw(detail) : null,
             child: const Text('撤回未发领料'),
           ),
-        UtenButton(
-          type: UtenButtonType.ghost,
-          onPressed: idle ? _close : null,
-          child: const Text('关闭'),
-        ),
         if (canGoDraw)
           UtenButton(
             key: const Key('subcontract-draw-detail-go-draw'),

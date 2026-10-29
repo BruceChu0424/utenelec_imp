@@ -496,6 +496,8 @@ class PriceCheckCell extends StatelessWidget {
                           );
                           return UtenAlertDialog(
                             maxWidth: 440,
+                            showCloseButton: true,
+                            onClose: () => Navigator.pop(dialogContext),
                             title: Text(
                               priceText(
                                 context,
@@ -524,12 +526,6 @@ class PriceCheckCell extends StatelessWidget {
                                         ),
                                     ],
                                   ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(dialogContext),
-                                child: Text(priceText(context, 'close')),
-                              ),
-                            ],
                           );
                         },
                       ),

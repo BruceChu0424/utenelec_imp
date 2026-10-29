@@ -6,6 +6,7 @@
 // 货品/模具分类、部门管理 共用本组件；树内容（UtenCategoryTreeView /
 //  UtenDepartmentTreeView）由调用方作为 childBuilder 传入，保留领域差异。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 
 import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
@@ -262,11 +263,7 @@ class _UtenLocationPickerSheetState<T>
                   ),
                 ),
               ),
-              IconButton(
-                tooltip: widget.cancelLabel,
-                icon: const Icon(Icons.close_rounded),
-                onPressed: _cancel,
-              ),
+              UtenCloseButton(tooltip: widget.cancelLabel, onPressed: _cancel),
             ],
           ),
         ),

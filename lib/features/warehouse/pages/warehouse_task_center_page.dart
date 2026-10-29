@@ -2,6 +2,7 @@
 // 生产领料归出库，生产退料归入库；旧 draw 深链按来源映射到对应方向。
 // 大类与来源徽章沿用服务端本人/所选仓范围；旧领料徽章仅作兼容别名，
 // 不重复进入模块合计。没有预选大类时显示引导，不请求列表。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -283,13 +284,15 @@ class _WarehouseTaskCenterPageState
         appBar: UtenAppBar(
           title: '仓库任务中心',
           showPagePermissionAction: false,
-          leading: route?.impliesAppBarDismissal == true
-              ? route!.fullscreenDialog
-                    ? const CloseButton()
-                    : UtenBackButton(
-                        onPressed: () => Navigator.maybePop(context),
-                      )
+          leading:
+              route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+              ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
               : null,
+          actions: [
+            if (route?.impliesAppBarDismissal == true &&
+                route!.fullscreenDialog)
+              UtenCloseButton(onPressed: () => Navigator.maybePop(context)),
+          ],
         ),
         body: Center(
           child: Text(

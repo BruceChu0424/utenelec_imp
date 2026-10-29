@@ -22,6 +22,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
@@ -327,7 +328,12 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       label: '变更字段',
       width: 320,
       info: '本批修改涉及的档案字段（顿号连接）；双击行可查看逐字段旧→新值对比。',
+      // 屏幕格走多值截断+弹窗口径（2026-10-29）；value（导出）保留全量。
       value: (item) => item.fieldLabels.join('、'),
+      cellBuilder: (context, item) => UtenMultiValueCell(
+        values: item.fieldLabels,
+        title: '变更字段',
+      ),
     ),
     MasterColumnDef(
       key: 'itemCount',

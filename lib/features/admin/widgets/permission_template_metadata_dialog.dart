@@ -129,6 +129,16 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
     return PopScope(
       canPop: !_saving,
       child: UtenAlertDialog(
+        showCloseButton: _uncertain,
+        closeEnabled: !_saving,
+        closeTooltip: l.permissionTemplateClose,
+        onClose: () {
+          if (_uncertain && _current) {
+            ref.invalidate(permissionTemplatesProvider);
+            ref.invalidate(permissionTemplateBindingsProvider);
+          }
+          Navigator.pop(context);
+        },
         title: UtenSectionHeader(
           title: widget.template != null
               ? '编辑模板信息'
@@ -173,23 +183,20 @@ class _MetadataState extends ConsumerState<PermissionTemplateMetadataDialog> {
           ),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: !_saving
-                ? () {
-                    if (_uncertain && _current) {
-                      ref.invalidate(permissionTemplatesProvider);
-                      ref.invalidate(permissionTemplateBindingsProvider);
+          if (!_uncertain)
+            UtenButton(
+              type: UtenButtonType.secondary,
+              onPressed: !_saving
+                  ? () {
+                      if (_uncertain && _current) {
+                        ref.invalidate(permissionTemplatesProvider);
+                        ref.invalidate(permissionTemplateBindingsProvider);
+                      }
+                      Navigator.pop(context);
                     }
-                    Navigator.pop(context);
-                  }
-                : null,
-            child: Text(
-              _uncertain
-                  ? l.permissionTemplateClose
-                  : l.permissionTemplateCancel,
+                  : null,
+              child: Text(l.permissionTemplateCancel),
             ),
-          ),
           UtenButton(
             key: ValueKey(
               widget.template == null

@@ -1172,13 +1172,7 @@ public class ProductionExecutionWorkbenchService {
                              AND current_segment.auto_promote_when_ready = TRUE
                              AND current_segment.is_deleted = FALSE)),
                        %s,
-                       (:allowRequestDraw AND task.segment_status IN ('READY','DISPATCHED','IN_PROGRESS')
-                         AND bin_material.state NOT IN ('NEED_CHOICE','NEED_BIN')
-                         AND NOT task.zero_material AND NOT (%s)
-                         AND EXISTS(SELECT 1 FROM production_execution_segments route_segment
-                           WHERE route_segment.id=task.segment_id AND route_segment.start_route IN ('FULL_KIT','CONTINUOUS'))
-                         AND EXISTS (%s AND NOT pending_warehouse.is_line_side
-                           AND fn_production_draw_item_requested_qty(pending_item.id)<fn_production_draw_item_effective_qty(pending_item.id))),
+                       (:allowRequestDraw AND %s),
                        (:allowRequestDraw AND fn_can_split_execution_batch(task.segment_id)),
                        (SELECT source_segment_id FROM production_execution_segments WHERE id=task.segment_id),
                        EXISTS(SELECT 1 FROM production_execution_segment_splits WHERE source_segment_id=task.segment_id),
@@ -1270,7 +1264,7 @@ public class ProductionExecutionWorkbenchService {
                            AND disposition.status IN('PENDING','HELD','RETURNED')
                            AND reported.status=1 AND NOT reported.is_deleted
                          ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
-                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
+                """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), ordinaryDrawRequestablePredicate("bin_material.state"));
     }
 
     /**
@@ -1308,13 +1302,26 @@ public class ProductionExecutionWorkbenchService {
     }
 
     /**
-     * 等待物料四桶。ADR-131：待认料、待开启整批领料归「等待物料」桶，
+     * 开工准备筛选：齐套可领、部分可领及仅缺本车间一种自产件，旧混合筛选保留兼容。
+     * ADR-131：待认料、待开启整批领料归「等待物料」桶，
      * 不进去领料、待仓库发料、可开工三桶——认完料才知道要不要领、能不能开。
      */
     static String preparationPredicate(String rawFilter) {
         if (rawFilter == null || rawFilter.isBlank()) return "";
         String resolvedBinMaterial = " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
         return switch (rawFilter.strip().toUpperCase(Locale.ROOT)) {
+            case "DRAW_FULL_KIT" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count=0)";
+            case "DRAW_PARTIAL" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count>0)";
+            case "SAME_WORKSHOP_MAKE_ONLY" -> requestablePreparationPredicate()
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_summary(task.segment_id) preparation_material"
+                    + " WHERE preparation_material.short_count=1 AND preparation_material.short_make_count=1)"
+                    + " AND EXISTS (SELECT 1 FROM fn_execution_segment_material_facts(task.segment_id) short_material"
+                    + " WHERE short_material.shortage_qty>0 AND short_material.supply_route='MAKE'"
+                    + " AND (" + sameWorkshopSourceCapacitySql() + ")>=short_material.shortage_qty)";
             case "WAITING_MATERIAL" -> " AND (task.segment_status='WAITING'"
                     + " OR (task.segment_status IN ('READY','DISPATCHED') AND " + unresolvedBinMaterialPredicate() + "))";
             case "DRAW_NOT_REQUESTED" -> " AND task.segment_status IN ('READY','DISPATCHED')"
@@ -1331,6 +1338,75 @@ public class ProductionExecutionWorkbenchService {
                     + resolvedBinMaterial;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选值不正确");
         };
+    }
+
+    /** Same ordinary warehouse slices as canRequestDraw; a filter never grants a new command capability. */
+    private static String requestablePreparationPredicate() {
+        return " AND task.segment_status IN ('READY','DISPATCHED')"
+                + " AND NOT fn_material_discovery_pending(task.segment_id)"
+                + " AND (" + ordinaryDrawRequestablePredicate("fn_segment_bin_material_state(task.segment_id)") + ")";
+    }
+
+    /** One SQL capability definition for the list button and material-preparation filters. */
+    private static String ordinaryDrawRequestablePredicate(String binStateExpression) {
+        return "task.segment_status IN ('READY','DISPATCHED','IN_PROGRESS')"
+                + " AND " + binStateExpression + " NOT IN ('NEED_CHOICE','NEED_BIN')"
+                + " AND NOT task.zero_material AND NOT (" + drawRequestedPredicate() + ")"
+                + " AND EXISTS (SELECT 1 FROM production_execution_segments route_segment"
+                + " WHERE route_segment.id=task.segment_id AND route_segment.start_route IN ('FULL_KIT','CONTINUOUS'))"
+                + " AND EXISTS (" + pendingDrawItemSql()
+                + " AND NOT pending_warehouse.is_line_side"
+                + " AND fn_production_draw_item_requested_qty(pending_item.id)<fn_production_draw_item_effective_qty(pending_item.id))";
+    }
+
+    /**
+     * Only live, approved, exactly related same-workshop production can explain the single missing kind.
+     * Use the existing source-share authority and base-unit conversion. Split segments of one source
+     * plan item share one entitlement, so their remaining output is grouped before capping that share.
+     * This is a read-side explanation, never a receipt, reservation or permission to start.
+     */
+    private static String sameWorkshopSourceCapacitySql() {
+        return """
+                SELECT COALESCE(SUM(source_capacity.qty),0) FROM (
+                    SELECT LEAST(SUM((GREATEST(COALESCE(producing_task.remaining_qty,0),0)
+                                      +GREATEST(COALESCE(producing_task.fqc_pending_qty,0),0)
+                                      +GREATEST(COALESCE(producing_task.finished_inbound_pending_qty,0),0))
+                                     *producing.product_unit_rate),
+                                 MAX(fn_workshop_direct_remaining_for_source(producing.id,short_material.demand_id))
+                                     +SUM(COALESCE(pending_direct.qty,0))) AS qty
+                    FROM production_execution_segments producing
+                    JOIN v_production_execution_workbench_segments producing_task ON producing_task.segment_id=producing.id
+                    JOIN production_plans producing_plan ON producing_plan.id=producing.plan_id
+                    JOIN production_planning_packages producing_package ON producing_package.id=producing.package_id
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(GREATEST(round(transfer_item.qty*COALESCE(report_item.unit_rate,1),4)
+                                           -COALESCE(received_lot.received_qty,0),0)) AS qty
+                        FROM production_workshop_direct_transfer_items transfer_item
+                        JOIN production_daily_report_items report_item ON report_item.id=transfer_item.source_report_item_id
+                        JOIN production_daily_reports report ON report.id=report_item.report_id
+                        LEFT JOIN v_workshop_direct_supply_lots received_lot ON received_lot.id=transfer_item.id
+                        WHERE report_item.execution_segment_id=producing.id AND NOT report_item.is_deleted
+                          AND report.status=1 AND NOT report.is_deleted
+                          AND transfer_item.to_demand_id=short_material.demand_id AND transfer_item.reversal_id IS NULL
+                    ) pending_direct ON TRUE
+                    WHERE NOT producing.is_deleted
+                      AND (producing.status IN ('WAITING','READY','DISPATCHED','IN_PROGRESS')
+                           OR (producing.status='COMPLETED'
+                               AND COALESCE(producing_task.fqc_pending_qty,0)+COALESCE(producing_task.finished_inbound_pending_qty,0)>0))
+                      AND producing.workshop_department_id=task.workshop_department_id
+                      AND producing.product_goods_id=short_material.goods_id
+                      AND producing.product_color_id IS NOT DISTINCT FROM short_material.color_id
+                      AND COALESCE(producing_task.remaining_qty,0)+COALESCE(producing_task.fqc_pending_qty,0)
+                          +COALESCE(producing_task.finished_inbound_pending_qty,0)>0
+                      AND producing.product_unit_rate>0
+                      AND producing_plan.status=1 AND NOT producing_plan.is_deleted
+                      AND NOT producing_plan.is_closed AND NOT producing_plan.is_canceled AND NOT producing_plan.is_stopped
+                      AND NOT fn_imported_business_document('production_plans',producing_plan.id)
+                      AND producing_package.status='CONFIRMED' AND NOT producing_package.is_deleted
+                      AND fn_workshop_direct_relationship_allows(producing.id,short_material.demand_id)
+                    GROUP BY producing.source_plan_item_id
+                ) source_capacity
+                """;
     }
 
     /** ADR-131：与领料命令入口、开工确认表同一个状态函数。 */

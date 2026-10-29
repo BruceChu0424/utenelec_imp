@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -701,12 +702,11 @@ class _MaterialSettlementSheetState
               '填写这次实际用掉的材料；剩余可留待后续生产，也可核对数量后退仓。待仓库收料的数量暂不可登记或重复退仓。可展开台账查看记录；完成任务仍需满足成品合格入库要求。',
           actions: [
             UtenRefreshButton(enabled: !(_editingLocked), onRefresh: _load),
-            IconButton(
+            UtenCloseButton(
               tooltip: '关闭',
               onPressed: _editingLocked
                   ? null
                   : () => Navigator.pop(context, _closed),
-              icon: const Icon(Icons.close_rounded),
             ),
           ],
         ),

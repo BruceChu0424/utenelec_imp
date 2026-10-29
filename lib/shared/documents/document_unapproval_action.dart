@@ -162,12 +162,10 @@ class _DocumentUnapprovalActionState
         dialogContext,
         UtenAlertDialog(
           title: const Text('暂不能反审'),
+          showCloseButton: true,
+          onClose: () => Navigator.pop(dialogContext),
           content: Text(_capability!.blockReason),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('关闭'),
-            ),
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);

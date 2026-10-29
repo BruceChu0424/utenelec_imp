@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -338,10 +339,9 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
                     ],
                   ),
                 ),
-                IconButton(
+                UtenCloseButton(
                   tooltip: '关闭',
                   onPressed: _saving ? null : _cancel,
-                  icon: const Icon(Icons.close_rounded),
                 ),
               ],
             ),

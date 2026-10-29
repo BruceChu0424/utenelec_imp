@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/io/file_saver.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/authenticated_request_scope.dart';
+import '../../core/web_update/web_update_safety.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/inputs/uten_drop_target.dart';
 import '../../components/layout/uten_section_header.dart';
@@ -94,12 +95,24 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   @override
   void initState() {
     super.initState();
+    webUpdateSafety.register(
+      this,
+      () => WebUpdateSafetyState(
+        busy: _busy || _savingCategory.isNotEmpty || _readingIds.isNotEmpty,
+      ),
+    );
     ref.listenManual(sensitiveReadBoundaryProvider, (before, after) {
       if (before != after && mounted) {
         ++_readEpoch;
         setState(() => _readingIds.clear());
       }
     });
+  }
+
+  @override
+  void dispose() {
+    webUpdateSafety.unregister(this);
+    super.dispose();
   }
 
   @override
@@ -121,6 +134,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
 
   @override
   Widget build(BuildContext context) {
+    webUpdateSafety.changed();
     final theme = Theme.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final canDownload = permissions.contains(Perm.attachmentDownload);
@@ -731,12 +745,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         scope: scope,
         invalidatedBuilder: (context) => UtenAlertDialog(
           title: const Text('附件访问权限已变化，请重新打开'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
         ),
         child: AttachmentPreviewDialog(
           bytes: bytes,

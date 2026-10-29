@@ -10,3 +10,6 @@ Future<String> saveClientPackage(
 ) => throw UnsupportedError('Native client required');
 
 Future<void> removeClientPackage(String path) async {}
+
+Future<void> verifyClientPackage(String path, ClientRelease release) async =>
+    throw UnsupportedError('Native client required');

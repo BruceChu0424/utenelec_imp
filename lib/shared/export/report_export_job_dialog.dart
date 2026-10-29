@@ -180,6 +180,8 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
     final scheme = Theme.of(context).colorScheme;
     return UtenAlertDialog(
       title: const Text('报表导出任务'),
+      showCloseButton: true,
+      onClose: () => Navigator.of(context).pop(),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -230,11 +232,6 @@ class _ReportExportJobDialogState extends ConsumerState<ReportExportJobDialog> {
         ],
       ),
       actions: [
-        UtenButton(
-          type: UtenButtonType.ghost,
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(job?.active == true ? '稍后查看' : '关闭'),
-        ),
         if (!_retired && (job != null || unresolved != null))
           UtenButton(
             type: UtenButtonType.tonal,

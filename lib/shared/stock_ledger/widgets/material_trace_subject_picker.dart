@@ -1,5 +1,6 @@
 import '../../paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
@@ -209,9 +210,8 @@ class _SubjectPickerState extends ConsumerState<_SubjectPicker>
     children: [
       ListTile(
         title: Text(_batch ? '选择生产批次' : '选择追溯单据'),
-        trailing: IconButton(
+        trailing: UtenCloseButton(
           tooltip: '关闭',
-          icon: const Icon(Icons.close),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),

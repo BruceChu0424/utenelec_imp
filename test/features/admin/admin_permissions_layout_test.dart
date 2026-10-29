@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -12,6 +13,7 @@ import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/components/layout/uten_scroll_prefetch_policy.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
@@ -32,6 +34,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
@@ -160,6 +164,24 @@ void main() {
       expect(find.text('已选 2 人'), findsOneWidget);
       expect(tester.widget<Checkbox>(first).value, isTrue);
       expect(second, findsNothing);
+      final selectAll = find.byKey(
+        const ValueKey('permission-employee-select-all'),
+      );
+      expect(
+        find.descendant(of: selectAll, matching: find.text('取消全选')),
+        findsOneWidget,
+      );
+      await tester.tap(selectAll);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      expect(tester.widget<Checkbox>(first).value, isFalse);
+      expect(
+        find.descendant(of: selectAll, matching: find.text('全选')),
+        findsOneWidget,
+      );
+      await tester.tap(selectAll);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 2 人'), findsOneWidget);
       if (_captureScreenshots) {
         await saveAuditScreenshot(
           tester,
@@ -172,11 +194,25 @@ void main() {
       final dialog = tester.widget<PermissionBatchDialog>(
         find.byType(PermissionBatchDialog),
       );
-      expect(dialog.userIds, ['prefetch-account-1-0', 'prefetch-account-2-0']);
+      expect(
+        dialog.userIds,
+        unorderedEquals(['prefetch-account-1-0', 'prefetch-account-2-0']),
+      );
       expect(dialog.departmentIds, isEmpty);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(find.text('已选 2 人'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      expect(selectAll, findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已选 0 人'), findsOneWidget);
+      expect(tester.widget<Checkbox>(first).value, isFalse);
       expect(tester.takeException(), isNull);
     },
   );
@@ -416,7 +452,14 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('admin-header-provision-account')),
-          findsOneWidget,
+          findsNothing,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(AdminUserDetailPanel),
+            matching: find.text('开通账号'),
+          ),
+          findsNothing,
         );
         if (width > 1000) {
           final filter = tester.getRect(
@@ -453,6 +496,282 @@ void main() {
       },
     );
   }
+
+  for (final width in [375.0, 1440.0]) {
+    for (final scale in [1.0, 1.6]) {
+      testWidgets(
+        'employee selection toolbar replaces provisioning at $width and text scale $scale',
+        (tester) async {
+          if (_captureScreenshots) await loadAuditScreenshotFonts(tester);
+          await _mount(
+            tester,
+            _Repository(),
+            _AiRepository(),
+            width: width,
+            scale: scale,
+            initialEmployeeId: null,
+          );
+          final toggle = find.byKey(
+            const ValueKey('permission-employee-multi-select'),
+          );
+          final filter = find.byKey(
+            const ValueKey('admin-account-status-filter'),
+          );
+          expect(find.text('开通账号'), findsNothing);
+          expect(tester.widget<UtenButton>(toggle).onPressed, isNotNull);
+          expect(
+            tester.getRect(toggle).top,
+            greaterThan(tester.getRect(filter).bottom),
+          );
+          if (_captureScreenshots && scale == 1) {
+            await saveAuditScreenshot(
+              tester,
+              _captureKey,
+              'permission-employee-selection-idle-${width.toInt()}',
+            );
+          }
+
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          final selectAll = find.byKey(
+            const ValueKey('permission-employee-select-all'),
+          );
+          final count = find.byKey(
+            const ValueKey('permission-employee-selection-count'),
+          );
+          expect(
+            find.descendant(of: toggle, matching: find.text('取消')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: selectAll, matching: find.text('全选')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: count, matching: find.text('已选 0 人')),
+            findsOneWidget,
+          );
+          expect(find.text('结束多选'), findsNothing);
+          expect(find.text('选择已加载'), findsNothing);
+          expect(find.text('清空'), findsNothing);
+          expect(find.text('批量设置'), findsNothing);
+          expect(tester.takeException(), isNull);
+
+          await tester.tap(selectAll);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(of: selectAll, matching: find.text('取消全选')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: count, matching: find.text('已选 1 人')),
+            findsOneWidget,
+          );
+          expect(
+            tester
+                .widget<Checkbox>(
+                  find.byKey(
+                    const ValueKey('permission-select-user-user-target'),
+                  ),
+                )
+                .value,
+            isTrue,
+          );
+          if (_captureScreenshots) {
+            await saveAuditScreenshot(
+              tester,
+              _captureKey,
+              'permission-employee-selection-active-${width.toInt()}-${scale == 1 ? 'normal' : 'large'}',
+            );
+          }
+          if (width < 1000) {
+            await tester.tap(count);
+            await tester.pumpAndSettle();
+            expect(find.text('已选 1 名员工'), findsOneWidget);
+            expect(find.text('应用模板'), findsOneWidget);
+            expect(find.text('批量设置权限'), findsOneWidget);
+            await tester.tap(find.text('返回员工列表'));
+            await tester.pumpAndSettle();
+            expect(
+              find.descendant(of: count, matching: find.text('已选 1 人')),
+              findsOneWidget,
+            );
+          }
+          await tester.tap(selectAll);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(of: count, matching: find.text('已选 0 人')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: selectAll, matching: find.text('全选')),
+            findsOneWidget,
+          );
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(of: toggle, matching: find.text('多选')),
+            findsOneWidget,
+          );
+          expect(selectAll, findsNothing);
+          expect(count, findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'employee select all excludes self and ineligible account states',
+    (tester) async {
+      await _mount(
+        tester,
+        _SelectionRowsRepository([
+          _selectionUser('eligible'),
+          _selectionUser('self'),
+          _selectionUser('locked', status: 'locked'),
+          _selectionUser('disabled', status: 'disabled'),
+          _selectionUser('resigned', currentEmployee: false),
+        ]),
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+        actorUserId: 'self',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-select-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('permission-select-user-eligible')),
+            )
+            .value,
+        isTrue,
+      );
+      for (final id in ['self', 'locked', 'disabled', 'resigned']) {
+        final checkbox = tester.widget<Checkbox>(
+          find.byKey(ValueKey('permission-select-user-$id')),
+        );
+        expect(checkbox.value, isFalse);
+        expect(checkbox.onChanged, isNull);
+      }
+      expect(find.text('取消全选'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'employee select all and individual selection retain the 500 person limit',
+    (tester) async {
+      await _mount(
+        tester,
+        _SelectionRowsRepository([
+          for (var index = 0; index < 501; index++)
+            _selectionUser('limit-$index'),
+        ]),
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-select-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已选 500 人'), findsOneWidget);
+      expect(find.text('取消全选'), findsOneWidget);
+      final last = find.byKey(
+        const ValueKey('permission-select-user-limit-500'),
+      );
+      final scrollable = find
+          .descendant(
+            of: find.byKey(const ValueKey('admin-account-list-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(last, 2000, scrollable: scrollable);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Checkbox>(last).value, isFalse);
+      await tester.tap(last);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 500 人'), findsOneWidget);
+      expect(tester.widget<Checkbox>(last).value, isFalse);
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-select-all')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已选 0 人'), findsOneWidget);
+      expect(find.text('全选'), findsOneWidget);
+      expect(tester.widget<Checkbox>(last).value, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'pending and failed employee search cannot select or cancel stale loaded accounts',
+    (tester) async {
+      final repository = _SelectionSearchRepository();
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        initialEmployeeId: null,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('permission-employee-multi-select')),
+      );
+      await tester.pumpAndSettle();
+      final selectAll = find.byKey(
+        const ValueKey('permission-employee-select-all'),
+      );
+      await tester.tap(selectAll);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      expect(find.text('取消全选'), findsOneWidget);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, '搜索姓名 / 工号 / 登录账号'),
+        '新范围',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(repository.searches, ['新范围']);
+      expect(tester.widget<UtenButton>(selectAll).onPressed, isNull);
+      await tester.tap(selectAll);
+      await tester.pump();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      expect(
+        tester
+            .widget<Checkbox>(
+              find.byKey(const ValueKey('permission-select-user-stale')),
+            )
+            .value,
+        isTrue,
+      );
+
+      repository.pendingSearch.completeError(
+        ApiException('SEARCH_FAILED', '搜索失败，请重试'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('搜索失败，请重试'), findsOneWidget);
+      expect(tester.widget<UtenButton>(selectAll).onPressed, isNull);
+      await tester.tap(selectAll);
+      await tester.pumpAndSettle();
+      expect(find.text('已选 1 人'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('super administrator export explains the non-restorable scope', (
     tester,
@@ -826,7 +1145,7 @@ void main() {
       );
       expect(
         find.byKey(const ValueKey('admin-header-provision-account')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(repository.lockedUsers, isEmpty);
     },
@@ -982,6 +1301,7 @@ Future<void> _mount(
   String? initialEmployeeId = 'employee-target',
   String? initialDepartmentId,
   _TemplateRepository? templates,
+  String? actorUserId,
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
@@ -1002,6 +1322,8 @@ Future<void> _mount(
         isSuperAdminProvider.overrideWith((ref) => ref.watch(_role)),
         sessionSnapshotProvider.overrideWith(_Snapshot.new),
         adminRepositoryProvider.overrideWithValue(repository),
+        if (actorUserId != null)
+          sessionProvider.overrideWith(() => _SelectionSession(actorUserId)),
         pagePermissionDelegationRepositoryProvider.overrideWithValue(ai),
         if (templates != null) ...[
           apiClientProvider.overrideWithValue(api),
@@ -1206,6 +1528,71 @@ class _Repository implements AdminRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _SelectionSession extends SessionNotifier {
+  _SelectionSession(this.userId);
+  final String userId;
+
+  @override
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: userId, code: userId, name: userId),
+  );
+}
+
+AdminUserSummary _selectionUser(
+  String id, {
+  String status = 'active',
+  bool currentEmployee = true,
+}) => AdminUserSummary(
+  id: id,
+  loginAccount: id,
+  employeeName: id,
+  status: status,
+  employeeStatus: currentEmployee ? 'active' : 'resigned',
+  currentEmployee: currentEmployee,
+  mustChangePassword: false,
+  remoteAccess: false,
+);
+
+class _SelectionRowsRepository extends _Repository {
+  _SelectionRowsRepository(this.rows);
+  final List<AdminUserSummary> rows;
+
+  @override
+  Future<PagedResult<AdminUserSummary>> listUsers({
+    int page = 1,
+    int size = 20,
+    String? search,
+    String? status,
+  }) async => PagedResult(
+    items: rows,
+    page: 1,
+    size: rows.length,
+    total: rows.length,
+    totalPages: 1,
+  );
+}
+
+class _SelectionSearchRepository extends _SelectionRowsRepository {
+  _SelectionSearchRepository() : super([_selectionUser('stale')]);
+  final pendingSearch = Completer<PagedResult<AdminUserSummary>>();
+  final searches = <String>[];
+
+  @override
+  Future<PagedResult<AdminUserSummary>> listUsers({
+    int page = 1,
+    int size = 20,
+    String? search,
+    String? status,
+  }) {
+    if (search != null) {
+      searches.add(search);
+      return pendingSearch.future;
+    }
+    return super.listUsers(page: page, size: size, status: status);
+  }
 }
 
 class _PrefetchRepository extends _Repository {

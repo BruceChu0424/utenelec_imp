@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:convert';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/components/layout/uten_segmented_filter.dart';
@@ -778,7 +779,7 @@ void main() {
           reason:
               'only the employee\'s own unchanged input remains after revocation',
         );
-        final close = find.text('关闭');
+        final close = find.byType(UtenCloseButton).last;
         await tester.ensureVisible(close);
         await tester.pumpAndSettle();
         final closeBounds = tester.getRect(close);
@@ -1162,7 +1163,7 @@ void main() {
       expect(find.textContaining('10.25'), findsNothing);
       expect(row.price.text, '12');
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
     },
@@ -1630,7 +1631,7 @@ void main() {
           expect(find.textContaining('本供应商参考: 100'), findsWidgets);
           expect(find.textContaining('对应偏差: 100%'), findsWidgets);
         }
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
         await tester.pumpWidget(const SizedBox());
       },
@@ -1649,7 +1650,7 @@ void main() {
         expect(find.byType(GoodsPriceObservationDetail), findsOneWidget);
         container.read(_grants.notifier).state = {Perm.goodsView};
         await tester.pumpAndSettle();
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
         expect(find.byType(GoodsPriceObservationDetail), findsNothing);
         expect(tester.takeException(), isNull);
@@ -1954,7 +1955,7 @@ void main() {
         if (revoke) {
           container.read(_grants.notifier).state = {Perm.goodsView};
           await tester.pumpAndSettle();
-          await tester.tap(find.text('关闭'));
+          await tester.tap(find.byType(UtenCloseButton).last);
         } else {
           Navigator.of(
             tester.element(find.byType(GoodsSubcontractSupplierDetail)),

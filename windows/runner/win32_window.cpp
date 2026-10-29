@@ -23,13 +23,15 @@ namespace {
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 constexpr DWORD kLoginWindowStyle =
     WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
-// Keep native resize, system-menu and snap/shortcut capabilities while Flutter
-// supplies the same transparent control strip in login and main presentations.
+// Keep the standard caption/thick-frame styles for native DWM transitions,
+// resize, system-menu and snap/shortcut behavior. WM_NCCALCSIZE removes their
+// visible title bar while Flutter paints the same custom control strip.
+// Windows retains control of animation and the user's reduced-motion settings.
 constexpr DWORD kMainWindowStyle =
-    (WS_OVERLAPPEDWINDOW & ~WS_CAPTION) | WS_CLIPCHILDREN;
+    WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
 constexpr UINT kBeginWindowDrag = WM_APP + 0x351;
 constexpr UINT_PTR kResizeChildSubclass = 0x352;
-constexpr int kLoginCornerRadius = 16;
+constexpr int kWindowCornerRadius = 16;
 
 /// Registry key for app theme preference.
 ///
@@ -223,18 +225,20 @@ void Win32Window::ConstrainToWorkArea() {
 
 void Win32Window::UpdateWindowRegion(UINT dpi) {
   if (updating_window_region_ || !IsWindow(window_handle_)) return;
-  if (main_mode_) {
-    if (!login_window_region_applied_) return;
+  if (IsIconic(window_handle_)) return;
+  // Both presentations use the same real four-corner shape. Maximized windows
+  // fill their work area without transparent gaps at the screen corners.
+  if (main_mode_ && IsZoomed(window_handle_)) {
+    if (!rounded_window_region_applied_) return;
     updating_window_region_ = true;
     if (SetWindowRgn(window_handle_, nullptr, IsWindowVisible(window_handle_))) {
-      login_window_region_applied_ = false;
+      rounded_window_region_applied_ = false;
       region_width_ = region_height_ = 0;
       region_dpi_ = 0;
     }
     updating_window_region_ = false;
     return;
   }
-  if (IsIconic(window_handle_)) return;
   RECT bounds = {};
   if (!GetWindowRect(window_handle_, &bounds)) return;
   const LONG width = bounds.right - bounds.left;
@@ -242,9 +246,9 @@ void Win32Window::UpdateWindowRegion(UINT dpi) {
   if (width <= 0 || height <= 0) return;
   if (dpi == 0) dpi = GetDpiForWindow(window_handle_);
   if (dpi == 0) dpi = 96;
-  if (login_window_region_applied_ && width == region_width_ &&
+  if (rounded_window_region_applied_ && width == region_width_ &&
       height == region_height_ && dpi == region_dpi_) return;
-  const int diameter = std::max(2, MulDiv(kLoginCornerRadius * 2, dpi, 96));
+  const int diameter = std::max(2, MulDiv(kWindowCornerRadius * 2, dpi, 96));
   HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1,
                                   diameter, diameter);
   if (region == nullptr) return;
@@ -253,7 +257,7 @@ void Win32Window::UpdateWindowRegion(UINT dpi) {
   updating_window_region_ = true;
   if (SetWindowRgn(window_handle_, region, IsWindowVisible(window_handle_))) {
     // Windows owns and eventually deletes the region after successful transfer.
-    login_window_region_applied_ = true;
+    rounded_window_region_applied_ = true;
     region_width_ = width;
     region_height_ = height;
     region_dpi_ = dpi;
@@ -274,12 +278,6 @@ bool Win32Window::SetMainWindowMode(bool main_mode) {
       main_placement_.showCmd = (main_placement_.flags & WPF_RESTORETOMAXIMIZED)
                                     ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
     }
-  }
-  if (main_mode) {
-    // Remove the fixed sign-in shape before resizable sizing/maximization.
-    // DWM retains ownership of the ordinary main-window corner behavior.
-    main_mode_ = true;
-    UpdateWindowRegion();
   }
   // Normalize the maximized/minimized state before replacing frame styles.
   // Keep hidden startup windows hidden until the first rendered frame.
@@ -458,7 +456,10 @@ Win32Window::MessageHandler(HWND hwnd,
     }
 
     case WM_ACTIVATE:
-      if (child_content_ != nullptr) {
+      // Match native focus semantics: deactivation and minimization must not
+      // focus the child and reactivate the window while its tree is changing.
+      if (LOWORD(wparam) != WA_INACTIVE && HIWORD(wparam) == 0 &&
+          child_content_ != nullptr) {
         SetFocus(child_content_);
       }
       return 0;
@@ -483,7 +484,7 @@ void Win32Window::Destroy() {
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
   }
-  login_window_region_applied_ = false;
+  rounded_window_region_applied_ = false;
   region_width_ = region_height_ = 0;
   region_dpi_ = 0;
   if (g_active_window_count == 0) {

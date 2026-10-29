@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -95,17 +96,28 @@ void main() {
             );
           }
 
-          final close = surface('关闭');
+          final closeFinder = find.byType(UtenCloseButton).last;
+          final close = tester.getRect(closeFinder);
+          final header = tester.getRect(
+            find
+                .ancestor(
+                  of: closeFinder,
+                  matching: find.byType(UtenDialogHeader),
+                )
+                .first,
+          );
           final plan = surface('查看生产计划');
           final record = surface('查看用料记录');
           final report = surface('报工');
           final group = tester.getRect(find.byType(UtenDialogActions));
-          for (final rect in [close, plan, record, report]) {
+          for (final rect in [plan, record, report]) {
             expect(rect.height, closeTo(report.height, 0.01));
             expect(rect.center.dx, closeTo(group.center.dx, 0.01));
             expect(rect.left, greaterThanOrEqualTo(group.left));
             expect(rect.right, lessThanOrEqualTo(group.right));
           }
+          expect(close.right, lessThanOrEqualTo(header.right));
+          expect(close.center.dx, greaterThan(header.center.dx));
           expect(plan.top, greaterThan(close.bottom));
           expect(record.top, greaterThan(plan.bottom));
           expect(report.top, greaterThan(record.bottom));
@@ -113,7 +125,7 @@ void main() {
         } else {
           await _writePreview(tester, 'tablet');
         }
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
         expect(find.byType(WorkshopTaskDetailDialog), findsNothing);
       },

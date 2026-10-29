@@ -2066,14 +2066,10 @@ abstract class _MaterialAnalysisProductTasksState
             ),
           ),
         ),
-        IconButton(
-          constraints: BoxConstraints.tightFor(
-            width: UtenControlMetrics.minimumHitExtent(context, desktop: 48),
-            height: UtenControlMetrics.minimumHitExtent(context, desktop: 48),
-          ),
+        UtenCloseButton(
+          desktopHitExtent: 48,
           tooltip: '关闭更新提示',
           onPressed: () => setState(() => _serverRefreshNotice = null),
-          icon: const Icon(Icons.close_rounded),
         ),
       ],
     ),

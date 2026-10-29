@@ -142,6 +142,12 @@ final List<RouteBase> productionRoutes = [
           state.uri.queryParameters['versions']?.split(',') ?? const <String>[];
       return ProductionDrawRequestPage(
         segmentIds: ids,
+        initialDrawItemIds: state.uri.queryParameters.containsKey('drawItemIds')
+            ? state.uri.queryParameters['drawItemIds']!
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toSet()
+            : null,
         expectedVersions: {
           for (var i = 0; i < ids.length && i < versions.length; i++)
             ids[i]: ?int.tryParse(versions[i]),

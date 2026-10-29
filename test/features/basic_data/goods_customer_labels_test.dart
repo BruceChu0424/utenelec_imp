@@ -57,8 +57,9 @@ void main() {
   testWidgets('查看与编辑的客户字段紧邻对应字段，修改和清空各自独立提交', (tester) async {
     await _pumpGoods(tester, detail: _labelledGoods);
     final grids = tester.widgetList<UtenFormGrid>(find.byType(UtenFormGrid));
-    _expectGridField(grids.elementAt(0), 0, '货品名称');
-    _expectGridField(grids.elementAt(0), 1, '客户货品名称');
+    _expectGridField(grids.elementAt(0), 0, '系统标识');
+    _expectGridField(grids.elementAt(0), 1, '货品名称');
+    _expectGridField(grids.elementAt(0), 2, '客户货品名称');
     _expectGridField(grids.elementAt(1), 0, '型号');
     _expectGridField(grids.elementAt(1), 1, '客户型号');
     expect(find.text('客户文件货品名称'), findsOneWidget);

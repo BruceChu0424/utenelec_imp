@@ -138,6 +138,10 @@ class _MaterialTransferLauncherDialogState
         ? '待补 ${widget.qtyText(material.additionalSupplyRecommendedQty)}'
         : null;
     return UtenAlertDialog(
+      showCloseButton: true,
+      onClose: _busy ? null : () => Navigator.of(context).pop(),
+      closeEnabled: !_busy,
+      closeButtonKey: const Key('transfer-launcher-close'),
       key: const Key('material-transfer-launcher'),
       title: Text('物料调拨：${material.goodsName ?? material.goodsCode ?? '物料'}'),
       content: SizedBox(
@@ -200,15 +204,6 @@ class _MaterialTransferLauncherDialogState
           ],
         ),
       ),
-      actions: [
-        UtenButton(
-          key: const Key('transfer-launcher-close'),
-          size: UtenButtonSize.large,
-          type: UtenButtonType.ghost,
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
     );
   }
 }

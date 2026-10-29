@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -1590,8 +1591,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     bool informationOnly = false,
   }) async {
     final identity = widget.identity;
-    final confirmLabel = _t(informationOnly ? 'infoDone' : 'confirm');
+    final confirmLabel = _t('confirm');
     final cancelLabel = _t('cancel');
+    final closeLabel = _t('close');
     late final DialogRoute<bool> route;
     route = DialogRoute<bool>(
       context: context,
@@ -1606,6 +1608,16 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           return UtenAlertDialog(
             scrollable: false,
             title: Text(title),
+            showCloseButton: informationOnly,
+            closeButtonKey: informationOnly
+                ? const ValueKey('ai-chat-info-close')
+                : null,
+            closeTooltip: closeLabel,
+            closeEnabled: _current,
+            onClose: () {
+              if (!route.isCurrent || !_current) return;
+              Navigator.of(dialogContext).pop(true);
+            },
             content: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: 460,
@@ -1614,18 +1626,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               child: SingleChildScrollView(child: content),
             ),
             actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              if (!informationOnly)
-                UtenButton(
-                  type: UtenButtonType.ghost,
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: Text(cancelLabel),
-                ),
-              UtenButton(
-                onPressed: () => Navigator.of(dialogContext).pop(true),
-                child: Text(confirmLabel),
-              ),
-            ],
+            actions: informationOnly
+                ? null
+                : [
+                    UtenButton(
+                      type: UtenButtonType.ghost,
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: Text(cancelLabel),
+                    ),
+                    UtenButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: Text(confirmLabel),
+                    ),
+                  ],
           );
         },
       ),
@@ -1982,14 +1995,13 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                       icon: const Icon(Icons.add_comment_outlined, size: 20),
                     ),
                   ],
-                  IconButton(
+                  UtenCloseButton(
                     key: const ValueKey('ai-chat-close'),
                     tooltip: _t('close'),
                     onPressed: () {
                       _focus.unfocus();
                       setState(() => _open = false);
                     },
-                    icon: const Icon(Icons.close, size: 20),
                   ),
                 ],
               );

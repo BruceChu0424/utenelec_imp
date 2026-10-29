@@ -84,16 +84,16 @@
     "Access for uploaded files",
     "업로드 파일 접근 설정"
   ],
-  "companyFilesUploadAccessHint": [
-    "此设置会分别保存到本次选择的每份文件，之后可单独修改。",
-    "These settings are saved separately on each selected file and can be changed individually later.",
-    "이 설정은 선택한 각 파일에 별도로 저장되며 나중에 개별적으로 변경할 수 있습니다."
-  ],
   "companyFilesSelectedFiles": [
     "已选文件",
     "Selected files",
     "선택한 파일"
   ],
+  "companyFilesAddFiles": ["继续添加文件", "Add more files", "파일 더 추가"],
+  "companyFilesRemoveSelectedFile": ["移除已选文件", "Remove selected file", "선택한 파일 제거"],
+  "companyFilesNoFilesSelected": ["尚未选择文件", "No files selected", "선택한 파일 없음"],
+  "companyFilesAddFilesFailed": ["无法添加文件，请重新选择。", "Unable to add files. Please select them again.", "파일을 추가할 수 없습니다. 다시 선택하세요."],
+  "companyFilesAlreadySelected": ["已选择同名文件，请先移除后重新添加。", "A file with this name is already selected. Remove it before adding it again.", "같은 이름의 파일이 선택되어 있습니다. 먼저 제거한 후 다시 추가하세요."],
   "companyFilesCreateAccessHint": [
     "名称、访问范围和密码将一并保存，创建成功后才会显示资料。",
     "The name, access and password are saved together before the document appears.",

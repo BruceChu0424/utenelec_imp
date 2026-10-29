@@ -992,12 +992,6 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                     requiredPermission: Perm.stockReportExport,
                     label: '下载Excel', // TODO(l10n): 补 arb
                   ),
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    icon: Icons.close_rounded,
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('关闭'), // TODO(l10n): 补 arb
-                  ),
                 ],
               ),
             ],

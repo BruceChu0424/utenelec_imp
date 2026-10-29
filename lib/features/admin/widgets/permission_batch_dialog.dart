@@ -205,6 +205,16 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
     return PopScope(
       canPop: !_committing,
       child: UtenAlertDialog(
+        showCloseButton: true,
+        onClose: _committing
+            ? null
+            : () {
+                if (_uncertain && _current) {
+                  refreshPermissionConfiguration(ref);
+                }
+                Navigator.pop(context);
+              },
+        closeEnabled: !_committing,
         maxWidth: 860,
         title: Text(widget.templateMode ? '应用权限模板' : '批量设置权限'),
         content: SizedBox(
@@ -247,18 +257,6 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
           ),
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _committing
-                ? null
-                : () {
-                    if (_uncertain && _current) {
-                      refreshPermissionConfiguration(ref);
-                    }
-                    Navigator.pop(context);
-                  },
-            child: const Text('关闭'),
-          ),
           UtenButton(
             type: UtenButtonType.secondary,
             isLoading: _busy && !_committing,

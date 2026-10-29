@@ -620,11 +620,6 @@ class _ProductionExecutionCardPrintDialogState
       child: UtenDialogActions(
         children: [
           UtenButton(
-            type: UtenButtonType.secondary,
-            onPressed: _printing ? null : () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-          UtenButton(
             icon: Icons.print_outlined,
             isLoading: _printingTarget == 'all',
             onPressed: _views.isNotEmpty && !_printing ? _printAll : null,

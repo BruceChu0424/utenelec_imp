@@ -171,3 +171,24 @@
 证据：尚未登记，不得推定通过。
 
 接续/限制：按依赖与DoD继续，完成后登记证据。
+
+## W7-UPD-011
+
+- [ ] **空闲自动更新与品牌更新提示对齐** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-CORE-017, W7-INS-004, W7-UPD-001, W7-UPD-002。
+
+源入口：`lib/features/client_update/client_update_host.dart`；`lib/features/client_update/client_staged_update.dart`；`lib/features/client_update/client_auto_update_preferences.dart`；`lib/features/client_update/client_update_dialog.dart`；`lib/features/client_update/client_update_page.dart`。
+
+完成条件：
+
+1. 对齐2026-10-29主线：居中品牌更新提示（公司名+平台名、标题「有新的版本（版本号）」、建议立即更新、当前版本行）与「软件空闲时自动更新」设置（默认开启、可关闭、本机持久化）。
+2. 检查发现适用包后下载并校验暂存（端点绑定、登出保留、失效清理）；应用内空闲5分钟或登录界面空闲60秒后弹品牌倒计时弹窗：大数字10秒倒数到0自动安装、「立即更新（N）」立即安装、「稍后」取消本次并等下一个完整空闲窗口；到0若有未完成操作则等待完成后续装；安装前重验SHA-256，点击本身计为输入重置空闲窗口。
+3. 未保存编辑、在途请求、未知提交结果、弹窗/浮窗打开时不得自动安装；未知状态一律视为不可安装。
+4. 自动安装失败一次即锁定该版本转手动；登录界面安装路径不得发出网络请求。
+5. 与Flutter版逐项对照并记录保留差异；Win7 SP1 x86/x64目标机验证自动与手动更新两条路径。
+6. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
+
+证据：尚未登记，不得推定通过。
+
+接续/限制：2026-10-29主线Flutter客户端与网页已交付居中品牌更新提示+可见倒计时自动更新（弹窗大数字+按钮秒数，稍后取消）；WPF侧未迁移，接手时先对照lib/features/client_update现版实现。。

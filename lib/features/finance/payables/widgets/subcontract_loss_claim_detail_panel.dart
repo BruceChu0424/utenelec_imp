@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -270,16 +271,15 @@ class _SubcontractLossClaimDetailPanelState
       appBar: UtenAppBar(
         title: '委外超耗责任详情',
         showPagePermissionAction: false,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          tooltip: '关闭',
-          onPressed: _writing ? null : () => Navigator.of(context).pop(),
-        ),
         actions: [
           UtenRefreshButton(
             enabled: !_writing,
             busy: _loading,
             onRefresh: _load,
+          ),
+          UtenCloseButton(
+            tooltip: '关闭',
+            onPressed: _writing ? null : () => Navigator.of(context).pop(),
           ),
         ],
       ),

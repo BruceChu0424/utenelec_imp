@@ -485,13 +485,10 @@ class _InventoryCostPostingDialogState
     final l10n = AppLocalizations.of(context);
     if (!capability.canReadPostings) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.pop(context, _changed),
+        title: Text(l10n.inventoryCostTitle),
         content: Text(l10n.inventoryCostNoAccess),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, _changed),
-            child: Text(MaterialLocalizations.of(context).closeButtonLabel),
-          ),
-        ],
       );
     }
     final canPost = capability.canPost;

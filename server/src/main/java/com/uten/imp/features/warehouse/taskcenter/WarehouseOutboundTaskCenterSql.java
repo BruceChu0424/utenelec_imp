@@ -39,21 +39,65 @@ final class WarehouseOutboundTaskCenterSql {
     record Plan(String cte, Map<String, Object> parameters, String orderBy) {
         String countSql() { return cte + " SELECT COUNT(*) FROM filtered"; }
         String rowsSql() {
-            return cte + " " + projection() + " FROM filtered " + orderBy + " LIMIT :limit OFFSET :offset";
+            return cte + " " + projection() + fromFiltered() + orderBy + " LIMIT :limit OFFSET :offset";
         }
         String identitySql() { return identitySql(false); }
         String identitySql(boolean selectedLine) {
-            return cte + " " + projection() + " FROM filtered WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId"
+            return cte + " " + projection() + fromFiltered()
+                    + " WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId"
                     + (selectedLine ? " AND (line_key=:identityLineKey OR (record_type='WORKSHOP_REQUISITION'"
                         + " AND split_part(line_key,'~',1)=:identityLineKey))" : "")
                     + " ORDER BY line_no NULLS LAST,line_key LIMIT 1";
         }
+        private String fromFiltered() {
+            return " FROM filtered " + productionOrderJoin() + " ";
+        }
         private String projection() {
             return """
                     SELECT source_type,record_type,id,bill_no,source_doc_no,business_date,
-                           party_name,warehouse_name,responsible_name,line_count,status,
+                           party_name,warehouse_name,responsible_name,maker_name,line_count,status,
                            maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,
-                           line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight
+                           line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight,
+                           production_orders.production_order_no,
+                           production_orders.production_orders::text
+                    """;
+        }
+        /**
+         * 领料单关联的生产工单（2026-10-29 用户批注）：工单 = production_execution_segments.segment_code。
+         * 关联取三处权威链路（计划包单据 / 明细行执行段 / 计划包明细-需求）外加材料申请单自身的执行段；
+         * 只在外层行查询对当页行求值，不进 UNION，避免全量历史逐行探测。
+         * production_orders JSON 随行带回每个工单的 {code,planId}，前端弹窗按工单跳生产计划详情。
+         */
+        private String productionOrderJoin() {
+            return """
+                    LEFT JOIN LATERAL (
+                      SELECT string_agg(DISTINCT segment.segment_code,'、' ORDER BY segment.segment_code) AS production_order_no,
+                             jsonb_agg(DISTINCT jsonb_build_object('code',segment.segment_code,'planId',segment.plan_id::text)
+                               ORDER BY jsonb_build_object('code',segment.segment_code,'planId',segment.plan_id::text)) AS production_orders
+                      FROM production_execution_segments segment
+                      WHERE segment.id IN (
+                        SELECT package_document.execution_segment_id
+                        FROM production_planning_package_documents package_document
+                        WHERE package_document.document_id=filtered.id
+                          AND package_document.document_type='DRAW'
+                          AND package_document.execution_segment_id IS NOT NULL
+                        UNION
+                        SELECT draw_item.execution_segment_id
+                        FROM stock_document_items draw_item
+                        WHERE draw_item.doc_id=filtered.id AND NOT draw_item.is_deleted
+                          AND draw_item.execution_segment_id IS NOT NULL
+                        UNION
+                        SELECT demand.execution_segment_id
+                        FROM production_planning_package_document_items mapping
+                        JOIN production_material_demands demand ON demand.id=mapping.demand_id
+                        WHERE mapping.document_id=filtered.id AND mapping.document_type='DRAW'
+                          AND demand.execution_segment_id IS NOT NULL
+                        UNION
+                        SELECT discovery_request.execution_segment_id
+                        FROM production_material_discovery_requests discovery_request
+                        WHERE filtered.record_type='MATERIAL_DISCOVERY' AND discovery_request.id=filtered.id
+                      )
+                    ) production_orders ON TRUE
                     """;
         }
         String facetsSql() {
@@ -126,7 +170,7 @@ final class WarehouseOutboundTaskCenterSql {
         // Status facets omit only their own filter, while retaining source/owner/scope/search/date.
         String cte = """
                 WITH source_rows(source_type,record_type,id,bill_no,source_doc_no,business_date,
-                     party_name,warehouse_name,responsible_name,line_count,status,search_text,
+                     party_name,warehouse_name,responsible_name,maker_name,line_count,status,search_text,
                      maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,goods_codes,goods_names,
                      line_key,item_id,line_no,goods_code,goods_name,specification,color_name,unit_name,quantity,weight) AS (
                 """ + union + """
@@ -145,12 +189,13 @@ final class WarehouseOutboundTaskCenterSql {
                 """.formatted(TaskKeywordSearch.rankNamesFirst(filter.keyword(), new String[]{}, new String[]{"goods_names"},
                         new String[]{"bill_no", "source_doc_no"}, "goods_codes"),
                         ACTIVE_STATUS_PREDICATE, TaskKeywordSearch.condition(filter.keyword(),
-                                "search_text", "party_name", "warehouse_name", "responsible_name"),headers.predicate());
+                                "search_text", "party_name", "warehouse_name", "responsible_name", "maker_name"),headers.predicate());
         String direction = "asc".equals(filter.order()) ? "ASC" : "DESC";
         String primary = WarehouseTaskHeaderQuery.orderExpression(filter.sort(),false) + " " + direction + " NULLS LAST";
+        // 平级次序补单号：同日期行按单号自然分组（同单明细相邻），不再依赖随机 UUID。
         return new Plan(cte, Collections.unmodifiableMap(parameters),
                 " ORDER BY " + (filter.sort()==null||filter.sort().isBlank()?"keyword_rank,":"")
-                        + primary + ",source_type,record_type,id,line_no NULLS LAST,line_key ");
+                        + primary + ",source_type,record_type,bill_no,id,line_no NULLS LAST,line_key ");
     }
 
     private static boolean selected(String requested, String source) {
@@ -162,7 +207,8 @@ final class WarehouseOutboundTaskCenterSql {
                 "COALESCE(item.warehouse_id,s.warehouse_id)", ":warehouseScope") : "TRUE";
         return """
                 SELECT 'SALES','SALES_SHIPMENT',s.id,s.bill_no,s.source_doc_no,s.bill_date,
-                       COALESCE(client.name,''),COALESCE(warehouse.name,''),COALESCE(worker.full_name,maker.full_name,''),
+                       COALESCE(client.name,''),COALESCE(warehouse.name,''),
+                       COALESCE(worker.full_name,''),COALESCE(maker.full_name,''),
                        CASE WHEN item.id IS NULL THEN 0 ELSE 1 END,
                        CASE WHEN s.status=-1 OR s.warehouse_work_status='REVERSED' THEN 'SALES_REVERSED'
                             WHEN s.rejected OR s.warehouse_work_status='CANCELLED' THEN 'SALES_CANCELLED'
@@ -201,7 +247,8 @@ final class WarehouseOutboundTaskCenterSql {
         return """
                 SELECT 'SUBCONTRACT','SUBCONTRACT_MATERIAL_ISSUE',issue.id,issue.bill_no,
                        COALESCE(plan.order_bill_no,issue.source_doc_no),issue.bill_date,
-                       COALESCE(supplier.name,''),COALESCE(warehouse.name,''),COALESCE(worker.full_name,issue.maker_name,''),
+                       COALESCE(supplier.name,''),COALESCE(warehouse.name,''),NULL::text,
+                       COALESCE(worker.full_name,issue.maker_name,''),
                        CASE WHEN item.id IS NULL THEN 0 ELSE 1 END,
                        CASE WHEN issue.is_deleted THEN 'SUBCONTRACT_WITHDRAWN'
                             WHEN issue.status=-1 THEN 'SUBCONTRACT_REVERSED'
@@ -271,7 +318,8 @@ final class WarehouseOutboundTaskCenterSql {
                 + " AND fn_is_production_linked_stock_document(d.id) AND fn_production_draw_pending(d.id))"
                 : "(d.status=0 AND NOT d.is_closed)";
         return "SELECT '" + source + "','STOCK_DOC',d.id,d.bill_no,COALESCE(NULLIF(d.plan_no,''),d.source_doc_no),d.bill_date,"
-                + "COALESCE(department.name,client.name,supplier.name,''),COALESCE(item_warehouse.name,warehouse.name,''),COALESCE(worker.full_name,maker.full_name,''),"
+                + "COALESCE(department.name,client.name,supplier.name,''),COALESCE(item_warehouse.name,warehouse.name,''),"
+                + "COALESCE(worker.full_name,''),COALESCE(maker.full_name,''),"
                 + "CASE WHEN item.id IS NULL THEN 0 ELSE 1 END," + state + ",CONCAT_WS(' ',d.bill_no,d.plan_no,d.source_doc_no,department.name,item_warehouse.name,warehouse.name,"
                 + "COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name),goods.spec,color.name),"
                 + "d.maker_id,d.status::int,d.issue_status::int,0::bigint,discovery.request_id,TRUE," + actionable
@@ -310,7 +358,7 @@ final class WarehouseOutboundTaskCenterSql {
         return """
                 SELECT 'DRAW','MATERIAL_DISCOVERY',request.id,request.request_no,plan.bill_no,
                        (request.created_at AT TIME ZONE 'Asia/Shanghai')::date,
-                       COALESCE(department.name,''),COALESCE(material.warehouse_name,''),COALESCE(worker.full_name,''),
+                       COALESCE(department.name,''),COALESCE(material.warehouse_name,''),COALESCE(worker.full_name,''),NULL::text,
                        CASE WHEN material.line_key IS NULL THEN 0 ELSE 1 END,
                        CASE WHEN request.status='CANCELLED' THEN 'DRAW_DISCOVERY_CANCELLED'
                             WHEN request.status='CONFIGURED' THEN 'DRAW_DISCOVERY_CONFIGURED'

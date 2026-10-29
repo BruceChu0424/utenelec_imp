@@ -272,11 +272,6 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
                     onPressed: _printing ? null : () => _print(context),
                     child: const Text('打印'),
                   ),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.close_rounded),
-                    label: const Text('关闭'),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
                 ],
               ),
             ],

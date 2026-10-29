@@ -275,7 +275,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // batch-1 fieldCodes = ['phone', 'email'] → 中文标签顿号连接；机器码不外露。
-    expect(find.text('手机、邮箱'), findsOneWidget);
+    // 多值列全站口径（2026-10-29）：格内截断为首个 +「等 N 个」，全量在弹窗里。
+    expect(find.text('手机 等 2 个'), findsOneWidget);
     expect(find.text('phone、email'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());

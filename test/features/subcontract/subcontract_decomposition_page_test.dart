@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -388,7 +389,9 @@ void main() {
         findsOneWidget,
       );
       await tester.tap(
-        find.descendant(of: dialog, matching: find.text('关闭')).last,
+        find
+            .descendant(of: dialog, matching: find.byType(UtenCloseButton).last)
+            .last,
       );
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '进行中');
@@ -1587,7 +1590,7 @@ void main() {
       expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
       expect(find.text('公共备货'), findsOneWidget);
       expect(find.text('查看申请单'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
@@ -1987,7 +1990,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
         expect(find.byType(Dialog), findsNothing);
         expect(tester.takeException(), isNull);
@@ -2060,7 +2063,7 @@ void main() {
       expect(find.text('外壳'), findsOneWidget);
       expect(find.text('螺丝'), findsOneWidget);
 
-      await tester.tap(find.text('关闭').last);
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('subcontract-kit-dialog')), findsNothing);
       expect(tester.takeException(), isNull);
@@ -2110,7 +2113,7 @@ void main() {
       );
 
       // 读取失败：显示服务端原话并可重试。
-      await tester.tap(find.text('关闭').last);
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
       kit.error = ApiException('NOT_FOUND', '委外申请明细不存在', httpStatus: 404);
       await tester.tap(find.text('打开'));

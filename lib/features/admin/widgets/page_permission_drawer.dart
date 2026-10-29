@@ -10,6 +10,7 @@
 //
 // 数据契约：权限项零写死，全部来自服务端目录(page_permission_delegation_models)。
 
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
@@ -181,11 +182,7 @@ class _PageDataScopePanelState extends ConsumerState<_PageDataScopePanel> {
         children: [
           ListTile(
             title: const Text('配置可查看数据'),
-            trailing: IconButton(
-              tooltip: '关闭',
-              icon: const Icon(Icons.close),
-              onPressed: _closePanel,
-            ),
+            trailing: UtenCloseButton(tooltip: '关闭', onPressed: _closePanel),
           ),
           Expanded(
             child: !allowed
@@ -1037,11 +1034,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               ],
             ),
           ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: _saving ? null : _close,
-            icon: const Icon(Icons.close_rounded),
-          ),
+          UtenCloseButton(tooltip: '关闭', onPressed: _saving ? null : _close),
         ],
       ),
     );

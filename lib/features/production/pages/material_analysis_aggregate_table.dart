@@ -532,12 +532,11 @@ final class _MaterialAggregateTableController {
     );
   }
 
-  /// ADR-120 §8「该分开的分开」：车间通道的来源按「生产车间 + 负责人 + 超产
-  /// 比例(按数值)」分成几张工单——参数相同的来源并成一张，不同就各开一张，
-  /// 不再报错要求先统一。本页不选班组，服务端合并键里的班组恒为空，不参与拆分；
-  /// 父件也不参与，下层做好后送给哪个上层工单在报工时再分(见 ADR-127)。
-  /// 采购 / 委外整组一张。只拆出一张时提交键就是草稿键；拆成多张时是
-  /// 「草稿键|part-指纹」，指纹只由这张工单的参数决定，参数不变键就不变。
+  /// All routes partition by the server's frozen production-rule identity.
+  /// MAKE also partitions by workshop, worker and numeric overproduction rate.
+  /// Matching sources share one order; different rules keep their own order.
+  /// Only the server computes recipe identities and validates them on submit.
+  /// A split key depends on its rules and assignment, never row order or quantity.
   /// 顺序稳定：按来源在 [sources] 里第一次出现的先后。
   List<_MaterialAggregatePart> partsOf(
     String draftKey,
@@ -545,12 +544,16 @@ final class _MaterialAggregateTableController {
     required bool workshop,
   }) {
     final byKey = <String, _MaterialAggregatePart>{};
+    final recipeKeys = owner._analysis?.aggregateRecipeKeysByMaterialLineId;
     for (final source in sources) {
       final params = workshop ? makeParams(source.group) : null;
-      final part = byKey.putIfAbsent(
-        params?.key ?? '',
-        () => _MaterialAggregatePart(params),
-      );
+      final recipeKey =
+          recipeKeys?[source.line] ??
+          (owner._analysis?.hasAggregateRecipeKeys == true
+              ? 'unresolved:${source.line}'
+              : null);
+      final candidate = _MaterialAggregatePart(params, recipeKey: recipeKey);
+      final part = byKey.putIfAbsent(candidate.key, () => candidate);
       // 同一张工单里只要有一条来源的比例是人定的，整张按人定的提交
       // (拆单键相同，车间 / 负责人 / 比例数值一致，只是显式标记不同)。
       if (params != null &&
@@ -564,10 +567,17 @@ final class _MaterialAggregateTableController {
         ..groups.add(source.group);
     }
     final parts = byKey.values.toList(growable: false);
+    final recipeNumbers = <String?, int>{};
     for (final part in parts) {
+      recipeNumbers.putIfAbsent(part.recipeKey, () => recipeNumbers.length + 1);
+    }
+    for (final part in parts) {
+      if (recipeNumbers.length > 1) {
+        part.recipeLabel = '生产规则 ${recipeNumbers[part.recipeKey]}';
+      }
       part.clientGroupKey = parts.length == 1
           ? draftKey
-          : '$draftKey|${businessIdempotencyKey('part', part.params!.key)}';
+          : '$draftKey|${businessIdempotencyKey('part', part.key)}';
     }
     return parts;
   }
@@ -672,11 +682,20 @@ final class _MaterialAggregateTableController {
   /// 本次提交里这个草稿占几组(分成几张工单就是几组)，供分窗口计数。
   int requestGroupCount(_MaterialAggregateDraft draft) {
     final count = draftParts(draft).length;
+    _validatePartCount(draft, count);
     return count < 1 ? 1 : count;
   }
 
-  /// 汇总行上把「会分成几张工单」讲明白(ADR-120 §8)：同一物料的来源车间、
-  /// 负责人或超产比例不同，下单时自动各开一张，这一行只是合起来看。
+  void _validatePartCount(_MaterialAggregateDraft draft, int count) {
+    if (count > materialAggregateMaxGroups) {
+      throw FormatException(
+        '「${draft.label}」按生产规则和生产安排需分成 $count 组，'
+        '单次最多 $materialAggregateMaxGroups 组；请减少本次选择的来源范围。输入和选择已保留',
+      );
+    }
+  }
+
+  /// Explain automatic partitioning in the existing aggregate handling cell.
   /// [headline] 挂在办理列，[detail] 逐张列出参数和本次数量。没有分开时为 null。
   ({String headline, String detail})? splitNote(_MaterialAggregate aggregate) {
     final draft = drafts[aggregate.key];
@@ -698,11 +717,10 @@ final class _MaterialAggregateTableController {
           (line: group.representative.materialLineId, group: group),
       ];
       final groups = [for (final source in sources) source.group];
-      if (groups.map(owner._draftRoute).toSet().length != 1 ||
-          !viaWorkshop(groups)) {
+      if (groups.isEmpty || groups.map(owner._draftRoute).toSet().length != 1) {
         return null;
       }
-      parts = partsOf(aggregate.key, sources, workshop: true);
+      parts = partsOf(aggregate.key, sources, workshop: viaWorkshop(groups));
       if (parts.length < 2) return null;
       quantities = [];
       for (final part in parts) {
@@ -713,21 +731,28 @@ final class _MaterialAggregateTableController {
         quantities.add(total.isFinite ? owner._qty(total) : null);
       }
     }
+    final differentRecipes =
+        parts.map((part) => part.recipeKey).toSet().length > 1;
     final dimensions = [
-      if (parts.map((part) => part.params!.workshop.id).toSet().length > 1)
+      if (differentRecipes) '生产规则',
+      if (parts.map((part) => part.params?.workshop.id).toSet().length > 1)
         '车间',
-      if (parts.map((part) => part.params!.worker.id).toSet().length > 1) '负责人',
-      if (parts.map((part) => part.params!.rate).toSet().length > 1) '比例',
+      if (parts.map((part) => part.params?.worker.id).toSet().length > 1) '负责人',
+      if (parts.map((part) => part.params?.rate).toSet().length > 1) '比例',
     ];
     final unit = aggregate.unitName ?? '';
+    final document = viaWorkshop(parts.first.groups) ? '工单' : '单据';
     return (
-      headline: '按${dimensions.join('/')}分成 ${parts.length} 张工单',
+      headline: '按${dimensions.join('/')}分成 ${parts.length} 张$document',
       detail: [
-        '这些来源的${dimensions.join('、')}不同，下单时自动分成 ${parts.length} 张工单：',
+        '这些来源的${dimensions.join('、')}不同，下单时自动分成 ${parts.length} 张$document：',
         for (var i = 0; i < parts.length; i++)
           '第 ${i + 1} 张  ${parts[i].label}：${quantities[i] ?? '—'} $unit'
               .trimRight(),
-        '要合成一张，就在这一行把车间、负责人和比例改成一样的。',
+        if (differentRecipes)
+          '系统保留各来源的生产规则和数量，分组后一起下单。'
+        else
+          '要合成一张，就在这一行把车间、负责人和比例改成一样的。',
       ].join('\n'),
     );
   }
@@ -794,11 +819,22 @@ final class _MaterialAggregateTableController {
       // 空值由服务端填写且不记住(ADR-129 §2.10)；只有人改过且解析不出数值
       // 的才算「允许超产比例无效」。
       final parts = partsOf(draft.key, sources, workshop: workshop);
+      _validatePartCount(draft, parts.length);
       if (workshop &&
           parts.any((part) => part.params!.rate == null && part.rateExplicit)) {
         throw FormatException('「${draft.label}」允许超产比例填写有误，请填不小于 0 的百分比');
       }
       final quantities = partQuantities(draft, parts);
+      _MaterialAggregatePart? safetyPart;
+      if (route == MaterialSupplyRoute.buy && safetyDimensions.add(draft.key)) {
+        // A material may appear at different BOM depths. The server admits
+        // safety replenishment only in its earliest participating purchase group.
+        for (final part in parts) {
+          if (safetyPart == null || part.sourceDepth < safetyPart.sourceDepth) {
+            safetyPart = part;
+          }
+        }
+      }
       for (var i = 0; i < parts.length; i++) {
         final part = parts[i];
         inputs.add(
@@ -814,10 +850,9 @@ final class _MaterialAggregateTableController {
             allowedOverproductionRate: part.rateExplicit
                 ? part.params?.rate
                 : null,
-            // 公共安全补库只走采购；采购不按车间拆，一个物料至多一组。
-            safetyQty:
-                route == MaterialSupplyRoute.buy &&
-                    safetyDimensions.add(draft.key)
+            // Safety replenishment is confirmed once per material, even when
+            // its frozen rules require separate purchase groups.
+            safetyQty: identical(part, safetyPart)
                 ? owner._groupSafetyReplenishmentGapText(groups.first)
                 : '0',
           ),
@@ -2292,18 +2327,29 @@ final class _MaterialAggregateMakeParams {
   }
 }
 
-/// 一个汇总草稿拆出的一张工单：一组「怎么做」参数相同的来源。
-/// 非车间通道(采购 / 委外)不拆，[params] 为 null。
+/// One compatible recipe and assignment within an aggregate draft.
+/// BUY/SUBCONTRACT retain recipe separation with null workshop [params].
 final class _MaterialAggregatePart {
-  _MaterialAggregatePart(this.params);
+  _MaterialAggregatePart(this.params, {this.recipeKey});
   _MaterialAggregateMakeParams? params;
+  final String? recipeKey;
+  String? recipeLabel;
+  String get key => recipeKey == null
+      ? params?.key ?? ''
+      : jsonEncode([params?.key, recipeKey]);
   final lineIds = <String>[];
   final groups = <_MaterialGroup>[];
+  int get sourceDepth => groups.fold<int>(
+    1 << 30,
+    (depth, group) =>
+        group.representative.level < depth ? group.representative.level : depth,
+  );
 
   /// 这张工单的超产比例是人定的吗(任一来源改过即算，见 [partsOf])。
   bool get rateExplicit => params?.rateExplicit ?? false;
 
   /// 本张工单的提交键，由 [_MaterialAggregateTableController.partsOf] 填。
   String clientGroupKey = '';
-  String get label => params?.label ?? '';
+  String get label =>
+      [?recipeLabel, if (params != null) params!.label].join(' / ');
 }

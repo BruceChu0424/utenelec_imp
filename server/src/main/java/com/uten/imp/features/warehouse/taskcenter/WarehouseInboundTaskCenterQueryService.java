@@ -59,7 +59,7 @@ public class WarehouseInboundTaskCenterQueryService {
         if (!SOURCES.contains(source)) throw invalid("入库来源不正确");
         String status = normalize(filter.status(), "");
         if (!status.isEmpty() && !STATUSES.containsKey(status)) throw invalid("入库状态不正确");
-        if (filter.sort()!=null && !filter.sort().isBlank() && !WarehouseTaskHeaderQuery.sortable(filter.sort())) {
+        if (filter.sort()!=null && !filter.sort().isBlank() && !WarehouseTaskHeaderQuery.sortable(filter.sort(), true)) {
             throw invalid("入库排序字段不正确");
         }
         if (filter.order()!=null && !filter.order().isBlank() && !Set.of("asc","desc").contains(filter.order().toLowerCase(Locale.ROOT))) {
@@ -377,8 +377,10 @@ public class WarehouseInboundTaskCenterQueryService {
         data.put("status",status);
         Row row=new Row(rowKey,id,source,record,rs.getString("bill_no"),rs.getString("source_doc_no"),
                 rs.getObject("business_date",java.time.LocalDate.class),rs.getString("party_name"),
-                rs.getString("warehouse_name"),rs.getString("responsible_name"),(Integer)rs.getObject("line_count"),
-                status,presentation.label(),presentation.tone(),action,rs.getObject("target_id",UUID.class),canHandle,data);
+                rs.getString("warehouse_name"),rs.getString("responsible_name"),rs.getString("maker_name"),
+                (Integer)rs.getObject("line_count"),
+                status,presentation.label(),presentation.tone(),action,rs.getObject("target_id",UUID.class),canHandle,data,
+                null,null);
         String lineJson=rs.getString("line_data");
         if(lineJson==null) return row;
         try { return row.withLine(objectMapper.readValue(lineJson,Line.class)); }

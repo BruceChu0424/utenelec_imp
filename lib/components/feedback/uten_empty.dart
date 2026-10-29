@@ -11,6 +11,7 @@ class UtenEmpty extends StatelessWidget {
   const UtenEmpty({
     super.key,
     this.icon = Icons.inbox_outlined,
+    this.iconColor,
     this.message = '暂无数据',
     this.description,
     this.info,
@@ -39,6 +40,7 @@ class UtenEmpty extends StatelessWidget {
   }
 
   final IconData icon;
+  final Color? iconColor;
   final String message;
   final String? description;
 
@@ -53,9 +55,11 @@ class UtenEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final iconColor = isError
-        ? UtenColors.error
-        : (isDark ? UtenColors.darkTextTertiary : UtenColors.textTertiary);
+    final iconColor =
+        this.iconColor ??
+        (isError
+            ? UtenColors.error
+            : (isDark ? UtenColors.darkTextTertiary : UtenColors.textTertiary));
 
     return Center(
       // Keep recovery reachable without taking the host's primary scroll controller.

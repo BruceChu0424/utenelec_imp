@@ -1,6 +1,7 @@
 import '../../paging/scoped_paged_read.dart';
 import '../../paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -717,9 +718,8 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
                     subtitle: Text(
                       row.product.goodsName ?? row.planNo ?? '生产记录',
                     ),
-                    trailing: IconButton(
+                    trailing: UtenCloseButton(
                       tooltip: '关闭',
-                      icon: const Icon(Icons.close),
                       onPressed: () => Navigator.of(panelContext).pop(),
                     ),
                   ),

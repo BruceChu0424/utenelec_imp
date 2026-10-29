@@ -20,6 +20,8 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/inputs/required_field_decoration.dart'
     show applyAutofillHint;
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart'
+    show utenMultiValueSummaryOf;
 
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -652,8 +654,12 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             );
           }
           // 有来源单据 id 才可点跳详情；任务/接口未带回 id 时退化为纯文本谱系。
+          // 多来源显示走全站多值截断口径（2026-10-29）：首个 +「等 N 个」，整格点击仍跳详情。
           final canOpen = row.canOpenSourceDocs;
           final theme = Theme.of(context);
+          final display = utenMultiValueSummaryOf(
+            no.split('、').where((part) => part.isNotEmpty).toList(),
+          );
           return InkWell(
             onTap: canOpen && onOpenSource != null
                 ? () => onOpenSource(row)
@@ -666,7 +672,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
                 children: [
                   Flexible(
                     child: Text(
-                      no,
+                      display,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: canOpen

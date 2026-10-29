@@ -187,6 +187,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
       builder: (context) => trackNativeReadDialog(
         context,
         UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.pop(context),
           scrollable: false,
           title: Text('${row.text('billNo')} · 第 ${row.text('revision')} 版'),
           content: SizedBox(
@@ -237,12 +239,6 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
         readOnly: true,
       ),

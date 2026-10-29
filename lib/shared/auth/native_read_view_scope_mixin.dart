@@ -2,6 +2,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../components/buttons/uten_close_button.dart';
 import '../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../components/feedback/uten_empty.dart';
 import '../../components/feedback/uten_inline_notice.dart';
@@ -278,19 +279,21 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '操作权限已更新',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '操作权限已更新',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      UtenCloseButton(
+                        onPressed: () => Navigator.pop(context, false),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
-                  const SizedBox(height: 12),
-                  Align(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('关闭'),
-                    ),
-                  ),
                 ],
               ),
             if (!current && !inlineNotice)
@@ -299,13 +302,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
               PrimaryScrollController.none(
                 child: UtenAlertDialog(
                   title: const Text('操作权限已更新'),
+                  showCloseButton: true,
+                  onClose: () => Navigator.pop(context, false),
                   content: const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('关闭'),
-                    ),
-                  ],
                 ),
               ),
           ],

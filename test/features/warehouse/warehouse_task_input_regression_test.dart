@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -931,7 +932,7 @@ void main() {
           await tester.pumpAndSettle();
         }
         if (batch) {
-          await tester.tap(find.text('知道了'));
+          await tester.tap(find.byType(UtenCloseButton).last);
           await tester.pumpAndSettle();
         }
         expect(api.posts.length, 1);

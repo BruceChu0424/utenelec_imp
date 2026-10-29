@@ -59,7 +59,6 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
     this.showBack = false,
     this.onBack,
     this.onPermissionDirtyChanged,
-    this.onProvisionAccount,
   });
 
   final AdminUserSummary user;
@@ -70,7 +69,6 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
   final bool showBack;
   final VoidCallback? onBack;
   final ValueChanged<bool>? onPermissionDirtyChanged;
-  final VoidCallback? onProvisionAccount;
 
   @override
   ConsumerState<AdminUserDetailPanel> createState() =>
@@ -547,18 +545,7 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   List<Widget> _accountHeaderActions(EffectivePermissions? data) {
     final user = widget.user;
     final actions = <Widget>[];
-    if (_hasAccountSupport && widget.onProvisionAccount != null) {
-      actions.add(
-        UtenButton(
-          key: const ValueKey('admin-header-provision-account'),
-          size: UtenButtonSize.small,
-          type: UtenButtonType.secondary,
-          icon: Icons.person_add_alt_1_rounded,
-          onPressed: _acting ? null : widget.onProvisionAccount,
-          child: const Text('开通账号'),
-        ),
-      );
-    }
+    // 本面板只管理已有登录账号，操作按账号当前状态提供。
     if (!_supportTargetAllowed(data)) return actions;
     if (!user.knownAccountState) return actions;
     final locked = user.status == 'locked';

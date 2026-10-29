@@ -31,6 +31,7 @@ import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
+import '../../../../core/web_update/web_update_safety.dart';
 import '../../../../core/router/nav_helpers.dart';
 import '../../../../core/router/page_resume_provider.dart';
 import '../../../../core/router/route_access_policy.dart';
@@ -90,6 +91,25 @@ class _WorkshopMaterialBinPageState
   void _countChanged() {
     if (mounted) setState(() {});
   }
+
+  void _reloadSafetyChanged() => webUpdateSafety.changed();
+
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    dirty:
+        (_countEditor.active &&
+            !_countEditor.reviewing &&
+            (_countEditor.changedCount > 0 ||
+                _countEditor.reason.text.isNotEmpty)) ||
+        (_requestEditor.active &&
+            !_requestEditor.reviewing &&
+            (_requestEditor.rows.isNotEmpty ||
+                _requestEditor.remark.text.isNotEmpty)),
+    busy: _requestEditor.busy || _countEditor.busy || _busyTitle != null,
+    // An unfinished session keeps quantities and request nonces in memory.
+    blocked:
+        (_requestEditor.active && !_requestEditor.reviewing) ||
+        (_countEditor.active && !_countEditor.reviewing),
+  );
 
   String _countKey(WmPositionRow row) =>
       stockCountRowKey(row.goodsId, row.colorId);
@@ -261,6 +281,9 @@ class _WorkshopMaterialBinPageState
     _requestEditor = WorkshopMaterialRequestInlineController(
       () => ref.read(workshopMaterialRepositoryProvider),
     )..structureSignal.addListener(_countChanged);
+    _countEditor.addListener(_reloadSafetyChanged);
+    _requestEditor.addListener(_reloadSafetyChanged);
+    webUpdateSafety.register(this, _reloadSafety);
     ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
       if (old == next) return;
       _requestBoundary = null;
@@ -274,10 +297,13 @@ class _WorkshopMaterialBinPageState
   @override
   void dispose() {
     FormDraftNavigation.unregister(this);
+    FormDraftNavigation.unregisterReloadSafety(this);
     _poller.stop();
     _countEditor.structureSignal.removeListener(_countChanged);
+    _countEditor.removeListener(_reloadSafetyChanged);
     _countEditor.dispose();
     _requestEditor.structureSignal.removeListener(_countChanged);
+    _requestEditor.removeListener(_reloadSafetyChanged);
     _requestEditor.dispose();
     super.dispose();
   }
@@ -734,11 +760,13 @@ class _WorkshopMaterialBinPageState
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     _myLocation ??= currentLocationOr(context, RouteName.workshopMaterialBin);
+    FormDraftNavigation.registerReloadSafety(this, _myLocation!, _reloadSafety);
     FormDraftNavigation.register(
       this,
       _myLocation!,
       () async => !mounted || !_requestEditor.busy,
       pageKey: goRouterPageStateOrNull(context)?.pageKey,
+      reloadSafety: _reloadSafety,
     );
     ref.onPageResume(
       _myLocation!,

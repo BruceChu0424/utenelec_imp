@@ -28,6 +28,11 @@ class WhereUsedMaterialSearchPostgresTest extends AuthSessionPostgresTestSupport
         UUID exact=goods(screws,"螺丝",marker,null),branch=goods(screws,"M3x20",marker,null);
         UUID feature=goods(sockets,"电话插座（螺丝接线式）",marker,null);
         UUID history=goods(null,"历史螺丝",marker,null),related=goods(notes,"仅说明提及",marker,"螺丝");
+        UUID color=UUID.randomUUID(),historicalColor=UUID.randomUUID();
+        jdbc.update("INSERT INTO colors(id,code,name) VALUES(?,?,?)",color,"WU-C-"+color,"反查黑色");
+        jdbc.update("INSERT INTO colors(id,code,name,is_deleted,deleted_at) VALUES(?,?,?,true,NOW())",historicalColor,"WU-C-"+historicalColor,"历史白色");
+        jdbc.update("UPDATE goods SET color_id=?,series=? WHERE id=?",color,"螺丝系列 A",exact);
+        jdbc.update("UPDATE goods SET color_id=?,series=? WHERE id=?",historicalColor,"历史系列 B",history);
         jdbc.update("UPDATE goods SET status='禁用',auto_created=true,is_deleted=true,deleted_at=NOW() WHERE id=?",history);
         UUID parent=goods(sockets,"母件",null,null);
         jdbc.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,1)",UUID.randomUUID(),parent,exact);
@@ -41,10 +46,16 @@ class WhereUsedMaterialSearchPostgresTest extends AuthSessionPostgresTestSupport
         }
         assertEquals(List.of(exact.toString(),history.toString(),branch.toString(),feature.toString()),paged);
         assertTrue(rows.get(exact.toString()).path("currentBom").asBoolean());
+        assertEquals("反查黑色",rows.get(exact.toString()).path("colorName").asText());
+        assertEquals("螺丝系列 A",rows.get(exact.toString()).path("series").asText());
+        assertTrue(rows.get(branch.toString()).path("colorName").isNull());
+        assertTrue(rows.get(branch.toString()).path("series").isNull());
         assertTrue(rows.get(history.toString()).path("autoCreated").asBoolean());
         assertTrue(rows.get(history.toString()).path("deleted").asBoolean());
         assertFalse(rows.get(history.toString()).path("currentBom").asBoolean());
         assertEquals("history-uncategorized",rows.get(history.toString()).path("categoryId").asText());
+        assertEquals("历史白色",rows.get(history.toString()).path("colorName").asText());
+        assertEquals("历史系列 B",rows.get(history.toString()).path("series").asText());
         JsonNode expanded=search(token,query,null,true,1,50);
         assertEquals(5,expanded.path("total").asInt());
         assertEquals(related.toString(),expanded.path("items").get(4).path("id").asText());

@@ -15,6 +15,8 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/web_update/web_update_safety.dart';
+import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/features/auth/pages/login_page.dart';
 import 'package:uten_imp/features/auth/widgets/account_field.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
@@ -149,6 +151,34 @@ Future<void> _submit(WidgetTester tester, {bool settle = true}) async {
 }
 
 void main() {
+  testWidgets('login input protects automatic updates until it is cleared', (
+    tester,
+  ) async {
+    await _pump(tester, _Session());
+    expect(FormDraftNavigation.hasReloadSafetyForPath('/login'), isTrue);
+    expect(webUpdateSafety.snapshot.dirty, isTrue);
+    await tester.enterText(_password, '');
+    await tester.pump();
+    expect(webUpdateSafety.snapshot.dirty, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(FormDraftNavigation.hasReloadSafetyForPath('/login'), isFalse);
+  });
+
+  testWidgets('login preparation and MFA keep automatic installation blocked', (
+    tester,
+  ) async {
+    final preparation = Completer<void>();
+    await _pump(tester, _Session(), prepareLogin: () => preparation.future);
+    await _submit(tester, settle: false);
+    expect(webUpdateSafety.snapshot.busy, isTrue);
+    preparation.complete();
+    await tester.pumpAndSettle();
+    expect(webUpdateSafety.snapshot.busy, isFalse);
+    expect(webUpdateSafety.snapshot.blocked, isTrue);
+    expect(_otp, findsOneWidget);
+  });
+
   testWidgets(
     'a server selected during preflight owns the resulting MFA challenge',
     (tester) async {

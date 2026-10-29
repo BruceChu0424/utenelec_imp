@@ -1,12 +1,108 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar_action_scope.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    for (final group in [false, true]) {
+      testWidgets(
+        '${platform.name}: ${group ? 'window group' : 'close'} stays rightmost and busy outside narrow action overflow',
+        (tester) async {
+          tester.view.physicalSize = const Size(320, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          const closeKey = Key('rightmost-close');
+          late StateSetter update;
+          var busy = true, calls = 0;
+          final gate = Completer<void>();
+          Future<void> close() async {
+            calls++;
+            await gate.future;
+          }
+
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildLightTheme().copyWith(platform: platform),
+              home: StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  return Scaffold(
+                    appBar: UtenAppBar(
+                      title: '窄屏业务详情',
+                      showPagePermissionAction: false,
+                      actions: [
+                        if (group)
+                          UtenWindowControls(
+                            closeButtonKey: closeKey,
+                            onClose: busy ? null : close,
+                            showMinimize: true,
+                            onMinimize: () {},
+                            showExpand: true,
+                            onExpand: () {},
+                          )
+                        else
+                          UtenCloseButton(
+                            key: closeKey,
+                            onPressed: busy ? null : close,
+                          ),
+                        TextButton(
+                          onPressed: () {},
+                          child: const Text('足够长的业务动作放进更多操作'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final closeFinder = find.byKey(closeKey);
+          final more = find.byKey(const Key('uten-app-bar-more-actions'));
+          final iconButton = find.descendant(
+            of: closeFinder,
+            matching: find.byType(IconButton),
+          );
+          expect(closeFinder.hitTestable(), findsOneWidget);
+          final bar = tester.widget<AppBar>(find.byType(AppBar));
+          final trailingInset =
+              bar.actionsPadding?.resolve(TextDirection.ltr).right ?? 0;
+          expect(tester.getRect(closeFinder).right, 320 - trailingInset);
+          expect(
+            tester.getRect(closeFinder).left,
+            greaterThanOrEqualTo(tester.getRect(more).right),
+          );
+          expect(tester.widget<IconButton>(iconButton).onPressed, isNull);
+          await tester.tap(more);
+          await tester.pumpAndSettle();
+          expect(find.byKey(closeKey), findsOneWidget);
+          expect(find.text('足够长的业务动作放进更多操作'), findsOneWidget);
+          await tester.tap(find.byTooltip('关闭操作面板'));
+          await tester.pumpAndSettle();
+          update(() => busy = false);
+          await tester.pumpAndSettle();
+          await tester.tap(closeFinder);
+          await tester.pump();
+          await tester.tap(closeFinder);
+          expect(calls, 1);
+          expect(tester.widget<IconButton>(iconButton).onPressed, isNull);
+          gate.complete();
+          await tester.pumpAndSettle();
+          expect(tester.widget<IconButton>(iconButton).onPressed, isNotNull);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'native and shared header actions show button labels without icons',
     (tester) async {

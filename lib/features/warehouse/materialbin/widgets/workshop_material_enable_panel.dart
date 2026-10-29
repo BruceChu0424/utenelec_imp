@@ -6,6 +6,7 @@
 // - 在产认料: 所选车间正在生产、还没认料的产品按产品去重 (一个产品只认一次), 用平台表格逐行选料,
 //   勾选多行后改任一勾选行的用料 = 全部勾选行生效。
 // 一个原子请求 (POST /settings/batch-enable, 全成全败); 失败时保留全部输入并复用同一个请求号。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -385,13 +386,12 @@ class _WorkshopBinOpeningPanelState
                             ),
                           ),
                         ),
-                        IconButton(
+                        UtenCloseButton(
                           key: const Key('wm-bin-panel-close'),
                           tooltip: l10n.commonCancel,
                           onPressed: _saving
                               ? null
                               : () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.close_rounded),
                         ),
                       ],
                     ),

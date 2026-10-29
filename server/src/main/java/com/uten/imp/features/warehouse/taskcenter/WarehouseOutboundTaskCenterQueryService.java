@@ -37,11 +37,12 @@ public class WarehouseOutboundTaskCenterQueryService {
     private final ProductionStockTaskAccessPolicy productionAccess;
     private final AuditDetailViewRecorder auditViews;
     private final WorkshopMaterialScope materialScopes;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     public WarehouseOutboundTaskCenterQueryService(EntityManager em, StockDocAccessPolicy stockAccess,
             SecurityContextCurrentUser currentUser, WarehouseTaskScopePort warehouseScopes,
             ProductionStockTaskAccessPolicy productionAccess, AuditDetailViewRecorder auditViews,
-            WorkshopMaterialScope materialScopes) {
+            WorkshopMaterialScope materialScopes, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         this.em = em;
         this.stockAccess = stockAccess;
         this.currentUser = currentUser;
@@ -49,6 +50,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         this.productionAccess = productionAccess;
         this.auditViews = auditViews;
         this.materialScopes = materialScopes;
+        this.objectMapper = objectMapper;
     }
 
     private static final Set<String> SOURCES = Set.of("ALL", "SALES", "SUBCONTRACT", "DRAW", "OTHER", "FINISHED");
@@ -160,7 +162,7 @@ public class WarehouseOutboundTaskCenterQueryService {
             if (parts.length == 4) rowQuery.setParameter("identityLineKey", parts[3]);
             List<Object[]> found = NativeQueryResults.objectArrayRows(rowQuery);
             if (found.isEmpty()) throw notFound();
-            Row document = map(java.util.Arrays.copyOf(found.getFirst(), 18), access);
+            Row document = map(java.util.Arrays.copyOf(found.getFirst(), 19), access);
             if (document.recordType().equals("WORKSHOP_REQUISITION")) {
                 Object warehouses=bindDetail(em.createNativeQuery(sql.cte()+"""
                          SELECT string_agg(DISTINCT warehouse_name,'、' ORDER BY warehouse_name) FROM filtered visible
@@ -322,17 +324,17 @@ public class WarehouseOutboundTaskCenterQueryService {
         String source = String.valueOf(raw[0]);
         String record = String.valueOf(raw[1]);
         UUID id = NativeValueConverters.uuid(raw[2]);
-        String status = String.valueOf(raw[10]);
+        String status = String.valueOf(raw[11]);
         State state = STATES.get(status);
         if (state == null) throw new IllegalStateException("Unrecognized outbound projection status");
-        UUID owner = NativeValueConverters.uuid(raw[11]);
-        int stockStatus = raw[12] instanceof Number number ? number.intValue() : 0;
-        int issueStatus = raw[13] instanceof Number number ? number.intValue() : 0;
-        long revision = raw[14] instanceof Number number ? number.longValue() : 0L;
-        UUID requestId = NativeValueConverters.uuid(raw[15]);
-        boolean defined = Boolean.TRUE.equals(raw[16]);
+        UUID owner = NativeValueConverters.uuid(raw[12]);
+        int stockStatus = raw[13] instanceof Number number ? number.intValue() : 0;
+        int issueStatus = raw[14] instanceof Number number ? number.intValue() : 0;
+        long revision = raw[15] instanceof Number number ? number.longValue() : 0L;
+        UUID requestId = NativeValueConverters.uuid(raw[16]);
+        boolean defined = Boolean.TRUE.equals(raw[17]);
         // Impersonation retains the same readable facts but never advertises command capability.
-        boolean actionable = Boolean.TRUE.equals(raw[17])
+        boolean actionable = Boolean.TRUE.equals(raw[18])
                 && currentUser.get().filter(actor -> actor.getImpersonatedBy() == null).isPresent();
         Map<String, Object> data = new LinkedHashMap<>();
         String action;
@@ -369,7 +371,7 @@ public class WarehouseOutboundTaskCenterQueryService {
                     data.put("requisitionId",id);
                     data.put("kind","ISSUE");
                     data.put("expectedVersion",revision);
-                    if (raw.length >= 28) data.put("requisitionLineId",UUID.fromString(String.valueOf(raw[18]).split("~",2)[0]));
+                    if (raw.length >= 29) data.put("requisitionLineId",UUID.fromString(String.valueOf(raw[19]).split("~",2)[0]));
                 } else if (record.equals("MATERIAL_DISCOVERY")) {
                     canHandle = actionable && access.production() && has("stock_doc:approve") && has("stock_doc:issue");
                     action = canHandle ? "MATERIAL_DISCOVERY" : "HISTORY_DETAIL";
@@ -404,22 +406,33 @@ public class WarehouseOutboundTaskCenterQueryService {
             default -> throw new IllegalStateException("Unrecognized outbound source");
         }
         String documentKey = source + ":" + record + ":" + id;
-        if (raw.length >= 28) {
+        if (raw.length >= 29) {
             data.put("documentRowKey", documentKey);
-            data.put("lineKey", String.valueOf(raw[18]));
-            UUID itemId = NativeValueConverters.uuid(raw[19]);
+            data.put("lineKey", String.valueOf(raw[19]));
+            UUID itemId = NativeValueConverters.uuid(raw[20]);
             if (itemId != null) data.put("itemId", itemId);
         }
         Row row = new Row(documentKey, id, source, record,
                 raw[3] == null ? null : raw[3].toString(), raw[4] == null ? null : raw[4].toString(),
                 NativeValueConverters.toLocalDate(raw[5]),
                 raw[6] == null ? "" : raw[6].toString(), raw[7] == null ? "" : raw[7].toString(),
-                raw[8] == null ? "" : raw[8].toString(), raw[9] instanceof Number number ? number.intValue() : 0,
-                status, state.label(), state.tone(), action, id, canHandle, data);
-        return raw.length < 28 ? row : row.withLine(new Line(String.valueOf(raw[18]), NativeValueConverters.uuid(raw[19]),
-                raw[20] instanceof Number number ? number.intValue() : null,
-                NativeValueConverters.text(raw[21]), NativeValueConverters.text(raw[22]), NativeValueConverters.text(raw[23]),
-                NativeValueConverters.text(raw[24]), NativeValueConverters.text(raw[25]), decimalOrNull(raw[26]), decimalOrNull(raw[27])));
+                raw[8] == null ? "" : raw[8].toString(), raw[9] == null ? "" : raw[9].toString(),
+                raw[10] instanceof Number number ? number.intValue() : 0,
+                status, state.label(), state.tone(), action, id, canHandle, data, null, null);
+        // 生产工单逐单 {code,planId}：供前端「生产工单」格弹窗按单跳生产计划详情；
+        // 解析失败只少一个跳转通道，不影响显示列（productionOrderNo 文本仍完整）。
+        if (raw.length > 30 && raw[30] != null) {
+            try {
+                data.put("productionOrders", objectMapper.readValue(raw[30].toString(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)));
+            } catch (java.io.IOException ignored) {
+            }
+        }
+        Row mapped = raw.length < 29 ? row : row.withLine(new Line(String.valueOf(raw[19]), NativeValueConverters.uuid(raw[20]),
+                raw[21] instanceof Number number ? number.intValue() : null,
+                NativeValueConverters.text(raw[22]), NativeValueConverters.text(raw[23]), NativeValueConverters.text(raw[24]),
+                NativeValueConverters.text(raw[25]), NativeValueConverters.text(raw[26]), decimalOrNull(raw[27]), decimalOrNull(raw[28])));
+        return raw.length > 29 && raw[29] != null ? mapped.withProductionOrderNo(raw[29].toString()) : mapped;
     }
 
     private static Map<String, State> states() {

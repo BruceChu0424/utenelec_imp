@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -695,7 +696,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('测试插座(2)'), findsOneWidget);
     expect(find.text('测试中第二份创建失败'), findsOneWidget);
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<GoodsListItem>>(_table);
@@ -747,7 +748,7 @@ void main() {
       find.textContaining('第 7 行 UT3118 6M圆标贴（响臻白）：组件货品已删除或仅为迁移占位'),
       findsOneWidget,
     );
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(goods.created, hasLength(1));
     expect(bom.pasted, hasLength(1));

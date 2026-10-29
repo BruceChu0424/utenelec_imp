@@ -4,12 +4,12 @@
 
 ## W7-BIZ-046 · lib/features/employee/pages/employee_detail_page.dart
 
-模块 `employee`；1992 行；SHA256 `a7cf526572e1a1fe9ff093b43fbea99b3e23d5c9467813af1c001b7b499f3bf8`。
+模块 `employee`；1992 行；SHA256 `44c1fc473bf4abe0c47fb39b4231a3c34fa03e7e58709de32f5c4e7e0cba59a2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeDetailPage @93 (page-class)<br>_EmployeeDetailPageState @102 (state-class) |
-| 真实路由绑定 | /employee/:id；router @800；builder ['EmployeeDetailPage']；redirect None |
+| 真实路由绑定 | /employee/:id；router @801；builder ['EmployeeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:avatar_edit @83；定义 lib/shared/auth/permissions.dart:728<br>employee:edit @84；定义 lib/shared/auth/permissions.dart:14<br>employee:pii:edit @85；定义 lib/shared/auth/permissions.dart:79<br>employee:contract_renew @87；定义 lib/shared/auth/permissions.dart:727<br>employee:confirm @89；定义 lib/shared/auth/permissions.dart:725<br>employee:rehire @90；定义 lib/shared/auth/permissions.dart:726<br>employee:view @182；定义 lib/shared/auth/permissions.dart:12<br>authorization:manage @240；定义 lib/shared/auth/permissions.dart:22<br>attachment:view @375；定义 lib/shared/auth/permissions.dart:86<br>employee:pii:view @376；定义 lib/shared/auth/permissions.dart:78<br>attachment:upload @382；定义 lib/shared/auth/permissions.dart:731<br>employee:transfer @547；定义 lib/shared/auth/permissions.dart:722<br>employee:offboard @568；定义 lib/shared/auth/permissions.dart:724<br>account:support @605；定义 lib/shared/auth/permissions.dart:19<br>attachment:view @914；定义 lib/shared/auth/permissions.dart:86<br>employee:pii:view @915；定义 lib/shared/auth/permissions.dart:78<br>authorization:manage @1509；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-047 · lib/features/employee/pages/employee_edit_page.dart
 
-模块 `employee`；930 行；SHA256 `16dbdfcdb1fb73b3080f632ee76ddc8a5adbe065cafb0093c59d56f6c108a132`。
+模块 `employee`；930 行；SHA256 `90dd5e91bdd5cfbe120694b9452923ab0d19b89c71fa5de72bd5ee72696280ad`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeEditPage @78 (page-class)<br>_EmployeeEditPageState @86 (state-class) |
-| 真实路由绑定 | /employee/:id/edit；router @787；builder ['EmployeeEditPage']；redirect None |
+| 真实路由绑定 | /employee/:id/edit；router @788；builder ['EmployeeEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:pii:edit @69；定义 lib/shared/auth/permissions.dart:79<br>employee:compensation:edit @72；定义 lib/shared/auth/permissions.dart:81<br>employee:pii:edit @308；定义 lib/shared/auth/permissions.dart:79<br>employee:pii:edit @396；定义 lib/shared/auth/permissions.dart:79<br>employee:compensation:edit @401；定义 lib/shared/auth/permissions.dart:81<br>employee:pii:edit @491；定义 lib/shared/auth/permissions.dart:79<br>employee:compensation:edit @493；定义 lib/shared/auth/permissions.dart:81<br>employee:edit @675；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeListPage @47 (page-class)<br>_EmployeeListPageState @54 (state-class) |
-| 真实路由绑定 | /employee；router @775；builder ['EmployeeListPage']；redirect None |
+| 真实路由绑定 | /employee；router @776；builder ['EmployeeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:create @247；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @248；定义 lib/shared/auth/permissions.dart:79 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOffboardingWorkflowPage @48 (page-class)<br>_EmployeeOffboardingWorkflowPageState @58 (state-class) |
-| 真实路由绑定 | /employee/:id/offboarding；router @793；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
+| 真实路由绑定 | /employee/:id/offboarding；router @794；builder ['EmployeeOffboardingWorkflowPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | EmployeeOnboardingPage @60 (page-class)<br>_EmployeeOnboardingPageState @71 (state-class)<br>_EducationEntry @1497 (supporting-class)<br>_EmergencyContactEntry @1529 (supporting-class) |
-| 真实路由绑定 | /employee/onboarding；router @780；builder ['EmployeeOnboardingPage']；redirect None |
+| 真实路由绑定 | /employee/onboarding；router @781；builder ['EmployeeOnboardingPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:create @76；定义 lib/shared/auth/permissions.dart:13<br>employee:pii:edit @77；定义 lib/shared/auth/permissions.dart:79<br>employee:compensation:edit @79；定义 lib/shared/auth/permissions.dart:81<br>account:support @81；定义 lib/shared/auth/permissions.dart:19 |
 | 接口常量 | 未静态确认；不能当作不存在 |

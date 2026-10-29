@@ -14,6 +14,46 @@ const _permissionCode = 'account:test';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  for (final width in [375.0, 1440.0]) {
+    for (final (status, action) in const [
+      ('active', '锁定账号'),
+      ('locked', '解锁账号'),
+      ('disabled', '启用账号'),
+    ]) {
+      testWidgets(
+        '$status account at ${width}px shows lifecycle actions without provisioning',
+        (tester) async {
+          await _pumpPanel(
+            tester,
+            repository: _LifecycleRepository(effective: _effective()),
+            user: _user(status: status, currentEmployee: true),
+            width: width,
+          );
+
+          expect(find.text('开通账号'), findsNothing);
+          final statusAction = find.byKey(
+            const ValueKey('admin-header-account-status'),
+          );
+          expect(statusAction, findsOneWidget);
+          expect(
+            find.descendant(of: statusAction, matching: find.text(action)),
+            findsOneWidget,
+          );
+          expect(tester.widget<UtenButton>(statusAction).onPressed, isNotNull);
+          for (final other in ['锁定账号', '解锁账号', '启用账号']) {
+            if (other != action) expect(find.text(other), findsNothing);
+          }
+          if (status == 'disabled') {
+            expect(find.text('停用账号'), findsNothing);
+          } else {
+            expect(_button(tester, '停用账号').onPressed, isNotNull);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'unknown account status is not offered active lock or reset actions',
     (tester) async {
@@ -119,9 +159,10 @@ Future<void> _pumpPanel(
   WidgetTester tester, {
   required _LifecycleRepository repository,
   required AdminUserSummary user,
+  double width = 375,
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(375, 900);
+  tester.view.physicalSize = Size(width, 900);
   addTearDown(() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();

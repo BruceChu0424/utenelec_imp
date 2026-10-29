@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -365,7 +366,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.text('关闭'),
+          matching: find.byType(UtenCloseButton).last,
         ),
       );
       await tester.pumpAndSettle();

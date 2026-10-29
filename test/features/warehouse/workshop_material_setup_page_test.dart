@@ -4,6 +4,7 @@
 // 上线准备按克输入、异常单重二次确认、与货品资料单重差 20% 标黄;
 // "勾选行用货品资料单重填入"只填空着的行并标黄。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -303,7 +304,7 @@ void main() {
     expect(find.text('上线前清点车间余料'), findsOneWidget);
     expect(find.textContaining('不要求生产员工为每张工单重新领料'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('知道了'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(find.text('上线前清点车间余料'), findsNothing);
   });

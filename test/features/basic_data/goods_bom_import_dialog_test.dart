@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -472,7 +473,7 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final close = find.text('关闭');
+      final close = find.byType(UtenCloseButton).last;
       expect(close.hitTestable(), findsOneWidget);
       await tester.tap(close);
       await tester.pumpAndSettle();

@@ -155,10 +155,12 @@ void main() {
       '规格',
       '数量',
       '来源单据',
+      '生产工单',
       '客户 / 供应商 / 委外商',
       '仓库',
       '业务日期',
-      '负责人 / 制单人',
+      '负责人',
+      '制单人',
     ]);
     final labels = table.columns.map((column) => column.label);
     for (final retired in const ['任务状态', '目标件行数', '出仓草稿单', '等子件到货']) {

@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../widgets/admin_permission_templates.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -40,7 +41,6 @@ import '../widgets/admin_department_perm_view.dart';
 import '../widgets/admin_permission_transfer_actions.dart';
 import '../widgets/admin_permission_workspace.dart';
 import '../widgets/admin_user_detail_panel.dart';
-import '../widgets/provision_account_dialog.dart';
 import '../widgets/permission_batch_dialog.dart';
 
 class AdminPermissionsPage extends ConsumerStatefulWidget {
@@ -589,6 +589,35 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
     });
   }
 
+  void _toggleAllLoadedUsers() {
+    if (_batchBusy || !_multiSelection || _loading || _error != null) return;
+    final selectable = _items.where(_canSelectUser).toList(growable: false);
+    if (selectable.isEmpty) return;
+    final allSelected = _canDeselectLoadedUsers(selectable);
+    var limitReached = false;
+    setState(() {
+      for (final user in selectable) {
+        if (allSelected) {
+          _batchUsers.remove(user.id);
+        } else if (!_batchUsers.containsKey(user.id)) {
+          if (_batchUsers.length >= 500) {
+            limitReached = true;
+            break;
+          }
+          _batchUsers[user.id] = user;
+        }
+      }
+    });
+    if (limitReached) context.appWarning('一次最多选择 500 人');
+  }
+
+  bool _canDeselectLoadedUsers(List<AdminUserSummary> selectable) =>
+      selectable.isNotEmpty &&
+      (selectable.every((user) => _batchUsers.containsKey(user.id)) ||
+          // 达到上限时，仍可一键取消本范围已选人员，筛选外的选择继续保留。
+          (_batchUsers.length >= 500 &&
+              selectable.any((user) => _batchUsers.containsKey(user.id))));
+
   Future<void> _applyBatch(bool templateMode) async {
     if (_batchUsers.isEmpty || _batchBusy) return;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -633,7 +662,7 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ),
         UtenSectionHeader(
           title: '已选 ${_batchUsers.length} 名员工',
-          info: '选择会跨搜索和加载更多保留；“选择已加载”只选择当前已加载的可授权员工。',
+          info: '选择会跨搜索和加载更多保留；“全选 / 取消全选”仅作用于当前已加载的可授权员工。',
         ),
         Wrap(
           spacing: 8,
@@ -710,67 +739,15 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
       showBack: showBack,
       onBack: _onBack,
       onAccountChanged: _onAccountChanged,
-      onProvisionAccount: () =>
-          showProvisionAccountDialog(context, onProvisioned: _reload),
       onPermissionDirtyChanged: widget.onPermissionDirtyChanged,
     );
   }
 
   Widget _listColumn() {
-    // 与人事-员工详情页同权限级：account:support 可补开登录账号。
-    final canSupportAccount = ref
-        .watch(currentPermissionsProvider)
-        .contains(Perm.accountSupport);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         widget.leadingHeader,
-        if (widget.canManageAuthorization)
-          Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            children: [
-              TextButton.icon(
-                key: const ValueKey('permission-employee-multi-select'),
-                onPressed: _batchBusy ? null : _toggleMulti,
-                icon: Icon(
-                  _multiSelection
-                      ? Icons.close_rounded
-                      : Icons.checklist_rounded,
-                  size: 18,
-                ),
-                label: Text(_multiSelection ? '结束多选' : '多选'),
-              ),
-              if (_multiSelection) ...[
-                Text('已选 ${_batchUsers.length} 人'),
-                TextButton(
-                  onPressed: _batchBusy
-                      ? null
-                      : () {
-                          setState(() {
-                            for (final user in _items.where(_canSelectUser)) {
-                              if (_batchUsers.length >= 500) break;
-                              _batchUsers[user.id] = user;
-                            }
-                          });
-                        },
-                  child: const Text('选择已加载'),
-                ),
-                TextButton(
-                  onPressed: _batchBusy
-                      ? null
-                      : () => setState(_batchUsers.clear),
-                  child: const Text('清空'),
-                ),
-                TextButton(
-                  onPressed: _batchUsers.isEmpty
-                      ? null
-                      : () => setState(() => _showDetail = true),
-                  child: const Text('批量设置'),
-                ),
-              ],
-            ],
-          ),
         // 状态筛选（单选：全部/正常/锁定/停用）
         Align(
           alignment: Alignment.centerLeft,
@@ -788,44 +765,71 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
                 _changeStatusFilter(next.isEmpty ? null : next.single),
           ),
         ),
-        const SizedBox(height: UtenSpacing.s4),
-        // 开通账号入口：为还没有登录账号的在册员工补开（同人事-员工详情页端点）。
-        if (canSupportAccount) _provisionEntry(),
+        if (widget.canManageAuthorization)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: _employeeSelectionToolbar(),
+          )
+        else
+          const SizedBox(height: UtenSpacing.s4),
         Expanded(child: _listBody()),
       ],
     );
   }
 
-  /// 「开通账号」入口卡：弹出候选人选择器，成功后刷新账号列表。
-  Widget _provisionEntry() {
-    final theme = Theme.of(context);
-    return UtenCard(
-      margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      padding: EdgeInsets.zero,
-      onTap: () => showProvisionAccountDialog(context, onProvisioned: _reload),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.person_add_alt_1_rounded,
-              size: 20,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            const Expanded(
-              child: UtenSectionHeader(title: '开通账号', info: '支持多选批量开通'),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
+  Widget _employeeSelectionToolbar() {
+    if (!_multiSelection) {
+      return UtenButton(
+        key: const ValueKey('permission-employee-multi-select'),
+        size: UtenButtonSize.small,
+        type: UtenButtonType.tonal,
+        isExpanded: true,
+        icon: Icons.checklist_rounded,
+        onPressed: _batchBusy ? null : _toggleMulti,
+        child: const Text('多选'),
+      );
+    }
+    final selectable = _items.where(_canSelectUser).toList(growable: false);
+    final allSelected = _canDeselectLoadedUsers(selectable);
+    final cancel = UtenButton(
+      key: const ValueKey('permission-employee-multi-select'),
+      size: UtenButtonSize.small,
+      type: UtenButtonType.secondary,
+      onPressed: _batchBusy ? null : _toggleMulti,
+      child: const Text('取消'),
+    );
+    final selectAll = Tooltip(
+      message: '仅选择或取消当前已加载的可授权员工，其他筛选中的已选员工会保留',
+      child: UtenButton(
+        key: const ValueKey('permission-employee-select-all'),
+        size: UtenButtonSize.small,
+        type: UtenButtonType.secondary,
+        onPressed:
+            _batchBusy || _loading || _error != null || selectable.isEmpty
+            ? null
+            : _toggleAllLoadedUsers,
+        child: Text(allSelected ? '取消全选' : '全选'),
       ),
+    );
+    final selected = Tooltip(
+      message: '查看已选员工和批量操作',
+      child: UtenButton(
+        key: const ValueKey('permission-employee-selection-count'),
+        size: UtenButtonSize.small,
+        type: UtenButtonType.tonal,
+        onPressed: _batchBusy || _batchUsers.isEmpty
+            ? null
+            : () => setState(() => _showDetail = true),
+        child: Text('已选 ${_batchUsers.length} 人'),
+      ),
+    );
+    // 按实际文字宽度换行，人数增长和大字号都不会挤压操作；计数始终排在末尾。
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      children: [cancel, selectAll, selected],
     );
   }
 

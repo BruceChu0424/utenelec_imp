@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 应收应付核销引入面板（收款/付款编辑页"从应收应付引入"用）。
@@ -17,6 +18,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_panel_header.dart';
@@ -526,26 +528,15 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
         appBar: UtenAppBar(
           title: '读取范围已变化',
           showPagePermissionAction: false,
-          leading: route?.impliesAppBarDismissal == true
-              ? route!.fullscreenDialog
-                    ? const CloseButton()
-                    : UtenBackButton(
-                        onPressed: () => Navigator.maybePop(context),
-                      )
+          leading:
+              route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+              ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
               : null,
+          actions: [
+            UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
+          ],
         ),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error ?? '请关闭后重新打开'),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
-            ],
-          ),
-        ),
+        body: Center(child: Text(_error ?? '请关闭后重新打开')),
       );
     }
 
@@ -875,14 +866,13 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet>
       label: _isAr ? '销售订单号' : '关联单号',
       headerInfo: _isAr ? '多订单应收：审核后按不可变来源顺序分配并留痕' : null,
       width: 230,
-      // 单行省略号（2026-09-16 全站口径）+ 随文本自动加宽，不再折两行撑高整行。
+      // textOf（复制/编辑态）保留全量；屏幕格走多值截断+弹窗口径（2026-10-29）。
       textOf: (row) => row.item.salesOrderNos.isEmpty
           ? '—'
           : row.item.salesOrderNos.join('、'),
-      cellBuilder: (context, row) => Text(
-        row.item.salesOrderNos.isEmpty ? '—' : row.item.salesOrderNos.join('、'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      cellBuilder: (context, row) => UtenMultiValueCell(
+        values: row.item.salesOrderNos,
+        title: _isAr ? '销售订单号' : '关联单号',
       ),
     ),
     EditableGridColumn<_LedgerRow>(

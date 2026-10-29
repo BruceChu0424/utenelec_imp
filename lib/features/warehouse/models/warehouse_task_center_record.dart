@@ -16,10 +16,12 @@ class WarehouseTaskCenterRecord {
     this.tone = 'neutral',
     this.billNo,
     this.sourceDocNo,
+    this.productionOrderNo,
     this.businessDate,
     this.partyName,
     this.warehouseName,
     this.responsibleName,
+    this.makerName,
     this.lineCount,
     this.action = 'NONE',
     this.targetId,
@@ -37,10 +39,16 @@ class WarehouseTaskCenterRecord {
   final String tone;
   final String? billNo;
   final String? sourceDocNo;
+
+  /// 领料单关联的生产工单号（出库方向；工单 = production_execution_segments.segment_code）。
+  final String? productionOrderNo;
   final String? businessDate;
   final String? partyName;
   final String? warehouseName;
   final String? responsibleName;
+
+  /// 单据制单人姓名（与 [responsibleName] 的负责人口径分列显示）。
+  final String? makerName;
   final int? lineCount;
   final String action;
   final String? targetId;
@@ -72,6 +80,18 @@ class WarehouseTaskCenterRecord {
     _ => const [],
   };
 
+  /// 生产工单逐单 (工单号, 计划ID)（仅出库方向；「生产工单」格弹窗按单跳生产计划详情）。
+  /// 与 [productionOrderNo] 同源聚合；载荷缺失时返回空表，显示列不受影响。
+  List<(String, String?)> get productionOrderEntries {
+    final raw = actionData['productionOrders'];
+    if (raw is! List) return const [];
+    return [
+      for (final entry in raw)
+        if (entry is Map && entry['code']?.toString().isNotEmpty == true)
+          (entry['code'].toString(), entry['planId']?.toString()),
+    ];
+  }
+
   factory WarehouseTaskCenterRecord.fromJson(Map<String, dynamic> json) {
     String requiredText(String key) {
       final value = json[key]?.toString().trim() ?? '';
@@ -90,10 +110,12 @@ class WarehouseTaskCenterRecord {
       tone: optionalText('tone') ?? 'neutral',
       billNo: optionalText('billNo'),
       sourceDocNo: optionalText('sourceDocNo'),
+      productionOrderNo: optionalText('productionOrderNo'),
       businessDate: optionalText('businessDate'),
       partyName: optionalText('partyName'),
       warehouseName: optionalText('warehouseName'),
       responsibleName: optionalText('responsibleName'),
+      makerName: optionalText('makerName'),
       lineCount: (json['lineCount'] as num?)?.toInt(),
       action: optionalText('action') ?? 'NONE',
       targetId: optionalText('targetId'),

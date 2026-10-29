@@ -69,3 +69,11 @@ Future<void> removeClientPackage(String path) async {
     await parent.delete();
   }
 }
+
+Future<void> verifyClientPackage(String path, ClientRelease release) async {
+  requireClientPackageMetadata(release);
+  final file = File(path);
+  requireClientPackageLength(release, await file.length(), complete: true);
+  final digest = await sha256.bind(file.openRead()).first;
+  requireClientPackageDigest(release, digest.toString());
+}

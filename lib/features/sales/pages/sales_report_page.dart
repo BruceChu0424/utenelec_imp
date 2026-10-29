@@ -968,14 +968,10 @@ class _SalesClientDetailDialogState
     final size = MediaQuery.of(context).size;
     if (_readerChanged) {
       return UtenAlertDialog(
+        showCloseButton: true,
+        onClose: () => Navigator.of(context).pop(),
         title: const Text('明细已失效'),
         content: const Text('账号、权限或服务器已变化，请关闭后重新打开明细'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
       );
     }
     final accepted = _acceptedHeaderView;

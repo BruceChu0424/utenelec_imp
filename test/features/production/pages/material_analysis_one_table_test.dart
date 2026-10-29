@@ -6539,6 +6539,245 @@ void main() {
 
   // ===== ADR-120 §8「该分开的分开」：同料来源做法不同自动分成几张工单 =====
 
+  for (final sameRecipe in [false, true]) {
+    testWidgets('冻结生产规则${sameRecipe ? '相同自动合并' : '不同自动分单'}：同车间同负责人保留逐来源数量', (
+      tester,
+    ) async {
+      await _pumpSplit(
+        tester,
+        mutate: (data) {
+          _threeSharedMakeSources(data);
+          data['aggregateRecipeKeysByMaterialLineId'] = {
+            'shared-0': 'recipe-a',
+            'shared-1': sameRecipe ? 'recipe-a' : 'recipe-b',
+            'shared-2': sameRecipe ? 'recipe-a' : 'recipe-b',
+          };
+          return data;
+        },
+      );
+      const draftKey = 'split-make|本色|unit-1';
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final note = find.byKey(
+        const ValueKey('material-aggregate-split-$draftKey'),
+      );
+      if (sameRecipe) {
+        expect(note, findsNothing);
+      } else {
+        expect(tester.widget<Text>(note).data, contains('生产规则'));
+        expect(tester.widget<Text>(note).data, contains('2 张'));
+        expect(_splitDetail(tester, note), contains('生产规则'));
+        expect(
+          _splitDetail(tester, note),
+          isNot(contains('把车间、负责人和比例改成一样')),
+          reason: '生产规则不同不能只改指派参数就强行合并',
+        );
+      }
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        await _check(tester, _productCheckbox('product-$i'));
+      }
+      await _submitSelected(tester);
+      final groups = _records(_aggregateSubmits().single.body!['groups']);
+      expect(groups, hasLength(sameRecipe ? 1 : 2), reason: _notices(tester));
+      expect(groups.map((group) => group['departmentId']).toSet(), {'ws-1'});
+      expect(groups.map((group) => group['workerId']).toSet(), {'w-1'});
+      expect(
+        {
+          for (final group in groups)
+            (group['materialLineIds'] as List).cast<String>().join(','):
+                group['qty'],
+        },
+        sameRecipe
+            ? {'shared-0,shared-1,shared-2': '3000'}
+            : {'shared-0': '1000', 'shared-1,shared-2': '2000'},
+      );
+      expect(
+        {
+          for (final group in groups)
+            ...(group['sourceRequestedQtyByMaterialLineId'] as Map)
+                .cast<String, String>(),
+        },
+        {'shared-0': '1000', 'shared-1': '1000', 'shared-2': '1000'},
+      );
+      if (!sameRecipe) {
+        expect(
+          groups.map((group) => group['clientGroupKey']).toSet(),
+          hasLength(2),
+        );
+        expect(
+          groups.map((group) => group['clientGroupKey']),
+          everyElement(startsWith('$draftKey|part-')),
+        );
+      }
+      expect(find.byType(AlertDialog), findsNothing);
+    });
+  }
+
+  testWidgets('按冻结生产规则自动分单保留手输大数量万分位并使用同一预览提交', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: (data) {
+        _threeSharedMakeSources(data);
+        data['aggregateRecipeKeysByMaterialLineId'] = {
+          'shared-0': 'recipe-a',
+          'shared-1': 'recipe-b',
+          'shared-2': 'recipe-b',
+        };
+        return data;
+      },
+      aggregatePreview: _exactAggregateDagPreview,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-split-make|本色|unit-1')),
+      '999999999999.9999',
+    );
+    await _settlePreview(tester);
+    final bodies = [
+      for (final request in requests)
+        if (request.path.endsWith('/aggregate-orders/preview')) request.body!,
+    ];
+    expect(bodies, isNotEmpty);
+    final previewGroups = _records(bodies.last['groups']);
+    expect(previewGroups, hasLength(2));
+    expect(
+      {
+        for (final group in previewGroups)
+          (group['materialLineIds'] as List).cast<String>().join(','):
+              group['qty'],
+      },
+      {
+        'shared-0': '333333333333.3333',
+        'shared-1,shared-2': '666666666666.6666',
+      },
+    );
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    await _confirmAggregateSubmit(tester);
+    expect(
+      _records(_aggregateSubmits().single.body!['groups']),
+      previewGroups,
+      reason: '自动拆分后继续使用已核对的精确数量与稳定组键',
+    );
+    expect(find.textContaining('撤销汇总草稿'), findsNothing);
+  });
+
+  for (final route in const ['BUY', 'SUBCONTRACT']) {
+    testWidgets('冻结生产规则不同的$route来源自动分单且安全补库只确认一次', (tester) async {
+      const safety = '1.2345';
+      await _pump(
+        tester,
+        permissions: _overSupplyPermissions,
+        overSupply: true,
+        mutate: (data) {
+          _threeSharedBuySources(data);
+          data['aggregateRecipeKeysByMaterialLineId'] = {
+            'shared-0': 'recipe-a',
+            'shared-1': 'recipe-b',
+            'shared-2': 'recipe-b',
+          };
+          for (var i = 0; i < 3; i++) {
+            final row = _fixtureMaterial(data, 'shared-$i');
+            row['sourceConfirmed'] = route;
+            row['sourceSuggestion'] = route;
+            if (route == 'BUY') {
+              // 来源的出现次序不代表 BOM 深度；公共补库只由最浅层那组确认。
+              row['level'] = i == 0 ? 3 : 1;
+              row['mainWarehouseSafetyReplenishmentGapQty'] = 1.2345;
+              row['quantityFactsExact'] = {
+                'additionalSupplyRecommendedQty': '1000',
+                'mainWarehouseSafetyReplenishmentGapQty': safety,
+              };
+            }
+          }
+          return data;
+        },
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final note = find.byKey(
+        const ValueKey('material-aggregate-split-g-m-2|本色|unit-1'),
+      );
+      expect(tester.widget<Text>(note).data, '按生产规则分成 2 张单据');
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        await _check(tester, _rowCheckbox('shared-$i'));
+      }
+      await _settleRebuild(tester);
+      await _submitSelected(tester);
+      final groups = _records(_aggregateSubmits().single.body!['groups']);
+      expect(groups, hasLength(2), reason: _notices(tester));
+      expect(groups.map((group) => group['route']), everyElement(route));
+      expect(groups.any((group) => group.containsKey('departmentId')), isFalse);
+      expect(groups.any((group) => group.containsKey('workerId')), isFalse);
+      expect(
+        {
+          for (final group in groups)
+            (group['materialLineIds'] as List).cast<String>().join(','):
+                group['qty'],
+        },
+        {'shared-0': '1000', 'shared-1,shared-2': '2000'},
+      );
+      expect(
+        groups.map((group) => group['safetyQty']),
+        route == 'BUY' ? unorderedEquals([safety, '0']) : everyElement('0'),
+      );
+      if (route == 'BUY') {
+        expect(
+          groups.singleWhere(
+            (group) => group['safetyQty'] == safety,
+          )['materialLineIds'],
+          ['shared-1', 'shared-2'],
+          reason: '安全补库属于最浅的生产规则分组，不能按首次出现次序分配',
+        );
+      }
+    });
+  }
+
+  testWidgets('冻结生产规则证明缺失的来源独立核对且不混入已知规则分组', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: (data) {
+        _threeSharedMakeSources(data);
+        data['aggregateRecipeKeysByMaterialLineId'] = {
+          'shared-0': 'recipe-a',
+          'shared-1': 'recipe-a',
+        };
+        return data;
+      },
+    );
+    for (var i = 0; i < 3; i++) {
+      await _check(tester, _productCheckbox('product-$i'));
+    }
+    await _submitSelected(tester);
+    final groups = _records(_aggregateSubmits().single.body!['groups']);
+    expect(groups, hasLength(2), reason: _notices(tester));
+    expect(
+      {
+        for (final group in groups)
+          (group['materialLineIds'] as List).cast<String>().join(','):
+              group['qty'],
+      },
+      {'shared-0,shared-1': '2000', 'shared-2': '1000'},
+      reason: '缺少权威规则键的来源只能独立送服务端核对，不能推测它与已知规则相同',
+    );
+  });
+
   testWidgets('来源车间不同：全选下单自动分成两张工单，下层照父先子后并各接自己那张父单', (tester) async {
     final previewLog = <Map<String, dynamic>>[];
     await _pumpSplit(

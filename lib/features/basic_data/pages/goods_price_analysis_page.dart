@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import '../widgets/goods_subcontract_supplier_table.dart';
@@ -1437,11 +1438,10 @@ class _PriceBasisPanelState extends State<_PriceBasisPanel> {
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
-                    IconButton(
+                    UtenCloseButton(
                       key: const ValueKey('price-basis-close'),
                       onPressed: widget.onClose,
                       tooltip: priceText(context, 'close'),
-                      icon: const Icon(Icons.close),
                     ),
                   ],
                 ),

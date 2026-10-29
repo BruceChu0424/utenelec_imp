@@ -20,7 +20,7 @@ class MainFlutterWindow: NSWindow {
   private var leftMouseDown: NSEvent?
   private var windowObservers: [NSObjectProtocol] = []
   private var lastPublishedMaximized: Bool?
-  private static let loginCornerRadius: CGFloat = 16
+  private static let windowCornerRadius: CGFloat = 16
   private struct WindowAppearance {
     let isOpaque: Bool
     let backgroundColor: NSColor?
@@ -233,7 +233,8 @@ class MainFlutterWindow: NSWindow {
 
   private func applyMode(_ mode: DesktopMode) {
     guard appliedMode != mode else { return }
-    if mode == .login && normalWindowAppearance == nil {
+    if normalWindowAppearance == nil {
+      // Keep the original backing across login/main and full-screen cycles.
       normalWindowAppearance = WindowAppearance(isOpaque: isOpaque, backgroundColor: backgroundColor)
     }
     appliedMode = mode
@@ -303,46 +304,47 @@ class MainFlutterWindow: NSWindow {
 
   private func updateWindowShape() {
     guard let mode = appliedMode else { return }
-    if mode == .login {
-      // A Flutter-only rounded rectangle would leave an opaque native window
-      // behind it. Clear the window itself, then clip the root layer so every
-      // Flutter/Metal sublayer is inside the same four 16-point corners.
-      isOpaque = false
-      backgroundColor = .clear
-      if let view = contentView {
-        if roundedContentView !== view {
-          restoreContentLayerAppearance()
-          normalContentLayerAppearance = ContentLayerAppearance(
-            wantsLayer: view.wantsLayer,
-            cornerRadius: view.layer?.cornerRadius ?? 0,
-            masksToBounds: view.layer?.masksToBounds ?? false,
-            maskedCorners: view.layer?.maskedCorners ?? [
-              .layerMinXMinYCorner, .layerMaxXMinYCorner,
-              .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
-            ]
-          )
-          roundedContentView = view
-        }
-        view.wantsLayer = true
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        view.layer?.cornerRadius = Self.loginCornerRadius
-        view.layer?.maskedCorners = [
-          .layerMinXMinYCorner, .layerMaxXMinYCorner,
-          .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
-        ]
-        view.layer?.masksToBounds = true
-        CATransaction.commit()
-      }
-    } else {
-      restoreContentLayerAppearance()
+    let fullScreen = mode == .main && styleMask.contains(.fullScreen)
+    if fullScreen {
       if let appearance = normalWindowAppearance {
         backgroundColor = appearance.backgroundColor
         isOpaque = appearance.isOpaque
-        normalWindowAppearance = nil
       }
-      hideNativeTitlebar()
+    } else {
+      // A Flutter-only rounded rectangle would leave an opaque native window
+      // behind it. Clear the window itself, then clip the root layer so every
+      // Flutter/Metal sublayer shares four 16-point corners in both modes.
+      isOpaque = false
+      backgroundColor = .clear
     }
+    if let view = contentView {
+      if roundedContentView !== view {
+        restoreContentLayerAppearance()
+        normalContentLayerAppearance = ContentLayerAppearance(
+          wantsLayer: view.wantsLayer,
+          cornerRadius: view.layer?.cornerRadius ?? 0,
+          masksToBounds: view.layer?.masksToBounds ?? false,
+          maskedCorners: view.layer?.maskedCorners ?? [
+            .layerMinXMinYCorner, .layerMaxXMinYCorner,
+            .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
+          ]
+        )
+        roundedContentView = view
+      }
+      view.wantsLayer = true
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      // AppKit zoom remains a windowed presentation. Only native full-screen
+      // removes the corners; keep its Flutter surface rectangular as well.
+      view.layer?.cornerRadius = fullScreen ? 0 : Self.windowCornerRadius
+      view.layer?.maskedCorners = [
+        .layerMinXMinYCorner, .layerMaxXMinYCorner,
+        .layerMinXMaxYCorner, .layerMaxXMaxYCorner,
+      ]
+      view.layer?.masksToBounds = true
+      CATransaction.commit()
+    }
+    hideNativeTitlebar()
     // AppKit recomputes the native shadow after size/backing-scale changes.
     invalidateShadow()
   }
@@ -415,7 +417,7 @@ class MainFlutterWindow: NSWindow {
         self.exitingFullScreenForLogin = false
         self.restoreMainFullScreen = false
       }
-      self.hideNativeTitlebar()
+      self.updateWindowShape()
       self.publishWindowState()
     })
     windowObservers.append(center.addObserver(forName: NSWindow.willExitFullScreenNotification, object: self, queue: .main) { [weak self] _ in
@@ -424,7 +426,7 @@ class MainFlutterWindow: NSWindow {
     windowObservers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: self, queue: .main) { [weak self] _ in
       guard let self = self else { return }
       self.fullScreenTransition = false
-      self.hideNativeTitlebar()
+      self.updateWindowShape()
       self.publishWindowState()
       guard self.exitingFullScreenForLogin else { return }
       self.exitingFullScreenForLogin = false

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/layout/uten_section_header.dart';
 // 开工确认表 (ADR-131 §5.4, 合并 ADR-093/096 的生产路线确认)。
 //
@@ -629,11 +630,10 @@ class _StartConfirmationSheetState
           showPagePermissionAction: false,
           title: l10n.wmStartSheetTitle,
           actions: [
-            IconButton(
+            UtenCloseButton(
               key: const Key('start-confirmation-close'),
               tooltip: '关闭',
               onPressed: _busy ? null : _close,
-              icon: const Icon(Icons.close_rounded),
             ),
           ],
         ),

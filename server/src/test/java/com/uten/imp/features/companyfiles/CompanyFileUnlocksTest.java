@@ -37,6 +37,10 @@ class CompanyFileUnlocksTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> CompanyFileService.requireSameFileExtension(".txt", "visible.txt"))
                 .doesNotThrowAnyException();
+        assertThatCode(() -> CompanyFileService.requireSameFileExtension("无扩展名原件", "新名称"))
+                .doesNotThrowAnyException();
+        assertCode(ErrorCode.VALIDATION_FAILED,
+                () -> CompanyFileService.requireSameFileExtension("无扩展名原件", "新名称.exe"));
     }
 
     @Test

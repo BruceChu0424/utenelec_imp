@@ -6,6 +6,7 @@
 // 丢弃原 push 的 completer——车间任务页 `await context.push(...)` 永远不返回，
 // `_navigating` 卡在 true。本测试用与 app_router 同一份 attachPageResume 接线
 // 复现整条链路，锁定：返回后必须重拉列表，且动作按钮必须能再次进入。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -582,7 +583,7 @@ void main() {
             find.text('草稿待审核 ${claim.toStringAsFixed(0)} 件'),
             findsOneWidget,
           );
-          await tester.tap(find.text('关闭'));
+          await tester.tap(find.byType(UtenCloseButton).last);
           await tester.pumpAndSettle();
           // 部分承接变体此刻勾着行：先清掉，让「恢复」阶段从空勾选开始。
           if (claim < 8000) {
@@ -610,7 +611,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        await tester.tap(find.text('关闭'));
+        await tester.tap(find.byType(UtenCloseButton).last);
         await tester.pumpAndSettle();
         expect(
           find.byKey(const ValueKey('workshop-task-draft-segment-a')),

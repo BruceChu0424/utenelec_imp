@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_context_menu_policy.dart';
@@ -41,10 +42,25 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 import '../models/company_file_upload.dart';
+import '../models/company_file_upload_rules.dart';
 import '../repositories/company_file_repository.dart';
 import '../widgets/company_file_dialogs.dart';
 import '../widgets/company_file_item.dart';
 import '../widgets/company_file_detail_row.dart';
+
+/// Local selection only. Copied originals remain lazy until confirmation;
+/// removing their row must not fetch private bytes or create an upload owner.
+class _CompanyFileUploadChoice {
+  const _CompanyFileUploadChoice({
+    required this.name,
+    required this.sizeBytes,
+    required this.read,
+  });
+
+  final String name;
+  final int sizeBytes;
+  final Future<CompanyFileUpload> Function() read;
+}
 
 /// The explorer owns only selection, navigation and upload attempts. Every
 /// capability in a toolbar or context menu comes from the current server DTO.
@@ -750,7 +766,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     final epoch = _epoch;
     final cut = _clipboardCut;
     final clipboardBoundary = _clipboardBoundary!;
-    CompanyFileUpload? prepared;
+    final prepared = <CompanyFileUpload>[];
     await _command((scope, boundary) async {
       if (boundary != clipboardBoundary) return false;
       CompanyFile source;
@@ -834,59 +850,55 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       );
       scope.checkCurrent();
       if (named == null || !mounted) return false;
-      final access = await showDialog<CompanyFileInitialAccessDraft>(
-        context: context,
-        builder: (_) => CompanyFileUploadAccessDialog(
-          repository: repository,
-          scope: scope,
-          boundary: boundary,
-          selectedNames: [named.name],
-        ),
-      );
-      scope.checkCurrent();
-      if (access == null) return false;
-      // No source bytes are cached by Copy. Each paste rechecks the server and
-      // uploads a new physical owner through the normal attachment protocol.
-      final attachments = ref.read(attachmentServiceProvider);
-      final rows = await scope.run(
-        () => attachments.list(ownerType: 'COMPANY_FILE', ownerId: source.id),
-      );
-      final attachment = rows
-          .where((a) => a.id == source.attachmentId && !a.deleted)
-          .firstOrNull;
-      if (attachment == null) {
-        throw ApiException(
-          'NOT_FOUND',
-          l.companyFilesClipboardUnavailable,
-          httpStatus: 404,
-        );
-      }
-      final bytes = await scope.run(
-        () => attachments.downloadBytes(attachment),
-      );
-      scope.checkCurrent();
+      final copySource = source;
       final held = _queue.fold<int>(0, (sum, f) => sum + f.bytes.length);
-      if (bytes.isEmpty ||
-          bytes.length > AttachmentLimits.maxFileBytes ||
-          held + bytes.length > kPendingAttachmentMaxTotalBytes) {
-        throw ApiException(
-          'VALIDATION',
-          l.companyFilesBatchTooLarge,
-          httpStatus: 400,
-        );
-      }
-      prepared = CompanyFileUpload(
-        name: named.name,
-        bytes: bytes,
-        contentType:
-            source.contentType ??
-            guessAttachmentContentType(named.name) ??
-            'application/octet-stream',
-        initialAccess: access,
+      final selected = <_CompanyFileUploadChoice>[
+        _CompanyFileUploadChoice(
+          name: named.name,
+          sizeBytes: copySource.sizeBytes,
+          read: () async {
+            // Copy stores no bytes. Only a retained row is read after explicit
+            // confirmation, with fresh owner/password/download authorization.
+            final attachments = ref.read(attachmentServiceProvider);
+            final rows = await scope.run(
+              () => attachments.list(
+                ownerType: 'COMPANY_FILE',
+                ownerId: copySource.id,
+              ),
+            );
+            final attachment = rows
+                .where((a) => a.id == copySource.attachmentId && !a.deleted)
+                .firstOrNull;
+            if (attachment == null) {
+              throw ApiException(
+                'NOT_FOUND',
+                l.companyFilesClipboardUnavailable,
+                httpStatus: 404,
+              );
+            }
+            final bytes = await scope.run(
+              () => attachments.downloadBytes(attachment),
+            );
+            return CompanyFileUpload(
+              name: named.name,
+              bytes: bytes,
+              contentType: companyFileUploadContentType(named.name),
+            );
+          },
+        ),
+      ];
+      prepared.addAll(
+        await _reviewUploadSelection(
+              selected: selected,
+              scope: scope,
+              boundary: boundary,
+              heldBytes: held,
+            ) ??
+            <CompanyFileUpload>[],
       );
       return false;
     }, feedback: false);
-    if (prepared == null ||
+    if (prepared.isEmpty ||
         !mounted ||
         epoch != _epoch ||
         clipboardBoundary != ref.read(sensitiveReadBoundaryProvider)) {
@@ -894,10 +906,12 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     }
     _queueBoundary = clipboardBoundary;
     setState(() {
-      _queue.add(prepared!);
-      _destinations[prepared!] = target;
+      _queue.addAll(prepared);
+      for (final file in prepared) {
+        _destinations[file] = target;
+      }
     });
-    await _runQueue([prepared!]);
+    await _runQueue(prepared);
   }
 
   void _showDetails(CompanyFile e) {
@@ -938,6 +952,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       final scope = await boundary.api.captureRequestScope(isCurrent: current);
       final picked = await FilePicker.platform.pickFiles(
         allowMultiple: resume == null,
+        allowCompression: false,
         withReadStream: true,
       );
       scope.checkCurrent();
@@ -951,6 +966,167 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     }
   }
 
+  /// One bounded local read path for the initial picker, drop, and add-more.
+  /// It never reserves a server identity or sends an upload.
+  Future<List<_CompanyFileUploadChoice>> _stageUploadFiles(
+    List<PlatformFile> files, {
+    required AuthenticatedRequestScope scope,
+    required int heldBytes,
+    required List<_CompanyFileUploadChoice> selected,
+    CompanyFile? resume,
+  }) async {
+    void report(String message) {
+      if (mounted && scope.isCurrent) context.appError(message);
+    }
+
+    final added = <_CompanyFileUploadChoice>[];
+    final names = selected.map((f) => f.name.trim().toLowerCase()).toSet();
+    var total =
+        heldBytes + selected.fold<int>(0, (sum, f) => sum + f.sizeBytes);
+    for (final file in files) {
+      scope.checkCurrent();
+      final normalized = file.name.trim().toLowerCase();
+      String? problem;
+      if (names.contains(normalized)) {
+        problem = l.companyFilesAlreadySelected;
+      } else if (file.size > AttachmentLimits.maxFileBytes) {
+        problem = l.companyFilesTooLarge;
+      } else if (file.bytes == null && file.readStream == null) {
+        problem = l.companyFilesUnreadable;
+      } else if (resume != null && file.name != resume.name) {
+        problem = l.companyFilesResumeName;
+      } else if (total + file.size > kPendingAttachmentMaxTotalBytes) {
+        problem = l.companyFilesBatchTooLarge;
+      }
+      if (problem != null) {
+        report('${file.name}: $problem');
+        continue;
+      }
+      final remaining = kPendingAttachmentMaxTotalBytes - total;
+      if (remaining <= 0) {
+        report(l.companyFilesBatchTooLarge);
+        continue;
+      }
+      final limit = remaining < AttachmentLimits.maxFileBytes
+          ? remaining
+          : AttachmentLimits.maxFileBytes;
+      Uint8List bytes;
+      try {
+        bytes =
+            file.bytes ??
+            await readBoundedFileBytes(
+              file.readStream!,
+              maxBytes: limit,
+              canContinue: () => scope.isCurrent,
+            );
+      } on UtenFileReadLimit {
+        scope.checkCurrent();
+        report(
+          '${file.name}: ${remaining < AttachmentLimits.maxFileBytes ? l.companyFilesBatchTooLarge : l.companyFilesTooLarge}',
+        );
+        continue;
+      } on UtenFileReadCancelled {
+        scope.checkCurrent();
+        rethrow;
+      } catch (_) {
+        scope.checkCurrent();
+        report('${file.name}: ${l.companyFilesUnreadable}');
+        continue;
+      }
+      scope.checkCurrent();
+      if (bytes.isEmpty || bytes.length > AttachmentLimits.maxFileBytes) {
+        report(
+          '${file.name}: ${bytes.isEmpty ? l.companyFilesUnreadable : l.companyFilesTooLarge}',
+        );
+        continue;
+      }
+      if (total + bytes.length > kPendingAttachmentMaxTotalBytes) {
+        report(l.companyFilesBatchTooLarge);
+        continue;
+      }
+      final upload = CompanyFileUpload(
+        name: file.name,
+        bytes: bytes,
+        contentType: companyFileUploadContentType(file.name),
+        entry: resume,
+      );
+      added.add(
+        _CompanyFileUploadChoice(
+          name: upload.name,
+          sizeBytes: bytes.length,
+          read: () async => upload,
+        ),
+      );
+      total += bytes.length;
+      names.add(normalized);
+    }
+    return added;
+  }
+
+  /// Keep selection edits and access settings in one modal. A copied original
+  /// is read only if its row survives explicit confirmation.
+  Future<List<CompanyFileUpload>?> _reviewUploadSelection({
+    required List<_CompanyFileUploadChoice> selected,
+    required AuthenticatedRequestScope scope,
+    required SensitiveReadBoundary boundary,
+    required int heldBytes,
+  }) async {
+    final access = await showDialog<CompanyFileInitialAccessDraft>(
+      context: context,
+      builder: (_) => CompanyFileUploadAccessDialog(
+        repository: repository,
+        scope: scope,
+        boundary: boundary,
+        selectedNames: selected.map((f) => f.name).toList(growable: false),
+        onRemoveFile: (index) {
+          scope.checkCurrent();
+          selected.removeAt(index);
+        },
+        onAddFiles: () async {
+          scope.checkCurrent();
+          final picked = await FilePicker.platform.pickFiles(
+            allowMultiple: true,
+            allowCompression: false,
+            withReadStream: true,
+          );
+          scope.checkCurrent();
+          if (picked == null || picked.files.isEmpty) return <String>[];
+          final added = await _stageUploadFiles(
+            picked.files,
+            scope: scope,
+            heldBytes: heldBytes,
+            selected: selected,
+          );
+          scope.checkCurrent();
+          selected.addAll(added);
+          return added.map((f) => f.name).toList(growable: false);
+        },
+      ),
+    );
+    scope.checkCurrent();
+    if (access == null || selected.isEmpty) return null;
+    final attempts = <CompanyFileUpload>[];
+    var total = heldBytes;
+    for (final choice in selected) {
+      final upload = await scope.run(choice.read);
+      total += upload.bytes.length;
+      if (upload.bytes.isEmpty ||
+          upload.bytes.length > AttachmentLimits.maxFileBytes ||
+          total > kPendingAttachmentMaxTotalBytes) {
+        throw ApiException(
+          'VALIDATION',
+          l.companyFilesBatchTooLarge,
+          httpStatus: 400,
+        );
+      }
+      attempts.add(upload);
+    }
+    for (final upload in attempts) {
+      upload.initialAccess = access;
+    }
+    return attempts;
+  }
+
   Future<void> _uploadFiles(
     List<PlatformFile> files, {
     CompanyFile? resume,
@@ -958,119 +1134,46 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     if (_blocked || _trash || _listing?.allows('upload') != true) return;
     final target = resume == null ? _parentId : resume.parentId;
     final held = _queue.fold<int>(0, (sum, f) => sum + f.bytes.length);
-    if (files.fold<int>(held, (sum, f) => sum + f.size) >
-        kPendingAttachmentMaxTotalBytes) {
-      context.appError(l.companyFilesBatchTooLarge);
-      return;
-    }
     final epoch = _epoch, boundary = ref.read(sensitiveReadBoundaryProvider);
     bool current() =>
         mounted &&
         epoch == _epoch &&
         boundary == ref.read(sensitiveReadBoundaryProvider);
-    final pending = <CompanyFileUpload>[];
     setState(() => _busy = true);
     try {
       final scope = await boundary.api.captureRequestScope(isCurrent: current);
-      for (final file in files) {
-        scope.checkCurrent();
-        if (!mounted) return;
-        final type = guessAttachmentContentType(file.name);
-        String? problem;
-        if (type == null) {
-          problem = l.companyFilesUnsupported;
-        } else if (file.size > AttachmentLimits.maxFileBytes) {
-          problem = l.companyFilesTooLarge;
-        } else if (file.bytes == null && file.readStream == null) {
-          problem = l.companyFilesUnreadable;
-        }
-        if (problem != null) {
-          context.appError('${file.name}: $problem');
-          continue;
-        }
-        if (resume != null && file.name != resume.name) {
-          context.appError('${resume.name}: ${l.companyFilesResumeName}');
-          continue;
-        }
-        Uint8List bytes;
-        try {
-          final remaining =
-              kPendingAttachmentMaxTotalBytes -
-              held -
-              pending.fold<int>(0, (sum, f) => sum + f.bytes.length);
-          final limit = remaining < AttachmentLimits.maxFileBytes
-              ? remaining
-              : AttachmentLimits.maxFileBytes;
-          bytes =
-              file.bytes ??
-              await readBoundedFileBytes(
-                file.readStream!,
-                maxBytes: limit,
-                canContinue: () => scope.isCurrent,
-              );
-        } on UtenFileReadLimit {
-          if (!mounted || !current()) return;
-          context.appError('${file.name}: ${l.companyFilesTooLarge}');
-          continue;
-        } on UtenFileReadCancelled {
-          scope.checkCurrent();
-          rethrow;
-        } catch (_) {
-          if (!mounted || !current()) return;
-          context.appError('${file.name}: ${l.companyFilesUnreadable}');
-          continue;
-        }
-        scope.checkCurrent();
-        if (bytes.isEmpty || bytes.length > AttachmentLimits.maxFileBytes) {
-          if (!mounted) return;
-          context.appError(
-            '${file.name}: ${bytes.isEmpty ? l.companyFilesUnreadable : l.companyFilesTooLarge}',
-          );
-          continue;
-        }
-        if (held +
-                pending.fold<int>(0, (sum, f) => sum + f.bytes.length) +
-                bytes.length >
-            kPendingAttachmentMaxTotalBytes) {
-          if (!mounted) return;
-          context.appError(l.companyFilesBatchTooLarge);
-          break;
-        }
-        pending.add(
-          CompanyFileUpload(
-            name: file.name,
-            bytes: bytes,
-            contentType: type!,
-            entry: resume,
-          ),
-        );
-      }
-      if (pending.isEmpty || !current() || !mounted) return;
+      final selected = await _stageUploadFiles(
+        files,
+        scope: scope,
+        heldBytes: held,
+        selected: <_CompanyFileUploadChoice>[],
+        resume: resume,
+      );
+      scope.checkCurrent();
+      if (selected.isEmpty) return;
+      final List<CompanyFileUpload>? pending;
       if (resume == null) {
-        final access = await showDialog<CompanyFileInitialAccessDraft>(
-          context: context,
-          builder: (_) => CompanyFileUploadAccessDialog(
-            repository: repository,
-            scope: scope,
-            boundary: boundary,
-            selectedNames: pending.map((f) => f.name).toList(growable: false),
-          ),
+        pending = await _reviewUploadSelection(
+          selected: selected,
+          scope: scope,
+          boundary: boundary,
+          heldBytes: held,
         );
-        scope.checkCurrent();
-        if (access == null || !current()) return;
-        for (final file in pending) {
-          file.initialAccess = access;
-        }
+      } else {
+        pending = [for (final choice in selected) await scope.run(choice.read)];
       }
+      scope.checkCurrent();
+      if (pending == null || pending.isEmpty) return;
+      final attempts = pending;
       _queueBoundary = boundary;
       setState(() {
         _busy = false;
-        _queue.addAll(pending);
-        for (final p in pending) {
+        _queue.addAll(attempts);
+        for (final p in attempts) {
           _destinations[p] = target;
         }
       });
-      await _runQueue(pending);
+      await _runQueue(attempts);
     } catch (e) {
       if (mounted && current()) context.appError(companyFileError(e, l));
     } finally {
@@ -1441,6 +1544,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           !_trash,
           () => _navigate(null),
           collapsed: collapsed,
+          iconColor: UtenFileColors.folderOf(context),
         ),
         const SizedBox(height: UtenSpacing.s8),
         _navItem(
@@ -1503,6 +1607,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     bool selected,
     VoidCallback onTap, {
     bool collapsed = false,
+    Color? iconColor,
   }) => Tooltip(
     message: collapsed ? label : '',
     child: Material(
@@ -1527,7 +1632,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
           ),
           child: Row(
             children: [
-              Icon(icon, size: 22),
+              Icon(icon, size: 22, color: iconColor),
               if (!collapsed) ...[
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(child: Text(label)),
@@ -1704,6 +1809,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
             ? (_trash ? Icons.delete_outline : Icons.folder_open_outlined)
             : Icons.chevron_right,
         size: 18,
+        color: id == null && !_trash ? UtenFileColors.folderOf(context) : null,
       ),
       label: Text(name),
     ),
@@ -1746,6 +1852,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     if (listing.entries.isEmpty) {
       return UtenEmpty(
         icon: _trash ? Icons.delete_outline : Icons.folder_open_outlined,
+        iconColor: _trash ? null : UtenFileColors.folderOf(context),
         message: _search.isNotEmpty || _columnFilters.isNotEmpty
             ? l.companyFilesNoResults
             : _trash
@@ -2071,11 +2178,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                IconButton(
-                  tooltip: l.companyFilesClose,
-                  onPressed: close,
-                  icon: const Icon(Icons.close),
-                ),
+                UtenCloseButton(tooltip: l.companyFilesClose, onPressed: close),
               ],
             ),
             const SizedBox(height: UtenSpacing.s20),
@@ -2164,13 +2267,13 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                   horizontal: UtenSpacing.s16,
                   vertical: UtenSpacing.s8,
                 ),
-                child: Wrap(
-                  spacing: UtenSpacing.s12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                child: Row(
                   children: [
-                    Text(
-                      '${l.companyFilesQueue}  $done / ${_queue.length}',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    Expanded(
+                      child: Text(
+                        '${l.companyFilesQueue}  $done / ${_queue.length}',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                     ),
                     if (_queueRunning)
                       TextButton(
@@ -2180,12 +2283,12 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
                         child: Text(l.companyFilesStopQueue),
                       )
                     else
-                      TextButton(
+                      UtenCloseButton(
                         onPressed: () => setState(() {
                           _queue.clear();
                           _destinations.clear();
                         }),
-                        child: Text(l.companyFilesClose),
+                        tooltip: l.companyFilesClose,
                       ),
                   ],
                 ),

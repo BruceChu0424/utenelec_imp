@@ -7,7 +7,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../core/network/session_event_bus.dart';
@@ -67,6 +66,8 @@ class _SessionKickNoticeHostState extends State<SessionKickNoticeHost> {
       builder: (dialogContext) => SelectionArea(
         child: UtenAlertDialog(
           maxWidth: 400,
+          showCloseButton: true,
+          onClose: () => Navigator.pop(dialogContext),
           title: const UtenDialogHeading(
             title: Text('当前设备已下线'),
             // 主色而非错误红：这是单设备登录保护在生效，不是故障告警。
@@ -86,14 +87,6 @@ class _SessionKickNoticeHostState extends State<SessionKickNoticeHost> {
               ),
             ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              size: UtenButtonSize.large,
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('知道了'),
-            ),
-          ],
         ),
       ),
     );

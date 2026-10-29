@@ -15,6 +15,27 @@ FormDraft _draft(String route, [Map<String, dynamic> data = const {}]) =>
 
 void main() {
   test(
+    'material selection preserves unsent ranges and prioritizes unknown commands',
+    () {
+      const route = '/production/workshop-tasks/draw-request?segmentIds=a';
+      final scoped = _draft('$route&drawItemIds=line-b,line-a');
+      expect(
+        workshopDrawDraftMatchesSelection(scoped, {'line-a', 'line-b'}),
+        isTrue,
+      );
+      expect(workshopDrawDraftMatchesSelection(scoped, {'line-a'}), isFalse);
+      expect(workshopDrawDraftMatchesSelection(scoped, {'line-c'}), isFalse);
+      expect(
+        workshopDrawDraftMatchesSelection(_draft(route), {'line-a'}),
+        isFalse,
+      );
+      expect(workshopDrawDraftMatchesSelection(scoped, null), isTrue);
+      final unknown = _draft(route, {formDraftUnknownSubmissionKey: true});
+      expect(workshopDrawDraftMatchesSelection(unknown, {'line-c'}), isTrue);
+    },
+  );
+
+  test(
     'batch report resumes on each source task without matching destinations',
     () {
       final draft = _draft(

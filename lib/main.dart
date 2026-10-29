@@ -13,6 +13,8 @@ import 'app.dart';
 import 'core/network/company_tls.dart';
 import 'core/responsive/display_zoom_pointer_binding.dart';
 import 'core/web/browser_drop_guard.dart';
+import 'core/web_update/web_update_bridge.dart';
+import 'core/web_update/web_update_safety.dart';
 import 'shared/providers/shared_providers.dart';
 
 /// 主 UI 字体预热：pubspec 声明的字体默认按需懒加载（尤其 Web，首次用到某字形才拉取），
@@ -45,6 +47,7 @@ Future<void> bootstrapUtenApp({
     unawaited(BrowserContextMenu.disableContextMenu());
     // 拖文件到页面非接收区时，浏览器默认会打开该文件把整个应用顶掉，一并屏蔽。
     installBrowserDropGuard();
+    installWebUpdateSafetyBridge();
   }
 
   // 初始化 SharedPreferences（用于偏好持久化）
@@ -60,4 +63,7 @@ Future<void> bootstrapUtenApp({
       child: const UtenApp(),
     ),
   );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    webUpdateSafety.setReady(true);
+  });
 }

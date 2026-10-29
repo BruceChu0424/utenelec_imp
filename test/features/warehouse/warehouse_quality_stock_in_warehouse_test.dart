@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -335,7 +336,7 @@ void main() {
         find.byKey(const Key('warehouse-quality-batch-confirm')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('知道了'));
+      await tester.tap(find.byType(UtenCloseButton).last);
       await tester.pumpAndSettle();
 
       expect(gateway.detailCalls, 2);

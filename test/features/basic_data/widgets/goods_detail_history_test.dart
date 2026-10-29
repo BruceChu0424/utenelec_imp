@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -260,7 +261,7 @@ void main() {
     expect(history.undos, 0);
     await _apply(tester);
     expect(history.undos, 1);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(find.text('原名称'), findsWidgets);
 
@@ -268,7 +269,7 @@ void main() {
     await tester.pumpAndSettle();
     await _apply(tester);
     expect(history.redos, 1);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(find.text('已改名称'), findsWidgets);
     expect(tester.takeException(), isNull);
@@ -316,7 +317,7 @@ void main() {
     await tester.tap(find.byKey(const Key('goods-detail-history-undo')));
     await tester.pumpAndSettle();
     await _apply(tester);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(find.text('货品不存在'), findsOneWidget);
     expect(find.byKey(const Key('goods-bom-add-component')), findsNothing);
@@ -324,7 +325,7 @@ void main() {
     await tester.tap(find.byKey(const Key('goods-detail-history-redo')));
     await tester.pumpAndSettle();
     await _apply(tester);
-    await tester.tap(find.text('关闭'));
+    await tester.tap(find.byType(UtenCloseButton).last);
     await tester.pumpAndSettle();
     expect(bom.reads, greaterThan(readsBefore));
     expect(goods.reads, greaterThanOrEqualTo(2));

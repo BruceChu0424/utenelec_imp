@@ -240,7 +240,8 @@ void main() {
       '客户 / 供应商 / 委外商',
       '仓库',
       '业务日期',
-      '负责人 / 制单人',
+      '负责人',
+      '制单人',
     ]);
     final actionLabels = [
       for (final item in table.items)

@@ -23,7 +23,15 @@ public final class ProductionDrawRequest {
     public record Line(UUID segmentId, UUID drawId, String drawNo, UUID drawItemId,
                        UUID warehouseId, String warehouseName, UUID goodsId, String goodsCode,
                        String goodsName, UUID colorId, String colorName, UUID unitId,
-                       String unitName, BigDecimal qty) {}
+                       String unitName, BigDecimal qty, UUID demandId) {
+        public Line(UUID segmentId, UUID drawId, String drawNo, UUID drawItemId,
+                    UUID warehouseId, String warehouseName, UUID goodsId, String goodsCode,
+                    String goodsName, UUID colorId, String colorName, UUID unitId,
+                    String unitName, BigDecimal qty) {
+            this(segmentId, drawId, drawNo, drawItemId, warehouseId, warehouseName,
+                    goodsId, goodsCode, goodsName, colorId, colorName, unitId, unitName, qty, null);
+        }
+    }
     public record Summary(UUID warehouseId, String warehouseName, UUID goodsId, String goodsCode,
                           String goodsName, UUID colorId, String colorName, UUID unitId,
                           String unitName, BigDecimal qty) {}

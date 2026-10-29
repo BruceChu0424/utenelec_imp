@@ -1,11 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/platform/desktop_window.dart';
-import '../../core/theme/uten_colors.dart';
+import '../../components/buttons/uten_close_button.dart';
 
 /// Keep native controls outside display zoom and keep the routed subtree in
 /// the same slot while changing modes, preserving focus and form controllers.
@@ -54,30 +53,108 @@ class _DesktopWindowHostState extends ConsumerState<DesktopWindowHost> {
     final login = widget.mode == DesktopWindowMode.login;
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
-      // MaterialApp.builder places this host above the route Navigator. Its
-      // native control tooltips therefore need their own window-sized overlay.
+      // Header surfaces extend above the route Navigator into this window-sized
+      // overlay. Native controls expose stable semantics without tooltips.
       child: Overlay.wrap(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              top: login && widget.overlayControls
-                  ? 0
-                  : DesktopWindowHost.controlsHeight,
-              child: widget.child,
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: DesktopWindowHost.controlsHeight,
-              child: _DesktopWindowControls(
-                controller: _controller,
-                canMaximize: !login,
+        child: _DesktopWindowHeaderScope(
+          enabled: !login,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                top: login && widget.overlayControls
+                    ? 0
+                    : DesktopWindowHost.controlsHeight,
+                child: widget.child,
               ),
-            ),
-          ],
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: DesktopWindowHost.controlsHeight,
+                child: _DesktopWindowControls(
+                  controller: _controller,
+                  canMaximize: !login,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+class _DesktopWindowHeaderScope extends InheritedWidget {
+  const _DesktopWindowHeaderScope({
+    required this.enabled,
+    required super.child,
+  });
+
+  final bool enabled;
+
+  @override
+  bool updateShouldNotify(_DesktopWindowHeaderScope oldWidget) =>
+      enabled != oldWidget.enabled;
+}
+
+/// Extends a navigation surface into the native control strip without moving
+/// its content or covering controls. The host belongs above the root Navigator.
+/// Actual layout geometry keeps the surface aligned through rail animation,
+/// window resizing and personal display zoom; no second width rule is needed.
+class DesktopWindowHeaderSurface extends StatefulWidget {
+  const DesktopWindowHeaderSurface({
+    super.key,
+    required this.decoration,
+    required this.child,
+  });
+
+  final BoxDecoration decoration;
+  final Widget child;
+
+  @override
+  State<DesktopWindowHeaderSurface> createState() =>
+      _DesktopWindowHeaderSurfaceState();
+}
+
+class _DesktopWindowHeaderSurfaceState
+    extends State<DesktopWindowHeaderSurface> {
+  final _portal = OverlayPortalController()..show();
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = DecoratedBox(
+      decoration: widget.decoration,
+      child: widget.child,
+    );
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<_DesktopWindowHeaderScope>();
+    if (scope == null) return surface;
+    // Navigator disables tickers for maintained routes behind an opaque page.
+    // Their rail stays mounted, but must not leave a surface in the root overlay.
+    final visible = scope.enabled && TickerMode.valuesOf(context).enabled;
+    return OverlayPortal.overlayChildLayoutBuilder(
+      controller: _portal,
+      overlayLocation: OverlayChildLocation.rootOverlay,
+      overlayChildBuilder: (context, info) {
+        if (!visible) return const SizedBox.shrink();
+        final bounds = MatrixUtils.transformRect(
+          info.childPaintTransform,
+          Offset.zero & info.childSize,
+        );
+        return Positioned(
+          key: const Key('desktop-window-header-surface'),
+          top: 0,
+          left: bounds.left,
+          width: bounds.width,
+          height: DesktopWindowHost.controlsHeight,
+          child: IgnorePointer(
+            child: ExcludeSemantics(
+              child: DecoratedBox(decoration: widget.decoration),
+            ),
+          ),
+        );
+      },
+      child: surface,
     );
   }
 }
@@ -93,41 +170,19 @@ class _DesktopWindowControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMac = defaultTargetPlatform == TargetPlatform.macOS;
-    final language = Localizations.localeOf(context).languageCode;
-    final minimizeLabel = switch (language) {
-      'zh' => '最小化',
-      'ko' => '최소화',
-      _ => 'Minimize',
-    };
-    final close = _WindowButton(
-      key: const Key('desktop-window-close'),
-      tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-      icon: Icons.close_rounded,
-      backgroundColor: UtenColors.error,
-      onPressed: controller.close,
-    );
-    final minimize = _WindowButton(
-      key: const Key('desktop-window-minimize'),
-      tooltip: minimizeLabel,
-      icon: Icons.remove_rounded,
-      backgroundColor: UtenColors.warning,
-      onPressed: controller.minimize,
-    );
-    final maximize = ValueListenableBuilder<bool>(
+    final controls = ValueListenableBuilder<bool>(
       valueListenable: controller.maximized,
-      builder: (context, maximized, _) => _WindowButton(
-        key: const Key('desktop-window-maximize'),
-        tooltip: switch (language) {
-          'zh' => maximized ? '还原' : '最大化',
-          'ko' => maximized ? '복원' : '최대화',
-          _ => maximized ? 'Restore' : 'Maximize',
-        },
-        icon: maximized
-            ? Icons.filter_none_rounded
-            : Icons.open_in_full_rounded,
-        backgroundColor: UtenColors.success,
-        onPressed: controller.toggleMaximize,
+      builder: (context, maximized, _) => UtenWindowControls(
+        closeButtonKey: const Key('desktop-window-close'),
+        minimizeButtonKey: const Key('desktop-window-minimize'),
+        expandButtonKey: const Key('desktop-window-maximize'),
+        native: true,
+        expanded: maximized,
+        showMinimize: true,
+        showExpand: canMaximize,
+        onClose: () => unawaited(controller.close()),
+        onMinimize: () => unawaited(controller.minimize()),
+        onExpand: () => unawaited(controller.toggleMaximize()),
       ),
     );
     final dragArea = Expanded(
@@ -147,55 +202,9 @@ class _DesktopWindowControls extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(
           textDirection: TextDirection.ltr,
-          children: isMac
-              ? [close, minimize, if (canMaximize) maximize, dragArea]
-              : [dragArea, minimize, if (canMaximize) maximize, close],
+          children: [dragArea, controls],
         ),
       ),
     );
   }
-}
-
-class _WindowButton extends StatelessWidget {
-  const _WindowButton({
-    super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.backgroundColor,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final Color backgroundColor;
-  final Future<void> Function() onPressed;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 30,
-    height: 36,
-    child: IconButton(
-      tooltip: tooltip,
-      // Keep separate hit areas with an 8dp visual gap between the circles.
-      icon: Container(
-        width: 22,
-        height: 22,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 14, color: Colors.white),
-      ),
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.expand(),
-      style: IconButton.styleFrom(
-        shape: const CircleBorder(),
-        foregroundColor: Colors.white,
-        overlayColor: Theme.of(
-          context,
-        ).colorScheme.onSurface.withValues(alpha: 0.12),
-      ),
-      onPressed: () => unawaited(onPressed()),
-    ),
-  );
 }

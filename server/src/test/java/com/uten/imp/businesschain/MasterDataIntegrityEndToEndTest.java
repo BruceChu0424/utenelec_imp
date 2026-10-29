@@ -10,6 +10,7 @@ import com.uten.imp.features.master.goods.pricing.MaterialForecastContracts.Bind
 import com.uten.imp.features.master.goods.dto.BomItemSaveRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteRequest;
 import com.uten.imp.features.master.goods.dto.BomPasteResult;
+import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 import com.uten.imp.features.master.lifecycle.MasterEntityKind;
 import com.uten.imp.features.master.lifecycle.MasterLifecycleService;
 import com.uten.imp.features.master.lifecycle.dto.MasterBatchRequests;
@@ -431,6 +432,76 @@ class MasterDataIntegrityEndToEndTest {
                 "SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, category));
     }
 
+    @Test
+    void deletingTheCopiedGoodsCategoryPreservesTheOriginalGoodsAndItsEntireBom() {
+        var w = world("copy-category");
+        UUID originalCategory = deletionCategory("复制来源分类");
+        UUID copiedCategory = deletionCategory("独立副本分类");
+        db.update("UPDATE goods SET category_id = ? WHERE id = ?", originalCategory, w.goodsA());
+        String originalBefore = goodsAndBomSnapshot(w.goodsA());
+        List<UUID> sourceEdges = activeBomItemIds(w.goodsA());
+        assertEquals(2, sourceEdges.size());
+
+        // Use the same services as copy/paste: create a new goods identity, then copy edge content.
+        var request = new GoodsSaveRequest();
+        request.setCategoryId(copiedCategory);
+        request.setName(name(w.goodsA()) + "-独立副本");
+        request.setUnitId(w.unitId());
+        UUID copied = goodsService.create(request).getId();
+        assertThat(copied).isNotEqualTo(w.goodsA());
+        List<BomItemSaveRequest> lines = db.query(
+                "SELECT id, component_goods_id, qty FROM goods_bom_items WHERE goods_id = ? AND NOT is_deleted ORDER BY id",
+                (row, index) -> {
+                    BomItemSaveRequest line = line(row.getObject("component_goods_id", UUID.class), row.getBigDecimal("qty").toPlainString());
+                    line.setCopiedFromBomItemId(row.getObject("id", UUID.class));
+                    return line;
+                }, w.goodsA());
+        paste.paste(new BomPasteRequest(BomPasteRequest.Mode.APPEND,
+                List.of(new BomPasteRequest.Target(copied, List.of())), lines));
+        List<UUID> copiedEdges = activeBomItemIds(copied);
+        assertEquals(sourceEdges.size(), copiedEdges.size());
+        assertThat(copiedEdges).doesNotContainAnyElementsOf(sourceEdges);
+        assertThat(activeBomComponents(copied)).containsExactlyInAnyOrderElementsOf(activeBomComponents(w.goodsA()));
+        assertEquals(originalBefore, goodsAndBomSnapshot(w.goodsA()), "复制只读取来源，保留来源全部主档与BOM字段");
+        assertEquals(1, categories.deletePreview(copiedCategory).getGoodsCount());
+
+        categories.delete(copiedCategory);
+
+        assertTrue(deleted(copied));
+        assertEquals(0, activeBomRows(copied));
+        assertEquals(sourceEdges.size(), db.queryForObject(
+                "SELECT count(*) FROM goods_bom_items WHERE goods_id = ? AND is_deleted", Integer.class, copied));
+        assertEquals(originalBefore, goodsAndBomSnapshot(w.goodsA()), "删副本分类不得改来源UUID、来源组装行或其内容");
+        assertFalse(deleted(w.goodsB()) || deleted(w.goodsE()), "共享的真实组件不是副本分类的删除范围");
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, copiedCategory));
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, originalCategory));
+    }
+
+    @Test
+    void deletingANewCategoryCorrectlyDeletesTheOriginalGoodsMovedIntoItAndOnlyItsOwnBom() {
+        var w = world("move-category");
+        UUID oldCategory = deletionCategory("移动前分类");
+        UUID newCategory = deletionCategory("移动后分类");
+        db.update("UPDATE goods SET category_id = ? WHERE id = ?", oldCategory, w.goodsA());
+        List<UUID> originalEdges = activeBomItemIds(w.goodsA());
+        String componentBefore = goodsAndBomSnapshot(w.goodsB());
+        db.update("UPDATE goods SET category_id = ? WHERE id = ?", newCategory, w.goodsA());
+        assertEquals(newCategory, db.queryForObject("SELECT category_id FROM goods WHERE id = ?", UUID.class, w.goodsA()));
+        assertThat(activeBomItemIds(w.goodsA())).containsExactlyInAnyOrderElementsOf(originalEdges);
+        assertEquals(1, categories.deletePreview(newCategory).getGoodsCount());
+
+        categories.delete(newCategory);
+
+        assertTrue(deleted(w.goodsA()), "真正移动保持原UUID，删除现分类连带删除该货品是正确语义");
+        assertEquals(0, activeBomRows(w.goodsA()));
+        assertThat(db.queryForList("SELECT id FROM goods_bom_items WHERE goods_id = ? AND is_deleted",
+                UUID.class, w.goodsA())).containsExactlyInAnyOrderElementsOf(originalEdges);
+        assertEquals(componentBefore, goodsAndBomSnapshot(w.goodsB()), "子组件自身的资料与下一层BOM不随父件分类删除");
+        assertFalse(deleted(w.goodsB()) || deleted(w.goodsE()));
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, newCategory));
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM material_categories WHERE id = ?", Boolean.class, oldCategory));
+    }
+
     // ---- 8) 评审点名的在办业务(第二轮)：草稿退货、未收完的应收、草稿采购退货 --------------------
 
     /**
@@ -727,6 +798,20 @@ class MasterDataIntegrityEndToEndTest {
 
     private boolean deleted(UUID goods) {
         return Boolean.TRUE.equals(db.queryForObject("SELECT is_deleted FROM goods WHERE id = ?", Boolean.class, goods));
+    }
+
+    private UUID deletionCategory(String label) {
+        UUID id = UUID.randomUUID();
+        db.update("INSERT INTO material_categories(id, code, name) VALUES (?, ?, ?)",
+                id, "CD-" + id, label + "-" + id);
+        return id;
+    }
+
+    private String goodsAndBomSnapshot(UUID goods) {
+        return db.queryForObject("""
+                SELECT jsonb_build_object('goods',(SELECT to_jsonb(g) FROM goods g WHERE g.id = ?),
+                    'bom',(SELECT jsonb_agg(to_jsonb(b) ORDER BY b.id) FROM goods_bom_items b WHERE b.goods_id = ?))::text
+                """, String.class, goods, goods);
     }
 
     private long activeBomRows(UUID parent) {

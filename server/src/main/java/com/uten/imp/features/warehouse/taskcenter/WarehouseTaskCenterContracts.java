@@ -28,9 +28,10 @@ public final class WarehouseTaskCenterContracts {
     public record Row(
             String rowKey, UUID id, String sourceType, String recordType,
             String billNo, String sourceDocNo, LocalDate businessDate,
-            String partyName, String warehouseName, String responsibleName, Integer lineCount,
+            String partyName, String warehouseName, String responsibleName, String makerName, Integer lineCount,
             String status, String statusLabel, String tone,
-            String action, UUID targetId, boolean canHandle, Map<String, Object> actionData, Line line) {
+            String action, UUID targetId, boolean canHandle, Map<String, Object> actionData, Line line,
+            String productionOrderNo) {
         public Row {
             actionData = actionData == null ? Map.of() : Map.copyOf(actionData);
         }
@@ -41,20 +42,26 @@ public final class WarehouseTaskCenterContracts {
                    String status, String statusLabel, String tone,
                    String action, UUID targetId, boolean canHandle, Map<String, Object> actionData) {
             this(rowKey, id, sourceType, recordType, billNo, sourceDocNo, businessDate,
-                    partyName, warehouseName, responsibleName, lineCount, status, statusLabel, tone,
-                    action, targetId, canHandle, actionData, null);
+                    partyName, warehouseName, responsibleName, null, lineCount, status, statusLabel, tone,
+                    action, targetId, canHandle, actionData, null, null);
         }
 
         public Row withLine(Line item) {
             return new Row(sourceType + ":" + recordType + ":" + id + ":" + item.key(), id,
                     sourceType, recordType, billNo, sourceDocNo, businessDate, partyName, warehouseName,
-                    responsibleName, lineCount, status, statusLabel, tone, action, targetId, canHandle,
-                    actionData, item);
+                    responsibleName, makerName, lineCount, status, statusLabel, tone, action, targetId, canHandle,
+                    actionData, item, productionOrderNo);
+        }
+
+        public Row withProductionOrderNo(String orderNo) {
+            return new Row(rowKey,id,sourceType,recordType,billNo,sourceDocNo,businessDate,partyName,warehouseName,
+                    responsibleName,makerName,lineCount,status,statusLabel,tone,action,targetId,canHandle,actionData,line,orderNo);
         }
 
         public Row withWarehouseName(String name) {
             return new Row(rowKey,id,sourceType,recordType,billNo,sourceDocNo,businessDate,partyName,name,
-                    responsibleName,lineCount,status,statusLabel,tone,action,targetId,canHandle,actionData,line);
+                    responsibleName,makerName,lineCount,status,statusLabel,tone,action,targetId,canHandle,actionData,line,
+                    productionOrderNo);
         }
     }
 

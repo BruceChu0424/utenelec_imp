@@ -7,6 +7,7 @@
 //   已存密钥只会发往原来的地址。
 // - 境外服务商: 服务器没开放时不能选; 开放了也要勾选数据出境确认才能保存。
 // - 保存与「用已存密钥测试」由服务端要求再认证, 网络层弹统一密码框, 本面板不挂整页遮罩。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_section_header.dart';
 import 'package:flutter/services.dart';
@@ -1255,10 +1256,9 @@ class _Header extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
+          UtenCloseButton(
             key: const ValueKey('ai-editor-close'),
             tooltip: l10n.aiSettingsClose,
-            icon: const Icon(Icons.close_rounded),
             onPressed: onClose,
           ),
         ],

@@ -18,6 +18,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/web_update/web_update_safety.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/server_selection.dart';
 import '../../../core/router/route_names.dart';
@@ -145,10 +146,17 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
             (e) => e.value.text.trim() != _original!.toUpdateJson()[e.key],
           ));
 
+  WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(
+    dirty: _dirty,
+    busy: _busy,
+    blocked: _saveUncertain || _conflict != null || !_verified,
+  );
+
   @override
   void initState() {
     super.initState();
     _owner = _settingsOwner(ref);
+    webUpdateSafety.register(_navigationOwner, _reloadSafety);
     for (final key in _labels.keys) {
       _controllers[key] = TextEditingController()..addListener(_changed);
     }
@@ -180,6 +188,12 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
       RouteName.adminPlatformSettings,
       _leave,
       pageKey: GoRouterState.of(context).pageKey,
+      reloadSafety: _reloadSafety,
+    );
+    FormDraftNavigation.registerReloadSafety(
+      _navigationOwner,
+      RouteName.adminPlatformSettings,
+      _reloadSafety,
     );
   }
 
@@ -194,6 +208,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
   @override
   void dispose() {
     FormDraftNavigation.unregister(_navigationOwner);
+    FormDraftNavigation.unregisterReloadSafety(_navigationOwner);
     _scrollController.dispose();
     for (final c in _controllers.values) {
       c.dispose();
@@ -463,6 +478,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
 
   @override
   Widget build(BuildContext context) {
+    webUpdateSafety.changed();
     final theme = Theme.of(context);
     final endpoint = ref.watch(apiBaseUrlProvider);
     return PopScope(

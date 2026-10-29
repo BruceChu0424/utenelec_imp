@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
 import 'package:uten_imp/shared/ai/ai_job_repository.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
@@ -161,7 +160,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('ai-chat-info')));
         await tester.pumpAndSettle();
         await capture(tester, 'chat-mobile-info');
-        await tester.tap(find.text(AppLocalizationsZh().aiChatInfoDone));
+        await tester.tap(find.byKey(const ValueKey('ai-chat-info-close')));
         await tester.pumpAndSettle();
       }
       debugDisableShadows = true;

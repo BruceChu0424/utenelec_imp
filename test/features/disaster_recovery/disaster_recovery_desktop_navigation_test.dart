@@ -218,10 +218,10 @@ void main() {
           // controls, including restore, without recreating the login form.
           await tester.tap(find.byKey(const Key('desktop-window-maximize')));
           await tester.pumpAndSettle();
-          expect(find.byTooltip('还原'), findsOneWidget);
+          expect(find.bySemanticsLabel('还原'), findsOneWidget);
           await tester.tap(find.byKey(const Key('desktop-window-maximize')));
           await tester.pumpAndSettle();
-          expect(find.byTooltip('最大化'), findsOneWidget);
+          expect(find.bySemanticsLabel('最大化'), findsOneWidget);
           if (size.width == 800) {
             tester.view.physicalSize = const Size(1280, 800);
             await tester.pumpAndSettle();

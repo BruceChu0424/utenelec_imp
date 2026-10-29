@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/performance/performance_tier.dart';
@@ -229,7 +230,7 @@ void main() {
       );
       expect(find.textContaining('双击 Setup.exe 完成首次安装'), findsOneWidget);
       expect(find.textContaining('已校验并保存：'), findsOneWidget);
-      await tester.tap(find.text('知道了'));
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
       expect(find.text('安装程序已下载'), findsNothing);
       expect(find.textContaining('已校验并保存：'), findsOneWidget);
@@ -250,7 +251,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('下载未完成'), findsOneWidget);
       expect(find.text('重试下载'), findsOneWidget);
-      expect(find.text('关闭'), findsOneWidget);
+      expect(find.byType(UtenCloseButton), findsOneWidget);
       expect(saver.published, isEmpty);
       expect(saver.attempts, 1);
       await tester.pump(const Duration(seconds: 3));
@@ -275,7 +276,7 @@ void main() {
       await harness.pump(tester);
       await _download(tester);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byType(UtenCloseButton));
       await tester.pumpAndSettle();
       expect(find.text('下载未完成'), findsNothing);
       expect(

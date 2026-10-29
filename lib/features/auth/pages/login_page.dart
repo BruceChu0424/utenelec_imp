@@ -31,6 +31,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/web_update/web_update_safety.dart';
+import '../../../shared/drafts/form_draft_navigation.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/repositories/account_history_store.dart';
@@ -65,9 +67,23 @@ class _LoginPageState extends ConsumerState<LoginPage>
   bool _isLoading = false;
   String? _errorMessage;
 
+  WebUpdateSafetyState _updateSafety() => WebUpdateSafetyState(
+    dirty:
+        _passwordController.text.isNotEmpty || _otpController.text.isNotEmpty,
+    busy: _isLoading,
+    blocked: _requiresOtp,
+  );
+
   @override
   void initState() {
     super.initState();
+    FormDraftNavigation.registerReloadSafety(
+      this,
+      RouteName.login,
+      _updateSafety,
+    );
+    _passwordController.addListener(webUpdateSafety.changed);
+    _otpController.addListener(webUpdateSafety.changed);
     _accountController.addListener(_clearOtpForAccountChange);
     ref.listenManual(apiBaseUrlProvider, (previous, next) {
       if (previous != next) _resetOtpChallenge();
@@ -86,6 +102,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   @override
   void dispose() {
+    FormDraftNavigation.unregisterReloadSafety(this);
+    _passwordController.removeListener(webUpdateSafety.changed);
+    _otpController.removeListener(webUpdateSafety.changed);
     _controller.dispose();
     _accountController.dispose();
     _passwordController.dispose();
@@ -138,6 +157,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       _isLoading = true;
       _errorMessage = null;
     });
+    webUpdateSafety.changed();
 
     try {
       // Choose a currently reachable trusted endpoint before capturing the
@@ -197,6 +217,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+      webUpdateSafety.changed();
     }
   }
 

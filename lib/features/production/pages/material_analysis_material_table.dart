@@ -7902,6 +7902,8 @@ abstract class _MaterialAnalysisMaterialTableState
           group: displayedGroup,
         );
         return UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.of(dialogContext).pop(),
           maxWidth: 720,
           scrollable: false,
           title: Text(material.goodsName ?? material.goodsCode ?? '物料详情'),
@@ -7968,12 +7970,6 @@ abstract class _MaterialAnalysisMaterialTableState
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         );
       },
     ),

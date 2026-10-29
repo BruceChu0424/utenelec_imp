@@ -265,6 +265,8 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
     }
     final size = MediaQuery.sizeOf(context);
     return UtenAlertDialog(
+      showCloseButton: true,
+      onClose: () => Navigator.pop(context, _confirming ? false : null),
       key: Key(
         actual
             ? 'warehouse-inbound-allocation-result-dialog'
@@ -303,13 +305,6 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
           ],
         ),
       ),
-      actions: [
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: () => Navigator.pop(context, _confirming ? false : null),
-          child: const Text('关闭'),
-        ),
-      ],
     );
   }
 }

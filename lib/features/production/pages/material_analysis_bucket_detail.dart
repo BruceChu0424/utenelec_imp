@@ -265,6 +265,8 @@ class _MaterialAnalysisBucketPageState
       final selected = await showDialog<_MaterialGroup>(
         context: context,
         builder: (context) => UtenAlertDialog(
+          showCloseButton: true,
+          onClose: () => Navigator.of(context).pop(),
           maxWidth: 600,
           scrollable: false,
           title: const Text('选择需要查看或调拨的物料'),
@@ -291,12 +293,6 @@ class _MaterialAnalysisBucketPageState
               ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
       if (selected == null) return;

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:math' as math;
 
@@ -394,11 +395,7 @@ class _MaterialReturnRequestState
               busy: _loading,
               onRefresh: _load,
             ),
-            IconButton(
-              tooltip: '关闭',
-              onPressed: _locked ? null : _close,
-              icon: const Icon(Icons.close),
-            ),
+            UtenCloseButton(tooltip: '关闭', onPressed: _locked ? null : _close),
           ],
         ),
         body: _loading

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_motion.dart';
@@ -8,6 +9,8 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'client_update_controller.dart';
+import 'client_auto_update_preferences.dart';
+import '../../shared/platform_branding/platform_branding_provider.dart';
 
 Future<void> openClientUpdatePage(
   BuildContext context,
@@ -31,14 +34,14 @@ Future<void> openClientUpdatePage(
 }
 
 /// The page owns one check per visit; all callers share this lifecycle.
-class ClientUpdatePage extends StatefulWidget {
+class ClientUpdatePage extends ConsumerStatefulWidget {
   const ClientUpdatePage({super.key, required this.controller});
   final ClientUpdateController controller;
   @override
-  State<ClientUpdatePage> createState() => _ClientUpdatePageState();
+  ConsumerState<ClientUpdatePage> createState() => _ClientUpdatePageState();
 }
 
-class _ClientUpdatePageState extends State<ClientUpdatePage> {
+class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
   bool _entering = true;
   @override
   void initState() {
@@ -77,6 +80,8 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
       final controller = widget.controller;
       final l10n = AppLocalizations.of(context);
       final theme = Theme.of(context);
+      final branding = ref.watch(platformBrandingSnapshotProvider);
+      final autoUpdate = ref.watch(clientAutoUpdateEnabledProvider);
       final colors = theme.colorScheme;
       final checking =
           _entering || controller.stage == ClientUpdateStage.checking;
@@ -95,6 +100,7 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           !supported &&
           !{'ios', 'macos'}.contains(installed.platform);
       final chinese = Localizations.localeOf(context).languageCode == 'zh';
+      final language = Localizations.localeOf(context).languageCode;
       final title = checking
           ? l10n.clientUpdateChecking
           : failed
@@ -104,7 +110,11 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           : controller.stage == ClientUpdateStage.installing || opened
           ? l10n.clientUpdateInstalling
           : available
-          ? l10n.clientUpdateNewTitle
+          ? switch (language) {
+              'zh' => '有新的版本（${candidate.version}）',
+              'ko' => '새 버전이 있습니다 (${candidate.version})',
+              _ => 'A new version is available (${candidate.version})',
+            }
           : unsupported
           ? (chinese
                 ? '此安装版本暂不支持更新'
@@ -112,7 +122,7 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           : controller.hasSuccessfulCheck
           ? l10n.clientUpdateUpToDate
           : (chinese ? '准备检查新版本' : 'Ready to check for updates');
-      final detail = checking
+      final platformDetail = checking
           ? (chinese
                 ? '正在与更新服务核对可用版本…'
                 : 'Looking for an update for this device…')
@@ -131,6 +141,13 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
           : (chinese
                 ? '你的 UTEN 已准备好，继续安心工作。'
                 : 'UTEN is ready. You are all set to continue working.');
+      final detail = available && !transferring && !opened
+          ? '${switch (language) {
+              'zh' => '建议立即更新。',
+              'ko' => '지금 업데이트하는 것을 권장합니다. ',
+              _ => 'We recommend updating now. ',
+            }}$platformDetail'
+          : platformDetail;
       return PopScope(
         canPop: !transferring,
         child: Scaffold(
@@ -217,9 +234,14 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
                                 ),
                                 const SizedBox(height: UtenSpacing.s24),
                                 Text(
-                                  AppInfo.displayName,
+                                  branding.platformName,
                                   style: theme.textTheme.headlineMedium
                                       ?.copyWith(fontWeight: FontWeight.w800),
+                                ),
+                                Text(
+                                  branding.companyName,
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.bodySmall,
                                 ),
                                 const SizedBox(height: UtenSpacing.s16),
                                 Semantics(
@@ -241,15 +263,14 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
                                     color: colors.onSurfaceVariant,
                                   ),
                                 ),
+                                const SizedBox(height: UtenSpacing.s8),
+                                Text(
+                                  '${l10n.clientUpdateLatest} ${candidate?.version ?? (controller.hasSuccessfulCheck ? installed?.currentVersion ?? AppInfo.version : (chinese ? '尚未获取' : 'Not checked'))}',
+                                  textAlign: TextAlign.center,
+                                  style: theme.textTheme.titleMedium,
+                                ),
                                 if (available) ...[
                                   const SizedBox(height: UtenSpacing.s8),
-                                  Text(
-                                    '${l10n.clientUpdateLatest} ${candidate.version}',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      color: colors.primary,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
                                   if (candidate.sizeBytes > 0) ...[
                                     const SizedBox(height: UtenSpacing.s4),
                                     Text(
@@ -257,6 +278,14 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
                                       style: theme.textTheme.bodySmall,
                                     ),
                                   ],
+                                ],
+                                if (controller.waitingForSafeInstall) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  Text(
+                                    chinese
+                                        ? '更新已下载。请先保存正在编辑的内容并完成提交，再继续安装。'
+                                        : 'The update is downloaded. Save your work and finish pending submissions before installing.',
+                                  ),
                                 ],
                                 const SizedBox(height: UtenSpacing.s16),
                                 ConstrainedBox(
@@ -343,6 +372,43 @@ class _ClientUpdatePageState extends State<ClientUpdatePage> {
                               ],
                             ),
                           ),
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
+                        CheckboxListTile.adaptive(
+                          key: const ValueKey('client-update-auto-idle'),
+                          title: Text(
+                            chinese
+                                ? '软件空闲时自动更新'
+                                : 'Update automatically when idle',
+                          ),
+                          subtitle: Text(
+                            chinese
+                                ? '默认开启。保存工作并停止操作后自动安装；有未保存内容或提交结果待确认时继续等待。'
+                                : 'Enabled by default. Installs when idle after work is saved; waits for unsaved work and unresolved submissions.',
+                          ),
+                          value: autoUpdate,
+                          onChanged: (value) async {
+                            if (value == null) return;
+                            try {
+                              await ref
+                                  .read(
+                                    clientAutoUpdateEnabledProvider.notifier,
+                                  )
+                                  .setEnabled(value);
+                            } catch (_) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      chinese
+                                          ? '自动更新设置未保存，请重试'
+                                          : 'Could not save the update setting. Try again.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          },
                         ),
                         if (available) ...[
                           const SizedBox(height: UtenSpacing.s24),

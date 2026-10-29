@@ -34,6 +34,7 @@ import '../repositories/mould_category_repository.dart';
 import '../repositories/mould_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/category_edit_dialog.dart';
+import '../widgets/category_deletion_safety.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_inline_edit.dart';
@@ -222,20 +223,29 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       return;
     }
     // 先拉子树规模预览（后代分类数 + 模具数），用于红色确认框提示级联影响（问题 #7）。
-    MouldCategoryDeletePreview? preview;
+    final MouldCategoryDeletePreview preview;
     try {
       preview = await shellRunCategoryTask(
         '正在检查删除范围…',
         () => ref.read(mouldCategoryRepositoryProvider).deletePreview(node.id),
       );
+    } on ApiException catch (error) {
+      if (mounted && current()) {
+        await showCategoryDeleteError(
+          context,
+          '无法确认删除范围，请重试后再删除。\n${error.message}',
+        );
+      }
+      return;
     } catch (_) {
-      preview = null; // 预览失败不阻塞：退回无计数的通用确认。
+      if (mounted && current()) {
+        await showCategoryDeleteError(context, '无法确认删除范围，请重试后再删除。');
+      }
+      return;
     }
     if (!mounted || !current()) return;
 
-    final hasCascade =
-        preview != null &&
-        (preview.descendantCount > 0 || preview.mouldCount > 0);
+    final hasCascade = preview.descendantCount > 0 || preview.mouldCount > 0;
     final ok = await showReadOwnedDialog<bool>(
       ref: ref,
       context: context,
@@ -265,7 +275,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (preview!.descendantCount > 0)
+                    if (preview.descendantCount > 0)
                       Text(
                         '• ${preview.descendantCount} 个子分类',
                       ), // TODO(l10n): 补 arb

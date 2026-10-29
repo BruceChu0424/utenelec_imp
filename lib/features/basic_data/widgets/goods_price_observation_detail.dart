@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'master_data_table_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -170,10 +171,9 @@ class _GoodsPriceObservationDetailState
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      IconButton(
+                      UtenCloseButton(
                         onPressed: () => Navigator.pop(context),
                         tooltip: priceText(context, 'close'),
-                        icon: const Icon(Icons.close),
                       ),
                     ],
                   ),

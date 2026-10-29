@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import '../../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../../shared/paging/scoped_paged_read.dart';
@@ -293,26 +294,15 @@ class _SupplierCreditApplyPanelState
         appBar: UtenAppBar(
           title: '读取范围已变化',
           showPagePermissionAction: false,
-          leading: route?.impliesAppBarDismissal == true
-              ? route!.fullscreenDialog
-                    ? const CloseButton()
-                    : UtenBackButton(
-                        onPressed: () => Navigator.maybePop(context),
-                      )
+          leading:
+              route?.impliesAppBarDismissal == true && !route!.fullscreenDialog
+              ? UtenBackButton(onPressed: () => Navigator.maybePop(context))
               : null,
+          actions: [
+            UtenCloseButton(onPressed: () => Navigator.of(context).pop()),
+          ],
         ),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error ?? '请关闭后重新打开'),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('关闭'),
-              ),
-            ],
-          ),
-        ),
+        body: Center(child: Text(_error ?? '请关闭后重新打开')),
       );
     }
 
@@ -320,11 +310,13 @@ class _SupplierCreditApplyPanelState
     return Scaffold(
       appBar: AppBar(
         title: Text('应用${source.openItemKindLabel}'),
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded),
-          tooltip: '关闭',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
+        actions: [
+          UtenCloseButton(
+            tooltip: '关闭',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(

@@ -2,6 +2,7 @@
 // 指标从未读通知右侧依次排列，空间不足时换行；宽屏右侧放待办任务，
 // 窄屏待办移到指标下方。待办只显示一行，剩余任务通过行末入口查看。
 // 使用真实计数、截止时间与目标路由。
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/china_datetime.dart';
@@ -502,7 +503,7 @@ class _TodoTileRow extends StatelessWidget {
                     style: Theme.of(panelContext).textTheme.titleMedium,
                   ),
                 ),
-                CloseButton(onPressed: () => Navigator.pop(panelContext)),
+                UtenCloseButton(onPressed: () => Navigator.pop(panelContext)),
               ],
             ),
           ),

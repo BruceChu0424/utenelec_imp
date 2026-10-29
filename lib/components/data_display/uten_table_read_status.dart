@@ -132,6 +132,11 @@ class _UtenTableReadStatusState extends State<UtenTableReadStatus> {
       themes: InheritedTheme.capture(from: context, to: navigator.context),
       builder: (dialogContext) => UtenAlertDialog(
         title: Text(snapshot.title),
+        showCloseButton: true,
+        closeTooltip: close,
+        onClose: () {
+          if (_ownsDialog(route, revision)) _closeDialog(route);
+        },
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,13 +153,6 @@ class _UtenTableReadStatusState extends State<UtenTableReadStatus> {
           ],
         ),
         actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () {
-              if (_ownsDialog(route, revision)) _closeDialog(route);
-            },
-            child: Text(close),
-          ),
           if (snapshot.retry != null)
             UtenButton(
               icon: Icons.refresh_rounded,

@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "eb3dda4879e305b3a21942ce54c76f17efae843f18a33ce5292d3c6cec5dff75",
+  "inventorySha256": "b7172bb2f077fcbeb37ca7390efc21bea0e3dae85cdf196324a4edd5708584a3",
   "baselineCounts": {
     "businessPagePackages": 215,
     "commonAndFlowPackages": 135,
@@ -5189,8 +5189,8 @@
       "phase": "D",
       "feature": "client_update",
       "businessSource": "lib/features/client_update/client_release_publish_page.dart",
-      "sourceSha256": "d9ba5e86707baa785e065b8dd57b967a85309e5685e06f4a2465d5812a3544e9",
-      "sourceProofSha256": "c37ecc9a54a8bdfe8470f82fee90248ceab6fced51b9b8adce24ff97c6052ecd",
+      "sourceSha256": "627689604ee560022e05023eaf99208bd778fd77fe72a6c712570bac100c7e01",
+      "sourceProofSha256": "16d2f6e5ac8349412be75d035e79ea14bfee6112f7341641f0d2979c5062785c",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12465,7 +12465,7 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。",
+      "notes": "尚未迁移；先做动作/合同审计。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。",
       "lastUpdated": "2026-10-28"
     }
   ]

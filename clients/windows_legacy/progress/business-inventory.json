@@ -48010,8 +48010,8 @@
       "id": "page:client_update/client_release_publish_page.dart",
       "feature": "client_update",
       "source": "lib/features/client_update/client_release_publish_page.dart",
-      "sha256": "d9ba5e86707baa785e065b8dd57b967a85309e5685e06f4a2465d5812a3544e9",
-      "lineCount": 1297,
+      "sha256": "627689604ee560022e05023eaf99208bd778fd77fe72a6c712570bac100c7e01",
+      "lineCount": 1291,
       "classes": [
         {
           "name": "ClientReleasePublishPage",
@@ -48027,19 +48027,19 @@
         },
         {
           "name": "_QueueRow",
-          "line": 975,
+          "line": 969,
           "role": "supporting-class",
           "extends": "StatefulWidget"
         },
         {
           "name": "_QueueRowState",
-          "line": 993,
+          "line": 987,
           "role": "state-class",
           "extends": "State<_QueueRow>"
         },
         {
           "name": "_TargetFields",
-          "line": 1137,
+          "line": 1131,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -48448,7 +48448,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 336,
+          "line": 334,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -48458,7 +48458,7 @@
         {
           "symbol": "_saveDraft",
           "receiver": null,
-          "line": 351,
+          "line": 349,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -48468,7 +48468,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 362,
+          "line": 360,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -48478,7 +48478,7 @@
         {
           "symbol": "removeListener",
           "receiver": "_queue",
-          "line": 364,
+          "line": 362,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -48488,7 +48488,7 @@
         {
           "symbol": "_saveDraft",
           "receiver": null,
-          "line": 366,
+          "line": 364,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -48498,7 +48498,7 @@
         {
           "symbol": "_saveDraft",
           "receiver": null,
-          "line": 410,
+          "line": 408,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -48508,7 +48508,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 435,
+          "line": 433,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48518,7 +48518,7 @@
         {
           "symbol": "_confirmLeave",
           "receiver": null,
-          "line": 493,
+          "line": 491,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -48528,7 +48528,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 495,
+          "line": 493,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -48538,7 +48538,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 536,
+          "line": 534,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48548,7 +48548,7 @@
         {
           "symbol": "edit",
           "receiver": "_queue",
-          "line": 667,
+          "line": 665,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -48558,7 +48558,7 @@
         {
           "symbol": "reconcile",
           "receiver": "_queue",
-          "line": 670,
+          "line": 668,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reconcile"
@@ -48568,7 +48568,7 @@
         {
           "symbol": "remove",
           "receiver": "_queue",
-          "line": 671,
+          "line": 669,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -48578,7 +48578,7 @@
         {
           "symbol": "reconcileWithdrawal",
           "receiver": "_queue",
-          "line": 805,
+          "line": 803,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reconcile"
@@ -48588,7 +48588,7 @@
         {
           "symbol": "withdraw",
           "receiver": "_queue",
-          "line": 851,
+          "line": 845,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "withdraw"
@@ -48598,7 +48598,7 @@
         {
           "symbol": "_saveDraft",
           "receiver": null,
-          "line": 941,
+          "line": 935,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -48608,7 +48608,7 @@
         {
           "symbol": "SoftwareDownloadTarget",
           "receiver": null,
-          "line": 968,
+          "line": 962,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "download"
@@ -48618,7 +48618,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1068,
+          "line": 1062,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48628,7 +48628,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1082,
+          "line": 1076,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48638,7 +48638,7 @@
         {
           "symbol": "onEdit",
           "receiver": "widget",
-          "line": 1127,
+          "line": 1121,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -48648,7 +48648,7 @@
         {
           "symbol": "copyWith",
           "receiver": "item.metadata",
-          "line": 1127,
+          "line": 1121,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48658,7 +48658,7 @@
         {
           "symbol": "onEdit",
           "receiver": "widget",
-          "line": 1129,
+          "line": 1123,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -48668,7 +48668,7 @@
         {
           "symbol": "copyWith",
           "receiver": "item.metadata",
-          "line": 1129,
+          "line": 1123,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48678,7 +48678,7 @@
         {
           "symbol": "softwareDownloadArchitectures",
           "receiver": null,
-          "line": 1173,
+          "line": 1167,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "download"
@@ -48688,7 +48688,7 @@
         {
           "symbol": "copyWith",
           "receiver": "metadata",
-          "line": 1228,
+          "line": 1222,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48698,7 +48698,7 @@
         {
           "symbol": "copyWith",
           "receiver": "metadata",
-          "line": 1243,
+          "line": 1237,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48708,7 +48708,7 @@
         {
           "symbol": "softwareDownloadArchitectures",
           "receiver": null,
-          "line": 1246,
+          "line": 1240,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "download"
@@ -48718,7 +48718,7 @@
         {
           "symbol": "copyWith",
           "receiver": "metadata",
-          "line": 1260,
+          "line": 1254,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -48728,7 +48728,7 @@
         {
           "symbol": "copyWith",
           "receiver": "metadata",
-          "line": 1267,
+          "line": 1261,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -250239,8 +250239,8 @@
     },
     {
       "source": "lib/features/client_update/client_release_publish_page.dart",
-      "sha256": "d9ba5e86707baa785e065b8dd57b967a85309e5685e06f4a2465d5812a3544e9",
-      "lineCount": 1297
+      "sha256": "627689604ee560022e05023eaf99208bd778fd77fe72a6c712570bac100c7e01",
+      "lineCount": 1291
     },
     {
       "source": "lib/features/client_update/client_release_publish_queue.dart",

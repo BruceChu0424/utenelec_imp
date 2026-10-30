@@ -7,6 +7,7 @@ using Uten.Legacy.Desktop.Features.Downloads;
 using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Shared;
 using Uten.Legacy.Desktop.Features.Columns;
+using Uten.Legacy.Desktop.Updates;
 
 namespace Uten.Legacy.Tests
 {
@@ -43,6 +44,7 @@ namespace Uten.Legacy.Tests
                 int history = UnitHistoryContractChecks.Run();
                 int columns = ColumnModelContractChecks.Run() + ColumnServiceContractChecks.RunRead() + ColumnUiContractChecks.RunWrites();
                 int updater = UpdaterContractChecks.Run();
+                int outcomes = UpdateOutcomeContractChecks.Run();
                 Console.WriteLine("PASS goods/downloads/units/updater contracts");
                 UiContractChecks.Run();
                 int historyUiAssertions = UnitHistoryContractChecks.RunUi();
@@ -54,7 +56,7 @@ namespace Uten.Legacy.Tests
                 Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads + "; units assertions=" + units
                     + "; history assertions=" + history + "; history UI=" + historyUiAssertions + "; print assertions=" + printAssertions
                     + "; columns=" + columns + "; column UI=" + columnUiAssertions + "; common drafts=" + draftAssertions + "; exports=" + exportAssertions + "; inline=" + inlineAssertions
-                    + "; updater assertions=" + updater + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    + "; updater assertions=" + updater + "; update outcomes=" + outcomes + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                 return 0;
             }
             catch (Exception error)

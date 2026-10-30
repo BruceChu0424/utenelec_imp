@@ -66,6 +66,23 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 check(snapshot.Rows.Count == 2 && fixture.Handler.RowReads == 3 && fixture.Handler.BusinessWrites == 0,
                     "oversize pure read splits records without relaxing shared byte bound or publishing partial rows");
             }
+            using (var fixture = new Fixture())
+            {
+                await fixture.Login(); var handler = fixture.Handler; handler.OverflowColumns = 35;
+                for (int index = 0; index < 35; index++) handler.StoredValues[ColumnModelContractChecks.Extra(index)] = "遗留值" + index;
+                var service = new UnitColumnsService(fixture.Session);
+                var snapshot = await service.LoadAsync(new[] { RecordId }, CancellationToken.None);
+                check(snapshot.Projection.Columns.Count == 35 && snapshot.OverflowedDefinitionIds.Count == 4,
+                    "legacy data with 36 distinct persisted columns yields the bounded table and explicit overflow instead of a paused page");
+                check(snapshot.Rows[RecordId].Cells.Count == 36 && snapshot.ObservedDefinitionIds.Count == 36,
+                    "all persisted cells and definitions stay retained for row write preservation");
+                check(ColumnJson.Array(ColumnJson.Object(ColumnJson.Parse(handler.LastReadBody))["columnIds"]).Length <= 32,
+                    "values batch never exceeds the owning 32-column selection contract while discovering legacy columns");
+                var second = await service.LoadAsync(new[] { RecordId }, CancellationToken.None, snapshot);
+                check(ColumnJson.Array(ColumnJson.Object(ColumnJson.Parse(handler.LastReadBody))["columnIds"]).Length == 32
+                    && second.Projection.ToJson() == snapshot.Projection.ToJson() && second.OverflowedDefinitionIds.Count == 4 && handler.BusinessWrites == 0,
+                    "bounded selection stays stable across reloads without any business write");
+            }
             return count;
         }
         private static async Task RejectAsync<T>(Func<Task> operation, Action<bool, string> check, string label) where T : Exception
@@ -95,6 +112,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
         {
             internal string Name = "记录数字", CellError, LastReadBody;
             internal bool Mask, SkipRows, ForeignRow, SessionSnapshotMissing, LimitReadToSingleRow;
+            internal int OverflowColumns;
             internal volatile bool RowStarted;
             internal int BusinessWrites;
             internal int RowReads;
@@ -124,6 +142,8 @@ namespace Uten.Legacy.Desktop.Features.Columns
                     if (request.RequestUri.Query.Contains("q=") || request.RequestUri.Query.Contains(NumberId)) result.Add(Definition(NumberId));
                     if (request.RequestUri.Query.Contains("q=") || request.RequestUri.Query.Contains(TextId)) result.Add(Definition(TextId));
                     if (Created != null && (request.RequestUri.Query.Contains("q=") || request.RequestUri.Query.Contains(CreatedId))) result.Add(Created);
+                    for (int index = 0; index < OverflowColumns; index++)
+                    { string extra = ColumnModelContractChecks.Extra(index); if (request.RequestUri.Query.Contains("q=") || request.RequestUri.Query.Contains(extra)) result.Add(Definition(extra)); }
                     return Reply(ColumnJson.Serialize(result));
                 }
                 if (path == "/api/platform-columns/master_unit/values:batch" && request.Method == HttpMethod.Post)

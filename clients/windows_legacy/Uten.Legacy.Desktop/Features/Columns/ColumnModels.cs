@@ -119,6 +119,17 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 new ProjectedColumn("name", "单位名称", 220, "text", true), new ProjectedColumn("status", "状态", 72, "text", true) }); }
         }
     }
+    /// <summary>Bounded projection outcome. Legacy data may persist more distinct platform
+    /// columns than the owning 32-column selection contract; the visible table keeps a
+    /// deterministic bounded subset while the remainder is reported explicitly, never
+    /// silently dropped and never left to fail the whole table closed.</summary>
+    public sealed class UnitColumnProjectionOutcome
+    {
+        public UnitColumnProjection Projection { get; private set; }
+        public IReadOnlyList<string> OverflowedDefinitionIds { get; private set; }
+        internal UnitColumnProjectionOutcome(UnitColumnProjection projection, IReadOnlyList<string> overflowedDefinitionIds)
+        { Projection = projection; OverflowedDefinitionIds = overflowedDefinitionIds; }
+    }
     public sealed class UnitColumnLayout
     {
         public IReadOnlyList<string> Order { get; private set; }
@@ -145,11 +156,31 @@ namespace Uten.Legacy.Desktop.Features.Columns
         }
         private static IReadOnlyList<string> FreezeKeys(IEnumerable<string> raw)
         { var values = (raw ?? Enumerable.Empty<string>()).Select(ColumnJson.ColumnKey).Distinct(StringComparer.Ordinal).ToList(); if (values.Count > 160) throw new ArgumentException("表头列数超出范围。"); return values.AsReadOnly(); }
-        public UnitColumnProjection Project(IReadOnlyDictionary<string, PlatformColumnDefinition> definitions, IEnumerable<string> persistedIds = null)
+        public UnitColumnProjection Project(IReadOnlyDictionary<string, PlatformColumnDefinition> definitions)
         {
-            var roots = AddedIds.Concat(persistedIds ?? Enumerable.Empty<string>()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (definitions == null) throw new ArgumentNullException(nameof(definitions));
+            foreach (string id in AddedIds)
+                if (!definitions.ContainsKey(id)) throw new InvalidOperationException("自设列尚未通过当前权限验读。");
+            return BuildProjection(AddedIds, definitions);
+        }
+        public UnitColumnProjectionOutcome ProjectBounded(IReadOnlyDictionary<string, PlatformColumnDefinition> definitions, IEnumerable<string> persistedIds)
+        {
+            if (definitions == null) throw new ArgumentNullException(nameof(definitions));
+            var persisted = (persistedIds ?? Enumerable.Empty<string>()).Select(ColumnJson.Uuid).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            Func<string, bool> eligible = id => definitions.ContainsKey(id) && !Hidden.Contains("platform:" + id);
+            // Explicit user additions win the budget first; remaining persisted columns fill
+            // the rest in stable UUID order so paging and reloads never reshuffle the table.
+            var chosen = new HashSet<string>(AddedIds.Where(eligible).Take(32), StringComparer.OrdinalIgnoreCase);
+            foreach (string id in persisted.Where(id => eligible(id)).OrderBy(id => id, StringComparer.OrdinalIgnoreCase))
+            { if (chosen.Count >= 32) break; chosen.Add(id); }
+            var overflowed = AddedIds.Concat(persisted).Where(eligible).Where(id => !chosen.Contains(id))
+                .OrderBy(id => id, StringComparer.OrdinalIgnoreCase).ToList();
+            return new UnitColumnProjectionOutcome(BuildProjection(chosen.ToList(), definitions), overflowed.AsReadOnly());
+        }
+        private UnitColumnProjection BuildProjection(IReadOnlyList<string> visibleIds, IReadOnlyDictionary<string, PlatformColumnDefinition> definitions)
+        {
             var available = UnitColumnProjection.Default.Columns.ToDictionary(column => column.Key, StringComparer.Ordinal);
-            foreach (string id in roots)
+            foreach (string id in visibleIds)
             {
                 PlatformColumnDefinition definition;
                 if (!definitions.TryGetValue(id, out definition)) throw new InvalidOperationException("自设列尚未通过当前权限验读。");
@@ -185,6 +216,9 @@ namespace Uten.Legacy.Desktop.Features.Columns
         public string DefinitionFingerprint { get; internal set; }
         public IReadOnlyList<string> UnavailableDefinitionIds { get; internal set; }
         public IReadOnlyList<string> ObservedDefinitionIds { get; internal set; }
+        // Persisted platform columns beyond the 32-column visible budget. Data and
+        // definitions stay retained; the table surfaces this fact instead of hiding it.
+        public IReadOnlyList<string> OverflowedDefinitionIds { get; internal set; } = new string[0];
         public bool PreferencesConfirmed { get; internal set; }
         public bool IsCurrent(SessionCoordinator session) { return Owner != null && Owner.IsCurrent(session); }
         public string DisplayText(string recordId, string columnKey)

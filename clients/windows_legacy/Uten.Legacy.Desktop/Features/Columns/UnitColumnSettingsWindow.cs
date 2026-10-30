@@ -92,6 +92,9 @@ namespace Uten.Legacy.Desktop.Features.Columns
             InitializeDraftUi("保存表头", initial); UpdateCatalogActions();
             if (!source.PreferencesConfirmed) ShowStatus("当前尚未确认账号的完整偏好快照。可以核对表头，暂不能覆盖远端设置，请刷新后重新打开。", true);
             if (source.UnavailableDefinitionIds.Count > 0) ShowStatus("有已失效或不属于当前范围的列未被加载，请核对后保存新的表头。", true);
+            if (source.OverflowedDefinitionIds.Count > 0)
+                ShowStatus("当前资料有 " + source.OverflowedDefinitionIds.Count.ToString(CultureInfo.InvariantCulture)
+                    + " 个自设列超出单表32列上限：这些列的原值和定义仍保留；隐藏暂不查看的列或移除已添加列后，其余列会按稳定顺序补入显示。", true);
         }
         private DataGridTemplateColumn ToggleColumn(string label, string property)
         {

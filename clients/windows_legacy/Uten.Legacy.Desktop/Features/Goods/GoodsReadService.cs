@@ -83,6 +83,13 @@ namespace Uten.Legacy.Desktop.Features.Goods
         public string Spec { get { return Text("spec"); } }
         public string ColorName { get { return Text("colorName"); } }
         public string UnitName { get { return Text("unitName"); } }
+        // The unit relationship key is the authoritative UUID; unitName is the server's
+        // resolved display. A missing UUID with a unit name is the read-only legacy
+        // snapshot fallback, never promoted to a live reference or a fake key.
+        public string UnitId { get { return OptionalUuid("unitId"); } }
+        public string UnitLegacyId { get { return OptionalUuid("unitLegacyId"); } }
+        public string UnitRelationship
+        { get { return UnitId != null ? "UUID 引用" : OptionalText("unitName") != null ? "历史快照回落" : "—"; } }
         public string SourceType { get { return Text("sourceType"); } }
         public string StockQuantity { get { return Text("stockQtyDisplayText", "stockQty"); } }
         public string Price { get { return Flag("priceMasked") ? "—" : Text("priceDisplayText", "price"); } }
@@ -99,6 +106,16 @@ namespace Uten.Legacy.Desktop.Features.Goods
             if (value == null && fallback != null) value = GoodsReadContract.OptionalText(values, fallback);
             return value ?? "—";
         }
+        private string OptionalUuid(string name)
+        {
+            object value;
+            if (!values.TryGetValue(name, out value) || value == null) return null;
+            if (!(value is string)) throw new FormatException("服务端货品单位关系字段类型无效：" + name);
+            Guid parsed;
+            if (!Guid.TryParse((string)value, out parsed)) throw new FormatException("服务端货品单位关系不是 UUID：" + name);
+            return (string)value;
+        }
+        private string OptionalText(string name) { return GoodsReadContract.OptionalText(values, name); }
     }
 
     public sealed class GoodsPage

@@ -61,6 +61,7 @@ namespace Uten.Legacy.Desktop
         {
             if (rendering) return;
             AccountBox.Focus();
+            ShowStartupUpdateOutcome();
             long restoreGeneration = session.Generation;
             try
             {
@@ -92,6 +93,25 @@ namespace Uten.Legacy.Desktop
             catch (OperationCanceledException) { }
             catch (ApiException) { /* Durable records remain for the next bounded attempt. */ }
             finally { drainingRevocations = false; }
+        }
+
+        /// <summary>W7-UPD-009: consume the finished or interrupted update job's outcome once.
+        /// The fact is shown before login so a failed/interrupted update is never silently
+        /// ignored; recovery material stays untouched and remains available for the admin.</summary>
+        private void ShowStartupUpdateOutcome()
+        {
+            try
+            {
+                var reader = new UpdateOutcomeReader();
+                var outcome = reader.ReadFirstPending();
+                if (outcome == null) return;
+                new UpdateOutcomeWindow(this, outcome).ShowDialog();
+                reader.MarkConsumed(outcome);
+            }
+            catch (Exception)
+            {
+                // Startup must still reach login; the unconsumed outcome resurfaces next launch.
+            }
         }
 
         private void OnSessionChanged(object sender, EventArgs e)

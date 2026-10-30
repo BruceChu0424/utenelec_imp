@@ -477,9 +477,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`。
 
-接续/限制：本轮单位详情/跨页选择/inline70/双历史31+7/批量逐项/导出16/columns46+9/打印21/公共draft16 current双arch通过；>32种列修复、货品真实引用FLOW、Win7目标与全28动作终验仍待，不标完整ERP。。
+接续/限制：本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。。
 
 ## W7-BIZ-038
 

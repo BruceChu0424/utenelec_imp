@@ -1962,10 +1962,11 @@
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json"
+        "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json",
+        "clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json"
       ],
-      "notes": "惰性进程fixture真实重启PID/start/image/2535版本与隔离profile已核，客户端启动后result UI消费/掉电恢复尚未完成。",
-      "lastUpdated": "2026-10-29T04:53:49.894035+00:00"
+      "notes": "启动result消费已实现：UpdateOutcomeReader按GUID任务目录读最新未消费result.json(16KiB界限/scheme/family/arch校验，不可读按事实呈现)，apply-authorized无result判中断并按recovery-manifest升级警示；登录前UpdateOutcomeWindow展示一次并写result-consumed.json，绝不删恢复资料；成功锚定当前构建号。update outcomes 13双架构绿；真机掉电/断点恢复仍待。",
+      "lastUpdated": "2026-10-30T14:37:25.128872+00:00"
     },
     {
       "id": "W7-UPD-010",
@@ -3135,10 +3136,11 @@
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
       "evidence": [
-        "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md"
+        "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md",
+        "clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json"
       ],
-      "notes": "从完整单位主档样板推进基础资料新增编辑状态引用闭环，当前仍缺公共持久写/未知提交核对与全部源动作。",
-      "lastUpdated": "2026-10-29T00:34:59.020174+00:00"
+      "notes": "单位→货品真实引用已接：货品保留unitId/unitLegacyId权威UUID关系键+历史快照回落事实区分，详情按UUID导航到单位主档窗口(自带编辑/状态/删除引用保护)；删除保护仍走服务端逐项原因(既有检查钉住)，未自造端点或客户端推导。goods 24→27双架构绿；完整可写模块闭环与目标机验收仍待。",
+      "lastUpdated": "2026-10-30T14:37:24.354881+00:00"
     },
     {
       "id": "W7-FLOW-002",
@@ -5135,10 +5137,11 @@
       "evidence": [
         "docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md",
         "docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md",
-        "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json"
+        "clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json",
+        "clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json"
       ],
-      "notes": "本轮单位详情/跨页选择/inline70/双历史31+7/批量逐项/导出16/columns46+9/打印21/公共draft16 current双arch通过；>32种列修复、货品真实引用FLOW、Win7目标与全28动作终验仍待，不标完整ERP。",
-      "lastUpdated": "2026-10-29T04:53:50.348522+00:00"
+      "notes": "本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。",
+      "lastUpdated": "2026-10-30T14:37:23.530372+00:00"
     },
     {
       "id": "W7-BIZ-038",

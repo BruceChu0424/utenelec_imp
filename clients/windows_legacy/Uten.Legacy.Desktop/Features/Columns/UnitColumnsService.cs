@@ -26,14 +26,19 @@ namespace Uten.Legacy.Desktop.Features.Columns
             var serverLayout = ColumnReadContract.Preference(await preferencesRead.ConfigureAwait(false), owner.UserId, out preferenceConfirmed);
             var layout = previous?.Layout ?? serverLayout;
             var observed = new HashSet<string>(previous?.ObservedDefinitionIds ?? new string[0], StringComparer.OrdinalIgnoreCase);
-            var roots = layout.AddedIds.Concat(observed).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var definitions = await ReadDefinitionsAsync(roots, true, owner, ct).ConfigureAwait(false);
-            var unavailable = roots.Where(id => !definitions.ContainsKey(id)).ToList();
+            // Only the previously visible budget is re-verified through current permissions;
+            // retained overflow columns refresh through their own authoritative cells below,
+            // so legacy data with more than 32 persisted columns cannot fail the page closed.
+            var previousVisible = previous == null ? new string[0]
+                : previous.Projection.Columns.Select(column => column.PlatformId).Where(id => id != null).ToArray();
+            var verifyRoots = layout.AddedIds.Concat(previousVisible).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var definitions = await ReadDefinitionsAsync(verifyRoots, true, owner, ct).ConfigureAwait(false);
+            var unavailable = verifyRoots.Where(id => !definitions.ContainsKey(id)).ToList();
             var availableIds = layout.AddedIds.Where(definitions.ContainsKey).ToArray();
             layout = new UnitColumnLayout(layout.Order, layout.Hidden, layout.Pinned, layout.Widths.ToDictionary(pair => pair.Key, pair => pair.Value), availableIds);
-            observed.RemoveWhere(id => !definitions.ContainsKey(id));
-            var beforeRows = layout.Project(definitions, observed);
-            var selected = beforeRows.Columns.Where(column => column.PlatformId != null).Select(column => column.PlatformId).ToArray();
+            observed.RemoveWhere(id => verifyRoots.Contains(id) && !definitions.ContainsKey(id));
+            var beforeRows = layout.ProjectBounded(definitions, observed);
+            var selected = beforeRows.Projection.Columns.Where(column => column.PlatformId != null).Select(column => column.PlatformId).ToArray();
             var rows = await ReadRowsAsync(ids, selected, owner, ct).ConfigureAwait(false); Require(owner);
             foreach (var row in rows.Values)
                 foreach (var cell in row.Cells.Values)
@@ -45,7 +50,9 @@ namespace Uten.Legacy.Desktop.Features.Columns
                     if (cell.Persisted) observed.Add(cell.ColumnId);
                 }
             var maskedRoots = new HashSet<string>(rows.Values.SelectMany(row => row.Cells.Values).Where(cell => cell.Masked).Select(cell => cell.ColumnId), StringComparer.OrdinalIgnoreCase);
-            var closure = await ReadDefinitionsAsync(layout.AddedIds.Concat(observed).Where(id => !maskedRoots.Contains(id)), false, owner, ct).ConfigureAwait(false);
+            var closureRoots = layout.AddedIds.Concat(beforeRows.Projection.Columns.Select(column => column.PlatformId)
+                .Where(id => id != null && !maskedRoots.Contains(id))).Distinct(StringComparer.OrdinalIgnoreCase);
+            var closure = await ReadDefinitionsAsync(closureRoots, false, owner, ct).ConfigureAwait(false);
             foreach (var pair in closure)
             {
                 PlatformColumnDefinition prior;
@@ -54,8 +61,8 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 definitions[pair.Key] = pair.Value;
             }
             // Cell definitions from a complete authorized batch are real server evidence too.
-            var projection = layout.Project(definitions, observed); Require(owner); ct.ThrowIfCancellationRequested();
-            return Snapshot(owner, layout, projection, capabilities, definitions, rows, unavailable, observed, preferenceConfirmed);
+            var outcome = layout.ProjectBounded(definitions, observed); Require(owner); ct.ThrowIfCancellationRequested();
+            return Snapshot(owner, layout, outcome.Projection, capabilities, definitions, rows, unavailable, observed, preferenceConfirmed, outcome.OverflowedDefinitionIds);
         }
         /// <summary>For all-result print/export snapshots: preserve exactly the frozen header and its authoritative definitions.</summary>
         public async Task<UnitColumnsSnapshot> LoadRowsAsync(IReadOnlyList<string> recordIds, UnitColumnsSnapshot frozen, CancellationToken ct)
@@ -81,7 +88,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 }
             return Snapshot(frozen.Owner, frozen.Layout, frozen.Projection, frozen.Capabilities,
                 frozen.Definitions.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase), rows,
-                frozen.UnavailableDefinitionIds, frozen.ObservedDefinitionIds, frozen.PreferencesConfirmed);
+                frozen.UnavailableDefinitionIds, frozen.ObservedDefinitionIds, frozen.PreferencesConfirmed, frozen.OverflowedDefinitionIds);
         }
         public async Task<UnitReadSnapshot<IReadOnlyDictionary<string, PlatformColumnDefinition>>> SearchAsync(string query, CancellationToken ct)
         {
@@ -111,7 +118,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 definitions[pair.Key] = pair.Value;
             }
             return Snapshot(current.Owner, current.Layout, current.Projection, current.Capabilities, definitions, current.Rows,
-                current.UnavailableDefinitionIds, current.ObservedDefinitionIds, current.PreferencesConfirmed);
+                current.UnavailableDefinitionIds, current.ObservedDefinitionIds, current.PreferencesConfirmed, current.OverflowedDefinitionIds);
         }
         public async Task<UnitReadSnapshot<PlatformColumnRow>> ReadRowAsync(string recordId, IReadOnlyList<string> columnIds, CancellationToken ct)
         {
@@ -127,7 +134,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
             if (layout == null || current == null) throw new ArgumentNullException(layout == null ? nameof(layout) : nameof(current)); Require(current.Owner);
             var staged = Snapshot(current.Owner, layout, current.Projection, current.Capabilities,
                 current.Definitions.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase), current.Rows,
-                current.UnavailableDefinitionIds, current.ObservedDefinitionIds, current.PreferencesConfirmed);
+                current.UnavailableDefinitionIds, current.ObservedDefinitionIds, current.PreferencesConfirmed, current.OverflowedDefinitionIds);
             return LoadAsync(current.Rows.Keys.ToArray(), ct, staged);
         }
         public MutationOwnerSnapshot CaptureWriteOwner(UnitColumnsSnapshot current)
@@ -245,12 +252,13 @@ namespace Uten.Legacy.Desktop.Features.Columns
         }
         private static UnitColumnsSnapshot Snapshot(UnitReadOwner owner, UnitColumnLayout layout, UnitColumnProjection projection,
             PlatformColumnCapabilities capabilities, Dictionary<string, PlatformColumnDefinition> definitions, IReadOnlyDictionary<string, PlatformColumnRow> rows,
-            IEnumerable<string> unavailable, IEnumerable<string> observed, bool preferencesConfirmed)
+            IEnumerable<string> unavailable, IEnumerable<string> observed, bool preferencesConfirmed, IEnumerable<string> overflowed = null)
         {
             return new UnitColumnsSnapshot { Owner = owner, Layout = layout, Projection = projection, Capabilities = capabilities,
                 Definitions = new ReadOnlyDictionary<string, PlatformColumnDefinition>(definitions), Rows = rows,
                 DefinitionFingerprint = ColumnJson.Hash(String.Join("\n", definitions.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Key + ":" + pair.Value.Fingerprint))),
                 UnavailableDefinitionIds = unavailable.ToList().AsReadOnly(), ObservedDefinitionIds = observed.OrderBy(id => id, StringComparer.Ordinal).ToList().AsReadOnly(),
+                OverflowedDefinitionIds = (overflowed ?? Enumerable.Empty<string>()).OrderBy(id => id, StringComparer.Ordinal).ToList().AsReadOnly(),
                 PreferencesConfirmed = preferencesConfirmed };
         }
         private static string[] RecordIds(IReadOnlyList<string> recordIds)

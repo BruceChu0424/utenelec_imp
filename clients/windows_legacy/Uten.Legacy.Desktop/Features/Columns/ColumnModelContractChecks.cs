@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace Uten.Legacy.Desktop.Features.Columns
@@ -64,12 +65,33 @@ namespace Uten.Legacy.Desktop.Features.Columns
             var calculatedWrite = ColumnJson.Object(ColumnJson.Parse(PlatformValueWriteContract.ToJson(calculatedRows[Record], Id, "3")));
             check(ColumnJson.Array(calculatedWrite["cells"]).Select(ColumnJson.Object).Single(cell => (string)cell["columnId"] == Other)["value"] == null,
                 "a persisted calculated marker never writes the returned computed amount as a business value");
+            var legacy = new Dictionary<string, PlatformColumnDefinition>(StringComparer.OrdinalIgnoreCase);
+            var legacyJson = new List<string>();
+            for (int index = 0; index < 40; index++) { string id = Extra(index); legacy[id] = ColumnReadContract.Definitions("[" + Definition(id, "TEXT") + "]")[id]; legacyJson.Add(id); }
+            var plain = new UnitColumnLayout().ProjectBounded(legacy, legacyJson);
+            check(plain.Projection.Columns.Count == 35 && plain.OverflowedDefinitionIds.Count == 8 && plain.OverflowedDefinitionIds[0] == Extra(32),
+                "more than 32 persisted legacy columns deliver a bounded 35-column table with explicit stable overflow instead of failing closed");
+            var addedLate = new UnitColumnLayout(addedIds: new[] { Extra(39) }).ProjectBounded(legacy, legacyJson);
+            check(addedLate.Projection.Columns.Count == 35 && addedLate.Projection.Columns.Any(column => column.PlatformId == Extra(39))
+                && addedLate.OverflowedDefinitionIds.Count == 8 && !addedLate.OverflowedDefinitionIds.Contains(Extra(39)),
+                "explicit user additions keep their visible budget first and are never reported as overflow");
+            var hiddenLate = new UnitColumnLayout(hidden: new[] { "platform:" + Extra(39) }, addedIds: new[] { Extra(39) }).ProjectBounded(legacy, legacyJson);
+            check(!hiddenLate.Projection.Columns.Any(column => column.PlatformId == Extra(39)) && hiddenLate.OverflowedDefinitionIds.Count == 7
+                && !hiddenLate.OverflowedDefinitionIds.Contains(Extra(39)),
+                "an explicitly hidden column frees budget for the next stable persisted columns and is not counted as overflow");
+            check(new UnitColumnLayout().ProjectBounded(legacy, legacyJson).Projection.ToJson() == plain.Projection.ToJson(),
+                "bounded selection is deterministic across repeated projection");
+            var partial = new Dictionary<string, PlatformColumnDefinition>(StringComparer.OrdinalIgnoreCase) { [Extra(0)] = legacy[Extra(0)] };
+            Reject<InvalidOperationException>(() => new UnitColumnLayout(addedIds: new[] { Extra(1) }).Project(partial), check,
+                "unverified added column still fails the strict projection instead of silently disappearing");
             return count;
         }
         private static void Reject<T>(Action action, Action<bool, string> check, string label) where T : Exception
         { try { action(); } catch (T) { check(true, label); return; } check(false, label); }
         private static string Definition(string id, string type)
         { return "{\"id\":\"" + id + "\",\"scope\":\"master_unit\",\"name\":\"自设列\",\"type\":\"" + type + "\",\"priceProtected\":false,\"formula\":null,\"usageCount\":9007199254740993,\"personalUsageCount\":0,\"relationKey\":null,\"canDelete\":true}"; }
+        internal static string Extra(int index)
+        { return "00000000-0000-0000-0000-" + (index + 1).ToString("D12", CultureInfo.InvariantCulture); }
         private static string Row(string value, bool masked)
         { return "{\"recordId\":\"" + Record + "\",\"version\":9007199254740995,\"canWrite\":true,\"cells\":[{\"columnId\":\"" + Id + "\",\"value\":" + ColumnJson.Serialize(value) + ",\"definition\":" + Definition(Id, "NUMBER") + ",\"masked\":" + (masked ? "true" : "false") + ",\"persisted\":true,\"error\":null}]}"; }
     }

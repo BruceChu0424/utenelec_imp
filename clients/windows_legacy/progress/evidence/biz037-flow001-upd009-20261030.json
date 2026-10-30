@@ -1,0 +1,71 @@
+{
+  "evidenceId": "E-BIZ037-FLOW001-UPD009-20261030",
+  "recordedAtUtc": "2026-10-30T00:00:00Z",
+  "branch": "uimp/win7-wpf-client-20261028",
+  "baselineCommit": "e26a4d7e62d24e03b7371cdeaa24c8068e678e91",
+  "workItems": ["W7-BIZ-037", "W7-FLOW-001", "W7-UPD-009"],
+  "environment": {
+    "machine": "developer Windows 11 x64 (not a Win7 target PC)",
+    "msbuild": "D:/Software/Visual Studio Installe/MSBuild/Current/Bin/MSBuild.exe",
+    "python": "C:/Program Files/LibreOffice/program/python.exe",
+    "buildScope": "biz037-overflow"
+  },
+  "changes": [
+    {
+      "workItem": "W7-BIZ-037",
+      "summary": "Legacy data with more than 32 distinct persisted platform columns no longer fails the units table closed. UnitColumnLayout.ProjectBounded keeps an explicit, deterministic bounded subset (user additions first, then persisted columns in stable UUID order), returns OverflowedDefinitionIds instead of throwing, and UnitColumnsSnapshot carries the overflow fact. Verification re-reads cover only the visible budget while all persisted cells, definitions and row write preservation stay retained (PlatformValueWriteContract unchanged; per-row >32 cells remain refused by the owning server contract). UnitsWorkspaceView and UnitColumnSettingsWindow surface the overflow explicitly; outputs resume over the frozen visible header instead of pausing delivery.",
+      "files": {
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/ColumnModels.cs": "fee36200a1359349",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnsService.cs": "5b9bce6316c14f3f",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/ColumnModelContractChecks.cs": "c515a491e711ded7",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/ColumnServiceContractChecks.cs": "4eff51e7a264462a",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Columns/UnitColumnSettingsWindow.cs": "682fe21d4c9e69f7",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs": "4e4f5fd8c70ec34b"
+      }
+    },
+    {
+      "workItem": "W7-FLOW-001",
+      "summary": "Unit to goods real reference chain on the native side. GoodsRecord now retains unitId/unitLegacyId as authoritative UUID relationship keys with validation, and distinguishes the server's read-only legacy snapshot fallback (unit name without UUID) from a live UUID reference. Goods detail shows the relationship fact and offers 查看单位资料 navigation that opens the owning UnitDetailWindow by UUID (carrying its own edit/status/delete reference-protection guards). Delete protection itself remains the owning server per-item reasons flow (MasterLifecycleController batch-delete), already covered by UnitContractChecks per-item reason assertions; no new endpoint was invented and no client-side reference re-derivation was added.",
+      "files": {
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs": "54ad08c7f8501d02",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs": "c26d2f09258c728f",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs": "501eaf48bb1e5e10"
+      }
+    },
+    {
+      "workItem": "W7-UPD-009",
+      "summary": "Startup consumption of finished and interrupted update jobs. UpdateOutcomeReader scans the private GUID job root: newest unconsumed result.json is parsed (bounded 16 KiB, schemaVersion/family/architecture validated, unreadable facts surface as unreadable_result instead of being ignored), apply-authorized.json without a result is reported as interrupted with the recovery-manifest escalation (mutation phase had begun). MainWindow shows UpdateOutcomeWindow once before login and marks consumption via result-consumed.json without ever deleting result.json, backups or recovery material. Build anchoring compares the running FilePrivatePart against the recorded success build. True power-loss recovery on a real Win7 machine remains uncovered by this local evidence.",
+      "files": {
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/UpdateOutcomeReader.cs": "009bb175ee54fe20",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/UpdateOutcomeWindow.cs": "3481c26b29a64bf8",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Updates/UpdateOutcomeContractChecks.cs": "a3f387c82d4af78b",
+        "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs": "c65c68c5f2b02d69",
+        "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "be16c06fdefa8a8f"
+      }
+    }
+  ],
+  "verification": [
+    {
+      "command": "build_windows_wpf.ps1 -Build -Configuration Debug -Architecture all -BuildScope biz037-overflow",
+      "result": "PASS x86+x64 native compile with PE architecture check; no Setup/ZIP generated"
+    },
+    {
+      "command": "build_windows_wpf.ps1 -Build -Configuration Release -Architecture all -BuildScope biz037-overflow",
+      "result": "PASS x86+x64 Release compile"
+    },
+    {
+      "command": "Uten.Legacy.Tests.exe (full runner, x86 and x64)",
+      "result": "PASS both; goods 24->27, columns 46->55, update outcomes 0->13, downloads 39, units 38, history 31+7, print 21, drafts 16, exports 16, inline 70, updater 203 unchanged"
+    },
+    {
+      "command": "business_inventory.py --check; sync_design_tokens.py --check; sync_package_contract.py --check; progress_tracker.py check",
+      "result": "PASS all; 350 work packages, states unchanged"
+    }
+  ],
+  "notCovered": [
+    "Win7 SP1 x86/x64 real target machines: install, update execute, IME/DPI and result-dialog interaction remain unverified; developer-machine x86/x64 process evidence only.",
+    "Real production Execute with a real restarted client consuming result.json on a target machine (fixture result files only here).",
+    "Per-row writes with more than 32 persisted cells remain refused by the owning server contract for every client; a shared backend increment would be required to change that.",
+    "W7-BIZ-215 native publish workbench page and the remaining 01 business/FLOW queue."
+  ]
+}

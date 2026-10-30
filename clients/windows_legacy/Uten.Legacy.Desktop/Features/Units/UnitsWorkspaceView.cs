@@ -278,6 +278,9 @@ namespace Uten.Legacy.Desktop.Features.Units
                     var projected = await columnsService.LoadAsync(snapshot.Value.Items.Select(item => item.Id).ToArray(), token, previousColumns);
                     if (disposed || request != sequence || !snapshot.IsCurrent(session) || !projected.IsCurrent(session)) return;
                     columnSnapshot = projected; ApplyColumns();
+                    if (projected.OverflowedDefinitionIds.Count > 0)
+                        status.Text += "；当前资料另有 " + projected.OverflowedDefinitionIds.Count.ToString(CultureInfo.InvariantCulture)
+                            + " 个自设列超出单表32列上限，暂未显示但原值仍保留，可在表头设置中调整。";
                 }
                 catch (ApiException error)
                 {

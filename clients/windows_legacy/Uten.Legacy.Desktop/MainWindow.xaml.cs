@@ -13,6 +13,7 @@ using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Views;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Downloads;
+using Uten.Legacy.Desktop.Features.Publish;
 using Uten.Legacy.Desktop.Updates;
 
 namespace Uten.Legacy.Desktop
@@ -61,6 +62,7 @@ namespace Uten.Legacy.Desktop
         {
             if (rendering) return;
             AccountBox.Focus();
+            ShowStartupUpdateOutcome();
             long restoreGeneration = session.Generation;
             try
             {
@@ -92,6 +94,25 @@ namespace Uten.Legacy.Desktop
             catch (OperationCanceledException) { }
             catch (ApiException) { /* Durable records remain for the next bounded attempt. */ }
             finally { drainingRevocations = false; }
+        }
+
+        /// <summary>W7-UPD-009: consume the finished or interrupted update job's outcome once.
+        /// The fact is shown before login so a failed/interrupted update is never silently
+        /// ignored; recovery material stays untouched and remains available for the admin.</summary>
+        private void ShowStartupUpdateOutcome()
+        {
+            try
+            {
+                var reader = new UpdateOutcomeReader();
+                var outcome = reader.ReadFirstPending();
+                if (outcome == null) return;
+                new UpdateOutcomeWindow(this, outcome).ShowDialog();
+                reader.MarkConsumed(outcome);
+            }
+            catch (Exception)
+            {
+                // Startup must still reach login; the unconsumed outcome resurfaces next launch.
+            }
         }
 
         private void OnSessionChanged(object sender, EventArgs e)
@@ -258,7 +279,14 @@ namespace Uten.Legacy.Desktop
         }
         private void OnWindowsDownloads(object sender, RoutedEventArgs e)
         {
-            if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session));
+            if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session, OpenClientPublish));
+        }
+
+        private void OpenClientPublish()
+        {
+            if (!session.IsAuthenticated || busy) return;
+            if (session.CurrentUser != null && session.CurrentUser.HasPermission(ClientReleasePublishLimits.PublishPermission))
+                SetWorkspace(new ClientReleasePublishView(session));
         }
         private void OnAbout(object sender, RoutedEventArgs args)
         {

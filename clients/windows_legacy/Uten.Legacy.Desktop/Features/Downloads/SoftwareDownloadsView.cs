@@ -26,6 +26,8 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         private readonly ComboBox runtime = new ComboBox { DisplayMemberPath = "Label", SelectedValuePath = "Value" };
         private readonly ComboBox architecture = new ComboBox { DisplayMemberPath = "Label", SelectedValuePath = "Value" };
         private readonly Button refresh = new Button { Content = "刷新版本" };
+        private readonly Button publishEntry = new Button { Content = "发布与管理", Visibility = Visibility.Collapsed };
+        private readonly Action openPublish;
         private readonly Button download = new Button { Content = "下载安装程序", Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Left };
         private readonly Button cancel = new Button { Content = "取消下载", Visibility = Visibility.Collapsed, HorizontalAlignment = HorizontalAlignment.Left };
         private readonly TextBlock status = new TextBlock();
@@ -43,12 +45,19 @@ namespace Uten.Legacy.Desktop.Features.Downloads
         private int activeTransfers;
         public bool CanCloseForUpdate { get { return !choosingPath && !transferring && activeTransfers == 0; } }
 
-        public SoftwareDownloadsView(SessionCoordinator session)
+        public SoftwareDownloadsView(SessionCoordinator session, Action openPublish = null)
         {
             this.session = session ?? throw new ArgumentNullException(nameof(session));
+            this.openPublish = openPublish;
             SetResourceReference(StyleProperty, "Uten.Workspace");
             service = new SoftwareDownloadsService(session);
             BuildLayout();
+            if (openPublish != null && session.CurrentUser != null
+                && session.CurrentUser.HasPermission("client_release:publish"))
+            {
+                publishEntry.Visibility = Visibility.Visible;
+                publishEntry.Click += (sender, args) => openPublish();
+            }
             runtime.ItemsSource = new[] {
                 new TargetChoice { Value = ClientPackageDescriptor.LegacyRuntime, Label = "Windows 7 SP1 / 8.1 兼容版" },
                 new TargetChoice { Value = ClientPackageDescriptor.FlutterRuntime, Label = "Windows 10 / 11 常规版" }
@@ -78,6 +87,9 @@ namespace Uten.Legacy.Desktop.Features.Downloads
             var header = new DockPanel { Margin = Gap(bottom: "S16") };
             refresh.SetResourceReference(MinHeightProperty, "Uten.Height.Standard");
             DockPanel.SetDock(refresh, Dock.Right); header.Children.Add(refresh);
+            publishEntry.SetResourceReference(MinHeightProperty, "Uten.Height.Standard");
+            publishEntry.Margin = new Thickness(0, 0, 8, 0);
+            DockPanel.SetDock(publishEntry, Dock.Right); header.Children.Add(publishEntry);
             var title = new TextBlock { Text = "Windows 下载", VerticalAlignment = VerticalAlignment.Center };
             title.SetResourceReference(StyleProperty, "Uten.PageTitle"); header.Children.Add(title);
             content.Children.Add(header);

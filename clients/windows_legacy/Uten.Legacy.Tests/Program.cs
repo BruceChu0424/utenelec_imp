@@ -4,9 +4,11 @@ using System.Reflection;
 using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Features.Goods;
 using Uten.Legacy.Desktop.Features.Downloads;
+using Uten.Legacy.Desktop.Features.Publish;
 using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Shared;
 using Uten.Legacy.Desktop.Features.Columns;
+using Uten.Legacy.Desktop.Updates;
 
 namespace Uten.Legacy.Tests
 {
@@ -39,11 +41,13 @@ namespace Uten.Legacy.Tests
                 Console.WriteLine("PASS native Core contracts");
                 int goods = GoodsReadContractChecks.Run();
                 int downloads = DownloadsContractChecks.Run();
+                int publish = PublishContractChecks.Run();
                 int units = UnitContractChecks.Run();
                 int history = UnitHistoryContractChecks.Run();
                 int columns = ColumnModelContractChecks.Run() + ColumnServiceContractChecks.RunRead() + ColumnUiContractChecks.RunWrites();
                 int updater = UpdaterContractChecks.Run();
-                Console.WriteLine("PASS goods/downloads/units/updater contracts");
+                int outcomes = UpdateOutcomeContractChecks.Run();
+                Console.WriteLine("PASS goods/downloads/publish/units/updater contracts");
                 UiContractChecks.Run();
                 int historyUiAssertions = UnitHistoryContractChecks.RunUi();
                 int printAssertions = NativePrintContractChecks.Run();
@@ -51,10 +55,11 @@ namespace Uten.Legacy.Tests
                 int exportAssertions = UnitExportUiChecks.Run();
                 int inlineAssertions = UnitInlineWorkspaceChecks.Run();
                 int columnUiAssertions = ColumnUiContractChecks.Run();
-                Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads + "; units assertions=" + units
+                Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads
+                    + "; publish assertions=" + publish + "; units assertions=" + units
                     + "; history assertions=" + history + "; history UI=" + historyUiAssertions + "; print assertions=" + printAssertions
                     + "; columns=" + columns + "; column UI=" + columnUiAssertions + "; common drafts=" + draftAssertions + "; exports=" + exportAssertions + "; inline=" + inlineAssertions
-                    + "; updater assertions=" + updater + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    + "; updater assertions=" + updater + "; update outcomes=" + outcomes + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                 return 0;
             }
             catch (Exception error)

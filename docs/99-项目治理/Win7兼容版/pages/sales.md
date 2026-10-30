@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocDetailPage @97 (page-class)<br>_SalesDocDetailPageState @112 (state-class)<br>_KV @3280 (supporting-class)<br>_LineActionSheet @3292 (supporting-class)<br>_LineActionSheetState @3314 (state-class) |
-| 真实路由绑定 | /sales/:seg/:id；router @1841；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/:id；router @1838；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_shipment:reject @227；定义 lib/shared/auth/permissions.dart:314<br>sales_order:change_qty @239；定义 lib/shared/auth/permissions.dart:580<br>sales_order:stop @242；定义 lib/shared/auth/permissions.dart:579<br>sales_order:change_planned @246；定义 lib/shared/auth/permissions.dart:303<br>sales_order:cancel @271；定义 lib/shared/auth/permissions.dart:581<br>warehouse_sales_outbound:execute @294；定义 lib/shared/auth/permissions.dart:318<br>sales_return_quality:view @309；定义 lib/shared/auth/permissions.dart:325<br>sales_return_quality:correct @316；定义 lib/shared/auth/permissions.dart:745<br>sales_return_quality:dispose @323；定义 lib/shared/auth/permissions.dart:746<br>sales_quote:view @723；定义 lib/shared/auth/permissions.dart:297<br>sales_order:priority @1170；定义 lib/shared/auth/permissions.dart:308<br>sales_order:reallocate @1174；定义 lib/shared/auth/permissions.dart:311<br>finance:view:all @1402；定义 lib/shared/auth/permissions.dart:486<br>customer_prepayment:view @1403；定义 lib/shared/auth/permissions.dart:468<br>sales_shipment_finance:view @1547；定义 lib/shared/auth/permissions.dart:448<br>sales_quote:view @1809；定义 lib/shared/auth/permissions.dart:297<br>sales_shipment:view @2940；定义 lib/shared/auth/permissions.dart:312<br>purchase_order:view @2944；定义 lib/shared/auth/permissions.dart:93<br>subcontract_order:view @2948；定义 lib/shared/auth/permissions.dart:335<br>production_plan:view @2952；定义 lib/shared/auth/permissions.dart:374<br>production_material_analysis:view @2956；定义 lib/shared/auth/permissions.dart:388<br>sales_quote:view @2974；定义 lib/shared/auth/permissions.dart:297 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocEditPage @141 (page-class)<br>_SalesDocEditPageState @169 (state-class) |
-| 真实路由绑定 | /sales/:seg/new；router @1808；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @1831；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/new；router @1805；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @1828；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @313；定义 lib/shared/auth/permissions.dart:302<br>sales_quote:view @2904；定义 lib/shared/auth/permissions.dart:297<br>sales_quote:create @2904；定义 lib/shared/auth/permissions.dart:571<br>currency:create @4818；定义 lib/shared/auth/permissions.dart:554<br>settlement_method:create @4821；定义 lib/shared/auth/permissions.dart:567 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _SalesDocSeg @71 (supporting-class)<br>SalesDocListPage @99 (page-class)<br>_SalesDocListPageState @130 (state-class) |
-| 真实路由绑定 | /sales/:seg；router @1853；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg；router @1850；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @179；定义 lib/shared/auth/permissions.dart:302<br>sales_order:price:view @181；定义 lib/shared/auth/permissions.dart:302<br>sales_quote_finance:view @182；定义 lib/shared/auth/permissions.dart:462<br>sales_order:price:view @184；定义 lib/shared/auth/permissions.dart:302<br>sales_shipment_finance:view @185；定义 lib/shared/auth/permissions.dart:448<br>sales_shipment:create @361；定义 lib/shared/auth/permissions.dart:582<br>sales_quote:convert @366；定义 lib/shared/auth/permissions.dart:574<br>sales_order:create @367；定义 lib/shared/auth/permissions.dart:575 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesHubPage @42 (page-class)<br>_Entry @212 (supporting-class)<br>_EntryTile @239 (supporting-class) |
-| 真实路由绑定 | /sales；router @1758；builder ['SalesHubPage']；redirect None |
+| 真实路由绑定 | /sales；router @1755；builder ['SalesHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _ProgressSeg @84 (supporting-class)<br>SalesOrderProgressPage @132 (page-class)<br>_SalesOrderProgressPageState @152 (state-class) |
-| 真实路由绑定 | /sales/progress；router @1794；builder ['SalesOrderProgressPage']；redirect None |
+| 真实路由绑定 | /sales/progress；router @1791；builder ['SalesOrderProgressPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:delete @204；定义 lib/shared/auth/permissions.dart:576<br>sales_order:cancel @431；定义 lib/shared/auth/permissions.dart:581<br>sales_shipment:create @508；定义 lib/shared/auth/permissions.dart:582<br>sales_order:edit @514；定义 lib/shared/auth/permissions.dart:301<br>sales_order:edit @530；定义 lib/shared/auth/permissions.dart:301 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesReportPage @64 (page-class)<br>_SalesReportPageState @72 (state-class)<br>SalesClientDetailDialog @722 (supporting-class)<br>_SalesClientDetailDialogState @753 (state-class) |
-| 真实路由绑定 | detail；router @1772；builder ['SalesReportPage']；redirect None<br>summary；router @1778；builder ['SalesReportPage']；redirect None |
+| 真实路由绑定 | detail；router @1769；builder ['SalesReportPage']；redirect None<br>summary；router @1775；builder ['SalesReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_report:export @640；定义 lib/shared/auth/permissions.dart:327<br>sales_report:export @649；定义 lib/shared/auth/permissions.dart:327 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesScarcityPage @30 (page-class)<br>_SalesScarcityPageState @43 (state-class) |
-| 真实路由绑定 | /sales/scarcity；router @1786；builder ['SalesScarcityPage']；redirect None |
+| 真实路由绑定 | /sales/scarcity；router @1783；builder ['SalesScarcityPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _GroupSpec @53 (supporting-class)<br>SalesTaskCenterPage @67 (page-class)<br>_SalesTaskCenterPageState @78 (state-class)<br>_GroupPlaceholder @316 (supporting-class) |
-| 真实路由绑定 | /sales/tasks；router @1801；builder ['SalesTaskCenterPage']；redirect None |
+| 真实路由绑定 | /sales/tasks；router @1798；builder ['SalesTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

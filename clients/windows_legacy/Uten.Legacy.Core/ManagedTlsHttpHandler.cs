@@ -139,9 +139,12 @@ namespace Uten.Legacy.Core
         private void ValidateRequestOrigin(HttpRequestMessage request)
         {
             var uri = request?.RequestUri;
+            var upload = ClientReleaseUploadSink.FromRequest(request);
+            if (upload != null && !upload.Owns(request))
+                throw new HttpRequestException("上传请求不属于冻结的发布上传合同。");
             if (uri == null || !uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length != 0
                 || uri.Fragment.Length != 0 || (request.Method != HttpMethod.Get && request.Method != HttpMethod.Post
-                    && !MutationWirePermit.AllowsExtendedMethod(request)))
+                    && !MutationWirePermit.AllowsExtendedMethod(request) && upload == null))
                 throw new HttpRequestException("接口请求不符合固定 HTTPS 契约。");
             var owner = configuration.Endpoints.FirstOrDefault(value =>
                 value.ApiBaseUri.GetLeftPart(UriPartial.Authority) == uri.GetLeftPart(UriPartial.Authority));

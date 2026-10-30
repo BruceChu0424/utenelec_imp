@@ -151,9 +151,9 @@
 1. 成功重启锚定main，版本和六文件一致、凭据/草稿保全，失败显示真实恢复路径。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
+证据：`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`。
 
-接续/限制：惰性进程fixture真实重启PID/start/image/2535版本与隔离profile已核，客户端启动后result UI消费/掉电恢复尚未完成。。
+接续/限制：启动result消费已实现：UpdateOutcomeReader按GUID任务目录读最新未消费result.json(16KiB界限/scheme/family/arch校验，不可读按事实呈现)，apply-authorized无result判中断并按recovery-manifest升级警示；登录前UpdateOutcomeWindow展示一次并写result-consumed.json，绝不删恢复资料；成功锚定当前构建号。update outcomes 13双架构绿；真机掉电/断点恢复仍待。。
 
 ## W7-UPD-010
 

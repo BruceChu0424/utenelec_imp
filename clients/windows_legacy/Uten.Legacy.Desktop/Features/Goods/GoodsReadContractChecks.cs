@@ -41,6 +41,18 @@ namespace Uten.Legacy.Desktop.Features.Goods
             check(row.LegacyId == "9007199254740993", "historical identifier precision retained");
             check(row.SourceType == "OUTSOURCE", "server source identity retained");
             check(row.Name == "货品 123", "numbers inside strings are untouched");
+            // 单位→货品 FLOW: the unit relationship is the authoritative UUID key, and the
+            // legacy snapshot fallback stays a display fact instead of a fake live reference.
+            const string unitId = "c73a7dd0-b342-4c15-a856-14d4d9d3cc10";
+            GoodsRecord referenced = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"code\":\"001\",\"name\":\"货品 123\","
+                + "\"unitId\":\"" + unitId + "\",\"unitName\":\"个\",\"unitLegacyId\":\"c73a7dd0-b342-4c15-a856-14d4d9d3cc11\"}");
+            check(referenced.UnitId == unitId && referenced.UnitRelationship == "UUID 引用" && referenced.UnitLegacyId != null,
+                "unit UUID relationship key and legacy id retained for the cross-module chain");
+            GoodsRecord legacySnapshot = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"unitName\":\"箱\"}");
+            check(legacySnapshot.UnitId == null && legacySnapshot.UnitName == "箱" && legacySnapshot.UnitRelationship == "历史快照回落",
+                "missing unit UUID keeps the read-only legacy fallback fact without inventing a key");
+            ExpectFailure(() => { var _ = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"unitId\":\"个\"}").UnitId; },
+                check, "non-UUID unit relationship rejected instead of name-matched");
             GoodsRecord masked = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"price\":19.9900,"
                 + "\"priceDisplayText\":\"19.99\",\"priceMasked\":true,\"discount\":0.90,\"discountMasked\":true,\"costMasked\":true}");
             check(masked.Price == "—" && masked.Discount == "—" && masked.Flag("costMasked"), "financial masks retained");

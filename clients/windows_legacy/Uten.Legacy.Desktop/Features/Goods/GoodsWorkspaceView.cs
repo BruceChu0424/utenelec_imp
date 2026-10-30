@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Controls;
+using Uten.Legacy.Desktop.Features.Units;
 
 namespace Uten.Legacy.Desktop.Features.Goods
 {
@@ -37,6 +38,9 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private readonly TextBlock detailStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
         private readonly Button detailRetry = new Button { Content = "重试详情", Visibility = Visibility.Collapsed,
             HorizontalAlignment = HorizontalAlignment.Left };
+        // Cross-module FLOW entry: opens the owning unit by its real UUID relationship key.
+        private readonly Button openUnit = new Button { Content = "查看单位资料", Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Left };
         private readonly DispatcherTimer searchDelay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         private CancellationTokenSource lifetime;
         private CancellationTokenSource listRead;
@@ -45,6 +49,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         private long listGeneration, treeGeneration, detailGeneration;
         private string selectedCategory;
         private string selectedCategoryName = "全部货品";
+        private string unitUuid;
         private int page = 1, totalPages;
         private bool listBusy, subscribed, replacingCategories;
         private long observedSessionGeneration, observedReadRevision;
@@ -60,6 +65,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             categories.SelectedItemChanged += OnCategoryChanged;
             rows.SelectionChanged += OnRowSelected;
             detailRetry.Click += (sender, args) => OnRowSelected(rows, null);
+            openUnit.Click += async (sender, args) => await OpenUnitByUuidAsync();
             previous.Click += async (sender, args) => await LoadPageAsync(Math.Max(1, page - 1));
             next.Click += async (sender, args) => await LoadPageAsync(page + 1);
             retry.Click += async (sender, args) => await LoadAsync();
@@ -161,7 +167,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             DockPanel.SetDock(pager, Dock.Right); footer.Children.Add(pager); footer.Children.Add(shownScope);
             Grid.SetRow(footer, 3); grid.Children.Add(footer);
             var details = new StackPanel(); details.Children.Add(detailTitle); details.Children.Add(detailStatus);
-            details.Children.Add(detailRetry); details.Children.Add(detailFields);
+            details.Children.Add(detailRetry); details.Children.Add(openUnit); details.Children.Add(detailFields);
             detail.Child = new ScrollViewer { Content = details, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             detail.SetResourceReference(Border.PaddingProperty, "Uten.Padding.S16");
             detail.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius.Card");
@@ -340,20 +346,28 @@ namespace Uten.Legacy.Desktop.Features.Goods
             detailRead = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             CancellationToken token = detailRead.Token; long ownerGeneration = session.Generation, ownerReadRevision = session.ReadScopeRevision;
             detailFields.Children.Clear(); detailTitle.Text = selected.Code + "  " + selected.Name;
-            detailStatus.Text = "正在读取详情…"; detailRetry.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Visible;
+            detailStatus.Text = "正在读取详情…"; detailRetry.Visibility = Visibility.Collapsed;
+            openUnit.Visibility = Visibility.Collapsed; detail.Visibility = Visibility.Visible;
             try
             {
                 GoodsRecord result = await service.DetailAsync(selected.Id, token);
                 if (token.IsCancellationRequested || generation != detailGeneration || ownerGeneration != session.Generation || ownerReadRevision != session.ReadScopeRevision || !IsLoaded) return;
                 detailStatus.Text = "";
                 Field("编码", result.Code); Field("名称", result.Name); Field("分类", result.Text("categoryName"));
-                Field("规格", result.Spec); Field("颜色", result.ColorName); Field("单位", result.UnitName);
+                Field("规格", result.Spec); Field("颜色", result.ColorName);
+                Field("单位", result.UnitName); Field("单位关系", result.UnitRelationship);
                 Field("来源", result.SourceType); Field("所属仓库", result.Text("owningWarehouseName"));
                 Field("归属车间", result.Text("owningWorkshopName")); Field("发料方式", result.Text("issueMethod"));
                 Field("英文名称", result.Text("nameEn")); Field("英文名称来源", result.Text("nameEnSource"));
                 Field("历史迁移编号", result.LegacyId); Field("备注", result.Text("paper"));
                 if (Allowed("goods:price:view") && !result.Flag("priceMasked")) Field("售价", result.Price);
                 if (Allowed("goods:discount:view") && !result.Flag("discountMasked")) Field("折扣倍率", result.Discount);
+                // Only a real unit UUID may navigate; the legacy snapshot fallback keeps
+                // its display fact without inventing a relationship key.
+                unitUuid = result.UnitId;
+                openUnit.Visibility = result.UnitId != null && Allowed("unit:view") ? Visibility.Visible : Visibility.Collapsed;
+                openUnit.Margin = Spacing(top: "S8");
+                openUnit.SetResourceReference(MinHeightProperty, "Uten.Height.Compact");
             }
             catch (OperationCanceledException) { }
             catch (ApiException error) when (error.Code == "READ_SCOPE_CHANGED" || error.StatusCode == 403)
@@ -375,6 +389,30 @@ namespace Uten.Legacy.Desktop.Features.Goods
             var text = Label(name + "：" + value);
             text.Margin = Spacing(top: "S8", right: "S24"); text.MinWidth = 170; text.TextWrapping = TextWrapping.Wrap;
             detailFields.Children.Add(text);
+        }
+        // 单位→货品 FLOW: navigate to the owning unit master by the authoritative UUID.
+        // The unit window carries its own edit/status/delete guards and reference protection.
+        private async Task OpenUnitByUuidAsync()
+        {
+            var target = unitUuid;
+            if (string.IsNullOrEmpty(target) || !Allowed("unit:view") || lifetime == null || lifetime.IsCancellationRequested) return;
+            try
+            {
+                var snapshot = await new UnitService(session).DetailAsync(target, lifetime.Token);
+                if (lifetime.Token.IsCancellationRequested || !IsLoaded || !snapshot.IsCurrent(session)) return;
+                var window = new UnitDetailWindow(Window.GetWindow(this), session, snapshot);
+                window.ShowDialog();
+                if (window.BusinessChanged) status.Text = "单位资料已更新，货品列表重新读取后同步。";
+            }
+            catch (OperationCanceledException) { }
+            catch (ApiException error)
+            {
+                if (IsLoaded) status.Text = "单位详情未能读取：" + error.UserMessage;
+            }
+            catch (Exception)
+            {
+                if (IsLoaded) status.Text = "单位详情暂时不可用，请稍后重试；货品资料未变更。";
+            }
         }
     }
 }

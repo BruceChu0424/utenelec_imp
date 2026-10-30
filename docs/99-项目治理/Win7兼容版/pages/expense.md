@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseApprovalDetailPage @53 (page-class)<br>_ExpenseApprovalDetailPageState @62 (state-class)<br>_ExpensePaymentDialog @487 (supporting-class)<br>_ExpensePaymentDialogState @495 (state-class)<br>_Hero @686 (supporting-class) |
-| 真实路由绑定 | /expense/approval/:id；router @686；builder ['ExpenseApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /expense/approval/:id；router @683；builder ['ExpenseApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:approve @88；定义 lib/shared/auth/permissions.dart:56<br>attachment:view @98；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @99；定义 lib/shared/auth/permissions.dart:730<br>expense:pay @104；定义 lib/shared/auth/permissions.dart:57 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseApprovalListPage @48 (page-class)<br>_ExpenseApprovalListPageState @57 (state-class) |
-| 真实路由绑定 | /expense/approval；router @677；builder ['ExpenseApprovalListPage']；redirect None |
+| 真实路由绑定 | /expense/approval；router @674；builder ['ExpenseApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:approve @152；定义 lib/shared/auth/permissions.dart:56<br>expense:pay @153；定义 lib/shared/auth/permissions.dart:57<br>attachment:view @416；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @417；定义 lib/shared/auth/permissions.dart:730 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseClaimEditPage @55 (page-class)<br>_ExpenseClaimEditPageState @67 (state-class) |
-| 真实路由绑定 | /expense/new；router @657；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @671；builder ['ExpenseClaimEditPage']；redirect None |
+| 真实路由绑定 | /expense/new；router @654；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @668；builder ['ExpenseClaimEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @600；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseDetailPage @47 (page-class)<br>_ExpenseDetailPageState @56 (state-class)<br>_HeroCard @475 (supporting-class) |
-| 真实路由绑定 | /expense/:id；router @692；builder ['ExpenseDetailPage']；redirect None |
+| 真实路由绑定 | /expense/:id；router @689；builder ['ExpenseDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @83；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -76,21 +76,21 @@
 
 ## W7-BIZ-055 · lib/features/expense/pages/expense_list_page.dart
 
-模块 `expense`；480 行；SHA256 `955dc51ab725388bfb58d13299a9b4f6744378245c699b9a9de369f6e8ae09ac`。
+模块 `expense`；486 行；SHA256 `1267a55980e208526771cbb31fbda82cf4a5b9818ff8f70c8733ef76712fe99c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | ExpenseListPage @53 (page-class)<br>_ExpenseListPageState @60 (state-class) |
-| 真实路由绑定 | /expense；router @652；builder ['ExpenseListPage']；redirect None |
+| 页面/状态类 | ExpenseListPage @54 (page-class)<br>_ExpenseListPageState @61 (state-class) |
+| 真实路由绑定 | /expense；router @649；builder ['ExpenseListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | expense:apply @79；定义 lib/shared/auth/permissions.dart:55<br>expense:apply @140；定义 lib/shared/auth/permissions.dart:55 |
+| 权限 | expense:apply @80；定义 lib/shared/auth/permissions.dart:55<br>expense:apply @141；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/expense/repositories/expense_repository.dart；接口：/expense-claims |
-| 动作处理 | _deleteDraft @69 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id, int expectedVersion) async {<br>delete @86 [action-like-invocation] 提示 ['delete']；await repository.delete(id, expectedVersion: expectedVersion);<br>_createAction @101 [action-ui-factory] 提示 ['create']；Widget _createAction() => UtenButton(<br>_createAction @192 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createAction()])<br>_deleteDraft @311 [action-like-invocation] 提示 ['delete']；delete: (id) => _deleteDraft(<br>_createAction @320 [action-like-invocation] 提示 ['create']；if (canApply) _createAction(),<br>draftDeleteBusy @105 [callback-reference] 提示 ['delete']；onPressed<br>draftDeleteBusy @307 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
+| 动作处理 | _deleteDraft @70 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id, int expectedVersion) async {<br>delete @87 [action-like-invocation] 提示 ['delete']；await repository.delete(id, expectedVersion: expectedVersion);<br>_createAction @102 [action-ui-factory] 提示 ['create']；Widget _createAction() => UtenButton(<br>_createAction @193 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createAction()])<br>_deleteDraft @312 [action-like-invocation] 提示 ['delete']；delete: (id) => _deleteDraft(<br>_createAction @321 [action-like-invocation] 提示 ['create']；if (canApply) _createAction(),<br>draftDeleteBusy @106 [callback-reference] 提示 ['delete']；onPressed<br>draftDeleteBusy @308 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/utils/china_datetime.dart` (core)；`lib/shared/models/retained_async_page.dart` (models)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/formatters/money_display.dart` (sharedComponents)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_refresh_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_collapsing_header_scroll_view.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/expense/models/expense_claim.dart` (models)；`lib/features/expense/models/expense_item.dart` (models)；`lib/features/expense/providers/expense_providers.dart` (providers)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/features/expense/providers/expense_counts_provider.dart` (providers)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/mixins/draft_bulk_delete_mixin.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/features/expense/repositories/expense_repository.dart` (repositories)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)。
+直接源依赖：`lib/core/utils/china_datetime.dart` (core)；`lib/shared/models/retained_async_page.dart` (models)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/formatters/money_display.dart` (sharedComponents)；`lib/shared/drafts/form_draft_category.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_refresh_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/inputs/uten_multi_value_cell.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_collapsing_header_scroll_view.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/ui/human_error_message.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/expense/models/expense_claim.dart` (models)；`lib/features/expense/models/expense_item.dart` (models)；`lib/features/expense/providers/expense_providers.dart` (providers)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/features/expense/providers/expense_counts_provider.dart` (providers)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/mixins/draft_bulk_delete_mixin.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/features/expense/repositories/expense_repository.dart` (repositories)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)。
 
 ## W7-BIZ-056 · lib/features/expense/pages/expense_settings_page.dart
 
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseSettingsPage @22 (page-class)<br>_ExpenseSettingsPageState @30 (state-class) |
-| 真实路由绑定 | /expense/settings；router @666；builder ['ExpenseSettingsPage']；redirect None |
+| 真实路由绑定 | /expense/settings；router @663；builder ['ExpenseSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:settings @100；定义 lib/shared/auth/permissions.dart:58 |
 | 接口常量 | 未静态确认；不能当作不存在 |

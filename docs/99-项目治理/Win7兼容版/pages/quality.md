@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFqcInspectionsPage @45 (page-class)<br>_ProductionFqcInspectionsPageState @53 (state-class) |
-| 真实路由绑定 | /quality/production-inspections；router @1348；builder ['ProductionFqcInspectionsPage']；redirect None |
+| 真实路由绑定 | /quality/production-inspections；router @1345；builder ['ProductionFqcInspectionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityBatchApprovalSelection @64 (supporting-class)<br>_FqcSheetGroup @77 (supporting-class)<br>_EditableIqcRow @90 (supporting-class)<br>_IqcReceiptGroup @173 (supporting-class)<br>_ApprovalRow @185 (supporting-class)<br>QualityBatchApprovalPage @231 (page-class)<br>_QualityBatchApprovalPageState @246 (state-class) |
-| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1214；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
+| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1211；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityInspectionRecordsPage @38 (page-class)<br>_QualityInspectionRecordsPageState @78 (state-class)<br>_QualityInspectionRecordDetailPanel @871 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @881 (state-class)<br>_DetailSection @1172 (supporting-class)<br>_DetailField @1202 (supporting-class)<br>_DetailFieldTable @1213 (supporting-class)<br>_DetailQuantityRow @1252 (supporting-class)<br>_InlineRecordError @1264 (supporting-class) |
-| 真实路由绑定 | /quality/inspection-records；router @1336；builder ['QualityInspectionRecordsPage']；redirect None |
+| 真实路由绑定 | /quality/inspection-records；router @1333；builder ['QualityInspectionRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @131；定义 lib/shared/auth/permissions.dart:285<br>production_quality_inspection:view @134；定义 lib/shared/auth/permissions.dart:408 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityPendingDisposalPage @77 (page-class)<br>_QualityPendingDisposalPageState @85 (state-class)<br>_DisposalRow @994 (supporting-class)<br>ProcurementInspectionDetailPage @1074 (page-class)<br>_ProcurementInspectionDetailPageState @1094 (state-class)<br>_InspectionReportRow @1971 (supporting-class)<br>_InlineWorkbenchError @2001 (supporting-class)<br>_ReceiptHeaderRow @2042 (supporting-class) |
-| 真实路由绑定 | /warehouse/inspections；router @1202；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1239；builder ['ProcurementInspectionDetailPage']；redirect None |
+| 真实路由绑定 | /warehouse/inspections；router @1199；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1236；builder ['ProcurementInspectionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @129；定义 lib/shared/auth/permissions.dart:285<br>production_quality_inspection:view @135；定义 lib/shared/auth/permissions.dart:408<br>procurement_inspection:handle @141；定义 lib/shared/auth/permissions.dart:286<br>production_quality_inspection:approve @270；定义 lib/shared/auth/permissions.dart:410<br>procurement_inspection:handle @1166；定义 lib/shared/auth/permissions.dart:286 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityTaskCenterPage @38 (page-class)<br>_QualityEntry @168 (supporting-class)<br>_QualityDisposalPendingBadge @190 (supporting-class) |
-| 真实路由绑定 | /quality/task-center；router @1331；builder ['QualityTaskCenterPage']；redirect None |
+| 真实路由绑定 | /quality/task-center；router @1328；builder ['QualityTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @49；定义 lib/shared/auth/permissions.dart:285<br>production_quality_inspection:view @52；定义 lib/shared/auth/permissions.dart:408 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -64,6 +64,12 @@
     <Compile Include="ClientPackageDownload.cs" />
     <Compile Include="UnitExportDownload.cs" />
     <Compile Include="HttpResponseSink.cs" />
+    <Compile Include="ClientReleaseModels.cs" />
+    <Compile Include="ClientReleasePublishQueue.cs" />
+    <Compile Include="ClientReleasePublishContract.cs" />
+    <Compile Include="ClientReleaseUploadSink.cs" />
+    <Compile Include="ClientReleasePublishCoordinator.cs" />
+    <Compile Include="DpapiPublishDraftStore.cs" />
     <Compile Include="Tests\ClientPackageDownloadChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ReadScopeRevisionState.cs" />
     <Compile Include="Tests\ReadScopeRevisionChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
@@ -73,6 +79,7 @@
     <Compile Include="Tests\ManagedTlsChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\ManagedHttp11Checks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\CoreContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\PublishUploadSinkChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <EmbeddedResource Include="..\..\..\assets\security\uten-imp-root-ca.crt">
       <LogicalName>Uten.Legacy.Core.uten-imp-root-ca.crt</LogicalName>
     </EmbeddedResource>

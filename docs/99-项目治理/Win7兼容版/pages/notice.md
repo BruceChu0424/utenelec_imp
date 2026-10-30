@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeDetailPage @30 (page-class)<br>_Content @92 (supporting-class)<br>_CompleteTodoButton @458 (supporting-class)<br>_CompleteTodoButtonState @468 (state-class) |
-| 真实路由绑定 | /notice/:id；router @732；builder ['NoticeDetailPage']；redirect None |
+| 真实路由绑定 | /notice/:id；router @729；builder ['NoticeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,17 +22,17 @@
 
 ## W7-BIZ-085 · lib/features/notice/pages/notice_list_page.dart
 
-模块 `notice`；402 行；SHA256 `3c97c5408931195eedcaf70bfa7e86d102e78735f8defa7c1882f338316e42a3`。
+模块 `notice`；406 行；SHA256 `b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticeListPage @41 (page-class)<br>_NoticeListPageState @52 (state-class) |
-| 真实路由绑定 | /notice；router @700；builder ['NoticeListPage']；redirect None |
+| 真实路由绑定 | /notice；router @697；builder ['NoticeListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @65 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @101 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @106 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @130 [action-like-invocation] 提示 ['delete']；final deleted = await deleteNotices(ref, _selected.toList());<br>removeAll @324 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @393 [callback-reference] 提示 ['delete']；onAction |
+| 动作处理 | addPostFrameCallback @65 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>remove @101 [action-like-invocation] 提示 ['remove']；if (!_selected.add(id)) _selected.remove(id);<br>_deleteSelected @106 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteSelected() async {<br>deleteNotices @130 [action-like-invocation] 提示 ['delete']；final deleted = await deleteNotices(ref, _selected.toList());<br>removeAll @328 [action-like-invocation] 提示 ['remove']；? _selected.removeAll(group.ids)<br>_deleteSelected @397 [callback-reference] 提示 ['delete']；onAction |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | NoticePublishPage @46 (page-class)<br>_NoticePublishPageState @59 (state-class)<br>_AudienceHint @873 (supporting-class)<br>_CelebrationTemplateCurator @891 (supporting-class) |
-| 真实路由绑定 | /notice/publish；router @712；builder ['NoticePublishPage']；redirect None |
+| 真实路由绑定 | /notice/publish；router @709；builder ['NoticePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

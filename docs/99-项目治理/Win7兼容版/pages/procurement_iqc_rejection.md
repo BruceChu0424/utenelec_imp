@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProcurementIqcRejectionDetailPage @32 (page-class)<br>_ProcurementIqcRejectionDetailPageState @49 (state-class)<br>_ActionSpec @737 (supporting-class)<br>_Fact @755 (supporting-class)<br>_FactTile @761 (supporting-class)<br>_EventTile @793 (supporting-class) |
-| 真实路由绑定 | /procurement/iqc-rejections/:id；router @1030；builder ['ProcurementIqcRejectionDetailPage']；redirect None |
+| 真实路由绑定 | /procurement/iqc-rejections/:id；router @1027；builder ['ProcurementIqcRejectionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_iqc_rejection:view @248；定义 lib/shared/auth/permissions.dart:289<br>procurement_iqc_rejection:amount:view @250；定义 lib/shared/auth/permissions.dart:292<br>procurement_iqc_rejection:record_return @492；定义 lib/shared/auth/permissions.dart:749<br>procurement_iqc_rejection:confirm_credit @502；定义 lib/shared/auth/permissions.dart:751<br>procurement_iqc_rejection:amount:view @503；定义 lib/shared/auth/permissions.dart:292<br>procurement_iqc_rejection:close_no_credit @520；定义 lib/shared/auth/permissions.dart:753<br>procurement_iqc_rejection:confirm_credit @530；定义 lib/shared/auth/permissions.dart:751<br>procurement_iqc_rejection:amount:view @531；定义 lib/shared/auth/permissions.dart:292<br>procurement_iqc_rejection:reverse @541；定义 lib/shared/auth/permissions.dart:755<br>procurement_iqc_rejection:amount:view @545；定义 lib/shared/auth/permissions.dart:292 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProcurementIqcRejectionListPage @34 (page-class)<br>_ProcurementIqcRejectionListPageState @65 (state-class) |
-| 真实路由绑定 | /procurement/iqc-rejections；router @1023；builder ['ProcurementIqcRejectionListPage']；redirect None |
+| 真实路由绑定 | /procurement/iqc-rejections；router @1020；builder ['ProcurementIqcRejectionListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_iqc_rejection:amount:view @91；定义 lib/shared/auth/permissions.dart:292 |
 | 接口常量 | 未静态确认；不能当作不存在 |

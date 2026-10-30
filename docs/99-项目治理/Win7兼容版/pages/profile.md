@@ -4,21 +4,21 @@
 
 ## W7-BIZ-118 · lib/features/profile/pages/my_profile_changes_page.dart
 
-模块 `profile`；444 行；SHA256 `054cf281dc540f53c50f63fbb8011bda45d0ada4e0b8f93db3e24ef73e47eb4f`。
+模块 `profile`；448 行；SHA256 `96c904924313bcfd9c1ea799a3f22e773b4ab007416ca94b0810fa3d621e14c7`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | MyProfileChangesPage @43 (page-class)<br>_MyProfileChangesPageState @51 (state-class)<br>_MyBatchDetailDialog @365 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2236；builder ['MyProfileChangesPage']；redirect None |
+| 页面/状态类 | MyProfileChangesPage @44 (page-class)<br>_MyProfileChangesPageState @52 (state-class)<br>_MyBatchDetailDialog @369 (supporting-class) |
+| 真实路由绑定 | /profile/me/changes；router @2233；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/profile/repositories/profile_change_repository.dart；接口：/hr/profile-changes、/hr/profile-changes/facets、/hr/profile-changes/{id}、/hr/profile-changes/{id}/review、/profile/me/changes |
-| 动作处理 | addPostFrameCallback @65 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_cancel @129 [method-declaration-candidate] 提示 ['cancel']；Future<void> _cancel(String batchId) async {<br>cancel @132 [action-like-invocation] 提示 ['cancel']；await ref.read(profileChangeRepositoryProvider).cancel(batchId);<br>_cancel @284 [action-like-invocation] 提示 ['cancel']；onTap: () => _cancel(item.batchId), |
+| 动作处理 | addPostFrameCallback @66 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_cancel @130 [method-declaration-candidate] 提示 ['cancel']；Future<void> _cancel(String batchId) async {<br>cancel @133 [action-like-invocation] 提示 ['cancel']；await ref.read(profileChangeRepositoryProvider).cancel(batchId);<br>_cancel @285 [action-like-invocation] 提示 ['cancel']；onTap: () => _cancel(item.batchId), |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/org/employee/MyProfileController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/org/employee/MyVehiclePhoneController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/models/retained_async_page.dart` (models)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_segmented_filter.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/profile/models/profile_change_request.dart` (models)；`lib/features/profile/providers/profile_change_providers.dart` (providers)；`lib/features/profile/repositories/profile_change_repository.dart` (repositories)；`lib/features/profile/providers/profile_column_queries.dart` (providers)；`lib/features/profile/widgets/profile_change_diff_row.dart` (featureWidgets)。
+直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/core/utils/china_datetime.dart` (core)；`lib/shared/models/retained_async_page.dart` (models)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/data_display/uten_status_cell_color.dart` (sharedComponents)；`lib/components/inputs/uten_multi_value_cell.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_segmented_filter.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/profile/models/profile_change_request.dart` (models)；`lib/features/profile/providers/profile_change_providers.dart` (providers)；`lib/features/profile/repositories/profile_change_repository.dart` (repositories)；`lib/features/profile/providers/profile_column_queries.dart` (providers)；`lib/features/profile/widgets/profile_change_diff_row.dart` (featureWidgets)。
 
 ## W7-BIZ-119 · lib/features/profile/pages/profile_edit_page.dart
 
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2221；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2218；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @759 (supporting-class)<br>_EditFieldPencil @884 (supporting-class)<br>_PolicyBadge @913 (supporting-class)<br>_IdentityGroup @931 (supporting-class)<br>_HeroCard @943 (supporting-class)<br>_RoleChip @1074 (supporting-class)<br>_MyDepartmentShortcut @1122 (supporting-class)<br>_MyChangesShortcut @1174 (supporting-class) |
-| 真实路由绑定 | /profile；router @581；builder ['ProfilePage']；redirect None |
+| 真实路由绑定 | /profile；router @584；builder ['ProfilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

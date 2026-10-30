@@ -28,6 +28,7 @@ namespace Uten.Legacy.Core.Tests
             ReadScopeRevisionChecks.Run();
             ManagedHttp11Checks.Run();
             ManagedTlsChecks.Run();
+            PublishUploadSinkChecks.Run();
             ConfigurationAndPathBounds();
             ConcurrentRefreshIsSingleFlight().GetAwaiter().GetResult();
             LogoutFencesPendingRefresh().GetAwaiter().GetResult();

@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiSettingsPage @90 (page-class)<br>_AdminAiSettingsSession @113 (supporting-class)<br>_AdminAiSettingsPageState @121 (state-class)<br>_StatusHero @532 (supporting-class)<br>_TodayUsageCard @645 (supporting-class)<br>_EmptyProviders @767 (supporting-class)<br>_LoadingSkeleton @816 (supporting-class) |
-| 真实路由绑定 | /admin/ai-settings；router @2357；builder ['AdminAiSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-settings；router @2349；builder ['AdminAiSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @84；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePage @80 (page-class)<br>_AdminAiUsageSession @103 (supporting-class)<br>_AdminAiUsagePageState @110 (state-class)<br>_KpiRow @645 (supporting-class)<br>_TodayTokensCard @736 (supporting-class)<br>_MetricCard @825 (supporting-class)<br>_LoadingSkeleton @904 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage；router @2363；builder ['AdminAiUsagePage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage；router @2355；builder ['AdminAiUsagePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @74；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsagePersonPage @72 (page-class)<br>_AdminAiUsagePersonSession @100 (supporting-class)<br>_AdminAiUsagePersonPageState @110 (state-class)<br>_InfoLine @441 (supporting-class)<br>_DistributionCard @480 (supporting-class)<br>_RecentUsesCard @576 (supporting-class)<br>_LoadingSkeleton @680 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage/:userId；router @2368；builder ['AdminAiUsagePersonPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage/:userId；router @2360；builder ['AdminAiUsagePersonPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @66；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAiUsageRecordsPage @85 (page-class)<br>_AdminAiUsageRecordsSession @108 (supporting-class)<br>_AdminAiUsageRecordsPageState @116 (state-class)<br>_SummaryRow @1001 (supporting-class)<br>_SummaryCard @1090 (supporting-class)<br>_PlatformNote @1168 (supporting-class)<br>_CostCell @1199 (supporting-class)<br>_RecordDetailPanel @1243 (supporting-class)<br>_LoadingSkeleton @1345 (supporting-class) |
-| 真实路由绑定 | /admin/ai-usage-records；router @2376；builder ['AdminAiUsageRecordsPage']；redirect None |
+| 真实路由绑定 | /admin/ai-usage-records；router @2368；builder ['AdminAiUsageRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @77；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditLogPage @74 (page-class)<br>_AdminAuditLogPageState @83 (state-class) |
-| 真实路由绑定 | /admin/audit-logs；router @2301；builder ['AdminAuditLogPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs；router @2298；builder ['AdminAuditLogPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | audit_log:export @1700；定义 lib/shared/auth/permissions.dart:48 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminAuditSessionDetailPage @26 (page-class)<br>_AdminAuditSessionDetailPageState @47 (state-class)<br>_TimelineHeading @242 (supporting-class) |
-| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2308；builder ['AdminAuditSessionDetailPage']；redirect None |
+| 真实路由绑定 | /admin/audit-logs/sessions/:sessionId；router @2305；builder ['AdminAuditSessionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPermissionsPage @46 (page-class)<br>_AdminPermissionsPageState @61 (state-class)<br>_EmployeePermTab @261 (supporting-class)<br>_EmployeePermTabState @284 (state-class)<br>AccountStatusBadge @1013 (supporting-class) |
-| 真实路由绑定 | /admin/permissions；router @2293；builder ['AdminPermissionsPage']；redirect None |
+| 真实路由绑定 | /admin/permissions；router @2290；builder ['AdminPermissionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | authorization:manage @128；定义 lib/shared/auth/permissions.dart:22 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -130,39 +130,21 @@
 
 ## W7-BIZ-008 · lib/features/admin/pages/admin_platform_settings_page.dart
 
-模块 `admin`；1289 行；SHA256 `b34bd26eb5d37ce3d59e08ae4670646e9057294992a17abcae604e10face2c26`。
+模块 `admin`；1290 行；SHA256 `884cbf1cbadb2029a4ac4106ff2057a259f7f2070072b30a527b2e5a0585dc05`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminPlatformSettingsPage @80 (page-class)<br>_PlatformSettingsEditor @96 (supporting-class)<br>_PlatformSettingsState @103 (state-class) |
-| 真实路由绑定 | /admin/platform-settings；router @2336；builder ['AdminPlatformSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/platform-settings；router @2328；builder ['AdminPlatformSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/admin/repositories/platform_settings_repository.dart；接口：/admin/platform-settings |
-| 动作处理 | toUpdateJson @145 [action-like-invocation] 提示 ['update']；(e) => e.value.text.trim() != _original!.toUpdateJson()[e.key],<br>addPostFrameCallback @162 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_confirmDiscard @189 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmDiscard();<br>toUpdateJson @206 [action-like-invocation] 提示 ['update']；for (final e in branding.toUpdateJson().entries) {<br>_save @347 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>save @369 [action-like-invocation] 提示 ['save']；final saved = await repository.save(<br>addPostFrameCallback @412 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_confirmDiscard @427 [method-declaration-candidate] 提示 ['confirm']；Future<bool> _confirmDiscard() async {<br>_confirmDiscard @441 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !_current) return;<br>_confirmDiscard @455 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !mounted \|\| !_current) return;<br>_confirmDiscard @472 [action-like-invocation] 提示 ['confirm']；if (await _confirmDiscard() && _current) {<br>copyWith @633 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1164 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1178 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_confirmDiscard @1285 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !_current) return; |
+| 动作处理 | toUpdateJson @145 [action-like-invocation] 提示 ['update']；(e) => e.value.text.trim() != _original!.toUpdateJson()[e.key],<br>WebUpdateSafetyState @148 [action-like-invocation] 提示 ['update']；WebUpdateSafetyState _reloadSafety() => WebUpdateSafetyState(<br>addPostFrameCallback @169 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_confirmDiscard @202 [action-like-invocation] 提示 ['confirm']；final confirmed = await _confirmDiscard();<br>toUpdateJson @220 [action-like-invocation] 提示 ['update']；for (final e in branding.toUpdateJson().entries) {<br>_save @361 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>save @383 [action-like-invocation] 提示 ['save']；final saved = await repository.save(<br>addPostFrameCallback @426 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_confirmDiscard @441 [method-declaration-candidate] 提示 ['confirm']；Future<bool> _confirmDiscard() async {<br>_confirmDiscard @455 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !_current) return;<br>_confirmDiscard @469 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !mounted \|\| !_current) return;<br>_confirmDiscard @487 [action-like-invocation] 提示 ['confirm']；if (await _confirmDiscard() && _current) {<br>copyWith @648 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1179 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1193 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_confirmDiscard @1286 [action-like-invocation] 提示 ['confirm']；if (_busy \|\| !await _confirmDiscard() \|\| !_current) return; |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/admin/AdminPermissionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/AdminUserController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionConfigurationTransferController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/platformsetting/PlatformSettingsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/theme/uten_tokens.dart` (core)；`lib/components/layout/uten_segment_row.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/server_config.dart` (core)；`lib/core/network/server_selection.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/theme/dark_theme.dart` (core)；`lib/core/theme/light_theme.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/uten_notify.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/auth/session_snapshot_provider.dart` (sharedComponents)；`lib/shared/drafts/form_draft_navigation.dart` (sharedComponents)；`lib/shared/platform_branding/platform_branding.dart` (sharedComponents)；`lib/shared/platform_branding/platform_branding_provider.dart` (sharedComponents)；`lib/shared/platform_branding/platform_brand_logo.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/shared_providers.dart` (sharedComponents)；`lib/shared/widgets/server_switch_dialog.dart` (sharedComponents)；`lib/components/inputs/uten_field_message.dart` (sharedComponents)；`lib/features/admin/models/platform_server_status.dart` (models)；`lib/features/admin/models/platform_settings_catalog.dart` (models)；`lib/features/admin/repositories/platform_settings_repository.dart` (repositories)；`lib/features/admin/widgets/platform_color_picker_dialog.dart` (featureWidgets)；`lib/core/l10n/remote_access_text.dart` (core)。
-
-## W7-BIZ-009 · lib/features/admin/pages/admin_remote_access_page.dart
-
-模块 `admin`；491 行；SHA256 `08f7c1712613c6c68e417c92ec94761bde98226bd59408fc1ed6d4d1db09262c`。
-
-| 审计项 | 静态来源/线索 |
-|---|---|
-| 页面/状态类 | AdminRemoteAccessPage @30 (page-class)<br>_RemoteAccessSession @52 (supporting-class)<br>_RemoteAccessSessionState @59 (state-class)<br>_StatusRow @416 (supporting-class)<br>_ResetReasonDialog @439 (supporting-class)<br>_ResetReasonDialogState @445 (state-class) |
-| 真实路由绑定 | /admin/remote-access；router @2331；builder ['AdminRemoteAccessPage']；redirect None |
-| 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | 未静态确认；不能当作不存在 |
-| 接口常量 | 未静态确认；不能当作不存在 |
-| 仓库调用 | lib/features/admin/repositories/remote_access_repository.dart；接口：/admin/remote-access/policy、/admin/remote-access/status、/admin/users/{Uri.encodeComponent(userId)}/remote-access、/auth/mfa/users/{Uri.encodeComponent(userId)}/reset |
-| 动作处理 | addPostFrameCallback @84 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_save @131 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>save @147 [action-like-invocation] 提示 ['save']；.save(<br>logout @190 [action-like-invocation] 提示 ['logout']；await ref.read(sessionProvider.notifier).logout(); |
-| 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/admin/AdminPermissionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/AdminUserController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionConfigurationTransferController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/remoteaccess/RemoteAccessSettingsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/auth/AuthController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/auth/RemoteMfaController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
-| 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
-
-直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/components/buttons/uten_refresh_button.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/inputs/uten_input.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/server_config.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/uten_notify.dart` (core)；`lib/core/utils/display_datetime.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/core/l10n/remote_access_text.dart` (core)；`lib/components/settings/settings_section.dart` (sharedComponents)；`lib/features/admin/repositories/remote_access_repository.dart` (repositories)。
+直接源依赖：`lib/core/theme/uten_tokens.dart` (core)；`lib/components/layout/uten_segment_row.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/web_update/web_update_safety.dart` (core)；`lib/core/network/server_config.dart` (core)；`lib/core/network/server_selection.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/theme/dark_theme.dart` (core)；`lib/core/theme/light_theme.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/uten_notify.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/auth/session_snapshot_provider.dart` (sharedComponents)；`lib/shared/drafts/form_draft_navigation.dart` (sharedComponents)；`lib/shared/platform_branding/platform_branding.dart` (sharedComponents)；`lib/shared/platform_branding/platform_branding_provider.dart` (sharedComponents)；`lib/shared/platform_branding/platform_brand_logo.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/providers/session_provider.dart` (sharedComponents)；`lib/shared/providers/shared_providers.dart` (sharedComponents)；`lib/shared/widgets/server_switch_dialog.dart` (sharedComponents)；`lib/components/inputs/uten_field_message.dart` (sharedComponents)；`lib/features/admin/models/platform_server_status.dart` (models)；`lib/features/admin/models/platform_settings_catalog.dart` (models)；`lib/features/admin/repositories/platform_settings_repository.dart` (repositories)；`lib/features/admin/widgets/platform_color_picker_dialog.dart` (featureWidgets)。
 
 ## W7-BIZ-010 · lib/features/admin/pages/admin_sms_settings_page.dart
 
@@ -171,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AdminSmsSettingsPage @24 (page-class)<br>_SmsEditor @39 (supporting-class)<br>_SmsEditorState @45 (state-class) |
-| 真实路由绑定 | /admin/sms-settings；router @2326；builder ['AdminSmsSettingsPage']；redirect None |
+| 真实路由绑定 | /admin/sms-settings；router @2323；builder ['AdminSmsSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -184,21 +166,21 @@
 
 ## W7-BIZ-011 · lib/features/admin/pages/admin_system_settings_page.dart
 
-模块 `admin`；888 行；SHA256 `a8396fb77c735bc617e6804d5c3569d9de096fa6270184a932b7389242e173a1`。
+模块 `admin`；882 行；SHA256 `f42c4babbde1a82430571a69fc568a10de095836f5fcc5b9995ac5474d6c0bd5`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | AdminSystemSettingsPage @52 (page-class)<br>_SystemSettingsSession @64 (supporting-class)<br>_AdminSystemSettingsPageState @71 (state-class)<br>_SettingGroupGrid @494 (supporting-class)<br>_SettingGroupCard @513 (supporting-class)<br>_AuditRetentionNotice @597 (supporting-class)<br>_SettingRow @697 (supporting-class)<br>_RetentionConfirmDialog @841 (supporting-class)<br>_ErrorState @871 (state-class) |
-| 真实路由绑定 | /admin/system-settings；router @2321；builder ['AdminSystemSettingsPage']；redirect None |
+| 页面/状态类 | AdminSystemSettingsPage @51 (page-class)<br>_SystemSettingsSession @63 (supporting-class)<br>_AdminSystemSettingsPageState @70 (state-class)<br>_SettingGroupGrid @488 (supporting-class)<br>_SettingGroupCard @507 (supporting-class)<br>_AuditRetentionNotice @591 (supporting-class)<br>_SettingRow @691 (supporting-class)<br>_RetentionConfirmDialog @835 (supporting-class)<br>_ErrorState @865 (state-class) |
+| 真实路由绑定 | /admin/system-settings；router @2318；builder ['AdminSystemSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/shared/repositories/public_settings_repository.dart；接口：/settings/public<br>lib/features/admin/repositories/system_setting_repository.dart；接口：/admin/system-settings |
-| 动作处理 | addPostFrameCallback @108 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_refreshAuditCapability @141 [action-like-invocation] 提示 ['audit']；unawaited(_refreshAuditCapability());<br>_refreshAuditCapability @161 [method-declaration-candidate] 提示 ['audit']；Future<void> _refreshAuditCapability() async {<br>remove @204 [action-like-invocation] 提示 ['remove']；_dirty.remove(key);<br>_save @222 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>_refreshAuditCapability @246 [action-like-invocation] 提示 ['audit']；await _refreshAuditCapability();<br>_RetentionConfirmDialog @250 [action-like-invocation] 提示 ['confirm']；builder: (_) => const _RetentionConfirmDialog(),<br>updateBatch @257 [action-like-invocation] 提示 ['update']；.updateBatch(changes);<br>_saveBar @441 [action-like-invocation] 提示 ['save']；floatingActionButton: _saveBar(theme),<br>_saveBar @445 [action-ui-factory] 提示 ['save']；Widget _saveBar(ThemeData theme) {<br>copyWith @555 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>_AuditRetentionNotice @573 [action-like-invocation] 提示 ['audit']；_AuditRetentionNotice(<br>_AuditRetentionNotice @598 [action-like-invocation] 提示 ['audit']；const _AuditRetentionNotice({<br>copyWith @661 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @679 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @828 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelSmall?.copyWith(<br>_RetentionConfirmDialog @842 [action-like-invocation] 提示 ['confirm']；const _RetentionConfirmDialog(); |
+| 动作处理 | addPostFrameCallback @107 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_refreshAuditCapability @140 [action-like-invocation] 提示 ['audit']；unawaited(_refreshAuditCapability());<br>_refreshAuditCapability @160 [method-declaration-candidate] 提示 ['audit']；Future<void> _refreshAuditCapability() async {<br>remove @203 [action-like-invocation] 提示 ['remove']；_dirty.remove(key);<br>_save @221 [method-declaration-candidate] 提示 ['save']；Future<void> _save() async {<br>_refreshAuditCapability @245 [action-like-invocation] 提示 ['audit']；await _refreshAuditCapability();<br>_RetentionConfirmDialog @249 [action-like-invocation] 提示 ['confirm']；builder: (_) => const _RetentionConfirmDialog(),<br>updateBatch @256 [action-like-invocation] 提示 ['update']；.updateBatch(changes);<br>_saveBar @435 [action-like-invocation] 提示 ['save']；floatingActionButton: _saveBar(theme),<br>_saveBar @439 [action-ui-factory] 提示 ['save']；Widget _saveBar(ThemeData theme) {<br>copyWith @549 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>_AuditRetentionNotice @567 [action-like-invocation] 提示 ['audit']；_AuditRetentionNotice(<br>_AuditRetentionNotice @592 [action-like-invocation] 提示 ['audit']；const _AuditRetentionNotice({<br>copyWith @655 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @673 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @822 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelSmall?.copyWith(<br>_RetentionConfirmDialog @836 [action-like-invocation] 提示 ['confirm']；const _RetentionConfirmDialog(); |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/admin/AdminPermissionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/AdminUserController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionConfigurationTransferController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/PermissionTemplateController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/systemsetting/PublicSettingsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/admin/systemsetting/SystemSettingController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_field.dart` (sharedComponents)；`lib/components/inputs/uten_field_message.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_field_hint_icon.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/server_config.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/display_datetime.dart` (core)；`lib/shared/providers/idle_timeout_controller.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/audit/audit_retention_presentation.dart` (sharedComponents)；`lib/shared/repositories/public_settings_repository.dart` (repositories)；`lib/features/admin/models/system_setting_entry.dart` (models)；`lib/features/admin/models/system_updater_status.dart` (models)；`lib/features/admin/repositories/system_setting_repository.dart` (repositories)；`lib/features/admin/widgets/ai_settings_entry_card.dart` (featureWidgets)；`lib/features/admin/widgets/platform_settings_entry_card.dart` (featureWidgets)；`lib/features/admin/widgets/remote_access_entry_card.dart` (featureWidgets)；`lib/features/admin/widgets/system_updater_status_card.dart` (featureWidgets)；`lib/features/admin/widgets/material_forecast_runtime_status_card.dart` (featureWidgets)。
+直接源依赖：`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/inputs/uten_dropdown_field.dart` (sharedComponents)；`lib/components/inputs/uten_field_message.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_field_hint_icon.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/network/server_config.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/display_datetime.dart` (core)；`lib/shared/providers/idle_timeout_controller.dart` (sharedComponents)；`lib/shared/providers/authenticated_scope_provider.dart` (sharedComponents)；`lib/shared/audit/audit_retention_presentation.dart` (sharedComponents)；`lib/shared/repositories/public_settings_repository.dart` (repositories)；`lib/features/admin/models/system_setting_entry.dart` (models)；`lib/features/admin/models/system_updater_status.dart` (models)；`lib/features/admin/repositories/system_setting_repository.dart` (repositories)；`lib/features/admin/widgets/ai_settings_entry_card.dart` (featureWidgets)；`lib/features/admin/widgets/platform_settings_entry_card.dart` (featureWidgets)；`lib/features/admin/widgets/system_updater_status_card.dart` (featureWidgets)；`lib/features/admin/widgets/material_forecast_runtime_status_card.dart` (featureWidgets)。
 
 ## W7-BIZ-012 · lib/features/admin/pages/server_operations_page.dart
 
@@ -207,7 +189,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerOperationsPage @34 (page-class)<br>_ServerOperationsSession @45 (supporting-class)<br>_ServerOperationsState @52 (state-class) |
-| 真实路由绑定 | /admin/server-operations；router @2346；builder ['ServerOperationsPage']；redirect None |
+| 真实路由绑定 | /admin/server-operations；router @2338；builder ['ServerOperationsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -225,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStatusPage @41 (page-class)<br>_ServerStatusSession @54 (supporting-class)<br>_ServerStatusPageState @61 (state-class)<br>_MetricCard @955 (supporting-class)<br>_BigNumber @1048 (supporting-class)<br>_StatusBadge @1089 (supporting-class) |
-| 真实路由绑定 | /admin/server-status；router @2341；builder ['ServerStatusPage']；redirect None |
+| 真实路由绑定 | /admin/server-status；router @2333；builder ['ServerStatusPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -243,7 +225,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ServerStoragePage @29 (page-class)<br>_ServerStorageSession @40 (supporting-class)<br>_ServerStorageState @46 (state-class) |
-| 真实路由绑定 | /admin/server-storage；router @2351；builder ['ServerStoragePage']；redirect None |
+| 真实路由绑定 | /admin/server-storage；router @2343；builder ['ServerStoragePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

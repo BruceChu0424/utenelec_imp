@@ -94,6 +94,40 @@ Ed25519 发布摘要和 SHA-256 文件校验不能代替 Windows 发行者签名
 localhost、`--local-test` 包不得混入正式输出或服务器分发目录。实际正式发行签名、安装和升级仍须
 按[多端发布与签名](../../docs/99-项目治理/多端发布与签名.md)验证，不能用本地测试包的验收代替。
 
+### 一条命令的正式打包（规范路径）
+
+`build_windows_release.py` 是正式双包的唯一打包入口，把下列全部纪律固化成一次执行：
+显示版本与构建号只从 `pubspec.yaml` 读取（不可能与审核提交漂移，也不可能再造出改名的变体包）；
+要求工作树是干净的已审核提交（`--allow-dirty` 仅供应急且会记入回执）；两个端点必须为 HTTPS
+正式入口并在构建后字节核验确实编入 `data/app.so`；Setup.exe 与更新 ZIP 出自同一份校验过的
+payload；产出后立即用 `verify_windows_release.py` 在本地复演服务端 paired_v1 发布合同的逐字段
+校验（2026-10-30 的 2.5.36 上传被拒与外网点登录失败两类事故都由此关拦下）；最后在输出目录写入
+`delivery-receipt.json`（含哈希、清单摘要和发布页应逐字照抄的 `publishForm` 值）。
+
+```powershell
+python deploy/client/build_windows_release.py `
+  --output-dir '<独立输出目录>' `
+  --api 'https://<公司域名>/api' `
+  --cloud-api 'https://<可信云端域名>/api' `
+  --iscc '<已验证的ISCC.exe路径>'
+```
+
+结束行出现 `[OK]` 且回执 `state=FORMAL_WINDOWS_PAIR_READY_FOR_PUBLISH` 才算出包成功；
+预检不过会明确列出每个不一致字段，产物状态记为 `REJECTED_BY_PREFLIGHT`，不得上传。
+复用已构建的 payload 重打包时加 `--skip-build`（仍执行端点核验与预检）。上传时在发布页
+**新建**两个发布条目（不要恢复旧草稿，旧草稿钉着旧的 expectedSha256），表单字段按回执
+`publishForm` 逐字填写；预检 CLI 也可单独对任意已有双包复检：
+
+```powershell
+python deploy/client/verify_windows_release.py `
+  --setup '<目录>/UTEN-<版本>-Windows-x64-Setup.exe' `
+  --update '<目录>/UTEN-<版本>-Windows-x64-update.zip' `
+  --version '<版本号>' --build-number '<构建号>' --architecture x64 `
+  --require 'https://<公司域名>/api' --require 'https://<可信云端域名>/api'
+```
+
+### 分解步骤（参考；编排器内部即按此执行）
+
 以下占位符须替换为本次批准的版本、构建号、端点和已验证编译器路径。`<版本号>` 不含 tag 的 `v`，
 且与本次 tag、`pubspec.yaml` 一致；输出目录独立于 Flutter bundle：
 
@@ -104,6 +138,11 @@ flutter build windows --release `
   --dart-define='API_BASE_URL=https://<公司域名>/api' `
   --dart-define='CLOUD_API_BASE_URL=https://<可信云端域名>/api'
 
+python deploy/client/verify_client_endpoints.py `
+  --bundle build/windows/x64/runner/Release `
+  --require 'https://<公司域名>/api' `
+  --require 'https://<可信云端域名>/api'
+
 python deploy/client/build_windows_installer.py `
   --bundle build/windows/x64/runner/Release `
   --output '<独立输出目录/UTEN-Windows-x64-Setup.exe>' `
@@ -112,8 +151,15 @@ python deploy/client/build_windows_installer.py `
   --iscc '<已验证的ISCC.exe路径>' --compile
 ```
 
+`verify_client_endpoints.py` 在打包前核对 AOT 快照确实编入了两个批准端点；任一缺失即失败退出。
+原生 Release 只连接构建期端点，缺失 `CLOUD_API_BASE_URL` 的正式包在公司外永远无法登录
+（2026-10-30 的 2.5.36 正式包即因此在外网点登录秒失败），不得跳过或降低该校验继续出包。
+
 无需分别构建两次应用。`--update-output` 从同一个完整 payload 快照准备两份产物，显示版本和真实
-构建号都与 `uten_imp.exe` 核对。构建器仍默认为 dry-run，显式 `--compile` 才生成实际产物；
+构建号都与 `uten_imp.exe` 核对。更新 ZIP 内的 `uten-client-manifest.json` 恒携带 `version` 与
+`packageKind`，与服务端 paired_v1 发布合同逐字段对应；该合同由 `verify_windows_release.py`
+在出包后本地复演，任何字段不一致都会在打包机上点名报错，而不是等到上传被一句笼统信息拒绝。
+构建器仍默认为 dry-run，显式 `--compile` 才生成实际产物；
 只检查计划时将 `--compile` 换为 `--dry-run`。
 两份都验证完成后才替换输出，第二份落盘失败会尝试恢复旧输出；这不是跨文件或断电事务保证。
 

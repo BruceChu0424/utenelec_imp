@@ -33,11 +33,17 @@ namespace Uten.Legacy.Core
             cancellationToken.ThrowIfCancellationRequested();
 
             // Fully validate and bound the request before its first byte reaches the wire.
-            var outbound = BuildRequest(request, cancellationToken, responseSink != null);
+            var upload = ClientReleaseUploadSink.FromRequest(request);
+            var outbound = BuildRequest(request, cancellationToken, responseSink != null, upload);
             cancellationToken.ThrowIfCancellationRequested();
             MutationWirePermit.BeforeWireWrite(request, outbound.Body);
             tlsStream.Write(outbound.Headers, 0, outbound.Headers.Length);
-            if (outbound.Body.Length != 0)
+            if (upload != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                upload.WriteTo(tlsStream, cancellationToken);
+            }
+            else if (outbound.Body.Length != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 tlsStream.Write(outbound.Body, 0, outbound.Body.Length);
@@ -47,7 +53,7 @@ namespace Uten.Legacy.Core
             return ReadResponse(tlsStream, request, maxResponseBytes, cancellationToken, beginResponseBody, responseSink);
         }
 
-        private static OutboundRequest BuildRequest(HttpRequestMessage request, CancellationToken cancellationToken, bool identityEncoding)
+        private static OutboundRequest BuildRequest(HttpRequestMessage request, CancellationToken cancellationToken, bool identityEncoding, ClientReleaseUploadSink upload = null)
         {
             var uri = request.RequestUri;
             if (uri == null || !uri.IsAbsoluteUri || uri.Scheme != Uri.UriSchemeHttps
@@ -67,8 +73,15 @@ namespace Uten.Legacy.Core
                 throw Invalid("The request target is not supported.");
             ValidateAscii(target, false);
             var method = request.Method.Method;
-            if (method != "GET" && method != "POST" && !MutationWirePermit.AllowsExtendedMethod(request))
+            if (method != "GET" && method != "POST" && !MutationWirePermit.AllowsExtendedMethod(request)
+                && (upload == null || !upload.Owns(request)))
                 throw Invalid("The request method is not supported.");
+            if (upload != null)
+            {
+                // The streamed package body never enters the bounded in-memory buffer; its
+                // declared length comes from the frozen upload contract instead.
+                if (!upload.Owns(request) || request.Content != null) throw Invalid("The request method is not supported.");
+            }
 
             var host = uri.IdnHost;
             ValidateAscii(host, false);
@@ -125,8 +138,9 @@ namespace Uten.Legacy.Core
             AppendRequestHeader(lines, "Connection", "close", ref count);
             AppendRequestHeader(lines, "Accept-Encoding", identityEncoding ? "identity" : "gzip", ref count);
             foreach (var field in fields) AppendRequestHeader(lines, field.Name, field.Value, ref count);
-            if (request.Content != null || method == "POST")
-                AppendRequestHeader(lines, "Content-Length", body.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), ref count);
+            if (request.Content != null || method == "POST" || upload != null)
+                AppendRequestHeader(lines, "Content-Length", (upload != null ? upload.Length : body.Length)
+                    .ToString(System.Globalization.CultureInfo.InvariantCulture), ref count);
             AppendRequestLine(lines, String.Empty);
             return new OutboundRequest { Headers = Encoding.ASCII.GetBytes(lines.ToString()), Body = body };
         }

@@ -5194,9 +5194,9 @@
       "businessSource": "lib/features/client_update/client_release_publish_page.dart",
       "sourceSha256": "d9ba5e86707baa785e065b8dd57b967a85309e5685e06f4a2465d5812a3544e9",
       "sourceProofSha256": "d9af8084d22e40d7215b0b41868340c49c39a77ace3381b1d595a843cec541ff",
-      "status": "todo",
+      "status": "verified_local",
       "impactArea": "frontend+shared-contract",
-      "owner": "待认领",
+      "owner": "Codex",
       "sources": [
         "lib/features/client_update/client_release_publish_page.dart"
       ],
@@ -5222,10 +5222,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json"
+        "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json",
+        "clients/windows_legacy/progress/evidence/publish-workbench-20261030.json"
       ],
-      "notes": "Flutter独立发布工作台已实现并本机验证；本包代表尚未迁移的原生WPF发布页，不可据Flutter结果关闭。先读12和queue/draft原意图合同。",
-      "lastUpdated": "2026-10-29T06:10:01.542409+00:00"
+      "notes": "原生发布工作台已完整迁移（非只读壳）：Core 队列状态机/流式上传 sink/wire PUT 放行/DPAPI 草稿 CAS/step-up 协调器+Desktop 页面/目标编辑器/草稿租约/step-up 密码弹窗/下载页入口。三条铁律与失败三分支 75+9 断言钉住；x86/x64 Debug runner 全绿且既有计数保持。未验：真实服务器发布链、Win7 真机 UAT、正式双包（见证据 notCovered）。",
+      "lastUpdated": "2026-10-30T16:21:46.726367+00:00"
     },
     {
       "id": "W7-BIZ-039",

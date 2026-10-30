@@ -13,6 +13,7 @@ using Uten.Legacy.Desktop.Features.Units;
 using Uten.Legacy.Desktop.Views;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Downloads;
+using Uten.Legacy.Desktop.Features.Publish;
 using Uten.Legacy.Desktop.Updates;
 
 namespace Uten.Legacy.Desktop
@@ -286,7 +287,14 @@ namespace Uten.Legacy.Desktop
         }
         private void OnWindowsDownloads(object sender, RoutedEventArgs e)
         {
-            if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session));
+            if (session.IsAuthenticated && !busy) SetWorkspace(new SoftwareDownloadsView(session, OpenClientPublish));
+        }
+
+        private void OpenClientPublish()
+        {
+            if (!session.IsAuthenticated || busy) return;
+            if (session.CurrentUser != null && session.CurrentUser.HasPermission(ClientReleasePublishLimits.PublishPermission))
+                SetWorkspace(new ClientReleasePublishView(session));
         }
         private void OnAbout(object sender, RoutedEventArgs args)
         {

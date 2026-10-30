@@ -1,0 +1,165 @@
+{
+ "evidenceId": "E-W7-BIZ-215-PUBLISH-20261030",
+ "recordedAtUtc": "2026-10-30T16:19:12Z",
+ "branch": "uimp/win7-wpf-client-20261028",
+ "baselineCommit": "4a29f2194",
+ "baselineSourceCheckpoint": "843bf154e",
+ "workItems": [
+  "W7-BIZ-215"
+ ],
+ "environment": {
+  "machine": "developer Windows 11 x64 (not a Win7 target PC)",
+  "msbuild": "D:/Software/Visual Studio Installe/MSBuild/Current/Bin/MSBuild.exe",
+  "python": "C:/Program Files/LibreOffice/program/python.exe",
+  "buildScope": "w7-biz-215-publish"
+ },
+ "changes": [
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleaseModels.cs",
+   "role": "new-core-contract",
+   "sha256": "659d72c681f9f077e971cb1917642d9db230ccfd34ff4f22498529a7387c92b7"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishQueue.cs",
+   "role": "new-core-contract",
+   "sha256": "44ef90d5396c2068c7d903bc5ad522e1ea75ca16aca7d344abaf4cbdd8bf689f"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishContract.cs",
+   "role": "new-core-contract",
+   "sha256": "9977e962a23cfdf4804ea95c49b2e51365d6c01889a819462c1d5685a7a06a1a"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleaseUploadSink.cs",
+   "role": "new-core-wire",
+   "sha256": "6486b2ab5b14c5728836445055221a0cd2f5e609765f521895cc7606c4f16917"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishCoordinator.cs",
+   "role": "new-core-wire",
+   "sha256": "427525c3d921836f2f883e1c5c1a227ff4f06de3c7ce0f7af6b18fa0b17c0056"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/DpapiPublishDraftStore.cs",
+   "role": "new-core-storage",
+   "sha256": "be92746aed96a1414b494469de633beca1a7bde3429dcf1fa24e3cab1419dc50"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/PublishUploadSinkChecks.cs",
+   "role": "new-core-checks",
+   "sha256": "01cd4b05686f84a554a69fc6e8d3130bd7a6eef61edf42a975b8b58902391878"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs",
+   "role": "modified-core-wire",
+   "sha256": "c65aac5aac11416111cf75081c1594687e55aff3958027d2efe80a2a98248e4a"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/ManagedHttp11.cs",
+   "role": "modified-core-wire",
+   "sha256": "db34a76b560ca0178be06651a1fa03a962a4da9cfaf3bea695dd7a3212ec2403"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/CoreContractChecks.cs",
+   "role": "modified-core-checks",
+   "sha256": "461efe2587f8af072611c7fbafee3248ac6cefb7c7bfc289a29d900054406bee"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+   "role": "modified-core-project",
+   "sha256": "eb233faf08b7e3dd6a31e3705c7b2c8a01ed22f66db69a5cc3c67d68bdc28a02"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Controls/StepUpPasswordDialog.cs",
+   "role": "new-desktop-shared",
+   "sha256": "0e7e90d06bdbef6b53125d47495841660f1d3f49584963225ec69fe89700f40a"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishDraftLease.cs",
+   "role": "new-desktop-feature",
+   "sha256": "24dcccf4355e8eb23bb36b0b6355c7a28da4a27984e864825687c231f7fdc127"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishService.cs",
+   "role": "new-desktop-feature",
+   "sha256": "e03f66f7953c0b449bf9d3c4f1014c0cee2108308717e5189c97982aba43c677"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs",
+   "role": "new-desktop-feature",
+   "sha256": "4aa5e43ad42146b1b12b3d3e96ff050ec4449b22db06ef4a51f2561614a6dc43"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+   "role": "new-desktop-feature",
+   "sha256": "d66815a19367c8633da87415b334ba585dbecbb8ccbafce0e32d7c23288299ed"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/PublishContractChecks.cs",
+   "role": "new-desktop-checks",
+   "sha256": "5c3cb4d2009f3d14054c4c822bb844936eca572d0fddb20b5beb57245b64b6da"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Downloads/SoftwareDownloadsView.cs",
+   "role": "modified-desktop-entry",
+   "sha256": "a4956d25ed5fb0e6a851b2e29f3e21698c2d3f191fcb768a074b22e0b035f78c"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+   "role": "modified-desktop-entry",
+   "sha256": "80230b1e6040026e6bb6d2f3cf52a1d840dd1589a455d1d29a2cb75c62fba055"
+  },
+  {
+   "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+   "role": "modified-tests-runner",
+   "sha256": "ce38046ced0ac3fbdc3e5cb9c4ca623a1e24c04ebd7a2d2dd91439b7338a500b"
+  }
+ ],
+ "verification": {
+  "fastRunnerX64": {
+   "command": "MSBuild Uten.Legacy.Tests -p:Platform=x64 then run Uten.Legacy.Tests.exe",
+   "result": "pass",
+   "counts": {
+    "publish": 75,
+    "coreUploadSink": 9,
+    "goods": 27,
+    "downloads": 39,
+    "units": 38,
+    "columns": 55,
+    "columnUi": 9,
+    "updater": 203,
+    "updateOutcomes": 13,
+    "history": 31,
+    "historyUi": 7,
+    "print": 21,
+    "drafts": 16,
+    "exports": 16,
+    "inline": 70
+   }
+  },
+  "fullVerification": {
+   "command": "./clients/windows_legacy/tools/verify_windows_wpf.ps1 -Verify -Architecture all -BuildScope w7-biz-215-publish",
+   "result": "pass",
+   "reportId": "96700415-6818-43a3-8203-acddfb363ce9",
+   "covers": "x86+x64 Debug builds, full native runner both architectures, Release compilation checks, PE architecture checks, tool checks"
+  },
+  "fastRunnerX86": {
+   "command": "MSBuild Uten.Legacy.Tests -p:Platform=x86 then run Uten.Legacy.Tests.exe",
+   "result": "pass",
+   "counts": "same as x64 (publish 75), process=x86"
+  }
+ },
+ "notCovered": [
+  "real server prepare/upload/publish/withdraw chain (fixture gateway pins the client state machine; server side has its own 81-test regression evidence)",
+  "production catalog writes, formal Setup/ZIP pairing, signing, controlled upload",
+  "real step-up credential exchange against a live server",
+  "Win7 SP1 target-PC install/UAT/IME/DPI and update-result recovery on real hardware",
+  "merge to main, deployment, push"
+ ],
+ "toolChecks": {
+  "progress_tracker check": "pass",
+  "business_inventory --check": "pass",
+  "sync_design_tokens --check": "pass",
+  "sync_package_contract --check": "pass"
+ }
+}

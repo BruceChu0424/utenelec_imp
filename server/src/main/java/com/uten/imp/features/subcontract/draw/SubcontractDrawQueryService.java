@@ -100,7 +100,10 @@ public class SubcontractDrawQueryService {
                 new String[]{"goods_name"}, new String[]{}, new String[]{"goods_code", "order_bill_no", "plan_no", "supplier_name"});
         // 2026-10-30 表头名称汇总(用户口径): 每个精确筛选字段都下发当前数据候选桶; 各字段
         // 桶口径排除其自身筛选(选定颜色时看颜色全量分布), 其余条件仍生效, 与原颜色分面同式。
+        // EXACT 是 Map.ofEntries, 迭代序带 JVM 随机盐, 必须按键排序固定生成顺序
+        // (契约测试钉 colorName 在 goods 前; 同式见 FulfillmentWorkbenchPageRead.facetValuesSql)。
         String facetValues = SubcontractDrawTableQuery.EXACT.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
                 .map(entry -> {
                     String label = "goods".equals(entry.getKey())
                             ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();

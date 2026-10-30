@@ -53,15 +53,26 @@ class SubcontractDrawDeliveryDifferenceTest {
         // 桶 included 必须是合法布尔式(曾拼出「(TRUE TRUE」造成整条 SQL 语法错误)。
         assertThat(facets).doesNotContain("(TRUE TRUE").contains("(TRUE AND");
         // 颜色自己的桶排除颜色筛选(选定后仍看颜色全量分布); 其它列的桶保留颜色约束。
+        // EXACT 有七个键(排序后 docNo 恰落在 colorName 与 goods 之间), 必须逐桶取定义,
+        // 不能按「colorName 到 goods 的切片」断言——切片会吞进中间其它列的桶。
         int colorEntry = facets.indexOf("('colorName',");
         int goodsEntry = facets.indexOf("('goods',");
-        org.junit.jupiter.api.Assertions.assertTrue(colorEntry >= 0 && goodsEntry > colorEntry);
-        assertThat(facets.substring(colorEntry, goodsEntry)).doesNotContain("draw_exact_colorName");
-        assertThat(facets.substring(goodsEntry)).contains("draw_exact_colorName");
+        org.junit.jupiter.api.Assertions.assertTrue(colorEntry >= 0 && goodsEntry > colorEntry,
+                "facet VALUES 按键排序生成, colorName 必须先于 goods");
+        String colorBucket = bucketEntry(facets, colorEntry);
+        String docNoBucket = bucketEntry(facets, facets.indexOf("('docNo',"));
+        assertThat(colorBucket).doesNotContain("draw_exact_colorName");
+        assertThat(docNoBucket).contains("draw_exact_colorName");
         assertThat(sql.getValue()).contains("(NULLIF(color_name, '')) = :draw_exact_colorName", "o.maker_id IN (:readOwners)")
                 .doesNotContain("浅灰", "毛坯");
         verify(fixture.query).setParameter("draw_exact_colorName", "浅灰");
         verify(fixture.query).setParameter("pageOffset", 50L);
+    }
+
+    /** 取 facets VALUES 里从 start(某桶的 (' 开头) 到下一桶开头(或串尾) 的单个桶定义。 */
+    private static String bucketEntry(String facets, int start) {
+        int next = facets.indexOf(",('", start);
+        return next < 0 ? facets.substring(start) : facets.substring(start, next + 1);
     }
 
     @Test void exactColorsDoNotMatchSimilarNamesAndEmptyColorIsAnExplicitNullFilter() {

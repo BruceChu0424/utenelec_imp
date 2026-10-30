@@ -61,8 +61,16 @@ void main() {
         ];
       final document = ProcurementOrderPrintDocument.fromJson(order);
       // 物料表行: 单耗/需发量去尾随零, 所属成品指回成品行号(对应关系)。
-      expect(document.materialRows.single,
-          ['1', 'M-SHELL', '外壳', '黑', '个', '2', '20', '第 1 行']);
+      expect(document.materialRows.single, [
+        '1',
+        'M-SHELL',
+        '外壳',
+        '黑',
+        '个',
+        '2',
+        '20',
+        '第 1 行',
+      ]);
       // 快照签名覆盖物料内容(服务端内容摘要变化时预览会提示刷新)。
       final without = ProcurementOrderPrintDocument.fromJson(
         _order(3)..['materials'] = <Map<String, dynamic>>[],
@@ -76,7 +84,10 @@ void main() {
             kind: 'subcontract-order-bundle',
             payload: jsonEncode([order]),
             renderer: renderSubcontractOrderBundle,
-            fontBytes: font.buffer.asUint8List(font.offsetInBytes, font.lengthInBytes),
+            fontBytes: font.buffer.asUint8List(
+              font.offsetInBytes,
+              font.lengthInBytes,
+            ),
           ),
         );
         final single = OrderDocumentBundleResult.decode(packet);

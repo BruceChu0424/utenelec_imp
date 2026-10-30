@@ -863,12 +863,21 @@ void main() {
       expect(find.text('已修改 1 项'), findsOneWidget);
       await tester.tap(find.text('保存更改'));
       await tester.pumpAndSettle();
-      expect(repository.overrideSaves, hasLength(1),
-          reason: '超管目标保存只携带收回差量，恢复默认即空集合');
-      expect(repository.overrideSaves.single.grants, isEmpty,
-          reason: '不写任何加授行');
-      expect(repository.overrideSaves.single.revokes, isEmpty,
-          reason: '撤掉收回后期望集合为空');
+      expect(
+        repository.overrideSaves,
+        hasLength(1),
+        reason: '超管目标保存只携带收回差量，恢复默认即空集合',
+      );
+      expect(
+        repository.overrideSaves.single.grants,
+        isEmpty,
+        reason: '不写任何加授行',
+      );
+      expect(
+        repository.overrideSaves.single.revokes,
+        isEmpty,
+        reason: '撤掉收回后期望集合为空',
+      );
       expect(tester.takeException(), isNull);
     },
   );

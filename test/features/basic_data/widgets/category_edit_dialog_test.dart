@@ -628,7 +628,8 @@ Future<void> _pumpCategoryDialog(
   Future<CategoryPrefixPreview> Function(
     String requestedPrefix,
     String? requestedParentId,
-  )? onPreviewPrefixChange,
+  )?
+  onPreviewPrefixChange,
   required Future<bool> Function(CategoryEditResult result) onSubmit,
   Size surfaceSize = const Size(1200, 900),
   GlobalKey? captureKey,
@@ -658,14 +659,14 @@ Future<void> _pumpCategoryDialog(
               child: ElevatedButton(
                 onPressed: () => showDialog<void>(
                   context: context,
-              builder: (_) => CategoryEditDialog(
-                tree: tree,
-                editing: editing,
-                canEditFields: canEditFields,
-                onCheckPrefix: onCheckPrefix,
-                onPreviewPrefixChange: onPreviewPrefixChange,
-                onSubmit: onSubmit,
-              ),
+                  builder: (_) => CategoryEditDialog(
+                    tree: tree,
+                    editing: editing,
+                    canEditFields: canEditFields,
+                    onCheckPrefix: onCheckPrefix,
+                    onPreviewPrefixChange: onPreviewPrefixChange,
+                    onSubmit: onSubmit,
+                  ),
                 ),
                 child: const Text('打开分类编辑'),
               ),

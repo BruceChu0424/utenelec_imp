@@ -2299,9 +2299,8 @@ class _SubcontractDecompositionPageState
     }
     return {
       for (final entry in merged.entries)
-        entry.key:
-            entry.value.values.toList()
-              ..sort((a, b) => a.display.compareTo(b.display)),
+        entry.key: entry.value.values.toList()
+          ..sort((a, b) => a.display.compareTo(b.display)),
     };
   }
 

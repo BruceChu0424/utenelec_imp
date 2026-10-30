@@ -159,16 +159,7 @@ class ProcurementOrderPrintDocument {
     '需发量',
     '所属成品',
   ];
-  static const materialWidths = [
-    6.0,
-    14.0,
-    24.0,
-    10.0,
-    8.0,
-    10.0,
-    11.0,
-    17.0,
-  ];
+  static const materialWidths = [6.0, 14.0, 24.0, 10.0, 8.0, 10.0, 11.0, 17.0];
   List<List<String>> get materialRows => [
     for (var index = 0; index < materials.length; index++)
       [

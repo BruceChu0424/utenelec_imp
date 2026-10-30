@@ -209,9 +209,7 @@ void main() {
       await tester.tap(find.text('川田晓油 (3)'));
       await tester.pumpAndSettle();
       expect(gateway.queries.last['filters'], {'supplierName': '川田晓油'});
-      expect(draw.listQueries.last['columnFilters'], {
-        'supplierName': '川田晓油',
-      });
+      expect(draw.listQueries.last['columnFilters'], {'supplierName': '川田晓油'});
       expect(tester.takeException(), isNull);
     },
   );
@@ -239,8 +237,9 @@ void main() {
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '进行中');
       await tester.pumpAndSettle();
-      MasterDataTableView<OperationsWorkbenchTask> table() =>
-          tester.widget(find.byKey(const Key('subcontract-decomposition-table')));
+      MasterDataTableView<OperationsWorkbenchTask> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-table')),
+      );
       final supplierColumn = table().columns.singleWhere(
         (column) => column.key == 'supplierName',
       );
@@ -3349,51 +3348,52 @@ OperationsWorkbenchData _inProgressData() => OperationsWorkbenchData(
 );
 
 /// 进行中夹具(带委外商与 supplierName 分面): 第一/二行已定商, 第三行未定商。
-OperationsWorkbenchData _inProgressDataWithSuppliers() => OperationsWorkbenchData(
-  department: OperationsWorkbenchDepartment.subcontract,
-  summary: _inProgressData().summary,
-  items: [
-    _order('order-drawable', 'DRAWABLE', supplierName: '华信加工'),
-    _order('order-submitted', 'DRAW_SUBMITTED', supplierName: '华信加工'),
-    _order('order-supplier', 'AT_SUPPLIER'),
-  ],
-  page: 1,
-  size: 50,
-  total: 3,
-  totalPages: 1,
-  capabilities: const OperationsWorkbenchCapabilities(
-    canCreateSubcontractOrder: true,
-  ),
-  facets: const {
-    'supplierName': [MasterFacetBucket(value: '华信加工', count: 2)],
-  },
-  nullCounts: const {'supplierName': 1},
-);
+OperationsWorkbenchData _inProgressDataWithSuppliers() =>
+    OperationsWorkbenchData(
+      department: OperationsWorkbenchDepartment.subcontract,
+      summary: _inProgressData().summary,
+      items: [
+        _order('order-drawable', 'DRAWABLE', supplierName: '华信加工'),
+        _order('order-submitted', 'DRAW_SUBMITTED', supplierName: '华信加工'),
+        _order('order-supplier', 'AT_SUPPLIER'),
+      ],
+      page: 1,
+      size: 50,
+      total: 3,
+      totalPages: 1,
+      capabilities: const OperationsWorkbenchCapabilities(
+        canCreateSubcontractOrder: true,
+      ),
+      facets: const {
+        'supplierName': [MasterFacetBucket(value: '华信加工', count: 2)],
+      },
+      nullCounts: const {'supplierName': 1},
+    );
 
 OperationsWorkbenchTask _order(
   String id,
   String displayStage, {
   String? supplierName,
 }) => OperationsWorkbenchTask.fromJson({
-      'taskId': id,
-      'supplierName': ?supplierName,
-      'planNo': 'PP-$id',
-      'supplyRoute': 'SUBCONTRACT',
-      'goodsCode': 'FG-$id',
-      'goodsName': '委外件 $id',
-      'requiredQty': 10,
-      'openQty': 4,
-      'unitName': '件',
-      if (id == 'order-drawable') 'differenceQtyExact': '-4.1250',
-      'taskStatus': 'FINANCE_APPROVED',
-      'displayStage': displayStage,
-      'actionDocType': 'SUBCONTRACT_ORDER',
-      'actionDocId': id,
-      'actionDocNo': 'EO-$id',
-      'actionDocCanView': true,
-      'actionDocCanEdit': false,
-      'actionDocStatus': '1',
-    }, OperationsWorkbenchDepartment.subcontract);
+  'taskId': id,
+  'supplierName': ?supplierName,
+  'planNo': 'PP-$id',
+  'supplyRoute': 'SUBCONTRACT',
+  'goodsCode': 'FG-$id',
+  'goodsName': '委外件 $id',
+  'requiredQty': 10,
+  'openQty': 4,
+  'unitName': '件',
+  if (id == 'order-drawable') 'differenceQtyExact': '-4.1250',
+  'taskStatus': 'FINANCE_APPROVED',
+  'displayStage': displayStage,
+  'actionDocType': 'SUBCONTRACT_ORDER',
+  'actionDocId': id,
+  'actionDocNo': 'EO-$id',
+  'actionDocCanView': true,
+  'actionDocCanEdit': false,
+  'actionDocStatus': '1',
+}, OperationsWorkbenchDepartment.subcontract);
 
 /// 待处理段：一条可下单的申请行 + 一条委外件缺 BOM 的申请行(ADR-143 §二.3)。
 OperationsWorkbenchData _bomMissingData() => OperationsWorkbenchData(

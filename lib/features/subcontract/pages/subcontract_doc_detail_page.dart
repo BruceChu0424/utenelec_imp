@@ -847,7 +847,8 @@ class _SubcontractDocDetailPageState
                         ),
                         // 订货单在明细表下方挂「委外物料」折叠卡(2026-10-30 用户口径:
                         // 成品↔直属物料对应关系); 其余单据类型只有明细表。
-                        child: widget.docType == SubcontractDocType.order &&
+                        child:
+                            widget.docType == SubcontractDocType.order &&
                                 (_detail?.materials.isNotEmpty ?? false)
                             ? Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1677,7 +1678,11 @@ class _SubcontractDocDetailPageState
           titleTrailing: Padding(
             padding: const EdgeInsets.only(left: UtenSpacing.s8),
             child: Text(
-              '${materials.length} 行 · ${frozenCount == materials.length ? '已冻结' : frozenCount == 0 ? '按 BOM 预估' : '冻结 $frozenCount 行 / 预估 ${materials.length - frozenCount} 行'}',
+              '${materials.length} 行 · ${frozenCount == materials.length
+                  ? '已冻结'
+                  : frozenCount == 0
+                  ? '按 BOM 预估'
+                  : '冻结 $frozenCount 行 / 预估 ${materials.length - frozenCount} 行'}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1720,7 +1725,9 @@ class _SubcontractDocDetailPageState
                   for (final m in materials)
                     TableRow(
                       children: [
-                        cell(m.orderLineNo == null ? '—' : '第 ${m.orderLineNo} 行'),
+                        cell(
+                          m.orderLineNo == null ? '—' : '第 ${m.orderLineNo} 行',
+                        ),
                         cell(text(m.goodsName)),
                         cell(text(m.goodsCode)),
                         cell(text(m.colorName)),

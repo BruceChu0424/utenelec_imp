@@ -1070,7 +1070,7 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         data.superAdmin
             ? '将清掉「$name」的全部个人收回，恢复超级管理员的全量默认权限，保存后立即生效。'
             : '将把${scope.label}里可以批量授予的权限加授给「$name」，保存后立即生效。'
-              '需要逐项勾选的敏感权限不会带上。',
+                  '需要逐项勾选的敏感权限不会带上。',
       ),
       confirmLabel: '确认授权',
     );
@@ -1201,8 +1201,10 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     // 只随超级管理员身份生效的码：普通目标不能加授；超管目标默认生效但也不能收回
     // （收回它会把授权管理本身锁死）。
     final superAdminOnly = !permission.grantPolicy.individuallyGrantable;
-    final policyAllows = permission.grantPolicy.individuallyGrantable || effective;
-    final canEdit = widget.user.authorizationGrantAllowed &&
+    final policyAllows =
+        permission.grantPolicy.individuallyGrantable || effective;
+    final canEdit =
+        widget.user.authorizationGrantAllowed &&
         (data.superAdmin ? !superAdminOnly : policyAllows);
     final editRestriction = data.superAdmin && superAdminOnly
         ? '这项权限只随超级管理员身份生效，不能收回'
@@ -1241,13 +1243,13 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             if (viaManager) _sourceTag('负责人授权'),
             if (viaTemplate) _sourceTag('模板'),
             if (data.superAdmin &&
-                    effective &&
-                    !viaDept &&
-                    !viaBaseline &&
-                    !viaManager &&
-                    !viaTemplate &&
-                    !grants.contains(permission.code) &&
-                    !revoked)
+                effective &&
+                !viaDept &&
+                !viaBaseline &&
+                !viaManager &&
+                !viaTemplate &&
+                !grants.contains(permission.code) &&
+                !revoked)
               _sourceTag('超管默认'),
             if (grants.contains(permission.code)) _sourceTag('个人单独授权'),
             if (data.legacyUnknownGrants.contains(permission.code))

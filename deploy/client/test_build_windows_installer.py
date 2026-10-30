@@ -282,7 +282,9 @@ class WindowsSetupSourceTest(unittest.TestCase):
         with zipfile.ZipFile(self.update_output) as archive:
             self.assertNotIn(UPDATER_PATH, archive.namelist())
             self.assertEqual(original, archive.read("data/app.so"))
-            self.assertNotIn("packageKind", json.loads(archive.read(MANIFEST_NAME)))
+            manifest = json.loads(archive.read(MANIFEST_NAME))
+            self.assertEqual("update", manifest["packageKind"])
+            self.assertEqual(receipt["version"], manifest["version"])
         for path, result in ((self.output, receipt), (self.update_output, receipt["updatePackage"])):
             self.assertEqual(str(path), result["package"])
             self.assertEqual(path.stat().st_size, result["sizeBytes"])

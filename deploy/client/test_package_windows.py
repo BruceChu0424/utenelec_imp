@@ -130,6 +130,33 @@ class WindowsPackageTest(unittest.TestCase):
             self.assertFalse(any("client_updater" in name for name in archive.namelist()))
             self.assertEqual(9, len(archive.namelist()))
 
+    def test_manifest_version_follows_executable_and_pairs_with_publish_request(self):
+        # Derived from the executable's own version resources when not stated.
+        receipt = package_release(self.bundle, self.output, build_number=2, architecture="x64")
+        self.assertEqual("1.0.0", receipt["version"])
+        manifest = validate_package(self.output, build_number=2, architecture="x64")
+        self.assertEqual("1.0.0", manifest["version"])
+        self.assertEqual("update", manifest["packageKind"])
+        # An explicit request is checked against those same resources.
+        package_release(self.bundle, self.output, build_number=2, architecture="x64",
+                        version="1.0.0-hotfix")
+        with zipfile.ZipFile(self.output) as archive:
+            stamped = json.loads(archive.read(MANIFEST_NAME))
+        self.assertEqual("1.0.0-hotfix", stamped["version"])
+        with self.assertRaisesRegex(ValueError, "differs from the executable version resources"):
+            package_release(self.bundle, self.output, build_number=2, architecture="x64",
+                            version="1.2.3")
+        # A published package without a manifest version is rejected on re-read.
+        with zipfile.ZipFile(self.output) as archive:
+            entries = {name: archive.read(name) for name in archive.namelist()}
+        del stamped["version"]
+        entries[MANIFEST_NAME] = json.dumps(stamped).encode()
+        with zipfile.ZipFile(self.output, "w") as archive:
+            for name, content in entries.items():
+                archive.writestr(name, content)
+        with self.assertRaisesRegex(ValueError, "Manifest version is missing"):
+            validate_package(self.output, build_number=2, architecture="x64")
+
     def test_known_crashing_engine_blocks_both_outputs_without_replacing_previous_package(self):
         engine_digest = hashlib.sha256((self.bundle / "flutter_windows.dll").read_bytes()).hexdigest()
         self.output.write_bytes(b"previous approved package")
@@ -417,7 +444,9 @@ class WindowsPackageTest(unittest.TestCase):
         # Old callers can still produce an update from a bundle without an updater.
         updater.unlink()
         package_release(self.bundle, self.output, build_number=2, architecture="x64")
-        self.assertNotIn("packageKind", validate_package(self.output, build_number=2, architecture="x64"))
+        manifest = validate_package(self.output, build_number=2, architecture="x64")
+        self.assertEqual("update", manifest["packageKind"])
+        self.assertEqual("1.0.0", manifest["version"])
 
     def test_installer_allowlist_permits_only_the_fixed_updater(self):
         validate_release_path(UPDATER_PATH, kind="installer")
@@ -467,7 +496,8 @@ class WindowsPackageTest(unittest.TestCase):
         receipt = package_release(self.bundle, self.output, build_number=2, architecture="x64")
         manifest = validate_package(self.output, build_number=2, architecture="x64")
         self.assertEqual("windows_archive", receipt["mode"])
-        self.assertNotIn("packageKind", manifest)
+        self.assertEqual("update", manifest["packageKind"])
+        self.assertEqual("1.0.0", manifest["version"])
         other = self.root / "explicit-update.zip"
         package_release(self.bundle, other, build_number=2, architecture="x64", kind="update")
         self.assertEqual(manifest, validate_package(other, build_number=2, architecture="x64", kind="update"))

@@ -239,8 +239,10 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
         payload = staging / "payload"
         compiler_output = staging / "compiled"
         payload_receipt = package_release(bundle, archive_path, build_number=build_number,
-                                          architecture=architecture, kind="installer", source_root=source_root)
-        validate_package(archive_path, build_number=build_number, architecture=architecture, kind="installer")
+                                          architecture=architecture, kind="installer", version=version,
+                                          source_root=source_root)
+        validate_package(archive_path, build_number=build_number, architecture=architecture, kind="installer",
+                         version=version)
         payload.mkdir()
         compiler_output.mkdir()
         with zipfile.ZipFile(archive_path) as archive:
@@ -257,8 +259,9 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             # Both artifacts consume this one validated snapshot, not a second
             # read of a potentially changing external Flutter build directory.
             update_receipt = package_release(payload, update_path, build_number=build_number,
-                                             architecture=architecture)
-            validate_package(update_path, build_number=build_number, architecture=architecture)
+                                             architecture=architecture, version=version)
+            validate_package(update_path, build_number=build_number, architecture=architecture,
+                             version=version)
         command = compiler_command(compiler, payload, compiler_output, output.stem,
                                    version=version, build_number=build_number, architecture=architecture,
                                    local_test=local_test)
@@ -285,7 +288,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             build_number=build_number, architecture=architecture, local_test=local_test))]
         if update_output is not None:
             def validate_update(path):
-                validate_package(path, build_number=build_number, architecture=architecture)
+                validate_package(path, build_number=build_number, architecture=architecture,
+                                 version=version)
                 with path.open("rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()
                 if digest != update_receipt["sha256"]:

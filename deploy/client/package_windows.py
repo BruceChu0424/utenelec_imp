@@ -423,8 +423,20 @@ def validate_release_path(relative: str, *, kind: str = "update") -> None:
         raise ValueError("File is outside the Flutter runtime")
 
 
+def release_version_number(version: str) -> tuple[int, int, int]:
+    """Numeric prefix of a display version, matching the server's paired-contract parser."""
+    parts = version.split("-", 2)[0].split(".", -1)
+    if len(parts) != 3 or not all(re.fullmatch(r"0|[1-9][0-9]*", part) for part in parts):
+        raise ValueError("Release version must be three numeric version components")
+    numbers = tuple(int(part) for part in parts)
+    if any(number > 65535 for number in numbers):
+        raise ValueError("Release version components must fit Windows version resource fields")
+    return numbers
+
+
 def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str,
-                    kind: str = "update", source_root: Path | None = None) -> dict:
+                    kind: str = "update", version: str | None = None,
+                    source_root: Path | None = None) -> dict:
     required = required_files(kind)
     bundle = bundle.resolve(strict=True)
     output = output.resolve()
@@ -432,9 +444,18 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
         raise ValueError("Windows build number must be in 1..65535 (PE version limit)")
     if architecture not in {"x64", "arm64", "x86"}:
         raise ValueError("Unsupported Windows architecture")
-    actual_architecture, actual_build = inspect_executable(bundle / "uten_imp.exe")
-    if (actual_architecture, actual_build) != (architecture, build_number):
+    executable_info = inspect_executable_info(bundle / "uten_imp.exe")
+    if (executable_info["architecture"], executable_info["fileVersion"][3]) != (architecture, build_number):
         raise ValueError("Actual executable architecture/build differs from release metadata")
+    # The manifest version must equal the version the operator publishes; the executable's
+    # own version resources stay the authoritative source both are checked against.
+    executable_version = executable_info["productVersion"][:3]
+    if executable_info["fileVersion"][:3] != executable_version:
+        raise ValueError("Executable file and product versions disagree")
+    if version is None:
+        version = ".".join(str(number) for number in executable_version)
+    elif release_version_number(version) != executable_version:
+        raise ValueError("Requested version differs from the executable version resources")
     if output == bundle or bundle in output.parents:
         raise ValueError("Output ZIP must be outside the input bundle")
     sources: list[tuple[str, Path]] = []
@@ -498,9 +519,8 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
                 raise ValueError("JNI omission proof invalidated by changed native assets/AOT")
         files.append({"path": relative, "size": size, "sha256": digest})
     manifest = {"schemaVersion": 1, "platform": "windows", "architecture": architecture,
-                "buildNumber": build_number, "executable": "uten_imp.exe", "files": files}
-    if kind == "installer":
-        manifest["packageKind"] = "installer"
+                "version": version, "buildNumber": build_number, "executable": "uten_imp.exe",
+                "packageKind": kind, "files": files}
     output.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive temporary output and atomic replace leave an existing package
     # intact if reading/compression fails.
@@ -512,13 +532,15 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             for relative, source in sources:
                 archive.write(source, relative)
             archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, separators=(",", ":")))
-        validate_package(temporary, build_number=build_number, architecture=architecture, kind=kind)
+        validate_package(temporary, build_number=build_number, architecture=architecture, kind=kind,
+                         version=version)
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
     with output.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     return {"package": str(output), "sha256": digest, "sizeBytes": output.stat().st_size,
+            "version": version,
             "buildNumber": build_number, "architecture": architecture,
             "mode": "windows_archive" if kind == "update" else "windows_bundle",
             "runtimeValidation": runtime_validation,
@@ -526,7 +548,7 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
 
 
 def validate_package(path: Path, *, build_number: int, architecture: str,
-                     kind: str = "update") -> dict:
+                     kind: str = "update", version: str | None = None) -> dict:
     """Independently re-read the finished ZIP before making it publishable."""
     required = required_files(kind)
     with zipfile.ZipFile(path) as archive:
@@ -540,8 +562,14 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
         if manifest.get("packageKind", "update") != kind:
             raise ValueError("Manifest package kind does not match")
         if (manifest.get("schemaVersion"), manifest.get("platform"), manifest.get("architecture"),
-            manifest.get("buildNumber"), manifest.get("executable")) != (1, "windows", architecture, build_number, "uten_imp.exe"):
+                manifest.get("buildNumber"), manifest.get("executable")) != (1, "windows", architecture, build_number, "uten_imp.exe"):
             raise ValueError("Manifest target does not match")
+        recorded_version = manifest.get("version")
+        if not isinstance(recorded_version, str):
+            raise ValueError("Manifest version is missing")
+        release_version_number(recorded_version)
+        if version is not None and recorded_version != version:
+            raise ValueError("Manifest version does not match")
         records = manifest["files"]
         expected = {record["path"]: record for record in records}
         if len(expected) != len(records) or not _required_paths_present(required, expected):
@@ -597,6 +625,8 @@ def main() -> None:
     parser.add_argument("--bundle", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--build-number", required=True, type=int)
+    parser.add_argument("--version",
+                        help="display version to stamp into the manifest; defaults to the executable's own version resources")
     parser.add_argument("--architecture", choices=("x64", "arm64", "x86"), default="x64")
     parser.add_argument("--kind", choices=("update", "installer"), default="update",
                         help="installer includes the fixed updater for a complete first installation")
@@ -604,7 +634,7 @@ def main() -> None:
                         help="reviewed source tree for proving an unused transitive JNI artifact; otherwise inferred from bundle ancestors")
     args = parser.parse_args()
     print(json.dumps(package_release(args.bundle, args.output, build_number=args.build_number,
-                                     architecture=args.architecture, kind=args.kind,
+                                     architecture=args.architecture, kind=args.kind, version=args.version,
                                      source_root=args.source_root), ensure_ascii=False, indent=2))
 
 

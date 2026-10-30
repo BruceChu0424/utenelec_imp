@@ -471,6 +471,11 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             continue
         if relative.endswith(".pdb"):
             continue
+        # Flutter can drop a root native_assets.json next to the executable as
+        # build metadata; the engine reads data/flutter_assets/NativeAssetsManifest.json
+        # at runtime, and previously shipped bundles never carried the root file.
+        if relative == "native_assets.json":
+            continue
         validate_release_path(relative, kind=kind)
         if source.stat().st_size > MAX_FILE_BYTES:
             raise ValueError("A runtime file exceeds 512 MiB")

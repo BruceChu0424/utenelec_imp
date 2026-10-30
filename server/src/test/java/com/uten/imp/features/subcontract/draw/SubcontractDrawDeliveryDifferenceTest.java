@@ -45,10 +45,20 @@ class SubcontractDrawDeliveryDifferenceTest {
         assertThat(result.nullCounts().get("colorName")).isEqualTo(3);
         var sql = ArgumentCaptor.forClass(String.class);
         verify(fixture.em).createNativeQuery(sql.capture());
-        String colors = sql.getValue().split("color_buckets AS \\(", 2)[1].split("color_facets AS", 2)[0];
-        assertThat(colors).contains("FROM classified WHERE", "draw_header_goods")
-                .doesNotContain("draw_exact_colorName", "pageLimit", "pageOffset");
-        assertThat(sql.getValue()).contains("AND color_name = :draw_exact_colorName", "o.maker_id IN (:readOwners)")
+        String facetSql = sql.getValue();
+        String facets = facetSql.substring(facetSql.indexOf("facet_rows AS (") + "facet_rows AS (".length(),
+                facetSql.indexOf("facet_values AS"));
+        assertThat(facets).contains("FROM classified CROSS JOIN LATERAL", "draw_header_goods")
+                .doesNotContain("pageLimit", "pageOffset");
+        // 桶 included 必须是合法布尔式(曾拼出「(TRUE TRUE」造成整条 SQL 语法错误)。
+        assertThat(facets).doesNotContain("(TRUE TRUE").contains("(TRUE AND");
+        // 颜色自己的桶排除颜色筛选(选定后仍看颜色全量分布); 其它列的桶保留颜色约束。
+        int colorEntry = facets.indexOf("('colorName',");
+        int goodsEntry = facets.indexOf("('goods',");
+        org.junit.jupiter.api.Assertions.assertTrue(colorEntry >= 0 && goodsEntry > colorEntry);
+        assertThat(facets.substring(colorEntry, goodsEntry)).doesNotContain("draw_exact_colorName");
+        assertThat(facets.substring(goodsEntry)).contains("draw_exact_colorName");
+        assertThat(sql.getValue()).contains("(NULLIF(color_name, '')) = :draw_exact_colorName", "o.maker_id IN (:readOwners)")
                 .doesNotContain("浅灰", "毛坯");
         verify(fixture.query).setParameter("draw_exact_colorName", "浅灰");
         verify(fixture.query).setParameter("pageOffset", 50L);
@@ -57,12 +67,12 @@ class SubcontractDrawDeliveryDifferenceTest {
     @Test void exactColorsDoNotMatchSimilarNamesAndEmptyColorIsAnExplicitNullFilter() {
         var query = mock(Query.class);
         var headers = new SubcontractDrawTableQuery(null, null, Map.of("f.colorName", "__null__"));
-        assertThat(headers.sql(true)).contains("NULLIF(color_name, '') IS NULL");
+        assertThat(headers.sql(true)).contains("(NULLIF(color_name, '')) IS NULL");
         assertThat(headers.sql(true, "colorName")).isEmpty();
         headers.bind(query);
         verifyNoInteractions(query);
         assertThat(new SubcontractDrawTableQuery(null, null, Map.of("f.colorName", "浅灰")).sql(true))
-                .isEqualTo(" AND color_name = :draw_exact_colorName");
+                .isEqualTo(" AND (NULLIF(color_name, '')) = :draw_exact_colorName");
     }
 
     @Test void taskUsesExactOrderDeliveryFactAndExistingReadableOwnerScope() {
@@ -133,9 +143,9 @@ class SubcontractDrawDeliveryDifferenceTest {
                 new DocumentAccessPolicy.NativeReadScope("o.maker_id IN (:readOwners)", "readOwners", Set.of(owner)));
         when(access.hasAuthority("subcontract_order:view")).thenReturn(canView);
         when(em.createNativeQuery(anyString())).thenReturn(query);
-        Object[] row = new Object[36];
-        row[34] = "[{\"value\":\"浅灰\",\"count\":201},{\"value\":\"梦幻金\",\"count\":5}]";
-        row[35] = 3L;
+        Object[] row = new Object[35];
+        // 2026-10-30 表头名称汇总: 分面改为单列 [key,value,label,count] 数组聚合。
+        row[34] = "[[\"colorName\",\"浅灰\",null,201],[\"colorName\",\"梦幻金\",null,5],[\"colorName\",null,null,3]]";
         row[4] = 1L; row[5] = 1L;
         int offset = 6;
         row[offset] = UUID.randomUUID(); row[offset + 1] = UUID.randomUUID();

@@ -26,8 +26,9 @@ import java.util.stream.Collectors;
  * 物料分类树 CRUD。仿 {@link com.uten.imp.features.org.department.DepartmentService}：
  * 扁平查询 + Java 端 buildTree 组装；create/update 后 em.refresh 读触发器算的 path；
  * 与部门的差异：分类 code 由服务端生成并纳入 V279 全局终身预约；旧库 code 留在备注/快照；
- * codePrefix 变更会在事务内预检并批量改写适用主档的显示编号。level 是真实深度，改父级后
- * 整棵子树 level 重算；所有父子和主档关系仍只使用 UUID。
+ * codePrefix 显式变更会在事务内预检并批量改写适用主档的显示编号；仅改父级（挪上级）
+ * 不改写任何主档编号（2026-10-30 用户口径：归拢系列时已有编号保持不变）。level 是真实深度，
+ * 改父级后整棵子树 level 重算；所有父子和主档关系仍只使用 UUID。
  */
 @Service
 @RequiredArgsConstructor
@@ -158,14 +159,19 @@ public class MaterialCategoryService {
             CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MATERIAL,
                     name, nameParentId, id);
         }
-        CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
-                CategoryDrivenCodeService.MasterType.GOODS, id);
+        // 仅显式修改本分类的编号前缀才批量重排（预览+确认）；只挪上级不再改号
+        // （2026-10-30 用户口径：归拢系列时已有主档编号保持不变）。
+        boolean prefixExplicitlyChanged = req.getCodePrefix() != null
+                && !Objects.equals(c.getCodePrefix(),
+                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
+        CategoryDrivenCodeService.EffectivePrefix oldEffective = prefixExplicitlyChanged
+                ? categoryCodes.effectivePrefix(
+                        CategoryDrivenCodeService.MasterType.GOODS, id)
+                : null;
         boolean editChanged = !Objects.equals(c.getName(), name)
                 || (req.getRemark() != null
                     && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
-                || (req.getCodePrefix() != null
-                    && !Objects.equals(c.getCodePrefix(),
-                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix())));
+                || prefixExplicitlyChanged;
         if (editChanged) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("material_category:edit");
         }
@@ -206,9 +212,7 @@ public class MaterialCategoryService {
         if (parentChanged) {
             relevelSubtree(id);   // level 是真实深度，移动后整棵子树重算
         }
-        CategoryDrivenCodeService.EffectivePrefix newEffective = categoryCodes.effectivePrefix(
-                CategoryDrivenCodeService.MasterType.GOODS, id);
-        if (!Objects.equals(oldEffective, newEffective)) {
+        if (prefixExplicitlyChanged) {
             categoryCodes.reconcileSubtree(CategoryDrivenCodeService.MasterType.GOODS,
                     id, oldEffective.prefix(), c.getCodePrefix());
         }

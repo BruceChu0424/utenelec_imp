@@ -10,6 +10,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.DriverManager;
 import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
@@ -37,6 +38,37 @@ class SubcontractDrawHeaderDatePostgresTest {
             var missing = new SubcontractDrawTableQuery(null, null, Map.of("f.colorName", "__null__"));
             assertThat(jdbc.queryForObject(facts + " SELECT COUNT(*) FROM facts WHERE owner_id=:owner" + missing.sql(true),
                     parameters(missing), Long.class)).isEqualTo(2L);
+        }
+    }
+
+    @Test void nameSummariesExposeExactFieldsAcrossTheCompleteLaneScope() throws Exception {
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
+            var jdbc = new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection, true));
+            String facts = """
+                WITH facts(id,owner_id,supplier_name,plan_no,order_bill_no,goods_id,status,color_name) AS (VALUES
+                  (1,1,'华信加工','WL-1','EO-1','11111111-1111-1111-1111-111111111111'::uuid,'DRAWABLE','黑'::text),
+                  (2,1,'华信加工','WL-1','EO-1','11111111-1111-1111-1111-111111111111'::uuid,'DRAW_SUBMITTED','白'),
+                  (3,1,'川田晓油','WL-2','EO-2','22222222-2222-2222-2222-222222222222'::uuid,'WAITING_MATERIAL',NULL),
+                  (4,2,'不应可见','WL-9','EO-9','33333333-3333-3333-3333-333333333333'::uuid,'DRAWABLE','灰'))
+                """;
+            java.util.function.Function<SubcontractDrawTableQuery, Long> count = headers ->
+                    jdbc.queryForObject(
+                            facts + " SELECT COUNT(*) FROM facts WHERE owner_id=:owner" + headers.sql(true),
+                            parameters(headers), Long.class);
+            // 2026-10-30 表头名称汇总: 委外商/来源计划/单据号/委外件/状态按精确值过滤。
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.supplierName", "华信加工")))).isEqualTo(2L);
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.planNo", "WL-1")))).isEqualTo(2L);
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.docNo", "EO-2")))).isEqualTo(1L);
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null,
+                    Map.of("f.goods", "11111111-1111-1111-1111-111111111111")))).isEqualTo(2L);
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.status", "WAITING_MATERIAL")))).isEqualTo(1L);
+            // 领料行没有规格: 任何规格值都排除领料行, 空值哨兵全量放行。
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.spec", "10mm")))).isZero();
+            assertThat(count.apply(new SubcontractDrawTableQuery(null, null, Map.of("f.spec", "__null__")))).isEqualTo(3L);
+            assertThatThrownBy(() -> new SubcontractDrawTableQuery(null, null, Map.of("f.guessWhat", "x")))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+            assertThatThrownBy(() -> new SubcontractDrawTableQuery(null, null, Map.of("f.status", "MADE_UP")))
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         }
     }
 

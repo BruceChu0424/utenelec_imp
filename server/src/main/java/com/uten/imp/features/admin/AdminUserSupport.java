@@ -91,6 +91,16 @@ class AdminUserSupport {
     }
 
     /**
+     * 个人权限点覆盖与外网访问的目标校验（2026-10-30）：操作者仍须是超级管理员，
+     * 但允许目标为超级管理员（含本人）——超管的全量默认可被个人收回压过，
+     * 外网授权同理。数据范围 / AI 授权 / 模板指派 / 配置转移仍走
+     * {@link #requireAuthorizationTarget}。
+     */
+    void requireSuperAdminEditableTarget(UserAccount target) {
+        requireCurrentSuperAdmin();
+    }
+
+    /**
      * 校验「设为/取消超级管理员」：仅超管可操作；降级时禁止降本人、禁止降最后一位超管
      * （否则会把所有人锁在授权管理之外）。升级无额外限制。
      */

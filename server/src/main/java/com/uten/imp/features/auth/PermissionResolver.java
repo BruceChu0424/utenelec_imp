@@ -43,7 +43,8 @@ import java.util.UUID;
  *            ∪ 中央个人加授
  *            ∪ 当前仍有效的负责人页面委派
  *            − 中央个人收回（user_permission_overrides revoke 始终优先）
- *   超级管理员恒为全部目录码(含超管专属码)。
+ *   超级管理员默认全部目录码(含超管专属码)；2026-10-30 起个人收回同样压过默认，
+ *   但超管专属码只随身份生效、不参与减法。
  * </pre>
  *
  * <p>说明：
@@ -205,8 +206,8 @@ public class PermissionResolver {
     public Set<String> permsOf(UserAccount user) {
         // Effective-only callers do not need the management-page breakdown.
         // Account/employment eligibility remains the caller's existing gate;
-        // super-admin effective permissions are the whole catalog (retired codes are deleted).
-        if (user.isSuperAdmin()) return allPermissionCodes();
+        // super admins default to the whole catalog, with personal revokes
+        // applied the same way since 2026-10-30, hence the shared breakdown.
         return breakdownOf(user).effective();
     }
 
@@ -413,8 +414,13 @@ public class PermissionResolver {
             }
         }
         if (superAdmin) {
-            // 超管：effective 恒为全部目录码(即便将来新增 permission 也按"已有"处理)
-            effective = allPermissionCodes();
+            // 超管：默认全部目录码(即便将来新增 permission 也按"已有"处理)。
+            // 2026-10-30 起个人收回可压过默认；超管专属码只随身份生效，
+            // 永不参与减法(即使覆盖表被手工污染)，防止把授权管理本身锁死。
+            Set<String> mirrored = allPermissionCodes();
+            mirrored.removeAll(revokes);
+            mirrored.addAll(permissionRepo.findSuperAdminOnlyCodes());
+            effective = mirrored;
         }
         return new BaseParts(
                 deptId, deptName, Set.copyOf(deptPerms), Set.copyOf(baseline),

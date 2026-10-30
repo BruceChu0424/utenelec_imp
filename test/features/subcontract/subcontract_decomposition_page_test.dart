@@ -149,6 +149,111 @@ void main() {
     },
   );
 
+  testWidgets(
+    'pending supplier facet summaries merge both lanes and filter both lanes',
+    (tester) async {
+      _desktop(tester, const Size(1800, 1000));
+      final source = _data(capability: true);
+      final gateway = _Gateway(
+        OperationsWorkbenchData(
+          department: source.department,
+          summary: source.summary,
+          capabilities: source.capabilities,
+          items: source.items,
+          page: source.page,
+          size: source.size,
+          total: source.total,
+          totalPages: source.totalPages,
+          facets: const {
+            'supplierName': [MasterFacetBucket(value: '华信加工', count: 9)],
+          },
+          nullCounts: const {'supplierName': 1},
+        ),
+      );
+      final draw = FakeSubcontractDrawGateway()
+        ..onList = (_) async => SubcontractDrawTaskList.fromJson({
+          'page': {
+            'items': <Object>[],
+            'page': 1,
+            'size': 200,
+            'total': 15,
+            'totalPages': 1,
+          },
+          'facets': {
+            'supplierName': [
+              {'value': '华信加工', 'count': 12},
+              {'value': '川田晓油', 'count': 3},
+            ],
+          },
+          'nullCounts': {'supplierName': 2},
+        });
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // 委外商表头筛选给名字汇总(2026-10-30 用户口径), 两车道计数合并。
+      await tester.tap(find.text('委外商'));
+      await tester.pumpAndSettle();
+      expect(find.text('华信加工 (21)'), findsOneWidget);
+      expect(find.text('川田晓油 (3)'), findsOneWidget);
+      await tester.tap(find.text('川田晓油 (3)'));
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['filters'], {'supplierName': '川田晓油'});
+      expect(draw.listQueries.last['columnFilters'], {
+        'supplierName': '川田晓油',
+      });
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'in-progress table exposes subcontractor column with name facets',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final gateway = _Gateway(_inProgressDataWithSuppliers());
+      await tester.pumpWidget(
+        _scope(
+          permissions: {Perm.subcontractOrderView},
+          taskFacts: const {BadgeFact.subcontractTaskInProgress: 3},
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: FakeSubcontractDrawGateway(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '进行中');
+      await tester.pumpAndSettle();
+      MasterDataTableView<OperationsWorkbenchTask> table() =>
+          tester.widget(find.byKey(const Key('subcontract-decomposition-table')));
+      final supplierColumn = table().columns.singleWhere(
+        (column) => column.key == 'supplierName',
+      );
+      expect(supplierColumn.label, '委外商');
+      expect(supplierColumn.value(table().items.first), '华信加工');
+      expect(supplierColumn.value(table().items.last), '—');
+      // 服务端 supplierName 分面直达表头(名字汇总), 未定商进空值桶。
+      expect(table().facets['supplierName'], isNotEmpty);
+      expect(table().nullCounts['supplierName'], 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('visible pending orders export once per document and retire '
       'when the workbench segment changes', (tester) async {
     _desktop(tester, const Size(1600, 1000));
@@ -3243,9 +3348,35 @@ OperationsWorkbenchData _inProgressData() => OperationsWorkbenchData(
   ),
 );
 
-OperationsWorkbenchTask _order(String id, String displayStage) =>
-    OperationsWorkbenchTask.fromJson({
+/// 进行中夹具(带委外商与 supplierName 分面): 第一/二行已定商, 第三行未定商。
+OperationsWorkbenchData _inProgressDataWithSuppliers() => OperationsWorkbenchData(
+  department: OperationsWorkbenchDepartment.subcontract,
+  summary: _inProgressData().summary,
+  items: [
+    _order('order-drawable', 'DRAWABLE', supplierName: '华信加工'),
+    _order('order-submitted', 'DRAW_SUBMITTED', supplierName: '华信加工'),
+    _order('order-supplier', 'AT_SUPPLIER'),
+  ],
+  page: 1,
+  size: 50,
+  total: 3,
+  totalPages: 1,
+  capabilities: const OperationsWorkbenchCapabilities(
+    canCreateSubcontractOrder: true,
+  ),
+  facets: const {
+    'supplierName': [MasterFacetBucket(value: '华信加工', count: 2)],
+  },
+  nullCounts: const {'supplierName': 1},
+);
+
+OperationsWorkbenchTask _order(
+  String id,
+  String displayStage, {
+  String? supplierName,
+}) => OperationsWorkbenchTask.fromJson({
       'taskId': id,
+      'supplierName': ?supplierName,
       'planNo': 'PP-$id',
       'supplyRoute': 'SUBCONTRACT',
       'goodsCode': 'FG-$id',

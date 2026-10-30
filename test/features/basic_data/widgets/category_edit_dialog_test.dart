@@ -458,6 +458,102 @@ void main() {
     expect(submitted!.parentId, isNull);
   });
 
+  testWidgets('仅调整上级分类不再弹批量改号确认，已有编号保持不变', (tester) async {
+    var previewCalls = 0;
+    CategoryEditResult? submitted;
+
+    await _pumpCategoryDialog(
+      tester,
+      tree: _categoryTree(),
+      editing: const ProductCategoryDetail(
+        id: 'current-category',
+        code: 'CAT-CURRENT',
+        name: '当前分类',
+        level: 1,
+        parentId: 'original-parent',
+        parentName: '原上级分类',
+        path: '原上级分类 > 当前分类',
+        childCount: 0,
+        codePrefix: 'UG',
+      ),
+      onPreviewPrefixChange: (prefix, parentId) async {
+        previewCalls++;
+        return _renumberPreview(prefix);
+      },
+      onSubmit: (result) async {
+        submitted = result;
+        return true;
+      },
+    );
+
+    await tester.tap(find.byType(UtenLocationField));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('目标上级分类'));
+    await tester.pump();
+    await tester.tap(_pickerSheetAction('确定'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存'));
+    await tester.pumpAndSettle();
+
+    expect(previewCalls, 0, reason: '前缀未变，不应请求改号影响预览');
+    expect(find.text('确认批量改号'), findsNothing);
+    expect(submitted, isNotNull);
+    expect(submitted!.parentId, 'target-parent');
+    expect(submitted!.codePrefix, 'UG');
+  });
+
+  testWidgets('修改编号前缀仍先预览并确认批量改号后才提交', (tester) async {
+    final previewPrefixes = <String>[];
+    CategoryEditResult? submitted;
+
+    await _pumpCategoryDialog(
+      tester,
+      tree: _categoryTree(),
+      editing: const ProductCategoryDetail(
+        id: 'current-category',
+        code: 'CAT-CURRENT',
+        name: '当前分类',
+        level: 1,
+        parentId: 'original-parent',
+        parentName: '原上级分类',
+        path: '原上级分类 > 当前分类',
+        childCount: 0,
+        codePrefix: 'UG',
+      ),
+      onCheckPrefix: (_) async => _availability('V6'),
+      onPreviewPrefixChange: (prefix, parentId) async {
+        previewPrefixes.add(prefix);
+        return _renumberPreview(prefix);
+      },
+      onSubmit: (result) async {
+        submitted = result;
+        return true;
+      },
+    );
+
+    await tester.enterText(_prefixField(), 'v6');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('保存'));
+    // 保存后按钮进入 loading（循环动画），确认弹窗又在等用户输入，
+    // 不能用 pumpAndSettle：用固定 pump 推到确认弹窗出现。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(previewPrefixes, ['V6']);
+    expect(find.text('确认批量改号'), findsOneWidget);
+    expect(find.textContaining('25 条主档编号'), findsOneWidget);
+
+    await tester.tap(find.text('确认改号'));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(submitted, isNotNull);
+    expect(submitted!.codePrefix, 'V6');
+  });
+
   testWidgets('紧凑屏分类位置使用底部滑窗且确认操作可见并回填', (tester) async {
     await _pumpCategoryDialog(
       tester,
@@ -529,6 +625,10 @@ Future<void> _pumpCategoryDialog(
   ProductCategoryDetail? editing,
   bool canEditFields = true,
   Future<CategoryPrefixAvailability> Function(String)? onCheckPrefix,
+  Future<CategoryPrefixPreview> Function(
+    String requestedPrefix,
+    String? requestedParentId,
+  )? onPreviewPrefixChange,
   required Future<bool> Function(CategoryEditResult result) onSubmit,
   Size surfaceSize = const Size(1200, 900),
   GlobalKey? captureKey,
@@ -558,13 +658,14 @@ Future<void> _pumpCategoryDialog(
               child: ElevatedButton(
                 onPressed: () => showDialog<void>(
                   context: context,
-                  builder: (_) => CategoryEditDialog(
-                    tree: tree,
-                    editing: editing,
-                    canEditFields: canEditFields,
-                    onCheckPrefix: onCheckPrefix,
-                    onSubmit: onSubmit,
-                  ),
+              builder: (_) => CategoryEditDialog(
+                tree: tree,
+                editing: editing,
+                canEditFields: canEditFields,
+                onCheckPrefix: onCheckPrefix,
+                onPreviewPrefixChange: onPreviewPrefixChange,
+                onSubmit: onSubmit,
+              ),
                 ),
                 child: const Text('打开分类编辑'),
               ),
@@ -645,3 +746,16 @@ CategoryPrefixAvailability _availability(
   bool available = true,
 }) =>
     CategoryPrefixAvailability(normalizedPrefix: prefix, available: available);
+
+CategoryPrefixPreview _renumberPreview(String requestedPrefix) =>
+    CategoryPrefixPreview(
+      categoryId: 'current-category',
+      currentPrefix: 'UG',
+      requestedPrefix: requestedPrefix,
+      resultingEffectivePrefix: requestedPrefix,
+      affectedRecords: 25,
+      customOrLegacyRecords: 3,
+      descendantOverrides: 0,
+      conflicts: 0,
+      conflictSamples: const [],
+    );

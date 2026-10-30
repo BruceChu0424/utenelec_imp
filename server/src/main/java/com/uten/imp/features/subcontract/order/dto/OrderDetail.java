@@ -65,6 +65,13 @@ public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAss
     private com.uten.imp.application.port.ProcurementOrderClosureReadPort.ClosureRequestView closureRequest;
 
     /**
+     * 委外物料(直属物料)与成品的对应关系(2026-10-30 用户口径: 订货单不能只有成品):
+     * 已批准明细=冻结计划行(含已发净量); 未批准明细按批准时同一公式现算。行内
+     * orderItemId/orderLineNo 指向归属成品明细。仅订货单详情下发。
+     */
+    private java.util.List<com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.OrderMaterialLine> materials;
+
+    /**
      * @param caseId 首条案件 id, 供页面深链到委外回厂短交判定页
      * @param caseCount 本单待判定的行数
      * @param summary 面向人的一句话说明(不含表名/状态码)

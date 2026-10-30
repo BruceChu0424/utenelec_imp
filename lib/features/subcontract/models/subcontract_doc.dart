@@ -461,6 +461,7 @@ class SubcontractDocDetail {
     this.sourceOrderNo,
     this.deductAmount,
     this.deductPosted,
+    this.materials = const [],
   }) : legacyImported = legacyImported || legacyId != null;
 
   final String id;
@@ -544,6 +545,11 @@ class SubcontractDocDetail {
   final double? deductAmount;
   final bool? deductPosted;
 
+  /// 委外物料(直属物料)与成品对应关系(2026-10-30 用户口径: 订货单不能只有成品)。
+  /// 已批准明细=冻结计划行(issuedQty 有值); 未批准明细按批准时同一公式现算。
+  /// 仅订货单详情下发; 数量是服务端精确十进制文本。
+  final List<SubcontractOrderMaterialLine> materials;
+
   factory SubcontractDocDetail.fromJson(Map<String, dynamic> json) =>
       SubcontractDocDetail(
         id: json['id'] as String,
@@ -622,6 +628,15 @@ class SubcontractDocDetail {
             (json['items'] as List?)
                 ?.map(
                   (e) => SubcontractDocItem.fromJson(e as Map<String, dynamic>),
+                )
+                .toList() ??
+            const [],
+        materials:
+            (json['materials'] as List?)
+                ?.map(
+                  (e) => SubcontractOrderMaterialLine.fromJson(
+                    e as Map<String, dynamic>,
+                  ),
                 )
                 .toList() ??
             const [],
@@ -714,4 +729,56 @@ class SubcontractDecompositionLine {
           : number('orderableQty'),
     );
   }
+}
+
+/// 委外订货单的直属物料行: orderItemId/orderLineNo 指向归属成品明细(对应关系)。
+/// bomUnitQty=含损耗单耗(物料单位/成品单位); plannedQty=我方需发总量(物料单位);
+/// issuedQty=已发净量(未冻结明细为 null); frozen=false 表示按 BOM 现算、批准后以此冻结。
+class SubcontractOrderMaterialLine {
+  const SubcontractOrderMaterialLine({
+    required this.orderItemId,
+    this.orderLineNo,
+    this.goodsId,
+    this.colorId,
+    this.unitId,
+    this.goodsCode,
+    this.goodsName,
+    this.colorName,
+    this.unitName,
+    this.bomUnitQty,
+    this.plannedQty,
+    this.issuedQty,
+    this.frozen = false,
+  });
+
+  factory SubcontractOrderMaterialLine.fromJson(Map<String, dynamic> json) =>
+      SubcontractOrderMaterialLine(
+        orderItemId: json['orderItemId'] as String,
+        orderLineNo: (json['orderLineNo'] as num?)?.toInt(),
+        goodsId: json['goodsId'] as String?,
+        colorId: json['colorId'] as String?,
+        unitId: json['unitId'] as String?,
+        goodsCode: json['goodsCode'] as String?,
+        goodsName: json['goodsName'] as String?,
+        colorName: json['colorName'] as String?,
+        unitName: json['unitName'] as String?,
+        bomUnitQty: json['bomUnitQty'] as String?,
+        plannedQty: json['plannedQty'] as String?,
+        issuedQty: json['issuedQty'] as String?,
+        frozen: (json['frozen'] as bool?) ?? false,
+      );
+
+  final String orderItemId;
+  final int? orderLineNo;
+  final String? goodsId;
+  final String? colorId;
+  final String? unitId;
+  final String? goodsCode;
+  final String? goodsName;
+  final String? colorName;
+  final String? unitName;
+  final String? bomUnitQty;
+  final String? plannedQty;
+  final String? issuedQty;
+  final bool frozen;
 }

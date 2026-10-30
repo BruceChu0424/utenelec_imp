@@ -12,13 +12,32 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-/** Conditions use classified task facts before either count or pagination. */
+/**
+ * Conditions use classified task facts before either count or pagination.
+ *
+ * <p>表头精确值筛选({@code f.{key}})按 {@link #EXACT} 白名单: 2026-10-30 起不再只有颜色——
+ * 任务中心「待处理」拍平表(申请行+领料行两车道)的名称类列(委外商/来源计划/单据号/委外件/颜色)
+ * 都按当前数据汇总候选值, 领料车道与工作台车道同 key 同语义。{@code spec} 领料行恒空
+ * (与申请行合并分面时全部归入空值桶, 选定某规格值即排除全部领料行, 与行内显示一致)。
+ */
 record SubcontractDrawTableQuery(String sort, String order, Map<String, String> filters) {
     static final Map<String, String> TEXT = Map.ofEntries(
             Map.entry("planNo", "plan_no"), Map.entry("docNo", "order_bill_no"),
             Map.entry("goods", "goods_name"), Map.entry("goodsCode", "goods_code"),
             Map.entry("supplierName", "supplier_name"), Map.entry("colorName", "color_name"),
             Map.entry("spec", "NULL::text"));
+    /** 表头精确值筛选: key → classified CTE 的取值表达式(与服务端分面同源)。 */
+    static final Map<String, String> EXACT = Map.ofEntries(
+            Map.entry("colorName", "NULLIF(color_name, '')"),
+            Map.entry("supplierName", "NULLIF(supplier_name, '')"),
+            Map.entry("planNo", "NULLIF(plan_no, '')"),
+            Map.entry("docNo", "NULLIF(order_bill_no, '')"),
+            Map.entry("goods", "goods_id::text"),
+            Map.entry("spec", "NULL::text"),
+            Map.entry("status", "status"));
+    /** {@code f.status} 只接受领料行状态档, 不收任意文本。 */
+    static final Set<String> STATUS_VALUES = Set.of(
+            "DRAWABLE", "DRAWABLE_PARTIAL", "DRAW_SUBMITTED", "WAITING_PLANNING", "WAITING_MATERIAL");
     static final Map<String, String> NUMERIC = Map.ofEntries(
             Map.entry("requiredQty", "order_qty"), Map.entry("differenceQty", "difference_qty"),
             Map.entry("openQty", "0::numeric"), Map.entry("orderableQty", "0::numeric"),
@@ -30,17 +49,21 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
             "issuedAt", SqlColumnSearch.Field.instant("NULL::timestamptz"));
     private static final Set<String> SEARCH_FIELDS=java.util.stream.Stream.of(TEXT.keySet(),NUMERIC.keySet(),DATES.keySet())
             .flatMap(Set::stream).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    static final String NULL_VALUE = "__null__";
 
     SubcontractDrawTableQuery {
         Map<String, String> safe = new LinkedHashMap<>();
         if (sort != null && !sort.isBlank() && !TEXT.containsKey(sort) && !NUMERIC.containsKey(sort) && !DATES.containsKey(sort)) throw invalid();
         if (order != null && !Set.of("asc", "desc").contains(order.toLowerCase(java.util.Locale.ROOT))) throw invalid();
         if (filters != null) filters.forEach((key, raw) -> {
-            if (key.equals("f.colorName")) {
-                if (raw != null && !raw.isBlank()) {
-                    if (raw.length() > 500) throw invalid();
-                    safe.put("f.colorName", raw.strip());
-                }
+            if (key.startsWith("f.")) {
+                String column = key.substring(2);
+                if (!EXACT.containsKey(column)) throw invalid();
+                if (raw == null || raw.isBlank()) return;
+                if (raw.length() > 500) throw invalid();
+                String value = raw.strip();
+                if ("status".equals(column) && !STATUS_VALUES.contains(value)) throw invalid();
+                safe.put(key, value);
                 return;
             }
             if (!key.startsWith("search.")) return;
@@ -66,9 +89,12 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
     String sql(boolean canViewDifference, String excludedColumn) {
         StringBuilder sql = new StringBuilder();
         filters.forEach((key, value) -> {
-            if (key.equals("f.colorName")) {
-                if (!"colorName".equals(excludedColumn)) sql.append("__null__".equals(value)
-                        ? " AND NULLIF(color_name, '') IS NULL" : " AND color_name = :draw_exact_colorName");
+            if (key.startsWith("f.")) {
+                String column = key.substring(2);
+                if (column.equals(excludedColumn)) return;
+                sql.append("__null__".equals(value)
+                        ? " AND (" + EXACT.get(column) + ") IS NULL"
+                        : " AND (" + EXACT.get(column) + ") = :draw_exact_" + column);
                 return;
             }
             String column = key.substring(7), parameter = "draw_header_" + column;
@@ -86,8 +112,8 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
 
     void bind(Query query) {
         filters.forEach((key, value) -> {
-            if (key.equals("f.colorName")) {
-                if (!"__null__".equals(value)) query.setParameter("draw_exact_colorName", value);
+            if (key.startsWith("f.")) {
+                if (!NULL_VALUE.equals(value)) query.setParameter("draw_exact_" + key.substring(2), value);
                 return;
             }
             String column = key.substring(7), parameter = "draw_header_" + column;

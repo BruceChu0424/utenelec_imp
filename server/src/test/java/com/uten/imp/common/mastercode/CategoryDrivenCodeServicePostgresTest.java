@@ -592,6 +592,33 @@ class CategoryDrivenCodeServicePostgresTest {
     }
 
     @Test
+    void movedCategoryGoodsKeepLegacyCodesOnOrdinaryEditsWhileNewGoodsUseTheNewPrefix() {
+        UUID oldOwner = UUID.randomUUID();
+        UUID newOwner = UUID.randomUUID();
+        UUID movedChild = UUID.randomUUID();
+        UUID legacyGoods = UUID.randomUUID();
+        insertCategory(oldOwner, "MOVE-OLD-OWNER", "老前缀大分类", null, "2053300");
+        insertCategory(newOwner, "MOVE-NEW-OWNER", "新位置大分类", null, "2881342");
+        // 归拢场景：系列分类已从老前缀链挪到新链（挪动本身不再改号），
+        // 其下货品保留老前缀编号，归属仍在老前缀分类。
+        insertCategory(movedChild, "MOVE-SERIES", "系列分类", newOwner, null);
+        insertGoods(legacyGoods, movedChild, "205330001", 101L, oldOwner, true, false);
+        jdbc.update("UPDATE category_master_code_sequences SET last_seq = 101 WHERE master_type = 'GOODS'");
+
+        // 普通编辑（编号原样回传）：编号文本、受管状态与老归属全部保持原样，
+        // 不得被静默重渲染成新有效前缀（2026-10-30 用户口径）。
+        var edited = service.allocateForUpdate(GOODS, legacyGoods, movedChild, "205330001",
+                new CategoryCodeAllocation("205330001", 101L, oldOwner, true));
+        assertEquals("205330001", edited.code());
+        assertEquals(101L, edited.sequence());
+        assertEquals(oldOwner, edited.prefixCategoryId());
+        assertTrue(edited.managed());
+
+        // 挪动之后新建的货品按新有效前缀发短号，与保留的老编号并存。
+        assertEquals("288134201", service.allocate(GOODS, movedChild, null).code());
+    }
+
+    @Test
     void subcontractSnapshotMaterializedViewSupportsConcurrentRefresh() {
         jdbc.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY subcontract_monthly_mv");
     }

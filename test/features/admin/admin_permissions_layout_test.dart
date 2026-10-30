@@ -28,6 +28,7 @@ import 'package:uten_imp/features/admin/widgets/admin_permission_transfer_action
 import 'package:uten_imp/features/admin/widgets/permission_batch_dialog.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
+import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -793,6 +794,86 @@ void main() {
   });
 
   testWidgets(
+    'super administrator target allows personal revokes but locks superadmin-only codes',
+    (tester) async {
+      final repository = _SuperAdminOverrideRepository();
+      await _mount(tester, repository, _AiRepository(), width: 1440);
+
+      // 权限目录按模块/子类折叠，先展开到权限行。
+      await tester.tap(find.text('常用模块').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('资料').first);
+      await tester.pumpAndSettle();
+
+      // 默认生效的普通码显示「超管默认」来源，开关可用。
+      expect(find.text('超管默认'), findsWidgets);
+      final revokedSwitch = tester.widget<Switch>(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                (widget.properties.label?.contains('编辑销售订单') ?? false),
+          ),
+          matching: find.byType(Switch),
+        ),
+      );
+      expect(revokedSwitch.value, isFalse, reason: '已收回的码开关为关');
+      expect(revokedSwitch.onChanged, isNotNull, reason: '超管目标可逐项调整');
+
+      // 只随超管身份生效的码锁定，提示不能收回。
+      final exclusiveSwitch = tester.widget<Switch>(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                (widget.properties.label?.contains('管理授权') ?? false),
+          ),
+          matching: find.byType(Switch),
+        ),
+      );
+      expect(exclusiveSwitch.value, isTrue);
+      expect(exclusiveSwitch.onChanged, isNull);
+
+      // 「全部授权」对超管目标可用（=恢复全量默认）；「全部收回」不出现。
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('admin-grant-all-permissions')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        find.byKey(const ValueKey('admin-revoke-all-permissions')),
+        findsNothing,
+      );
+
+      // 打开已收回的码 = 撤掉个人收回恢复默认：保存时不写任何加授行。
+      await tester.tap(
+        find.descendant(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is Semantics &&
+                (widget.properties.label?.contains('编辑销售订单') ?? false),
+          ),
+          matching: find.byType(Switch),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('已修改 1 项'), findsOneWidget);
+      await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(repository.overrideSaves, hasLength(1),
+          reason: '超管目标保存只携带收回差量，恢复默认即空集合');
+      expect(repository.overrideSaves.single.grants, isEmpty,
+          reason: '不写任何加授行');
+      expect(repository.overrideSaves.single.revokes, isEmpty,
+          reason: '撤掉收回后期望集合为空');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'template first visit is lazy and autosave survives switching modes',
     (tester) async {
       final templates = _TemplateRepository();
@@ -1528,6 +1609,69 @@ class _Repository implements AdminRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// 超管目标（含本人）权限编辑语义：默认码可收回、专属码锁定、保存只携带收回差量。
+class _SuperAdminOverrideRepository extends _Repository {
+  final overrideSaves = <({List<String> grants, List<String> revokes})>[];
+
+  @override
+  Future<List<PermissionCatalogGroup>> permissionCatalog() async => [
+    const PermissionCatalogGroup(
+      category: '资料',
+      module: '常用模块',
+      permissions: [
+        AdminPermission(
+          id: 'perm-goods-view',
+          code: 'goods:view',
+          actionType: PermissionActionType.view,
+          name: '查看测试资料',
+          category: '资料',
+          module: '常用模块',
+        ),
+        AdminPermission(
+          id: 'perm-sales-edit',
+          code: 'sales_order:edit',
+          actionType: PermissionActionType.edit,
+          name: '编辑销售订单',
+          category: '订单',
+          module: '订单模块',
+        ),
+        AdminPermission(
+          id: 'perm-auth-manage',
+          code: 'authorization:manage',
+          actionType: PermissionActionType.edit,
+          name: '管理授权',
+          category: '系统',
+          module: '系统管理',
+          grantPolicy: PermissionGrantPolicy(<String>{
+            PermissionGrantPolicy.superadminOnly,
+          }),
+        ),
+      ],
+    ),
+  ];
+
+  @override
+  Future<EffectivePermissions> effectivePermissions(String userId) async =>
+      const EffectivePermissions(
+        superAdmin: true,
+        departmentPermissions: [],
+        baselinePermissions: [],
+        grants: [],
+        revokes: ['sales_order:edit'],
+        effective: ['goods:view', 'authorization:manage'],
+      );
+
+  @override
+  Future<PermissionChange> updateUserPermOverrides(
+    String userId, {
+    required List<String> grants,
+    required List<String> revokes,
+  }) async {
+    overrideSaves.add((grants: grants, revokes: revokes));
+    return PermissionChange.none;
+  }
 }
 
 class _SelectionSession extends SessionNotifier {

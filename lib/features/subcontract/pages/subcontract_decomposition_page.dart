@@ -1996,7 +1996,7 @@ class _SubcontractDecompositionPageState
       expensiveRowMounts: false,
       rowsController: _taskRows,
       tableKey:
-          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
+          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.2',
       key: const Key('subcontract-decomposition-table'),
       // primary:true → 表体参与「筛选行折叠 → 表格内滚」联动。
       primary: true,
@@ -2026,14 +2026,24 @@ class _SubcontractDecompositionPageState
           value: (t) => t.planNo,
         ),
         MasterColumnDef(
-          // 每行保留一个真实货品明细，原单据号用于查找同单各行。
+          // 每行保留一个真实货品明细，原单据号用于查找同单各行。进行中/历史行是
+          // 委外订货单明细，单据号=订货单号(与「待处理」拍平表同一「单据号」口径)。
           key: 'docNo',
           sortable: true,
-          label: '委外申请号',
+          label: '单据号',
           width: 160,
           value: (t) => t.actionDocumentRestricted
               ? '—'
               : (t.actionDocument?.number ?? '—'),
+        ),
+        // 2026-10-30 用户口径：进行中/历史行=委外订货单明细，同样要有委外商列
+        // (订货按委外商拆单归集)，表头筛选给名字汇总(服务端 supplierName 分面)。
+        MasterColumnDef(
+          key: 'supplierName',
+          label: '委外商',
+          sortable: true,
+          width: 150,
+          value: (t) => _label(t.supplierName),
         ),
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 不再「编号 名称」拼一格、颜色拼进规格。
@@ -2228,7 +2238,7 @@ class _SubcontractDecompositionPageState
           size: UtenButtonSize.large,
           enabled: !_loading,
           tableKey:
-              'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
+              'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.2',
         ),
         if (_orderingSeg && _hasDecomposePermissions && !canOrder)
           _createOrderButton(),
@@ -2258,7 +2268,68 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表) ——
+  // —— 「待处理」拍平表(ADR-171 修订二：拍平进待处理表) ——
+
+  /// 待处理表两车道的名称汇总分面：申请行(工作台投影)与领料行(draw 端点)按同 key
+  /// 同值合并计数；状态码各自按域翻译文案。两车道都是服务端分页，桶覆盖各自
+  /// 完整授权域，不依赖当前页行。
+  Map<String, List<MasterFacetBucket>> _pendingFacets(
+    OperationsWorkbenchData data,
+  ) {
+    final merged = <String, Map<String, MasterFacetBucket>>{};
+    void add(String column, Iterable<MasterFacetBucket> buckets) {
+      final byValue = merged.putIfAbsent(column, () => {});
+      for (final bucket in buckets) {
+        final previous = byValue[bucket.value];
+        byValue[bucket.value] = MasterFacetBucket(
+          value: bucket.value,
+          count: bucket.count + (previous?.count ?? 0),
+          label: _pendingFacetLabel(
+            column,
+            bucket.value,
+            previous?.label ?? bucket.label,
+          ),
+        );
+      }
+    }
+
+    data.facets.forEach(add);
+    if (_drawVisible) {
+      _drawData?.facets.forEach(add);
+    }
+    return {
+      for (final entry in merged.entries)
+        entry.key:
+            entry.value.values.toList()
+              ..sort((a, b) => a.display.compareTo(b.display)),
+    };
+  }
+
+  Map<String, int> _pendingNullCounts(OperationsWorkbenchData data) => {
+    for (final key in {
+      ...data.nullCounts.keys,
+      if (_drawVisible) ...?_drawData?.nullCounts.keys,
+    })
+      key:
+          (data.nullCounts[key] ?? 0) +
+          (_drawVisible ? _drawData?.nullCounts[key] ?? 0 : 0),
+  };
+
+  /// 状态桶文案：领料行状态按领料域档位，申请行阶段沿进行中表同一翻译链。
+  static String _pendingFacetLabel(String column, String value, String? label) {
+    if (column != 'status') return label ?? value;
+    final draw = switch (value) {
+      'DRAWABLE' => '可领料',
+      'DRAWABLE_PARTIAL' => '部分可领',
+      'DRAW_SUBMITTED' => '已提交领料·待仓库发',
+      'WAITING_PLANNING' => '等计划安排',
+      'WAITING_MATERIAL' => '等待物料',
+      _ => null,
+    };
+    if (draw != null) return draw;
+    final progress = subcontractProgressStatusLabel(value);
+    return progress == value ? operationsWorkbenchStatusLabel(value) : progress;
+  }
 
   bool get _drawScoped =>
       _drawOrderId != null ||
@@ -2304,23 +2375,10 @@ class _SubcontractDecompositionPageState
 
   /// 「待处理」拍平表：领料当前页钉顶，申请行沿原工作台投影独立分页。
   Widget _buildPendingTable(OperationsWorkbenchData data) {
-    // Both lanes are server-paged. Candidate colors must cover their complete
-    // authorized scopes, including colors absent from either loaded page.
-    final colorBuckets = <String, MasterFacetBucket>{};
-    for (final bucket in [
-      ...data.facets['colorName'] ?? const <MasterFacetBucket>[],
-      if (_drawVisible)
-        ..._drawData?.facets['colorName'] ?? const <MasterFacetBucket>[],
-    ]) {
-      final previous = colorBuckets[bucket.value];
-      colorBuckets[bucket.value] = MasterFacetBucket(
-        value: bucket.value,
-        count: bucket.count + (previous?.count ?? 0),
-        label: previous?.label ?? bucket.label,
-      );
-    }
-    final colors = colorBuckets.values.toList()
-      ..sort((a, b) => a.display.compareTo(b.display));
+    // Both lanes are server-paged. Facet candidates must cover their complete
+    // authorized scopes, including values absent from either loaded page.
+    final facets = _pendingFacets(data);
+    final nullCounts = _pendingNullCounts(data);
     final canOrder =
         _hasDecomposePermissions && data.capabilities.canCreateSubcontractOrder;
     const selectable = true;
@@ -2624,12 +2682,10 @@ class _SubcontractDecompositionPageState
       // Shared identity/measure queries go to BOTH independently paged sources.
       // A task's status retains its own domain meaning and is not merged into an enum.
       serverColumnSearch: true,
-      facets: {'colorName': colors},
-      nullCounts: {
-        'colorName':
-            (data.nullCounts['colorName'] ?? 0) +
-            (_drawVisible ? (_drawData?.nullCounts['colorName'] ?? 0) : 0),
-      },
+      // 2026-10-30 表头名称汇总(用户口径): 委外商/来源计划/单据号/委外件/颜色/规格/状态
+      // 两车道同 key 合并候选值(领料行无规格, 全部归空值桶)。
+      facets: facets,
+      nullCounts: nullCounts,
       filters: _columnFilters,
       onFilterChanged: (column, value) {
         setState(() {

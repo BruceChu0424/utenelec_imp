@@ -573,8 +573,14 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         assertTrue(sql.getAllValues().getFirst().contains("NULLIF(plan_no,'') DESC NULLS LAST, task_id"));
-        // docNo 分面：与列表同一份 WHERE（filters），按 visible_doc_no 分组计数。
-        assertTrue(sql.getAllValues().getLast().contains("GROUP BY visible_doc_no"));
+        // 表头名称汇总(2026-10-30): 仓库分面改为 docNo/planNo/goods/colorName 多列
+        // VALUES 分组(各列排除自身筛选), 与列表同一份 WHERE。
+        String whole = sql.getAllValues().getLast();
+        String facets = whole.substring(whole.indexOf("facet_rows AS (") + "facet_rows AS (".length());
+        assertTrue(facets.contains("CROSS JOIN LATERAL (VALUES"));
+        assertTrue(facets.contains("('docNo',visible_doc_no"));
+        assertTrue(facets.contains("('colorName',NULLIF(color_name,'')"));
+        assertTrue(facets.contains("GROUP BY facet.key, facet.value"));
         assertEquals(1, result.facets().size());
         assertEquals("LL2609001", result.facets().get("docNo").getFirst().value());
         assertEquals(2L, result.facets().get("docNo").getFirst().count());
@@ -638,9 +644,10 @@ class FulfillmentWorkbenchQueryServiceTest {
                 "f.goods", "goods-uuid", "search.goods", "开关 面板", "search.goodsCode", "M3_20%",
                 "search.supplierName", "华东"), null, null, null, null);
         String sql = table.filterSql(null);
-        assertTrue(sql.contains("goods_id::text = :filter_1"));
-        assertTrue(sql.contains(":filter_7"));
+        // colorName 进入精确筛选白名单(2026-10-30)后参数序号整体后移一位。
+        assertTrue(sql.contains("goods_id::text = :filter_2"));
         assertTrue(sql.contains(":filter_8"));
+        assertTrue(sql.contains(":filter_9"));
         assertTrue(sql.contains("lower(COALESCE(goods_name,''))"), "the goods-name header only searches names");
         assertTrue(sql.contains("lower(COALESCE(goods_code,''))"), "the independent code header still searches codes");
         assertFalse(sql.contains("concat_ws(' ',goods_code,goods_name)"), "a code match must not satisfy a name-column word");
@@ -648,9 +655,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertFalse(sql.contains("华东"));
         Query query = mock(Query.class);
         table.bind(query);
-        verify(query).setParameter("filter_1", "goods-uuid");
-        verify(query).setParameter("filter_7", "开关 面板");
-        verify(query).setParameter("filter_8", "M3_20%");
+        verify(query).setParameter("filter_2", "goods-uuid");
+        verify(query).setParameter("filter_8", "开关 面板");
+        verify(query).setParameter("filter_9", "M3_20%");
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
                 () -> FulfillmentWorkbenchTableQuery.from("needDate", "asc",
                         java.util.Map.of("search.goods);DROP TABLE goods;--", "x"), null, null, null, null));
@@ -667,7 +674,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertFalse(sql.contains("visible_doc_no ="));
         Query query = mock(Query.class);
         table.bindFilters(query, "docNo");
-        verify(query).setParameter("filter_7", value);
+        verify(query).setParameter("filter_8", value);
         org.mockito.Mockito.verifyNoMoreInteractions(query);
         assertEquals("goods_code DESC NULLS LAST, goods_name DESC NULLS LAST, task_id", table.orderSql());
         org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,

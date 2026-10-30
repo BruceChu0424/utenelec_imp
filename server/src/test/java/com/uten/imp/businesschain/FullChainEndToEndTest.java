@@ -10864,23 +10864,49 @@ class FullChainEndToEndTest {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // #33 (security — no self-escalation via permission overrides) Permission assignment is super-admin
-    // only (class-level principal.superAdmin) AND forbids targeting self or another super-admin. So
-    // there is no path for a user to grant themselves or anyone super-admin-level authority. A non-super
-    // admin is denied entirely; a super-admin can edit OTHERS but not themselves.
+    // #33 (security — super-admin self/peer override editing) Since 2026-10-30 a super-admin MAY
+    // edit their own and other super-admins' personal overrides: the whole-catalog default is
+    // narrowed only by personal revokes. Grant rows toward a super-admin are stripped (no
+    // escalation is possible — the default already grants everything, and the grantedPermsOf
+    // task-pool caliber keeps reflecting only actually granted codes), SUPERADMIN_ONLY codes cannot be revoked (authorization
+    // management can never be locked out), and non-super admins remain denied entirely.
     // ---------------------------------------------------------------------------------------------
     @Test
-    void security_permissionOverrideSelfGrantBlocked() {
+    void security_superAdminSelfAndPeerOverridesAllowedWithGuards() {
         World w = seedWorld("s33");
         UUID other = createUserWithPerms(w, "other-s33");
 
-        // super-admin cannot modify THEIR OWN authorization
+        // super-admin editing THEIR OWN overrides: a personal revoke narrows the catalog default
         loginAs(w.superAdminUserId());
-        ApiException selfEdit = assertThrows(ApiException.class,
-                () -> permissionOverrideAdmin.setPermissionOverrides(
-                        w.superAdminUserId(), List.of("sales_order:edit"), List.of()));
-        assertEquals(ErrorCode.FORBIDDEN, selfEdit.getCode(),
-                "超管不能修改本人/超管的授权策略(无自我提权路径)");
+        permissionOverrideAdmin.setPermissionOverrides(
+                w.superAdminUserId(), List.of(), List.of("sales_order:edit"));
+        assertFalse(permissionResolver.authorizationSnapshot(
+                        w.superAdminUserId(), employeeIdOf(w.superAdminUserId()), true).permissions()
+                        .contains("sales_order:edit"),
+                "本人收回压过超管全量默认");
+        assertTrue(permissionResolver.authorizationSnapshot(
+                        w.superAdminUserId(), employeeIdOf(w.superAdminUserId()), true).permissions()
+                        .contains("authorization:manage"),
+                "超管专属码只随身份生效");
+
+        // grant requests toward a super-admin are stripped: no grant row is ever written;
+        // requesting a code equals restoring the default (the prior revoke is lifted)
+        var stripped = permissionOverrideAdmin.setPermissionOverrides(
+                w.superAdminUserId(), List.of("sales_order:edit"), List.of());
+        assertTrue(stripped.added().isEmpty(), "加授对超管被剥离：没有写入任何 grant 行(无自我提权路径)");
+        assertTrue(stripped.removed().contains("revoke:sales_order:edit"),
+                "加授请求等价于恢复默认：此前的收回被撤掉");
+        assertEquals(List.of(), jdbc.queryForList("""
+                select permission.code
+                from user_permission_overrides overrides
+                join permissions permission on permission.id=overrides.permission_id
+                where overrides.user_id=? and overrides.effect='grant' and overrides.active
+                """, String.class, w.superAdminUserId()), "超管目标不落加授行");
+
+        // SUPERADMIN_ONLY codes cannot be revoked: authorization management can never be locked out
+        ApiException refused = assertThrows(ApiException.class, () -> permissionOverrideAdmin
+                .setPermissionOverrides(w.superAdminUserId(), List.of(), List.of("authorization:manage")));
+        assertTrue(refused.getMessage().contains("不能收回"), refused.getMessage());
 
         // super-admin CAN modify another (non-super) user's overrides
         permissionOverrideAdmin.setPermissionOverrides(other, List.of("sales_order:edit"), List.of());

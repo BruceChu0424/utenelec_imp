@@ -69,6 +69,22 @@ class PermissionResolverDependencyTest {
     }
 
     @Test
+    void superAdminPersonalRevokesNarrowTheDefaultButNeverSuperAdminOnlyCodes() {
+        // 2026-10-30：超管全量默认可被个人收回压过，依赖联动照常(收掉 view 连带剔 approve)；
+        // 超管专属码只随身份生效，即使覆盖表被手工污染也兜底回来。
+        Fixture fixture = fixture();
+        fixture.actor.setSuperAdmin(true);
+        when(fixture.permissions.findAllCodes()).thenReturn(List.of(
+                "sales_shipment_finance:approve", "sales_shipment_finance:view", "authorization:manage"));
+        when(fixture.permissions.findSuperAdminOnlyCodes()).thenReturn(List.of("authorization:manage"));
+        when(fixture.overrides.findCodeAndEffectByUserId(fixture.actor.getId())).thenReturn(List.of(
+                new Object[]{"sales_shipment_finance:view", "revoke", "SUPER_ADMIN_CONFIRMED"},
+                new Object[]{"authorization:manage", "revoke", "SUPER_ADMIN_CONFIRMED"}));
+        assertThat(fixture.resolver.permsOf(fixture.actor))
+                .containsExactly("authorization:manage");
+    }
+
+    @Test
     void independentFieldAndCommandGrantsSurviveExplicitRevokesOfUnrelatedRootReads() {
         List<String> commands = List.of("employee:create", "employee:pii:edit", "employee:compensation:edit",
                 "goods:price:edit", "attachment:upload", "attachment:download", "rd_task:resolve",

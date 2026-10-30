@@ -123,6 +123,62 @@ Future<Uint8List> renderProcurementOrderPdf(
           ],
         ),
         pw.SizedBox(height: 8),
+        // 2026-10-30 用户口径: 委外订货单同时给委外成品与委外物料(直属物料)及
+        // 对应关系(「所属成品」指回上方成品表行号); 采购单无物料段。
+        if (kind == ProcurementOrderPrintKind.subcontract &&
+            d.materials.isNotEmpty) ...[
+          text('委外物料（我方供料，与上方成品对应）', size: 11, bold: true),
+          pw.SizedBox(height: 4),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey500, width: 0.5),
+            columnWidths: {
+              for (
+                var i = 0;
+                i < ProcurementOrderPrintDocument.materialWidths.length;
+                i++
+              )
+                i: pw.FlexColumnWidth(
+                  ProcurementOrderPrintDocument.materialWidths[i],
+                ),
+            },
+            children: [
+              pw.TableRow(
+                repeat: true,
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                children: [
+                  for (final value
+                      in ProcurementOrderPrintDocument.materialHeaders)
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.symmetric(
+                        horizontal: 3,
+                        vertical: 6,
+                      ),
+                      child: text(value, size: 8, bold: true),
+                    ),
+                ],
+              ),
+              for (final row in d.materialRows)
+                pw.TableRow(
+                  children: [
+                    for (var i = 0; i < row.length; i++)
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.symmetric(
+                          horizontal: 3,
+                          vertical: 3,
+                        ),
+                        child: pw.Align(
+                          alignment: i == 5 || i == 6
+                              ? pw.Alignment.centerRight
+                              : pw.Alignment.centerLeft,
+                          child: text(row[i]),
+                        ),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+          pw.SizedBox(height: 8),
+        ],
         pair('金额大写：${d.capitalLabel}', '合计：${d.amountLabel}'),
         pair(
           '付款方式：${d.priceMasked ? '***' : _shown(d.settlementMethod)}',

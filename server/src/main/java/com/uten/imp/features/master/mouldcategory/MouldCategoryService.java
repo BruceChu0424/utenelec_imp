@@ -125,14 +125,19 @@ public class MouldCategoryService {
             CategorySiblingNameGuard.requireAvailable(em, CategorySiblingNameGuard.Kind.MOULD,
                     name, nameParentId, id);
         }
-        CategoryDrivenCodeService.EffectivePrefix oldEffective = categoryCodes.effectivePrefix(
-                CategoryDrivenCodeService.MasterType.MOULD, id);
+        // 仅显式修改本分类的编号前缀才批量重排（预览+确认）；只挪上级不再改号
+        // （2026-10-30 用户口径：归拢系列时已有主档编号保持不变）。
+        boolean prefixExplicitlyChanged = req.getCodePrefix() != null
+                && !Objects.equals(c.getCodePrefix(),
+                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix()));
+        CategoryDrivenCodeService.EffectivePrefix oldEffective = prefixExplicitlyChanged
+                ? categoryCodes.effectivePrefix(
+                        CategoryDrivenCodeService.MasterType.MOULD, id)
+                : null;
         boolean editChanged = !Objects.equals(c.getName(), name)
                 || (req.getRemark() != null
                     && !Objects.equals(c.getRemark(), cleanRemark(req.getRemark())))
-                || (req.getCodePrefix() != null
-                    && !Objects.equals(c.getCodePrefix(),
-                        CategoryDrivenCodeService.normalizePrefix(req.getCodePrefix())));
+                || prefixExplicitlyChanged;
         if (editChanged) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("mould_category:edit");
         }
@@ -171,9 +176,7 @@ public class MouldCategoryService {
         if (parentChanged) {
             relevelSubtree(id);   // level 是真实深度，移动后整棵子树重算
         }
-        CategoryDrivenCodeService.EffectivePrefix newEffective = categoryCodes.effectivePrefix(
-                CategoryDrivenCodeService.MasterType.MOULD, id);
-        if (!Objects.equals(oldEffective, newEffective)) {
+        if (prefixExplicitlyChanged) {
             categoryCodes.reconcileSubtree(CategoryDrivenCodeService.MasterType.MOULD,
                     id, oldEffective.prefix(), c.getCodePrefix());
         }

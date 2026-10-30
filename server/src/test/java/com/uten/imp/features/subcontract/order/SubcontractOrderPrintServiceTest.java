@@ -99,6 +99,25 @@ class SubcontractOrderPrintServiceTest {
         verify(em).createNativeQuery(contains("request_type='ORDER'"));
     }
 
+    @Test void directMaterialsCarryProductLinkageIntoTheSupplierPrint() {
+        // 2026-10-30 用户口径: 委外订货单打印要有委外物料与成品对应关系, 不能只打印成品。
+        when(detail.getMaterials()).thenReturn(List.of(
+                new com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.OrderMaterialLine(
+                        itemId, 1, UUID.randomUUID(), null, UUID.randomUUID(),
+                        "M-SHELL", "外壳", "黑", "个", "2", "20", "8", true),
+                new com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService.OrderMaterialLine(
+                        UUID.randomUUID(), 2, UUID.randomUUID(), null, UUID.randomUUID(),
+                        "M-SCREW", "螺丝", null, "个", "4", "40", null, false)));
+        var document = service.read(id);
+        assertThat(document.materials()).hasSize(2);
+        assertThat(document.materials().getFirst().orderLineNo()).isEqualTo(1);
+        assertThat(document.materials().getFirst().goodsName()).isEqualTo("外壳");
+        assertThat(document.materials().getFirst().bomUnitQty()).isEqualTo("2");
+        assertThat(document.materials().getFirst().requiredQty()).isEqualTo("20");
+        // 内容摘要覆盖物料(与既有快照授权同链)。
+        assertThat(document.contentDigest()).matches("[a-f0-9]{64}");
+    }
+
     @Test void maskedCommercialFactsCannotReappearInSupplierPrint() {
         when(detail.isPriceMasked()).thenReturn(true);
         var document = service.read(id);

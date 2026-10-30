@@ -21,6 +21,11 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     @Query(value = "SELECT code FROM permissions", nativeQuery = true)
     List<String> findAllCodes();
 
+    /** 只随超管身份生效的码：超管合成时永不因个人收回被减去（防授权管理被锁死）。 */
+    @Query(value = "SELECT code FROM permissions WHERE grant_policy && ARRAY['SUPERADMIN_ONLY']::text[]",
+            nativeQuery = true)
+    List<String> findSuperAdminOnlyCodes();
+
     /** 全员基础包(permissions.baseline)。 */
     @Query(value = "SELECT code FROM permissions WHERE baseline", nativeQuery = true)
     List<String> findBaselineCodes();

@@ -356,9 +356,9 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     final callback = widget.onPreviewPrefixChange;
     final editing = widget.editing;
     if (callback == null || editing == null) return true;
-    final parentChanged = _parent?.id != editing.parentId;
-    if (!parentChanged &&
-        requestedPrefix == (editing.codePrefix ?? '').toUpperCase()) {
+    // 只有编号前缀本身变化才预览并二次确认批量改号；仅调整上级分类不再
+    // 触发改号（2026-10-30 用户口径：归拢系列时已有主档编号保持不变）。
+    if (requestedPrefix == (editing.codePrefix ?? '').toUpperCase()) {
       return true;
     }
 
@@ -590,6 +590,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                           '设置前缀后，该分类下新建的主档编号自动按「前缀+序号」'
                           '发号（如前缀 2080358 → 208035801、208035802…），'
                           '自动跳过已占用的号，超过 99 自然进位到三位。'
+                          '仅调整上级分类不会改动已有编号。'
                           '修改前缀并确认后，该分类下全部编号会按新前缀从头重排。'
                           '输入时自动检查，被占用时请更换前缀后再保存。',
                     ),

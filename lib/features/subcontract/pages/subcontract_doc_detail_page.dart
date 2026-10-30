@@ -60,6 +60,7 @@ import '../../../shared/measurement/document_quantity.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
@@ -844,7 +845,19 @@ class _SubcontractDocDetailPageState
                           UtenFloatingActionGroup.controlHeight +
                               UtenSpacing.s32,
                         ),
-                        child: _itemsCard(theme),
+                        // 订货单在明细表下方挂「委外物料」折叠卡(2026-10-30 用户口径:
+                        // 成品↔直属物料对应关系); 其余单据类型只有明细表。
+                        child: widget.docType == SubcontractDocType.order &&
+                                (_detail?.materials.isNotEmpty ?? false)
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(child: _itemsCard(theme)),
+                                  const SizedBox(height: UtenSpacing.s8),
+                                  _materialsCard(theme),
+                                ],
+                              )
+                            : _itemsCard(theme),
                       ),
                     ),
             ),
@@ -1619,6 +1632,110 @@ class _SubcontractDocDetailPageState
           ),
         ),
       ],
+    );
+  }
+
+  /// 委外物料(直属物料)折叠卡：订货单详情的「成品↔物料」对应关系
+  /// (2026-10-30 用户口径: 委外订货单不能只有成品)。已批准明细读冻结计划行
+  /// (含已发净量), 未批准明细按批准时同一公式现算(单上注明「预估」)。
+  /// 收起时只占标题行, 不挤明细表; 展开后自身滚动(高度封顶)。
+  Widget _materialsCard(ThemeData theme) {
+    final materials = _detail!.materials;
+    final frozenCount = materials.where((m) => m.frozen).length;
+    String text(String? value) => value == null || value.isEmpty ? '—' : value;
+    Widget cell(String value, {bool right = false, bool header = false}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s8,
+            vertical: UtenSpacing.s6,
+          ),
+          child: Align(
+            alignment: right
+                ? AlignmentDirectional.centerEnd
+                : AlignmentDirectional.centerStart,
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: header ? theme.textTheme.labelMedium : null,
+            ),
+          ),
+        );
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          UtenSpacing.s12,
+          UtenSpacing.s4,
+          UtenSpacing.s12,
+          UtenSpacing.s12,
+        ),
+        child: UtenCollapsibleSection(
+          key: const Key('subcontract-order-materials'),
+          title: '委外物料（我方供料）',
+          initiallyExpanded: false,
+          titleTrailing: Padding(
+            padding: const EdgeInsets.only(left: UtenSpacing.s8),
+            child: Text(
+              '${materials.length} 行 · ${frozenCount == materials.length ? '已冻结' : frozenCount == 0 ? '按 BOM 预估' : '冻结 $frozenCount 行 / 预估 ${materials.length - frozenCount} 行'}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: SingleChildScrollView(
+              child: Table(
+                border: TableBorder.all(
+                  color: theme.colorScheme.outlineVariant,
+                  width: 0.6,
+                ),
+                columnWidths: const {
+                  0: FlexColumnWidth(1.4),
+                  1: FlexColumnWidth(2.4),
+                  2: FlexColumnWidth(1.1),
+                  3: FlexColumnWidth(1.05),
+                  4: FlexColumnWidth(1.2),
+                  5: FlexColumnWidth(1.3),
+                  6: FlexColumnWidth(1.3),
+                  7: FlexColumnWidth(0.95),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                    ),
+                    children: [
+                      cell('所属成品', header: true),
+                      cell('物料名称', header: true),
+                      cell('物料编号', header: true),
+                      cell('颜色', header: true),
+                      cell('单位', header: true),
+                      cell('单耗', header: true, right: true),
+                      cell('需发量', header: true, right: true),
+                      cell('已发量', header: true, right: true),
+                    ],
+                  ),
+                  for (final m in materials)
+                    TableRow(
+                      children: [
+                        cell(m.orderLineNo == null ? '—' : '第 ${m.orderLineNo} 行'),
+                        cell(text(m.goodsName)),
+                        cell(text(m.goodsCode)),
+                        cell(text(m.colorName)),
+                        cell(text(m.unitName)),
+                        cell(text(m.bomUnitQty), right: true),
+                        cell(text(m.plannedQty), right: true),
+                        cell(m.frozen ? text(m.issuedQty) : '—', right: true),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

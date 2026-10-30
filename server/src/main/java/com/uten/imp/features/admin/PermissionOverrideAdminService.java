@@ -40,6 +40,10 @@ import java.util.stream.Collectors;
  * <p>ADR-109：只校验本次新增的加授能否授予(SUPERADMIN_ONLY 拒绝)；收回任何码都允许，
  * 历史上已存在的覆盖原样保留。真的有改动才写库、推进授权版本并记一条带 added/removed 的
  * 业务事件(条目形如 {@code grant:码} / {@code revoke:码})。
+ *
+ * <p>2026-10-30 起目标允许为超级管理员（含本人）：超管的全量默认可被个人收回压过
+ * （{@link PermissionResolver} 合成），但 SUPERADMIN_ONLY 码不可收回，加授行对超管
+ * 是冗余并被剥离（防止灌满任务池的真实授出口径）。
  */
 @Service
 @RequiredArgsConstructor
@@ -86,7 +90,7 @@ public class PermissionOverrideAdminService {
     public PermissionChangeDto setPermissionOverrides(UUID userId, List<String> grants, List<String> revokes) {
         tx.bind();
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(userId);
-        support.requireAuthorizationTarget(locked.account());
+        support.requireSuperAdminEditableTarget(locked.account());
         UUID sourceActorUserId = support.requireCurrentUser().getId();
         Set<String> grantSet = new LinkedHashSet<>(grants == null ? List.of() : grants);
         Set<String> revokeSet = new LinkedHashSet<>(revokes == null ? List.of() : revokes);
@@ -98,6 +102,11 @@ public class PermissionOverrideAdminService {
         overlap.retainAll(revokeSet);
         if (!overlap.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "同一权限不能同时加授和回收: " + overlap);
+        }
+        if (locked.account().isSuperAdmin()) {
+            // 超管目标：全量默认之下加授行是冗余，且会把任务池（grantedPermsOf 真实授出
+            // 口径）灌成全量；加授请求一律视为恢复默认，只保留收回差量。
+            grantSet = Set.of();
         }
         Map<String, String> desired = new LinkedHashMap<>();
         grantSet.forEach(code -> desired.put(code, GRANT));
@@ -115,10 +124,17 @@ public class PermissionOverrideAdminService {
         tx.bind();
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(userId);
         UserAccount target = locked.account();
-        support.requireAuthorizationTarget(target);
+        support.requireSuperAdminEditableTarget(target);
         UUID sourceActorUserId = support.requireCurrentUser().getId();
         accountLifecycle.requireCurrentEmployee(locked);
         accountLifecycle.requireActiveAccount(locked);
+        if (target.isSuperAdmin()) {
+            // 超管的「全部授权」= 清掉全部个人收回、恢复全量默认；不写加授行，
+            // 避免把任务池（grantedPermsOf 真实授出口径）灌成全量。
+            Map<String, String> desired = currentOverrides(userId);
+            desired.entrySet().removeIf(entry -> REVOKE.equals(entry.getValue()));
+            return apply(target, desired, sourceActorUserId, true);
+        }
         PermissionResolver.PermBreakdown breakdown = permissionResolver.breakdownOf(target);
         Set<String> inherited = new HashSet<>(breakdown.departmentPermissions());
         inherited.addAll(breakdown.baselinePermissions());
@@ -239,6 +255,17 @@ public class PermissionOverrideAdminService {
                     && !GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
                 throw new ApiException(ErrorCode.BUSINESS,
                         "这项权限只随超级管理员身份生效，不能单独授予：" + permission.getName());
+            }
+        }
+        if (target.isSuperAdmin()) {
+            // 超管专属码（如 authorization:manage）只随超管身份生效：收回它会把
+            // 授权管理本身锁死，即使目录数据被手工污染也在此拒绝（resolver 侧另有兜底）。
+            for (String code : blocked) {
+                Permission permission = byCode.get(code);
+                if (permission == null || !GrantPolicy.individuallyGrantable(permission.grantPolicies())) {
+                    throw new ApiException(ErrorCode.BUSINESS,
+                            "这项权限只随超级管理员身份生效，不能收回：" + code);
+                }
             }
         }
         Map<UUID, String> desiredByPermissionId = new LinkedHashMap<>();

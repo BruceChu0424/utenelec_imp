@@ -42,8 +42,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CategoryHierarchyMoveContractTest {
@@ -79,6 +82,21 @@ class CategoryHierarchyMoveContractTest {
         assertThat(callCount(scenario.repo, "isDescendant")).isEqualTo(1);
         assertThat(callCount(scenario.repo, "rebuildSubtreeHierarchy")).isEqualTo(1);
         assertThat(callCount(scenario.repo, "findSubtree")).isZero();
+        // 2026-10-30 用户口径：仅挪上级不批量改号——前缀没动就不触发子树重排。
+        verify(scenario.categoryCodes, never())
+                .reconcileSubtree(any(), any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(CategoryKind.class)
+    void explicitPrefixEditStillReconcilesTheSubtree(CategoryKind kind) throws Exception {
+        authenticate(permissionPrefix(kind) + ":edit");
+        Scenario scenario = scenario(kind, false);
+
+        invokeUpdate(scenario, "V6");
+
+        verify(scenario.categoryCodes).reconcileSubtree(
+                any(), any(), any(), any());
     }
 
     @ParameterizedTest
@@ -184,6 +202,10 @@ class CategoryHierarchyMoveContractTest {
     }
 
     private static void invokeUpdate(Scenario scenario) throws Exception {
+        invokeUpdate(scenario, null);
+    }
+
+    private static void invokeUpdate(Scenario scenario, String requestedPrefix) throws Exception {
         // 按唯一公开构造函数的参数类型逐个供给：场景里有的用场景对象，其余(模具分类的
         // MouldRepository、ADR-111 级联删除用的 MasterLifecycleService 等)给 mock——
         // 这些依赖只在删除路径上用到，移动分类的契约与它们无关。
@@ -202,6 +224,10 @@ class CategoryHierarchyMoveContractTest {
         Object request = scenario.kind.requestClass.getConstructor().newInstance();
         scenario.kind.requestClass.getMethod("setName", String.class)
                 .invoke(request, "修改后名称");
+        if (requestedPrefix != null) {
+            scenario.kind.requestClass.getMethod("setCodePrefix", String.class)
+                    .invoke(request, requestedPrefix);
+        }
         scenario.kind.requestClass.getMethod("setParentId", UUID.class)
                 .invoke(request, scenario.requestedParentId);
         scenario.kind.serviceClass

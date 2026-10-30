@@ -28,7 +28,10 @@ public record FulfillmentWorkbenchTableQuery(
             "goods", "goods_id::text", "spec", "NULLIF(concat_ws(' / ',NULLIF(spec,''),NULLIF(color_name,'')),'')",
             "status", "display_stage", "needDate", "need_date::text",
             "issuedAt", "(issued_at AT TIME ZONE 'Asia/Shanghai')::date::text",
-            "supplierName", "NULLIF(supplier_name,'')");
+            "supplierName", "NULLIF(supplier_name,'')",
+            // 2026-10-30: 任务中心「待处理」拍平表的颜色列筛选由两车道同发 f.colorName,
+            // 本白名单缺项会让申请行车道 400; 同步给颜色列下发名称汇总分面。
+            "colorName", "NULLIF(color_name,'')");
     /** Text searches are separate from exact facet values (notably the goods UUID). */
     static final Map<String, String> SEARCH_FIELDS = Map.ofEntries(
             Map.entry("planNo", "plan_no"), Map.entry("docNo", "visible_doc_no"),

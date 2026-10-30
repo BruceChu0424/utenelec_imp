@@ -50,6 +50,13 @@ class ProcurementOrderPrintDocument {
               (line as Map).cast<String, dynamic>(),
             ),
           )
+          .toList(growable: false),
+      materials = (json['materials'] as List? ?? const [])
+          .map(
+            (line) => ProcurementOrderMaterialLine.fromJson(
+              (line as Map).cast<String, dynamic>(),
+            ),
+          )
           .toList(growable: false);
 
   final String id, billNo, billDate, deliverDate, companyName, companyPhone;
@@ -61,6 +68,10 @@ class ProcurementOrderPrintDocument {
   final bool priceMasked;
   final bool financeApproved;
   final List<ProcurementOrderPrintLine> lines;
+
+  /// 委外订货单的直属物料行(2026-10-30 用户口径: 单上同时给成品与物料及对应关系);
+  /// 采购单恒为空。
+  final List<ProcurementOrderMaterialLine> materials;
 
   String get signature => jsonEncode([
     id,
@@ -85,6 +96,7 @@ class ProcurementOrderPrintDocument {
     financeApproved,
     lines.map((line) => line.id).toList(growable: false),
     rows,
+    materialRows,
   ]);
 
   String get amountLabel => priceMasked
@@ -135,6 +147,64 @@ class ProcurementOrderPrintDocument {
         _shown(lines[index].printRemark(deliverDate)),
       ],
   ];
+
+  /// 委外物料(我方供料)表: 「第 n 行」指向上方成品表的行号(对应关系)。
+  static const materialHeaders = [
+    '序号',
+    '物料编号',
+    '物料名称',
+    '颜色',
+    '单位',
+    '单耗',
+    '需发量',
+    '所属成品',
+  ];
+  static const materialWidths = [
+    6.0,
+    14.0,
+    24.0,
+    10.0,
+    8.0,
+    10.0,
+    11.0,
+    17.0,
+  ];
+  List<List<String>> get materialRows => [
+    for (var index = 0; index < materials.length; index++)
+      [
+        '${index + 1}',
+        _shown(materials[index].goodsCode),
+        _shown(materials[index].goodsName),
+        _shown(materials[index].colorName),
+        _shown(materials[index].unitName),
+        _shown(financeExactTrimmed(materials[index].bomUnitQty)),
+        _shown(financeExactTrimmed(materials[index].requiredQty)),
+        _shown(materials[index].ownerLabel),
+      ],
+  ];
+}
+
+/// 委外订货单直属物料行; orderLineNo 指向成品行(对应关系)。
+class ProcurementOrderMaterialLine {
+  ProcurementOrderMaterialLine.fromJson(Map<String, dynamic> json)
+    : orderItemId = json['orderItemId'] as String,
+      orderLineNo = (json['orderLineNo'] as num?)?.toInt(),
+      goodsCode = _text(json['goodsCode']),
+      goodsName = _text(json['goodsName']),
+      colorName = _text(json['colorName']),
+      unitName = _text(json['unitName']),
+      bomUnitQty = financeExactDecimal(json['bomUnitQty']),
+      requiredQty = financeExactDecimal(json['requiredQty']);
+
+  final String orderItemId;
+  final int? orderLineNo;
+  final String goodsCode, goodsName, colorName, unitName;
+
+  /// 含损耗单耗(物料单位/成品单位)与需发总量(物料单位), 精确十进制文本。
+  final String? bomUnitQty, requiredQty;
+
+  /// 对应关系文案: 「第 n 行」指向成品表行号。
+  String get ownerLabel => orderLineNo == null ? '—' : '第 $orderLineNo 行';
 }
 
 class ProcurementOrderPrintLine {

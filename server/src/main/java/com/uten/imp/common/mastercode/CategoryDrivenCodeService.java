@@ -27,7 +27,9 @@ import java.util.regex.Pattern;
  *       renumber shape). The suffix lives in the code text only;
  *       {@code code_sequence} stays the globally unique identity counter. Editing
  *       the prefix renumbers the whole subtree from scratch in current code
- *       order (2026-10-19 用户口径「改前缀=全部重新来过」).</li>
+ *       order (2026-10-19 用户口径「改前缀=全部重新来过」); moving a category
+ *       to another parent never renumbers anything (2026-10-30 用户口径：归拢
+ *       系列只挪上级，已有编号保持不变，之后新记录按新有效前缀发号并存).</li>
  *   <li><b>Long-managed</b> — the fallback prefix (no explicit prefix up the
  *       tree) keeps the historical V258 shape: a single global sequence row per
  *       master type renders {@code prefix + %06d}, and the suffix value equals
@@ -178,10 +180,10 @@ public class CategoryDrivenCodeService {
      * Safely derives update metadata from the current persisted allocation.
      *
      * <ul>
-     *   <li>A managed record with an unchanged/omitted code keeps its suffix
-     *       (width preserved from the code text); moving category only recomputes
-     *       the effective prefix and owner.  Pure-digit codes (numeric prefix +
-     *       two-digit suffix) keep their text verbatim on a move.</li>
+     *   <li>A record with an unchanged/omitted code keeps its text verbatim
+     *       (2026-10-30 用户口径：分类挪动后遗留的历史前缀编号在普通编辑时不得
+     *       被静默重渲染).  A managed code still matching the effective prefix
+     *       only re-points its prefix ownership to the new effective owner.</li>
      *   <li>An unmanaged record with an unchanged/omitted code keeps its custom code
      *       and stable internal sequence.</li>
      *   <li>An explicitly empty code opts into category-managed numbering while
@@ -240,14 +242,22 @@ public class CategoryDrivenCodeService {
                 requireCodeAvailable(type, current.code(), entityId);
                 return current;
             }
-            String code = renderManaged(effective.prefix(), current.code(), current.sequence(), true);
-            requireCodeAvailable(type, code, entityId);
+            // 编号未改动就保持原文：挪过分类后脱离当前前缀体系的历史编号
+            // （含纯数字短号）连同旧 owner 一起原样保留；仍匹配当前有效前缀的
+            // 编号只把归属同步到新有效 owner。
+            requireCodeAvailable(type, current.code(), entityId);
+            boolean matchesEffectivePrefix =
+                    parseManagedSuffix(effective.prefix(), current.code()) != null;
             return new CategoryCodeAllocation(
-                    code, current.sequence(), effective.ownerCategoryId(), true);
+                    current.code(), current.sequence(),
+                    matchesEffectivePrefix
+                            ? effective.ownerCategoryId()
+                            : current.prefixCategoryId(),
+                    true);
         }
 
         if (explicitlyBlank) {
-            String code = renderManaged(effective.prefix(), current.code(), current.sequence(), false);
+            String code = renderManaged(effective.prefix(), current.code(), current.sequence());
             requireCodeAvailable(type, code, entityId);
             return new CategoryCodeAllocation(
                     code, current.sequence(), effective.ownerCategoryId(), true);
@@ -1109,14 +1119,13 @@ public class CategoryDrivenCodeService {
     }
 
     /**
-     * Re-renders a managed code under [prefix], preserving the current code's own
-     * suffix width.  Pure-digit codes (numeric prefix + short suffix) have no
-     * splittable head: [keepPureDigits] keeps their text verbatim (an unchanged
-     * code on a category move), while a blank opt-in re-renders them as
-     * {@code prefix + %06d(sequence)}.  Codes without any 2-18 digit tail fall
-     * back to the same long-managed rendering.
+     * Re-renders a code under [prefix] for the explicit blank opt-in: it keeps the
+     * current code's own suffix width when a splittable non-digit head exists,
+     * and otherwise falls back to the long-managed {@code prefix + %06d(sequence)}
+     * rendering.  An unchanged code never passes through here — it keeps its
+     * text verbatim so moved-category historical labels survive ordinary edits.
      */
-    private static String renderManaged(String prefix, String currentCode, long sequence, boolean keepPureDigits) {
+    private static String renderManaged(String prefix, String currentCode, long sequence) {
         ManagedSuffix exact = parseManagedSuffix(prefix, currentCode);
         if (exact != null) {
             return currentCode;
@@ -1124,9 +1133,6 @@ public class CategoryDrivenCodeService {
         ManagedSuffix trailing = trailingManagedSuffix(currentCode);
         if (trailing != null) {
             return format(prefix, trailing.value(), trailing.width());
-        }
-        if (keepPureDigits && currentCode != null && currentCode.matches("[0-9]{2,18}")) {
-            return currentCode;
         }
         return format(prefix, sequence, 6);
     }

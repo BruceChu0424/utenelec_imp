@@ -93,13 +93,22 @@ public class SubcontractDrawQueryService {
                               UUID applicationId, String sort, String order, Map<String, String> parameters) {
         var headers = new SubcontractDrawTableQuery(sort, order, parameters);
         String statusFilter = "(" + statusFilter(status) + ")" + headers.sql(access.hasAuthority("subcontract_order:view"));
-        String colorScope = "(" + statusFilter(status) + ")"
-                + headers.sql(access.hasAuthority("subcontract_order:view"), "colorName");
         int pageSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int pageNo = Math.max(page, 1);
         Filters filters = filters(keyword, orderId, orderItemIds, applicationItemIds, applicationId);
         String rank = KeywordSearch.terms(keyword).isEmpty() ? "0" : TaskKeywordSearch.rankNamesFirstParameter("keyword",
                 new String[]{"goods_name"}, new String[]{}, new String[]{"goods_code", "order_bill_no", "plan_no", "supplier_name"});
+        // 2026-10-30 表头名称汇总(用户口径): 每个精确筛选字段都下发当前数据候选桶; 各字段
+        // 桶口径排除其自身筛选(选定颜色时看颜色全量分布), 其余条件仍生效, 与原颜色分面同式。
+        String facetValues = SubcontractDrawTableQuery.EXACT.entrySet().stream()
+                .map(entry -> {
+                    String label = "goods".equals(entry.getKey())
+                            ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();
+                    return "('" + entry.getKey() + "'," + entry.getValue() + "," + label
+                            + ", (TRUE AND " + statusFilter(status)
+                            + headers.sql(access.hasAuthority("subcontract_order:view"), entry.getKey()) + "))";
+                })
+                .collect(java.util.stream.Collectors.joining(","));
         String sql = (classifiedCte(SubcontractDrawSql.OPEN_ITEM_PREDICATE + filters.sql()) + """
                 , counts AS (
                     SELECT COUNT(*) FILTER (WHERE status IN ('DRAWABLE','DRAWABLE_PARTIAL')) AS drawable_rows,
@@ -109,15 +118,15 @@ public class SubcontractDrawQueryService {
                            COUNT(*) AS all_rows,
                            COUNT(*) FILTER (WHERE {STATUS_FILTER}) AS filtered_rows
                     FROM classified
-                ), color_buckets AS (
-                    SELECT NULLIF(color_name, '') AS value, COUNT(*) AS count
-                    FROM classified WHERE {COLOR_SCOPE}
-                    GROUP BY NULLIF(color_name, '')
-                ), color_facets AS (
-                    SELECT COALESCE(jsonb_agg(jsonb_build_object('value', value, 'count', count)
-                        ORDER BY value) FILTER (WHERE value IS NOT NULL), '[]'::jsonb)::text AS buckets,
-                        COALESCE(SUM(count) FILTER (WHERE value IS NULL), 0) AS null_count
-                    FROM color_buckets
+                ), facet_rows AS (
+                    SELECT facet.key, facet.value, MAX(facet.label) AS label, COUNT(*) AS count
+                    FROM classified CROSS JOIN LATERAL (VALUES %s) facet(key,value,label,included)
+                    WHERE facet.included
+                    GROUP BY facet.key, facet.value
+                ), facet_values AS (
+                    SELECT COALESCE(jsonb_agg(jsonb_build_array(key,value,label,count)
+                        ORDER BY key,value NULLS LAST),'[]'::jsonb)::text AS buckets
+                    FROM facet_rows
                 ), page AS (
                     SELECT *, {SEARCH_RANK} AS search_rank
                     FROM classified WHERE {STATUS_FILTER}
@@ -126,11 +135,11 @@ public class SubcontractDrawQueryService {
                 )
                 SELECT counts.drawable_rows, counts.submitted_rows, counts.planning_rows,
                        counts.material_rows, counts.all_rows, counts.filtered_rows,
-                       {ROW_SELECT}, color_facets.buckets, color_facets.null_count
-                FROM counts CROSS JOIN color_facets LEFT JOIN page ON TRUE
+                       {ROW_SELECT}, facet_values.buckets
+                FROM counts CROSS JOIN facet_values LEFT JOIN page ON TRUE
                 ORDER BY page.search_rank, {OUTER_HEADER_ORDER}
-                """).replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter)
-                .replace("{COLOR_SCOPE}", colorScope)
+                """.formatted(facetValues))
+                .replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter)
                 .replace("{HEADER_ORDER}", headers.orderSql())
                 .replace("{OUTER_HEADER_ORDER}", headers.orderSql("page.")).replace("{ROW_SELECT}", rowSelect("page"));
         Query query = em.createNativeQuery(sql);
@@ -140,7 +149,7 @@ public class SubcontractDrawQueryService {
         query.setParameter("pageOffset", (long) (pageNo - 1) * pageSize);
         boolean canSubmit = access.hasAuthority(DRAW_AUTHORITY);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(query);
-        Object[] head = rows.isEmpty() ? new Object[6] : rows.getFirst();
+        Object[] head = rows.isEmpty() ? new Object[7] : rows.getFirst();
         List<DrawTaskRow> items = new ArrayList<>();
         for (Object[] row : rows) {
             if (row[6] != null) {
@@ -155,19 +164,26 @@ public class SubcontractDrawQueryService {
         counts.put("WAITING_MATERIAL", number(head[3]));
         counts.put("ALL", number(head[4]));
         int totalPages = (int) Math.ceil((double) filtered / pageSize);
-        List<FacetBucket> colors = new ArrayList<>();
+        Map<String, List<FacetBucket>> facets = new LinkedHashMap<>();
+        Map<String, Long> nullCounts = new LinkedHashMap<>();
         if (head.length > 34 && head[34] != null) {
             try {
                 for (var bucket : FACET_JSON.readTree(head[34].toString())) {
-                    colors.add(new FacetBucket(bucket.path("value").asText(), bucket.path("count").asLong(), null));
+                    String key = bucket.get(0).asText();
+                    if (bucket.get(1).isNull()) {
+                        nullCounts.put(key, bucket.get(3).asLong());
+                        continue;
+                    }
+                    facets.computeIfAbsent(key, ignored -> new ArrayList<>())
+                            .add(new FacetBucket(bucket.get(1).asText(), bucket.get(3).asLong(),
+                                    bucket.get(2).isNull() ? null : bucket.get(2).asText()));
                 }
             } catch (java.io.IOException failure) {
-                throw new IllegalStateException("Invalid subcontract draw color facets", failure);
+                throw new IllegalStateException("Invalid subcontract draw facets", failure);
             }
         }
         return new DrawTaskPage(new PageResponse<>(items, pageNo, pageSize, filtered, totalPages),
-                counts, new DrawCapabilities(canSubmit), Map.of("colorName", colors),
-                Map.of("colorName", head.length > 35 ? number(head[35]) : 0L));
+                counts, new DrawCapabilities(canSubmit), Map.copyOf(facets), Map.copyOf(nullCounts));
     }
 
     /**

@@ -138,7 +138,7 @@ class CategoryDrivenCodeServiceContractTest {
     }
 
     @Test
-    void managedUpdateKeepsSuffixAndMovesToNewEffectivePrefixOwner() {
+    void unchangedManagedCodeOutsideTheEffectivePrefixKeepsItsTextAndOwner() {
         EntityManager entityManager = mock(EntityManager.class);
         Query lock = fluentQuery();
         Query effectivePrefix = fluentQuery();
@@ -155,6 +155,9 @@ class CategoryDrivenCodeServiceContractTest {
         when(duplicateCheck.getSingleResult()).thenReturn(false);
 
         CategoryDrivenCodeService service = new CategoryDrivenCodeService(entityManager);
+        // 2026-10-30 用户口径：编号未改动就保持原文。分类挪动后脱离当前有效
+        // 前缀体系的历史编号（KH… 挂到 V6 分类下）不得在普通编辑保存时被
+        // 静默重渲染成新前缀，归属也一并保留。
         CategoryCodeAllocation allocation = service.allocateForUpdate(
                 CLIENT,
                 entityId,
@@ -162,9 +165,9 @@ class CategoryDrivenCodeServiceContractTest {
                 "KH000007",
                 new CategoryCodeAllocation("KH000007", 7L, null, true));
 
-        assertEquals("V6000007", allocation.code());
+        assertEquals("KH000007", allocation.code());
         assertEquals(7L, allocation.sequence());
-        assertEquals(ownerId, allocation.prefixCategoryId());
+        assertNull(allocation.prefixCategoryId());
         assertTrue(allocation.managed());
     }
 
@@ -284,7 +287,8 @@ class CategoryDrivenCodeServiceContractTest {
 
         assertEquals("208035801", allocation.code());
         assertEquals(4532L, allocation.sequence());
-        assertEquals(newOwnerId, allocation.prefixCategoryId());
+        // 编号保留原文时归属一并保留：它仍是老前缀体系的号，不属于新前缀分类。
+        assertEquals(oldOwnerId, allocation.prefixCategoryId());
         assertTrue(allocation.managed());
     }
 

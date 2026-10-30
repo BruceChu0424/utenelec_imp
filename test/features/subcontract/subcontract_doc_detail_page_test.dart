@@ -316,6 +316,57 @@ void main() {
     expect(find.text('审核期间仅可查看，财务将在订货审批中处理。'), findsNothing);
   });
 
+  testWidgets('委外订货单详情给委外物料与成品的对应关系折叠卡', (tester) async {
+    final detail = _pendingOrderDetail()
+      ..['materials'] = [
+        {
+          'orderItemId': 'i1',
+          'orderLineNo': 1,
+          'goodsId': 'm1',
+          'goodsCode': 'M-SHELL',
+          'goodsName': '外壳',
+          'colorName': '黑',
+          'unitName': '个',
+          'bomUnitQty': '2',
+          'plannedQty': '20',
+          'issuedQty': '8',
+          'frozen': true,
+        },
+        {
+          'orderItemId': 'i2',
+          'orderLineNo': 2,
+          'goodsId': 'm2',
+          'goodsCode': 'M-SCREW',
+          'goodsName': '螺丝',
+          'colorName': '',
+          'unitName': '个',
+          'bomUnitQty': '4',
+          'plannedQty': '40',
+          'frozen': false,
+        },
+      ];
+    final api = _api((request) => detail);
+    await _pumpPendingOrder(tester, api);
+    // 2026-10-30 用户口径: 订货单要有委外物料与成品对应关系; 收起时只占标题行。
+    expect(find.text('委外物料（我方供料）'), findsOneWidget);
+    expect(find.text('2 行 · 冻结 1 行 / 预估 1 行'), findsOneWidget);
+    // 默认收起, 点标题展开后逐行可见(折叠裁剪不卸载子树, 用交互+内容断言)。
+    await tester.tap(find.text('委外物料（我方供料）'));
+    await tester.pumpAndSettle();
+    expect(find.text('外壳'), findsOneWidget);
+    expect(find.text('第 1 行'), findsOneWidget);
+    expect(find.text('第 2 行'), findsOneWidget);
+    // 冻结行展示已发净量; 按 BOM 现算(未批准)行没有已发量。
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('subcontract-order-materials')),
+        matching: find.text('8'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('finance-only 委外核单不显示业务历史并返回财务任务中心', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
     tester.view.devicePixelRatio = 1;

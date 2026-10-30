@@ -209,7 +209,6 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         widget.canManageAuthorization &&
         _section == _UserDetailSection.permissions &&
         data != null &&
-        !data.superAdmin &&
         widget.user.authorizationGrantAllowed &&
         (dirtyCount > 0 || legacyUnknownCount > 0);
 
@@ -748,13 +747,14 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     EffectivePermissions? data,
     List<PermissionCatalogGroup>? catalog,
   ) {
-    final bulkEnabled =
+    final bulkReady =
         data != null &&
         catalog != null &&
-        !data.superAdmin &&
         widget.user.authorizationGrantAllowed &&
         !_savingOverrides &&
         !_acting;
+    // 模板/复制走配置转移链路，仍不接受超管目标；「全部授权」对超管=恢复全量默认。
+    final bulkEnabled = bulkReady && data.superAdmin != true;
     final actions = <Widget>[
       AdminPermissionExportButton(
         scope: PermissionExportScope.employee,
@@ -790,21 +790,23 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           widget.onAccountChanged();
         },
       ),
+      // 超管目标：「全部授权」= 清掉全部个人收回、恢复全量默认（服务端同义处理）；
+      // 「全部收回」保持仅普通目标——一键把超管收成光杆难以察觉，收回请逐项确认。
+      UtenButton(
+        key: const ValueKey('admin-grant-all-permissions'),
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.small,
+        icon: Icons.done_all_rounded,
+        isLoading: _networkActing,
+        onPressed: bulkReady
+            ? () => _grantScope(data, PermissionBulkScope.everything)
+            : null,
+        onDisabledTap: widget.user.authorizationGrantAllowed
+            ? null
+            : _explainAuthorizationRestriction,
+        child: const Text('全部授权'),
+      ),
       if (data?.superAdmin != true) ...[
-        UtenButton(
-          key: const ValueKey('admin-grant-all-permissions'),
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.small,
-          icon: Icons.done_all_rounded,
-          isLoading: _networkActing,
-          onPressed: bulkEnabled
-              ? () => _grantScope(data, PermissionBulkScope.everything)
-              : null,
-          onDisabledTap: widget.user.authorizationGrantAllowed
-              ? null
-              : _explainAuthorizationRestriction,
-          child: const Text('全部授权'),
-        ),
         UtenButton(
           key: const ValueKey('admin-revoke-all-permissions'),
           type: UtenButtonType.danger,
@@ -950,7 +952,8 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
     final grants = _pendingGrants(data);
     final revokes = _pendingRevokes(data);
-    final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
+    // 超管目标同样可批量：服务端把「全部授权」解释为清掉个人收回、恢复全量默认。
+    final canEdit = widget.user.authorizationGrantAllowed;
     return PermissionCatalogBrowser(
       key: _catalogMount.forOwner((
         ref.watch(sensitiveReadBoundaryProvider),
@@ -977,7 +980,13 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       _pendingRevokes(data).contains(code) != data.revokes.contains(code);
 
   bool _switchValue(EffectivePermissions data, String code) {
-    if (data.superAdmin) return true;
+    if (data.superAdmin) {
+      // 超管默认全量、本地草稿只有收回差量（2026-10-30 起个人收回压过默认）。
+      if (_isPermissionChanged(data, code)) {
+        return !_pendingRevokes(data).contains(code);
+      }
+      return data.effective.contains(code);
+    }
     if (!_isPermissionChanged(data, code)) {
       return data.effective.contains(code);
     }
@@ -1058,8 +1067,10 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       context,
       title: '批量授权',
       content: Text(
-        '将把${scope.label}里可以批量授予的权限加授给「$name」，保存后立即生效。'
-        '需要逐项勾选的敏感权限不会带上。',
+        data.superAdmin
+            ? '将清掉「$name」的全部个人收回，恢复超级管理员的全量默认权限，保存后立即生效。'
+            : '将把${scope.label}里可以批量授予的权限加授给「$name」，保存后立即生效。'
+              '需要逐项勾选的敏感权限不会带上。',
       ),
       confirmLabel: '确认授权',
     );
@@ -1072,7 +1083,11 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       ref.invalidate(adminEffectivePermissionsProvider(widget.user.id));
       if (!mounted) return;
       context.appSuccess(
-        change.added.isEmpty
+        data.superAdmin
+            ? (change.removed.isEmpty
+                  ? '没有改动：当前没有个人收回'
+                  : '已恢复全量默认权限（清掉 ${change.removed.length} 项个人收回），即时生效')
+            : change.added.isEmpty
             ? '没有新增：可批量授予的权限都已生效'
             : '已为「$name」加授 ${change.added.length} 项权限，即时生效',
       );
@@ -1091,7 +1106,9 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     AdminPermission permission,
     bool value,
   ) async {
-    if (value &&
+    // 超管目标「打开」= 撤掉个人收回恢复默认，不是扩权，无需高风险确认。
+    if (!data.superAdmin &&
+        value &&
         !permission.grantPolicy.bulkEligible &&
         !_switchValue(data, permission.code)) {
       final confirmed = await UtenDialog.show(
@@ -1148,10 +1165,14 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     for (final code in codes) {
       if (value) {
         revokes.remove(code);
+        if (data.superAdmin) {
+          // 超管恢复默认 = 撤掉个人收回；全量默认下无需加授行。
+          continue;
+        }
         inherited.contains(code) ? grants.remove(code) : grants.add(code);
       } else {
         grants.remove(code);
-        inherited.contains(code) ? revokes.add(code) : revokes.remove(code);
+        if (data.superAdmin || inherited.contains(code)) revokes.add(code);
       }
     }
     setState(() {
@@ -1170,23 +1191,22 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaBaseline = data.baselinePermissions.contains(permission.code);
     final viaManager = data.managerGrants.contains(permission.code);
     final viaTemplate = data.templatePermissions.contains(permission.code);
-    final revoked = !data.superAdmin && revokes.contains(permission.code);
+    final revoked = revokes.contains(permission.code);
     final pending = _isPermissionChanged(data, permission.code);
     final enabled = _switchValue(data, permission.code);
-    final effective =
-        data.superAdmin || data.effective.contains(permission.code);
+    // 服务端合成已把超管的全量默认减去个人收回，effective 直接可用。
+    final effective = data.effective.contains(permission.code);
     final incomplete =
         data.missingDependencies.containsKey(permission.code) && !pending;
-    // 只随超级管理员身份生效的码不能逐人加授(授权策略由服务端下发)；已生效的仍可收回。
-    final policyAllows =
-        permission.grantPolicy.individuallyGrantable || effective;
-    final canEdit =
-        !data.superAdmin &&
-        widget.user.authorizationGrantAllowed &&
-        policyAllows;
-    final editRestriction = data.superAdmin
-        ? '超级管理员默认拥有全部权限，不能逐项调整'
-        : !policyAllows
+    // 只随超级管理员身份生效的码：普通目标不能加授；超管目标默认生效但也不能收回
+    // （收回它会把授权管理本身锁死）。
+    final superAdminOnly = !permission.grantPolicy.individuallyGrantable;
+    final policyAllows = permission.grantPolicy.individuallyGrantable || effective;
+    final canEdit = widget.user.authorizationGrantAllowed &&
+        (data.superAdmin ? !superAdminOnly : policyAllows);
+    final editRestriction = data.superAdmin && superAdminOnly
+        ? '这项权限只随超级管理员身份生效，不能收回'
+        : !data.superAdmin && !policyAllows
         ? '这项权限只随超级管理员身份生效，不能逐人授予'
         : adminAuthorizationRestrictionText(context, widget.user);
 
@@ -1220,6 +1240,15 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             if (viaBaseline) _sourceTag('基础'),
             if (viaManager) _sourceTag('负责人授权'),
             if (viaTemplate) _sourceTag('模板'),
+            if (data.superAdmin &&
+                    effective &&
+                    !viaDept &&
+                    !viaBaseline &&
+                    !viaManager &&
+                    !viaTemplate &&
+                    !grants.contains(permission.code) &&
+                    !revoked)
+              _sourceTag('超管默认'),
             if (grants.contains(permission.code)) _sourceTag('个人单独授权'),
             if (data.legacyUnknownGrants.contains(permission.code))
               _sourceTag('历史授权待确认', danger: true),
@@ -1734,7 +1763,7 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   promoteBlocked
                       ? '${adminAuthorizationRestrictionText(context, widget.user)}，不能授予超级管理员。'
                       : isSuperAdmin
-                      ? '默认拥有全部功能权限、可管理他人授权。'
+                      ? '默认拥有全部功能权限、可管理他人授权；也可逐项收回压过默认。'
                       : '设为超级管理员后，该账号拥有全部功能、可管理他人授权。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,

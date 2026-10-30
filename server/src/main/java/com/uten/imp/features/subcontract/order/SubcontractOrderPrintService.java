@@ -38,12 +38,18 @@ public class SubcontractOrderPrintService {
         var closure = detail.getClosureRequest();
         String label = status(detail.getStatus(), finance, closure == null ? null : closure.status(),
                 closure == null ? null : closure.executionMode());
+        // 2026-10-30 用户口径: 委外订货单打印同时给委外成品与委外物料(直属物料)及
+        // 对应关系(物料行指向成品行号), 不能只打印成品。
+        var materials = detail.getMaterials() == null ? java.util.List.<ProcurementOrderPrintDocument.MaterialLine>of()
+                : detail.getMaterials().stream().map(line -> new ProcurementOrderPrintDocument.MaterialLine(
+                        line.orderItemId(), line.orderLineNo(), line.goodsCode(), line.goodsName(),
+                        line.colorName(), line.unitName(), line.bomUnitQty(), line.plannedQty())).toList();
         return new ProcurementOrderPrintDocument(detail.getId(), text(detail.getBillNo()), detail.getBillDate(),
                 detail.getDeliverDate(), facts.companyName(), text(header[9]), text(header[0]), text(header[1]),
                 first(text(header[2]), text(header[3])), join(text(header[7]), text(header[8])),
                 masked ? "" : text(header[4]), masked ? "" : text(header[5]), masked ? "" : text(header[6]),
                 masked ? null : decimal(detail.getTotalOriginal()), masked, text(detail.getRemark()),
-                text(detail.getMakerName()), facts.reviewerName(), label, lines, approved, "SUBCONTRACT");
+                text(detail.getMakerName()), facts.reviewerName(), label, lines, approved, "SUBCONTRACT", materials);
     }
 
     static PrintLine line(OrderItemDto item, Object[] goods) {

@@ -741,6 +741,9 @@ class _OperationsWorkbenchPageState
     'status': 'status',
     'needDate': 'needDate',
     'supplierName': 'supplierName',
+    // 2026-10-30 表头名称汇总: 颜色列同样给候选值(FIELDS 已含 colorName);
+    // 仓库段服务端只下发 docNo/planNo/goods/colorName, 其余键不出现即无该列筛选。
+    'colorName': 'colorName',
   };
 
   static const Map<String, String> _searchKeyByColumn = {

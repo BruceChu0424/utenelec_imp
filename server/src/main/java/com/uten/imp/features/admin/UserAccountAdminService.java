@@ -439,6 +439,7 @@ public class UserAccountAdminService {
     /**
      * 设置/取消云端（外网）访问授权。仅超管可操作。变更由触发器即时 bump auth_version，
      * 目标账号的旧 access token 立即失效（须重新登录拿新 token）。
+     * 2026-10-30 起目标允许为超级管理员（含本人）——超管同样需要外网登录。
      */
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     @Transactional
@@ -447,7 +448,7 @@ public class UserAccountAdminService {
         AdminAccountLifecycleLock.LockedTarget locked = remoteAccess
                 ? accountLifecycle.lock(id) : accountLifecycle.lockForRevocation(id);
         UserAccount user = locked.account();
-        support.requireAuthorizationTarget(user);
+        support.requireSuperAdminEditableTarget(user);
         if (remoteAccess) {
             accountLifecycle.requireCurrentEmployee(locked);
             accountLifecycle.requireActiveAccount(locked);

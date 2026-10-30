@@ -85,6 +85,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
 
+    /** 委外物料(直属物料)读取: 详情/打印给「成品↔物料」对应关系(2026-10-30)。单测可不注入。 */
+    private com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService materialPlans;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setMaterialPlans(com.uten.imp.features.subcontract.plan.SubcontractMaterialPlanService service) { materialPlans = service; }
+
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -2101,7 +2106,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 shortDeliveryHold,
                 priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
                 com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"SUBCONTRACT",order.getId(),order.getExchangeRate()).rate(),
-                closureRequests == null ? null : closureRequests.latest("SUBCONTRACT", order.getId()));
+                closureRequests == null ? null : closureRequests.latest("SUBCONTRACT", order.getId()),
+                materialPlans == null ? List.of()
+                        : materialPlans.orderMaterials(order.getId()));
     }
 
     /** ADR-143 §二.3：草稿上缺 BOM 的委外件逐行标出(提交财务会被拒并通知研发完善)。 */

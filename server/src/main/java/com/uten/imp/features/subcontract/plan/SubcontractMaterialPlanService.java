@@ -85,6 +85,85 @@ public class SubcontractMaterialPlanService {
         }
     }
 
+    /**
+     * 委外订货单的直属物料行(2026-10-30 用户口径: 订货单要有委外物料与成品的对应关系,
+     * 不能只有成品)。已冻结(财务批准)的明细读计划行——那是权威事实(含已发净量);
+     * 未冻结的明细按批准时同一公式({@code fn_subcontract_draw_edges} × 订货量)现算,
+     * 数量与批准时冻结的一致。数量全部是精确十进制文本, 前端不再二次计算。
+     * 读权限由调用方(订货详情/打印)各自把守, 这里不再挂方法级注解——财务审批任务的
+     * 点名审核员可看订货详情但没有 subcontract_order:view。
+     *
+     * @param orderItemId / orderLineNo 定位归属成品行(对应关系)
+     * @param bomUnitQty 冻结含损耗单耗(物料单位/成品单位)
+     * @param plannedQty 我方需发总量(物料单位)
+     * @param issuedQty 已发净量(物料单位); 未冻结明细为 null
+     * @param frozen true = 冻结计划行; false = 按 BOM 现算(批准后以此冻结)
+     */
+    public record OrderMaterialLine(UUID orderItemId, Integer orderLineNo, UUID goodsId, UUID colorId,
+                                    UUID unitId, String goodsCode, String goodsName, String colorName,
+                                    String unitName, String bomUnitQty, String plannedQty, String issuedQty,
+                                    boolean frozen) { }
+
+    @Transactional(readOnly = true)
+    public List<OrderMaterialLine> orderMaterials(UUID orderId) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT frozen.order_item_id, oi.line_no AS order_line_no, frozen.goods_id, frozen.color_id,
+                       frozen.unit_id, material.code, material.name, material_color.name, material_unit.name,
+                       frozen.bom_unit_qty, frozen.planned_qty, frozen.issued_qty, TRUE AS frozen
+                FROM subcontract_material_plan_items frozen
+                JOIN subcontract_material_plans plan ON plan.id = frozen.plan_id AND NOT plan.is_deleted
+                JOIN subcontract_order_items oi ON oi.id = frozen.order_item_id
+                LEFT JOIN goods material ON material.id = frozen.goods_id
+                LEFT JOIN colors material_color ON material_color.id = frozen.color_id
+                LEFT JOIN units material_unit ON material_unit.id = frozen.unit_id
+                WHERE oi.order_id = :orderId AND NOT oi.is_deleted AND NOT frozen.is_deleted
+                UNION ALL
+                SELECT oi.id, oi.line_no, edge.component_goods_id, edge.color_id, component.unit_id,
+                       component.code, component.name, edge_color.name, component_unit.name,
+                       fn_subcontract_supply_unit_qty(
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct) AS bom_unit_qty,
+                       fn_subcontract_draw_f(oi.qty, fn_subcontract_supply_unit_qty(
+                           ROUND(COALESCE(oi.unit_rate, 1) * edge.edge_qty, 6), oi.allowed_loss_pct)) AS planned_qty,
+                       NULL::numeric AS issued_qty, FALSE AS frozen
+                FROM subcontract_order_items oi
+                CROSS JOIN LATERAL fn_subcontract_draw_edges(oi.goods_id) edge
+                JOIN goods component ON component.id = edge.component_goods_id
+                LEFT JOIN colors edge_color ON edge_color.id = edge.color_id
+                LEFT JOIN units component_unit ON component_unit.id = component.unit_id
+                WHERE oi.order_id = :orderId AND NOT oi.is_deleted
+                  AND NOT EXISTS (
+                      SELECT 1 FROM subcontract_material_plan_items frozen_line
+                      JOIN subcontract_material_plans frozen_plan ON frozen_plan.id = frozen_line.plan_id
+                       AND NOT frozen_plan.is_deleted
+                      WHERE frozen_line.order_item_id = oi.id AND NOT frozen_line.is_deleted)
+                ORDER BY 2 ASC NULLS LAST, 13 DESC, 6, 3
+                """).setParameter("orderId", orderId));
+        List<OrderMaterialLine> materials = new ArrayList<>();
+        for (Object[] row : rows) {
+            materials.add(new OrderMaterialLine(toUuid(row[0]), toInteger(row[1]), toUuid(row[2]), toUuid(row[3]),
+                    toUuid(row[4]), str(row[5]), str(row[6]), str(row[7]), str(row[8]),
+                    decimalText(row[9]), decimalText(row[10]),
+                    row[11] == null ? null : decimalText(row[11]), Boolean.TRUE.equals(row[12])));
+        }
+        return List.copyOf(materials);
+    }
+
+    private static String decimalText(Object value) {
+        return value == null ? null : com.uten.imp.common.util.DecimalText.of(new BigDecimal(value.toString()));
+    }
+
+    private static UUID toUuid(Object value) {
+        return value == null ? null : value instanceof UUID id ? id : UUID.fromString(value.toString());
+    }
+
+    private static Integer toInteger(Object value) {
+        return value == null ? null : ((Number) value).intValue();
+    }
+
+    private static String str(Object value) {
+        return value == null ? null : value.toString().strip();
+    }
+
     // ==================== 财务批准: 冻结领料计划 ====================
 
     /**

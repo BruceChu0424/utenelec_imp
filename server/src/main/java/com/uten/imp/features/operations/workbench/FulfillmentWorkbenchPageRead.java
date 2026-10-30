@@ -28,6 +28,18 @@ final class FulfillmentWorkbenchPageRead {
     static final int METADATA_OFFSET = 50;
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /**
+     * 仓库任务中心(2026-10-30 表头名称汇总)可下发分面的列; 表达式必须是仓库投影
+     * (candidates)里存在的列——不能直接用采购/委外的 {@code FIELDS}(那里有仓库视图
+     * 没有的 display_stage / issued_at)。仓库行按领料单归组, 多货品行的货品/颜色为空,
+     * 如实进空值桶。
+     */
+    private static final Map<String, String> WAREHOUSE_FACETS = Map.of(
+            "docNo", "visible_doc_no",
+            "planNo", "NULLIF(plan_no,'')",
+            "goods", "goods_id::text",
+            "colorName", "NULLIF(color_name,'')");
+
     static String sql(String source, String baseFilter, String statusFilter,
                       String exceptionFilter, String dateFilter, String orderBy,
                       String department, FulfillmentWorkbenchTableQuery table) {
@@ -38,25 +50,9 @@ final class FulfillmentWorkbenchPageRead {
                 : "task_status";
         String facetRows;
         if ("WAREHOUSE".equals(department)) {
-            facetRows = """
-                    SELECT 'docNo'::text AS key, visible_doc_no AS value,
-                           visible_doc_no AS label, COUNT(*) AS task_count
-                    FROM candidates WHERE %s%s GROUP BY visible_doc_no
-                    """.formatted(selected, table == null ? "" : table.rangeSql() + table.filterSql("docNo"));
+            facetRows = facetValuesSql(WAREHOUSE_FACETS, selected, table);
         } else if (table != null) {
-            String values = FulfillmentWorkbenchTableQuery.FIELDS.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey()).map(entry -> {
-                        String label = "goods".equals(entry.getKey())
-                                ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();
-                        return "('" + entry.getKey() + "'," + entry.getValue() + "," + label
-                                + ", (TRUE " + table.filterSql(entry.getKey()) + "))";
-                    }).collect(java.util.stream.Collectors.joining(","));
-            facetRows = """
-                    SELECT facet.key, facet.value, MAX(facet.label) AS label, COUNT(*) AS task_count
-                    FROM candidates CROSS JOIN LATERAL (VALUES %s) facet(key,value,label,included)
-                    WHERE %s%s AND facet.included
-                    GROUP BY facet.key, facet.value
-                    """.formatted(values, selected, table.rangeSql());
+            facetRows = facetValuesSql(FulfillmentWorkbenchTableQuery.FIELDS, selected, table);
         } else {
             facetRows = "SELECT NULL::text AS key, NULL::text AS value, NULL::text AS label, 0::bigint AS task_count WHERE FALSE";
         }
@@ -108,6 +104,24 @@ final class FulfillmentWorkbenchPageRead {
                 ORDER BY page_rows.page_position NULLS LAST
                 """.formatted(source, baseFilter, selected, tableFilters, ROW_COLUMNS, orderBy, orderBy,
                     statusKey, exceptionFilter, statusFilter, exceptionFilter, facetRows, pageColumns);
+    }
+
+    /** 每列一组候选桶: 该列自身的表头筛选不参与自己的桶(选定时仍看全量分布)。 */
+    private static String facetValuesSql(Map<String, String> fields, String selected,
+                                         FulfillmentWorkbenchTableQuery table) {
+        String values = fields.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).map(entry -> {
+                    String label = "goods".equals(entry.getKey())
+                            ? "NULLIF(concat_ws(' ',goods_code,goods_name),'')" : entry.getValue();
+                    return "('" + entry.getKey() + "'," + entry.getValue() + "," + label
+                            + ", (TRUE " + (table == null ? "" : table.filterSql(entry.getKey())) + "))";
+                }).collect(java.util.stream.Collectors.joining(","));
+        return """
+                SELECT facet.key, facet.value, MAX(facet.label) AS label, COUNT(*) AS task_count
+                FROM candidates CROSS JOIN LATERAL (VALUES %s) facet(key,value,label,included)
+                WHERE %s%s AND facet.included
+                GROUP BY facet.key, facet.value
+                """.formatted(values, selected, table == null ? "" : table.rangeSql());
     }
 
     static Map<String, Long> counts(Object value) {

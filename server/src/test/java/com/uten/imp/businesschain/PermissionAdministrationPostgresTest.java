@@ -360,6 +360,61 @@ class PermissionAdministrationPostgresTest {
     }
 
     @Test
+    void superAdminAndSelfTargetsAllowPersonalRevokesAgainstTheCatalogDefault() {
+        // 2026-10-30 起超管目标（含本人）可在权限页逐项收回：全量默认被个人收回压过，
+        // 超管专属码不可收回，加授行对超管是冗余并被剥离（不灌任务池真实授出口径）。
+        UUID admin = jdbc.queryForObject(
+                "SELECT id FROM users WHERE is_super_admin ORDER BY created_at LIMIT 1", UUID.class);
+        UUID other = createEmployeeUser(anyDepartment(), "超管目标");
+        jdbc.update("UPDATE users SET is_super_admin = true WHERE id = ?", other);
+        String revocable = jdbc.queryForObject("""
+                SELECT code FROM permissions
+                WHERE grant_policy = ARRAY['NORMAL']::text[] AND NOT baseline AND module IS NOT NULL
+                ORDER BY code LIMIT 1
+                """, String.class);
+        TransactionTemplate readOnly = new TransactionTemplate(transactionManager);
+        readOnly.setReadOnly(true);
+
+        // 本人目标（操作者=目标）：收回一个普通码，全量默认被压过，专属码仍在。
+        overrides.setPermissionOverrides(admin, List.of(), List.of(revocable));
+        Set<String> own = readOnly.execute(status -> permissionResolver
+                .permsOf(userAccounts.findById(admin).orElseThrow()));
+        assertFalse(own.contains(revocable), "本人收回压过超管全量默认");
+        assertTrue(own.contains("authorization:manage"), "超管专属码只随身份生效");
+        assertFalse(readOnly.execute(status -> permissionResolver.authorizationSnapshot(
+                        admin, employeeOf(admin), true).permissions()).contains(revocable),
+                "登录授权快照同样反映个人收回");
+
+        // 另一位超管目标同样可被收回。
+        overrides.setPermissionOverrides(other, List.of(), List.of(revocable));
+        assertFalse(readOnly.execute(status -> permissionResolver
+                .permsOf(userAccounts.findById(other).orElseThrow())).contains(revocable),
+                "给别的超管设置权限同样生效");
+
+        // 超管专属码不可收回（防止把授权管理锁死）。
+        ApiException refused = assertThrows(ApiException.class,
+                () -> overrides.setPermissionOverrides(admin, List.of(), List.of("authorization:manage")));
+        assertTrue(refused.getMessage().contains("不能收回"), refused.getMessage());
+
+        // 「全部授权」= 清掉个人收回、恢复全量默认，且不写加授行。
+        PermissionChangeDto restored = overrides.grantAll(admin, new PermissionBulkScopeDto(null, null));
+        assertTrue(restored.removed().contains("revoke:" + revocable), restored.toString());
+        assertTrue(readOnly.execute(status -> permissionResolver
+                .permsOf(userAccounts.findById(admin).orElseThrow())).contains(revocable),
+                "全部授权恢复超管全量默认");
+        assertTrue(overrides.getPermissionOverrides(admin).grants().isEmpty());
+        assertTrue(overrides.grantAll(admin, new PermissionBulkScopeDto(null, null)).isEmpty(),
+                "第二次全部授权没有改动");
+
+        // 加授请求对超管被剥离：不写 grant 行，无覆盖可动时整单 0 改动。
+        assertTrue(overrides.setPermissionOverrides(admin, List.of(revocable), List.of()).isEmpty());
+        assertTrue(overrides.getPermissionOverrides(admin).grants().isEmpty(),
+                "超管目标不落加授行，任务池真实授出口径不被灌成全量");
+
+        overrides.setPermissionOverrides(other, List.of(), List.of());
+    }
+
+    @Test
     void concurrentSavesOfOneDepartmentRecordOnlyTheRealChange() throws Exception {
         UUID department = anyDepartment();
         List<String> codes = departments.getDepartmentPermissions(department).permissions();

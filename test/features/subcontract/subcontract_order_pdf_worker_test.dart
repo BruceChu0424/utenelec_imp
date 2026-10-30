@@ -44,6 +44,50 @@ void main() {
     },
   );
   test(
+    'subcontract print carries direct materials and their product linkage',
+    () async {
+      final order = _order(3)
+        ..['materials'] = [
+          {
+            'orderItemId': 'line-3',
+            'orderLineNo': 1,
+            'goodsCode': 'M-SHELL',
+            'goodsName': '外壳',
+            'colorName': '黑',
+            'unitName': '个',
+            'bomUnitQty': '2',
+            'requiredQty': '20.0000',
+          },
+        ];
+      final document = ProcurementOrderPrintDocument.fromJson(order);
+      // 物料表行: 单耗/需发量去尾随零, 所属成品指回成品行号(对应关系)。
+      expect(document.materialRows.single,
+          ['1', 'M-SHELL', '外壳', '黑', '个', '2', '20', '第 1 行']);
+      // 快照签名覆盖物料内容(服务端内容摘要变化时预览会提示刷新)。
+      final without = ProcurementOrderPrintDocument.fromJson(
+        _order(3)..['materials'] = <Map<String, dynamic>>[],
+      );
+      expect(document.signature, isNot(without.signature));
+      final font = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
+      final worker = IsolatedPrintPdfGenerator();
+      try {
+        final packet = await worker.generate(
+          PrintPdfRequest.binary(
+            kind: 'subcontract-order-bundle',
+            payload: jsonEncode([order]),
+            renderer: renderSubcontractOrderBundle,
+            fontBytes: font.buffer.asUint8List(font.offsetInBytes, font.lengthInBytes),
+          ),
+        );
+        final single = OrderDocumentBundleResult.decode(packet);
+        expect(single.filename, '委外订货单-WD-0003.pdf');
+        expect(String.fromCharCodes(single.bytes.take(5)), '%PDF-');
+      } finally {
+        worker.dispose();
+      }
+    },
+  );
+  test(
     'real isolate renders pending subcontract orders as a named ZIP with exact proofs',
     () async {
       final font = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');

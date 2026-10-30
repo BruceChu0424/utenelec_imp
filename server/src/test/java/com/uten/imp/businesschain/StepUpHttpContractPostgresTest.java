@@ -112,7 +112,8 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         List<MockHttpServletRequestBuilder> calls = List.of(
                 json(post("/api/auth/step-up/activity"), Map.of(), admin),
                 json(put(users + "/super-admin"), Map.of("superAdmin", true), admin),
-                json(put(users + "/remote-access"), Map.of("remoteAccess", true), admin),
+                // remote-access 开关自 2026-10-29 外网登录简化 (ADR-183 修订) 起即点即生效,
+                // 属 @StepUpExempt, 不再进入"无再认证必须 403"清单。
                 json(put(users + "/permission-overrides"), Map.of("grants", List.of(), "revokes", List.of()), admin),
                 json(put(users + "/data-scopes").param("scope", "goods"),
                         Map.of("ownerEmployeeIds", List.of(), "expectedOwnerEmployeeIds", List.of()), admin),

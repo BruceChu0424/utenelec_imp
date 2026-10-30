@@ -53,9 +53,7 @@ class BusinessTaskAudienceServiceTest {
             assertThat(taskActor.getEmployeeId()).isEqualTo(actor.getEmployeeId());
             assertThat(taskActor.getImpersonatedBy()).isEqualTo(actor.getImpersonatedBy());
             assertThat(taskActor.getSessionId()).isEqualTo(actor.getSessionId());
-            assertThat(taskActor.getMfaVerifiedAt()).isEqualTo(actor.getMfaVerifiedAt());
             assertThat(taskActor.isRemoteAccess()).isTrue();
-            assertThat(taskActor.isRemotePolicyEnabled()).isTrue();
             return null;
         });
         assertThat(SecurityContextHolder.getContext()).isSameAs(original);
@@ -123,8 +121,7 @@ class BusinessTaskAudienceServiceTest {
 
     private AuthUser actor(boolean admin, Set<String> grants) {
         var actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "task-audit", grants,
-                false, true, admin, true, UUID.randomUUID(), UUID.randomUUID(),
-                Instant.parse("2026-10-17T12:00:00Z"), true);
+                false, true, admin, true, UUID.randomUUID(), UUID.randomUUID());
         SecurityContextHolder.getContext().setAuthentication(
                 UsernamePasswordAuthenticationToken.authenticated(actor, null, actor.getAuthorities()));
         return actor;

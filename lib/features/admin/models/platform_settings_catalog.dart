@@ -19,12 +19,6 @@ class PlatformSettingsEntry {
 
 const platformSettingsCatalog = <PlatformSettingsEntry>[
   PlatformSettingsEntry(
-    id: 'remote-access',
-    title: '外网访问与连接',
-    description: '指定人员、人数上限与外网入口状态',
-    location: RouteName.adminRemoteAccess,
-  ),
-  PlatformSettingsEntry(
     id: 'security',
     title: '安全与运行设置',
     description: '登录保护、业务提醒、审计留存与服务器更新计划',

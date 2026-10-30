@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
-import 'package:uten_imp/components/cards/uten_card.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
@@ -444,10 +443,12 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
+      // 2026-10-29 柔光卡改版：卡面本体是 NoticeCard（自带渐变+阴影表面），
+      // 以它为边界校验元数据文本完整落在卡内。
       final card = tester.getRect(
         find.ancestor(
           of: find.text('标题-receipt'),
-          matching: find.byType(UtenCard),
+          matching: find.byType(NoticeCard),
         ),
       );
       _expectFullTextInsideCard(tester, find.text(label), card);

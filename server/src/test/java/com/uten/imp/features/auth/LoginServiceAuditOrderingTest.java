@@ -126,7 +126,7 @@ class LoginServiceAuditOrderingTest {
 
     @Test
     void successfulAuditIsWrittenOnlyAfterTokenIssuance() {
-        request = new LoginRequest("E001", "correct-password", null, "Desktop audit fixture");
+        request = new LoginRequest("E001", "correct-password", "Desktop audit fixture");
         passwordIsCorrect();
         rowLockSeesSameAccount();
         TokenResponse response = new TokenResponse(

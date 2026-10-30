@@ -94,7 +94,7 @@ void main() {
     },
   );
   test(
-    'JSON refusal reaches the normal auth/MFA interceptor path before conversion',
+    'JSON refusal reaches the normal interceptor path before conversion',
     () async {
       Object? seen;
       dio.interceptors.add(
@@ -106,7 +106,10 @@ void main() {
         ),
       );
       adapter.respond = (_) async => ResponseBody.fromString(
-        jsonEncode({'code': 'MFA_REQUIRED', 'message': 'fixture refusal'}),
+        jsonEncode({
+          'code': 'REMOTE_CAPACITY_REJECTED',
+          'message': 'fixture refusal',
+        }),
         403,
         headers: {
           Headers.contentTypeHeader: ['application/json'],
@@ -115,7 +118,11 @@ void main() {
       await expectLater(
         client.downloadExportStream(path).drain<void>(),
         throwsA(
-          isA<ApiException>().having((e) => e.code, 'code', 'MFA_REQUIRED'),
+          isA<ApiException>().having(
+            (e) => e.code,
+            'code',
+            'REMOTE_CAPACITY_REJECTED',
+          ),
         ),
       );
       expect(
@@ -123,7 +130,7 @@ void main() {
         isA<Map<String, dynamic>>().having(
           (m) => m['code'],
           'code',
-          'MFA_REQUIRED',
+          'REMOTE_CAPACITY_REJECTED',
         ),
       );
     },

@@ -40,7 +40,6 @@ import 'shared/providers/theme_provider.dart';
 import 'shared/platform_branding/platform_branding_provider.dart';
 import 'shared/widgets/reauth_dialog.dart';
 import 'shared/widgets/desktop_window_host.dart';
-import 'features/auth/widgets/remote_mfa_prompt.dart';
 import 'shared/widgets/user_activity_tracker.dart';
 import 'shared/widgets/server_maintenance_host.dart';
 import 'platform_tables_host.dart';
@@ -150,7 +149,6 @@ class UtenApp extends ConsumerWidget {
                       const NoticeRouteReadBridge(),
                       // 敏感操作再认证宿主 (不渲染)：服务端要求重新输入密码时弹统一密码框 (ADR-110)。
                       const StepUpPromptHost(),
-                      const RemoteMfaPromptHost(),
                       // 人为输入采集 (不渲染)：用户没在操作时发出的请求不续期服务端会话 (ADR-110)。
                       const UserActivityTracker(),
                       // 登录会话重建门（不渲染）：重新登录时立即重拉全局角标，

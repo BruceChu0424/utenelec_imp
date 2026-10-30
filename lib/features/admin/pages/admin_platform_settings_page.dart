@@ -42,7 +42,6 @@ import '../models/platform_server_status.dart';
 import '../models/platform_settings_catalog.dart';
 import '../repositories/platform_settings_repository.dart';
 import '../widgets/platform_color_picker_dialog.dart';
-import '../../../core/l10n/remote_access_text.dart';
 
 Object? _settingsOwner(WidgetRef ref, {bool watch = false}) {
   final scope = watch
@@ -1225,11 +1224,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
       ref.watch(sessionProvider).user?.superAdmin ?? false,
     );
     const groups = [
-      (
-        '平台管理',
-        '全公司的安全、服务和授权规则',
-        ['security', 'remote-access', 'ai', 'permissions'],
-      ),
+      ('平台管理', '全公司的安全、服务和授权规则', ['security', 'ai', 'permissions']),
       (
         '业务基础配置',
         '按业务维护公司资料、字典和运作方式',
@@ -1260,27 +1255,17 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
               for (final entry in entries.where(
                 (entry) => group.$3.contains(entry.id),
               ))
-                _link(
-                  entry.id == 'remote-access'
-                      ? remoteAccessText(context, 'title')
-                      : entry.title,
-                  entry.id == 'remote-access'
-                      ? remoteAccessText(context, 'description')
-                      : entry.description,
-                  switch (entry.id) {
-                    'remote-access' => Icons.public_outlined,
-                    'security' => Icons.security_outlined,
-                    'ai' => Icons.auto_awesome_outlined,
-                    'expense' => Icons.receipt_long_outlined,
-                    'permissions' => Icons.admin_panel_settings_outlined,
-                    'basic-data' => Icons.category_outlined,
-                    'workshop-material' => Icons.warehouse_outlined,
-                    'server-status' => Icons.dns_outlined,
-                    'audit' => Icons.history_outlined,
-                    _ => Icons.tune_outlined,
-                  },
-                  entry.location,
-                ),
+                _link(entry.title, entry.description, switch (entry.id) {
+                  'security' => Icons.security_outlined,
+                  'ai' => Icons.auto_awesome_outlined,
+                  'expense' => Icons.receipt_long_outlined,
+                  'permissions' => Icons.admin_panel_settings_outlined,
+                  'basic-data' => Icons.category_outlined,
+                  'workshop-material' => Icons.warehouse_outlined,
+                  'server-status' => Icons.dns_outlined,
+                  'audit' => Icons.history_outlined,
+                  _ => Icons.tune_outlined,
+                }, entry.location),
             ]);
           },
         ),

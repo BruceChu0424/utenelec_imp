@@ -95,6 +95,48 @@ void main() {
 
     expect(find.text('计划 plan-9'), findsOneWidget);
   });
+
+  testWidgets('产品三列多值截断，弹窗列全部并可按条打开货品详情', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionOverview,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _repository(),
+          ),
+          productionWorkshopTreeProvider.overrideWith((ref) async => []),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 格内截断：首个 +「等 N 个」，全量只在弹窗里。
+    expect(find.text('面板A 等 3 个'), findsOneWidget);
+    expect(find.text('GA-1 等 3 个'), findsOneWidget);
+    expect(find.text('白色 等 3 个'), findsOneWidget);
+    expect(find.text('面板B'), findsNothing);
+
+    await tester.tap(find.text('GA-1 等 3 个'));
+    await tester.pumpAndSettle();
+    expect(find.text('货品编码'), findsWidgets);
+    expect(find.text('GA-2'), findsOneWidget);
+    expect(find.text('GA-3'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('multi-value-detail-GA-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('货品 goods-2'), findsOneWidget);
+  });
 }
 
 class _Session extends SessionNotifier {
@@ -123,6 +165,11 @@ GoRouter _router() => GoRouter(
       path: '/production/plans/:id',
       builder: (_, state) =>
           Scaffold(body: Text('计划 ${state.pathParameters['id']}')),
+    ),
+    GoRoute(
+      path: '/basicinfo/goods/:id',
+      builder: (_, state) =>
+          Scaffold(body: Text('货品 ${state.pathParameters['id']}')),
     ),
   ],
 );
@@ -172,6 +219,13 @@ Map<String, dynamic> _group(
   'segmentCount': 1,
   if (rootType == 'ANALYSIS') ...{
     'productCount': 8,
+    // V969 全量产品/颜色载荷（多值格弹窗数据源）。
+    'productEntries': [
+      {'goodsId': 'goods-1', 'code': 'GA-1', 'name': '面板A'},
+      {'goodsId': 'goods-2', 'code': 'GA-2', 'name': '面板B'},
+      {'goodsId': 'goods-3', 'code': 'GA-3', 'name': '面板C'},
+    ],
+    'productColorsAll': ['白色', '黑色', '红色'],
     'segmentCount': 12,
     'completedCount': 9,
     'rootProgressRatio': 0.2268041237113402,

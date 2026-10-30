@@ -50,7 +50,7 @@ class AuthSessionPropagationTest {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         TokenIssuer issuer = issuer(refreshTokens, responses, mock(AuditService.class));
 
-        TokenResponse actual = issuer.issueTokens(user);
+        TokenResponse actual = issuer.issueTokens(user, null);
 
         assertSame(expected, actual);
         assertEquals(sessionId,

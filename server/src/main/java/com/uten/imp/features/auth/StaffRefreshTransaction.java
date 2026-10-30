@@ -130,7 +130,6 @@ public class StaffRefreshTransaction {
 
         // Reject before issuing a replacement or mutating the current token family.
         remoteAccessPolicy.requireStaffAccess(user);
-        if (remoteAccessPolicy.isRemoteRequest()) sessions.requireMfaForRefresh(token.getSessionId(), user.getId());
 
         RefreshTokenService.IssuedRefreshToken replacement =
                 tokenService.issueInSession(

@@ -80,12 +80,12 @@ namespace Uten.Legacy.Core
             RaiseSessionChanged();
         }
 
-        public async Task LoginAsync(string account, string password, string otp, CancellationToken cancellationToken)
+        public async Task LoginAsync(string account, string password, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (String.IsNullOrWhiteSpace(account) || account.Trim().Length > 128 || String.IsNullOrEmpty(password)
-                || password.Length > 4096 || (otp != null && otp.Length > 16))
-                throw new ApiException("LOGIN_INPUT_INVALID", "请填写有效的账号、密码和验证码。");
+                || password.Length > 4096)
+                throw new ApiException("LOGIN_INPUT_INVALID", "请填写有效的账号和密码。");
             Scope scope;
             lock (gate)
             {
@@ -98,7 +98,6 @@ namespace Uten.Legacy.Core
             RaiseSessionChanged();
             var body = new Dictionary<string, object> { { "loginAccount", account.Trim() }, { "password", password },
                 { "deviceName", "Windows 原生兼容客户端" } };
-            if (!String.IsNullOrWhiteSpace(otp)) body.Add("otpCode", otp.Trim());
             var response = await SendAsync(scope, HttpMethod.Post, "auth/login", body, null, cancellationToken).ConfigureAwait(false);
             if (response.Status < 200 || response.Status > 299) RequireScope(scope);
             RequireSuccess(response, true);

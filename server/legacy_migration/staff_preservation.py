@@ -13,7 +13,7 @@ KIND = "staff-account-preservation-v1"
 CURRENT = {"active", "probation", "onLeave"}
 FIXED_TABLES = {
     "departments", "positions", "permissions", "permission_templates",
-    "permission_surfaces", "permission_surface_permissions", "staff_mfa",
+    "permission_surfaces", "permission_surface_permissions",
     "department_permissions", "manager_permission_delegations", "notices",
     "notice_user_states", "refresh_tokens", "employment_history",
     "organization_permission_leader_assignments", "emergency_contacts", "password_history",

@@ -62,8 +62,7 @@ public class BusinessTaskAudienceService implements TaskAudiencePort {
         if (!actor.isAccountNonLocked() || actor.isMustChangePassword()) granted.clear();
         return new AuthUser(actor.getId(), actor.getEmployeeId(), actor.getLoginAccount(),
                 Set.copyOf(granted), actor.isMustChangePassword(), actor.isAccountNonLocked(), false,
-                actor.isRemoteAccess(), actor.getImpersonatedBy(), actor.getSessionId(),
-                actor.getMfaVerifiedAt(), actor.isRemotePolicyEnabled());
+                actor.isRemoteAccess(), actor.getImpersonatedBy(), actor.getSessionId());
     }
 
     @Override

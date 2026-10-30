@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,11 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
-import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/web_update/web_update_safety.dart';
-import 'package:uten_imp/core/network/interceptors/remote_mfa_interceptor.dart';
-import 'package:uten_imp/core/network/remote_mfa_coordinator.dart';
-import 'package:uten_imp/features/auth/widgets/remote_mfa_prompt.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
@@ -108,40 +103,6 @@ class MemoryDraftStorage implements FormDraftStorage {
     }
     return true;
   }
-}
-
-class _RemoteMfaDraftAdapter implements HttpClientAdapter {
-  int writeAttempts = 0, acceptedWrites = 0, verifications = 0;
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions options,
-    Stream<Uint8List>? requestStream,
-    Future<void>? cancelFuture,
-  ) async {
-    if (options.path == '/auth/mfa/verify') {
-      verifications++;
-      expect(options.data, {'otpCode': '123456'});
-      return _json(200, {'verifiedUntil': '2026-10-17T23:00:00Z'});
-    }
-    expect(options.path, '/sales/new');
-    writeAttempts++;
-    if (writeAttempts == 1) {
-      return _json(403, {'code': 'MFA_REQUIRED', 'message': '需要验证'});
-    }
-    acceptedWrites++;
-    return _json(200, {'saved': true});
-  }
-
-  ResponseBody _json(int status, Map<String, dynamic> body) =>
-      ResponseBody.fromString(
-        jsonEncode(body),
-        status,
-        headers: {
-          Headers.contentTypeHeader: [Headers.jsonContentType],
-        },
-      );
-  @override
-  void close({bool force = false}) {}
 }
 
 class _DraftGridRow extends EditableGridRow {}
@@ -871,90 +832,7 @@ void main() {
     },
   );
 
-  testWidgets(
-    'MFA admission preserves an editable form and only a second user click sends again',
-    (tester) async {
-      final adapter = _RemoteMfaDraftAdapter();
-      final coordinator = RemoteMfaCoordinator();
-      final dio = Dio(BaseOptions(baseUrl: 'https://test.example/api'))
-        ..httpClientAdapter = adapter;
-      dio.interceptors.add(RemoteMfaInterceptor(coordinator: coordinator));
-      final api = ApiClient(dio);
-      ApiException? refusal;
-      final env = await pumpEditor(
-        tester,
-        MemoryDraftStorage(),
-        onSubmit: (editor) async {
-          try {
-            await editor.runFormDraftSubmission(
-              () => api.post('/sales/new', body: {'text': editor.text.text}),
-              isDefiniteRejection: (_) => false,
-            );
-            await editor.completeFormDraft();
-          } on ApiException catch (error) {
-            refusal = error;
-          }
-        },
-      );
-      final unregister = coordinator.register(() async {
-        final accepted = await showRemoteMfaCodeDialog(
-          tester.element(find.byType(TestEditor)),
-          verify: (code) async {
-            await api.post('/auth/mfa/verify', body: {'otpCode': code});
-          },
-          isCurrent: () => true,
-        );
-        return accepted == true ? '验证完成，请人工继续' : null;
-      });
-      addTearDown(unregister);
-      await tester.enterText(find.byKey(const Key('input')), '保留的原始编辑');
-      await tester.tap(find.byKey(const Key('send-draft')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('remote-mfa-dialog')), findsOneWidget);
-      expect(adapter.writeAttempts, 1);
-      expect(adapter.acceptedWrites, 0);
-      await tester.enterText(
-        find.descendant(
-          of: find.byKey(const Key('remote-mfa-code')),
-          matching: find.byType(TextField),
-        ),
-        '123456',
-      );
-      await tester.tap(find.byKey(const Key('remote-mfa-confirm')));
-      await tester.pumpAndSettle();
-      expect(adapter.verifications, 1);
-      expect(
-        adapter.writeAttempts,
-        1,
-        reason: 'verification must never replay the business request',
-      );
-      expect(refusal?.code, 'MFA_RETRY_REQUIRED');
-      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
-      expect(editor.formDraftHasUnknownSubmission, isFalse);
-      expect(editor.text.text, '保留的原始编辑');
-      expect(
-        env.container
-            .read(formDraftsProvider)
-            .single
-            .data['_formDraftSubmissionPending'],
-        isNull,
-      );
-      await tester.enterText(find.byKey(const Key('input')), '用户核查后继续');
-      await tester.tap(find.byKey(const Key('send-draft')));
-      await tester.pumpAndSettle();
-      expect(adapter.writeAttempts, 2);
-      expect(adapter.acceptedWrites, 1);
-      expect(env.container.read(formDraftsProvider), isEmpty);
-      await tester.pumpWidget(const SizedBox.shrink());
-      env.router.dispose();
-      env.container.dispose();
-    },
-  );
-  for (final code in [
-    'MFA_REQUIRED',
-    'MFA_RETRY_REQUIRED',
-    'REMOTE_ACCESS_DENIED',
-  ]) {
+  for (final code in ['REMOTE_ACCESS_DENIED']) {
     testWidgets(
       'fresh structured $code admission overrides a conservative business callback',
       (tester) async {
@@ -1028,7 +906,7 @@ void main() {
     );
   }
   testWidgets(
-    'an unstructured MFA-looking 403 is not proof that the write was refused',
+    'an unstructured admission-looking 403 is not proof that the write was refused',
     (tester) async {
       final env = await pumpEditor(tester, MemoryDraftStorage());
       final editor = tester.state<TestEditorState>(find.byType(TestEditor));
@@ -1036,7 +914,7 @@ void main() {
       await expectLater(
         editor.runFormDraftSubmission(
           () async => throw ApiException(
-            'MFA_REQUIRED',
+            'REMOTE_ACCESS_DENIED',
             'unknown origin',
             httpStatus: 403,
           ),

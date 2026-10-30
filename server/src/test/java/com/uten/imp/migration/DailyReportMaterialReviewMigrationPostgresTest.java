@@ -283,8 +283,6 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
         assertTrue(expectedTables.add("sms_gateway_settings"));
         // V873/V874 (ADR-183): 远程 TOTP 凭据与外网策略单例, 均随业务清空保留。
-        assertTrue(expectedTables.add("staff_mfa"));
-        assertTrue(expectedTables.add("remote_access_policy"));
         // V879 官网管理与询盘并入: 询盘时间线(append-only)、连接配置单例与桥接诊断单例。
         assertTrue(expectedTables.add("website_inquiry_events"));
         assertTrue(expectedTables.add("website_management_settings"));
@@ -321,10 +319,6 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(expectedIndexes.put("sms_gateway_settings_pkey",
                 "CREATE UNIQUE INDEX sms_gateway_settings_pkey ON public.sms_gateway_settings USING btree (id)"));
         // V873/V874 (ADR-183): 两张新表的主键索引是各自的全部索引增量。
-        assertNull(expectedIndexes.put("staff_mfa_pkey",
-                "CREATE UNIQUE INDEX staff_mfa_pkey ON public.staff_mfa USING btree (user_id)"));
-        assertNull(expectedIndexes.put("remote_access_policy_pkey",
-                "CREATE UNIQUE INDEX remote_access_policy_pkey ON public.remote_access_policy USING btree (singleton_id)"));
         // V879: 三张新表的主键索引 + 询盘时间线的 (inquiry_id, created_at, id) 读取索引。
         assertNull(expectedIndexes.put("website_inquiry_events_pkey",
                 "CREATE UNIQUE INDEX website_inquiry_events_pkey ON public.website_inquiry_events USING btree (id)"));

@@ -66,7 +66,6 @@ public class SecurityConfig {
                                            JwtAuthFilter jwtAuthFilter,
                                            ImpersonationWriteGuardFilter impersonationWriteGuardFilter,
                                            com.uten.imp.security.RemoteAccessGuardFilter remoteAccessGuardFilter,
-                                           com.uten.imp.security.RemoteMfaGuardFilter remoteMfaGuardFilter,
                                            PasswordChangeRequiredFilter passwordChangeRequiredFilter,
                                            SecurityProperties securityProps,
                                            ObjectMapper objectMapper,
@@ -147,10 +146,9 @@ public class SecurityConfig {
                 .addFilterAfter(impersonationWriteGuardFilter, JwtAuthFilter.class)
                 // Every trusted remote entry enforces current policy and account access.
                 .addFilterAfter(remoteAccessGuardFilter, JwtAuthFilter.class)
-                .addFilterAfter(remoteMfaGuardFilter, com.uten.imp.security.RemoteAccessGuardFilter.class)
                 // 首登改密门禁：网络与模拟身份边界通过后，除改密/登出/恢复资料外拒绝全部 API。
                 .addFilterAfter(passwordChangeRequiredFilter,
-                        com.uten.imp.security.RemoteMfaGuardFilter.class)
+                        com.uten.imp.security.RemoteAccessGuardFilter.class)
                 // CORS can reject an invalid Origin before JWT/MVC. The audit
                 // filter must wrap that rejection so the resulting 403 is not lost.
                 .addFilterBefore(auditContextFilter, CorsFilter.class)
@@ -194,12 +192,6 @@ public class SecurityConfig {
     @Bean
     public FilterRegistrationBean<com.uten.imp.security.RemoteRequestBudgetFilter> remoteBudgetFilterRegistration(
             com.uten.imp.security.RemoteRequestBudgetFilter filter) {
-        return securityChainOnly(filter);
-    }
-
-    @Bean
-    public FilterRegistrationBean<com.uten.imp.security.RemoteMfaGuardFilter> remoteMfaFilterRegistration(
-            com.uten.imp.security.RemoteMfaGuardFilter filter) {
         return securityChainOnly(filter);
     }
 

@@ -342,8 +342,8 @@ void main() {
 
   for (final protectedRoute in const [
     '/admin/ai-settings',
-    '/settings/remote-mfa',
-    '/SETTINGS/REMOTE-MFA/setup',
+    '/settings/device-receipts',
+    '/SETTINGS/DEVICE-RECEIPTS/list',
   ]) {
     testWidgets('$protectedRoute attaches nothing and runs no card (ADR-153)', (
       tester,

@@ -1070,7 +1070,9 @@ public class ProductionExecutionWorkbenchService {
                        root.root_planned_qty, root.root_inbound_qty,
                        root.root_progress_ratio,
                        COALESCE(product_completion.completed_product_count, 0),
-                       COALESCE(product_completion.unfinished_product_count, 0)
+                       COALESCE(product_completion.unfinished_product_count, 0),
+                       root.product_entries::text,
+                       root.product_colors_all
                 """;
     }
 
@@ -1546,7 +1548,28 @@ public class ProductionExecutionWorkbenchService {
                 false, date(row[36]), date(row[37]),
                 text(row[38]), text(row[39]),
                 decimal(row[40]), decimal(row[41]), progressRatio,
-                integer(row[43]), integer(row[44]));
+                integer(row[43]), integer(row[44]),
+                productEntries(text(row[45])), colorList(text(row[46])));
+    }
+
+    /** 共享只读 Jackson：V969 全量产品 jsonb 解析（失败回空表，格内 preview 不受影响）。 */
+    private static final com.fasterxml.jackson.databind.ObjectMapper ENTRY_JSON =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    @SuppressWarnings("unchecked")
+    private static java.util.List<java.util.Map<String, String>> productEntries(String json) {
+        if (json == null || json.isBlank()) return java.util.List.of();
+        try {
+            return ENTRY_JSON.readValue(json, java.util.List.class);
+        } catch (java.io.IOException failure) {
+            return java.util.List.of();
+        }
+    }
+
+    private static java.util.List<String> colorList(String joined) {
+        if (joined == null || joined.isBlank()) return java.util.List.of();
+        return java.util.Arrays.stream(joined.split("、"))
+                .map(String::trim).filter(part -> !part.isEmpty()).toList();
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,

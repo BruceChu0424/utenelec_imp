@@ -25,20 +25,10 @@ abstract interface class IssuerAwareAuthRepository {
   Future<void> logoutIssued(String? refreshToken, AuthTokenIssuer? issuer);
 }
 
-/// Optional transport capability preserves existing non-MFA test/custom adapters.
-abstract interface class OtpAuthRepository {
-  Future<AuthResult> loginWithOtp(
-    String loginAccount,
-    String password,
-    String otpCode,
-  );
-}
-
 /// Direct network transport. Production callers use the durable decorator
 /// below; the pending-revocation drainer calls this endpoint through its own
 /// dedicated transport so queued logout never recurses through the decorator.
-class DioAuthRepository
-    implements AuthRepository, OtpAuthRepository, IssuerAwareAuthRepository {
+class DioAuthRepository implements AuthRepository, IssuerAwareAuthRepository {
   DioAuthRepository(
     this.api, [
     this.storage,
@@ -58,24 +48,6 @@ class DioAuthRepository
         'loginAccount': loginAccount,
         'password': password,
         // 单设备顶号提示：服务端把设备名随会话落库，被顶设备据此知道「在哪台设备登录」。
-        'deviceName': await loginDeviceLabel(),
-      },
-    );
-    return AuthResult.fromJson(json);
-  }
-
-  @override
-  Future<AuthResult> loginWithOtp(
-    String loginAccount,
-    String password,
-    String otpCode,
-  ) async {
-    final json = await api.post(
-      ApiEndpoints.authLogin,
-      body: <String, String>{
-        'loginAccount': loginAccount,
-        'password': password,
-        'otpCode': otpCode,
         'deviceName': await loginDeviceLabel(),
       },
     );
@@ -222,7 +194,7 @@ abstract final class RecentMeSnapshot {
 /// local logout or stale-auth-result eviction without delaying the caller on
 /// network availability.
 class DurableLogoutAuthRepository
-    implements AuthRepository, OtpAuthRepository, IssuerAwareAuthRepository {
+    implements AuthRepository, IssuerAwareAuthRepository {
   DurableLogoutAuthRepository(
     this._delegate,
     this._pendingRevocations, {
@@ -249,23 +221,6 @@ class DurableLogoutAuthRepository
   @override
   Future<AuthResult> login(String loginAccount, String password) =>
       _delegate.login(loginAccount, password);
-
-  @override
-  Future<AuthResult> loginWithOtp(
-    String loginAccount,
-    String password,
-    String otpCode,
-  ) {
-    final delegate = _delegate;
-    if (delegate is! OtpAuthRepository) {
-      throw StateError('Authenticator login is unavailable');
-    }
-    return (delegate as OtpAuthRepository).loginWithOtp(
-      loginAccount,
-      password,
-      otpCode,
-    );
-  }
 
   @override
   Future<AuthResult> refresh(String refreshToken) =>

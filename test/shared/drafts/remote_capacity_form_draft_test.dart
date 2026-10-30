@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
-import 'package:uten_imp/core/network/interceptors/remote_mfa_interceptor.dart';
-import 'package:uten_imp/core/network/remote_mfa_coordinator.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 // Reuse the real form widget + durable draft harness. Its main() is not called;
@@ -58,11 +56,6 @@ class _CapacityAdapter implements HttpClientAdapter {
 ApiClient _client(_CapacityAdapter adapter) {
   final dio = Dio(BaseOptions(baseUrl: 'https://test.example/api'))
     ..httpClientAdapter = adapter;
-  final coordinator = RemoteMfaCoordinator()
-    ..register(() async {
-      fail('Capacity refusal must not open MFA or trigger a replay');
-    });
-  dio.interceptors.add(RemoteMfaInterceptor(coordinator: coordinator));
   return ApiClient(dio);
 }
 
@@ -94,7 +87,7 @@ void main() {
       expect(
         adapter.attempts,
         1,
-        reason: 'Neither admission recovery nor MFA may replay a write',
+        reason: 'Admission refusal must not trigger an automatic replay',
       );
       expect(adapter.accepted, 0);
       expect(refusal?.code, 'REMOTE_CAPACITY_REJECTED');

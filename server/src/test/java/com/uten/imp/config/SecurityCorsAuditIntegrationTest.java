@@ -105,9 +105,6 @@ class SecurityCorsAuditIntegrationTest {
     @Qualifier("passwordChangeRequiredFilterRegistration")
     private FilterRegistrationBean<?> passwordChangeRequiredRegistration;
     @Autowired
-    @Qualifier("remoteMfaFilterRegistration")
-    private FilterRegistrationBean<?> remoteMfaRegistration;
-    @Autowired
     @Qualifier("remoteBudgetFilterRegistration")
     private FilterRegistrationBean<?> remoteBudgetRegistration;
 
@@ -136,7 +133,6 @@ class SecurityCorsAuditIntegrationTest {
         int localNetworkIndex = indexOf(filters, LocalNetworkGuardFilter.class);
         int jwtIndex = indexOf(filters, JwtAuthFilter.class);
         int remoteAccessIndex = indexOf(filters, RemoteAccessGuardFilter.class);
-        int remoteMfaIndex = indexOf(filters, com.uten.imp.security.RemoteMfaGuardFilter.class);
         int remoteBudgetIndex = indexOf(filters, com.uten.imp.security.RemoteRequestBudgetFilter.class);
         int passwordChangeRequiredIndex =
                 indexOf(filters, PasswordChangeRequiredFilter.class);
@@ -147,13 +143,11 @@ class SecurityCorsAuditIntegrationTest {
         assertTrue(remoteAccessIndex > jwtIndex);
         assertTrue(remoteBudgetIndex > localNetworkIndex);
         assertTrue(jwtIndex > remoteBudgetIndex);
-        assertTrue(remoteMfaIndex > remoteAccessIndex);
-        assertTrue(passwordChangeRequiredIndex > remoteMfaIndex);
+        assertTrue(passwordChangeRequiredIndex > remoteAccessIndex);
         assertFalse(localNetworkRegistration.isEnabled());
         assertFalse(jwtRegistration.isEnabled());
         assertFalse(remoteAccessRegistration.isEnabled());
         assertFalse(passwordChangeRequiredRegistration.isEnabled());
-        assertFalse(remoteMfaRegistration.isEnabled());
         assertFalse(remoteBudgetRegistration.isEnabled());
 
         MockHttpServletRequest request = new MockHttpServletRequest(
@@ -196,7 +190,7 @@ class SecurityCorsAuditIntegrationTest {
                         employeeId, "E1001", "active", false, false, false, false, 7L, 11L,
                         new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
                                 now.minusSeconds(10), now.plusSeconds(86_400), null),
-                        "30", true, "active", false, null)));
+                        "30", "active", false, null)));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee:view")));
@@ -320,7 +314,7 @@ class SecurityCorsAuditIntegrationTest {
                 new com.uten.imp.features.auth.AuthSessionService.StaffState(
                         employeeId, "csrf-staff", "active", false, false, false, false, 7L, 11L,
                         new com.uten.imp.features.auth.AuthSessionService.SessionFacts(
-                                now.minusSeconds(10), now.plusSeconds(86_400), null), "30", true, "active", false, null)));
+                                now.minusSeconds(10), now.plusSeconds(86_400), null), "30", "active", false, null)));
         when(staffAuthorityResolver.resolve(userId, employeeId, false, 7, 11))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(Set.of("employee:view")));
     }

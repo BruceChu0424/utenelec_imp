@@ -547,7 +547,6 @@ class SessionNotifier extends Notifier<SessionState> {
   Future<void> login({
     required String account,
     required String password,
-    String? otpCode,
     bool Function()? isCurrent,
   }) async {
     // A retired caller must not advance any session intent or touch storage.
@@ -587,18 +586,7 @@ class SessionNotifier extends Notifier<SessionState> {
       _rememberVisibleRecord(reservation.reserved);
       _localStorageFailClosed = false;
       final auth = owner.repository;
-      if (otpCode != null && otpCode.isNotEmpty) {
-        if (auth is! OtpAuthRepository) {
-          throw StateError('Authenticator login is unavailable');
-        }
-        accepted = await (auth as OtpAuthRepository).loginWithOtp(
-          account,
-          password,
-          otpCode,
-        );
-      } else {
-        accepted = await auth.login(account, password);
-      }
+      accepted = await auth.login(account, password);
       final result = accepted;
       if (!current()) throw const SessionMutationSuperseded();
       await _serializeSessionCommit(() async {

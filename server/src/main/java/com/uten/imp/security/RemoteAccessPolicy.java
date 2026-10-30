@@ -4,16 +4,14 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.DeploymentProperties;
 import com.uten.imp.features.auth.model.UserAccount;
-import com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
  * Server-side authority for staff access through a trusted remote entry.
  *
- * <p>The policy is deliberately checked both while issuing credentials and on every
- * authenticated remote request. Credential issuance must not become an alternate path
- * around the request filter.
+ * <p>唯一闸门是按账号的外网授权 {@code users.remote_access}（权限设置 → 按员工 → 云端(外网)
+ * 访问授权开关）。凭证签发与每个已认证远程请求都复核同一判定，签发侧不得成为绕过请求
+ * 过滤器的旁路；授权被收回时 bump auth_version 并吊销全部会话，立即生效。</p>
  */
 @Component
 public class RemoteAccessPolicy {
@@ -22,19 +20,16 @@ public class RemoteAccessPolicy {
 
     private final DeploymentProperties deployment;
     private final TrustedRequestOriginPolicy origins;
-    private final RemoteAccessSettingsService settings;
 
-    @Autowired
-    public RemoteAccessPolicy(DeploymentProperties deployment, TrustedRequestOriginPolicy origins,
-                              RemoteAccessSettingsService settings) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public RemoteAccessPolicy(DeploymentProperties deployment, TrustedRequestOriginPolicy origins) {
         this.deployment = deployment;
         this.origins = origins;
-        this.settings = settings;
     }
 
     /** Compatibility for isolated policy tests; the application always uses the full constructor. */
     public RemoteAccessPolicy(DeploymentProperties deployment) {
-        this(deployment, null, null);
+        this(deployment, null);
     }
 
     public void requireStaffAccess(UserAccount account) {
@@ -42,11 +37,8 @@ public class RemoteAccessPolicy {
     }
 
     public void requireStaffAccess(boolean remoteAccess) {
-        if (isRemoteRequest()) {
-            if (!remoteAccess) throw new ApiException(ErrorCode.REMOTE_ACCESS_DENIED, DENIED_MESSAGE);
-            if (settings != null && !settings.isEnabled()) {
-                throw new ApiException(ErrorCode.REMOTE_ACCESS_DENIED,"公司当前已关闭员工外网访问，请通过公司内部入口使用");
-            }
+        if (isRemoteRequest() && !remoteAccess) {
+            throw new ApiException(ErrorCode.REMOTE_ACCESS_DENIED, DENIED_MESSAGE);
         }
     }
 
@@ -62,9 +54,6 @@ public class RemoteAccessPolicy {
         }
         if (!isRemoteRequest()) return;
         if (!principal.isRemoteAccess()) throw new ApiException(ErrorCode.REMOTE_ACCESS_DENIED,DENIED_MESSAGE);
-        if (!principal.isRemotePolicyEnabled()) {
-            throw new ApiException(ErrorCode.REMOTE_ACCESS_DENIED,"公司当前已关闭员工外网访问，请通过公司内部入口使用");
-        }
         if (principal.getImpersonatedBy() != null) {
             throw new ApiException(ErrorCode.FORBIDDEN,"请在公司内部入口使用模拟员工视角");
         }

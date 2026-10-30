@@ -430,7 +430,7 @@ class JwtAuthorizationVersionTest {
             AuthSessionService.SessionFacts session) {
         return new AuthSessionService.StaffState(employeeId, loginAccount, status,
                 mustChangePassword, false, false, deleted, authVersion, authorizationEpoch,
-                session, "30", true, "active", false, null);
+                session, "30", "active", false, null);
     }
 
     private static AuthSessionService.SessionFacts activeSession() {

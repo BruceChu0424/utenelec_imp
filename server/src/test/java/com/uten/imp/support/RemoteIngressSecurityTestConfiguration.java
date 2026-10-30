@@ -1,10 +1,8 @@
 package com.uten.imp.support;
 
 import com.uten.imp.config.props.DeploymentProperties;
-import com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService;
 import com.uten.imp.security.LocalNetworkAccessPolicy;
 import com.uten.imp.security.RemoteAccessPolicy;
-import com.uten.imp.security.RemoteMfaGuardFilter;
 import com.uten.imp.security.RemoteRequestBudgetFilter;
 import com.uten.imp.security.TrustedRequestOriginPolicy;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -15,21 +13,17 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import java.time.Clock;
-import static org.mockito.Mockito.mock;
 
-/** HTTP slices retain real ingress/MFA/budget filters; only the unrelated policy persistence is mocked. */
+/** HTTP slices retain real ingress/budget filters. */
 @TestConfiguration(proxyBeanMethods = false)
 @Import({DeploymentProperties.class, LocalNetworkAccessPolicy.class, TrustedRequestOriginPolicy.class,
-        RemoteAccessPolicy.class, RemoteMfaGuardFilter.class, RemoteRequestBudgetFilter.class})
+        RemoteAccessPolicy.class, RemoteRequestBudgetFilter.class})
 public class RemoteIngressSecurityTestConfiguration {
     @Bean @ConditionalOnMissingBean(Clock.class)
     Clock remoteIngressTestClock() { return Clock.systemUTC(); }
 
     @Bean @ConditionalOnMissingBean(MeterRegistry.class)
     MeterRegistry remoteIngressTestMetrics() { return new SimpleMeterRegistry(); }
-
-    @Bean @ConditionalOnMissingBean(RemoteAccessSettingsService.class)
-    RemoteAccessSettingsService remoteIngressTestSettings() { return mock(RemoteAccessSettingsService.class); }
 
     /** Boot 4 的切片不再提供 databind-2 ObjectMapper（自动配置只给 Jackson 3），
      *  而被 @Import 进来的安全过滤器（ImpersonationWriteGuardFilter 等）构造器要它。 */

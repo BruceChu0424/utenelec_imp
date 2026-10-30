@@ -177,20 +177,13 @@ namespace Uten.Legacy.Desktop
             SetBusy(true); ShowLoginStatus("正在登录…", false);
             try
             {
-                await session.LoginAsync(account, password, OtpPanel.Visibility == Visibility.Visible ? OtpBox.Text.Trim() : null, lifetime.Token);
-                PasswordBox.Clear(); OtpBox.Clear();
+                await session.LoginAsync(account, password, lifetime.Token);
+                PasswordBox.Clear();
                 ShowLoginStatus(null, false);
                 ApplySession();
             }
             catch (OperationCanceledException) { }
-            catch (ApiException error)
-            {
-                if (error.Code == "MFA_REQUIRED" || error.Code == "MFA_INVALID")
-                {
-                    OtpPanel.Visibility = Visibility.Visible; OtpBox.Clear(); OtpBox.Focus();
-                }
-                ShowLoginStatus(error.UserMessage, true);
-            }
+            catch (ApiException error) { ShowLoginStatus(error.UserMessage, true); }
             catch (Exception) { ShowLoginStatus("暂时无法完成登录，请检查公司服务器连接后重试。", true); }
             finally { password = null; if (!closing) SetBusy(false); }
         }
@@ -224,7 +217,7 @@ namespace Uten.Legacy.Desktop
             catch (Exception) { ShowLoginStatus("已退出本机登录，服务器退出状态将在恢复连接后核对。", true); }
             finally
             {
-                PasswordBox.Clear(); OldPasswordBox.Clear(); NewPasswordBox.Clear(); ConfirmPasswordBox.Clear(); OtpBox.Clear();
+                PasswordBox.Clear(); OldPasswordBox.Clear(); NewPasswordBox.Clear(); ConfirmPasswordBox.Clear();
                 if (!closing) { ApplySession(); SetBusy(false); }
             }
         }
@@ -232,7 +225,7 @@ namespace Uten.Legacy.Desktop
         private void OnEndpointChanged(object sender, SelectionChangedEventArgs e)
         {
             if (initializing || busy || EndpointBox.SelectedValue == null) return;
-            try { session.SelectEndpoint(EndpointBox.SelectedValue.ToString()); PasswordBox.Clear(); ClearChallenge(); }
+            try { session.SelectEndpoint(EndpointBox.SelectedValue.ToString()); PasswordBox.Clear(); ShowLoginStatus(null, false); }
             catch (Exception)
             {
                 // A failed durable logout must not leave the selector naming a
@@ -240,13 +233,12 @@ namespace Uten.Legacy.Desktop
                 initializing = true;
                 try { EndpointBox.SelectedValue = session.CurrentEndpoint?.Id; }
                 finally { initializing = false; }
-                PasswordBox.Clear(); ClearChallenge();
+                PasswordBox.Clear(); ShowLoginStatus(null, false);
                 ShowLoginStatus("服务器切换未完成，仍使用原服务器。请联系管理员核对本机会话存储。", true);
             }
         }
 
-        private void OnAccountChanged(object sender, TextChangedEventArgs e) { if (!initializing) ClearChallenge(); }
-        private void ClearChallenge() { OtpPanel.Visibility = Visibility.Collapsed; OtpBox.Clear(); ShowLoginStatus(null, false); }
+        private void OnAccountChanged(object sender, TextChangedEventArgs e) { if (!initializing) ShowLoginStatus(null, false); }
         private void SetBusy(bool value)
         {
             busy = value;

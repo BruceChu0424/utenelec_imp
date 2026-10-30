@@ -108,7 +108,7 @@ public class AdminUserController {
 
     /** 设置/取消云端(外网)访问授权（仅超管）。变更即时失效旧 token（触发器 bump auth_version）。 */
     @PutMapping("/users/{id}/remote-access")
-    @RequiresStepUp
+    @StepUpExempt("2026-10-29 外网登录简化 (ADR-183 修订): 授权开关即点即生效, 不再要求再输登录密码")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public void setRemoteAccess(@PathVariable UUID id, @Valid @RequestBody RemoteAccessBody req) {
         userAccountAdmin.setRemoteAccess(id, req.remoteAccess());

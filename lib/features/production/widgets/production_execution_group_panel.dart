@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import 'package:go_router/go_router.dart';
+
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_execution_workbench.dart';
@@ -323,44 +325,55 @@ class _ProductionExecutionGroupPanelState
       ),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-    // 同名不同色、同名不同编号的分析批次光看名称分不开。**注意**：这三条
-    // preview 各自是本组「前三项聚合」，列与列之间**不是逐项对齐**的——
-    // 编号列第 2 个不一定对应名称列第 2 个（列头 ⓘ 已写明），别据此配对。
+    // 同名不同色、同名不同编号的分析批次光看名称分不开。**注意**：三列各自
+    // 独立聚合、**不是逐项对齐**的——编号列第 2 个不一定对应名称列第 2 个
+    // （列头 ⓘ 已写明），别据此配对。
+    // 2026-10-29 用户口径（全站多值格统一，同仓库任务中心「生产工单」列）：
+    // 格内只显示首个 +「等 N 个」，点击单元格弹出全部（V969 服务端随行下发
+    // 全量）；名称/货品编码弹窗可按条打开货品详情；双击行仍打开批次详情。
     MasterColumnDef(
       key: 'productName',
       label: '产品名称',
       width: 200,
-      info: '本组前几个产品的名称汇总；与右侧编号/颜色列各自独立聚合，不逐项对应。',
-      // 2026-09-29 用户口径：名称行只放名称；聚合截断时的「共 N 项」从名称
-      // 文本里拆出来，改挂身份格后缀标签（不占副行、不混进名称文字）。
-      value: (row) => _blankToNull(row.productNamePreview) ?? '—',
-      cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => UtenGoodsIdentityCell(
-        name: _blankToNull(row.productNamePreview),
-        trailing: row.productHasMore
-            ? _GroupCountTag(count: row.productCount)
-            : null,
+      info:
+          '本组全部产品的名称；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情，双击行打开批次详情。与右侧编号/颜色列各自独立聚合，不逐项对应。',
+      value: (row) =>
+          _productNames(row).isEmpty ? '—' : _productNames(row).join('、'),
+      cellBuilder: (context, row) => UtenMultiValueCell(
+        values: _productNames(row),
+        title: '产品名称',
+        enabled: !_opening,
+        detailAvailableOf: (name) => _goodsIdOf(row, name: name) != null,
+        onDetail: (name) => _openGoods(context, _goodsIdOf(row, name: name)),
       ),
     ),
     MasterColumnDef(
       key: 'productCode',
-      label: '编号',
+      label: '货品编码',
       width: 130,
-      info: '本组前几个产品的编号汇总，与名称列不逐项对应。',
+      info: '本组全部产品的货品编码；格内显示首个 +「等 N 个」，点击单元格弹出全部并可按条打开货品详情。与名称列不逐项对应。',
       value: (row) =>
-          UtenGoodsAttributeCell.text(_blankToNull(row.productCodePreview)),
-      cellBuilder: (_, row) =>
-          UtenGoodsAttributeCell(_blankToNull(row.productCodePreview)),
+          _productCodes(row).isEmpty ? '—' : _productCodes(row).join('、'),
+      cellBuilder: (context, row) => UtenMultiValueCell(
+        values: _productCodes(row),
+        title: '货品编码',
+        enabled: !_opening,
+        detailAvailableOf: (code) => _goodsIdOf(row, code: code) != null,
+        onDetail: (code) => _openGoods(context, _goodsIdOf(row, code: code)),
+      ),
     ),
     MasterColumnDef(
       key: 'productColor',
       label: '颜色',
       width: 96,
-      info: '本组前几个产品的颜色汇总，与名称列不逐项对应。',
+      info: '本组全部产品的颜色；格内显示首个 +「等 N 个」，点击单元格弹出全部。与名称列不逐项对应。',
       value: (row) =>
-          UtenGoodsAttributeCell.text(_blankToNull(row.productColorPreview)),
-      cellBuilder: (_, row) =>
-          UtenGoodsAttributeCell(_blankToNull(row.productColorPreview)),
+          _productColors(row).isEmpty ? '—' : _productColors(row).join('、'),
+      cellBuilder: (context, row) => UtenMultiValueCell(
+        values: _productColors(row),
+        title: '颜色',
+        enabled: !_opening,
+      ),
     ),
     MasterColumnDef(
       key: 'maker',
@@ -381,15 +394,59 @@ class _ProductionExecutionGroupPanelState
   ];
 }
 
+/// 全量优先（V969），旧载荷/测试夹具回退拆 preview（' / ' 前 3 项）。
+List<String> _splitPreview(String? preview) => [
+  for (final part in (preview ?? '').split(' / '))
+    if (part.trim().isNotEmpty) part.trim(),
+];
+
+List<String> _productNames(ProductionExecutionWorkbenchGroup row) {
+  final names = [
+    for (final entry in row.productEntries)
+      if ((entry['name'] ?? '').trim().isNotEmpty) entry['name']!.trim(),
+  ];
+  return names.isNotEmpty ? names : _splitPreview(row.productNamePreview);
+}
+
+List<String> _productCodes(ProductionExecutionWorkbenchGroup row) {
+  final codes = [
+    for (final entry in row.productEntries)
+      if ((entry['code'] ?? '').trim().isNotEmpty) entry['code']!.trim(),
+  ];
+  return codes.isNotEmpty ? codes : _splitPreview(row.productCodePreview);
+}
+
+List<String> _productColors(ProductionExecutionWorkbenchGroup row) {
+  final colors = [
+    for (final color in row.productColorsAll)
+      if (color.trim().isNotEmpty) color.trim(),
+  ];
+  return colors.isNotEmpty ? colors : _splitPreview(row.productColorPreview);
+}
+
+String? _goodsIdOf(
+  ProductionExecutionWorkbenchGroup row, {
+  String? name,
+  String? code,
+}) {
+  for (final entry in row.productEntries) {
+    if (name != null && entry['name']?.trim() != name) continue;
+    if (code != null && entry['code']?.trim() != code) continue;
+    final id = entry['goodsId']?.trim();
+    if (id != null && id.isNotEmpty) return id;
+  }
+  return null;
+}
+
+void _openGoods(BuildContext context, String? goodsId) {
+  if (goodsId == null) return;
+  context.push(RoutePath.basicinfoGoodsDetail(goodsId));
+}
+
 String _preview(String? value, int count, bool hasMore) {
   final text = value?.trim();
   if (text == null || text.isEmpty) return '—';
   return hasMore ? '$text · 共 $count 项' : text;
-}
-
-String? _blankToNull(String? value) {
-  final text = value?.trim();
-  return text == null || text.isEmpty ? null : text;
 }
 
 /// 分组状态 → 徽章类型（状态列 cellColor 的色源，ADR-169 档位锚定）：
@@ -409,19 +466,3 @@ UtenStatusBadgeType _groupStatusType(String status) => switch (status) {
 
 /// 名称右侧的「共 N 项」后缀标签：聚合预览截断时提示还有更多产品。
 /// 样式与身份格副行同款次要色，但不占副行——名称行内只有名称本身。
-class _GroupCountTag extends StatelessWidget {
-  const _GroupCountTag({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Text(
-      '共 $count 项',
-      style: theme.textTheme.labelSmall?.copyWith(
-        color: theme.colorScheme.onSurfaceVariant,
-      ),
-    );
-  }
-}

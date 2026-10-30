@@ -443,7 +443,6 @@ BEGIN
         -- any committed change event or export identity proves prior use.
         ('read_scope_domains','SEED_OR_ADMIN'),
         ('refresh_tokens','SEED_OR_ADMIN'),
-        ('remote_access_policy','SEED_OR_ADMIN'),
         ('report_export_jobs','EMPTY'),
         ('report_materialized_view_refresh_state','SEED_OR_ADMIN'),
         ('sales_alias_document_evidence','SEED_OR_ADMIN'),
@@ -477,7 +476,6 @@ BEGIN
         ('sales_shipments','EMPTY'),
         ('settlement_methods','SEED_OR_ADMIN'),
         ('sms_gateway_settings','SEED_OR_ADMIN'),
-        ('staff_mfa','SEED_OR_ADMIN'),
         ('stock_balance_adjustment_requests','EMPTY'),
         ('stock_balances','EMPTY'),
         ('stock_count_request_events','EMPTY'),

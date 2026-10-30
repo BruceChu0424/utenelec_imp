@@ -74,6 +74,10 @@ class AuditTriggerCoverageMigrationContractTest {
     record FullGroup(String key, String category, boolean redacted, String reason, Set<String> tables) {
     }
 
+    /** V970 外网登录简化删除的表: 建表迁移里的历史 fn_audit_track_table 登记保留原样,
+     *  三清单不再收录, 活库中也不存在; 只在迁移扫描中放行, 不改变任何现存表的政策。 */
+    static final java.util.Set<String> DROPPED_TRACKED_TABLES = java.util.Set.of("staff_mfa", "remote_access_policy");
+
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                        String reason, String updateFn, String rowFn) {
         ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
@@ -299,10 +303,6 @@ class AuditTriggerCoverageMigrationContractTest {
                     "V930: 原数量/金额/重量快照不可改，但原计量依据的一次真实核验会更新六列，不能归只追加或NONE；"
                             + "实际新capture留最小身份，resolution只留变化；依据引用/说明仅记变化列名，数量金额重量和原文不复制",
                     "public.fn_audit_stock_measurement_hold_columns()", "public.fn_audit_stock_measurement_hold_columns()"),
-            new ScopedTable("staff_mfa", "system", false, List.of("enabled_at"),
-                    "V873: audit enrollment state only; encrypted secrets, pending sessions, counters and INSERT/DELETE snapshots stay out of row audit"),
-            new ScopedTable("remote_access_policy", "system", false, List.of("enabled", "max_users", "version"),
-                    "V874: audit the administrator's global access policy and revision; no INSERT/DELETE snapshots"),
             new ScopedTable("platform_branding", "system", false,
                     List.of("company_name", "company_aliases", "platform_name", "tagline", "primary_color", "secondary_color", "login_notice",
                             "support_phone", "support_email", "website", "logo_sha256", "updated_by"),
@@ -850,6 +850,10 @@ class AuditTriggerCoverageMigrationContractTest {
             }
             Matcher scoped = SCOPED_CALL.matcher(stripSqlComments(migration.sql()));
             while (scoped.find()) {
+                if (DROPPED_TRACKED_TABLES.contains(scoped.group(1))) {
+                    // 历史登记 (V873/V874); 表本体已由 V970 删除, 不进当前三清单。
+                    continue;
+                }
                 ScopedTable expected = scopedTables().get(scoped.group(1));
                 assertTrue(expected != null, scoped.group(1) + " is scoped in "
                         + migration.path().getFileName() + " but not listed");

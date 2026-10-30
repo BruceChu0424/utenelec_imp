@@ -50,7 +50,11 @@ public record ProductionExecutionWorkbenchGroup(
         BigDecimal rootInboundQty,
         Double rootProgressRatio,
         Integer completedProductCount,
-        Integer unfinishedProductCount) {
+        Integer unfinishedProductCount,
+        /** 按货品全量 {goodsId,code,name}（V969）：「产品名称/货品编码」格弹窗列全部并按条跳货品详情。 */
+        java.util.List<java.util.Map<String, String>> productEntries,
+        /** 颜色全量（V969）：「颜色」格弹窗列全部。 */
+        java.util.List<String> productColorsAll) {
 
     /** Compatibility constructor for callers that predate product-level completion facts. */
     public ProductionExecutionWorkbenchGroup(
@@ -104,6 +108,7 @@ public record ProductionExecutionWorkbenchGroup(
                 planCount, segmentCount, waitingCount, readyCount, dispatchedCount, inProgressCount,
                 completedCount, materialReadyCount, warehouseReadyCount, issuedCount, reportableCount,
                 fqcPendingCount, finishedInboundPendingCount, mine, earliestBeginDate, latestEndDate,
-                ownerEmployeeName, analyzedAt, rootPlannedQty, rootInboundQty, rootProgressRatio, null, null);
+                ownerEmployeeName, analyzedAt, rootPlannedQty, rootInboundQty, rootProgressRatio, null, null,
+                null, null);
     }
 }

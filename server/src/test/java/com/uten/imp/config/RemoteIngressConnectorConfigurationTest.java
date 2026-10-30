@@ -97,7 +97,7 @@ class RemoteIngressConnectorConfigurationTest {
     }
 
     @Test
-    void realTomcatDecodedServletAndPathInfoKeepEncodedApiInsideNetworkAndMfaGuards() throws Exception {
+    void realTomcatDecodedServletAndPathInfoKeepEncodedApiInsideNetworkAndRemoteAccessGuard() throws Exception {
         var properties=new DeploymentProperties();properties.setRemoteIngressEnabled(true);
         properties.setLocalAllowedCidrs("127.0.0.1/32,::1/128");
         int remotePort;
@@ -111,10 +111,24 @@ class RemoteIngressConnectorConfigurationTest {
         var audit=org.mockito.Mockito.mock(com.uten.imp.audit.AuditService.class);
         var network=new com.uten.imp.security.LocalNetworkAccessPolicy(properties);
         var origins=new com.uten.imp.security.TrustedRequestOriginPolicy(properties,network);
-        var policy=new com.uten.imp.security.RemoteAccessPolicy(properties,origins,
-                org.mockito.Mockito.mock(com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService.class));
+        var policy=new com.uten.imp.security.RemoteAccessPolicy(properties,origins);
         var localGuard=new com.uten.imp.security.LocalNetworkGuardFilter(mapper,audit,network,origins);
-        var mfaGuard=new com.uten.imp.security.RemoteMfaGuardFilter(mapper,audit,policy,java.time.Clock.systemUTC());
+        var admission=new jakarta.servlet.http.HttpFilter(){
+            @Override protected void doFilter(jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response,
+                                                   jakarta.servlet.FilterChain chain) throws java.io.IOException,jakarta.servlet.ServletException {
+                var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if(authentication!=null && authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser principal) {
+                    try {policy.requireAuthenticatedAccess(principal);}
+                    catch(com.uten.imp.common.web.ApiException denied){
+                        response.setStatus(denied.getCode().getHttpStatus());
+                        response.setContentType("application/json");
+                        response.getWriter().write("{\"code\":\""+denied.getCode().name()+"\"}");
+                        return;
+                    }
+                }
+                chain.doFilter(request,response);
+            }
+        };
         var reached=new java.util.concurrent.atomic.AtomicInteger();
         var server=factory.getWebServer(context->{
             context.addFilter("security-path-proof",new jakarta.servlet.http.HttpFilter(){
@@ -124,10 +138,10 @@ class RemoteIngressConnectorConfigurationTest {
                     response.setHeader("X-Probe-Servlet",request.getServletPath());
                     response.setHeader("X-Probe-Info",request.getPathInfo());
                     var user=new com.uten.imp.security.AuthUser(java.util.UUID.randomUUID(),java.util.UUID.randomUUID(),"office-token",
-                            java.util.Set.of(),false,true,false,true,null,java.util.UUID.randomUUID());
+                            java.util.Set.of(),false,true,false,false,null,java.util.UUID.randomUUID());
                     org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
                             new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,user.getAuthorities()));
-                    try {localGuard.doFilter(request,response,(req,res)->mfaGuard.doFilter(req,res,chain));}
+                    try {localGuard.doFilter(request,response,(req,res)->admission.doFilter(req,res,chain));}
                     finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
                 }
             }).addMappingForUrlPatterns(java.util.EnumSet.of(jakarta.servlet.DispatcherType.REQUEST),false,"/*");
@@ -141,7 +155,7 @@ class RemoteIngressConnectorConfigurationTest {
             for(String path:java.util.List.of("/%61pi/auth/me","/api/%61uth/me")) {
                 var blocked=client.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:"+remotePort+path)).GET().build(),
                         java.net.http.HttpResponse.BodyHandlers.ofString());
-                assertEquals(403,blocked.statusCode());assertTrue(blocked.body().contains("MFA_REQUIRED"));
+                assertEquals(403,blocked.statusCode());assertTrue(blocked.body().contains("REMOTE_ACCESS_DENIED"));
                 assertEquals(path,blocked.headers().firstValue("X-Probe-Raw").orElseThrow());
                 assertEquals("/api",blocked.headers().firstValue("X-Probe-Servlet").orElseThrow());
                 assertEquals("/auth/me",blocked.headers().firstValue("X-Probe-Info").orElseThrow());

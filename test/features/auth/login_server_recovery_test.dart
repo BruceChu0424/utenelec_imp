@@ -19,7 +19,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 const _recoveryAction = '恢复自动选择服务器';
 const _recoveryHint = '登录异常或更换网络时使用；只会在此安装包内置的公司与云端地址之间自动选择。';
 
-typedef _Attempt = ({String account, String password, String? otpCode});
+typedef _Attempt = ({String account, String password});
 
 class _RejectedSession extends SessionNotifier {
   _RejectedSession(this.failure);
@@ -34,10 +34,9 @@ class _RejectedSession extends SessionNotifier {
   Future<void> login({
     required String account,
     required String password,
-    String? otpCode,
     bool Function()? isCurrent,
   }) async {
-    attempts.add((account: account, password: password, otpCode: otpCode));
+    attempts.add((account: account, password: password));
     throw failure;
   }
 }
@@ -98,11 +97,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           expect(session.attempts, [
-            (
-              account: 'desktop-worker',
-              password: ' exact password ',
-              otpCode: null,
-            ),
+            (account: 'desktop-worker', password: ' exact password '),
           ]);
           expect(
             tester.widget<TextField>(_password).controller!.text,
@@ -116,21 +111,19 @@ void main() {
   }
 
   testWidgets(
-    'a server MFA challenge still reveals OTP without restoring server controls',
+    'unauthorized remote access reports the same feedback as an unreachable server',
     (tester) async {
       final session = _RejectedSession(
-        ApiException('MFA_REQUIRED', 'Verification required'),
+        ApiException('REMOTE_ACCESS_DENIED', '该账号未授权外网(云端)访问'),
       );
       await _open(tester, session, size: const Size(1000, 680));
       _expectSimpleLogin();
       await _submit(tester);
 
-      expect(find.byKey(const Key('login-otp')), findsOneWidget);
-      expect(find.byType(TextField), findsNWidgets(3));
-      expect(find.text(_recoveryAction), findsNothing);
-      expect(find.text(_recoveryHint), findsNothing);
+      _expectSimpleLogin();
+      expect(find.text('无法连接服务器，请检查网络连接后重试'), findsOneWidget);
+      expect(find.textContaining('未授权'), findsNothing);
       expect(session.attempts, hasLength(1));
-      expect(session.attempts.single.otpCode, isNull);
       expect(tester.takeException(), isNull);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.windows),
@@ -139,7 +132,6 @@ void main() {
 
 void _expectSimpleLogin() {
   expect(find.byType(TextField), findsNWidgets(2));
-  expect(find.byKey(const Key('login-otp')), findsNothing);
   expect(find.text(_recoveryAction), findsNothing);
   expect(find.text(_recoveryHint), findsNothing);
   expect(find.textContaining('只会在此安装包内置的公司与云端地址之间自动选择'), findsNothing);

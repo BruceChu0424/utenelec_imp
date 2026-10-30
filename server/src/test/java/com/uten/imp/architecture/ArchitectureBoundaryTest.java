@@ -347,7 +347,7 @@ class ArchitectureBoundaryTest {
         Map<String, List<String>> required = Map.of(
                 "features/admin/AdminUserController.java", List.of(
                         "\"/users/{id}/reset-password\"", "\"/users/{id}/super-admin\"",
-                        "\"/users/{id}/remote-access\"", "\"/users/{id}/permission-overrides\"",
+                        "\"/users/{id}/permission-overrides\"",
                         "\"/users/{id}/permission-overrides/grant-all\"",
                         "\"/users/{id}/data-scopes\""),
                 "features/admin/AdminPermissionController.java", List.of(

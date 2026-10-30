@@ -38,6 +38,8 @@ class ProductionExecutionWorkbenchGroup {
     this.productCodePreview,
     this.productNamePreview,
     this.productColorPreview,
+    this.productEntries = const [],
+    this.productColorsAll = const [],
     this.quantitySummary,
     this.earliestBeginDate,
     this.latestEndDate,
@@ -64,6 +66,12 @@ class ProductionExecutionWorkbenchGroup {
   final String? productCodePreview;
   final String? productNamePreview;
   final String? productColorPreview;
+
+  /// 按货品全量 {goodsId, code, name}（V969）：名称/货品编码格弹窗列全部并按条跳货品详情。
+  final List<Map<String, String>> productEntries;
+
+  /// 颜色全量（V969）：颜色格弹窗列全部。
+  final List<String> productColorsAll;
   final int productCount;
   final bool productHasMore;
   final String? quantitySummary;
@@ -149,6 +157,8 @@ class ProductionExecutionWorkbenchGroup {
     productCodePreview: json['productCodePreview'] as String?,
     productNamePreview: json['productNamePreview'] as String?,
     productColorPreview: json['productColorPreview'] as String?,
+    productEntries: _productEntriesOf(json['productEntries']),
+    productColorsAll: _stringsOf(json['productColorsAll']),
     productCount: (json['productCount'] as num?)?.toInt() ?? 0,
     productHasMore: json['productHasMore'] == true,
     quantitySummary: json['quantitySummary'] as String?,
@@ -841,4 +851,26 @@ class ProductionExecutionWorkbenchRelatedDocument {
     status: json['status'] as String?,
     canOpen: json['canOpen'] == true,
   );
+}
+
+/// V969 全量产品载荷解析（供 ProductionExecutionWorkbenchGroup.fromJson）。
+List<Map<String, String>> _productEntriesOf(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final entry in raw)
+      if (entry is Map)
+        <String, String>{
+          for (final field in entry.entries)
+            if (field.value != null)
+              field.key as String: field.value.toString(),
+        },
+  ];
+}
+
+List<String> _stringsOf(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final value in raw)
+      if (value != null) value.toString(),
+  ];
 }

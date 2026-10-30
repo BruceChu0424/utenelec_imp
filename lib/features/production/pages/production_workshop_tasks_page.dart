@@ -3054,8 +3054,13 @@ class _ProductionWorkshopTasksPageState
                           rowsController: _tableRows,
                           expensiveRowMounts: _isPreparing && _canStart,
                           paginationRevision: _items,
+                          // 表头列序按 tableKey 记在每用户偏好里；2026-10-29
+                          // 「工单号/关联订单包住来源计划前移」只改了默认序，
+                          // 老账号保存过的旧列序会一直压住它。尾号 .1→.2
+                          // 一次性重置保存布局，让所有人拿到新默认序（同物料
+                          // 分析 2026-10-09 做法）；固定列/拖拽换位此后照常自存。
                           tableKey:
-                              'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1',
+                              'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.2',
                           columns: _columnsFor(_status!),
                           items: _displayItems,
                           // 车间筛选在表头（生产车间列下拉，与状态值筛选同范式）；
@@ -3550,15 +3555,31 @@ class _ProductionWorkshopTasksPageState
             : _routeOptionMeta[task.startRoute]?.$1 ?? task.startRouteLabel,
         cellBuilder: (_, task) => _nextStepCell(task),
       ),
+    // 2026-10-29 用户口径：两个单号列前移包住「来源计划」——工单号在其左、
+    // 关联订单在其右（此前两列排在产品/数量列之后），先对单号再读来源计划。
+    MasterColumnDef(
+      key: 'segment',
+      sortable: true,
+      label: '工单号',
+      width: 160,
+      value: (task) => task.segmentCode,
+    ),
     // 来源计划（V719）：ANALYSIS 根的 WL 分析编号，与采购/委外「来源计划」同一
-    // 锚点；紧跟「下一步」/「生产路线」之后（2026-09-25 用户口径「显示在下一步的
-    // 后面，不要放在最后面」），历史计划根显示 —。可排序+值筛选（服务端白名单）。
+    // 锚点；保持在「下一步」/「生产路线」之后（2026-09-25 用户口径「显示在下一步
+    // 的后面，不要放在最后面」），历史计划根显示 —。可排序+值筛选（服务端白名单）。
     MasterColumnDef(
       key: 'sourcePlan',
       sortable: true,
       label: '来源计划',
       width: 150,
       value: (task) => task.analysisNo ?? '—',
+    ),
+    MasterColumnDef(
+      key: 'order',
+      sortable: true,
+      label: '关联订单',
+      width: 180,
+      value: (task) => task.salesOrderNos,
     ),
     // 「物料」列（ADR-095，2026-09-20 用户口径「车间内流转的货品数量怎么统计、
     // 显示在哪里」）：逐种事实的一行摘要，单击查看明细并选择可领物料。
@@ -3619,8 +3640,8 @@ class _ProductionWorkshopTasksPageState
           );
         },
       ),
-    // 2026-09-16 用户口径：产品名称 / 编号 / 颜色紧跟「下一步」列——先看清是
-    // 哪个产品，再往右读订单 / 工单 / 车间。三列口径仍按全站统一（各占一列）。
+    // 2026-09-16 用户口径：产品名称 / 编号 / 颜色靠前——先看清是哪个产品，再往右
+    // 读物料事实与产出。三列口径仍按全站统一（各占一列）。
     // 读侧本来就返回 productCode，只是界面一直没用——同名不同编号的产品在
     // 车间任务里分不开，报工会报到别的段上。
     MasterColumnDef(
@@ -3644,7 +3665,7 @@ class _ProductionWorkshopTasksPageState
       cellBuilder: (_, task) => UtenGoodsAttributeCell(task.productColorName),
     ),
     // 2026-09-23 用户口径：产品数量紧跟颜色——看完「哪个产品、什么颜色」就看
-    // 「做多少」，再往右才是订单 / 工单 / 车间。
+    // 「做多少」。
     MasterColumnDef(
       key: 'qty',
       label: '产品数量',
@@ -3704,13 +3725,6 @@ class _ProductionWorkshopTasksPageState
       },
     ),
     MasterColumnDef(
-      key: 'order',
-      sortable: true,
-      label: '关联订单',
-      width: 180,
-      value: (task) => task.salesOrderNos,
-    ),
-    MasterColumnDef(
       key: 'salesRequirements',
       label: AppLocalizations.of(context).productionSalesRequirements,
       width: 190,
@@ -3725,13 +3739,6 @@ class _ProductionWorkshopTasksPageState
       cellBuilder: (_, task) => ProductionSalesRequirementsButton(
         requirements: task.salesRequirements,
       ),
-    ),
-    MasterColumnDef(
-      key: 'segment',
-      sortable: true,
-      label: '工单号',
-      width: 160,
-      value: (task) => task.segmentCode,
     ),
     MasterColumnDef(
       key: 'workshop',

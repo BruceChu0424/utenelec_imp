@@ -247,7 +247,11 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                   // 通知是公司广播型累积数据（无时间窗/上限），客户端按页切片：
                   // 恒只构建当页 ~20 张卡片，避免一次性铺全部致卡顿。
                   // 数据真正海量时改服务端 page/size 真分页。
+                  // 列数由 UtenResponsiveGrid 按容器宽度自适应（1~6 列）；
+                  // 2026-10-29 用户口径：卡片间隙收紧，密一些。
                   items: groups,
+                  spacing: UtenSpacing.s12,
+                  runSpacing: UtenSpacing.s16,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(
                     top: UtenSpacing.s16,

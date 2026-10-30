@@ -24,7 +24,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/desktop_window_host.dart';
 
 const _channel = MethodChannel('com.uten.imp/desktop_window');
-typedef _Attempt = ({String account, String password, String? otpCode});
+typedef _Attempt = ({String account, String password});
 
 class _ChallengeSession extends SessionNotifier {
   final attempts = <_Attempt>[];
@@ -36,14 +36,10 @@ class _ChallengeSession extends SessionNotifier {
   Future<void> login({
     required String account,
     required String password,
-    String? otpCode,
     bool Function()? isCurrent,
   }) async {
-    attempts.add((account: account, password: password, otpCode: otpCode));
-    throw ApiException(
-      otpCode == null ? 'MFA_REQUIRED' : 'MFA_INVALID',
-      '请输入正确的动态验证码',
-    );
+    attempts.add((account: account, password: password));
+    throw ApiException('BAD_CREDENTIALS', '账号或密码错误，请重新输入');
   }
 }
 
@@ -52,10 +48,6 @@ Finder get _account => find.descendant(
   matching: find.byType(TextField),
 );
 Finder get _password => find.byType(TextField).at(1);
-Finder get _otp => find.descendant(
-  of: find.byKey(const Key('login-otp')),
-  matching: find.byType(TextField),
-);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -70,7 +62,7 @@ void main() {
     ]) {
       for (final zoom in [1.0, 1.15, 1.5, 2.0]) {
         testWidgets(
-          '${platform.name} ${size.width.toInt()}x${size.height.toInt()} at ${(zoom * 100).round()}%: MFA remains usable in the login window',
+          '${platform.name} ${size.width.toInt()}x${size.height.toInt()} at ${(zoom * 100).round()}%: a rejected login remains usable in the login window',
           (tester) async {
             tester.view.physicalSize = size;
             tester.view.devicePixelRatio = 1;
@@ -216,31 +208,10 @@ void main() {
             await tester.pumpAndSettle();
 
             expect(session.attempts, [
-              (
-                account: 'desktop-worker',
-                password: ' exact password ',
-                otpCode: null,
-              ),
+              (account: 'desktop-worker', password: ' exact password '),
             ]);
-            expect(_otp, findsOneWidget);
-            await _reveal(tester, _otp);
-            await tester.enterText(_otp, '123456');
-            await _reveal(tester, find.byType(UtenButton));
-            await tester.tap(find.byType(UtenButton));
-            await tester.pumpAndSettle();
-
-            expect(session.attempts.last.otpCode, '123456');
-            expect(
-              tester.widget<TextField>(_otp).controller!.text,
-              isEmpty,
-              reason: 'A rejected challenge clears the one-time code.',
-            );
-            final cancel = find.byKey(const Key('login-cancel-otp'));
-            await _reveal(tester, cancel);
-            await tester.tap(cancel);
-            await tester.pumpAndSettle();
-            expect(_otp, findsNothing);
-            expect(session.attempts, hasLength(2));
+            expect(find.byType(TextField), findsNWidgets(2));
+            expect(find.text('账号或密码错误，请重新输入'), findsOneWidget);
             expect(
               tester.widget<TextField>(_account).controller!.text,
               'desktop-worker',

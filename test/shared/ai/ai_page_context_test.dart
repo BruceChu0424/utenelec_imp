@@ -1022,10 +1022,9 @@ void main() {
         '/admin/ai-settings',
         '/security/blacklist',
         '/settings/device-receipts',
-        '/settings/remote-mfa',
-        '/settings/remote-mfa/setup',
-        '/SETTINGS/REMOTE-MFA',
-        '//Settings//Remote-Mfa/setup/',
+        '/settings/device-receipts/setup',
+        '/SETTINGS/DEVICE-RECEIPTS',
+        '//Settings//Device-Receipts/setup/',
         // A3 red team: letter case and doubled slashes are the same page.
         '/ADMIN/system-settings',
         '/Admin/ai-settings',
@@ -1038,7 +1037,7 @@ void main() {
       for (final route in [
         '/payroll/review',
         '/settings',
-        '/settings/remote-mfa-help',
+        '/settings/device-receipts-help',
         '/administration-notes',
         '/warehouse/stock',
       ]) {

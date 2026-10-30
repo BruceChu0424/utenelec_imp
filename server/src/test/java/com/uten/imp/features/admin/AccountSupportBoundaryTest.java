@@ -688,7 +688,6 @@ class AccountSupportBoundaryTest {
                 sessions,
                 settings,
                 accountNotice,
-                mock(com.uten.imp.features.admin.remoteaccess.RemoteAccessSettingsService.class),
                 mock(AccountLifecycleCoordinator.class));
     }
 

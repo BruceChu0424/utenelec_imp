@@ -6,7 +6,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -36,10 +35,8 @@ public class AuthUser implements UserDetails {
     private final boolean accountNonLocked;
     private final boolean superAdmin;       // 超级管理员标记
     private final UUID impersonatedBy;      // 非 null = 当前为「模拟身份」会话，值为真实操作人（admin）的 userId
-    private final boolean remoteAccess;     // 是否允许云端(外网)访问；云端实例(uten.deployment.site=cloud)门禁依据
+    private final boolean remoteAccess;     // 是否允许云端(外网)访问；远程入口门禁依据 (users.remote_access)
     private final UUID sessionId;           // 本次请求所属的服务端会话 (auth_sessions.sid); 再认证凭证绑定到它
-    private final Instant mfaVerifiedAt;
-    private final boolean remotePolicyEnabled;
 
     /** 员工构造（含 superAdmin 标记）。 */
     public AuthUser(UUID id, UUID employeeId, String loginAccount,
@@ -66,25 +63,14 @@ public class AuthUser implements UserDetails {
                     boolean superAdmin, boolean remoteAccess, UUID impersonatedBy, UUID sessionId) {
         this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
                 permissions, mustChangePassword, accountNonLocked, superAdmin, remoteAccess,
-                impersonatedBy, sessionId, null, true);
-    }
-
-    /** Production authentication includes the server-side MFA proof and current global remote policy. */
-    public AuthUser(UUID id, UUID employeeId, String loginAccount, Set<String> permissions,
-                    boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin,
-                    boolean remoteAccess, UUID impersonatedBy, UUID sessionId,
-                    Instant mfaVerifiedAt, boolean remotePolicyEnabled) {
-        this(id, SubjectType.STAFF, employeeId, null, loginAccount, null,
-                permissions, mustChangePassword, accountNonLocked, superAdmin, remoteAccess,
-                impersonatedBy, sessionId, mfaVerifiedAt, remotePolicyEnabled);
+                impersonatedBy, sessionId);
     }
 
     private AuthUser(UUID id, SubjectType subjectType, UUID employeeId, UUID visitorId,
                      String loginAccount, String visitorNo,
                      Set<String> permissions,
                      boolean mustChangePassword, boolean accountNonLocked, boolean superAdmin,
-                     boolean remoteAccess, UUID impersonatedBy, UUID sessionId,
-                     Instant mfaVerifiedAt, boolean remotePolicyEnabled) {
+                     boolean remoteAccess, UUID impersonatedBy, UUID sessionId) {
         this.id = id;
         this.subjectType = subjectType;
         this.employeeId = employeeId;
@@ -98,8 +84,6 @@ public class AuthUser implements UserDetails {
         this.remoteAccess = remoteAccess;
         this.impersonatedBy = impersonatedBy;
         this.sessionId = sessionId;
-        this.mfaVerifiedAt = mfaVerifiedAt;
-        this.remotePolicyEnabled = remotePolicyEnabled;
     }
 
     /** 访客主体工厂。 */
@@ -110,7 +94,7 @@ public class AuthUser implements UserDetails {
     public static AuthUser visitor(UUID visitorId, String visitorAccount, String visitorNo,
                                    Set<String> permissions, UUID sessionId) {
         return new AuthUser(visitorId, SubjectType.VISITOR, null, visitorId, visitorAccount, visitorNo,
-                permissions, false, true, false, false, null, sessionId, null, true);
+                permissions, false, true, false, false, null, sessionId);
     }
 
     public boolean isVisitor() {

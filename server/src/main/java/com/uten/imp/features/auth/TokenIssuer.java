@@ -175,25 +175,10 @@ public class TokenIssuer {
         return responseFactory.profile(user);
     }
 
-    /** Issue a fresh token pair after login or password change. */
-    public TokenResponse issueTokens(UserAccount user) {
-        return issueTokens(user, null, null);
-    }
-
     /** 登录入口: 带客户端自报的设备名开会话 (单设备顶号提示用)。 */
     public TokenResponse issueTokens(UserAccount user, String deviceInfo) {
-        return issueTokens(user, null, deviceInfo);
-    }
-
-    /** RemoteMfaService has already verified the factor in this transaction. */
-    public TokenResponse issueTokensWithMfa(UserAccount user, String deviceInfo) {
-        return issueTokens(user, sessions.now(), deviceInfo);
-    }
-
-    private TokenResponse issueTokens(UserAccount user, java.time.Instant mfaVerifiedAt, String deviceInfo) {
         RefreshTokenService.IssuedRefreshToken refresh =
                 refreshTokenService.issueNewSession(user.getId(), deviceInfo);
-        if (mfaVerifiedAt != null) sessions.markMfaVerified(refresh.sessionId(), user.getId(), mfaVerifiedAt);
         AuditRequestContext.bindCurrentSessionId(refresh.sessionId());
         return responseFactory.build(
                 user, refresh.rawToken(), refresh.sessionId());
@@ -201,13 +186,7 @@ public class TokenIssuer {
 
     /** Starts the replacement session after a successful password change. */
     public TokenResponse issueTokensAfterPasswordChange(UserAccount user) {
-        var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        java.time.Instant previousMfa = authentication != null
-                && authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser principal
-                && user.getId().equals(principal.getId()) && principal.getImpersonatedBy() == null
-                ? sessions.mfaAfterPasswordChange(principal.getSessionId(), user.getId()) : null;
-        // A password change preserves only the unexpired remainder, never grants another eight hours.
-        TokenResponse response = issueTokens(user, previousMfa, null);
+        TokenResponse response = issueTokens(user, null);
         UUID sessionId = AuditRequestContext.currentSessionId();
         audit.logCommitted(
                 user.getId(),

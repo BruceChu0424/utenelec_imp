@@ -10,7 +10,6 @@
 // - 保留淡入 + 上滑进场动画；认证逻辑 / 校验器 / Provider 不变
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -38,7 +37,6 @@ import '../../../shared/providers/shared_providers.dart';
 import '../../../shared/repositories/account_history_store.dart';
 import '../widgets/account_field.dart';
 import '../widgets/desktop_login_layout.dart';
-import '../remote_access_text.dart';
 import '../../../core/l10n/disaster_recovery_text.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -59,19 +57,14 @@ class _LoginPageState extends ConsumerState<LoginPage>
   final _formKey = GlobalKey<FormState>();
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _otpController = TextEditingController();
-  bool _requiresOtp = false;
   String _lastAccount = '';
-  int _loginContextEpoch = 0;
   int _accountInputEpoch = 0;
   bool _isLoading = false;
   String? _errorMessage;
 
   WebUpdateSafetyState _updateSafety() => WebUpdateSafetyState(
-    dirty:
-        _passwordController.text.isNotEmpty || _otpController.text.isNotEmpty,
+    dirty: _passwordController.text.isNotEmpty,
     busy: _isLoading,
-    blocked: _requiresOtp,
   );
 
   @override
@@ -83,11 +76,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       _updateSafety,
     );
     _passwordController.addListener(webUpdateSafety.changed);
-    _otpController.addListener(webUpdateSafety.changed);
-    _accountController.addListener(_clearOtpForAccountChange);
-    ref.listenManual(apiBaseUrlProvider, (previous, next) {
-      if (previous != next) _resetOtpChallenge();
-    });
+    _accountController.addListener(_handleAccountInput);
     _controller = AnimationController(vsync: this, duration: UtenAnim.slow);
     _fadeAnimation = CurvedAnimation(
       parent: _controller,
@@ -104,31 +93,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
   void dispose() {
     FormDraftNavigation.unregisterReloadSafety(this);
     _passwordController.removeListener(webUpdateSafety.changed);
-    _otpController.removeListener(webUpdateSafety.changed);
     _controller.dispose();
     _accountController.dispose();
     _passwordController.dispose();
-    _otpController.dispose();
     super.dispose();
   }
 
-  void _clearOtpForAccountChange() {
+  void _handleAccountInput() {
     final account = _accountController.text.trim();
     if (account == _lastAccount) return;
     _lastAccount = account;
     _accountInputEpoch++;
-    _resetOtpChallenge();
-  }
-
-  void _resetOtpChallenge() {
-    // Challenges belong to one account and connection, including A -> B -> A.
-    _loginContextEpoch++;
-    _otpController.clear();
-    if (!_requiresOtp && _errorMessage == null) return;
-    setState(() {
-      _requiresOtp = false;
-      _errorMessage = null;
-    });
   }
 
   Future<void> _handleLogin() async {
@@ -136,7 +111,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
       return;
     }
 
-    var loginContextEpoch = _loginContextEpoch;
     final accountInputEpoch = _accountInputEpoch;
     final account = _accountController.text.trim();
     final session = ref.read(sessionProvider.notifier);
@@ -149,7 +123,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
     bool isCurrentLogin() =>
         mounted &&
         accountInputEpoch == _accountInputEpoch &&
-        loginContextEpoch == _loginContextEpoch &&
         identical(preferences, ref.read(sharedPreferencesProvider)) &&
         serverSelectionRevision(preferences) == configurationRevision &&
         identical(ref.read(sessionProvider.notifier), session);
@@ -160,12 +133,11 @@ class _LoginPageState extends ConsumerState<LoginPage>
     webUpdateSafety.changed();
 
     try {
-      // Choose a currently reachable trusted endpoint before capturing the
-      // challenge context or reading OTP. This may itself switch local/cloud.
+      // Choose a currently reachable trusted endpoint before sending
+      // credentials. This may itself switch local/cloud.
       await ref.read(loginServerPreparationProvider)();
       if (!mounted) return;
-      // Flush the derived endpoint and its challenge-reset listener before
-      // capturing the context for the one credential request below.
+      // Flush the derived endpoint before sending the one credential request.
       ref.read(apiBaseUrlProvider);
       if (!mounted ||
           accountInputEpoch != _accountInputEpoch ||
@@ -175,11 +147,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
           serverSelectionRevision(preferences) != configurationRevision) {
         return;
       }
-      loginContextEpoch = _loginContextEpoch;
       await session.login(
         account: account,
         password: _passwordController.text,
-        otpCode: _requiresOtp ? _otpController.text : null,
         isCurrent: isCurrentLogin,
       );
       if (!isCurrentLogin()) return;
@@ -200,19 +170,13 @@ class _LoginPageState extends ConsumerState<LoginPage>
     } on ApiException catch (e) {
       if (isCurrentLogin()) {
         setState(() {
-          _requiresOtp = e.code == 'MFA_REQUIRED' || e.code == 'MFA_INVALID';
-          _errorMessage = e.code == 'MFA_REQUIRED'
-              ? remoteAccessText(context, 'loginOtpRequired')
-              : _loginFailureText(context, e);
-          _otpController.clear();
+          _errorMessage = _loginFailureText(context, e);
         });
       }
     } catch (e) {
       if (isCurrentLogin()) {
         setState(() {
-          _requiresOtp = false;
           _errorMessage = _loginFailureText(context, null);
-          _otpController.clear();
         });
       }
     } finally {
@@ -383,33 +347,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
             autofillHints: const ['password'],
           ),
           // 「记住此设备」开关已移除：安全考虑，每次登录必须输密码（不长期记住设备/免密）。
-          // Only a server challenge may add OTP to the ordinary password form.
-          if (_requiresOtp) ...[
-            const SizedBox(height: UtenSpacing.s16),
-            UtenInput(
-              key: const Key('login-otp'),
-              controller: _otpController,
-              label: remoteAccessText(context, 'otp'),
-              hint: remoteAccessText(context, 'otpHint'),
-              aiSensitive: true,
-              keyboardType: TextInputType.number,
-              enabled: !_isLoading,
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
-              ],
-              autofillHints: const [AutofillHints.oneTimeCode],
-              validator: (value) => RegExp(r'^\d{6}$').hasMatch(value ?? '')
-                  ? null
-                  : remoteAccessText(context, 'otpInvalid'),
-              onFieldSubmitted: (_) => _handleLogin(),
-            ),
-            TextButton(
-              key: const Key('login-cancel-otp'),
-              onPressed: _isLoading ? null : _resetOtpChallenge,
-              child: Text(remoteAccessText(context, 'loginCancelOtp')),
-            ),
-          ],
           // 账号历史单独记忆（AccountField 下拉，只记账号不记密码）。
           if (_errorMessage != null) ...[
             const SizedBox(height: UtenSpacing.s16),
@@ -489,7 +426,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
 String _loginFailureText(BuildContext context, ApiException? error) {
   final language = Localizations.localeOf(context).languageCode;
   final messages = switch (error?.code) {
-    'NETWORK' => (
+    // 未授权外网访问按网络不可达展示：与连不上服务器同一文案，
+    // 不向未授权账号暴露远程入口的存在。
+    'NETWORK' || 'REMOTE_ACCESS_DENIED' => (
       '无法连接服务器，请检查网络连接后重试',
       'Unable to connect to the server. Check your connection and try again.',
       '서버에 연결할 수 없습니다. 네트워크 연결을 확인한 후 다시 시도하세요.',
@@ -511,7 +450,7 @@ String _loginFailureText(BuildContext context, ApiException? error) {
     ),
     _ => null,
   };
-  if (messages == null) return remoteAccessError(context, error!);
+  if (messages == null) return error!.message;
   return switch (language) {
     'en' => messages.$2,
     'ko' => messages.$3,

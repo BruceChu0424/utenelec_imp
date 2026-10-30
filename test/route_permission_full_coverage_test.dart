@@ -11,9 +11,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
-import 'package:uten_imp/core/router/route_access_policy.dart';
-import 'package:uten_imp/core/router/route_names.dart';
-import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/features/visitor/providers/visitor_session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -23,17 +20,13 @@ import 'package:uten_imp/features/basic_data/widgets/master_record_history_label
 
 /// 桩会话：默认未登录态，不触 secure_storage（测试环境无插件实现）。
 class _StubSessionNotifier extends SessionNotifier {
-  _StubSessionNotifier([this.initial = const SessionState()]);
-  final SessionState initial;
   @override
-  SessionState build() => initial;
+  SessionState build() => const SessionState();
 }
 
 class _StubVisitorSessionNotifier extends VisitorSessionNotifier {
-  _StubVisitorSessionNotifier([this.initial = const VisitorSessionState()]);
-  final VisitorSessionState initial;
   @override
-  VisitorSessionState build() => initial;
+  VisitorSessionState build() => const VisitorSessionState();
 }
 
 /// 不使用业务权限码的路由（权限体系总设计.md §二豁免清单）。
@@ -56,8 +49,6 @@ const _documentedExempt = <String>{
   '/profile/me/changes',
   '/profile/me/department',
   '/settings',
-  // 本人验证器自助入口：员工登录即可；绑定/解除另由服务端 LAN/本人/再认证裁决。
-  '/settings/remote-mfa',
   // 独立草稿页：本人表单草稿（本地+服务端按归属人），无业务权限概念。
   '/form-drafts/*',
   // 访客门户：独立访客会话。
@@ -124,7 +115,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 const _legacyGuardedCount = 204;
-const _expectedExemptCount = 20;
+const _expectedExemptCount = 19;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{
@@ -201,8 +192,6 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // restoring remains an independent server-side action.
   '/basicinfo/history': _masterHistoryViewPermissions,
   '/basicinfo/history/:entityType/:id': _masterHistoryViewPermissions,
-  // Remote policy is a super-admin capability; MFA setup is separately exempt.
-  '/admin/remote-access': [Perm.authorizationManage],
   // V839: the route additionally requires super-admin identity through the
   // shared platform-settings capability policy; its permission grant stays explicit.
   '/admin/platform-settings': [Perm.authorizationManage],
@@ -402,113 +391,6 @@ void main() {
     );
     expect(missing, isEmpty, reason: '新增业务页须沿用所属页面权限面，避免右上角入口静默消失');
   });
-  testWidgets(
-    'remote access routes distinguish employee, visitor and super-admin sessions',
-    (tester) async {
-      late BuildContext host;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) {
-              host = context;
-              return const SizedBox.shrink();
-            },
-          ),
-        ),
-      );
-      for (final user in const [
-        AppUser(id: 'employee', code: 'E1', name: 'Employee'),
-        AppUser(
-          id: 'grant-only',
-          code: 'E2',
-          name: 'Grant only',
-          permissions: [Perm.authorizationManage],
-        ),
-        AppUser(
-          id: 'flag-only',
-          code: 'E3',
-          name: 'Flag only',
-          superAdmin: true,
-        ),
-        AppUser(
-          id: 'super-admin',
-          code: 'E4',
-          name: 'Super administrator',
-          superAdmin: true,
-          permissions: [Perm.authorizationManage],
-        ),
-      ]) {
-        final container = ProviderContainer(
-          overrides: [
-            sessionProvider.overrideWith(
-              () => _StubSessionNotifier(
-                SessionState(status: AuthStatus.authenticated, user: user),
-              ),
-            ),
-            visitorSessionProvider.overrideWith(
-              () => _StubVisitorSessionNotifier(),
-            ),
-          ],
-        );
-        final router = container.read(appRouterProvider);
-        for (final path in [RouteName.remoteMfa, RouteName.adminRemoteAccess]) {
-          final match = router.configuration.findMatch(Uri.parse(path));
-          expect(match.isError, isFalse, reason: path);
-          expect(
-            match.last.route.name,
-            path == RouteName.remoteMfa ? 'remote-mfa' : 'admin-remote-access',
-          );
-          final allowed =
-              path == RouteName.remoteMfa ||
-              (user.superAdmin &&
-                  user.permissions.contains(Perm.authorizationManage));
-          expect(
-            employeePermissionRedirect(user, path),
-            allowed ? null : RouteName.accessDenied,
-            reason: '${user.id}: $path',
-          );
-          expect(
-            await router.configuration.topRedirect(
-              host,
-              router.configuration.buildTopLevelGoRouterState(match),
-            ),
-            allowed ? null : RouteName.accessDenied,
-            reason: '${user.id}: $path actual redirect',
-          );
-        }
-        container.dispose();
-      }
-      for (final visitorStatus in VisitorAuthStatus.values) {
-        final container = ProviderContainer(
-          overrides: [
-            sessionProvider.overrideWith(() => _StubSessionNotifier()),
-            visitorSessionProvider.overrideWith(
-              () => _StubVisitorSessionNotifier(
-                VisitorSessionState(status: visitorStatus),
-              ),
-            ),
-          ],
-        );
-        final router = container.read(appRouterProvider);
-        for (final path in [RouteName.remoteMfa, RouteName.adminRemoteAccess]) {
-          final match = router.configuration.findMatch(Uri.parse(path));
-          final redirect = await router.configuration.topRedirect(
-            host,
-            router.configuration.buildTopLevelGoRouterState(match),
-          );
-          expect(
-            Uri.parse(redirect!).path,
-            RouteName.login,
-            reason: '$visitorStatus cannot enter $path as an employee',
-          );
-          expect(Uri.parse(redirect).queryParameters['returnTo'], path);
-        }
-        container.dispose();
-      }
-      expect(requiredAnyPermFor(RouteName.remoteMfa), isNull);
-      expect(requiredAllPermsFor(RouteName.remoteMfa), isEmpty);
-    },
-  );
   test(
     'every registered route is guarded or on the documented exempt list',
     () {

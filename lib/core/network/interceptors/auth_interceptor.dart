@@ -418,21 +418,6 @@ class AuthInterceptor extends Interceptor {
       );
       return;
     }
-    // The access token has already been rejected with 401. A remote MFA
-    // refusal of refresh now requires password + OTP login: /mfa/verify cannot
-    // authenticate using that rejected access token. Do not apply this rule to
-    // proactive refresh failures while the access token can still be valid.
-    final refreshError = refreshResult.error;
-    final refreshBody = refreshError?.response?.data;
-    final originalBody = err.response?.data;
-    if (originalBody is Map &&
-        originalBody['code'] == 'UNAUTHORIZED' &&
-        refreshError?.response?.statusCode == 403 &&
-        refreshBody is Map &&
-        (refreshBody['code'] == 'MFA_REQUIRED' ||
-            refreshBody['code'] == 'MFA_ENROLLMENT_REQUIRED')) {
-      await _rejectAndExpireIfCurrent(current, requestLineage, refreshError);
-    }
     handler.next(refreshResult.error ?? err);
   }
 

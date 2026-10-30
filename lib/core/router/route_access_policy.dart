@@ -25,7 +25,6 @@ String? employeePermissionRedirect(AppUser? user, String location) {
 
   if (const {
         RouteName.adminPlatformSettings,
-        RouteName.adminRemoteAccess,
         RouteName.adminSmsSettings,
       }.contains(hubCardPath(location)) &&
       !platformSettingsAllowedFor(user.permissions.toSet(), user.superAdmin)) {
@@ -68,7 +67,6 @@ bool locationAllowedFor(
 ) {
   if (const {
     RouteName.adminPlatformSettings,
-    RouteName.adminRemoteAccess,
     RouteName.adminSmsSettings,
   }.contains(hubCardPath(location))) {
     return platformSettingsAllowedFor(permissions, superAdmin);

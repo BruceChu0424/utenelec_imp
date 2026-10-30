@@ -58,7 +58,7 @@ namespace Uten.Legacy.Core.Tests
                 var rawBytes = File.ReadAllBytes(files[0]);
                 True(!Encoding.UTF8.GetString(rawBytes).Contains("尚在编辑"), "disk envelope is DPAPI ciphertext");
                 var plain = Unprotect(files[0], "drafts");
-                foreach (var key in new[] { "password", "accessToken", "refreshToken", "stepUpToken", "otpCode", "deviceName" })
+                foreach (var key in new[] { "password", "accessToken", "refreshToken", "stepUpToken", "deviceName" })
                     True(!plain.Contains("\"" + key + "\""), "business document contains no auth material key " + key);
                 True(!Directory.GetFiles(state.RootDirectory, "*.tmp", SearchOption.AllDirectories).Any(), "no temporary plaintext or orphan output");
                 Equal(0, fixture.Writes, "draft work never invokes business network");

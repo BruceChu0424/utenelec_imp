@@ -44,8 +44,6 @@ public class AuthSessionService {
     public static final String REASON_REFRESH_REUSE = "refresh_reuse";
     public static final String REASON_STEP_UP_LOCKED = "step_up_locked";
     public static final String REASON_LOGIN_ACCOUNT_CHANGED = "login_account_changed";
-    public static final String REASON_MFA_CHANGED = "mfa_changed";
-    public static final Duration MFA_VALIDITY = Duration.ofHours(8);
 
     private final NamedParameterJdbcTemplate jdbc;
     private final SystemSettingsService settings;
@@ -64,12 +62,7 @@ public class AuthSessionService {
     public record OpenedSession(UUID sid, OffsetDateTime absoluteExpiresAt) {}
 
     /** 会话行的判定所需字段。 */
-    public record SessionFacts(Instant lastSeenAt, Instant absoluteExpiresAt, Instant revokedAt,
-                               Instant mfaVerifiedAt) {
-        public SessionFacts(Instant lastSeenAt, Instant absoluteExpiresAt, Instant revokedAt) {
-            this(lastSeenAt, absoluteExpiresAt, revokedAt, null);
-        }
-    }
+    public record SessionFacts(Instant lastSeenAt, Instant absoluteExpiresAt, Instant revokedAt) {}
 
     /** 员工账号状态 + 会话 + 空闲阈值 (同一条 SQL 读出)。 */
     public record StaffState(
@@ -84,7 +77,6 @@ public class AuthSessionService {
             long authorizationEpoch,
             SessionFacts session,
             String idleTimeoutRaw,
-            boolean remotePolicyEnabled,
             String employeeStatus,
             boolean employeeDeleted,
             Instant tempPasswordExpiresAt) {}
@@ -172,12 +164,10 @@ public class AuthSessionService {
                        u.temp_password_expires_at,
                        a.epoch AS authorization_epoch,
                        sess.sid AS session_sid, sess.last_seen_at, sess.absolute_expires_at, sess.revoked_at,
-                       sess.mfa_verified_at, rap.enabled AS remote_policy_enabled,
                        (SELECT value FROM system_settings WHERE key = :idleKey) AS idle_timeout
                 FROM users u
                 LEFT JOIN employees employee ON employee.id=u.employee_id
                 CROSS JOIN authorization_state a
-                CROSS JOIN remote_access_policy rap
                 LEFT JOIN auth_sessions sess
                        ON sess.sid = :sid AND sess.user_id = :owner
                       AND (:owner = :id OR EXISTS(
@@ -190,7 +180,6 @@ public class AuthSessionService {
                               AND owner_employee.status IN (:currentEmployeeStatuses)))
                 WHERE u.id = :id
                   AND a.singleton_id = 1
-                  AND rap.singleton_id = 1
                 """,
                 new MapSqlParameterSource()
                         .addValue("id", userId)
@@ -209,7 +198,7 @@ public class AuthSessionService {
                         rs.getLong("auth_version"),
                         rs.getLong("authorization_epoch"),
                         sessionFacts(rs),
-                        rs.getString("idle_timeout"), rs.getBoolean("remote_policy_enabled"),
+                        rs.getString("idle_timeout"),
                         rs.getString("employee_status"), rs.getBoolean("employee_deleted"),
                         instant(rs.getObject("temp_password_expires_at", OffsetDateTime.class))));
         return rows.stream().findFirst();
@@ -220,7 +209,6 @@ public class AuthSessionService {
         List<VisitorState> rows = jdbc.query("""
                 SELECT v.status,
                        sess.sid AS session_sid, sess.last_seen_at, sess.absolute_expires_at, sess.revoked_at,
-                       sess.mfa_verified_at,
                        (SELECT value FROM system_settings WHERE key = :idleKey) AS idle_timeout
                 FROM visitor_accounts v
                 LEFT JOIN auth_sessions sess
@@ -274,8 +262,8 @@ public class AuthSessionService {
                         evaluate(new SessionFacts(
                                 instant(rs.getObject("last_seen_at", OffsetDateTime.class)),
                                 instant(rs.getObject("absolute_expires_at", OffsetDateTime.class)),
-                                instant(rs.getObject("revoked_at", OffsetDateTime.class)),
-                                null), idleTimeoutMinutes(), now()),
+                                instant(rs.getObject("revoked_at", OffsetDateTime.class))),
+                        idleTimeoutMinutes(), now()),
                         rs.getString("revoked_reason"),
                         rs.getString("replaced_by_device")));
         // 只判定不写: 非 ACTIVE 时调用方抛 401, 刷新事务整体回滚, 在这里落吊销原因也会被一并撤销。
@@ -299,56 +287,6 @@ public class AuthSessionService {
             return Verdict.IDLE_EXPIRED;
         }
         return Verdict.ACTIVE;
-    }
-
-    /** Proof is never supplied by a JWT claim or client header. It lives on the server-side session. */
-    public static boolean isMfaVerified(Instant verifiedAt, Instant now) {
-        return verifiedAt != null && !verifiedAt.isAfter(now) && verifiedAt.plus(MFA_VALIDITY).isAfter(now);
-    }
-
-    public Instant markMfaVerified(UUID sid, UUID userId, Instant verifiedAt) {
-        if (!isMfaVerified(verifiedAt, now())) {
-            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.MFA_REQUIRED);
-        }
-        List<OffsetDateTime> expiry = jdbc.query("""
-                UPDATE auth_sessions SET mfa_verified_at=:verified
-                WHERE sid=:sid AND user_id=:userId AND revoked_at IS NULL AND absolute_expires_at>:now
-                RETURNING LEAST(absolute_expires_at,:expires) AS verified_until
-                """, new MapSqlParameterSource().addValue("sid", sid).addValue("userId", userId)
-                        .addValue("verified", ts(verifiedAt)).addValue("now", ts(now()))
-                        .addValue("expires", ts(verifiedAt.plus(MFA_VALIDITY))),
-                (rs, n) -> rs.getObject("verified_until", OffsetDateTime.class));
-        if (expiry.isEmpty()) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.UNAUTHORIZED);
-        return expiry.getFirst().toInstant();
-    }
-
-    /** Only refresh performs this extra read; normal API requests use loadStaff's existing single SQL. */
-    public void requireMfaForRefresh(UUID sid, UUID userId) {
-        List<OffsetDateTime> verified = jdbc.query("""
-                SELECT mfa_verified_at FROM auth_sessions
-                WHERE sid=:sid AND user_id=:userId AND revoked_at IS NULL
-                """, new MapSqlParameterSource().addValue("sid", sid).addValue("userId", userId),
-                (rs, n) -> rs.getObject("mfa_verified_at", OffsetDateTime.class));
-        if (verified.isEmpty() || !isMfaVerified(instant(verified.getFirst()), now())) {
-            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.MFA_REQUIRED);
-        }
-    }
-
-    public void clearMfaForUser(UUID userId) {
-        jdbc.update("UPDATE auth_sessions SET mfa_verified_at=NULL WHERE user_id=:userId",
-                new MapSqlParameterSource("userId", userId));
-    }
-
-    /** Do not resurrect proof from a stale in-memory principal after a concurrent factor reset. */
-    public Instant mfaAfterPasswordChange(UUID sid, UUID userId) {
-        List<OffsetDateTime> rows = jdbc.query("""
-                SELECT sess.mfa_verified_at FROM auth_sessions sess
-                JOIN staff_mfa factor ON factor.user_id=sess.user_id AND factor.enabled_at IS NOT NULL
-                WHERE sess.sid=:sid AND sess.user_id=:userId AND sess.revoked_reason='password_changed'
-                """, new MapSqlParameterSource().addValue("sid", sid).addValue("userId", userId),
-                (rs, n) -> rs.getObject("mfa_verified_at", OffsetDateTime.class));
-        Instant verified = rows.isEmpty() ? null : instant(rows.getFirst());
-        return isMfaVerified(verified, now()) ? verified : null;
     }
 
     /** 同一条 SQL 读出的空闲阈值原值按登记范围解析 (缺失或越界按默认值)。 */
@@ -483,8 +421,7 @@ public class AuthSessionService {
         return new SessionFacts(
                 instant(rs.getObject("last_seen_at", OffsetDateTime.class)),
                 instant(rs.getObject("absolute_expires_at", OffsetDateTime.class)),
-                instant(rs.getObject("revoked_at", OffsetDateTime.class)),
-                instant(rs.getObject("mfa_verified_at", OffsetDateTime.class)));
+                instant(rs.getObject("revoked_at", OffsetDateTime.class)));
     }
 
     private static Instant instant(OffsetDateTime value) {

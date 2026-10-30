@@ -16,7 +16,6 @@
               <TextBlock Text="服务器" Margin="0,0,0,6"/><ComboBox x:Name="EndpointBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="OnEndpointChanged" AutomationProperties.Name="服务器"/>
               <TextBlock Text="员工账号" Margin="0,14,0,6"/><TextBox x:Name="AccountBox" TextChanged="OnAccountChanged" MaxLength="128" AutomationProperties.Name="员工账号"/>
               <TextBlock Text="密码" Margin="0,14,0,6"/><PasswordBox x:Name="PasswordBox" MaxLength="256" AutomationProperties.Name="密码"/>
-              <StackPanel x:Name="OtpPanel" Visibility="Collapsed"><TextBlock Text="动态验证码" Margin="0,14,0,6"/><TextBox x:Name="OtpBox" MaxLength="8" AutomationProperties.Name="动态验证码"/></StackPanel>
               <Button x:Name="LoginButton" Content="登录" Style="{StaticResource Uten.PrimaryActionButton}" Margin="0,20,0,0" Click="OnLogin" IsDefault="True"/>
             </StackPanel>
             <StackPanel x:Name="ChangePasswordFields" Visibility="Collapsed">

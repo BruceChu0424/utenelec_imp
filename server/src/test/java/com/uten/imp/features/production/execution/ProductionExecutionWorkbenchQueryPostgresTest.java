@@ -136,7 +136,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     issued_count integer DEFAULT 2, reportable_count integer DEFAULT 2,
                     fqc_pending_count integer DEFAULT 0, finished_inbound_pending_count integer DEFAULT 0,
                     earliest_begin_date date DEFAULT '2026-09-05', latest_end_date date DEFAULT '2026-09-06', owner_employee_name text, analyzed_at timestamp,
-                    root_planned_qty numeric DEFAULT 0, root_inbound_qty numeric DEFAULT 0, root_progress_ratio numeric DEFAULT 0);
+                    root_planned_qty numeric DEFAULT 0, root_inbound_qty numeric DEFAULT 0, root_progress_ratio numeric DEFAULT 0,
+                    -- V969 全量产品/颜色载荷（多值格弹窗数据源；默认空即无弹窗数据）。
+                    product_entries jsonb, product_colors_all text);
                 """);
         jdbc.execute("""
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,

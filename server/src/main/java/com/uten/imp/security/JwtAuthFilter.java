@@ -223,9 +223,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 user.superAdmin(),
                 user.remoteAccess(),
                 impersonatedBy,
-                sessionId,
-                user.session().mfaVerifiedAt(),
-                user.remotePolicyEnabled()));
+                sessionId));
     }
 
     /** Visitors are rejected when their current server-side account or session is not active. */

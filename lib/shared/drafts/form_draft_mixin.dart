@@ -792,11 +792,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       final remoteAdmissionRejected =
           error.hasResponseCode &&
           ((error.httpStatus == 403 &&
-                  const {
-                    'MFA_REQUIRED',
-                    'MFA_RETRY_REQUIRED',
-                    'REMOTE_ACCESS_DENIED',
-                  }.contains(error.code)) ||
+                  const {'REMOTE_ACCESS_DENIED'}.contains(error.code)) ||
               (error.httpStatus == 429 &&
                   error.code == 'REMOTE_CAPACITY_REJECTED'));
       final rejected = remoteAdmissionRejected

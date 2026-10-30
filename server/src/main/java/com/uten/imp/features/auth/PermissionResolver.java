@@ -207,7 +207,13 @@ public class PermissionResolver {
         // Effective-only callers do not need the management-page breakdown.
         // Account/employment eligibility remains the caller's existing gate;
         // super admins default to the whole catalog, with personal revokes
-        // applied the same way since 2026-10-30, hence the shared breakdown.
+        // applied the same way since 2026-10-30 (ADR-196). The lean path
+        // skips the management-only source queries (baseline, department
+        // matrix, secondary departments, templates, employee profile):
+        // for a super admin those codes are all subsumed by the catalog.
+        if (user.isSuperAdmin()) {
+            return superAdminEffectiveOf(user.getId());
+        }
         return breakdownOf(user).effective();
     }
 
@@ -296,7 +302,7 @@ public class PermissionResolver {
 
     /**
      * 计算某用户的有效权限分解。超管的各来源分量照常计算（便于管理端展示），
-     * 但 effective 恒为全量 permissions。
+     * effective 为 ADR-196 口径：全部目录码 − 个人收回 + 超管专属码。
      */
     public PermBreakdown breakdownOf(UserAccount user) {
         return breakdownsOf(user).full();
@@ -417,10 +423,8 @@ public class PermissionResolver {
             // 超管：默认全部目录码(即便将来新增 permission 也按"已有"处理)。
             // 2026-10-30 起个人收回可压过默认；超管专属码只随身份生效，
             // 永不参与减法(即使覆盖表被手工污染)，防止把授权管理本身锁死。
-            Set<String> mirrored = allPermissionCodes();
-            mirrored.removeAll(revokes);
-            mirrored.addAll(permissionRepo.findSuperAdminOnlyCodes());
-            effective = mirrored;
+            // 与 permsOf 的超管精简路径共用 superAdminMirror，两处口径永不分叉。
+            effective = superAdminMirror(revokes);
         }
         return new BaseParts(
                 deptId, deptName, Set.copyOf(deptPerms), Set.copyOf(baseline),
@@ -595,6 +599,33 @@ public class PermissionResolver {
 
     private Set<String> allPermissionCodes() {
         return new HashSet<>(permissionRepo.findAllCodes());
+    }
+
+    /**
+     * ADR-196 超管合成的唯一镜像入口：全部目录码 − 个人收回 + 超管专属码。
+     * baseParts 管理端分解与 {@link #permsOf} 授权热路径共用，防止两处口径分叉。
+     */
+    private Set<String> superAdminMirror(List<String> revokes) {
+        Set<String> mirrored = allPermissionCodes();
+        mirrored.removeAll(revokes);
+        mirrored.addAll(permissionRepo.findSuperAdminOnlyCodes());
+        return mirrored;
+    }
+
+    /**
+     * 超管授权热路径（lean）：只读覆盖表收回行，走 {@link #superAdminMirror}
+     * 再过依赖归一化（与 asBreakdown 同一 usablePermissions 口径，收回 view
+     * 连带剔除依赖它的操作码）。不查全员基础包、部门矩阵、兼职部门、模板与
+     * 员工档案——这些来源的码对超管而言全部被目录码包含，查了也只是被镜像整组替换。
+     */
+    private Set<String> superAdminEffectiveOf(UUID userId) {
+        List<String> revokes = new ArrayList<>();
+        for (Object[] row : overrideRepo.findCodeAndEffectByUserId(userId)) {
+            if ("revoke".equals(row[1])) {
+                revokes.add((String) row[0]);
+            }
+        }
+        return dependencies.usablePermissions(superAdminMirror(revokes));
     }
 
     private record BatchGrantedPermission(UUID userId, String code, String surfaceKey) {}

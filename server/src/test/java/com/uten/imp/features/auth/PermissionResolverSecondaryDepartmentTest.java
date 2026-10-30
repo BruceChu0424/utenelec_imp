@@ -184,11 +184,16 @@ class PermissionResolverSecondaryDepartmentTest {
         when(permissionRepo.findAllCodes()).thenReturn(List.of(PRIMARY_CODE, SECONDARY_CODE));
         var management = resolver.breakdownOf(account);
         assertTrue(management.revokes().contains(SECONDARY_CODE), "管理页仍保留完整个人撤销来源");
+        assertFalse(management.effective().contains(SECONDARY_CODE), "ADR-196：超管个人收回压过全量默认");
         org.mockito.Mockito.<Object>clearInvocations(permissionRepo, departmentPermissionRepo,
                 overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
         assertEquals(management.effective(), resolver.permsOf(account));
+        // ADR-196 lean 路径：一次目录查询 + 收回行 + 超管专属码即得授权面；
+        // 部门矩阵/兼职/模板/员工档案/委派对超管结果无贡献，不得触碰。
         verify(permissionRepo).findAllCodes();
+        verify(permissionRepo).findSuperAdminOnlyCodes();
+        verify(overrideRepo).findCodeAndEffectByUserId(userId);
         verifyNoInteractions(departmentPermissionRepo,
-                overrideRepo, employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
+                employeeRepo, secondaryDeptRepo, managerDelegationRepo, userAccountRepo);
     }
 }

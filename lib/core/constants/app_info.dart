@@ -3,7 +3,7 @@ abstract final class AppInfo {
   static const externalName = 'UTEN';
   static const version = String.fromEnvironment(
     'APP_VERSION',
-    defaultValue: '2.5.36',
+    defaultValue: '2.5.37',
   );
   static const buildId = String.fromEnvironment(
     'APP_BUILD_ID',

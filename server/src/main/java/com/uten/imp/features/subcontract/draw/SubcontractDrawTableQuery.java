@@ -8,9 +8,11 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.Query;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Conditions use classified task facts before either count or pagination.
@@ -47,6 +49,15 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
     private static final Map<String, SqlColumnSearch.Field> DATES = Map.of(
             "needDate", SqlColumnSearch.Field.calendarDate("deliver_date"),
             "issuedAt", SqlColumnSearch.Field.instant("NULL::timestamptz"));
+    /** 有序白名单快照: SQL 文本与参数名只从这些常量派生, 顺序与 JVM/调用方无关。 */
+    private static final Map<String, String> EXACT_SORTED = sortedCopy(EXACT);
+    private static final Map<String, String> TEXT_SORTED = sortedCopy(TEXT);
+    private static final Map<String, String> NUMERIC_SORTED = sortedCopy(NUMERIC);
+
+    private static Map<String, String> sortedCopy(Map<String, String> source) {
+        return Collections.unmodifiableMap(new TreeMap<>(source));
+    }
+
     private static final Set<String> SEARCH_FIELDS=java.util.stream.Stream.of(TEXT.keySet(),NUMERIC.keySet(),DATES.keySet())
             .flatMap(Set::stream).collect(java.util.stream.Collectors.toUnmodifiableSet());
     static final String NULL_VALUE = "__null__";
@@ -87,23 +98,26 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
     }
 
     String sql(boolean canViewDifference, String excludedColumn) {
+        // 白名单驱动迭代: 表达式与参数名全部来自静态常量, 用户值只经 :parameter 绑定;
+        // 片段顺序按白名单排序固定(不随请求键序或 JVM 哈希盐变化)。
         StringBuilder sql = new StringBuilder();
-        filters.forEach((key, value) -> {
-            if (key.startsWith("f.")) {
-                String column = key.substring(2);
-                if (column.equals(excludedColumn)) return;
-                sql.append("__null__".equals(value)
-                        ? " AND (" + EXACT.get(column) + ") IS NULL"
-                        : " AND (" + EXACT.get(column) + ") = :draw_exact_" + column);
-                return;
-            }
-            String column = key.substring(7), parameter = "draw_header_" + column;
-            if (column.equals(excludedColumn)) return;
-            if (DATES.containsKey(column)) return;
-            String number = "differenceQty".equals(column) && !canViewDifference ? "NULL::numeric" : NUMERIC.get(column);
-            sql.append(" AND ").append(NUMERIC.containsKey(column)
-                    ? NumericColumnFilter.parse(value).sql(number, parameter)
-                    : TaskKeywordSearch.conditionParameter(parameter, TEXT.get(column)));
+        EXACT_SORTED.forEach((column, expression) -> {
+            String value = filters.get("f." + column);
+            if (value == null || column.equals(excludedColumn)) return;
+            sql.append(NULL_VALUE.equals(value)
+                    ? " AND (" + expression + ") IS NULL"
+                    : " AND (" + expression + ") = :draw_exact_" + column);
+        });
+        NUMERIC_SORTED.forEach((column, expression) -> {
+            String value = filters.get("search." + column);
+            if (value == null || column.equals(excludedColumn)) return;
+            String number = "differenceQty".equals(column) && !canViewDifference ? "NULL::numeric" : expression;
+            sql.append(" AND ").append(NumericColumnFilter.parse(value).sql(number, "draw_header_" + column));
+        });
+        TEXT_SORTED.forEach((column, expression) -> {
+            String value = filters.get("search." + column);
+            if (value == null || column.equals(excludedColumn)) return;
+            sql.append(" AND ").append(TaskKeywordSearch.conditionParameter("draw_header_" + column, expression));
         });
         var dates = dates();
         if (!dates.parameters().isEmpty()) sql.append(" AND (").append(dates.predicate()).append(")");
@@ -111,25 +125,26 @@ record SubcontractDrawTableQuery(String sort, String order, Map<String, String> 
     }
 
     void bind(Query query) {
-        filters.forEach((key, value) -> {
-            if (key.startsWith("f.")) {
-                if (!NULL_VALUE.equals(value)) query.setParameter("draw_exact_" + key.substring(2), value);
-                return;
-            }
-            String column = key.substring(7), parameter = "draw_header_" + column;
-            if (DATES.containsKey(column)) return;
-            if (NUMERIC.containsKey(column)) NumericColumnFilter.parse(value).bind(parameter, query::setParameter);
-            else query.setParameter(parameter, value);
+        EXACT_SORTED.forEach((column, expression) -> {
+            String value = filters.get("f." + column);
+            if (value != null && !NULL_VALUE.equals(value)) query.setParameter("draw_exact_" + column, value);
+        });
+        NUMERIC_SORTED.forEach((column, expression) -> {
+            String value = filters.get("search." + column);
+            if (value != null) NumericColumnFilter.parse(value).bind("draw_header_" + column, query::setParameter);
+        });
+        TEXT_SORTED.forEach((column, expression) -> {
+            String value = filters.get("search." + column);
+            if (value != null) query.setParameter("draw_header_" + column, value);
         });
         dates().bind(query);
     }
 
     private SqlColumnSearch.Criteria dates() {
         Map<String, String> dates = new LinkedHashMap<>();
-        filters.forEach((key, value) -> {
-            if (!key.startsWith("search.")) return;
-            String column = key.substring(7);
-            if (DATES.containsKey(column)) dates.put(column, value);
+        DATES.keySet().stream().sorted().forEach(column -> {
+            String value = filters.get("search." + column);
+            if (value != null) dates.put(column, value);
         });
         return SqlColumnSearch.criteria(dates, DATES, "draw_dates_");
     }

@@ -97,6 +97,7 @@ class AdminUserSupport {
      * {@link #requireAuthorizationTarget}。
      */
     void requireSuperAdminEditableTarget(UserAccount target) {
+        java.util.Objects.requireNonNull(target, "target");
         requireCurrentSuperAdmin();
     }
 

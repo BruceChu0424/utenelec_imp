@@ -874,7 +874,7 @@ class GoodsImportHistoryPostgresTest {
                 .setParameter("code", newCode).getSingleResult());
     }
 
-    @Test void managedCategoryMoveChecksTheRenderedTargetLabelBeforeConfirmationWithoutReservingAnything() throws Exception {
+    @Test void managedCategoryMoveKeepsTheOriginalCodeEvenWhenThePrefixedTargetIsOwnedWithoutReservingAnything() throws Exception {
         UUID targetCategory = UUID.randomUUID(), holderId = UUID.randomUUID();
         long sequence = ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
                 .setParameter("id", existingId).getSingleResult()).longValue();
@@ -903,15 +903,24 @@ class GoodsImportHistoryPostgresTest {
         byte[] file = identityWorkbook(oldCode, existingId.toString());
         var detected = inTx(() -> importer.detect(file, Map.of(), Set.of(),
                 Map.of(2, Map.of("categoryPath", targetName)), GoodsImportMode.UPDATE_ONLY));
-        assertEquals(1, detected.errors().size(), detected.errors().toString());
-        assertEquals("编号", detected.errors().getFirst().column());
-        assertTrue(detected.errors().getFirst().message().contains(targetCode));
-        assertNull(detected.planId());
+        // 2026-10-30 用户口径：仅挪上级不批量改号——前缀没动就不触发子树重排，
+        // 目标前缀下的同序号编号已被他人持有也不再构成导入冲突。
+        assertTrue(detected.errors().isEmpty(), detected.errors().toString());
+        var imported = inTx(() -> {
+            provenance("/api/master/goods/import/commit", "POST");
+            return importer.commit(detected.planId(), file, "managed-category-move.xlsx", Set.of("goods:2"),
+                    Map.of(), Set.of(), Map.of(2, Map.of("categoryPath", targetName)), GoodsImportMode.UPDATE_ONLY);
+        });
+        assertEquals(1, imported.updatedCount());
         assertEquals(oldCode, scalar("SELECT code FROM goods WHERE id=:id", existingId));
+        assertEquals(targetCategory.toString(), scalar("SELECT category_id::text FROM goods WHERE id=:id", existingId));
+        assertEquals(sequence, ((Number) em.createNativeQuery("SELECT code_sequence FROM goods WHERE id=:id")
+                .setParameter("id", existingId).getSingleResult()).longValue());
         assertEquals(beforeCounter, ((Number) em.createNativeQuery("SELECT last_seq FROM category_master_code_sequences WHERE master_type='GOODS'")
                 .getSingleResult()).longValue());
         assertEquals(beforeClaims, ((Number) em.createNativeQuery("SELECT count(*) FROM business_identifier_reservation_members")
                 .getSingleResult()).longValue());
+        assertEquals(newCode, scalar("SELECT code FROM goods WHERE id=:id", holderId));
     }
 
     @Test void pureNumericManagedCategoryMoveKeepsTheLabelAndStableCounter() throws Exception {

@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -93,7 +94,10 @@ def _snapshot_pubspec_lock(repository: Path) -> bytes | None:
 def default_flutter_build(repository: Path, *, version: str, build_number: int,
                           api: str, cloud_api: str, runner=subprocess.run,
                           executable: str = "flutter") -> None:
-    command = [executable, "build", "windows", "--release",
+    # Windows ships flutter as flutter.bat; bare CreateProcess cannot resolve
+    # PATHEXT, so resolve the real path once (no-op on POSIX).
+    resolved = shutil.which(executable) or executable
+    command = [resolved, "build", "windows", "--release",
                f"--build-name={version}", f"--build-number={build_number}",
                f"--dart-define=APP_VERSION={version}",
                f"--dart-define=APP_BUILD_ID={build_number}",

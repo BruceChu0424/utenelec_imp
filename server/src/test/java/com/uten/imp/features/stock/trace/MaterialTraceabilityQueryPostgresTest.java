@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.trace;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.ActiveOperatorPort;
 import com.uten.imp.application.port.MaterialTraceabilityReadPort.Result;
@@ -22,6 +23,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -538,8 +540,22 @@ class MaterialTraceabilityQueryPostgresTest {
             assertThat(source.qty()).isEqualByComparingTo("4");
         });
         String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(result);
-        assertThat(json).doesNotContain("SECRET-MATERIAL", "Forbidden material", "9876", "DRAW-HIDDEN-LINE");
+        // 编号/名称是受控字符串, 子串检查安全; 数量改按「任意字段的完整值」判定——
+        // 响应里大量随机 UUID, 裸子串检查会被 UUID 中恰含 "9876" 的片段误伤(2026-10-30 CI 实发)。
+        assertThat(json).doesNotContain("SECRET-MATERIAL", "Forbidden material", "DRAW-HIDDEN-LINE");
+        var tree = new ObjectMapper().readTree(json);
+        Set<String> scalarValues = new HashSet<>();
+        collectScalarValues(tree, scalarValues);
+        assertThat(scalarValues).as("任何字段都不携带被隐藏行的数量").doesNotContain("9876");
         assertThat(query.trace("GOODS", hiddenMaterial, "usage", null, null, 1, 1).total()).isZero();
+    }
+
+    private static void collectScalarValues(JsonNode node, Set<String> into) {
+        if (node.isValueNode()) {
+            into.add(node.asText());
+        } else {
+            node.forEach(child -> collectScalarValues(child, into));
+        }
     }
 
     @Test void explicitZeroApprovedMaterialUsageRemainsKnownZeroWithoutFabricatingASettlementPosting() {

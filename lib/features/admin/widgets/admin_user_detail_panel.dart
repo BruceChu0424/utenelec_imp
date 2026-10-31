@@ -533,7 +533,9 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   }
 
   bool get _hasAccountSupport =>
-      widget.canManageAuthorization ||
+      widget.canManageAuthorization || _hasAccountSupportPermission;
+
+  bool get _hasAccountSupportPermission =>
       ref.read(currentPermissionsProvider).contains(Perm.accountSupport);
 
   bool _supportTargetAllowed(
@@ -541,8 +543,7 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     bool passwordReset = false,
   }) =>
       _hasAccountSupport &&
-      (!passwordReset ||
-          ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) &&
+      (!passwordReset || _hasAccountSupportPermission) &&
       ref.read(authenticatedScopeProvider)?.userId != widget.user.id &&
       (passwordReset
           ? (widget.user.passwordResetSupportAllowed ??

@@ -381,14 +381,10 @@ abstract class _MaterialAnalysisProductTasksState
     String? currentWarehouseId,
   }) async {
     if (goodsId.isEmpty || _busy) return false;
-    final names = ref.read(masterNameServiceProvider);
-    // 可选性来自完整仓库字典(selectableForNew)；只有名称映射时没有子仓可选。
-    // ensureWarehousesLoaded 自带缓存，重复点不会重复请求。
-    await names.ensureWarehousesLoaded();
+    // 共享面板在当前会话中加载可选性，不依赖页面早先的名称缓存。
     if (!context.mounted || !mounted || _busy) return false;
-    final picked = await showUtenWarehousePickerPanel(
+    final picked = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
       initialWarehouseId: currentWarehouseId,
       title: _l10n.warehouseOwningPickerTitle,
       use: WarehouseUse.goodIn,

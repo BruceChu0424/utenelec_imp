@@ -156,6 +156,11 @@ public class ReportExportService {
             throw new ApiException(ErrorCode.FORBIDDEN);
     }
     public static void authorizeRequest(AuthUser user,ReportExportRequest request) {
+        if (com.uten.imp.application.port.WorkshopTaskExportContract.matches(request.domain(), request.report())) {
+            com.uten.imp.application.port.WorkshopTaskExportContract.authorize(user);
+            com.uten.imp.application.port.WorkshopTaskExportContract.validate(request.parameters(), request.sort(), request.order());
+            return;
+        }
         if("goods_actual_cost".equals(request.domain())) {ActualCostReportExportSource.authorize(user);return;}
         if("audit".equals(request.domain())) {AuditReportExportSource.authorize(user);return;}
         if(Set.of("workbench_purchase", "workbench_subcontract").contains(request.domain())) {WorkbenchReportExportPort.authorize(user,request.domain());return;}
@@ -166,6 +171,7 @@ public class ReportExportService {
     }
     private static String permissionPrefix(String domain) {return "where_used".equals(domain)?"production_where_used":domain+"_report";}
     private static String authorityDomain(ReportExportRequest request) {
+        if (com.uten.imp.application.port.WorkshopTaskExportContract.matches(request.domain(), request.report())) return "native_workshop_tasks";
         return "goods_actual_cost".equals(request.domain())?"master_goods"
                 :"master".equals(request.domain())?MasterReportExportPort.authorityDomain(request.report())
                 :"where_used".equals(request.domain())?"production"

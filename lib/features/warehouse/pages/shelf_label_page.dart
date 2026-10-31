@@ -123,9 +123,8 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
   Future<void> _pickWarehouse() async {
     await _warmWarehouseNames();
     if (!mounted) return;
-    final result = await showUtenWarehousePickerPanel(
+    final result = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
       initialWarehouseId: _warehouseId,
       title: '选择仓库', // TODO(l10n): 补 arb
       includeAll: true,

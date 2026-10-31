@@ -807,9 +807,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   /// 仓库筛选 = 同一侧滑面板的查询口径（includeAll + allowParent）：
   /// 「全部」= 参与核算仓库聚合（_warehouseId=null）；选主仓 = 自身 + 全部子仓聚合。
   Future<void> _pickWarehouse() async {
-    final result = await showUtenWarehousePickerPanel(
+    final result = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
       initialWarehouseId: _warehouseId,
       title: '选择仓库', // TODO(l10n): 补 arb
       includeAll: true,

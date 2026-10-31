@@ -2,6 +2,7 @@ import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../widgets/production_sales_requirements.dart';
 // 我的车间任务（车间视角的执行工单办理台）。
 //
@@ -2931,6 +2932,39 @@ class _ProductionWorkshopTasksPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
+          UtenExportButton(
+            key: const Key('workshop-tasks-export'),
+            endpoint: '/production/reports/export',
+            report: 'workshop-tasks',
+            filename: '我的车间任务',
+            requiredPermission: Perm.productionReportExport,
+            tableKey:
+                'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.2',
+            enabled:
+                _status != null &&
+                !(_isHistory && _historyTime.isNone) &&
+                !_loading &&
+                _error == null &&
+                !_navigating &&
+                _busy == null,
+            queryParams: {
+              'status': ?_status,
+              if (_keyword.trim().isNotEmpty) 'keyword': _keyword,
+              if (_isPreparing && _preparationFilter != null)
+                'preparationFilter': _preparationFilter,
+              if (_isPreparing && _routeFilter != null)
+                'routeFilter': _routeFilter,
+              'workshopDepartmentId': ?_workshopDepartmentId,
+              'analysisNo': ?_analysisNoFilter,
+              'segmentCode': ?_segmentCodeFilter,
+              if (_sortColumn != null) 'sort': _sortColumn,
+              if (_sortColumn != null) 'order': _sortAscending ? 'asc' : 'desc',
+              if (_isHistory && _historyTime.range != null)
+                'dateFrom': ChinaDateTime.formatDate(_historyTime.range!.start),
+              if (_isHistory && _historyTime.range != null)
+                'dateTo': ChinaDateTime.formatDate(_historyTime.range!.end),
+            },
+          ),
           const FormDraftsAppBarButton(
             categoryId: 'workshop-new',
             label: '新建草稿',

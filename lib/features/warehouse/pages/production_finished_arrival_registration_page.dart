@@ -455,9 +455,8 @@ class _ProductionFinishedArrivalRegistrationPageState
   Future<void> _pickWarehouseFor(List<_FinishedLotLine> rows) async {
     final targets = rows.where((row) => !row.locked).toList();
     if (_busy || targets.isEmpty) return;
-    final picked = await showUtenWarehousePickerPanel(
+    final picked = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
       use: WarehouseUse.goodIn,
       initialWarehouseId: targets.first.warehouseId,
       title: targets.length > 1

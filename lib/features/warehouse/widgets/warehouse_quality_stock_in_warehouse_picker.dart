@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import 'warehouse_quality_slice_table.dart';
@@ -19,28 +17,15 @@ Future<WarehousePickerResult?> pickWarehouseQualityStockInWarehouse(
   title: '选择目标叶仓 · ${draft.goodsLabel}',
 );
 
-/// 通用「选一个记账叶仓」入口(确认入库 / 先入库上架共用)：按需加载仓库字典，
-/// 没有可用叶仓时就地提示而不是弹空面板。
+/// 确认入库 / 先入库上架共用当前会话字典面板，统一加载、失败与重试。
 Future<WarehousePickerResult?> pickWarehouseLeafForStockIn(
   BuildContext context,
   WidgetRef ref, {
   String? initialWarehouseId,
   String title = '选择入库仓库',
-}) async {
-  final dictionary = ref.read(masterNameServiceProvider);
-  await dictionary.ensureWarehousesLoaded();
-  if (!context.mounted) return null;
-  final hierarchy = dictionary.warehouseHierarchy;
-  if (WarehouseSelection(
-    hierarchy,
-    use: WarehouseUse.goodIn,
-  ).selectableIds.isEmpty) {
-    context.appWarning('未能取得可用的记账叶仓，请刷新仓库资料后重试');
-    return null;
-  }
-  return showUtenWarehousePickerPanel(
+}) {
+  return showUtenWarehouseDictionaryPickerPanel(
     context,
-    hierarchy: hierarchy,
     initialWarehouseId: initialWarehouseId,
     title: title,
     use: WarehouseUse.goodIn,

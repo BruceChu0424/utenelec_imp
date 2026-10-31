@@ -528,7 +528,7 @@
 
 证据：尚未登记，不得推定通过。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。。
 
 ## W7-BIZ-116
 

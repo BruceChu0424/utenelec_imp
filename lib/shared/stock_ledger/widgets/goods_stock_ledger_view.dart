@@ -281,12 +281,8 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
   }
 
   Future<void> _pickWarehouse() async {
-    final names = ref.read(masterNameServiceProvider);
-    await names.ensureWarehousesLoaded();
-    if (!mounted) return;
-    final result = await showUtenWarehousePickerPanel(
+    final result = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
       initialWarehouseId: _warehouseId,
       title: '选择仓库(含下级)',
       includeAll: true,

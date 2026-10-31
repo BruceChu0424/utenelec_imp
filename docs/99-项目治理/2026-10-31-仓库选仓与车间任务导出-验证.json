@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "checkedAtUtc": "2026-10-31T17:00:53.2752293+00:00",
+  "branch": "uimp/warehouse-picker-workshop-export-20261031",
+  "baseCommit": "6ea02b2929abae18b0dab76e8f3a35bb756b0c18",
+  "status": "verified_local",
+  "companyInspection": {
+    "keeperScopeContainsWarehouse": true,
+    "requiredPermissionSourcesPresent": true,
+    "warehouseCode": "WH000008",
+    "employeeCode": "UT0029",
+    "warehouseEligible": true,
+    "originalScreenshotBrowserSessionReplayed": false,
+    "mode": "read_only",
+    "companyDataWritten": false
+  },
+  "rootCause": "Name service is replaced through the party/read-scope dependency; old pages used its empty warehouse snapshot without loading. Required dictionary failures also degraded into empty selection.",
+  "verification": {
+    "diffCheck": "passed",
+    "webReleaseBuild": {
+      "wasmClaimed": false,
+      "seconds": 272.6,
+      "output": "build/warehouse-picker-workshop-export/web",
+      "status": "passed"
+    },
+    "analyzer": "No issues found",
+    "browserManual": {
+      "steps": [
+        "scope replacement then select package warehouse",
+        "defective warehouse remains unavailable for good-in",
+        "dictionary read failure shows real error",
+        "retry restores warehouse hierarchy",
+        "receipt input 8.5 survives retry"
+      ],
+      "target": "local release fixture using actual shared components",
+      "consoleErrors": 0,
+      "status": "passed"
+    },
+    "postgresWarehouseAndFilterTests": 8,
+    "postgresWorkshopExportEndToEndTests": 1,
+    "overlappingCasesAcrossThoseGroups": 4,
+    "flutterGroups": [
+      169,
+      49,
+      118,
+      4
+    ],
+    "chromeWidgetRunner": {
+      "logs": [
+        "warehouse-picker-chrome-tests.log",
+        "warehouse-picker-chrome-isolated.log"
+      ],
+      "sharedSdkSourceChanged": false,
+      "taskPrivateSdkToolCopyOnly": true,
+      "status": "did_not_enter_suite",
+      "countedAsPassing": false
+    },
+    "backendUnitAndContractTests": 77
+  },
+  "logPaths": [
+    "feature-regression.log",
+    "related-export-quality-tests.log",
+    "related-pickers-final.log",
+    "quality-visual-verification.log",
+    "backend-final-unit.log",
+    "backend-db-regression.log",
+    "backend-workshop-e2e-verified.log",
+    "warehouse-export-analyze-clean.log",
+    "web-release-verification.log",
+    "export-visual-regression.log"
+  ],
+  "sourceFingerprints": [
+    {
+      "sha256": "91b67842207204f0746ee34dd02f76b3394f4f43caad1fc69e2460a4a0add4a3",
+      "path": "lib/features/basic_data/widgets/goods_detail_body.dart"
+    },
+    {
+      "sha256": "f63c84518557975e00320d180e437cfd5700d887c8f60b46ab243268946d61eb",
+      "path": "lib/features/basic_data/widgets/goods_inline_edit.dart"
+    },
+    {
+      "sha256": "0a8ab6b48cb7d7f1eef22a3b88f9f99e7dc82f34462ddea33488ced0267b47d3",
+      "path": "lib/features/production/pages/material_analysis_product_tasks.dart"
+    },
+    {
+      "sha256": "971f9068d199003e5478a642db5669b3652964de9b919564513ffe6636a7d24f",
+      "path": "lib/features/production/pages/production_workshop_tasks_page.dart"
+    },
+    {
+      "sha256": "1b2e1e6a29db05d9bf7ceb7670bca2a0d0de24e8ebb2f83da9b7f4faa4e7efcf",
+      "path": "lib/features/stock/pages/instant_inventory_page.dart"
+    },
+    {
+      "sha256": "b63fc498581bf803c12661cb451c6619f9134fbab8146dc1b6768844071d285d",
+      "path": "lib/features/stock/widgets/defective_move_sheet.dart"
+    },
+    {
+      "sha256": "e948fc5cf1a2efd3db634bd66289d1131bb39e99ca898c3e3ba380401d61ff88",
+      "path": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart"
+    },
+    {
+      "sha256": "226e2b680e281ca6f181f36171ac64d6b42bcf3e5af091b605ac93692f74ef82",
+      "path": "lib/features/warehouse/pages/production_draw_batch_issue_page.dart"
+    },
+    {
+      "sha256": "1120576c504588e346e91c345822a3f0fb6a8482c38782c9e472a315382dbb37",
+      "path": "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart"
+    },
+    {
+      "sha256": "5ff79b8572ae57679d4d60675bedf69da0de5e79b82ada28fbd15d6efacac71c",
+      "path": "lib/features/warehouse/pages/production_material_discovery_page.dart"
+    },
+    {
+      "sha256": "f3e35fde9a8ada310eeb28123af550ff13800c61942c0973ab3492369b6de3f2",
+      "path": "lib/features/warehouse/pages/shelf_label_page.dart"
+    },
+    {
+      "sha256": "d3a7f65730826c93f4be3482ccd5a26c5144ea10054a1769ecb8f4e49c3e5161",
+      "path": "lib/features/warehouse/widgets/warehouse_quality_stock_in_warehouse_picker.dart"
+    },
+    {
+      "sha256": "d1d8bfa661aa5d97875523d21f2e27ed7aa799fd4cf8b1c598a40ce0b5a56ac3",
+      "path": "lib/shared/providers/master_name_provider.dart"
+    },
+    {
+      "sha256": "a47af6ae87f9ea3527859563f867578b32a66ead73ba759d9f6d3802aa8e8f7b",
+      "path": "lib/shared/stock_ledger/goods_stock_ledger_panel.dart"
+    },
+    {
+      "sha256": "6b52435f5269827aa9cca15194964aaf45baa20b154bbe40a0206d41d447ac01",
+      "path": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart"
+    },
+    {
+      "sha256": "528052baed70657d593f7bf77c4d7312eb9a74969872ecaa802c26114f2a1b7f",
+      "path": "lib/shared/widgets/warehouse_picker_panel.dart"
+    },
+    {
+      "sha256": "d709137f39929c564b9ec59122bbadd2d95671b1c76b00b8aeb62dcb8241d8ec",
+      "path": "lib/shared/widgets/warehouse_selection.dart"
+    },
+    {
+      "sha256": "9281d3b2ed317acb29ef967cfadc95faeb6e51f956d73b26b03645faa26c96e9",
+      "path": "server/src/main/java/com/uten/imp/application/port/WorkshopTaskExportContract.java"
+    },
+    {
+      "sha256": "ca26a67a3665220e509179d0c2487d0baa05808750c13916c521a8895051ee8d",
+      "path": "server/src/main/java/com/uten/imp/features/production/execution/ProductionWorkshopTaskExportService.java"
+    },
+    {
+      "sha256": "eb83df784b1551953484f2357c40a279abcd5fdc63396987ecd9b1e77edaa955",
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportController.java"
+    },
+    {
+      "sha256": "7db89c9b8c10f03bc88e324213f403cd19838bee204ba7ec1cecef210e76c1a8",
+      "path": "server/src/main/java/com/uten/imp/features/production/report/ProductionReportService.java"
+    },
+    {
+      "sha256": "f55e96e320a7937e6c1c5dd5cf107d7d6dedd880a3c87a06be74e51528112909",
+      "path": "server/src/main/java/com/uten/imp/features/reporting/export/ReportExportService.java"
+    },
+    {
+      "sha256": "c13dd81de7c17e2c8c3ea15d35aaf9872089b81a5dd29308a2fea2976d36b9ae",
+      "path": "test/features/production/pages/production_workshop_tasks_page_test.dart"
+    },
+    {
+      "sha256": "8010e1127721ef4da7e3341e23b3b4fcfdb6ce5e9ae1d642777fdf08f4e244bb",
+      "path": "test/shared/widgets/warehouse_dictionary_picker_test.dart"
+    }
+  ],
+  "delivery": {
+    "formalWindowsPackagesBuilt": false,
+    "win7EquivalentOrAccepted": false,
+    "pushed": false,
+    "deployed": false
+  }
+}

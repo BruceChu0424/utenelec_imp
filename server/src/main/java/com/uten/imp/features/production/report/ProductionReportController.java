@@ -54,6 +54,8 @@ public class ProductionReportController {
     private final WorkbookDownloadService workbookDownload;
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.security.ReadScopeVersionAuthority> scopeVersions;
 
     // ===== 生产计划（PLAN） =====
 
@@ -175,9 +177,13 @@ public class ProductionReportController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
+        String taskScope = workshopExportScope(report);
         ExportPayload payload = service.export(report, allParams, sort, order);
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "view_production");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
+        if (taskScope != null && !taskScope.equals(workshopExportScope(report)))
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,
+                    "车间任务访问范围已变化，请按当前权限重新导出");
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_production_report", "production_reports",
@@ -188,6 +194,13 @@ public class ProductionReportController {
                 .header("Content-Type",
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .body(downloadBytes);
+    }
+
+    private String workshopExportScope(String report) {
+        if (!com.uten.imp.application.port.WorkshopTaskExportContract.REPORT.equals(report)) return null;
+        var actor = currentUser.get().orElseThrow(() ->
+                new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.UNAUTHORIZED));
+        return scopeVersions.getObject().scopeFor("native_workshop_tasks", actor);
     }
 
     // ===== 生产日报（DAILY · 本期 0 行，结构留位；前端未挂入口） =====

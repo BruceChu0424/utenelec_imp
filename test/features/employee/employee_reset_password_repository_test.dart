@@ -35,6 +35,26 @@ void main() {
     expect(captured.data, isNull);
   });
 
+  test(
+    'manual temporary password is sent verbatim to the same employee endpoint',
+    () async {
+      late RequestOptions captured;
+      const custom = ' 自定A!口令 ';
+      final repository = DioEmployeeRepository(
+        _api((request) {
+          captured = request;
+          return {'temporaryPassword': custom};
+        }),
+      );
+      expect(
+        await repository.resetPassword('emp-7', temporaryPassword: custom),
+        custom,
+      );
+      expect(captured.path, '/org/employees/emp-7/account/reset-password');
+      expect(captured.data, {'temporaryPassword': custom});
+    },
+  );
+
   final invalidResponses = <String, Map<String, dynamic>>{
     '缺少密码': {},
     'null 密码': {'temporaryPassword': null},

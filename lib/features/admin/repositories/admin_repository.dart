@@ -99,9 +99,9 @@ abstract interface class AdminRepository {
   Future<void> enableUser(String userId);
 
   /// 重置后返回仅本次响应可见的临时密码；调用方不得持久化或记录日志。
-  /// 临时密码只由后端随机生成 (20 位高熵)，不接受管理员自定义；强制员工首登改密，
+  /// 缺省由后端生成 20 位随机密码，手动输入按原文提交；强制员工首登改密，
   /// 有效期由系统设置「临时密码有效期」决定 (默认 72 小时)。服务端要求再认证 (ADR-110)。
-  Future<String> resetPassword(String userId);
+  Future<String> resetPassword(String userId, {String? temporaryPassword});
 
   /// 开通账号候选：尚无登录账号的在册员工（姓名/工号/部门 + 资料齐备标记）。
   Future<List<AccountProvisionCandidate>> provisionCandidates({String? search});
@@ -328,11 +328,22 @@ class DioAdminRepository implements AdminRepository {
       api.post(ApiEndpoints.userEnable(userId));
 
   @override
-  Future<String> resetPassword(String userId) async {
-    final json = await api.post(ApiEndpoints.userResetPassword(userId));
+  Future<String> resetPassword(
+    String userId, {
+    String? temporaryPassword,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.userResetPassword(userId),
+      body: temporaryPassword == null
+          ? null
+          : {'temporaryPassword': temporaryPassword},
+    );
     final issued = json['temporaryPassword'];
     if (issued is! String || issued.trim().isEmpty) {
       throw const FormatException('服务器没有返回临时密码，请稍后重试');
+    }
+    if (temporaryPassword != null && issued != temporaryPassword) {
+      throw const FormatException('临时密码结果与本次输入不一致，请核对账号状态');
     }
     return issued;
   }

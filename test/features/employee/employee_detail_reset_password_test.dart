@@ -38,7 +38,7 @@ class _DetailRepository extends Fake implements EmployeeRepository {
   }
 
   @override
-  Future<String> resetPassword(String id) async {
+  Future<String> resetPassword(String id, {String? temporaryPassword}) async {
     resetEmployeeIds.add(id);
     return 'S9!temporary-Only2';
   }

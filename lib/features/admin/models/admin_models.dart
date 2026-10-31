@@ -28,6 +28,7 @@ class AdminUserSummary {
     this.positionName,
     this.tempPasswordExpiresAt,
     this.accountSupportAllowed,
+    this.passwordResetSupportAllowed,
   });
 
   final String id;
@@ -58,6 +59,9 @@ class AdminUserSummary {
 
   /// Server target boundary; absent only when connected to an older deployment.
   final bool? accountSupportAllowed;
+
+  /// Action-specific server capability; other account actions retain their boundary.
+  final bool? passwordResetSupportAllowed;
 
   bool get authorizationGrantAllowed => currentEmployee && status == 'active';
 
@@ -121,6 +125,8 @@ class AdminUserSummary {
         remoteAccess: json['remoteAccess'] as bool? ?? false,
         tempPasswordExpiresAt: json['tempPasswordExpiresAt'] as String?,
         accountSupportAllowed: json['accountSupportAllowed'] as bool?,
+        passwordResetSupportAllowed:
+            json['passwordResetSupportAllowed'] as bool?,
       );
 }
 

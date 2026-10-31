@@ -1,47 +1,110 @@
 // 设置临时密码确认框（权限设置页 · 账号安全）。
 //
-// 员工忘记密码时，管理员为其重置一次性临时密码。临时密码只由系统随机生成
-// (管理员不能自己指定，避免弱口令和「口述一个好记的」)，明文只在结果弹窗显示一次。
+// 管理员可选择服务端随机生成或手动输入；明文仅在本次交付流程中展示。
 // 设置成功后：该账号全部已登录会话立即失效、临时密码在有效期内可用
 // (默认 72 小时，可在系统设置调整)、员工用临时密码登录后被强制设置新密码。
 // 服务端要求再认证：确认后网络层会弹统一的「重新输入登录密码」框 (ADR-110)。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/widgets/temporary_password_input.dart';
+import '../../../shared/auth/account_action_owner.dart';
 
-/// 弹出「设置临时密码」确认框；确认返回 true，取消返回 false/null。
-Future<bool?> showSetTemporaryPasswordDialog(
+/// 确认返回本次密码选择，取消返回 null；选择不能持久化。
+Future<TemporaryPasswordChoice?> showSetTemporaryPasswordDialog(
   BuildContext context, {
   required String displayName,
   required String loginAccount,
   String? permissionDiscardWarning,
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
+  bool allowManual = false,
 }) {
-  return showDialog<bool>(
+  return showDialog<TemporaryPasswordChoice>(
     context: context,
     builder: (dialogContext) => _SetTemporaryPasswordDialog(
       displayName: displayName,
       loginAccount: loginAccount,
       permissionDiscardWarning: permissionDiscardWarning,
+      isCurrent: isCurrent,
+      ownerChanges: ownerChanges,
+      allowManual: allowManual,
     ),
   );
 }
 
-class _SetTemporaryPasswordDialog extends StatelessWidget {
+class _SetTemporaryPasswordDialog extends ConsumerStatefulWidget {
   const _SetTemporaryPasswordDialog({
     required this.displayName,
     required this.loginAccount,
     this.permissionDiscardWarning,
+    this.isCurrent,
+    this.ownerChanges,
+    required this.allowManual,
   });
 
   final String displayName;
   final String loginAccount;
   final String? permissionDiscardWarning;
+  final bool Function()? isCurrent;
+  final Listenable? ownerChanges;
+  final bool allowManual;
+
+  @override
+  ConsumerState<_SetTemporaryPasswordDialog> createState() =>
+      _SetTemporaryPasswordDialogState();
+}
+
+class _SetTemporaryPasswordDialogState
+    extends ConsumerState<_SetTemporaryPasswordDialog> {
+  final _passwordInput = TemporaryPasswordInputController();
+  late final AccountActionOwner _owner;
+  ModalRoute<TemporaryPasswordChoice>? _route;
+  bool _invalidated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _owner = AccountActionOwner(
+      ref,
+      isCurrent: widget.isCurrent,
+      targetChanges: widget.ownerChanges,
+      onInvalidated: _invalidate,
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of<TemporaryPasswordChoice>(context);
+  }
+
+  void _invalidate() {
+    if (!mounted || _invalidated) return;
+    _passwordInput.clearSensitive();
+    setState(() => _invalidated = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _route;
+      if (mounted && route != null && route.isActive) {
+        route.navigator?.removeRoute(route);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _owner.dispose();
+    _passwordInput.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_invalidated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     return UtenAlertDialog(
       scrollable: false,
@@ -57,9 +120,9 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (permissionDiscardWarning != null) ...[
+              if (widget.permissionDiscardWarning != null) ...[
                 Text(
-                  permissionDiscardWarning!,
+                  widget.permissionDiscardWarning!,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.error,
                   ),
@@ -67,13 +130,17 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
                 const SizedBox(height: UtenSpacing.s12),
               ],
               Text(
-                '员工忘记密码时，为「$displayName($loginAccount)」生成一次性临时密码。'
-                '系统随机生成 20 位安全密码(含大小写字母、数字与符号)，'
+                '为「${widget.displayName}(${widget.loginAccount})」设置一次性临时密码。'
                 '员工用临时密码登录后，系统会强制其设置新密码。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   height: 1.5,
                 ),
+              ),
+              const SizedBox(height: UtenSpacing.s16),
+              TemporaryPasswordInput(
+                controller: _passwordInput,
+                allowManual: widget.allowManual,
               ),
               const SizedBox(height: UtenSpacing.s16),
               Container(
@@ -112,15 +179,19 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
       actionsAlignment: MainAxisAlignment.center,
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context, false),
+          onPressed: () => Navigator.pop(context),
           child: const Text('取消'),
         ),
         UtenButton(
           key: const Key('set-temporary-password-confirm'),
           size: UtenButtonSize.small,
           icon: Icons.key_rounded,
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('生成临时密码'),
+          onPressed: () {
+            if (_owner.isCurrent && _passwordInput.validate()) {
+              Navigator.pop(context, _passwordInput.choice);
+            }
+          },
+          child: const Text('设置临时密码'),
         ),
       ],
     );

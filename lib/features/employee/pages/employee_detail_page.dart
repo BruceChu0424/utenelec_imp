@@ -101,6 +101,7 @@ class EmployeeDetailPage extends ConsumerStatefulWidget {
 
 class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     with SingleTickerProviderStateMixin {
+  static const _currentEmployeeStatuses = {'active', 'probation', 'onLeave'};
   EmployeeProfile? _profile;
   bool _loading = true;
   String? _error;
@@ -608,7 +609,43 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     return '（最近登录：$timestamp）';
   }
 
-  bool _maySupportAccount(EmployeeProfile profile) {
+  bool _mayChangeOwnPassword(EmployeeProfile profile) {
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final user = ref.read(sessionProvider).user;
+    return !_loading &&
+        !_disposing &&
+        identical(profile, _profile) &&
+        profile.id == widget.employeeId &&
+        owner == _profileOwner &&
+        owner.identity != null &&
+        owner.identity!.actorId == null &&
+        !owner.identity!.readOnly &&
+        user != null &&
+        owner.identity!.userId == user.id &&
+        user.employeeId == profile.id &&
+        _accountStatus(profile) == 'active' &&
+        _currentEmployeeStatuses.contains(profile.status);
+  }
+
+  Future<void> _openOwnPasswordChange(
+    EmployeeProfile profile,
+    SensitiveReadBoundary owner,
+    int generation,
+  ) async {
+    if (!mounted ||
+        _accountBusy ||
+        generation != _accountOwnerChanges.value ||
+        owner != ref.read(sensitiveReadBoundaryProvider) ||
+        !_mayChangeOwnPassword(profile)) {
+      return;
+    }
+    await context.push(RouteName.changePassword);
+  }
+
+  bool _maySupportAccount(
+    EmployeeProfile profile, {
+    bool passwordReset = false,
+  }) {
     final owner = ref.read(sensitiveReadBoundaryProvider);
     final self = ref.read(sessionProvider).user?.employeeId == profile.id;
     return owner == _profileOwner &&
@@ -617,8 +654,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         !owner.identity!.readOnly &&
         owner.permissions.contains(Perm.accountSupport) &&
         !self &&
-        profile.accountSupportAllowed != false &&
-        const {'active', 'probation', 'onLeave'}.contains(profile.status);
+        (passwordReset
+            ? (profile.passwordResetSupportAllowed ??
+                  profile.accountSupportAllowed != false)
+            : profile.accountSupportAllowed != false) &&
+        _currentEmployeeStatuses.contains(profile.status);
   }
 
   Widget _accountSection(ThemeData theme, AppLocalizations l10n) {
@@ -626,6 +666,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final profile = _p;
     final status = _accountStatus(profile);
     final canSupport = _maySupportAccount(profile);
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final generation = _accountOwnerChanges.value;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -668,13 +710,24 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 onPressed: _accountBusy ? null : _onUnlockAccount,
                 child: Text(l10n.employeeActionUnlockAccount),
               ),
-            if (canSupport && (status == 'active' || status == 'locked'))
+            if (_maySupportAccount(profile, passwordReset: true) &&
+                (status == 'active' || status == 'locked'))
               UtenButton(
                 key: const ValueKey('employee-reset-password-action'),
                 type: UtenButtonType.secondary,
                 icon: Icons.key_outlined,
                 onPressed: _accountBusy ? null : _onResetPassword,
                 child: const Text('修改密码'),
+              ),
+            if (_mayChangeOwnPassword(profile))
+              UtenButton(
+                key: const ValueKey('employee-change-own-password-action'),
+                type: UtenButtonType.secondary,
+                icon: Icons.lock_outline_rounded,
+                onPressed: _accountBusy
+                    ? null
+                    : () => _openOwnPasswordChange(profile, owner, generation),
+                child: const Text('修改本人密码'),
               ),
             if (canSupport && status == 'disabled')
               UtenButton(
@@ -1570,8 +1623,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     int request,
     SensitiveReadBoundary owner,
     String employeeId,
-    String? status,
-  ) {
+    String? status, {
+    bool passwordReset = false,
+  }) {
     final profile = _profile;
     return mounted &&
         request == _accountRequest &&
@@ -1635,7 +1689,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final profile = _profile;
     if (_accountBusy ||
         profile == null ||
-        !_maySupportAccount(profile) ||
+        !_maySupportAccount(profile, passwordReset: true) ||
         !const {'active', 'locked'}.contains(_accountStatus(profile))) {
       return;
     }
@@ -1648,11 +1702,23 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       final changed = await showEmployeeResetPasswordDialog(
         context,
         employee: profile,
-        isCurrent: () => _sameAccountAction(request, owner, employeeId, status),
+        isCurrent: () => _sameAccountAction(
+          request,
+          owner,
+          employeeId,
+          status,
+          passwordReset: true,
+        ),
         ownerChanges: _accountOwnerChanges,
       );
       if (changed == true &&
-          _sameAccountAction(request, owner, employeeId, status)) {
+          _sameAccountAction(
+            request,
+            owner,
+            employeeId,
+            status,
+            passwordReset: true,
+          )) {
         await _load();
       }
     } finally {

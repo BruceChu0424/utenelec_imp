@@ -29,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -301,13 +302,17 @@ class FinanceReportObjectScopeTest {
         service.export("statements/supplier", Map.of(), null, null);
         service.export("cost/product", Map.of(), null, null);
         service.export("gl/trial-balance", Map.of(), null, null);
-        service.export("fa/depreciation-schedule", Map.of(), null, null);
+        LocalDate cutoff = LocalDate.of(2026, 10, 31);
+        service.export("fa/depreciation-schedule", Map.of("dateTo", cutoff.toString()), null, null);
+        service.export("fa/amortization-schedule", Map.of("dateTo", cutoff.toString()), null, null);
 
         assertThat(fixture.queries()).isNotEmpty();
         for (CapturedQuery captured : fixture.queries()) {
             verify(captured.query(), never()).setParameter(eq(OWNERS_PARAM), any());
         }
-        verify(fixture.access(), times(9)).scope();
+        verify(fixture.access(), times(10)).scope();
+        verify(fixture.fixedAssetService()).depreciationSchedule(1, 500, FinanceReportColumnOptions.NONE, cutoff);
+        verify(fixture.fixedAssetService()).amortizationSchedule(1, 500, FinanceReportColumnOptions.NONE, cutoff);
     }
 
     private static Fixture restrictedFixture(Set<UUID> visibleOwners) {
@@ -353,8 +358,10 @@ class FinanceReportObjectScopeTest {
         when(costService.productCost(null,null,null,1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
         when(glReportService.trialBalance(null, null, 1, 500)).thenReturn(empty);
         when(glReportService.trialBalance(null,null,1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
-        when(fixedAssetService.depreciationSchedule(1, 500)).thenReturn(empty);
-        when(fixedAssetService.depreciationSchedule(1,500,FinanceReportColumnOptions.NONE)).thenReturn(empty);
+        when(fixedAssetService.depreciationSchedule(eq(1), eq(500), eq(FinanceReportColumnOptions.NONE), nullable(LocalDate.class)))
+                .thenReturn(empty);
+        when(fixedAssetService.amortizationSchedule(eq(1), eq(500), eq(FinanceReportColumnOptions.NONE), nullable(LocalDate.class)))
+                .thenReturn(empty);
         return new Fixture(
                 new FinanceReportService(
                         em,
@@ -366,7 +373,8 @@ class FinanceReportObjectScopeTest {
                         fixedAssetService,
                         mock(PartyMonthlySummaryService.class)),
                 access,
-                queries);
+                queries,
+                fixedAssetService);
     }
 
     private static List<CapturedQuery> captureQueries(EntityManager em) {
@@ -404,6 +412,7 @@ class FinanceReportObjectScopeTest {
 
     private record Fixture(FinanceReportService service,
                            FinanceDocumentAccessPolicy access,
-                           List<CapturedQuery> queries) {
+                           List<CapturedQuery> queries,
+                           FixedAssetService fixedAssetService) {
     }
 }

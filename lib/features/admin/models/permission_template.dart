@@ -50,6 +50,7 @@ class PermissionTemplateBinding {
     required this.templateName,
     required this.templateVersion,
     this.legacySnapshot = false,
+    this.exactPermissions = false,
   });
   factory PermissionTemplateBinding.fromJson(Map<String, dynamic> json) =>
       PermissionTemplateBinding(
@@ -59,6 +60,7 @@ class PermissionTemplateBinding {
         templateName: json['templateName'] as String,
         templateVersion: (json['templateVersion'] as num).toInt(),
         legacySnapshot: json['legacySnapshot'] == true,
+        exactPermissions: json['exactPermissions'] == true,
       );
   Map<String, dynamic> toExpectedJson() => {
     'kind': kind,
@@ -66,6 +68,7 @@ class PermissionTemplateBinding {
     'templateId': templateId,
     'templateVersion': templateVersion,
     'legacySnapshot': legacySnapshot,
+    if (exactPermissions) 'exactPermissions': true,
   };
   final String kind;
   final String targetId;
@@ -73,4 +76,5 @@ class PermissionTemplateBinding {
   final String templateName;
   final int templateVersion;
   final bool legacySnapshot;
+  final bool exactPermissions;
 }

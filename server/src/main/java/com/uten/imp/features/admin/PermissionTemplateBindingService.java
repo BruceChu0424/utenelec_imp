@@ -16,19 +16,31 @@ class PermissionTemplateBindingService {
     @SuppressWarnings("unchecked")
     List<Binding> list() {
         List<Object[]> rows=em.createNativeQuery("""
-                SELECT 'user',b.user_id,b.template_id,t.name,t.row_version,false
+                SELECT 'user',b.user_id,b.template_id,t.name,t.row_version,false,b.exact_permissions
                 FROM user_permission_template_bindings b JOIN permission_templates t ON t.id=b.template_id
-                UNION ALL SELECT 'department',b.department_id,b.template_id,t.name,t.row_version,false
+                UNION ALL SELECT 'department',b.department_id,b.template_id,t.name,t.row_version,false,false
                 FROM department_permission_template_bindings b JOIN permission_templates t ON t.id=b.template_id
-                UNION ALL SELECT 'user',b.user_id,b.template_id,t.name,b.applied_version,true
+                UNION ALL SELECT 'user',b.user_id,b.template_id,t.name,b.applied_version,true,false
                 FROM permission_template_applies b JOIN permission_templates t ON t.id=b.template_id
                 WHERE NOT EXISTS(SELECT 1 FROM user_permission_template_bindings live WHERE live.user_id=b.user_id)
                 ORDER BY 1,2
                 """).getResultList();
         return rows.stream().map(row->new Binding(row[0].toString(),(UUID)row[1],(UUID)row[2],
-                row[3].toString(),((Number)row[4]).longValue(),Boolean.TRUE.equals(row[5]))).toList();
+                row[3].toString(),((Number)row[4]).longValue(),Boolean.TRUE.equals(row[5]),Boolean.TRUE.equals(row[6]))).toList();
     }
-    void bind(String kind,UUID target,UUID template,UUID actor) {
+    void bind(String kind,UUID target,UUID template,UUID actor,boolean exact) {
+        if(kind.equals("user")) {
+            em.createNativeQuery("""
+                    INSERT INTO user_permission_template_bindings(user_id,template_id,bound_by,exact_permissions)
+                    VALUES (:target,:template,:actor,:exact)
+                    ON CONFLICT(user_id) DO UPDATE SET template_id=:template,bound_by=:actor,bound_at=now(),exact_permissions=:exact
+                    WHERE user_permission_template_bindings.template_id IS DISTINCT FROM :template
+                       OR user_permission_template_bindings.exact_permissions IS DISTINCT FROM :exact
+                    """).setParameter("target",target).setParameter("template",template).setParameter("actor",actor)
+                    .setParameter("exact",exact).executeUpdate();
+            clearLegacyUsers(List.of(target));
+            return;
+        }
         String table=kind.equals("user")?"user_permission_template_bindings":"department_permission_template_bindings";
         String column=kind.equals("user")?"user_id":"department_id";
         em.createNativeQuery("INSERT INTO "+table+" ("+column+",template_id,bound_by) VALUES (:target,:template,:actor) "

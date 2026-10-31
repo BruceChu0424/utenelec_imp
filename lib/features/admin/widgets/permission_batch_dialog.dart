@@ -57,7 +57,7 @@ class PermissionBatchDialog extends ConsumerStatefulWidget {
 class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
   late final _boundary = ref.read(sensitiveReadBoundaryProvider);
   PermissionTemplate? _template;
-  bool _merge = true;
+  bool _merge = false;
   bool _grant = true;
   bool _busy = false;
   bool _committing = false;
@@ -229,7 +229,7 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
               const SizedBox(height: UtenSpacing.s8),
               Text(
                 widget.templateMode
-                    ? '应用后建立关联，模板修改会同步生效；个人取消继续优先。'
+                    ? '默认按模板覆盖员工权限，模板勾选什么就授权什么；应用前请核对预览差量。'
                     : '仅调整本次勾选的权限，其余设置和模板关联保持。',
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -323,21 +323,29 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
                 ),
         ),
     const SizedBox(height: UtenSpacing.s8),
-    UtenSegmentRow<bool>(
-      selected: {_merge},
-      segments: const [
-        ButtonSegment(value: true, label: Text('合并现有权限')),
-        ButtonSegment(value: false, label: Text('替换直接设置')),
-      ],
-      onSelectionChanged: _enabled
-          ? (values) => setState(() {
-              _merge = values.single;
-              _reset();
-            })
-          : null,
-    ),
+    if (widget.userIds.isEmpty)
+      UtenSegmentRow<bool>(
+        selected: {_merge},
+        segments: const [
+          ButtonSegment(value: false, label: Text('按模板覆盖权限')),
+          ButtonSegment(value: true, label: Text('追加现有权限')),
+        ],
+        onSelectionChanged: _enabled
+            ? (values) => setState(() {
+                _merge = values.single;
+                _reset();
+              })
+            : null,
+      )
+    else
+      const Text('按模板覆盖权限'),
     const SizedBox(height: UtenSpacing.s8),
-    Text(_merge ? '保留手工设置并关联新模板。' : '按预览替换所选对象的直接设置；基础包、上级部门和负责人授权仍按来源生效。'),
+    Text(
+      _merge
+          ? '保留原有权限和个人收回，追加模板。'
+          : '员工清除原个人加授、收回及负责人授权，有效权限与模板一致，不叠加部门或全员基础。'
+                '${widget.departmentIds.isNotEmpty ? '部门替换本部门直接配置，上级来源仍保留。' : ''}',
+    ),
   ];
   List<Widget> _permissionFields() => [
     UtenSegmentRow<bool>(

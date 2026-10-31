@@ -1633,7 +1633,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         profile?.id == employeeId &&
         owner == ref.read(sensitiveReadBoundaryProvider) &&
         profile != null &&
-        _maySupportAccount(profile) &&
+        _maySupportAccount(profile, passwordReset: passwordReset) &&
         _accountStatus(profile) == status;
   }
 

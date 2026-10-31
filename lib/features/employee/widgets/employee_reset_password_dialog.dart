@@ -131,7 +131,12 @@ class _EmployeeResetPasswordDialogState
 
   Future<void> _submit() async {
     if (_submitting || _temporaryPassword != null || _outcomeUncertain) return;
-    if (!_ensureCurrent() || !_passwordInput.validate()) return;
+    if (!_ensureCurrent() ||
+        !_passwordInput.validate(
+          allowManual: widget.employee.passwordResetSupportAllowed != null,
+        )) {
+      return;
+    }
     if (widget.employee.status == 'resigned' ||
         !const ['active', 'locked'].contains(widget.employee.accountStatus)) {
       setState(() => _error = '该员工账号当前不能修改密码，请刷新员工资料');

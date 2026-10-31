@@ -187,7 +187,8 @@ class _SetTemporaryPasswordDialogState
           size: UtenButtonSize.small,
           icon: Icons.key_rounded,
           onPressed: () {
-            if (_owner.isCurrent && _passwordInput.validate()) {
+            if (_owner.isCurrent &&
+                _passwordInput.validate(allowManual: widget.allowManual)) {
               Navigator.pop(context, _passwordInput.choice);
             }
           },

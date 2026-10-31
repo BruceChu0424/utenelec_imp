@@ -96,6 +96,8 @@ class ProgressTrackerTest(unittest.TestCase):
         b = next(item for item in updated["tasks"] if item["businessSource"].endswith("b_page.dart"))
         self.assertEqual("in_progress", b["status"])
         self.assertIn("不得自动删除", b["notes"])
+        self.assertEqual(updated, tracker.build_registry(updated),
+                         "Repeated source sync must preserve the same task history without appending duplicate notices")
 
     def test_dependency_evidence_change_reopens_done_even_when_page_bytes_match(self):
         first = self.page("a")

@@ -127,7 +127,9 @@ def build_registry(previous=None) -> dict:
             retained = dict(prior)
             if retained["status"] != "not_applicable":
                 retained["status"] = "in_progress"
-                retained["notes"] += "\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。"
+                notice = "源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。"
+                if notice not in retained["notes"].splitlines():
+                    retained["notes"] += "\n" + notice
             tasks.append(retained)
     registry = {"schemaVersion": 1, "project": "UTEN Win7 native WPF complete migration",
             "branch": "uimp/win7-wpf-client-20261028", "baselineDate": "2026-10-28",

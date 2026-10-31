@@ -36,6 +36,7 @@ class _Accounts extends Fake implements EmployeeRepository {
   int locks = 0;
   int unlocks = 0;
   int provisions = 0;
+  int passwordResets = 0;
   Completer<EmployeeProfile>? pending;
   Completer<void>? lockPending;
   Completer<void>? phonePending;
@@ -67,6 +68,12 @@ class _Accounts extends Fake implements EmployeeRepository {
   Future<void> unlockAccount(String id) async {
     unlocks++;
     values['accountStatus'] = 'active';
+  }
+
+  @override
+  Future<String> resetPassword(String id, {String? temporaryPassword}) async {
+    passwordResets++;
+    return 'Unused-Temporary-Test-Only!1';
   }
 
   @override
@@ -119,10 +126,18 @@ class _Actor extends SessionNotifier {
     this.employeeId,
     this.piiEdit = false,
     this.actionPermissions = const {},
+    this.accountSupport = true,
+    this.superAdmin = false,
+    this.readOnly = false,
+    this.impersonating = false,
   });
   final String? employeeId;
   final bool piiEdit;
   final Set<String> actionPermissions;
+  final bool accountSupport;
+  final bool superAdmin;
+  final bool readOnly;
+  final bool impersonating;
 
   @override
   SessionState build() => SessionState(
@@ -132,13 +147,18 @@ class _Actor extends SessionNotifier {
       employeeId: employeeId,
       code: 'HR001',
       name: '人事',
+      superAdmin: superAdmin,
       permissions: [
         Perm.employeeView,
-        Perm.accountSupport,
+        if (accountSupport) Perm.accountSupport,
         if (piiEdit) Perm.employeePiiEdit,
         ...actionPermissions,
       ],
     ),
+    actor: impersonating
+        ? const AppUser(id: 'real-actor', code: 'ACTOR', name: '合成代操作人')
+        : null,
+    impersonationReadOnly: readOnly,
   );
 
   void switchIdentity() => state = const SessionState(
@@ -160,6 +180,13 @@ class _Actor extends SessionNotifier {
       permissions: [Perm.employeeView],
     ),
   );
+
+  void becomeReadOnly() => state = SessionState(
+    status: state.status,
+    user: state.user,
+    actor: state.actor,
+    impersonationReadOnly: true,
+  );
 }
 
 Future<ProviderContainer> _pump(
@@ -173,6 +200,10 @@ Future<ProviderContainer> _pump(
   ValueNotifier<String>? selectedEmployee,
   bool piiEdit = false,
   Set<String> actionPermissions = const {},
+  bool accountSupport = true,
+  bool superAdmin = false,
+  bool readOnly = false,
+  bool impersonating = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -190,6 +221,10 @@ Future<ProviderContainer> _pump(
           employeeId: actorEmployeeId,
           piiEdit: piiEdit,
           actionPermissions: actionPermissions,
+          accountSupport: accountSupport,
+          superAdmin: superAdmin,
+          readOnly: readOnly,
+          impersonating: impersonating,
         ),
       ),
       sharedPreferencesProvider.overrideWithValue(preferences),
@@ -197,6 +232,11 @@ Future<ProviderContainer> _pump(
   );
   final router = GoRouter(
     routes: [
+      GoRoute(
+        path: RouteName.changePassword,
+        builder: (_, state) =>
+            Scaffold(body: Text('own-password-route:${state.uri}')),
+      ),
       GoRoute(
         path: RouteName.adminPermissions,
         builder: (_, state) => Scaffold(
@@ -549,6 +589,178 @@ void main() {
     );
     expect(find.text('锁定账号'), findsNothing);
     expect(find.text('修改密码'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('employee-change-own-password-action')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('employee-reset-password-action')),
+      findsNothing,
+    );
+  });
+
+  for (final sample in const [
+    (superAdmin: false, status: 'active'),
+    (superAdmin: true, status: 'active'),
+    (superAdmin: false, status: 'probation'),
+    (superAdmin: false, status: 'onLeave'),
+  ]) {
+    testWidgets('本人改密复用个人路由且无需账号支持：$sample', (tester) async {
+      final repo = _Accounts({
+        'accountStatus': 'active',
+        'status': sample.status,
+      });
+      final container = await _pump(
+        tester,
+        repo,
+        actorEmployeeId: 'emp-6',
+        accountSupport: false,
+        superAdmin: sample.superAdmin,
+      );
+      expect(
+        container.read(currentPermissionsProvider),
+        isNot(contains(Perm.accountSupport)),
+      );
+      expect(
+        find.byKey(const ValueKey('employee-reset-password-action')),
+        findsNothing,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('employee-change-own-password-action')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('own-password-route:${RouteName.changePassword}'),
+        findsOneWidget,
+      );
+      expect(repo.passwordResets, 0);
+      expect(repo.locks, 0);
+      expect(repo.provisions, 0);
+    });
+  }
+
+  for (final values in const <Map<String, dynamic>>[
+    {'accountStatus': 'locked'},
+    {'accountStatus': 'disabled'},
+    {'accountStatus': null},
+    {'accountStatus': 'active', 'accountDeleted': true},
+    {'accountStatus': 'active', 'status': 'resigned'},
+  ]) {
+    testWidgets('本人改密不开放非活动账号或离职档案：$values', (tester) async {
+      final repo = _Accounts(Map<String, dynamic>.of(values));
+      await _pump(
+        tester,
+        repo,
+        actorEmployeeId: 'emp-6',
+        accountSupport: false,
+      );
+      expect(repo.reads, 1);
+      expect(
+        find.byKey(const ValueKey('employee-change-own-password-action')),
+        findsNothing,
+      );
+      expect(repo.passwordResets, 0);
+    });
+  }
+
+  for (final scope in const [
+    (readOnly: true, impersonating: false),
+    (readOnly: false, impersonating: true),
+  ]) {
+    testWidgets('本人改密拒绝只读或代操作身份：$scope', (tester) async {
+      final repo = _Accounts({'accountStatus': 'active'});
+      await _pump(
+        tester,
+        repo,
+        actorEmployeeId: 'emp-6',
+        accountSupport: false,
+        readOnly: scope.readOnly,
+        impersonating: scope.impersonating,
+      );
+      expect(repo.reads, 1);
+      expect(find.text('合成员工'), findsNWidgets(2));
+      expect(
+        find.byKey(const ValueKey('employee-change-own-password-action')),
+        findsNothing,
+      );
+    });
+  }
+
+  for (final changeIdentity in [true, false]) {
+    testWidgets('本人改密旧回调在${changeIdentity ? '换人' : '只读切换'}后拒绝导航', (
+      tester,
+    ) async {
+      final repo = _Accounts({'accountStatus': 'active'});
+      final container = await _pump(
+        tester,
+        repo,
+        actorEmployeeId: 'emp-6',
+        accountSupport: false,
+      );
+      final oldAction = tester
+          .widget<UtenButton>(
+            find.byKey(const ValueKey('employee-change-own-password-action')),
+          )
+          .onPressed!;
+      final session = container.read(sessionProvider.notifier) as _Actor;
+      if (changeIdentity) {
+        session.switchIdentity();
+      } else {
+        session.becomeReadOnly();
+      }
+      oldAction();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('own-password-route:${RouteName.changePassword}'),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-change-own-password-action')),
+        findsNothing,
+      );
+      expect(repo.passwordResets, 0);
+    });
+  }
+
+  testWidgets('本人改密旧回调在档案切换并返回后仍失效，新入口正常', (tester) async {
+    final selected = ValueNotifier('emp-6');
+    addTearDown(selected.dispose);
+    final repo = _Accounts({'accountStatus': 'active'});
+    await _pump(
+      tester,
+      repo,
+      actorEmployeeId: 'emp-6',
+      accountSupport: false,
+      selectedEmployee: selected,
+    );
+    final oldAction = tester
+        .widget<UtenButton>(
+          find.byKey(const ValueKey('employee-change-own-password-action')),
+        )
+        .onPressed!;
+    selected.value = 'emp-7';
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('employee-change-own-password-action')),
+      findsNothing,
+    );
+    selected.value = 'emp-6';
+    await tester.pumpAndSettle();
+    oldAction();
+    await tester.pumpAndSettle();
+    expect(
+      find.text('own-password-route:${RouteName.changePassword}'),
+      findsNothing,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('employee-change-own-password-action')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('own-password-route:${RouteName.changePassword}'),
+      findsOneWidget,
+    );
+    expect(repo.passwordResets, 0);
   });
 
   testWidgets('开通成功安全保存凭据后变成锁定入口，锁定和解锁都走仓储', (tester) async {

@@ -101,6 +101,7 @@ class EmployeeDetailPage extends ConsumerStatefulWidget {
 
 class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     with SingleTickerProviderStateMixin {
+  static const _currentEmployeeStatuses = {'active', 'probation', 'onLeave'};
   EmployeeProfile? _profile;
   bool _loading = true;
   String? _error;
@@ -595,6 +596,39 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   String? _accountStatus(EmployeeProfile profile) =>
       profile.accountDeleted ? null : profile.accountStatus;
 
+  bool _mayChangeOwnPassword(EmployeeProfile profile) {
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final user = ref.read(sessionProvider).user;
+    return !_loading &&
+        !_disposing &&
+        identical(profile, _profile) &&
+        profile.id == widget.employeeId &&
+        owner == _profileOwner &&
+        owner.identity != null &&
+        owner.identity!.actorId == null &&
+        !owner.identity!.readOnly &&
+        user != null &&
+        owner.identity!.userId == user.id &&
+        user.employeeId == profile.id &&
+        _accountStatus(profile) == 'active' &&
+        _currentEmployeeStatuses.contains(profile.status);
+  }
+
+  Future<void> _openOwnPasswordChange(
+    EmployeeProfile profile,
+    SensitiveReadBoundary owner,
+    int generation,
+  ) async {
+    if (!mounted ||
+        _accountBusy ||
+        generation != _accountOwnerChanges.value ||
+        owner != ref.read(sensitiveReadBoundaryProvider) ||
+        !_mayChangeOwnPassword(profile)) {
+      return;
+    }
+    await context.push(RouteName.changePassword);
+  }
+
   bool _maySupportAccount(
     EmployeeProfile profile, {
     bool passwordReset = false,
@@ -611,7 +645,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             ? (profile.passwordResetSupportAllowed ??
                   profile.accountSupportAllowed != false)
             : profile.accountSupportAllowed != false) &&
-        const {'active', 'probation', 'onLeave'}.contains(profile.status);
+        _currentEmployeeStatuses.contains(profile.status);
   }
 
   Widget _accountSection(ThemeData theme, AppLocalizations l10n) {
@@ -619,6 +653,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final profile = _p;
     final status = _accountStatus(profile);
     final canSupport = _maySupportAccount(profile);
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final generation = _accountOwnerChanges.value;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -662,6 +698,16 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 icon: Icons.key_outlined,
                 onPressed: _accountBusy ? null : _onResetPassword,
                 child: const Text('修改密码'),
+              ),
+            if (_mayChangeOwnPassword(profile))
+              UtenButton(
+                key: const ValueKey('employee-change-own-password-action'),
+                type: UtenButtonType.secondary,
+                icon: Icons.lock_outline_rounded,
+                onPressed: _accountBusy
+                    ? null
+                    : () => _openOwnPasswordChange(profile, owner, generation),
+                child: const Text('修改本人密码'),
               ),
             if (canSupport && status == 'disabled')
               UtenButton(

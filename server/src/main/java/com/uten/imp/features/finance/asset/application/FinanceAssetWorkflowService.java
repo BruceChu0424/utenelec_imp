@@ -90,7 +90,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("ready", request.readyForUseDate()).setParameter("actor", actor).executeUpdate();
         new AssetOpeningBalanceSupport(em).save(id,request,salvage);
         event("FIXED_ASSET", id, "CREATED", "Fixed asset draft created", null, null, Map.of(), actor);
-        return result("fixed_assets", id, false);
+        return result(id, false);
     }
 
     @Transactional
@@ -126,7 +126,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("benefitStart", request.benefitStartDate()).setParameter("benefitEnd", request.benefitEndDate())
                 .setParameter("actor", actor).executeUpdate();
         event("DEFERRED_EXPENSE", id, "CREATED", "Deferred-expense draft created", null, null, Map.of(), actor);
-        return result("deferred_expenses", id, true);
+        return result(id, true);
     }
 
     @Transactional
@@ -134,7 +134,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult updateFixed(UUID id, AssetWorkbenchRequests.FixedAssetDraft request) {
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
-        Locked locked = lock("fixed_assets", id);
+        Locked locked = lock(false, id);
         FinanceAssetStateMachine.requireDraft(locked.status());
         version(locked.version(), request.expectedVersion());
         BigDecimal salvage = residual(request.categoryId(), request.salvageRate());
@@ -171,7 +171,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("id", id).setParameter("version", locked.version()).executeUpdate();
         changed(changed);
         event("FIXED_ASSET", id, "UPDATED", "Fixed asset draft updated", null, null, Map.of(), actor);
-        return result("fixed_assets", id, false);
+        return result(id, false);
     }
 
     @Transactional
@@ -179,7 +179,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult updateDeferred(UUID id, AssetWorkbenchRequests.DeferredExpenseDraft request) {
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
-        Locked locked = lock("deferred_expenses", id);
+        Locked locked = lock(true, id);
         FinanceAssetStateMachine.requireDraft(locked.status());
         version(locked.version(), request.expectedVersion());
         AssetPeriod.parse(request.startPeriod());
@@ -205,7 +205,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version())
                 .executeUpdate();
         changed(changed); event("DEFERRED_EXPENSE", id, "UPDATED", "Deferred-expense draft updated", null, null, Map.of(), actor);
-        return result("deferred_expenses", id, true);
+        return result(id, true);
     }
 
     @Transactional
@@ -213,7 +213,7 @@ public class FinanceAssetWorkflowService {
     public void deleteDraft(UUID id, boolean deferred, long expectedVersion) {
         tx.bind(); authorization.require(FinanceAssetAuthorization.DELETE);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
-        Locked locked = lock(table, id); FinanceAssetStateMachine.requireDraft(locked.status());
+        Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireDraft(locked.status());
         version(locked.version(), expectedVersion);
         changed(em.createNativeQuery("UPDATE " + table + " SET is_deleted=true, deleted_at=now() WHERE id=:id AND lifecycle_status='DRAFT' AND row_version=:version AND is_deleted=false")
                 .setParameter("id", id).setParameter("version",locked.version()).executeUpdate());
@@ -224,7 +224,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult submit(UUID id, long expectedVersion, boolean deferred) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
-        Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "PENDING_APPROVAL");
+        Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "PENDING_APPROVAL");
         version(locked.version(), expectedVersion);
         validateSubmission(id, deferred);
         changed(em.createNativeQuery("UPDATE " + table + " SET lifecycle_status='PENDING_APPROVAL', submitted_at=now(), submitted_by=:actor, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='DRAFT' AND row_version=:version AND is_deleted=false")
@@ -233,7 +233,7 @@ public class FinanceAssetWorkflowService {
         event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "SUBMITTED", "Submitted for accounting approval", null, null,
                 Map.of("workflow", "RECOGNITION", "reviewRevision", locked.version()+1,
                         "submissionSnapshot", reviewRevisions.capture(id, deferred)), actor);
-        return result(table, id, deferred);
+        return result(id, deferred);
     }
 
     @Transactional
@@ -244,7 +244,7 @@ public class FinanceAssetWorkflowService {
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
-        Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "APPROVED");
+        Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "APPROVED");
         version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "审批");
         validateSubmission(id, deferred);
         Category category = categoryFor(id, deferred);
@@ -259,7 +259,7 @@ public class FinanceAssetWorkflowService {
         changed(query.executeUpdate());
         approval(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "RECOGNITION", "APPROVE", comment, actor);
         event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "APPROVED", "Accounting policy approved", null, comment, Map.of(), actor);
-        return result(table, id, deferred);
+        return result(id, deferred);
     }
 
     @Transactional
@@ -268,7 +268,7 @@ public class FinanceAssetWorkflowService {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         if (reason == null || reason.isBlank()) throw validation("请填写驳回原因");
         String table = deferred ? "deferred_expenses" : "fixed_assets";
-        Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "DRAFT");
+        Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "DRAFT");
         version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "驳回");
         changed(em.createNativeQuery("UPDATE " + table + " SET lifecycle_status='DRAFT', last_rejected_at=now(), last_rejected_by=:actor, last_rejection_reason=:reason, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='PENDING_APPROVAL' AND row_version=:version AND is_deleted=false")
                 .setParameter("actor", actor).setParameter("reason", reason.trim()).setParameter("id", id)
@@ -277,7 +277,7 @@ public class FinanceAssetWorkflowService {
         event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "REJECTED", "Accounting approval rejected", null, reason,
                 Map.of("workflow", "RECOGNITION", "reviewRevision", locked.version()+1,
                         "submissionSnapshot", reviewRevisions.capture(id, deferred)), actor);
-        return result(table, id, deferred);
+        return result(id, deferred);
     }
 
     @Transactional
@@ -292,7 +292,7 @@ public class FinanceAssetWorkflowService {
         LocalDate date = opening==null?LocalDate.now(SHANGHAI):opening.asOf(); String period = YearMonth.from(date).toString();
         periods.ensureOpen(period, FinanceAssetAuthorization.POST);
         lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
-        Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "ACTIVE");
+        Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "ACTIVE");
         version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         requireStartAfterLatestRun(id,deferred);
         Object[] row = (Object[]) em.createNativeQuery("SELECT code, " + (deferred ? "total_amount" : "original_value") + ", cost_style_snapshot_id, accumulated_style_snapshot_id, expense_style_snapshot_id, clearing_style_snapshot_id FROM " + table + " WHERE id=:id FOR UPDATE")
@@ -323,7 +323,7 @@ public class FinanceAssetWorkflowService {
                     .setParameter("actor", actor).setParameter("id", id).executeUpdate();
         }
         event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "ACTIVATED", "Initial recognition posted", date, null, Map.of("voucherId", voucher.toString()), actor);
-        return result(table, id, deferred);
+        return result(id, deferred);
     }
 
     @Transactional
@@ -331,7 +331,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult transfer(UUID id, AssetWorkbenchRequests.TransferCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         lockPostingStream("DEPRECIATION");
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能转移");
+        Locked locked = lock(false, id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能转移");
         version(locked.version(), command.expectedVersion());
         requireFixedAssetChangeDate(id,command.effectiveDate());
         requireResponsibility(command.targetDepartmentId(),command.custodianId(),command.location(),"保管人");
@@ -340,21 +340,21 @@ public class FinanceAssetWorkflowService {
                 .setParameter("location", command.location()).setParameter("actor", actor).setParameter("id", id)
                 .setParameter("version", locked.version()).executeUpdate());
         event("FIXED_ASSET", id, "TRANSFERRED", "Asset responsibility transferred", command.effectiveDate(), command.reason(), Map.of("departmentId", command.targetDepartmentId().toString()), actor);
-        return result("fixed_assets", id, false);
+        return result(id, false);
     }
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult operatingStatus(UUID id, AssetWorkbenchRequests.OperatingStatusCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能改使用状况");
+        Locked locked = lock(false, id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能改使用状况");
         version(locked.version(), command.expectedVersion());
         requireFixedAssetChangeDate(id,command.effectiveDate());
         changed(em.createNativeQuery("UPDATE fixed_assets SET operating_status=:status, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
                 .setParameter("status", command.operatingStatus()).setParameter("actor", actor).setParameter("id", id)
                 .setParameter("version", locked.version()).executeUpdate());
         event("FIXED_ASSET", id, "OPERATING_STATUS_CHANGED", "Operating status changed", command.effectiveDate(), command.reason(), Map.of("operatingStatus", command.operatingStatus()), actor);
-        return result("fixed_assets", id, false);
+        return result(id, false);
     }
 
     @Transactional
@@ -362,7 +362,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult requestDisposal(UUID id, AssetWorkbenchRequests.DisposalCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         featureGate.requirePostedWorkflowsEnabled("固定资产处置");
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能申请处置");
+        Locked locked = lock(false, id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能申请处置");
         version(locked.version(), command.expectedVersion());
         requireWorkflowEffectiveDate(id, false, command.effectiveDate());
         changed(em.createNativeQuery("UPDATE fixed_assets SET lifecycle_status='DISPOSAL_PENDING', row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
@@ -371,7 +371,7 @@ public class FinanceAssetWorkflowService {
         event("FIXED_ASSET", id, "DISPOSAL_REQUESTED", "Asset disposal requested", command.effectiveDate(), command.reason(),
                 Map.of("proceedsAmount", command.proceedsAmount().toPlainString(), "evidenceReference", nullToEmpty(command.evidenceReference()),
                         "reviewRevision", locked.version()+1), actor);
-        return result("fixed_assets", id, false);
+        return result(id, false);
     }
 
     @Transactional
@@ -379,7 +379,7 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult requestTermination(UUID id, AssetWorkbenchRequests.TerminationCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         featureGate.requirePostedWorkflowsEnabled("长期待摊费用终止");
-        Locked locked = lock("deferred_expenses", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有摊销中的长期待摊费用才能申请终止");
+        Locked locked = lock(true, id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有摊销中的长期待摊费用才能申请终止");
         version(locked.version(), command.expectedVersion());
         requireWorkflowEffectiveDate(id, true, command.effectiveDate());
         changed(em.createNativeQuery("UPDATE deferred_expenses SET lifecycle_status='TERMINATION_PENDING', row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
@@ -387,7 +387,7 @@ public class FinanceAssetWorkflowService {
         approval("DEFERRED_EXPENSE", id, "TERMINATION", "SUBMIT", command.reason(), actor);
         event("DEFERRED_EXPENSE", id, "TERMINATION_REQUESTED", "Deferred-expense termination requested", command.effectiveDate(), command.reason(),
                 Map.of("evidenceReference", nullToEmpty(command.evidenceReference()), "reviewRevision", locked.version()+1), actor);
-        return result("deferred_expenses", id, true);
+        return result(id, true);
     }
 
     @Transactional
@@ -403,7 +403,7 @@ public class FinanceAssetWorkflowService {
         String period=YearMonth.from(request.effectiveDate()).toString();
         periods.ensureOpen(period,FinanceAssetAuthorization.POST);
         lockPostingStream("DEPRECIATION");
-        Locked locked=lock("fixed_assets",id);
+        Locked locked=lock(false,id);
         FinanceAssetStateMachine.requireObjectTransition(locked.status(),"DISPOSED");
         version(locked.version(),command.expectedVersion());
         requireWorkflowEffectiveDate(id,false,request.effectiveDate());
@@ -433,7 +433,7 @@ public class FinanceAssetWorkflowService {
         approval("FIXED_ASSET",id,"DISPOSAL","APPROVE",command.reason(),actor);
         event("FIXED_ASSET",id,"DISPOSED","Fixed asset disposed",request.effectiveDate(),command.reason(),
                 Map.of("voucherId",voucher.toString(),"proceedsAmount",request.proceeds()),actor);
-        return result("fixed_assets",id,false);
+        return result(id,false);
     }
 
     @Transactional
@@ -449,7 +449,7 @@ public class FinanceAssetWorkflowService {
         String period=YearMonth.from(request.effectiveDate()).toString();
         periods.ensureOpen(period,FinanceAssetAuthorization.POST);
         lockPostingStream("AMORTIZATION");
-        Locked locked=lock("deferred_expenses",id);
+        Locked locked=lock(true,id);
         FinanceAssetStateMachine.requireObjectTransition(locked.status(),"TERMINATED");
         version(locked.version(),command.expectedVersion());
         requireWorkflowEffectiveDate(id,true,request.effectiveDate());
@@ -475,14 +475,14 @@ public class FinanceAssetWorkflowService {
         approval("DEFERRED_EXPENSE",id,"TERMINATION","APPROVE",command.reason(),actor);
         Map<String,Object> payload=new LinkedHashMap<>(); payload.put("remainingAmount",remaining); if(voucher!=null)payload.put("voucherId",voucher.toString());
         event("DEFERRED_EXPENSE",id,"TERMINATED","Deferred expense terminated",request.effectiveDate(),command.reason(),payload,actor);
-        return result("deferred_expenses",id,true);
+        return result(id,true);
     }
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:dispose')")
     public AssetWorkbenchResponses.WorkflowResult rejectDisposal(UUID id, AssetWorkbenchRequests.ReasonCommand command) {
         tx.bind(); UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        Locked locked=lock("fixed_assets",id); version(locked.version(),command.expectedVersion());
+        Locked locked=lock(false,id); version(locked.version(),command.expectedVersion());
         FinanceAssetStateMachine.requireObjectTransition(locked.status(),"ACTIVE");
         RequestEvidence request=latestRequest("FIXED_ASSET",id,"DISPOSAL_REQUESTED");
         AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"驳回处置");
@@ -490,14 +490,14 @@ public class FinanceAssetWorkflowService {
                 .setParameter("actor",actor).setParameter("id",id).setParameter("version",locked.version()).executeUpdate());
         approval("FIXED_ASSET",id,"DISPOSAL","REJECT",command.reason(),actor);
         event("FIXED_ASSET",id,"REJECTED","Asset disposal rejected",request.effectiveDate(),command.reason(),Map.of("workflow","DISPOSAL"),actor);
-        return result("fixed_assets",id,false);
+        return result(id,false);
     }
 
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:dispose')")
     public AssetWorkbenchResponses.WorkflowResult rejectTermination(UUID id, AssetWorkbenchRequests.ReasonCommand command) {
         tx.bind(); UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        Locked locked=lock("deferred_expenses",id); version(locked.version(),command.expectedVersion());
+        Locked locked=lock(true,id); version(locked.version(),command.expectedVersion());
         RequestEvidence request=latestRequest("DEFERRED_EXPENSE",id,"TERMINATION_REQUESTED");
         AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"驳回终止");
         Object[] balance=(Object[])em.createNativeQuery("SELECT d.total_amount,COALESCE(SUM(l.amount),0) FROM deferred_expenses d LEFT JOIN da_amortization_log l ON l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false WHERE d.id=:id GROUP BY d.total_amount")
@@ -508,7 +508,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("target",target).setParameter("actor",actor).setParameter("id",id).setParameter("version",locked.version()).executeUpdate());
         approval("DEFERRED_EXPENSE",id,"TERMINATION","REJECT",command.reason(),actor);
         event("DEFERRED_EXPENSE",id,"REJECTED","Deferred-expense termination rejected",request.effectiveDate(),command.reason(),Map.of("workflow","TERMINATION"),actor);
-        return result("deferred_expenses",id,true);
+        return result(id,true);
     }
 
     private void validateSubmission(UUID id, boolean deferred) {
@@ -632,22 +632,27 @@ public class FinanceAssetWorkflowService {
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
                 .setParameter("key","FINANCE_ASSET_SOURCE|"+normalizedType+"|"+identity+"|"+normalizedLine.toLowerCase(java.util.Locale.ROOT))
                 .getSingleResult();
-        long duplicates=sourceDuplicates("fixed_assets",objectId,!deferred,normalizedType,sourceId,normalizedRef,normalizedLine)
-                +sourceDuplicates("deferred_expenses",objectId,deferred,normalizedType,sourceId,normalizedRef,normalizedLine);
+        long duplicates=sourceDuplicates(false,objectId,!deferred,normalizedType,sourceId,normalizedRef,normalizedLine)
+                +sourceDuplicates(true,objectId,deferred,normalizedType,sourceId,normalizedRef,normalizedLine);
         if(duplicates>0)throw conflict("这个来源单据行已经关联到别的资产或长期待摊费用，不能重复关联");
     }
-    private long sourceDuplicates(String table,UUID objectId,boolean currentTable,String type,UUID sourceId,String ref,String line){
-        String exclude=currentTable?" AND id<>:objectId":"";
-        String sql="SELECT COUNT(*) FROM "+table+" WHERE is_deleted=false AND lifecycle_status<>'REVERSED'"+exclude
-                +" AND upper(btrim(source_type))=:type AND lower(btrim(source_line_ref))=:line"
-                +(sourceId==null
-                    ?" AND source_id IS NULL AND lower(btrim(source_ref))=:ref"
-                    :" AND source_id=:sourceId");
-        var query=em.createNativeQuery(sql).setParameter("type",type)
-                .setParameter("line",line.toLowerCase(java.util.Locale.ROOT));
-        if(currentTable)query.setParameter("objectId",objectId);
-        if(sourceId==null)query.setParameter("ref",ref.toLowerCase(java.util.Locale.ROOT));
-        else query.setParameter("sourceId",sourceId);
+    // Identifiers and predicates are compile-time SQL, never caller-supplied fragments.
+    // Explicit UUID casts also keep the NULL-source-reference path typed in PostgreSQL.
+    private static final String SOURCE_DUPLICATE_PREDICATE="""
+             WHERE is_deleted=false AND lifecycle_status<>'REVERSED'
+               AND (NOT :currentTable OR id<>:objectId)
+               AND upper(btrim(source_type))=:type AND lower(btrim(source_line_ref))=:line
+               AND ((CAST(:sourceId AS uuid) IS NULL AND source_id IS NULL AND lower(btrim(source_ref))=:ref)
+                    OR source_id=CAST(:sourceId AS uuid))
+            """;
+    private static final String FIXED_SOURCE_DUPLICATES="SELECT COUNT(*) FROM fixed_assets"+SOURCE_DUPLICATE_PREDICATE;
+    private static final String DEFERRED_SOURCE_DUPLICATES="SELECT COUNT(*) FROM deferred_expenses"+SOURCE_DUPLICATE_PREDICATE;
+
+    private long sourceDuplicates(boolean deferredTable,UUID objectId,boolean currentTable,String type,UUID sourceId,String ref,String line){
+        var query=em.createNativeQuery(deferredTable?DEFERRED_SOURCE_DUPLICATES:FIXED_SOURCE_DUPLICATES)
+                .setParameter("type",type).setParameter("currentTable",currentTable).setParameter("objectId",objectId)
+                .setParameter("line",line.toLowerCase(java.util.Locale.ROOT))
+                .setParameter("ref",ref.toLowerCase(java.util.Locale.ROOT)).setParameter("sourceId",sourceId);
         return ((Number)query.getSingleResult()).longValue();
     }
     private void requireResponsibility(UUID departmentId,UUID employeeId,String location,String role){
@@ -762,9 +767,13 @@ public class FinanceAssetWorkflowService {
     }
     private AssetSubmissionPolicy.PolicyInput policy(Category c){return new AssetSubmissionPolicy.PolicyInput(c.id(),c.cost(),c.accumulated(),c.expense(),c.clearing());}
     private BigDecimal residual(UUID category,BigDecimal value){if(value!=null)return value;if(category!=null){Object v=em.createNativeQuery("SELECT default_salvage_rate FROM finance_asset_categories WHERE id=:id AND is_deleted=false").setParameter("id",category).getSingleResult();if(v!=null)return (BigDecimal)v;}throw validation("请填写残值率，或在生效的资产类别里配置默认残值率");}
-    private Locked lock(String table,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery("SELECT lifecycle_status,row_version,submitted_by FROM "+table+" WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"资产记录不存在");Object[]r=rows.getFirst();return new Locked(NativeValueConverters.text(r[0]),number(r[1]).longValue(),NativeValueConverters.uuid(r[2]));}
-    private AssetWorkbenchResponses.WorkflowResult result(String table,UUID id,boolean deferred){
-        Object[]r=(Object[])em.createNativeQuery("SELECT lifecycle_status,row_version,COALESCE(submitted_by,created_by) FROM "+table+" WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult();
+    private Locked lock(boolean deferred,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery(deferred
+                ?"SELECT lifecycle_status,row_version,submitted_by FROM deferred_expenses WHERE id=:id AND is_deleted=false FOR UPDATE"
+                :"SELECT lifecycle_status,row_version,submitted_by FROM fixed_assets WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"资产记录不存在");Object[]r=rows.getFirst();return new Locked(NativeValueConverters.text(r[0]),number(r[1]).longValue(),NativeValueConverters.uuid(r[2]));}
+    private AssetWorkbenchResponses.WorkflowResult result(UUID id,boolean deferred){
+        Object[]r=(Object[])em.createNativeQuery(deferred
+                ?"SELECT lifecycle_status,row_version,COALESCE(submitted_by,created_by) FROM deferred_expenses WHERE id=:id AND is_deleted=false"
+                :"SELECT lifecycle_status,row_version,COALESCE(submitted_by,created_by) FROM fixed_assets WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult();
         String s=NativeValueConverters.text(r[0]); UUID maker=NativeValueConverters.uuid(r[2]);
         if("DISPOSAL_PENDING".equals(s)||"TERMINATION_PENDING".equals(s)){
             String workflow=deferred?"TERMINATION":"DISPOSAL";

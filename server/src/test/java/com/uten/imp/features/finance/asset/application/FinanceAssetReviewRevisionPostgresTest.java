@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -59,9 +60,74 @@ class FinanceAssetReviewRevisionPostgresTest {
     @Autowired com.uten.imp.features.finance.gl.GlReportLineBindingService reportBindings;
     @Autowired com.uten.imp.features.finance.asset.FixedAssetService assetReports;
     @Autowired ObjectMapper json;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.uten.imp.features.purchase.report.PurchaseReportService purchaseReports;
     @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService subcontractReports;
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @ParameterizedTest @CsvSource({"false,false", "false,true", "true,false", "true,true"})
+    void sourceIdentityKeepsSelfExclusionCrossKindChecksAndDeletedHistory(boolean deferred,boolean hasUuid) {
+        Actor maker=actor("source-identity"),reviewer=actor("source-reviewer");
+        UUID ownCategory=category(deferred),otherCategory=category(!deferred),sourceId=hasUuid?UUID.randomUUID():null;
+        String source="SOURCE-' OR 1=1 -- "+UUID.randomUUID();
+        login(maker,financialPermissions());
+        var first=sourceDraft(deferred,ownCategory,maker,sourceId,source,null,null);
+        var edited=sourceDraft(deferred,ownCategory,maker,sourceId,source.toLowerCase(java.util.Locale.ROOT),first.id(),first.version());
+        var submitted=workflow.submit(first.id(),edited.version(),deferred);
+        assertThat(submitted.status()).isEqualTo("PENDING_APPROVAL");
+        var duplicate=sourceDraft(!deferred,otherCategory,maker,sourceId,
+                hasUuid?"different-display-reference":source.toUpperCase(java.util.Locale.ROOT),null,null);
+        assertThatThrownBy(()->workflow.submit(duplicate.id(),duplicate.version(),!deferred))
+                .isInstanceOf(ApiException.class).hasMessageContaining("来源单据行已经关联");
+        assertThat(detail(duplicate.id(),!deferred).summary().status()).isEqualTo("DRAFT");
+        login(reviewer,financialPermissions());
+        var rejected=workflow.reject(first.id(),submitted.version(),"保留原草稿历史",deferred);
+        login(maker,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.EDIT,FinanceAssetAuthorization.DELETE));
+        workflow.deleteDraft(first.id(),deferred,rejected.version());
+        assertThat(workflow.submit(duplicate.id(),duplicate.version(),!deferred).status()).isEqualTo("PENDING_APPROVAL");
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void uuidSourcesNeverFallBackToACommonDisplayReference(boolean deferred) {
+        Actor maker=actor("source-uuid");UUID ownCategory=category(deferred),otherCategory=category(!deferred);
+        String reference="SHARED-REFERENCE-"+UUID.randomUUID();
+        login(maker,financialPermissions());
+        var first=sourceDraft(deferred,ownCategory,maker,UUID.randomUUID(),reference,null,null);
+        assertThat(workflow.submit(first.id(),first.version(),deferred).status()).isEqualTo("PENDING_APPROVAL");
+        var independent=sourceDraft(!deferred,otherCategory,maker,UUID.randomUUID(),reference,null,null);
+        assertThat(workflow.submit(independent.id(),independent.version(),!deferred).status()).isEqualTo("PENDING_APPROVAL");
+        var external=sourceDraft(deferred,ownCategory,maker,null,reference,null,null);
+        assertThat(workflow.submit(external.id(),external.version(),deferred).status()).isEqualTo("PENDING_APPROVAL");
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void concurrentCrossKindRegistrationsSerializeTheSameSourceIdentity(boolean hasUuid) throws Exception {
+        Actor maker=actor("source-concurrency");UUID fixedCategory=category(false),deferredCategory=category(true);
+        UUID sourceId=hasUuid?UUID.randomUUID():null;String reference="CONCURRENT-SOURCE-"+UUID.randomUUID();
+        var ready=new java.util.concurrent.CyclicBarrier(2);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var pending=new java.util.ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(boolean deferred:List.of(false,true)) pending.add(executor.submit(()->{
+                login(maker,financialPermissions());
+                try {
+                    return new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
+                        var draft=sourceDraft(deferred,deferred?deferredCategory:fixedCategory,maker,sourceId,
+                                hasUuid&&deferred?"other-reference":reference,null,null);
+                        try {ready.await(30,java.util.concurrent.TimeUnit.SECONDS);}
+                        catch(Exception failure){throw new IllegalStateException(failure);}
+                        workflow.submit(draft.id(),draft.version(),deferred);
+                        return true;
+                    });
+                } catch(ApiException duplicate) {
+                    assertThat(duplicate.getMessage()).contains("来源单据行已经关联");
+                    return false;
+                } finally {SecurityContextHolder.clearContext();}
+            }));
+            int committed=0;
+            for(var result:pending)if(result.get(90,java.util.concurrent.TimeUnit.SECONDS))committed++;
+            assertThat(committed).isEqualTo(1);
+        }
+    }
 
     /** Reuse this fully migrated application fixture to validate each real SQL projection. */
     @Test
@@ -452,7 +518,8 @@ class FinanceAssetReviewRevisionPostgresTest {
         Actor maker=actor("recognition-maker"),reviewer=actor("recognition-reviewer"),poster=actor("recognition-poster");
         UUID category=category(deferred);
         login(maker,financialPermissions());
-        var created=create(deferred,category,maker,"RECOGNITION-"+UUID.randomUUID(),"初始确认闭环","100.00",null);
+        String source="RECOGNITION-"+UUID.randomUUID();
+        var created=create(deferred,category,maker,source,"初始确认闭环","100.00",null);
         var submitted=workflow.submit(created.id(),created.version(),deferred);
         login(reviewer,financialPermissions());var approved=workflow.approve(created.id(),submitted.version(),"复核",deferred);
         login(poster,financialPermissions());var active=workflow.activate(created.id(),approved.version(),deferred);
@@ -474,6 +541,11 @@ class FinanceAssetReviewRevisionPostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_recognition_reversals WHERE object_id=?",Integer.class,created.id())).isEqualTo(2);
         assertThatThrownBy(()->jdbc.update("DELETE FROM finance_asset_recognition_reversals WHERE object_id=?",created.id()))
                 .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        login(maker,financialPermissions());
+        var replacement=create(deferred,category,maker,source,"重新登记保留原冲销历史","100.00",null);
+        assertThat(replacement.id()).isNotEqualTo(created.id());
+        assertThat(workflow.submit(replacement.id(),replacement.version(),deferred).status()).isEqualTo("PENDING_APPROVAL");
+        assertThat(detail(created.id(),deferred).summary().status()).isEqualTo("REVERSED");
     }
 
     @Test
@@ -552,6 +624,20 @@ class FinanceAssetReviewRevisionPostgresTest {
 
     private AssetWorkbenchResponses.Detail detail(UUID id,boolean deferred) {
         return deferred ? queries.deferredExpense(id) : queries.fixedAsset(id);
+    }
+    private AssetWorkbenchResponses.WorkflowResult sourceDraft(boolean deferred,UUID category,Actor maker,UUID sourceId,
+            String sourceRef,UUID existingId,Long version) {
+        var today=BusinessTime.today();
+        if(deferred) {
+            var request=new AssetWorkbenchRequests.DeferredExpenseDraft(null,"来源身份回归",category,maker.department(),maker.employee(),"一楼","部门成本",
+                    new BigDecimal("100.00"),12,YearMonth.from(today).toString(),today,today.plusMonths(11)," manual ",sourceId,
+                    sourceRef," Header ",today,"待摊来源回归",version);
+            return existingId==null?workflow.createDeferred(request):workflow.updateDeferred(existingId,request);
+        }
+        var request=new AssetWorkbenchRequests.FixedAssetDraft(null,"来源身份回归",category,maker.department(),maker.employee(),"一楼",null,null,"部门成本",
+                new BigDecimal("100.00"),new BigDecimal("0.05"),12,YearMonth.from(today).plusMonths(1).toString(),today,today,today,
+                " manual ",sourceId,sourceRef," Header ",today,"资产来源回归",version);
+        return existingId==null?workflow.createFixed(request):workflow.updateFixed(existingId,request);
     }
     private AssetWorkbenchResponses.WorkflowResult create(boolean deferred,UUID category,Actor maker,String source,String name,String amount,Long version) {
         return deferred ? workflow.createDeferred(deferredDraft(category,maker,source,name,amount,version))

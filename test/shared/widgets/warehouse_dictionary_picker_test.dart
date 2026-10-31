@@ -190,7 +190,10 @@ void main() {
       api.pending = null;
       await tester.tap(find.byKey(const Key('warehouse-picker-refresh-empty')));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('warehouse-picker-entry-root')), findsOneWidget);
+      expect(
+        find.byKey(const Key('warehouse-picker-entry-root')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );

@@ -1,0 +1,156 @@
+{
+  "id": "E-MOULD-BOM-WINDOWS-20261031",
+  "date": "2026-10-31",
+  "branch": "uimp/mould-bom-workspace-20261031",
+  "baseCommit": "6ea02b2929abae18b0dab76e8f3a35bb756b0c18",
+  "classification": [
+    "frontend",
+    "shared-navigation-contract",
+    "read-only-data-audit"
+  ],
+  "companyDatabaseReadOnly": true,
+  "companyDatabaseWritten": false,
+  "deployed": false,
+  "formalPackagesBuilt": false,
+  "audit": {
+    "companyQueriedAt": "2026-10-31T10:18:36.840256-06:00",
+    "oldMouldCount": 1605,
+    "oldSupplierCount": 386,
+    "oldSummaryNonempty": 1300,
+    "companyMouldCount": 1626,
+    "companyManufacturerCount": 0,
+    "companySupplierCount": 399,
+    "companyLatestMigration": "970",
+    "matchingOriginalSummaryCount": 1605,
+    "missingSourceIds": [],
+    "changedSourceTextIds": [],
+    "candidateCount": 1300
+  },
+  "auditSource": "restored YTDQ_2023 backup, not the running legacy server",
+  "nativeWpf": {
+    "implemented": false,
+    "targetWin7Accepted": false,
+    "packages": {
+      "W7-BIZ-025": "full goods detail/BOM not migrated",
+      "W7-BIZ-031": "mould workspace not migrated",
+      "W7-BIZ-034": "candidate goods reading only, compare windows not migrated",
+      "W7-BIZ-116": "where-used workspace not migrated"
+    }
+  },
+  "owningReport": "docs/99-项目治理/2026-10-31-模具制造商与BOM多窗口核查.md",
+  "validation": {
+    "status": "passed_local_with_explicit_release_and_native_boundaries",
+    "regressionLog": ".test-regression.log",
+    "analysisLog": ".analyze-all.log",
+    "uiScreenshots": [
+      "build/ui-audit/bom-workspace-1600-light.png",
+      "build/ui-audit/bom-workspace-1280-dark.png",
+      "build/ui-audit/bom-workspace-390-light.png"
+    ],
+    "frontendRegression": {
+      "passed": 287,
+      "skipped": 3,
+      "log": ".test-regression.log"
+    },
+    "finalWindowAndHeaderRegression": {
+      "passed": 80,
+      "log": ".test-common-entry-green.log",
+      "overlap": "includes window tests also exercised by the larger frontend suite; do not add as unique tests"
+    },
+    "updateSafetyRegression": {
+      "passed": 4,
+      "log": ".test-update-safety.log"
+    },
+    "analysis": {
+      "issues": 0,
+      "scope": "lib and test",
+      "log": ".analyze-clean.log"
+    },
+    "backendRecovery": {
+      "selectedSuite": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "log": ".backend-mould-recovery-offline.log"
+      },
+      "latestExpandedRecovery": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "log": ".backend-mould-recovery-v972-final.log",
+        "cases": [
+          "exact source recovery",
+          "original individual manufacturer",
+          "original trailing whitespace",
+          "manual manufacturer preservation",
+          "changed keeper preservation",
+          "linked keeper preservation",
+          "deleted row preservation",
+          "newer IDs excluded",
+          "before/after evidence retained",
+          "idempotent replay",
+          "actual offline importer maps manufacturer and leaves keeper independent"
+        ]
+      },
+      "overlap": "latest expanded recovery is the same test class rerun after added assertions; not an additional unique suite test",
+      "boundary": "isolated PostgreSQL test fixture; not production migration or full ERP release UAT"
+    },
+    "uiScreenshotsLog": ".test-bom-workspace-ui-final.log",
+    "nativeRegistry": ".native-canonical-check.log; source inventory hash normalized to repository LF before registry sync"
+  },
+  "mappingConfirmedByUser": {
+    "date": "2026-10-31",
+    "originalLabel": "制造商或模具供应商",
+    "namedIndividualsAreOriginalManufacturerText": true
+  },
+  "recovery": {
+    "migration": "V972__recover_legacy_mould_manufacturer.sql",
+    "offlineImporterCorrected": true,
+    "companyPreflight": {
+      "sourceRows": 1300,
+      "located": 1300,
+      "eligible": 1300,
+      "existingManufacturer": 0,
+      "changedKeeper": 0,
+      "linkedKeeper": 0,
+      "deleted": 0
+    },
+    "productionApplied": false,
+    "newerCompanyRowsOutsideOldBackup": 21,
+    "integrationReservation": "V971 belongs to the active employee-template binding branch; this task reserves V972. Integrate the complete migration chain before release."
+  },
+  "sourceSha256": {
+    "lib/components/feedback/uten_floating_window.dart": "ca08b059b430c5085ed54eca8df383a092236b09d6ab2a8ffccbcf996d12c31c",
+    "lib/components/layout/uten_app_bar.dart": "d8a51ab597c6fc0871d7b31b9a58a1b188507e6d1fc733f5032d27d0740927ff",
+    "lib/components/layout/uten_page_window_scope.dart": "7f02235930144b40c913820a5e916bbeac08c481c92b06bdfecee8d19d8a3c5e",
+    "lib/core/router/app_router.dart": "dfe5defae7efd1517041c8a0de89a7ceefa58004e1bc2411ccd7574ad6a55a0b",
+    "lib/core/router/business_window_host.dart": "e221e71e4014425cec971a1a4fafa0fa2a7146880ee98cbbdfee1e743ed3b47f",
+    "lib/features/admin/pages/admin_platform_settings_page.dart": "aa6ef62c171b0da5e11455c4bd8f27fe3796e3d0baaa4915f23c21e5882e12fe",
+    "lib/features/basic_data/models/goods_detail_sequence.dart": "f6b3aaa5d3cc2df1568bb31ac2cf646810d2a22f85642d804d6e2bbe49661586",
+    "lib/features/basic_data/pages/goods_detail_page.dart": "dbe9c18a02340d1ebb92c736ed6a7ba58499eb588648647508eb126f706a30b9",
+    "lib/features/basic_data/pages/product_category_page.dart": "ed991eb9c5eadaf097b3ece45d0e2e1b0d72afecbfdb0c18b4ad5494cb2cd368",
+    "lib/features/basic_data/widgets/goods_bom_navigation.dart": "41b6ed34c13be68cd66f288372e1d913e17fa3ef0705e8ae54049e2823ebd609",
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": "ce53dfc2bd5593e727e0c6968d4c0c8081783a84eb9c2611e4137909b7e5c770",
+    "lib/features/basic_data/widgets/goods_detail_body.dart": "9ccc4d0513a6cab357827a1366eb797801ee483fc8fd98b7f866355f613b4291",
+    "lib/features/basic_data/widgets/master_inline_edit.dart": "2252202dfb083934c20e529095f1154712b73d1933a5dcf8801821b070e4fb7e",
+    "lib/features/client_update/client_release_publish_page.dart": "0823757b001d2b672a3116db32a5649df9f8b45838c40e22010ba9d889018c10",
+    "lib/features/production/pages/where_used_report_page.dart": "fbd50ea452098ccd6b643701307288e9c253e5945f0134be3b0fae3f4cbe0706",
+    "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart": "84e262ad4982cf24668f62126741b9352750b3d688a1f09c4c7d87bc8a32abe2",
+    "lib/shared/drafts/form_draft_mixin.dart": "776bf7792b5b40304583c604e377ef70d4f06c1814eefca06dc395f951a4b211",
+    "lib/shared/drafts/form_draft_navigation.dart": "0a3c79aa3225bcd36ca16ddcdeb20535bf313026ed914065e9ced65a36736827",
+    "lib/shared/windows/business_windows.dart": "3edb9c33e7a859fd1862142da3d791cf4cfda950c52a611263953950fa7f7be0",
+    "server/legacy_migration/audit_mould_manufacturers.ps1": "8de367ef21b8ed9182a331b8c1da4491376056161b1e16c5c7365515b7bcfd94",
+    "server/legacy_migration/migrate_mould_data.sql": "c0c223567218f113008f117c4be1e60564e98c42f9918ef7901cd9957300f5b0",
+    "server/src/main/java/com/uten/imp/features/master/mould/Mould.java": "2631af515379e30e64857ca4193b385ef5eba1a388a47b0099a7f316c7f6d43e",
+    "server/src/main/resources/db/migration/V972__recover_legacy_mould_manufacturer.sql": "bae7f25bec0ee67582172d25a77bed2c78d367359fa3c9e1b078d8bc96d94223",
+    "server/src/test/java/com/uten/imp/migration/MouldLegacyManufacturerRecoveryPostgresTest.java": "f22ed42ddf469fd868876a149355fbf793bbb49a41b41d81fba486a4fe584133",
+    "test/core/router/business_window_host_test.dart": "0cb0ccb0bbea2e95e94a89c62c67553cf1a26cb0ec675626b918d0eabd879b59",
+    "test/core/router/business_window_navigation_test.dart": "caf415f83e0cbc16cb800ca09481d943a01c10f9d02fd7a42d963db97484474a",
+    "test/features/basic_data/goods_bom_navigation_guard_test.dart": "5ece424db70b30891d1dc4a3a977416f78cfc6bfca6772bbc05cc528e9bfc2a9",
+    "test/features/basic_data/widgets/goods_bom_navigation_test.dart": "1941d1f9ee69c947eae877f4be7367680c3f09b646845ea4501552432fe32b8f",
+    "test/features/basic_data/widgets/goods_bom_workspace_test.dart": "17db452c315212595037130fe71e676fb03b9b3bb137dfcbcd858edcd33326f3",
+    "test/features/production/where_used_report_page_interaction_test.dart": "eb41187a7ea29a2d3e7f4e97e0b32c96ea2bff5c37af778d1dcbfe1efd2e2e1d"
+  }
+}

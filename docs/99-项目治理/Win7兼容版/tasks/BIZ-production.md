@@ -550,9 +550,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 Flutter where-used opens the shared goods BOM editor directly and keeps relation history in row context menu. Native where-used, editable BOM navigation and comparison windows remain unported. Preserve permissions, history/current-BOM distinction and shared transaction contract. See E-MOULD-BOM-WINDOWS-20261031.。
 
 ## W7-BIZ-117
 

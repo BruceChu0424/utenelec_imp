@@ -22,6 +22,7 @@ import 'uten_app_bar_action_scope.dart';
 import 'uten_app_bar_action_feedback.dart';
 import 'uten_app_bar_action_row.dart';
 import 'uten_fit_or_compact.dart';
+import 'uten_page_window_scope.dart';
 import 'uten_page_layout.dart';
 import 'uten_scroll_gutter.dart';
 import '../buttons/uten_button.dart';
@@ -232,7 +233,11 @@ class _UtenAppBarState extends State<UtenAppBar> {
         separateWindowControls(action),
     ].whereType<Widget>().toList();
     final pageLeading = separateWindowControls(leading);
+    final windowAction = UtenPageWindowScope.maybeOf(
+      context,
+    )?.actionBuilder(context, title);
     final pageActions = <Widget>[
+      ?windowAction,
       ...explicitBusinessActions,
       if (showPagePermissionAction)
         PagePermissionAction(scope: pagePermissionScopeFromContext(context)),

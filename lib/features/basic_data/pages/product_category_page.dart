@@ -1,3 +1,4 @@
+import '../models/goods_detail_sequence.dart';
 import '../../../shared/widgets/read_owned_dialog.dart';
 // 货品资料分类树管理页（基础资料）
 //
@@ -1551,7 +1552,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     if (_detailOpening) return;
     _detailOpening = true;
     try {
-      await _navigation.push<void>(RoutePath.basicinfoGoodsDetail(g.id));
+      await _navigation.push<void>(
+        RoutePath.basicinfoGoodsDetail(g.id),
+        extra: GoodsDetailSequence(
+          pane.page?.items.map((item) => item.id) ?? [g.id],
+        ),
+      );
     } finally {
       _detailOpening = false;
     }

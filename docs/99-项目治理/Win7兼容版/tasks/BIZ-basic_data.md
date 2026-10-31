@@ -189,9 +189,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
 
-接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。。
+接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。；2026-10-31 Web/Flutter now shares full goods/BOM detail from where-used, product code title, UUID previous/next navigation and comparison-window draft guards. Native full detail/BOM remains unported; do not infer WPF parity or expose writes. See E-MOULD-BOM-WINDOWS-20261031.。
 
 ## W7-BIZ-216
 
@@ -333,9 +333,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.；2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.。
 
 ## W7-BIZ-032
 
@@ -405,9 +405,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
 
-接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。。
+接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。；2026-10-31 Flutter category shell gains comparison windows; goods list passes actual UUID source order to full detail. WPF candidate goods reading is not full detail/edit/multiwindow migration. See E-MOULD-BOM-WINDOWS-20261031.。
 
 ## W7-BIZ-035
 
@@ -527,4 +527,4 @@
 
 证据：尚未登记，不得推定通过。
 
-接续/限制：尚未迁移；先做动作/合同审计。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。。
+接续/限制：尚未迁移；先做动作/合同审计。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。；源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。。

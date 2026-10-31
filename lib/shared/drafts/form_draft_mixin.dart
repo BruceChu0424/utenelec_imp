@@ -291,6 +291,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     String? resumeId = _draftSkipResume ? null : formDraftResumeId;
     ValueKey<String>? pageKey = formDraftRouterPageKey;
     final routeState = goRouterPageStateOrNull(context);
+    final draftRouter = GoRouter.maybeOf(context);
     if (routeState != null) {
       final uri = routeState.uri;
       pageKey ??= routeState.pageKey;
@@ -369,6 +370,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
           _draftRoute,
           _confirmDraftExit,
           pageKey: pageKey,
+          router: draftRouter,
           reloadSafety: _reloadSafety,
         );
         WidgetsBinding.instance.addObserver(_draftLifecycleObserver);

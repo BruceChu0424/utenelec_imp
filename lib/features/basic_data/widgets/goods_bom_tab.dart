@@ -692,10 +692,13 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         setState(() => _switchingMode = false);
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted || !_canEdit || !identical(draft, _draft)) return false;
+        // A closing dialog may repaint after its source page is replaced.
+        // Capture inherited localization while this owner is still active.
+        final l10n = _l10n;
         final action = await showDialog<_BomEditExitAction>(
           context: context,
           builder: (dialogContext) => UtenAlertDialog(
-            title: Text(_l10n.bomEditSaveTitle),
+            title: Text(l10n.bomEditSaveTitle),
             content: SizedBox(
               width: 460,
               child: SingleChildScrollView(
@@ -704,7 +707,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _l10n.bomEditSaveSummary(
+                      l10n.bomEditSaveSummary(
                         preview.operationCount,
                         preview.affectedParents.length,
                       ),
@@ -721,12 +724,12 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       Padding(
                         padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
                         child: Text(
-                          '· ${parent.goodsName ?? parent.goodsCode ?? _l10n.bomEditUnnamedGoods}',
+                          '· ${parent.goodsName ?? parent.goodsCode ?? l10n.bomEditUnnamedGoods}',
                         ),
                       ),
                     if (preview.affectedParents.length > 6)
                       Text(
-                        _l10n.bomEditMoreGoods(
+                        l10n.bomEditMoreGoods(
                           preview.affectedParents.length - 6,
                         ),
                       ),
@@ -734,7 +737,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     if (draft.isCommitRecoveryPending) ...[
                       UtenInlineNotice(
                         level: UtenInlineNoticeLevel.warning,
-                        message: _l10n.bomEditSaveUnknown,
+                        message: l10n.bomEditSaveUnknown,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                     ],
@@ -743,8 +746,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                           ? UtenInlineNoticeLevel.warning
                           : UtenInlineNoticeLevel.info,
                       message: preview.otherUsageCount > 0
-                          ? _l10n.bomEditSharedWarning(preview.otherUsageCount)
-                          : _l10n.bomEditSaveNote,
+                          ? l10n.bomEditSharedWarning(preview.otherUsageCount)
+                          : l10n.bomEditSaveNote,
                     ),
                   ],
                 ),
@@ -756,7 +759,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   dialogContext,
                   _BomEditExitAction.continueEditing,
                 ),
-                child: Text(_l10n.bomEditContinue),
+                child: Text(l10n.bomEditContinue),
               ),
               OutlinedButton(
                 key: const Key('goods-bom-discard-and-exit'),
@@ -764,8 +767,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     Navigator.pop(dialogContext, _BomEditExitAction.discard),
                 child: Text(
                   draft.isCommitRecoveryPending
-                      ? _l10n.bomEditDiscardRefresh
-                      : _l10n.bomEditDiscardAndExit,
+                      ? l10n.bomEditDiscardRefresh
+                      : l10n.bomEditDiscardAndExit,
                 ),
               ),
               FilledButton(
@@ -774,8 +777,8 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     Navigator.pop(dialogContext, _BomEditExitAction.save),
                 child: Text(
                   preview.otherUsageCount > 0
-                      ? _l10n.bomEditConfirmShared
-                      : _l10n.bomEditConfirmSave,
+                      ? l10n.bomEditConfirmShared
+                      : l10n.bomEditConfirmSave,
                 ),
               ),
             ],

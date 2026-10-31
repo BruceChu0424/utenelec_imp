@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/models/goods_detail_sequence.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -51,7 +52,7 @@ class _Bom extends Fake implements GoodsBomRepository {
 }
 
 void main() {
-  for (final navigation in ['header', 'system', 'go', 'platform']) {
+  for (final navigation in ['header', 'system', 'go', 'platform', 'next-bom']) {
     testWidgets(
       '$navigation return asks before losing BOM edits and supports all three decisions',
       (tester) async {
@@ -62,13 +63,18 @@ void main() {
         final router = GoRouter(
           routes: [
             DraftAwareGoRoute(
+              path: '/basicinfo/goods/next',
+              builder: (_, _) => const Scaffold(body: Text('资料列表')),
+            ),
+            DraftAwareGoRoute(
               path: '/',
               builder: (_, _) => const Scaffold(body: Text('资料列表')),
             ),
             DraftAwareGoRoute(
               path: '/goods',
-              builder: (_, _) => const Scaffold(
+              builder: (_, _) => Scaffold(
                 body: GoodsDetailBody(
+                  sequence: GoodsDetailSequence(['goods-nav', 'next']),
                   initialDetail: _goods,
                   initialCategoryId: null,
                   initialTab: GoodsDetailTab.bom,
@@ -125,6 +131,8 @@ void main() {
 
         Future<void> requestBack() async {
           switch (navigation) {
+            case 'next-bom':
+              await tester.tap(find.byKey(const Key('goods-next-bom')));
             case 'system':
               await tester.binding.handlePopRoute();
             case 'go':

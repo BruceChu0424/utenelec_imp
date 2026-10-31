@@ -766,6 +766,7 @@ class _WorkshopMaterialBinPageState
       _myLocation!,
       () async => !mounted || !_requestEditor.busy,
       pageKey: goRouterPageStateOrNull(context)?.pageKey,
+      router: GoRouter.maybeOf(context),
       reloadSafety: _reloadSafety,
     );
     ref.onPageResume(

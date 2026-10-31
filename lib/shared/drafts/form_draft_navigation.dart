@@ -15,6 +15,7 @@ class FormDraftNavigation {
         ({
           String path,
           ValueKey<String>? pageKey,
+          GoRouter? router,
           Future<bool> Function() leave,
         })
       >{};
@@ -24,11 +25,13 @@ class FormDraftNavigation {
     String path,
     Future<bool> Function() leave, {
     ValueKey<String>? pageKey,
+    GoRouter? router,
     WebUpdateSafetyState Function()? reloadSafety,
   }) {
     _guards[owner] = (
       path: Uri.parse(path).path,
       pageKey: pageKey,
+      router: router,
       leave: leave,
     );
     final safetyOwner = _guardSafetyOwners.putIfAbsent(owner, Object.new);
@@ -69,12 +72,26 @@ class FormDraftNavigation {
   }
 
   static Future<bool> onExit(BuildContext context, GoRouterState state) async {
+    final router = GoRouter.maybeOf(context);
     final guards = _guards.values
         .where(
-          (guard) => guard.pageKey != null
-              ? guard.pageKey == state.pageKey
-              : guard.path == state.uri.path,
+          (guard) =>
+              (guard.router == null || identical(guard.router, router)) &&
+              (guard.pageKey != null
+                  ? guard.pageKey == state.pageKey
+                  : guard.path == state.uri.path),
         )
+        .toList()
+        .reversed;
+    for (final guard in guards) {
+      if (!await guard.leave()) return false;
+    }
+    return true;
+  }
+
+  static Future<bool> confirmRouterExit(GoRouter router) async {
+    final guards = _guards.values
+        .where((guard) => identical(guard.router, router))
         .toList()
         .reversed;
     for (final guard in guards) {

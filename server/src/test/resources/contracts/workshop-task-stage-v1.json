@@ -1,0 +1,728 @@
+{
+  "contractVersion": 1,
+  "description": "Workshop status from server facts; UI-only report drafts are excluded.",
+  "cases": [
+    {
+      "name": "running",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "生产中 · 可报工"
+    },
+    {
+      "name": "continuous",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "持续生产中 · 按实际投料报工"
+    },
+    {
+      "name": "quality",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "fqcPendingQty": 10
+      },
+      "label": "已报完 · 待品质检查"
+    },
+    {
+      "name": "inbound",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "finishedInboundPendingQty": 10
+      },
+      "label": "品质通过 · 待点收入库"
+    },
+    {
+      "name": "return",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 10,
+        "hasAvailableMaterial": false,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "hasPendingReturn": true
+      },
+      "label": "已入库 · 待仓库收退料"
+    },
+    {
+      "name": "usage",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 10,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "hasUnregisteredMaterial": true
+      },
+      "label": "已入库 · 待登记实际用料"
+    },
+    {
+      "name": "close",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 10,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "已入库 · 待结清核对"
+    },
+    {
+      "name": "failed",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "fqcFailedQty": 1
+      },
+      "label": "品质异常 · 待处理"
+    },
+    {
+      "name": "registration",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "已报完 · 待仓库登记送检"
+    },
+    {
+      "name": "quality_priority",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0,
+        "plannedInboundQty": 10,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "fqcPendingQty": 1,
+        "finishedInboundPendingQty": 2
+      },
+      "label": "已报完 · 待品质检查"
+    },
+    {
+      "name": "epsilon",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0.000001,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "已报完 · 待仓库登记送检"
+    },
+    {
+      "name": "positive_remaining",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 0.000002,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS"
+      },
+      "label": "生产中 · 可报工"
+    },
+    {
+      "name": "completed",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "COMPLETED"
+      },
+      "label": "已完工"
+    },
+    {
+      "name": "cancelled",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "CANCELLED"
+      },
+      "label": "已取消"
+    },
+    {
+      "name": "reversed",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "REVERSED"
+      },
+      "label": "已撤回"
+    },
+    {
+      "name": "split",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "splitReplaced": true
+      },
+      "label": "已拆分为生产批次"
+    },
+    {
+      "name": "route",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": null,
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY"
+      },
+      "label": "待选生产路线"
+    },
+    {
+      "name": "bin_choice",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "binMaterialState": "NEED_CHOICE"
+      },
+      "label": "待认料"
+    },
+    {
+      "name": "bin_required",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "binMaterialState": "NEED_BIN"
+      },
+      "label": "车间内料仓未开启 · 不能开工"
+    },
+    {
+      "name": "bin_not_started_overlay",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "IN_PROGRESS",
+        "binMaterialState": "NEED_BIN"
+      },
+      "label": "生产中 · 可报工"
+    },
+    {
+      "name": "discovery_pending",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "materialDiscoveryRequired": true,
+        "materialDiscoveryStatus": "PENDING"
+      },
+      "label": "待仓库填写物料"
+    },
+    {
+      "name": "discovery_required",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "materialDiscoveryRequired": true
+      },
+      "label": "需要登记领料物料"
+    },
+    {
+      "name": "planning",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "materialPlanningGapKindCount": 2
+      },
+      "label": "等计划下单 · 缺 2 种"
+    },
+    {
+      "name": "urged",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "materialPlanningGapKindCount": 2,
+        "planningUrgeCount": 1
+      },
+      "label": "已催计划 · 等下单 2 种"
+    },
+    {
+      "name": "all_issued",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 3,
+        "canStart": true
+      },
+      "label": "物料已领齐 · 可开工"
+    },
+    {
+      "name": "partial_issued",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialIssuedKindCount": 2,
+        "canStart": true
+      },
+      "label": "部分物料已投 · 可开工"
+    },
+    {
+      "name": "partial_draw",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialShortKindCount": 1,
+        "canRequestDraw": true
+      },
+      "label": "部分物料可领 · 去领料"
+    },
+    {
+      "name": "all_draw",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "canRequestDraw": true
+      },
+      "label": "物料已备齐 · 去领料"
+    },
+    {
+      "name": "awaiting_warehouse",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialAwaitingWarehouseKindCount": 1
+      },
+      "label": "已提交领料 · 待仓库发料"
+    },
+    {
+      "name": "make_short",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialShortKindCount": 2,
+        "materialShortMakeKindCount": 1
+      },
+      "label": "等自制子件完成 · 缺 2 种"
+    },
+    {
+      "name": "purchase_short",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialShortKindCount": 2
+      },
+      "label": "等待到货 · 缺 2 种"
+    },
+    {
+      "name": "full_kit_short",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialShortKindCount": 2
+      },
+      "label": "等待物料到齐 · 已备 1/3 种"
+    },
+    {
+      "name": "line_side",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3,
+        "materialLineSidePendingKindCount": 1
+      },
+      "label": "直送料待投入 · 等待开工条件"
+    },
+    {
+      "name": "preparing",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "materialKindCount": 3
+      },
+      "label": "备料中 · 等待领料指令"
+    },
+    {
+      "name": "waiting_covered",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING",
+        "materialKindCount": 3,
+        "materialShortKindCount": 1
+      },
+      "label": "等待物料到齐 · 已备 2/3 种"
+    },
+    {
+      "name": "waiting_full",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING"
+      },
+      "label": "等待物料到齐 · 齐套生产"
+    },
+    {
+      "name": "waiting_batch",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "BATCH",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING"
+      },
+      "label": "等待到货 · 分批生产"
+    },
+    {
+      "name": "waiting_continuous",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "WAITING"
+      },
+      "label": "等待部分物料 · 持续生产"
+    },
+    {
+      "name": "zero_ready",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "zeroMaterial": true
+      },
+      "label": "无需领料 · 可开工"
+    },
+    {
+      "name": "legacy_issued",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "DISPATCHED",
+        "issued": true
+      },
+      "label": "物料齐套 · 可开工"
+    },
+    {
+      "name": "legacy_draw",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "drawRequested": true
+      },
+      "label": "已提交领料 · 待仓库发料"
+    },
+    {
+      "name": "legacy_ready",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "FULL_KIT",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY"
+      },
+      "label": "物料齐套 · 去领料"
+    },
+    {
+      "name": "legacy_continuous_ready",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "canStart": true
+      },
+      "label": "部分物料已投 · 可开工"
+    },
+    {
+      "name": "legacy_continuous_draw",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY",
+        "canRequestDraw": true
+      },
+      "label": "部分物料可领 · 去领料"
+    },
+    {
+      "name": "legacy_continuous_wait",
+      "task": {
+        "segmentId": "00000000-0000-0000-0000-000000000001",
+        "plannedQty": 10,
+        "reportedQty": 0,
+        "remainingReportQty": 10,
+        "plannedInboundQty": 0,
+        "hasAvailableMaterial": true,
+        "startRoute": "CONTINUOUS",
+        "overproductionPolicyApplies": false,
+        "segmentStatus": "READY"
+      },
+      "label": "等待物料支持开工"
+    }
+  ]
+}

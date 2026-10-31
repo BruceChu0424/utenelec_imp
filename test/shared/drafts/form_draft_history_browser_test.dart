@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -122,6 +123,66 @@ void main() {
       StateError('test cleanup failed'),
     )).toJS;
     await done.future;
+  });
+
+  test('migration waits for its preparation transaction to finish', () async {
+    // Observe the real browser transaction without replacing its requests or
+    // adding a delay that could conceal an early upgrade.
+    final prototype = globalContext
+        .getProperty<JSFunction>('IDBDatabase'.toJS)
+        .getProperty<JSObject>('prototype'.toJS);
+    final original = prototype.getProperty<JSFunction>('transaction'.toJS);
+    var observedPreparation = false;
+    var preparationComplete = false;
+    prototype.setProperty(
+      'transaction'.toJS,
+      ((
+            web.IDBDatabase database,
+            JSAny storeNames,
+            JSString mode, [
+            JSAny? options,
+          ]) {
+            final transaction =
+                (options == null
+                        ? original.callAsFunction(database, storeNames, mode)
+                        : original.callAsFunction(
+                            database,
+                            storeNames,
+                            mode,
+                            options,
+                          ))
+                    as web.IDBTransaction;
+            if (database.name == databaseName &&
+                database.version == 1 &&
+                mode.toDart == 'readonly') {
+              observedPreparation = true;
+              transaction.addEventListener(
+                'complete',
+                ((web.Event _) => preparationComplete = true).toJS,
+              );
+            }
+            return transaction;
+          })
+          .toJSCaptureThis,
+    );
+    addTearDown(() => prototype.setProperty('transaction'.toJS, original));
+    final storage = BrowserFormDraftStorage(
+      databaseName: databaseName,
+      beforeMigrationUpgrade: () async {
+        expect(observedPreparation, isTrue);
+        expect(
+          preparationComplete,
+          isTrue,
+          reason:
+              'Request success is earlier than transaction completion; '
+              'a close-pending preparation connection can block its own upgrade.',
+        );
+      },
+    );
+    stores.add(storage);
+    await storage.write('${prefix}one', _payload('one'));
+    expect(await storage.read('${prefix}one'), _payload('one'));
+    expect((await storage.readHistoryPage(prefix)).entries, hasLength(1));
   });
 
   test(

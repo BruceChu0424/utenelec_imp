@@ -128,9 +128,18 @@ class BrowserFormDraftStorage
   }
 
   Future<Map<String, String>> _readRawDrafts(web.IDBDatabase database) async {
-    final store = database
-        .transaction('drafts'.toJS, 'readonly')
-        .objectStore('drafts');
+    final transaction = database.transaction('drafts'.toJS, 'readonly');
+    final complete = Completer<void>();
+    transaction.oncomplete = ((web.Event _) => complete.complete()).toJS;
+    void fail() {
+      if (!complete.isCompleted) {
+        complete.completeError(StateError('本机草稿读取失败'));
+      }
+    }
+
+    transaction.onabort = ((web.Event _) => fail()).toJS;
+    transaction.onerror = ((web.Event _) => fail()).toJS;
+    final store = transaction.objectStore('drafts');
     // Queue both requests in this transaction before awaiting either.
     final keys = _request(
       store.getAllKeys(),
@@ -140,6 +149,15 @@ class BrowserFormDraftStorage
       store.getAll(),
       (raw) => (raw as JSArray<JSString>).toDart,
     );
+    // Request success does not finish its transaction. close() only marks the
+    // connection as closing until every transaction completes; opening v2 any
+    // earlier can therefore be blocked by this preparation connection itself.
+    // Observe every failure while waiting for the actual transaction boundary.
+    await Future.wait<void>([
+      keys.then<void>((_) {}),
+      values.then<void>((_) {}),
+      complete.future,
+    ]);
     final allKeys = await keys;
     final allValues = await values;
     final records = <String, String>{};

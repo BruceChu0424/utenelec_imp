@@ -18,6 +18,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -104,5 +105,47 @@ class GoodsMasterRelationshipResolverTest {
         ApiException refused = assertThrows(ApiException.class, () -> resolver.owningWarehouse(id));
         assertEquals(ErrorCode.VALIDATION_FAILED, refused.getCode());
         assertEquals("所属仓库只能选启用中的良品子仓，「五金仓库」是不良品仓", refused.getMessage());
+    }
+
+    @Test
+    void unchangedSupplierReferenceIsPreservedWithoutStatusRecheck() {
+        UUID id = UUID.randomUUID();
+        var existing = new com.uten.imp.features.master.supplier.Supplier();
+        existing.setId(id);
+        existing.setStatus("禁用");
+
+        assertSame(existing, resolver.supplier(id, existing));
+        verifyNoInteractions(supplierRepo);
+    }
+
+    @Test
+    void changedSupplierReferenceStillRequiresAnActiveSelection() {
+        UUID requested = UUID.randomUUID();
+        var disabled = new com.uten.imp.features.master.supplier.Supplier();
+        disabled.setId(requested);
+        disabled.setCode("GY000022");
+        disabled.setName("利辉");
+        disabled.setStatus("禁用");
+        when(supplierRepo.findById(requested)).thenReturn(Optional.of(disabled));
+        var existing = new com.uten.imp.features.master.supplier.Supplier();
+        existing.setId(UUID.randomUUID());
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> resolver.supplier(requested, existing));
+
+        assertEquals(ErrorCode.CONFLICT, error.getCode());
+        assertTrue(error.getMessage().contains("利辉"), error.getMessage());
+        assertTrue(error.getMessage().contains("不能新选"), error.getMessage());
+    }
+
+    @Test
+    void unchangedMouldReferenceIsPreservedWithoutStatusRecheck() {
+        UUID id = UUID.randomUUID();
+        var existing = new com.uten.imp.features.master.mould.Mould();
+        existing.setId(id);
+        existing.setStatus("禁用");
+
+        assertSame(existing, resolver.mould(id, existing));
+        verifyNoInteractions(mouldRepo);
     }
 }

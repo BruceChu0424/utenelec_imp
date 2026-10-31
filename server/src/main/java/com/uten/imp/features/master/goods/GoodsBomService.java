@@ -657,7 +657,7 @@ public class GoodsBomService {
                 r.setColor(null);
                 r.setColorLegacyId(null);
             } else {
-                Color target = relationships.color(req.getColorId());
+                Color target = relationships.color(req.getColorId(), r.getColor());
                 r.setColor(target);
                 r.setColorLegacyId(target.getLegacyId());
             }
@@ -667,7 +667,7 @@ public class GoodsBomService {
                 r.setDefaultSupplier(null);
                 r.setVendLegacyId(null);
             } else {
-                var target = relationships.supplier(req.getDefaultSupplierId());
+                var target = relationships.supplier(req.getDefaultSupplierId(), r.getDefaultSupplier());
                 r.setDefaultSupplier(target);
                 r.setVendLegacyId(target.getLegacyId());
             }

@@ -32,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,10 +71,10 @@ class GoodsUuidRelationshipServiceTest {
         weightUnit.setLegacyId(104);
         weightUnit.setName("kg");
         when(categoryRepo.findById(category.getId())).thenReturn(Optional.of(category));
-        when(relationships.color(color.getId())).thenReturn(color);
-        when(relationships.unit(unit.getId())).thenReturn(unit);
-        when(relationships.unit(thicknessUnit.getId())).thenReturn(thicknessUnit);
-        when(relationships.unit(weightUnit.getId())).thenReturn(weightUnit);
+        when(relationships.color(eq(color.getId()), any())).thenReturn(color);
+        when(relationships.unit(eq(unit.getId()), any())).thenReturn(unit);
+        when(relationships.unit(eq(thicknessUnit.getId()), any())).thenReturn(thicknessUnit);
+        when(relationships.unit(eq(weightUnit.getId()), any())).thenReturn(weightUnit);
         when(codes.allocateForNewGoods(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.isNull(),
@@ -176,7 +177,7 @@ class GoodsUuidRelationshipServiceTest {
         when(goodsRepo.findById(component.getId())).thenReturn(Optional.of(component));
         when(bomRepo.findByGoods_IdAndComponent_IdAndDeletedFalse(
                 parent.getId(), component.getId())).thenReturn(Optional.empty());
-        when(relationships.color(color.getId())).thenReturn(color);
+        when(relationships.color(eq(color.getId()), any())).thenReturn(color);
 
         BomItemSaveRequest request = new BomItemSaveRequest();
         request.setComponentGoodsId(component.getId());

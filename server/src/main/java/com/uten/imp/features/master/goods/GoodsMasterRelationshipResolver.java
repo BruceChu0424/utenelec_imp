@@ -53,18 +53,38 @@ public class GoodsMasterRelationshipResolver {
         return target;
     }
 
+    /** 既有引用原样保留 (ADR-197)，语义见 {@link #supplier(UUID, Supplier)}。 */
+    public Unit unit(UUID id, Unit existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        return unit(id);
+    }
+
     public Color color(UUID id) {
         Color target = colorRepo.findById(requiredUuid(id))
                 .orElseThrow(() -> notFound("颜色不存在"));
-        requireActive(target.isDeleted(), target.getStatus(), "颜色已删除或停用");
+        requireActive(target.isDeleted(), target.getStatus(),
+                "颜色「" + masterLabel(null, target.getName()) + "」已删除或停用，不能新选");
         return target;
+    }
+
+    /** 既有引用原样保留 (ADR-197)，语义见 {@link #supplier(UUID, Supplier)}。 */
+    public Color color(UUID id, Color existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        return color(id);
     }
 
     public Mould mould(UUID id) {
         Mould target = mouldRepo.findById(requiredUuid(id))
                 .orElseThrow(() -> notFound("模具不存在"));
-        requireActive(target.isDeleted(), target.getStatus(), "模具已删除或停用");
+        requireActive(target.isDeleted(), target.getStatus(),
+                "模具「" + masterLabel(null, target.getName()) + "」已删除或停用，不能新选");
         return target;
+    }
+
+    /** 既有引用原样保留 (ADR-197)，语义见 {@link #supplier(UUID, Supplier)}。 */
+    public Mould mould(UUID id, Mould existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        return mould(id);
     }
 
     public Client client(UUID id) {
@@ -74,11 +94,29 @@ public class GoodsMasterRelationshipResolver {
                 .orElseThrow(() -> notFound("客户不存在"));
     }
 
+    /** 既有引用原样保留 (ADR-197)，语义见 {@link #supplier(UUID, Supplier)}。 */
+    public Client client(UUID id, Client existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        return client(id);
+    }
+
     public Supplier supplier(UUID id) {
         Supplier target = supplierRepo.findById(requiredUuid(id))
                 .orElseThrow(() -> notFound("供应商不存在"));
-        requireActive(target.isDeleted(), target.getStatus(), "供应商已删除或停用");
+        requireActive(target.isDeleted(), target.getStatus(),
+                "供应商「" + masterLabel(target.getCode(), target.getName()) + "」已删除或停用，不能新选");
         return target;
+    }
+
+    /**
+     * 既有引用原样保留 (ADR-197)：粘贴、编辑把行上/主档上已有的引用 UUID 原样带回时，
+     * 不按新选口径重校验状态。停用供应商、颜色、模具、客户不清理既有引用(与 ADR-191
+     * 停用货品自动退出 BOM 不同——它们不参与物料展开)，改量、复制、导回不能被阻断；
+     * 换成另一个对象才是新选，仍走 {@link #supplier(UUID)} 要求「使用」中。
+     */
+    public Supplier supplier(UUID id, Supplier existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        return supplier(id);
     }
 
     /**
@@ -145,6 +183,11 @@ public class GoodsMasterRelationshipResolver {
         if (deleted || "禁用".equals(status) || "报废".equals(status)) {
             throw new ApiException(ErrorCode.CONFLICT, message);
         }
+    }
+
+    private static String masterLabel(String code, String name) {
+        String text = ((code == null ? "" : code.strip()) + " " + (name == null ? "" : name.strip())).strip();
+        return text.isEmpty() ? "未命名" : text;
     }
 
     private static ApiException notFound(String message) {

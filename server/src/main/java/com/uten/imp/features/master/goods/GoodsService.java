@@ -1380,7 +1380,7 @@ public class GoodsService {
             goods.setColorLegacyId(null);
             return;
         }
-        Color target = relationships.color(req.getColorId());
+        Color target = relationships.color(req.getColorId(), goods.getColor());
         goods.setColor(target);
         goods.setColorLegacyId(target.getLegacyId());
     }
@@ -1422,7 +1422,7 @@ public class GoodsService {
             goods.setThicknessUnitLegacyId(null);
             return;
         }
-        Unit target = relationships.unit(req.getThicknessUnitId());
+        Unit target = relationships.unit(req.getThicknessUnitId(), goods.getThicknessUnit());
         goods.setThicknessUnit(target);
         goods.setThicknessUnitLegacyId(target.getLegacyId());
     }
@@ -1434,7 +1434,7 @@ public class GoodsService {
             goods.setMWeightUnitLegacyId(null);
             return;
         }
-        Unit target = relationships.unit(req.getMWeightUnitId());
+        Unit target = relationships.unit(req.getMWeightUnitId(), goods.getMWeightUnit());
         goods.setMWeightUnit(target);
         goods.setMWeightUnitLegacyId(target.getLegacyId());
     }
@@ -1507,7 +1507,7 @@ public class GoodsService {
                 g.setUnit(null);
                 g.setUnitLegacyId(null);
             } else {
-                Unit target = relationships.unit(req.getUnitId());
+                Unit target = relationships.unit(req.getUnitId(), g.getUnit());
                 g.setUnit(target);
                 g.setUnitLegacyId(target.getLegacyId());
             }
@@ -1517,7 +1517,7 @@ public class GoodsService {
                 g.setMould(null);
                 g.setMouldLegacyId(null);
             } else {
-                var target = relationships.mould(req.getMouldId());
+                var target = relationships.mould(req.getMouldId(), g.getMould());
                 g.setMould(target);
                 g.setMouldLegacyId(target.getLegacyId());
             }
@@ -1531,7 +1531,7 @@ public class GoodsService {
                 g.setClient(null);
                 g.setClientLegacyId(null);
             } else {
-                var target = relationships.client(req.getClientId());
+                var target = relationships.client(req.getClientId(), g.getClient());
                 g.setClient(target);
                 g.setClientLegacyId(target.getLegacyId());
             }
@@ -1541,7 +1541,7 @@ public class GoodsService {
                 g.setDefaultSupplier(null);
                 g.setVendLegacyId(null);
             } else {
-                var target = relationships.supplier(req.getDefaultSupplierId());
+                var target = relationships.supplier(req.getDefaultSupplierId(), g.getDefaultSupplier());
                 g.setDefaultSupplier(target);
                 g.setVendLegacyId(target.getLegacyId());
             }
@@ -1551,7 +1551,7 @@ public class GoodsService {
                 g.setSecondarySupplier(null);
                 g.setVend2LegacyId(null);
             } else {
-                var target = relationships.supplier(req.getSecondarySupplierId());
+                var target = relationships.supplier(req.getSecondarySupplierId(), g.getSecondarySupplier());
                 g.setSecondarySupplier(target);
                 g.setVend2LegacyId(target.getLegacyId());
             }

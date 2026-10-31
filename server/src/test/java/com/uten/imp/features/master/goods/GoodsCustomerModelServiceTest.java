@@ -61,7 +61,7 @@ class GoodsCustomerModelServiceTest {
         when(codes.allocateForUpdate(any(), any(), any(), any(), any())).thenReturn(new CategoryCodeAllocation("HP1", 1, null, true));
         color.setName("灰色");
         color.setLegacyId(7);
-        when(relations.color(color.getId())).thenReturn(color);
+        when(relations.color(eq(color.getId()), any())).thenReturn(color);
     }
 
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }

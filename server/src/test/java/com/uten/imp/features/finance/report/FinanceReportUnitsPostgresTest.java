@@ -55,7 +55,7 @@ class FinanceReportUnitsPostgresTest {
                 "finance_reconciliations","account_flow_monthly_summaries","ar_ap_ledger","ar_ap_source_refs","accounts","clients","suppliers",
                 "currencies","employees","departments","payment_styles","client_director_v","client_categories","supplier_categories","sales_orders",
                 "sales_order_items","sales_shipments","sales_shipment_items","customer_open_item_offset_batches","customer_open_item_offsets",
-                "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_entries",
+                "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_vouchers","gl_entries",
                 "goods","material_categories","v_stock_actual_cogs_postings","units","colors",
                 "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items",
                 "party_monthly_summaries","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
@@ -190,7 +190,7 @@ class FinanceReportUnitsPostgresTest {
         assertThat(executedSql).anyMatch(sql->sql.contains("FROM windowed") && sql.contains("column_")
                 && sql.indexOf("AS balance")<sql.indexOf("FROM windowed"));
     }
-    @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,gl_entries,goods,material_categories,v_stock_actual_cogs_postings,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items");executedSql.clear();}
+    @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,gl_entries,gl_vouchers,goods,material_categories,v_stock_actual_cogs_postings,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items");executedSql.clear();}
     private static Query query(String sql){
         Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
         when(query.setMaxResults(anyInt())).thenReturn(query);
@@ -320,36 +320,105 @@ class FinanceReportUnitsPostgresTest {
     }
 
     @Test void assetSchedulesPageStableMasterIdentitiesBeforeTheirExactActivePostingAggregates(){
+        LocalDate cutoff=LocalDate.of(2026,2,28);
         for(int index=1;index<=3;index++){
-            UUID asset=UUID.randomUUID(),deferred=UUID.randomUUID();
-            db.update("INSERT INTO fixed_assets(id,code,name,original_value,salvage_rate,useful_months,start_period,status) VALUES (?,?,'同名资产',1000.1234,.05,10,'2026-01','在用')",asset,"B1-FA-"+index);
-            db.update("INSERT INTO deferred_expenses(id,code,name,total_amount,useful_months,start_period,status) VALUES (?,?,'同名待摊',1000.1234,10,'2026-01','摊销中')",deferred,"B1-DA-"+index);
-            for(var source:Map.of("fa_depreciation_log",new Object[]{"asset_id",asset},
-                    "da_amortization_log",new Object[]{"deferred_id",deferred}).entrySet()){
-                String table=source.getKey(),foreign=source.getValue()[0].toString();Object id=source.getValue()[1];
-                db.update("INSERT INTO "+table+"("+foreign+",period,amount,entry_kind,status) VALUES (?,'2026-01',10.0001,'NORMAL','ACTIVE'),(?,'2026-02',20.0002,'NORMAL','ACTIVE'),(?,'2026-03',999,'REVERSAL','ACTIVE'),(?,'2026-04',999,'NORMAL','REVERSED')",id,id,id,id);
+            UUID asset=assetScheduleMaster(false,"B1-FA-"+index,LocalDate.of(2025,12,31),null,null,false,new BigDecimal("40.0004"));
+            UUID deferred=assetScheduleMaster(true,"B1-DA-"+index,LocalDate.of(2025,12,31),null,null,false,BigDecimal.ZERO);
+            for(boolean isDeferred:List.of(false,true)){
+                UUID id=isDeferred?deferred:asset;
+                assetSchedulePosting(isDeferred,id,"2026-01","10.0001","NORMAL","ACTIVE",LocalDate.of(2026,1,31),false);
+                assetSchedulePosting(isDeferred,id,"2026-02","20.0002","NORMAL","ACTIVE",cutoff,false);
+                assetSchedulePosting(isDeferred,id,"2026-01","37.0007","NORMAL","REVERSED",LocalDate.of(2026,1,31),false);
+                assetSchedulePosting(isDeferred,id,"2026-02","-37.0007","REVERSAL","ACTIVE",LocalDate.of(2026,2,14),false);
+                assetSchedulePosting(isDeferred,id,"2026-02","99.0009","NORMAL","ACTIVE",cutoff,true);
+                assetSchedulePosting(isDeferred,id,"2026-03","44.0004","NORMAL","ACTIVE",LocalDate.of(2026,3,31),false);
             }
         }
         var assets=new FixedAssetService(em,mock(com.uten.imp.security.TxSessionVars.class),access);
-        var first=assets.depreciationSchedule(1,1);var second=assets.depreciationSchedule(2,1);
+        var first=assetScheduleReport(assets,false,1,1,cutoff);var second=assetScheduleReport(assets,false,2,1,cutoff);
         assertThat(first.total()).isEqualTo(3);assertThat(first.totalPages()).isEqualTo(3);
         assertThat(first.rows().getFirst()).containsEntry("code","B1-FA-1").containsEntry("postedMonths",2L);
         assertThat(second.rows().getFirst()).containsEntry("code","B1-FA-2");
-        assertThat((BigDecimal)first.rows().getFirst().get("accumDep")).isEqualByComparingTo("30.0003");
-        assertThat((BigDecimal)first.rows().getFirst().get("netValue")).isEqualByComparingTo("970.12");
-        assertThat((BigDecimal)first.rows().getFirst().get("monthlyDep")).isEqualByComparingTo("95.01");
+        assertThat((BigDecimal)first.rows().getFirst().get("accumDep")).isEqualByComparingTo("70.0007");
+        assertThat((BigDecimal)first.rows().getFirst().get("netValue")).isEqualByComparingTo("930.12");
+        assertThat((BigDecimal)first.rows().getFirst().get("monthlyDep")).isEqualByComparingTo("20.0002");
         executedSql.clear();
         try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)){
-            var page=assets.depreciationSchedule(3,1);var deferred=assets.amortizationSchedule(2,1);
+            var page=assetScheduleReport(assets,false,3,1,cutoff);var deferred=assetScheduleReport(assets,true,2,1,cutoff);
             assertThat(page.total()).isEqualTo(-1);assertThat(page.rows().getFirst()).containsEntry("code","B1-FA-3");
             assertThat(deferred.total()).isEqualTo(-1);assertThat(deferred.rows().getFirst()).containsEntry("code","B1-DA-2");
             assertThat((BigDecimal)deferred.rows().getFirst().get("accumAmt")).isEqualByComparingTo("30.0003");
             assertThat((BigDecimal)deferred.rows().getFirst().get("remain")).isEqualByComparingTo("970.12");
+            assertThat((BigDecimal)deferred.rows().getFirst().get("monthlyAmt")).isEqualByComparingTo("20.0002");
             assertThat(deferred.rows().getFirst().get("accumAmtExact")).isEqualTo("30.0003");
-            assertThat(assets.depreciationSchedule(4,1).rows()).isEmpty();
+            assertThat(assetScheduleReport(assets,false,4,1,cutoff).rows()).isEmpty();
         }
         assertThat(executedSql).hasSize(3).allSatisfy(sql->assertThat(sql)
-                .contains("ORDER BY report.\"code\"","LIMIT :__limit OFFSET :__offset","LEFT JOIN LATERAL"));
+                .contains("ORDER BY report.\"code\"","LIMIT :__limit OFFSET :__offset","LEFT JOIN LATERAL","LEFT JOIN gl_vouchers"));
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void assetCutoffsUseVoucherDatesLegacyMonthEndsAndRecognitionLifecycle(boolean deferred){
+        LocalDate cutoff=LocalDate.of(2026,2,15),recognized=LocalDate.of(2025,12,31);
+        BigDecimal opening=deferred?BigDecimal.ZERO:new BigDecimal("4.0004");
+        UUID id=assetScheduleMaster(deferred,"ASOF-01",recognized,null,null,false,opening);
+        // Current closed state must not erase a row that was still active at the requested date.
+        assetScheduleMaster(deferred,"ASOF-02",recognized,LocalDate.of(2026,3,1),null,false,BigDecimal.ZERO);
+        assetScheduleMaster(deferred,"IGNORED-DRAFT",null,null,null,false,BigDecimal.ZERO);
+        assetScheduleMaster(deferred,"IGNORED-FUTURE",LocalDate.of(2026,3,1),null,null,false,BigDecimal.ZERO);
+        assetScheduleMaster(deferred,"IGNORED-CLOSED",recognized,cutoff,null,false,BigDecimal.ZERO);
+        assetScheduleMaster(deferred,"IGNORED-REVERSED",recognized,null,cutoff,false,BigDecimal.ZERO);
+        assetScheduleMaster(deferred,"IGNORED-DELETED",recognized,null,null,true,BigDecimal.ZERO);
+        assetSchedulePosting(deferred,id,"2026-02","7.0001","NORMAL","ACTIVE",cutoff.minusDays(1),false);
+        assetSchedulePosting(deferred,id,"2026-02","2.0002","NORMAL","ACTIVE",null,false);
+        assetSchedulePosting(deferred,id,"2026-03","31.0003","NORMAL","ACTIVE",LocalDate.of(2026,3,1),false);
+        var assets=new FixedAssetService(em,mock(com.uten.imp.security.TxSessionVars.class),access);
+        String accumulated=deferred?"accumAmt":"accumDep",monthly=deferred?"monthlyAmt":"monthlyDep";
+        var midMonth=assetScheduleReport(assets,deferred,1,50,cutoff);
+        assertThat(midMonth.rows()).extracting(row->row.get("code")).containsExactly("ASOF-01","ASOF-02");
+        assertThat(midMonth.rows().getFirst()).containsEntry("postedMonths",1L);
+        assertThat((BigDecimal)midMonth.rows().getFirst().get(monthly)).isEqualByComparingTo("7.0001");
+        assertThat((BigDecimal)midMonth.rows().getFirst().get(accumulated)).isEqualByComparingTo(opening.add(new BigDecimal("7.0001")));
+        var monthEnd=assetScheduleReport(assets,deferred,1,50,LocalDate.of(2026,2,28));
+        assertThat(monthEnd.rows()).extracting(row->row.get("code")).containsExactly("ASOF-01","ASOF-02");
+        assertThat(monthEnd.rows().getFirst()).containsEntry("postedMonths",2L);
+        assertThat((BigDecimal)monthEnd.rows().getFirst().get(monthly)).isEqualByComparingTo("9.0003");
+        assertThat((BigDecimal)monthEnd.rows().getFirst().get(accumulated)).isEqualByComparingTo(opening.add(new BigDecimal("9.0003")));
+    }
+
+    private static ReportTableResponse assetScheduleReport(FixedAssetService service,boolean deferred,int page,int size,LocalDate cutoff){
+        return deferred?service.amortizationSchedule(page,size,FinanceReportColumnOptions.NONE,cutoff)
+                :service.depreciationSchedule(page,size,FinanceReportColumnOptions.NONE,cutoff);
+    }
+
+    private static UUID assetScheduleMaster(boolean deferred,String code,LocalDate recognized,LocalDate closed,LocalDate reversed,boolean deleted,BigDecimal opening){
+        UUID id=UUID.randomUUID();
+        String lifecycle=recognized==null?"DRAFT":reversed!=null?"REVERSED":closed!=null?(deferred?"TERMINATED":"DISPOSED"):"ACTIVE";
+        String status=lifecycle.equals("ACTIVE")?(deferred?"摊销中":"在用"):"停用";
+        if(deferred)db.update("""
+                INSERT INTO deferred_expenses(id,code,name,total_amount,useful_months,start_period,status,lifecycle_status,
+                    recognized_on,terminated_on,recognition_reversed_on,is_deleted)
+                VALUES(?,?,'同名待摊',1000.1234,10,'2026-01',?,?,?,?,?,?)
+                """,id,code,status,lifecycle,recognized,closed,reversed,deleted);
+        else db.update("""
+                INSERT INTO fixed_assets(id,code,name,original_value,salvage_rate,useful_months,start_period,status,lifecycle_status,
+                    capitalized_on,disposed_on,recognition_reversed_on,is_deleted,opening_as_of,opening_accumulated_amount,opening_remaining_months)
+                VALUES(?,?,'同名资产',1000.1234,.05,10,'2026-01',?,?,?,?,?,?,?,?,?)
+                """,id,code,status,lifecycle,recognized,closed,reversed,deleted,
+                opening.signum()==0?null:LocalDate.of(2025,12,31),opening,opening.signum()==0?null:10);
+        return id;
+    }
+
+    /** Projection fixtures use real voucher headers and explicit fact dates; full posting workflows are tested separately. */
+    private static void assetSchedulePosting(boolean deferred,UUID id,String period,String amount,String kind,String status,LocalDate voucherDate,boolean deleted){
+        UUID voucher=voucherDate==null?null:UUID.randomUUID();
+        if(voucher!=null)db.update("""
+                INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status,is_deleted)
+                VALUES(?,?,?,?,'AUTO',?,?,?)
+                """,voucher,"REPORT-"+voucher,period,voucherDate,deferred?"DA_AMT":"FA_DEP",status.equals("REVERSED")?-1:1,deleted);
+        db.update(deferred?"INSERT INTO da_amortization_log(deferred_id,period,amount,entry_kind,status,voucher_id,is_deleted) VALUES(?,?,?,?,?,?,?)"
+                :"INSERT INTO fa_depreciation_log(asset_id,period,amount,entry_kind,status,voucher_id,is_deleted) VALUES(?,?,?,?,?,?,?)",
+                id,period,new BigDecimal(amount),kind,status,voucher,deleted);
     }
 
     @Test void glTrialBalancePaginatesAfterTheCompleteOpeningAndPeriodAggregation() throws Exception {

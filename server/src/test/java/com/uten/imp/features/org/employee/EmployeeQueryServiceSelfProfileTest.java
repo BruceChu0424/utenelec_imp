@@ -22,6 +22,7 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -133,6 +135,43 @@ class EmployeeQueryServiceSelfProfileTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"active", "locked", "disabled"})
+    void lastSuccessfulLoginSharesTheExistingAccountStatusReadWithoutExtraAccountPrivileges(String status) {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view"))));
+        stubDetail(OTHER_ID, "合成账号员工");
+        var account = new com.uten.imp.features.auth.model.UserAccount();
+        account.setEmployeeId(OTHER_ID);
+        account.setStatus(status);
+        var recorded = OffsetDateTime.parse("2026-10-31T08:15:42+08:00");
+        account.setLastLoginAt(recorded);
+        when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(account));
+
+        EmployeeDetail detail = service.detail(OTHER_ID);
+
+        assertEquals(status, detail.getAccountStatus());
+        assertEquals(recorded, detail.getAccountLastLoginAt());
+        assertEquals(Boolean.FALSE, detail.getAccountSupportAllowed());
+        assertEquals("****1234", detail.getIdNumber());
+        assertNull(detail.getBirthDate());
+        verify(userRepo).findByEmployeeId(OTHER_ID);
+        verifyNoMoreInteractions(userRepo);
+    }
+
+    @Test
+    void missingLoginRecordRemainsNullableWithoutInferringAccountHistory() {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view"))));
+        stubDetail(OTHER_ID, "合成账号员工");
+        assertNull(service.detail(OTHER_ID).getAccountLastLoginAt());
+        var account = new com.uten.imp.features.auth.model.UserAccount();
+        account.setEmployeeId(OTHER_ID);
+        account.setStatus("active");
+        when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(account));
+        EmployeeDetail detail = service.detail(OTHER_ID);
+        assertEquals("active", detail.getAccountStatus());
+        assertNull(detail.getAccountLastLoginAt());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value=ErrorCode.class,names={"FORBIDDEN","NOT_FOUND"})
     void optionalAttachmentDenialNeverHidesAnExistingPublicEmployee(ErrorCode denial) {
         when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID,Set.of("employee:view","attachment:view"))));
@@ -172,12 +211,15 @@ class EmployeeQueryServiceSelfProfileTest {
         retained.setEmployeeId(OTHER_ID);
         retained.setDeleted(true);
         retained.setStatus("disabled");
+        retained.setLastLoginAt(OffsetDateTime.parse("2026-10-31T08:15:42+08:00"));
         when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(retained));
         assertNull(service.detail(OTHER_ID).getAccountStatus());
+        assertNull(service.detail(OTHER_ID).getAccountLastLoginAt());
         org.junit.jupiter.api.Assertions.assertTrue(service.detail(OTHER_ID).isAccountDeleted());
         assertEquals(Boolean.TRUE, service.detail(OTHER_ID).getAccountSupportAllowed());
         retained.setDeleted(false);
         assertEquals("disabled", service.detail(OTHER_ID).getAccountStatus());
+        assertEquals(retained.getLastLoginAt(), service.detail(OTHER_ID).getAccountLastLoginAt());
         org.junit.jupiter.api.Assertions.assertFalse(service.detail(OTHER_ID).isAccountDeleted());
     }
 

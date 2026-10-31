@@ -286,6 +286,7 @@ class EmployeeProfile {
     this.probationEndDate,
     this.renewCount,
     this.accountStatus,
+    this.accountLastLoginAt,
     this.accountDeleted = false,
     this.accountSupportAllowed,
     this.emergencyContacts = const [],
@@ -360,6 +361,9 @@ class EmployeeProfile {
 
   // 登录账号状态（active/locked/disabled；null = 未开通账号）
   final String? accountStatus;
+
+  /// 当前账号最近一次成功登录；为空只表示没有可用记录。
+  final String? accountLastLoginAt;
 
   /// 已软删的历史绑定可重新开通，不能把真实停用账号视为未开通。
   final bool accountDeleted;
@@ -461,6 +465,7 @@ class EmployeeProfile {
       probationEndDate: json['probationEndDate'] as String?,
       renewCount: json['renewCount'] as int?,
       accountStatus: json['accountStatus'] as String?,
+      accountLastLoginAt: json['accountLastLoginAt'] as String?,
       accountDeleted: json['accountDeleted'] as bool? ?? false,
       accountSupportAllowed: json['accountSupportAllowed'] as bool?,
       emergencyContacts: ec

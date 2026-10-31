@@ -15,6 +15,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/pages/employee_detail_page.dart';
@@ -251,6 +252,96 @@ Future<ProviderContainer> _pump(
 
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
+
+  for (final sample in const [
+    (status: 'active', timestamp: '2026-10-31T00:15:42Z'),
+    (status: 'locked', timestamp: '2026-10-31T08:15:42+08:00'),
+    (status: 'disabled', timestamp: '2026-10-30T18:15:42-06:00'),
+  ]) {
+    testWidgets('${sample.status}账号保留状态色并按北京时间显示成功登录', (tester) async {
+      await _pump(
+        tester,
+        _Accounts({
+          'accountStatus': sample.status,
+          'accountLastLoginAt': sample.timestamp,
+        }),
+      );
+      final timestamp = find.byKey(
+        const ValueKey('employee-account-last-login'),
+      );
+      expect(
+        tester.widget<Text>(timestamp).data,
+        '（最近登录：2026-10-31 08:15:42(北京)）',
+      );
+      final l10n = AppLocalizations.of(tester.element(timestamp));
+      final (label, color) = switch (sample.status) {
+        'active' => (l10n.accountStatusActive, UtenColors.statusSuccess),
+        'locked' => (l10n.accountStatusLocked, UtenColors.statusDanger),
+        _ => (l10n.accountStatusDisabled, UtenColors.statusNeutral),
+      };
+      final accountRow = find
+          .ancestor(of: timestamp, matching: find.byType(Wrap))
+          .first;
+      final status = find.descendant(
+        of: accountRow,
+        matching: find.text(label),
+      );
+      expect(tester.widget<Text>(status).style?.color, color);
+      expect(tester.takeException(), isNull);
+      if (_capture && sample.status == 'active') {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'employee-last-login-desktop-light',
+        );
+      }
+    });
+  }
+
+  for (final values in const <Map<String, dynamic>>[
+    {'accountStatus': 'active'},
+    {'accountStatus': 'active', 'accountLastLoginAt': null},
+    {
+      'accountStatus': 'disabled',
+      'accountDeleted': true,
+      'accountLastLoginAt': '2026-10-31T00:15:42Z',
+    },
+  ]) {
+    testWidgets('空记录或已删除绑定不推断从未登录：$values', (tester) async {
+      await _pump(tester, _Accounts(Map<String, dynamic>.of(values)));
+      expect(find.text('（暂无登录记录）'), findsOneWidget);
+      expect(find.textContaining('从未登录'), findsNothing);
+      expect(find.textContaining('最近登录：'), findsNothing);
+    });
+  }
+
+  testWidgets('375窄屏大字深色的最近登录时间可以完整换行', (tester) async {
+    await _pump(
+      tester,
+      _Accounts({
+        'accountStatus': 'active',
+        'accountLastLoginAt': '2026-10-31T00:15:42Z',
+      }),
+      size: const Size(375, 1000),
+      textScale: 1.6,
+      dark: true,
+    );
+    final timestamp = find.byKey(const ValueKey('employee-account-last-login'));
+    expect(
+      tester.widget<Text>(timestamp).data,
+      '（最近登录：2026-10-31 08:15:42(北京)）',
+    );
+    expect(tester.widget<Text>(timestamp).maxLines, isNull);
+    expect(tester.getRect(timestamp).right, lessThanOrEqualTo(375));
+    expect(tester.takeException(), isNull);
+    if (_capture) {
+      await saveAuditScreenshot(
+        tester,
+        _captureKey,
+        'employee-last-login-phone-dark-large',
+      );
+    }
+  });
 
   for (final action in const [
     (
@@ -741,6 +832,7 @@ void main() {
     final container = await _pump(tester, repo, settle: false);
     repo.pending = null;
     repo.values['fullName'] = '新身份资料';
+    repo.values['accountLastLoginAt'] = '2026-10-31T00:15:42Z';
     (container.read(sessionProvider.notifier) as _Actor).switchIdentity();
     await tester.pumpAndSettle();
     pending.complete(
@@ -750,11 +842,14 @@ void main() {
         fullName: '旧身份资料',
         status: 'active',
         accountStatus: 'active',
+        accountLastLoginAt: '2026-10-20T00:00:00Z',
       ),
     );
     await tester.pumpAndSettle();
     expect(find.text('旧身份资料'), findsNothing);
     expect(find.text('新身份资料'), findsNWidgets(2));
+    expect(find.text('（最近登录：2026-10-31 08:15:42(北京)）'), findsOneWidget);
+    expect(find.textContaining('2026-10-20 08:00:00'), findsNothing);
   });
 
   testWidgets('375窄屏大字深色分类完整可选且不溢出', (tester) async {
@@ -791,6 +886,7 @@ void main() {
     final legacy = EmployeeProfile.fromJson({'id': 'e', 'code': 'UT1'});
     expect(legacy.accountDeleted, isFalse);
     expect(legacy.accountSupportAllowed, isNull);
+    expect(legacy.accountLastLoginAt, isNull);
     final denied = EmployeeProfile.fromJson({
       'id': 'e',
       'code': 'UT1',
@@ -799,5 +895,13 @@ void main() {
     });
     expect(denied.accountDeleted, isTrue);
     expect(denied.accountSupportAllowed, isFalse);
+    expect(denied.accountLastLoginAt, isNull);
+    final recorded = EmployeeProfile.fromJson({
+      'id': 'e',
+      'code': 'UT1',
+      'accountStatus': 'active',
+      'accountLastLoginAt': '2026-10-31T00:15:42Z',
+    });
+    expect(recorded.accountLastLoginAt, '2026-10-31T00:15:42Z');
   });
 }

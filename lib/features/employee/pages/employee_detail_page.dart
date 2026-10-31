@@ -595,6 +595,19 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   String? _accountStatus(EmployeeProfile profile) =>
       profile.accountDeleted ? null : profile.accountStatus;
 
+  String _accountLastLoginLabel(EmployeeProfile profile) {
+    final recorded = _accountStatus(profile) == null
+        ? null
+        : profile.accountLastLoginAt?.trim();
+    if (recorded == null || recorded.isEmpty) return '（暂无登录记录）';
+    final timestamp = ChinaDateTime.formatIsoInstant(
+      recorded,
+      seconds: true,
+      fallback: '时间暂不可用',
+    );
+    return '（最近登录：$timestamp）';
+  }
+
   bool _maySupportAccount(EmployeeProfile profile) {
     final owner = ref.read(sensitiveReadBoundaryProvider);
     final self = ref.read(sessionProvider).user?.employeeId == profile.id;
@@ -623,6 +636,13 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           children: [
             Text('登录账号', style: theme.textTheme.titleSmall),
             _accountStatusBadge(theme, l10n),
+            Text(
+              _accountLastLoginLabel(profile),
+              key: const ValueKey('employee-account-last-login'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             if (canSupport && status == null)
               UtenButton(
                 key: const ValueKey('employee-provision-account-action'),

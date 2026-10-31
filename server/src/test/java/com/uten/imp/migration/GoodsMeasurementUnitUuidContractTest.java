@@ -29,8 +29,8 @@ class GoodsMeasurementUnitUuidContractTest {
         assertTrue(request.contains("hasMWeightUnitReference()"));
 
         String service = resourceSource("features/master/goods/GoodsService.java");
-        assertTrue(service.contains("relationships.unit(req.getThicknessUnitId())"));
-        assertTrue(service.contains("relationships.unit(req.getMWeightUnitId())"));
+        assertTrue(service.contains("relationships.unit(req.getThicknessUnitId(), goods.getThicknessUnit())"));
+        assertTrue(service.contains("relationships.unit(req.getMWeightUnitId(), goods.getMWeightUnit())"));
         assertFalse(service.contains("g.setThicknessUnitLegacyId(req.getThicknessUnitLegacyId())"));
         assertFalse(service.contains("g.setMWeightUnitLegacyId(req.getMWeightUnitLegacyId())"));
     }

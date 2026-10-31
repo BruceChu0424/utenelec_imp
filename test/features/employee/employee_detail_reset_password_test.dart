@@ -18,12 +18,20 @@ const _confirm = ValueKey('employee-reset-password-confirm');
 const _saved = ValueKey('employee-reset-password-saved');
 
 class _DetailRepository extends Fake implements EmployeeRepository {
-  _DetailRepository({this.accountStatus = 'active', this.status = 'active'});
+  _DetailRepository({
+    this.accountStatus = 'active',
+    this.status = 'active',
+    this.accountSupportAllowed,
+    this.passwordResetSupportAllowed,
+  });
 
   final String? accountStatus;
   final String status;
+  final bool? accountSupportAllowed;
+  final bool? passwordResetSupportAllowed;
   int getByIdCalls = 0;
   final resetEmployeeIds = <String>[];
+  final requestedPasswords = <String?>[];
 
   @override
   Future<EmployeeProfile> getById(String id) async {
@@ -34,20 +42,24 @@ class _DetailRepository extends Fake implements EmployeeRepository {
       fullName: '孙七',
       status: status,
       accountStatus: accountStatus,
+      accountSupportAllowed: accountSupportAllowed,
+      passwordResetSupportAllowed: passwordResetSupportAllowed,
     );
   }
 
   @override
   Future<String> resetPassword(String id, {String? temporaryPassword}) async {
     resetEmployeeIds.add(id);
-    return 'S9!temporary-Only2';
+    requestedPasswords.add(temporaryPassword);
+    return temporaryPassword ?? 'S9!temporary-Only2';
   }
 }
 
 class _Session extends SessionNotifier {
-  _Session(this.permissions);
+  _Session(this.permissions, {this.superAdmin = false});
 
   final List<String> permissions;
+  final bool superAdmin;
 
   @override
   SessionState build() => SessionState(
@@ -57,6 +69,7 @@ class _Session extends SessionNotifier {
       code: 'HR001',
       name: '人事',
       permissions: permissions,
+      superAdmin: superAdmin,
     ),
   );
 }
@@ -65,6 +78,7 @@ Future<void> _pump(
   WidgetTester tester,
   _DetailRepository repository, {
   List<String> permissions = const [Perm.employeeView, Perm.accountSupport],
+  bool actorSuperAdmin = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 1800);
   tester.view.devicePixelRatio = 1;
@@ -86,7 +100,9 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         employeeRepositoryProvider.overrideWithValue(repository),
-        sessionProvider.overrideWith(() => _Session(permissions)),
+        sessionProvider.overrideWith(
+          () => _Session(permissions, superAdmin: actorSuperAdmin),
+        ),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
       child: MaterialApp.router(
@@ -102,6 +118,62 @@ Future<void> _pump(
 
 void main() {
   setUp(UtenBusyOverlay.debugResetYield);
+
+  for (final manual in [false, true]) {
+    testWidgets(
+      'reset-only target keeps its dedicated authority through credential delivery manual=$manual',
+      (tester) async {
+        final repository = _DetailRepository(
+          accountSupportAllowed: false,
+          passwordResetSupportAllowed: true,
+        );
+        await _pump(tester, repository, actorSuperAdmin: true);
+        expect(find.byKey(_action), findsOneWidget);
+        for (final label in ['锁定账号', '解锁账号', '停用账号', '启用账号']) {
+          expect(find.text(label), findsNothing);
+        }
+        await tester.tap(find.byKey(_action));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('employee-reset-password-dialog')),
+          findsOneWidget,
+        );
+        const custom = ' 详情合成A!口令 ';
+        if (manual) {
+          await tester.tap(find.text('手动输入'));
+          await tester.pumpAndSettle();
+          for (final key in [
+            'temporary-password-input',
+            'temporary-password-confirmation',
+          ]) {
+            await tester.enterText(
+              find.descendant(
+                of: find.byKey(ValueKey(key)),
+                matching: find.byType(TextField),
+              ),
+              custom,
+            );
+          }
+        }
+        await tester.tap(find.byKey(_confirm));
+        await tester.pumpAndSettle();
+        final issued = manual ? custom : 'S9!temporary-Only2';
+        expect(repository.resetEmployeeIds, ['emp-9']);
+        expect(repository.requestedPasswords, [manual ? custom : null]);
+        expect(find.text(issued), findsOneWidget);
+        expect(repository.getByIdCalls, 1);
+        await tester.tap(find.byKey(_saved));
+        await tester.pumpAndSettle();
+        expect(repository.getByIdCalls, 2);
+        expect(find.text(issued), findsNothing);
+        expect(find.byKey(_action), findsOneWidget);
+        for (final label in ['锁定账号', '解锁账号', '停用账号', '启用账号']) {
+          expect(find.text(label), findsNothing);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final accountStatus in ['active', 'locked']) {
     testWidgets('$accountStatus 账号在锁定/解锁按钮旁提供修改密码', (tester) async {

@@ -16,6 +16,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/models/permission_template.dart';
 import 'package:uten_imp/features/admin/pages/admin_permissions_page.dart';
@@ -57,6 +58,74 @@ const _captureScreenshots = bool.fromEnvironment(
 );
 
 void main() {
+  testWidgets(
+    'authorization management without account support cannot reset credentials',
+    (tester) async {
+      final repository = _Repository(resetSupportAllowed: true);
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        actorUserId: 'synthetic-operator',
+        accountSupport: false,
+      );
+      await tester.tap(find.text('账号安全'));
+      await tester.pumpAndSettle();
+      final action = find.widgetWithText(UtenButton, '设置临时密码');
+      expect(action, findsOneWidget);
+      expect(tester.widget<UtenButton>(action).onPressed, isNull);
+      expect(repository.resetUsers, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unusable manual receipt refreshes status without displaying or replaying credentials',
+    (tester) async {
+      final repository = _Repository(resetSupportAllowed: true)
+        ..resetError = const FormatException('Synthetic mismatching receipt');
+      await _mount(
+        tester,
+        repository,
+        _AiRepository(),
+        width: 1440,
+        actorUserId: 'synthetic-operator',
+        notifications: true,
+      );
+      await tester.tap(find.text('账号安全'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置临时密码'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('手动输入'));
+      await tester.pumpAndSettle();
+      const custom = ' 合成A!口令 ';
+      for (final key in [
+        'temporary-password-input',
+        'temporary-password-confirmation',
+      ]) {
+        await tester.enterText(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(TextField),
+          ),
+          custom,
+        );
+      }
+      await tester.tap(find.byKey(const Key('set-temporary-password-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(repository.requestedPasswords, [custom]);
+      expect(find.textContaining('设置结果暂时无法确认'), findsWidgets);
+      expect(find.text('一次性临时密码'), findsNothing);
+      expect(find.text(custom), findsNothing);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(repository.resetUsers, ['user-target']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'superadmin reset capability opens only password support and accepts custom input',
     (tester) async {
@@ -1433,6 +1502,8 @@ Future<void> _mount(
   String? initialDepartmentId,
   _TemplateRepository? templates,
   String? actorUserId,
+  bool accountSupport = true,
+  bool notifications = false,
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
@@ -1447,7 +1518,10 @@ Future<void> _mount(
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_role)
-              ? {Perm.accountSupport, Perm.authorizationManage}
+              ? {
+                  if (accountSupport) Perm.accountSupport,
+                  Perm.authorizationManage,
+                }
               : {},
         ),
         isSuperAdminProvider.overrideWith((ref) => ref.watch(_role)),
@@ -1475,7 +1549,19 @@ Future<void> _mount(
             data: MediaQuery.of(
               context,
             ).copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
+            child: notifications
+                ? Stack(
+                    children: [
+                      child!,
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: AppNotificationHost(),
+                      ),
+                    ],
+                  )
+                : child!,
           ),
           home: pageFrame
               ? Row(
@@ -1542,6 +1628,7 @@ class _Repository implements AdminRepository {
   final lockedUsers = <String>[];
   final resetUsers = <String>[];
   final requestedPasswords = <String?>[];
+  Object? resetError;
   int refreshedTargets = 0;
   String status = 'active';
   AdminUserSummary get user => AdminUserSummary(
@@ -1662,6 +1749,8 @@ class _Repository implements AdminRepository {
   }) async {
     resetUsers.add(userId);
     requestedPasswords.add(temporaryPassword);
+    final failure = resetError;
+    if (failure != null) throw failure;
     return temporaryPassword ?? 'Temp-Demo!12345';
   }
 

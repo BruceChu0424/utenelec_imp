@@ -31,7 +31,10 @@ class TemporaryPasswordInputController extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool validate() => !manual || (formKey.currentState?.validate() ?? false);
+  /// Capability must also be checked when committing a choice; a disabled
+  /// segment alone cannot retire an already retained manual mode.
+  bool validate({required bool allowManual}) =>
+      !manual || (allowManual && (formKey.currentState?.validate() ?? false));
 
   TemporaryPasswordChoice get choice => manual
       ? TemporaryPasswordChoice.custom(password.text)
@@ -44,6 +47,7 @@ class TemporaryPasswordInputController extends ChangeNotifier {
 
   @override
   void dispose() {
+    clearSensitive();
     password.dispose();
     confirmation.dispose();
     super.dispose();
@@ -83,7 +87,10 @@ class TemporaryPasswordInput extends StatelessWidget {
             selected: {controller.manual},
             showSelectedIcon: false,
             onSelectionChanged: enabled
-                ? (values) => controller.selectManual(values.single)
+                ? (values) {
+                    if (values.single && !allowManual) return;
+                    controller.selectManual(values.single);
+                  }
                 : null,
           ),
           const SizedBox(height: UtenSpacing.s12),

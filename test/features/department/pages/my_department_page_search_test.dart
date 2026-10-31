@@ -6,11 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/department/models/my_department.dart';
 import 'package:uten_imp/features/department/pages/my_department_page.dart';
 import 'package:uten_imp/features/department/repositories/my_department_repository.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {

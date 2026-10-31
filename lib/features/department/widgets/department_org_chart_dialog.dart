@@ -24,8 +24,8 @@ import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
-import '../models/department_node.dart';
-import '../repositories/department_repository.dart';
+import '../../../shared/models/department_node.dart';
+import '../../../shared/repositories/department_repository.dart';
 import '../repositories/department_roster_snapshot.dart';
 
 /// 弹出部门架构图弹层。

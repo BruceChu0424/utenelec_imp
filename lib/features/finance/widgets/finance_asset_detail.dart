@@ -24,7 +24,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/money_display.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';

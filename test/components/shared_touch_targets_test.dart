@@ -11,7 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/core/theme/uten_tokens.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';

@@ -23,8 +23,8 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/widgets/uten_location_field.dart';
-import '../models/department_node.dart';
-import 'uten_department_tree_view.dart';
+import '../../../shared/models/department_node.dart';
+import '../../../shared/widgets/uten_department_tree_view.dart';
 
 /// 对话框收集到的字段（新建时 code 必填，编辑时 code 为 null 不上送）。
 class DepartmentEditResult {

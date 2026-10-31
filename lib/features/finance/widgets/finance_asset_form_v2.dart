@@ -27,7 +27,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';

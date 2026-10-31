@@ -29,7 +29,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../department/widgets/uten_department_tree_view.dart';
+import '../../../shared/widgets/uten_department_tree_view.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';

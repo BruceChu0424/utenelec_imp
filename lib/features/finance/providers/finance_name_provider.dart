@@ -20,7 +20,7 @@ import '../../../shared/providers/master_party_lookup.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/finance_doc.dart' show financeDepartmentReferenceLabel;
 
 const financeDepartmentPickerEndpoint =

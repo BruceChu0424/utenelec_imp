@@ -25,7 +25,7 @@ import '../models/finance_doc.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
 import 'finance_entry_l10n.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 
 /// 钱流明细行（3 模式超集）。控制器/通知器在行内持有，跨重建存活。
 class FinanceGridRow extends EditableGridRow with AmountRowMixin {

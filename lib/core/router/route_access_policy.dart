@@ -63,27 +63,57 @@ String? employeePermissionRedirect(AppUser? user, String location) {
 bool locationAllowedFor(
   Set<String> permissions,
   bool superAdmin,
-  String location,
-) {
+  String location, {
+  bool requireEffectivePermissions = false,
+}) {
   if (const {
     RouteName.adminPlatformSettings,
     RouteName.adminSmsSettings,
   }.contains(hubCardPath(location))) {
     return platformSettingsAllowedFor(permissions, superAdmin);
   }
-  if (superAdmin) return true;
+  if (superAdmin && !requireEffectivePermissions) return true;
   if (isHubLocation(location)) {
     return hubCardLocations[hubCardPath(location)]!.any(
-      (child) => locationAllowedFor(permissions, superAdmin, child),
+      (child) => locationAllowedFor(
+        permissions,
+        superAdmin,
+        child,
+        requireEffectivePermissions: requireEffectivePermissions,
+      ),
     );
   }
   final requiredAny = requiredAnyPermFor(location);
+  if (requireEffectivePermissions && requiredAny == null) return false;
   if (requiredAny != null) {
     if (requiredAny.isEmpty) return false;
     if (!requiredAny.any(permissions.contains)) return false;
   }
   final requiredAll = requiredAllPermsFor(location);
   return requiredAll.every(permissions.contains);
+}
+
+/// Business links/windows use the router's known any/all contract and the
+/// server-issued effective grants. A super-admin flag cannot restore a revoked
+/// grant, and the router's login-only fallback cannot expose an unknown target.
+bool businessLocationAllowedFor(
+  Set<String> permissions,
+  bool superAdmin,
+  String location,
+) {
+  final uri = Uri.tryParse(location);
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      !uri.path.startsWith('/')) {
+    return false;
+  }
+  return locationAllowedFor(
+    permissions,
+    superAdmin,
+    location,
+    requireEffectivePermissions: true,
+  );
 }
 
 /// hub 页 / 工作台用：该卡片是否可见(与路由守卫同一份 any/all 契约)。

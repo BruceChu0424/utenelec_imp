@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
-import '../../features/department/models/department_node.dart';
+import '../../shared/models/department_node.dart';
 import '../../features/employee/providers/employee_picker_department_tree_provider.dart';
 import '../../shared/hierarchy/uten_tree_path.dart';
 import '../../shared/formatters/employee_display.dart';

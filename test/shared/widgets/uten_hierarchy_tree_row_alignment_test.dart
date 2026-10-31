@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
+import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 
 void main() {
   testWidgets(

@@ -16,7 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../../basic_data/widgets/master_edit_dialog.dart';
-import '../models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
 

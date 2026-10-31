@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/department/repositories/department_roster_snapshot.dart';
 import 'package:uten_imp/features/department/widgets/department_org_chart_dialog.dart';
 import 'package:uten_imp/features/department/widgets/department_roster_print.dart';

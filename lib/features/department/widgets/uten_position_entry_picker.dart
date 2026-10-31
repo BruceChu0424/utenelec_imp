@@ -19,7 +19,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/position.dart';
 import '../repositories/position_repository.dart';
 import 'position_picker_table_columns.dart';
-import 'uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 
 /// 岗位输入的已确认值：已有岗位（保留 id）、自定义名称，或空值。
 class PositionEntryValue {

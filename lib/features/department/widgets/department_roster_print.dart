@@ -10,7 +10,7 @@ import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../employee/models/work_years.dart';
 import '../../employee/repositories/employee_repository.dart';
-import '../models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../repositories/department_roster_snapshot.dart';
 
 /// 弹出「部门员工花名册」A4 打印预览（含下级部门全员；排序由服务端保证：

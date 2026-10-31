@@ -20,7 +20,7 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
-import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';

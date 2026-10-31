@@ -7,7 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/admin_models.dart';
 
 abstract interface class AdminRepository {

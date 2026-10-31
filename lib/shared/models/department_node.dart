@@ -1,6 +1,6 @@
 // 部门树/详情模型（对应后端 DepartmentNode / DepartmentDetail）。
 
-import '../../basic_data/models/uten_tree_node.dart';
+import 'uten_tree_node.dart';
 
 /// 业务部门层级：可作为普通业务单据里的部门/车间，但不包含管理中心。
 ///

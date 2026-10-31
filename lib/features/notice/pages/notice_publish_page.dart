@@ -35,7 +35,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../hr_task/providers/hr_task_summary_provider.dart';
 import '../models/notice.dart';
 import '../models/notice_audience.dart';

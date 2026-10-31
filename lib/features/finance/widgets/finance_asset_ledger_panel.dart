@@ -18,7 +18,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../../shared/search/numeric_column_query.dart';
 import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';

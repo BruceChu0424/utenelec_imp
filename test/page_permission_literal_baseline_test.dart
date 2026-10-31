@@ -688,7 +688,8 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 2,
     tokens: {
       'Perm.goodsBomEdit': 2,
-      'Perm.goodsView': 1,
+      // Goods entry checks now use the public business-location gate, whose
+      // effective grants come from the existing route any/all contract.
       'Perm.productionWhereUsedExport': 1,
       'Perm.stockView': 1,
     },
@@ -903,7 +904,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      281, // Exact reviewed guards only; the global cap stays 677.
+      280, // Goods navigation removed one reviewed local grant; cap stays 677.
     );
   });
 

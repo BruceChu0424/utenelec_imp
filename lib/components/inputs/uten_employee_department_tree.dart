@@ -1,4 +1,4 @@
-import '../../features/department/models/department_node.dart';
+import '../../shared/models/department_node.dart';
 import '../../shared/models/uten_tree_node.dart';
 import 'uten_employee_picker_models.dart';
 

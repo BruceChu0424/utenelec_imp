@@ -1,7 +1,7 @@
 // “我的部门”安全花名册 providers。页面级权限委派使用 shared/auth 下的独立 providers。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/my_department.dart';
 import '../repositories/my_department_repository.dart';
 

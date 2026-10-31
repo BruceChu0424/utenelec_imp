@@ -24,7 +24,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/core/router/route_names.dart';

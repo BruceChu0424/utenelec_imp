@@ -1,4 +1,4 @@
-import '../../features/department/widgets/uten_department_picker.dart';
+import '../widgets/uten_department_picker.dart';
 
 List<Map<String, dynamic>> draftDepartments(List<DeptSelection> values) => [
   for (final item in values)

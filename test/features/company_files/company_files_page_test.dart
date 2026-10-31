@@ -1,5 +1,5 @@
 import 'package:uten_imp/core/network/server_config.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;

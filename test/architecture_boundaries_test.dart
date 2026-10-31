@@ -12,11 +12,9 @@ void main() {
     // 2026-09-10：服务器状态页「定时任务最近执行」按「全站统一表格」要求接入主档
     // 表格壳（同 quality->basic_data，组件升位到 lib/components 后一并删除）。
     'admin->basic_data',
-    'admin->department',
     // 2026-08-18：权限页「开通账号」弹窗选员工+展示员工凭据（V297 临时密码配套），
     // 账号天然挂员工，与后端 admin 枢纽同构。
     'admin->employee',
-    'basic_data->department',
     'basic_data->employee',
     // Warehouse projections now consume shared contracts; no private stock or
     // report feature dependency remains in master data.
@@ -32,7 +30,6 @@ void main() {
     'employee->profile',
     'expense->basic_data',
     'finance->basic_data',
-    'finance->department',
     'finance->employee',
     'finance->report',
     'finance->warehouse',
@@ -40,12 +37,10 @@ void main() {
     'hr_task->employee',
     'hr_task->notice',
     'notice->dashboard',
-    'notice->department',
     // 2026-08-18：发布通知后静默刷新研发任务汇总（联动信号，与 dashboard->hr_task 同款）。
     'notice->hr_task',
     'operations_workbench->basic_data',
     'production->basic_data',
-    'production->department',
     'production->employee',
     // 2026-09-14（ADR-081 §7.2）曾允许 production->purchase：「父件+下层一起下单」
     // 的已下单子件分支要把追加量并入原采购申请明细，前端直接复用了采购侧仓库。
@@ -58,7 +53,6 @@ void main() {
     'profile->department',
     'profile->employee',
     'purchase->basic_data',
-    'purchase->department',
     'purchase->employee',
     'purchase->notice',
     'purchase->report',
@@ -66,7 +60,6 @@ void main() {
     'rd_task->basic_data',
     'report->basic_data',
     'sales->basic_data',
-    'sales->department',
     'sales->employee',
     'sales->notice',
     'sales->report',
@@ -85,7 +78,6 @@ void main() {
     // 整个结果集上算，把契约复制一份到 stock 下反而会出现两套「能不能相加」的判断口径。
     'stock->report',
     'subcontract->basic_data',
-    'subcontract->department',
     'subcontract->employee',
     'subcontract->operations_workbench',
     'subcontract->report',
@@ -97,7 +89,6 @@ void main() {
     // 仓库代采购/委外执行收货登记，复用两类收货仓储与配置（与后端
     // WarehouseInboundController 注入 Purchase/SubcontractReceiptService 同构）；
     // 收货人/采购员选择器复用员工与部门检索（与 purchase->employee/department 同款）。
-    'warehouse->department',
     'warehouse->employee',
     'warehouse->purchase',
     'warehouse->subcontract',
@@ -211,6 +202,39 @@ void main() {
           '检测到已经消失的跨 feature 依赖方向。请同步收紧基线：'
           '\n${staleBaseline.join('\n')}',
     );
+  });
+
+  test('public organization owners never depend back on a feature', () {
+    final libRoot = Directory('lib').absolute;
+    final featuresRoot = Directory('lib/features').absolute;
+    final directive = RegExp(
+      r'''^(?:import|export)\s+['"]([^'"]+)['"]''',
+      multiLine: true,
+    );
+    for (final path in const [
+      'shared/models/department_node.dart',
+      'shared/models/workforce_overview.dart',
+      'shared/repositories/department_repository.dart',
+      'shared/widgets/uten_department_picker.dart',
+      'shared/widgets/uten_department_tree_view.dart',
+    ]) {
+      final source = File.fromUri(libRoot.uri.resolve(path));
+      expect(
+        source.existsSync(),
+        isTrue,
+        reason: 'The public owner must exist.',
+      );
+      for (final match in directive.allMatches(source.readAsStringSync())) {
+        final target = _resolveImport(source, libRoot, match.group(1)!);
+        if (target == null) continue;
+        expect(
+          _featureFromPath(target.absolute.path, featuresRoot.path),
+          isNull,
+          reason:
+              '$path must not hide a private feature dependency behind shared.',
+        );
+      }
+    }
   });
 
   test('feature path extraction handles mixed separators and boundaries', () {

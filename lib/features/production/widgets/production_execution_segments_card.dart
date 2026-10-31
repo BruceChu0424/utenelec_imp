@@ -19,7 +19,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_flow_stage.dart';

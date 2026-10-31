@@ -283,13 +283,13 @@
     "kind": "raw-close-icon",
     "path": "lib/features/company_files/widgets/company_file_dialogs.dart",
     "owner": "_CompanyFileAccessDialogState.build",
-    "fingerprint": "0a12dc36863f80ba62b719cb68f77c99df27a21af87b51e6bb9ee5953996e341",
+    "fingerprint": "041048c17f1859818bf0d395720ef3e107aafbbf1250bbc15b0afe3feaf51b06",
     "count": 1,
-    "reason": "Removes a company-file access rule."
+    "reason": "Removes one unsaved access rule and its paired expansion key; Cancel discards the edit and Save persists it. Does not dismiss the dialog."
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/department/widgets/uten_department_picker.dart",
+    "path": "lib/shared/widgets/uten_department_picker.dart",
     "owner": "_UtenDepartmentPickerState.build",
     "fingerprint": "9384ccb5328171ba0ea9820678fdeb1f20014a01598499ad20e8f8e6a3908f02",
     "count": 1,
@@ -297,7 +297,7 @@
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/department/widgets/uten_department_picker.dart",
+    "path": "lib/shared/widgets/uten_department_picker.dart",
     "owner": "_UtenDepartmentPickerState.build",
     "fingerprint": "50e76ecfac9de352d632c155a9d2a4e60050dd96c5858e579a695662fb1a10de",
     "count": 1,

@@ -3,7 +3,7 @@
 // 账号列表走页面局部状态（搜索防抖 + 加载更多，与员工列表页同模式）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
 

@@ -60,7 +60,7 @@ import '../../basic_data/repositories/reference_method_repository.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/models/goods_node.dart' show GoodsListItem;
 import '../../basic_data/widgets/uten_supplier_picker.dart';
-import '../../department/repositories/department_repository.dart';
+import '../../../shared/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/attachments/business_attachment_section.dart';

@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
+import 'package:uten_imp/shared/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/pages/employee_edit_page.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';

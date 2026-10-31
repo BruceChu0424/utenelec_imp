@@ -59,7 +59,7 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../department/repositories/department_repository.dart';
+import '../../../shared/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';

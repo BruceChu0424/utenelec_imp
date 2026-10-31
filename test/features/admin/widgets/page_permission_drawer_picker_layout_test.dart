@@ -14,7 +14,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/layout/uten_scroll_gutter.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';

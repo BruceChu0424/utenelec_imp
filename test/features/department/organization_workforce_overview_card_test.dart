@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
-import 'package:uten_imp/features/department/models/workforce_overview.dart';
+import 'package:uten_imp/shared/models/workforce_overview.dart';
 import 'package:uten_imp/features/department/widgets/organization_workforce_overview_card.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 

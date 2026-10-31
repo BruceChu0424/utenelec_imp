@@ -1,8 +1,8 @@
 // 部门仓库：树/子树/详情/CRUD。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/api_endpoints.dart';
 import '../models/department_node.dart';
 import '../models/workforce_overview.dart';
 

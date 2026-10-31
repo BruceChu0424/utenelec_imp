@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/shared/repositories/department_repository.dart';
 
 void main() {
   test('workforceOverview 请求组织统计端点并解析空离职率', () async {

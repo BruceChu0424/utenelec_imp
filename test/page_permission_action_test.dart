@@ -9,7 +9,7 @@ import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';

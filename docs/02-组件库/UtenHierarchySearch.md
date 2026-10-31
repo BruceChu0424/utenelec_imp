@@ -2,7 +2,7 @@
 
 > 适用范围：页面或选择器同时包含“左侧分类/部门树 + 右侧具体内容”时，一个搜索入口同时查层级和内容。货品及往来主档搜索在右侧统一列出授权结果，左树只提示命中路径。
 >
-> 源码所有者：[`category_tree_search.dart`](../../lib/features/basic_data/widgets/category_tree_search.dart)、[`uten_category_tree_view.dart`](../../lib/features/basic_data/widgets/uten_category_tree_view.dart)、[`uten_department_tree_view.dart`](../../lib/features/department/widgets/uten_department_tree_view.dart)。最后核对：2026-10-16。
+> 源码所有者：[`category_tree_search.dart`](../../lib/features/basic_data/widgets/category_tree_search.dart)、[`uten_category_tree_view.dart`](../../lib/features/basic_data/widgets/uten_category_tree_view.dart)、[`uten_department_tree_view.dart`](../../lib/shared/widgets/uten_department_tree_view.dart)。交互最后核对：2026-10-16；部门公共入口路径于2026-10-31迁入shared，原交互语义保留。
 
 ---
 

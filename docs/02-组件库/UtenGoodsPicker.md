@@ -73,7 +73,7 @@
 
 ## 三、响应式行为
 
-形态**完全仿 `UtenDepartmentPicker`**（`lib/features/department/widgets/uten_department_picker.dart` 的 `_open`）：
+形态与公共 `UtenDepartmentPicker` 一致（`lib/shared/widgets/uten_department_picker.dart` 的 `_open`）；界面修改默认使用 `frontend-design`，保留既有 Uten 组件和业务选择规则：
 
 | 断点 | 形态 |
 |---|---|

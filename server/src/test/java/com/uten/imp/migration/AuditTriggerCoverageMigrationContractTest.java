@@ -6,10 +6,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -77,6 +79,14 @@ class AuditTriggerCoverageMigrationContractTest {
     /** V970 外网登录简化删除的表: 建表迁移里的历史 fn_audit_track_table 登记保留原样,
      *  三清单不再收录, 活库中也不存在; 只在迁移扫描中放行, 不改变任何现存表的政策。 */
     static final java.util.Set<String> DROPPED_TRACKED_TABLES = java.util.Set.of("staff_mfa", "remote_access_policy");
+
+    /** Applied mistakes remain immutable; only these exact bytes may use the mandatory V975 correction. */
+    private record ForwardAuditRepair(String file, String table, String sha256) { }
+    private static final Map<Integer, ForwardAuditRepair> FORWARD_AUDIT_REPAIRS = Map.of(
+            973, new ForwardAuditRepair("V973__financial_statement_template_bindings.sql",
+                    "finance_report_line_confirmations", "c0a05fbb509c4af6fed0dbbc28af1e6bb7da955fc15dc0c7739ee31a4882cbe7"),
+            974, new ForwardAuditRepair("V974__asset_opening_and_recognition_reversal.sql",
+                    "finance_asset_recognition_reversals", "dee0805ec5a590498880307007b6f813c035fab684de4b9b3423edacfe532c4c"));
 
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
                        String reason, String updateFn, String rowFn) {
@@ -263,9 +273,10 @@ class AuditTriggerCoverageMigrationContractTest {
                         "workshop_material_period_closes", "workshop_material_close_materials",
                         "workshop_material_close_allocations")),
             new FullGroup("finance_docs", "data_change", false,
-                    "财务单据、凭证、往来台账与资产: 人工录入并审核的财务事实",
+                    "财务单据、凭证、往来台账与资产: 人工录入并审核的财务事实；报表确认和初始确认撤销保留可变决策前后值",
                     Set.of(
                         "ar_ap_ledger", "customer_open_item_offset_batches", "finance_report_line_bindings",
+                        "finance_report_line_confirmations", "finance_asset_recognition_reversals",
                         "customer_open_item_offsets", "deferred_expenses",
                         "expense_claim_invoices", "finance_asset_accounting_periods",
                         "finance_asset_books", "finance_asset_categories",
@@ -877,13 +888,13 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     @Test
-    void laterMigrationsNeverHandWriteAuditTriggersOrFullTableSweeps() throws IOException {
+    void laterMigrationsNeverHandWriteAuditTriggersOrFullTableSweeps() throws Exception {
         for (MigrationSource migration : migrations()) {
             if (migration.version() <= POLICY_BASELINE_VERSION) {
                 continue;
             }
             String sql = stripSqlComments(migration.sql()).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-            String rowAuditSql = sql;
+            String rowAuditSql = removeExactlyForwardRepairedAuditTrigger(migration, sql);
             if (migration.version() == 952) {
                 String writer = "create trigger trg_audit_log_all_insert instead of insert on public.v_audit_log_all "
                         + "for each row execute function public.fn_audit_log_all_insert();";
@@ -892,12 +903,31 @@ class AuditTriggerCoverageMigrationContractTest {
             }
             assertFalse(rowAuditSql.contains("create trigger trg_audit_"),
                     migration.path().getFileName() + " must attach audit triggers through fn_audit_track_table");
-            assertFalse(sql.contains("execute function fn_audit()")
-                            || sql.contains("execute function public.fn_audit()"),
+            assertFalse(rowAuditSql.contains("execute function fn_audit()")
+                            || rowAuditSql.contains("execute function public.fn_audit()"),
                     migration.path().getFileName() + " must not bind fn_audit without the three-list policy");
             assertFalse(migration.path().getFileName().toString().contains("refresh_audit_trigger_coverage"),
                     "Full-table audit sweeps are retired by ADR-105");
         }
+    }
+
+    private static String removeExactlyForwardRepairedAuditTrigger(MigrationSource migration, String sql) throws Exception {
+        ForwardAuditRepair repair = FORWARD_AUDIT_REPAIRS.get(migration.version());
+        if (repair == null) return sql;
+        assertEquals(repair.file(), migration.path().getFileName().toString());
+        assertEquals(repair.sha256(), HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(Files.readAllBytes(migration.path()))), "Applied audit migration bytes must remain immutable");
+        String forward = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve("V975__finance_asset_audit_policy_registration.sql"), StandardCharsets.UTF_8))
+                .replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        assertTrue(forward.contains("select public.fn_audit_track_table('" + repair.table()
+                + "', 'full', 'data_change', false, null, true, null);"),
+                "The pinned historical mistake requires its exact public-policy forward registration");
+        String legacy = "create trigger trg_audit_" + repair.table() + " after insert or update or delete on "
+                + repair.table() + " for each row execute function fn_audit();";
+        assertTrue(sql.contains(legacy), "Only the known legacy trigger is covered by the forward correction");
+        assertEquals(sql.indexOf(legacy), sql.lastIndexOf(legacy), "The historical allowance covers one trigger only");
+        return sql.replace(legacy, "");
     }
 
     @Test

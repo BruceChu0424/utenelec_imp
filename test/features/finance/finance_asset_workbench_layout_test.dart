@@ -9,11 +9,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/finance/models/finance_asset_category_models.dart';
 import 'package:uten_imp/features/finance/models/finance_asset_models.dart';
 import 'package:uten_imp/features/finance/pages/finance_asset_workbench_page.dart';
@@ -50,7 +50,7 @@ void main() {
   });
 
   for (final layout in _layouts) {
-    testWidgets('${layout.name}: both restrictions leave filters reachable', (
+    testWidgets('${layout.name}: only header filters remain reachable', (
       tester,
     ) async {
       final capture = GlobalKey();
@@ -81,40 +81,19 @@ void main() {
       await tester.ensureVisible(search);
       await tester.pumpAndSettle();
       expect(search.hitTestable(), findsOneWidget);
-      final more = find.byKey(
-        const Key('finance-asset-more-filters-FIXED_ASSET'),
+      expect(find.text('重置筛选'), findsNothing);
+      expect(find.byType(UtenDepartmentPicker), findsNothing);
+      expect(
+        find.byKey(const Key('finance-asset-more-filters-FIXED_ASSET')),
+        findsNothing,
       );
-      if (more.evaluate().isNotEmpty) {
-        await tester.ensureVisible(more);
-        await tester.tap(more);
+      for (final column in ['status', 'categoryName', 'departmentName']) {
+        final header = find.byKey(ValueKey('master-column-filter-$column'));
+        expect(header, findsOneWidget);
+        await tester.ensureVisible(header);
         await tester.pumpAndSettle();
-      }
-      final filters = <Finder>[
-        search,
-        find.byKey(const Key('asset-status-FIXED_ASSET-null')),
-        find.byKey(const Key('asset-category-filter-FIXED_ASSET-null')),
-        find.byType(UtenDepartmentPicker),
-      ];
-      for (final filter in filters.skip(1)) {
-        expect(filter, findsOneWidget);
-        await tester.ensureVisible(filter);
-        await tester.pumpAndSettle();
-        expect(filter.hitTestable(), findsOneWidget);
-        expect(tester.takeException(), isNull, reason: 'revealing $filter');
-      }
-      if (more.evaluate().isNotEmpty) {
-        await tester.tap(find.text('取消'));
-        await tester.pumpAndSettle();
-      }
-
-      if (layout.size.width >= 1280 && layout.scale == 1) {
-        final search = tester.getRect(filters[0]);
-        final category = tester.getRect(filters[2]);
-        expect(
-          (search.top - category.top).abs(),
-          lessThan(30),
-          reason: 'desktop filters should share a row instead of a tall stack',
-        );
+        expect(header.hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull, reason: 'revealing $column');
       }
     });
   }
@@ -178,38 +157,103 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('compact filters apply once and cancellation discards draft', (
-    tester,
-  ) async {
-    final repository = _LayoutAssetRepository();
-    await _pump(tester, layout: _layouts[3], repository: repository);
-    final before = repository.queries.length;
-    final more = find.byKey(
-      const Key('finance-asset-more-filters-FIXED_ASSET'),
-    );
-    await tester.ensureVisible(more);
-    await tester.tap(more);
-    await tester.pumpAndSettle();
-    final status = find.byKey(const Key('asset-status-FIXED_ASSET-null'));
-    tester.widget<UtenDropdownField>(status).onChanged('PENDING_APPROVAL');
-    await tester.pumpAndSettle();
-    expect(repository.queries.length, before);
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(repository.queries.length, before);
-    await tester.tap(more);
-    await tester.pumpAndSettle();
-    expect(tester.widget<UtenDropdownField>(status).value, isNull);
-    tester.widget<UtenDropdownField>(status).onChanged('PENDING_APPROVAL');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('应用'));
-    await tester.pumpAndSettle();
-    final applied = repository.queries.skip(before).toList();
-    expect(applied.first.status, 'PENDING_APPROVAL');
-    expect(applied.first.page, 1);
-    expect(applied.where((query) => query.size != 1), hasLength(1));
-    expect(tester.takeException(), isNull);
-  });
+  for (final layout in [_layouts.first, _layouts[3]]) {
+    for (final ledger in FinanceAssetLedger.values) {
+      testWidgets('${layout.name}: ${ledger.name} filters through headers', (
+        tester,
+      ) async {
+        final repository = _LayoutAssetRepository();
+        final categories = _LayoutCategoryRepository();
+        await _pump(
+          tester,
+          layout: layout,
+          repository: repository,
+          categories: categories,
+        );
+        if (ledger == FinanceAssetLedger.deferredExpense) {
+          await tester.tap(find.text('长期待摊'));
+          await tester.pumpAndSettle();
+        }
+        final search = find.descendant(
+          of: find.byKey(Key('asset-search-${ledger.apiValue}')),
+          matching: find.byType(TextField),
+        );
+        await tester.ensureVisible(search);
+        await tester.enterText(search, '设备');
+        await tester.pump(const Duration(milliseconds: 350));
+        await tester.pumpAndSettle();
+
+        Future<void> openHeader(String column) async {
+          final header = find.byKey(ValueKey('master-column-filter-$column'));
+          await tester.ensureVisible(header);
+          await tester.pumpAndSettle();
+          await tester.tap(header);
+          await tester.pumpAndSettle();
+        }
+
+        FinanceAssetQuery lastQuery() =>
+            repository.queries.where((query) => query.size != 1).last;
+
+        await openHeader('status');
+        await tester.tap(find.text('待审批').last);
+        await tester.pumpAndSettle();
+        expect(lastQuery().status, 'PENDING_APPROVAL');
+        expect(lastQuery().q, '设备');
+        expect(lastQuery().page, 1);
+
+        categories.failNext = true;
+        await openHeader('categoryName');
+        final retry = find.text('候选加载失败，点击重试');
+        expect(retry, findsOneWidget);
+        await tester.tap(retry);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('CAT · 设备分类'));
+        await tester.pumpAndSettle();
+        expect(lastQuery().categoryId, 'category-id');
+        expect(lastQuery().status, 'PENDING_APPROVAL');
+
+        final beforeDepartment = repository.queries.length;
+        await openHeader('departmentName');
+        await tester.tap(find.text('财税部').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+        expect(repository.queries.length, beforeDepartment);
+        await openHeader('departmentName');
+        await tester.tap(find.text('财税部').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('确定').last);
+        await tester.pumpAndSettle();
+        expect(lastQuery().departmentId, 'department-id');
+        expect(lastQuery().categoryId, 'category-id');
+
+        for (final column in ['status', 'categoryName']) {
+          await openHeader(column);
+          await tester.tap(find.text('所有').last);
+          await tester.pumpAndSettle();
+        }
+        expect(lastQuery().status, isNull);
+        expect(lastQuery().categoryId, isNull);
+        expect(lastQuery().departmentId, 'department-id');
+        expect(lastQuery().q, '设备');
+        await openHeader('departmentName');
+        await tester.tap(find.text('清空').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+        expect(lastQuery().departmentId, 'department-id');
+        await openHeader('departmentName');
+        await tester.tap(find.text('清空').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('确定').last);
+        await tester.pumpAndSettle();
+        expect(lastQuery().departmentId, isNull);
+        expect(lastQuery().q, '设备');
+        expect(find.text('重置筛选'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets(
     'restriction details preserve policy and operational distinction',
@@ -251,6 +295,7 @@ Future<void> _pump(
   required _LayoutCase layout,
   GlobalKey? capture,
   _LayoutAssetRepository? repository,
+  _LayoutCategoryRepository? categories,
   bool readOnly = false,
 }) async {
   tester.view.physicalSize = layout.size;
@@ -276,8 +321,19 @@ Future<void> _pump(
         financeAssetOverviewRepositoryProvider.overrideWithValue(
           _LayoutOverviewRepository(),
         ),
+        departmentPickerTreeProvider.overrideWith(
+          (ref) async => [
+            DepartmentNode(
+              id: 'department-id',
+              code: 'DEPT_FIN',
+              name: '财税部',
+              level: '一级部门',
+              children: [],
+            ),
+          ],
+        ),
         financeAssetCategoryRepositoryProvider.overrideWithValue(
-          _LayoutCategoryRepository(),
+          categories ?? _LayoutCategoryRepository(),
         ),
       ],
       child: RepaintBoundary(
@@ -339,10 +395,23 @@ class _LayoutOverviewRepository implements FinanceAssetOverviewRepository {
 }
 
 class _LayoutCategoryRepository implements FinanceAssetCategoryRepository {
+  bool failNext = false;
+
   @override
-  Future<List<FinanceAssetCategory>> list(
-    FinanceAssetLedger objectType,
-  ) async => const [];
+  Future<List<FinanceAssetCategory>> list(FinanceAssetLedger objectType) async {
+    if (failNext) {
+      failNext = false;
+      throw StateError('category load failed');
+    }
+    return [
+      FinanceAssetCategory.fromJson({
+        'id': 'category-id',
+        'objectType': objectType.apiValue,
+        'code': 'CAT',
+        'name': '设备分类',
+      }),
+    ];
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

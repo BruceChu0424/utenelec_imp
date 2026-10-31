@@ -95,11 +95,13 @@ Map<String, DeptSelection> buildDeptSelectionMap(
 
 /// 直接拉出部门选择面板（宽屏右侧滑入 / 窄屏底部抽屉），不经过表单字段壳。
 /// 供表格单元格等非表单场景使用；点击行仅暂存，确定后返回，null = 用户取消。
+/// 可选筛选可传 [allowClear]，清空后仍须确定才返回空列表；默认保持必选。
 Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
   BuildContext context, {
   required List<DepartmentNode> tree,
   UtenDepartmentPickerMode mode = UtenDepartmentPickerMode.single,
   List<DeptSelection> initialSelection = const [],
+  bool allowClear = false,
   bool expandOnRowTap = false,
   Set<String> initiallyExpandedIds = const {},
   DepartmentSelectionPredicate selectablePredicate =
@@ -112,6 +114,7 @@ Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
       mode: mode,
       tree: tree,
       initialSelection: initialSelection,
+      allowClear: allowClear,
       expandOnRowTap: expandOnRowTap,
       initiallyExpandedIds: initiallyExpandedIds,
       selectablePredicate: selectablePredicate,
@@ -531,6 +534,7 @@ class _DepartmentPickerSheet extends StatefulWidget {
     required this.mode,
     required this.tree,
     required this.initialSelection,
+    this.allowClear = false,
     this.badgeCountFor,
     this.expandOnRowTap = false,
     this.initiallyExpandedIds = const {},
@@ -540,6 +544,7 @@ class _DepartmentPickerSheet extends StatefulWidget {
   final UtenDepartmentPickerMode mode;
   final List<DepartmentNode> tree;
   final List<DeptSelection> initialSelection;
+  final bool allowClear;
   final int? Function(String departmentId)? badgeCountFor;
   final bool expandOnRowTap;
   final Set<String> initiallyExpandedIds;
@@ -642,11 +647,12 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
           selectedLabel: _isMulti || _selected.isEmpty
               ? null
               : _selected.values.first.name,
-          onClear: _isMulti ? () => setState(_selected.clear) : null,
+          onClear: _isMulti || widget.allowClear
+              ? () => setState(_selected.clear)
+              : null,
+          confirmEnabled: widget.allowClear || _selected.isNotEmpty,
           confirmLabel: _isMulti ? '确定(${_selected.length})' : '确定',
-          onConfirm: () => Navigator.of(context).pop(
-            _isMulti ? _selected.values.toList() : [_selected.values.first],
-          ),
+          onConfirm: () => Navigator.of(context).pop(_selected.values.toList()),
         ),
       ],
     );

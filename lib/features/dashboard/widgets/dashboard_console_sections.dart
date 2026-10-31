@@ -10,6 +10,7 @@ import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -264,30 +265,37 @@ class _StripMetric extends StatelessWidget {
           // 仅敏感指标保留锁标识（它承载「无权看明细」的含义）。
           child: Column(
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      metric.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+              // 与 dense 提示图标共用最小高度，无图标的指标也保留相同标题行。
+              // 仅设下限，放大字体时仍可随内容增高。
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: UtenEditableGridCellSpec.heightOf(context),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        metric.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                  ),
-                  if (guidance != null)
-                    UtenFieldHintIcon(info: guidance, dense: true),
-                  if (metric.sensitive) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.lock_outline,
-                      size: 14,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    if (guidance != null)
+                      UtenFieldHintIcon(info: guidance, dense: true),
+                    if (metric.sensitive) ...[
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.lock_outline,
+                        size: 14,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
               const SizedBox(height: UtenSpacing.s4),
               numeric == null

@@ -231,6 +231,61 @@ class LegacyBootstrapCoordinatorPostgresTest {
                     .isEqualTo(seedHistory);
             connection.rollback();
 
+            statement.execute("INSERT INTO finance_report_line_confirmations(line_key,confirmed_zero) VALUES('BS_2',true)");
+            String configuredFinance = bootstrapFinanceFacts(statement);
+            statement.execute(guard);
+            statement.execute("SELECT fn_finance_report_line_bindings_seed_defaults()");
+            assertThat(bootstrapFinanceFacts(statement))
+                    .as("bootstrap guard and the importer's actual binding seed preserve explicit report configuration")
+                    .isEqualTo(configuredFinance);
+            connection.rollback();
+
+            for (String status : List.of("SUBMITTED", "APPROVED", "REJECTED", "POSTED")) {
+                UUID requester = UUID.randomUUID(), voucher = UUID.randomUUID();
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO users(id,employee_id,login_account,password_hash,status,is_deleted)
+                        SELECT ?,id,?,'!synthetic-bootstrap-finance-no-login','active',false
+                        FROM employees WHERE code='ADMIN' AND status='active' AND NOT is_deleted
+                        """)) {
+                    insert.setObject(1, requester);
+                    insert.setString(2, "bootstrap-finance-" + requester);
+                    assertThat(insert.executeUpdate()).isEqualTo(1);
+                }
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status)
+                        VALUES (?,?,'2026-10',DATE '2026-10-31','MANUAL','MANUAL',1)
+                        """)) {
+                    insert.setObject(1, voucher);
+                    insert.setString(2, "BOOTSTRAP-GUARD-" + voucher);
+                    insert.executeUpdate();
+                }
+                // Synthetic retained requests isolate bootstrap protection; the
+                // production recognition lifecycle has separate service tests.
+                try (var insert = connection.prepareStatement("""
+                        INSERT INTO finance_asset_recognition_reversals
+                            (object_type,object_id,original_voucher_id,status,reason,requested_by)
+                        VALUES ('FIXED_ASSET',?,?,?,'Retained bootstrap guard evidence',?)
+                        """)) {
+                    insert.setObject(1, UUID.randomUUID());
+                    insert.setObject(2, voucher);
+                    insert.setString(3, status);
+                    insert.setObject(4, requester);
+                    insert.executeUpdate();
+                }
+                String retainedFinance = bootstrapFinanceFacts(statement);
+                var beforeGuard = connection.setSavepoint();
+                java.sql.SQLException occupiedFinance = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                        () -> statement.execute(guard));
+                assertThat(occupiedFinance.getSQLState()).isEqualTo("P0001");
+                assertThat(occupiedFinance.getMessage())
+                        .as("every recognition reversal state is business evidence")
+                        .contains("business facts in finance_asset_recognition_reversals");
+                connection.rollback(beforeGuard);
+                assertThat(bootstrapFinanceFacts(statement)).isEqualTo(retainedFinance);
+                connection.rollback();
+            }
+            assertThat(bootstrapHistoryFacts(statement)).isEqualTo(seedHistory);
+
             statement.execute("INSERT INTO business_record_history(source_table,source_id,payload,operation) "
                     + "VALUES('stock_movements','private-bootstrap-retained-business-proof','{}','DELETE')");
             java.sql.SQLException retainedBusiness = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
@@ -295,6 +350,19 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 }
                 connection.rollback();
             }
+        }
+    }
+
+    private static String bootstrapFinanceFacts(java.sql.Statement statement) throws Exception {
+        try (var rows = statement.executeQuery("""
+                SELECT md5(jsonb_build_object(
+                  'confirmations',(SELECT jsonb_agg(to_jsonb(r) ORDER BY line_key) FROM finance_report_line_confirmations r),
+                  'reversals',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM finance_asset_recognition_reversals r),
+                  'vouchers',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM gl_vouchers r),
+                  'users',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM users r))::text)
+                """)) {
+            rows.next();
+            return rows.getString(1);
         }
     }
 

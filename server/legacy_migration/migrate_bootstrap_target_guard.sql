@@ -162,6 +162,9 @@ BEGIN
         ('finance_asset_events','EMPTY'),
         ('finance_asset_posting_lines','EMPTY'),
         ('finance_asset_posting_runs','EMPTY'),
+        -- Recognition reversal requests/decisions are retained business evidence,
+        -- including rejected or already-posted requests, never bootstrap seeds.
+        ('finance_asset_recognition_reversals','EMPTY'),
         ('finance_bank_transfer_lines','EMPTY'),
         ('finance_bank_transfers','EMPTY'),
         ('finance_check_register','EMPTY'),
@@ -179,6 +182,9 @@ BEGIN
         ('finance_receipts','EMPTY'),
         ('finance_reconciliations','EMPTY'),
         ('finance_report_line_bindings','SEED_OR_ADMIN'),
+        -- Permanent report-line zero-value configuration, like line bindings;
+        -- the importer must preserve it and never clear/reseed its decisions.
+        ('finance_report_line_confirmations','SEED_OR_ADMIN'),
         ('fixed_assets','EMPTY'),
         ('flyway_schema_history','SEED_OR_ADMIN'),
         ('gl_entries','EMPTY'),

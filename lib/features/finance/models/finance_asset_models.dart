@@ -318,6 +318,7 @@ class FinanceAssetSummary {
     this.sourceDocumentDate,
     this.remark,
     this.version,
+    this.openingBalance,
   });
 
   final String id;
@@ -356,6 +357,7 @@ class FinanceAssetSummary {
   final String? sourceDocumentDate;
   final String? remark;
   final int? version;
+  final Map<String, dynamic>? openingBalance;
 
   String get displayedBalance =>
       ledger == FinanceAssetLedger.fixedAsset ? netBookValue : remainingAmount;
@@ -445,6 +447,9 @@ class FinanceAssetSummary {
       sourceDocumentDate: _nullableText(json, const ['sourceDocumentDate']),
       remark: _nullableText(json, const ['remark', 'notes']),
       version: _integer(json, const ['version', 'expectedVersion']),
+      openingBalance: json['openingBalance'] is Map
+          ? Map<String, dynamic>.from(json['openingBalance'] as Map)
+          : null,
     );
   }
 }
@@ -720,6 +725,7 @@ class FinanceAssetDraftInput {
     this.sourceDocumentDate,
     this.remark,
     this.expectedVersion,
+    this.openingBalance,
   });
 
   final FinanceAssetLedger ledger;
@@ -749,6 +755,7 @@ class FinanceAssetDraftInput {
   final String? sourceDocumentDate;
   final String? remark;
   final int? expectedVersion;
+  final Map<String, dynamic>? openingBalance;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     if (code?.trim().isNotEmpty == true) 'code': code!.trim(),
@@ -803,6 +810,10 @@ class FinanceAssetDraftInput {
       'sourceDocumentDate': sourceDocumentDate!.trim(),
     if (remark?.trim().isNotEmpty == true) 'remark': remark!.trim(),
     if (expectedVersion != null) 'expectedVersion': expectedVersion,
+    if (ledger == FinanceAssetLedger.fixedAsset) ...{
+      'openingBalance': openingBalance,
+      'clearOpeningBalance': openingBalance == null,
+    },
   };
 }
 

@@ -25,11 +25,11 @@ final class GlComputedHeaders {
         for(var row:original.rows())if(condition.matches(row))identities.add(identity(report,row));
         if(report.equals("gl/balance-sheet")) {
             Set<Object> closure=new LinkedHashSet<>(identities);
-            for(Object id:identities)closure.addAll(BALANCE_CONTEXT.getOrDefault(((Number)id).intValue(),List.of()));
+            for(Object id:identities)closure.addAll(FinancialStatementCatalog.context("BALANCE",((Number)id).intValue()));
             identities=closure;
         } else if(report.equals("gl/profit-annual")||report.equals("gl/profit-monthly")) {
             Set<Object> closure=new LinkedHashSet<>(identities);
-            for(Object id:identities)closure.addAll(PROFIT_CONTEXT.getOrDefault(id.toString(),List.of()));
+            for(Object id:identities)closure.addAll(FinancialStatementCatalog.context("PROFIT",((Number)id).intValue()));
             identities=closure;
         }
         for(var row:original.rows())if(identities.contains(identity(report,row)))rows.add(row);
@@ -55,27 +55,8 @@ final class GlComputedHeaders {
         return result;
     }
     private static Object identity(String report,Map<String,Object> row){
-        if(report.equals("gl/balance-sheet"))return row.get("lineNo");
-        return report.equals("gl/profit-annual")||report.equals("gl/profit-monthly")?row.get("item"):row;
+        if(report.equals("gl/balance-sheet")||report.equals("gl/profit-annual")||report.equals("gl/profit-monthly"))return row.get("lineNo");
+        return row;
     }
 
-    // These are the existing fixed line identities and formulas in balanceSheet(), not label heuristics.
-    private static final Map<Integer,List<Integer>> BALANCE_CONTEXT=Map.ofEntries(
-            Map.entry(1,List.of(15,29)),Map.entry(4,List.of(15,29)),Map.entry(8,List.of(15,29)),
-            Map.entry(9,List.of(15,29)),Map.entry(12,List.of(9,15,29)),Map.entry(14,List.of(15,29)),
-            Map.entry(15,List.of(29)),Map.entry(24,List.of(29)),Map.entry(33,List.of(41,52)),
-            Map.entry(36,List.of(41,52)),Map.entry(39,List.of(41,52)),Map.entry(41,List.of(52)),
-            Map.entry(47,List.of(51,52)),Map.entry(50,List.of(51,52)),Map.entry(51,List.of(52)));
-    // profitRows() already uses these exact identities to calculate the named subtotals.
-    private static final Map<String,List<String>> PROFIT_CONTEXT=profitContext();
-    private static Map<String,List<String>> profitContext(){
-        Map<String,List<String>> result=new LinkedHashMap<>();
-        for(String key:List.of("一、营业收入","减：营业成本","营业税金及附加","销售费用","管理费用","财务费用"))
-            result.put(key,List.of("二、营业利润","三、利润总额","四、净利润"));
-        result.put("二、营业利润",List.of("三、利润总额","四、净利润"));
-        result.put("加：营业外收入",List.of("三、利润总额","四、净利润"));
-        result.put("减：营业外支出",List.of("三、利润总额","四、净利润"));
-        result.put("三、利润总额",List.of("四、净利润"));result.put("减：所得税费用",List.of("四、净利润"));
-        return Map.copyOf(result);
-    }
 }

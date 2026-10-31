@@ -226,6 +226,12 @@ public class FixedAssetService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse depreciationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        return depreciationSchedule(page,size,options,com.uten.imp.common.time.BusinessTime.today());
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReportTableResponse depreciationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options,java.time.LocalDate dateTo) {
+        java.time.LocalDate cutoff=dateTo==null?com.uten.imp.common.time.BusinessTime.today():dateTo;
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "资产编号", 100),
@@ -235,7 +241,7 @@ public class FixedAssetService {
                 ReportColumn.number("salvageRate", "残值率"),
                 ReportColumn.number("usefulMonths", "年限(月)"),
                 ReportColumn.text("startPeriod", "开始期间", 90),
-                ReportColumn.money("monthlyDep", "月折旧").withUnitLabel("元"),
+                ReportColumn.money("monthlyDep", "本月已提折旧").withUnitLabel("元"),
                 ReportColumn.number("postedMonths", "已提月数"),
                 ReportColumn.money("accumDep", "累计折旧").withUnitLabel("元").totaled("所列记录累计折旧合计"),
                 ReportColumn.money("netValue", "净值").withUnitLabel("元").totaled("所列记录净值合计"),
@@ -244,19 +250,23 @@ public class FixedAssetService {
         String source="""
                 SELECT a.code, a.name, COALESCE(d.name,'') AS dept, a.original_value AS "originalValue", a.salvage_rate AS "salvageRate",
                        a.useful_months AS "usefulMonths", a.start_period AS "startPeriod",
-                       ROUND(a.original_value * (1 - a.salvage_rate) / a.useful_months, 2) AS "monthlyDep",
-                       book.posted_months AS "postedMonths",book.accum_dep AS "accumDep",
-                       ROUND(a.original_value - book.accum_dep, 2) AS "netValue",a.status,a.id AS "__assetId"
+                       book.monthly_dep AS "monthlyDep",
+                       book.posted_months AS "postedMonths",(a.opening_accumulated_amount+book.accum_dep) AS "accumDep",
+                       ROUND(a.original_value - a.opening_accumulated_amount - book.accum_dep, 2) AS "netValue",a.status,a.id AS "__assetId"
                 FROM fixed_assets a
                 LEFT JOIN departments d ON d.id = a.department_id
                 LEFT JOIN LATERAL (
-                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_dep
-                    FROM fa_depreciation_log l WHERE l.asset_id=a.id
+                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_dep,
+                           COALESCE(SUM(CASE WHEN l.period=to_char(CAST(:cutoff AS date),'YYYY-MM') THEN l.amount ELSE 0 END),0) AS monthly_dep
+                    FROM fa_depreciation_log l LEFT JOIN gl_vouchers v ON v.id=l.voucher_id WHERE l.asset_id=a.id
                       AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
+                      AND COALESCE(v.voucher_date,(to_date(l.period,'YYYY-MM')+interval '1 month'-interval '1 day')::date)<=:cutoff
                 ) book ON TRUE
-                WHERE a.is_deleted=false
+                WHERE a.is_deleted=false AND a.capitalized_on<=:cutoff
+                  AND (a.disposed_on IS NULL OR a.disposed_on>:cutoff)
+                  AND (a.recognition_reversed_on IS NULL OR a.recognition_reversed_on>:cutoff)
                 """;
-        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->{},
+        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->q.setParameter("cutoff",cutoff),
                 "report.\"code\",report.\"__assetId\"",options.filters(),java.util.Set.of("status","dept"),page,size,
                 options.sort(),options.order(),false,
                 com.uten.imp.features.finance.report.FinanceProjectedReportTable.totalSpecs(cols,projected));
@@ -273,6 +283,12 @@ public class FixedAssetService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReportTableResponse amortizationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options) {
+        return amortizationSchedule(page,size,options,com.uten.imp.common.time.BusinessTime.today());
+    }
+
+    @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReportTableResponse amortizationSchedule(int page,int size,com.uten.imp.features.finance.report.FinanceReportColumnOptions options,java.time.LocalDate dateTo) {
+        java.time.LocalDate cutoff=dateTo==null?com.uten.imp.common.time.BusinessTime.today():dateTo;
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("code", "编号", 100),
@@ -280,7 +296,7 @@ public class FixedAssetService {
                 ReportColumn.money("totalAmount", "待摊总额").withUnitLabel("元").totaled("所列记录待摊总额合计"),
                 ReportColumn.number("usefulMonths", "摊销月数"),
                 ReportColumn.text("startPeriod", "开始期间", 90),
-                ReportColumn.money("monthlyAmt", "月摊销").withUnitLabel("元"),
+                ReportColumn.money("monthlyAmt", "本月已摊销").withUnitLabel("元"),
                 ReportColumn.number("postedMonths", "已摊月数"),
                 ReportColumn.money("accumAmt", "累计摊销").withUnitLabel("元").totaled("所列记录累计摊销合计"),
                 ReportColumn.money("remain", "待摊余额").withUnitLabel("元").totaled("所列记录待摊余额合计"),
@@ -288,17 +304,21 @@ public class FixedAssetService {
         var projected=new ArrayList<>(cols);projected.add(ReportColumn.text("__deferredId","",1));
         String source="""
                 SELECT a.code,a.name,a.total_amount AS "totalAmount",a.useful_months AS "usefulMonths",a.start_period AS "startPeriod",
-                       ROUND(a.total_amount / a.useful_months,2) AS "monthlyAmt",book.posted_months AS "postedMonths",
+                       book.monthly_amt AS "monthlyAmt",book.posted_months AS "postedMonths",
                        book.accum_amt AS "accumAmt",ROUND(a.total_amount-book.accum_amt,2) AS remain,a.status,a.id AS "__deferredId"
                 FROM deferred_expenses a
                 LEFT JOIN LATERAL (
-                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_amt
-                    FROM da_amortization_log l WHERE l.deferred_id=a.id
+                    SELECT COUNT(*) AS posted_months, COALESCE(SUM(l.amount),0) AS accum_amt,
+                           COALESCE(SUM(CASE WHEN l.period=to_char(CAST(:cutoff AS date),'YYYY-MM') THEN l.amount ELSE 0 END),0) AS monthly_amt
+                    FROM da_amortization_log l LEFT JOIN gl_vouchers v ON v.id=l.voucher_id WHERE l.deferred_id=a.id
                       AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false
+                      AND COALESCE(v.voucher_date,(to_date(l.period,'YYYY-MM')+interval '1 month'-interval '1 day')::date)<=:cutoff
                 ) book ON TRUE
-                WHERE a.is_deleted=false
+                WHERE a.is_deleted=false AND a.recognized_on<=:cutoff
+                  AND (a.terminated_on IS NULL OR a.terminated_on>:cutoff)
+                  AND (a.recognition_reversed_on IS NULL OR a.recognition_reversed_on>:cutoff)
                 """;
-        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->{},
+        return com.uten.imp.features.finance.report.FinanceProjectedReportTable.query(em,projected,source,q->q.setParameter("cutoff",cutoff),
                 "report.\"code\",report.\"__deferredId\"",options.filters(),java.util.Set.of("status"),page,size,
                 options.sort(),options.order(),false,
                 com.uten.imp.features.finance.report.FinanceProjectedReportTable.totalSpecs(cols,projected));

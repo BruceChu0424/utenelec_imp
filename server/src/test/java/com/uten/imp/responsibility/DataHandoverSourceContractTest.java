@@ -25,8 +25,8 @@ class DataHandoverSourceContractTest {
                 "requestId 已用于不同的数据交接请求",
                 "DataHandoverAction.BLOCKING",
                 "status IN ('DISPATCHED','IN_PROGRESS')",
-                "lifecycle_status <> 'DISPOSED'",
-                "lifecycle_status NOT IN ('COMPLETED','TERMINATED')",
+                "lifecycle_status NOT IN ('DISPOSED','REVERSED')",
+                "lifecycle_status NOT IN ('COMPLETED','TERMINATED','REVERSED')",
                 "status='approved'");
     }
 

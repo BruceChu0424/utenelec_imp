@@ -44,7 +44,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FinanceAssetPostingService {
 
-    private static final String ALGORITHM_VERSION = "STRAIGHT_LINE_V1";
+    private static final String ALGORITHM_VERSION = "STRAIGHT_LINE_OPENING_V2";
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 
     private final EntityManager em;
@@ -224,10 +224,10 @@ public class FinanceAssetPostingService {
         Number derecognized = (Number) em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM finance_asset_posting_lines l
                         JOIN fixed_assets a ON a.id=l.fixed_asset_id
-                        WHERE l.run_id=:run AND a.lifecycle_status='DISPOSED')
+                        WHERE l.run_id=:run AND a.lifecycle_status IN ('DISPOSED','REVERSED'))
                      + (SELECT COUNT(*) FROM finance_asset_posting_lines l
                         JOIN deferred_expenses d ON d.id=l.deferred_expense_id
-                        WHERE l.run_id=:run AND d.lifecycle_status='TERMINATED')
+                        WHERE l.run_id=:run AND d.lifecycle_status IN ('TERMINATED','REVERSED'))
                 """).setParameter("run", originalRunId).getSingleResult();
         if (derecognized.longValue() > 0) {
             throw conflict("该批次之后已经办理处置或终止，不能撤销入账");
@@ -365,7 +365,7 @@ public class FinanceAssetPostingService {
         @SuppressWarnings("unchecked") List<Object[]> objectStates = em.createNativeQuery(objectLockSql)
                 .setParameter("run",original.id()).getResultList();
         boolean derecognized = objectStates.stream().anyMatch(row ->
-                "DISPOSED".equals(NativeValueConverters.text(row[1])) || "TERMINATED".equals(NativeValueConverters.text(row[1])));
+                java.util.Set.of("DISPOSED","TERMINATED","REVERSED").contains(NativeValueConverters.text(row[1])));
         if (derecognized) throw conflict("该批次之后已经办理处置或终止，不能撤销入账");
         List<PostingFact> facts = facts(run.id());
         if (original.voucherId() == null && !facts.isEmpty()) {
@@ -449,7 +449,7 @@ public class FinanceAssetPostingService {
                        COALESCE((SELECT to_char((to_date(max(l.period),'YYYY-MM')+interval '1 month'),'YYYY-MM')
                                  FROM fa_depreciation_log l
                                  WHERE l.asset_id=a.id AND l.asset_book_id=b.id AND l.entry_kind='NORMAL'
-                                   AND l.status='ACTIVE' AND l.is_deleted=false),b.start_period)
+                                   AND l.status='ACTIVE' AND l.is_deleted=false),b.start_period),b.opening_accumulated_amount
                 FROM finance_asset_books b JOIN fixed_assets a ON a.id=b.asset_id
                 WHERE b.book_type=:book AND b.status='ACTIVE' AND b.posting_enabled=true
                   AND b.start_period<=:period
@@ -467,11 +467,10 @@ public class FinanceAssetPostingService {
             BigDecimal original = NativeValueConverters.toBigDecimal(r[4]), accumulated = NativeValueConverters.toBigDecimal(r[5]), opening = NativeValueConverters.toBigDecimal(r[6]);
             BigDecimal depreciable = NativeValueConverters.toBigDecimal(r[7]);
             long usefulMonths = number(r[8]).longValue();
-            BigDecimal remaining = depreciable.subtract(accumulated);
-            BigDecimal regular = depreciable.divide(BigDecimal.valueOf(usefulMonths), 4, RoundingMode.HALF_UP);
-            String finalPeriod = YearMonth.parse(NativeValueConverters.text(r[9])).plusMonths(usefulMonths - 1L).toString();
-            BigDecimal amount = (period.equals(finalPeriod) ? remaining : regular.min(remaining))
-                    .setScale(4, RoundingMode.HALF_UP);
+            int sequence=Math.toIntExact(java.time.temporal.ChronoUnit.MONTHS.between(
+                    YearMonth.parse(NativeValueConverters.text(r[9])),YearMonth.parse(period))+1L);
+            BigDecimal amount=com.uten.imp.features.finance.asset.domain.StraightLineScheduleCalculator.periodAmount(
+                    depreciable,NativeValueConverters.toBigDecimal(r[17]),Math.toIntExact(usefulMonths),sequence,accumulated);
             result.add(new Candidate("FIXED_ASSET", NativeValueConverters.uuid(r[0]), NativeValueConverters.uuid(r[1]), null, null, NativeValueConverters.text(r[2]), NativeValueConverters.text(r[3]),
                     original, opening, amount, accumulated.add(amount), opening.subtract(amount),
                     NativeValueConverters.uuid(r[12]), NativeValueConverters.uuid(r[11]), NativeValueConverters.uuid(r[10]), NativeValueConverters.uuid(r[13]), NativeValueConverters.uuid(r[14]),

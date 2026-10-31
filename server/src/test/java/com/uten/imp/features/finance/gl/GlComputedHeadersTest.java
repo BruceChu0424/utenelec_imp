@@ -28,11 +28,11 @@ class GlComputedHeadersTest {
         var parent=row("lineNo",9,"item","存货","end",new BigDecimal("1000.1234567890123456789"));
         var leaf=row("lineNo",12,"item","其中:库存商品","end",exact);
         var section=row("lineNo",15,"item","流动资产合计","end",new BigDecimal("777.125"));
-        var total=row("lineNo",29,"item","资产总计","end",new BigDecimal("1234567890.0123"));
+        var total=row("lineNo",30,"item","资产总计","end",new BigDecimal("1234567890.0123"));
         var original=response(List.of(ReportColumn.number("lineNo","行次"),ReportColumn.text("item","项目"),ReportColumn.money("end","期末")),
                 List.of(unrelated,parent,leaf,section,total));
         var result=GlComputedHeaders.apply("gl/balance-sheet",original,search("end",exact.toPlainString()));
-        assertThat(result.rows()).extracting(record->record.get("lineNo")).containsExactly(9,12,15,29);
+        assertThat(result.rows()).extracting(record->record.get("lineNo")).containsExactly(9,12,15,30);
         assertThat(result.rows().get(1)).isSameAs(leaf);
         assertThat(result.rows().get(1).get("end")).isSameAs(exact);
         assertThat(result.rows().get(1).get("endExact")).isEqualTo(exact.toPlainString());
@@ -73,13 +73,13 @@ class GlComputedHeadersTest {
     }
 
     @Test void profitContextUsesExactFinancialIdentitiesAndNeverSortsOrRebuildsNamedSubtotals(){
-        var other=row("item","某公司营业成本备注","amount",new BigDecimal("77"));
-        var income=row("item","一、营业收入","amount",new BigDecimal("1000.0001"));
-        var cost=row("item","减：营业成本","amount",new BigDecimal("100"));
-        var operating=row("item","二、营业利润","amount",new BigDecimal("900.0001"));
-        var profit=row("item","三、利润总额","amount",new BigDecimal("920.0001"));
-        var tax=row("item","减：所得税费用","amount",new BigDecimal("20"));
-        var net=row("item","四、净利润","amount",new BigDecimal("900.0001"));
+        var other=row("lineNo",999,"item","某公司营业成本备注","amount",new BigDecimal("77"));
+        var income=row("lineNo",1,"item","一、营业收入","amount",new BigDecimal("1000.0001"));
+        var cost=row("lineNo",2,"item","减：营业成本","amount",new BigDecimal("100"));
+        var operating=row("lineNo",21,"item","二、营业利润","amount",new BigDecimal("900.0001"));
+        var profit=row("lineNo",30,"item","三、利润总额","amount",new BigDecimal("920.0001"));
+        var tax=row("lineNo",31,"item","减：所得税费用","amount",new BigDecimal("20"));
+        var net=row("lineNo",32,"item","四、净利润","amount",new BigDecimal("900.0001"));
         var original=response(List.of(ReportColumn.text("item","项目"),ReportColumn.money("amount","金额")),
                 List.of(other,income,cost,operating,profit,tax,net));
         var selected=GlComputedHeaders.apply("gl/profit-annual",original,search("item","减：营业成本"));

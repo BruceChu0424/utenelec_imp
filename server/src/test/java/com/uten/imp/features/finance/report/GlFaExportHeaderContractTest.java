@@ -31,7 +31,10 @@ class GlFaExportHeaderContractTest {
             if(call.getMethod().getReturnType()==ReportTableResponse.class){
                 var options=Arrays.stream(call.getArguments()).filter(FinanceReportColumnOptions.class::isInstance)
                         .map(FinanceReportColumnOptions.class::cast).findFirst().orElseThrow();
-                calls.add(new Call(call.getMethod().getName(),options));return empty;
+                calls.add(new Call(call.getMethod().getName(),options));
+                if(report.startsWith("fa/"))assertThat(Arrays.stream(call.getArguments()).filter(java.time.LocalDate.class::isInstance).toList())
+                        .containsExactly(java.time.LocalDate.of(2026,10,31));
+                return empty;
             }
             return org.mockito.Answers.RETURNS_DEFAULTS.answer(call);
         };

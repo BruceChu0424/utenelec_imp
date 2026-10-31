@@ -19,6 +19,12 @@ public final class StraightLineScheduleCalculator {
             BigDecimal residualRate,
             int usefulMonths,
             AssetPeriod startPeriod) {
+        return calculateOpening(originalAmount,residualRate,usefulMonths,startPeriod,BigDecimal.ZERO);
+    }
+
+    /** Opening accumulated depreciation is preserved; only the remaining depreciable amount is scheduled. */
+    public static Schedule calculateOpening(BigDecimal originalAmount,BigDecimal residualRate,int usefulMonths,
+            AssetPeriod startPeriod,BigDecimal openingAccumulated) {
         requirePositive(originalAmount, "originalAmount");
         Objects.requireNonNull(residualRate, "residualRate");
         Objects.requireNonNull(startPeriod, "startPeriod");
@@ -32,16 +38,15 @@ public final class StraightLineScheduleCalculator {
         BigDecimal original = money(originalAmount);
         BigDecimal residual = money(original.multiply(residualRate));
         BigDecimal depreciable = original.subtract(residual);
-        BigDecimal regular = depreciable.divide(BigDecimal.valueOf(usefulMonths), MONEY_SCALE, RoundingMode.HALF_UP);
-        BigDecimal accumulated = BigDecimal.ZERO.setScale(MONEY_SCALE);
+        BigDecimal accumulated = money(Objects.requireNonNull(openingAccumulated));
+        if(accumulated.signum()<0||accumulated.compareTo(depreciable)>0)
+            throw new IllegalArgumentException("opening accumulated depreciation exceeds depreciable amount");
+        BigDecimal initialAccumulated=accumulated;
         List<ScheduleLine> lines = new ArrayList<>(usefulMonths);
 
         for (int sequence = 1; sequence <= usefulMonths; sequence++) {
             BigDecimal opening = accumulated;
-            BigDecimal amount = sequence == usefulMonths
-                    ? depreciable.subtract(accumulated)
-                    : regular.min(depreciable.subtract(accumulated));
-            amount = money(amount.max(BigDecimal.ZERO));
+            BigDecimal amount = periodAmount(depreciable,initialAccumulated,usefulMonths,sequence,accumulated);
             accumulated = money(accumulated.add(amount));
             lines.add(new ScheduleLine(
                     sequence,
@@ -52,6 +57,17 @@ public final class StraightLineScheduleCalculator {
                     money(original.subtract(accumulated))));
         }
         return new Schedule(original, residual, depreciable, List.copyOf(lines));
+    }
+
+    /** O(1) posting calculation shared with schedule generation; last period absorbs the exact remainder. */
+    public static BigDecimal periodAmount(BigDecimal depreciable,BigDecimal openingAccumulated,int months,
+            int sequence,BigDecimal accumulatedBefore) {
+        if(months<1||months>1200||sequence<1||sequence>months||openingAccumulated.signum()<0
+                ||accumulatedBefore.compareTo(openingAccumulated)<0||depreciable.compareTo(accumulatedBefore)<0)
+            throw new IllegalArgumentException("Invalid depreciation period or accumulated balance");
+        BigDecimal remaining=depreciable.subtract(accumulatedBefore);
+        BigDecimal regular=depreciable.subtract(openingAccumulated).divide(BigDecimal.valueOf(months),MONEY_SCALE,RoundingMode.HALF_UP);
+        return money(sequence==months?remaining:regular.min(remaining));
     }
 
     public static Schedule calculateDeferred(

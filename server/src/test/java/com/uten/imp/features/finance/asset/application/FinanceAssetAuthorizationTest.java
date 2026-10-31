@@ -66,7 +66,7 @@ class FinanceAssetAuthorizationTest {
     }
 
     @Test
-    void disabledPostedWorkflowGateHidesIrreversibleActions() {
+    void disabledDisposalGateStillAllowsReversibleRecognition() {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         AuthUser actor = user(Set.of(
                 FinanceAssetAuthorization.POST,
@@ -76,7 +76,7 @@ class FinanceAssetAuthorizationTest {
         FinanceAssetAuthorization guard = new FinanceAssetAuthorization(
                 current, new FinanceAssetFeatureGate(false));
 
-        assertThat(guard.allowedActions("APPROVED", UUID.randomUUID(), false)).isEmpty();
+        assertThat(guard.allowedActions("APPROVED", UUID.randomUUID(), false)).containsExactly("ACTIVATE");
         assertThat(guard.allowedActions("ACTIVE", UUID.randomUUID(), true)).isEmpty();
     }
 

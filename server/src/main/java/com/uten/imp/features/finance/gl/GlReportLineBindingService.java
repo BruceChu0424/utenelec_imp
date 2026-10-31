@@ -39,7 +39,8 @@ public class GlReportLineBindingService {
     private final SecurityContextCurrentUser currentUser;
 
     /** 报表行绑定一览。 */
-    public record LineBinding(String lineKey, String label, String bindingKind, List<Target> targets) {
+    public record LineBinding(String lineKey, String label, String bindingKind, List<Target> targets,
+                              String category, String sheet, boolean confirmedZero, String defaultBasis) {
     }
 
     /** 绑定目标(科目或部门)。 */
@@ -61,9 +62,17 @@ public class GlReportLineBindingService {
             targets.computeIfAbsent((String) row[0], ignored -> new ArrayList<>())
                     .add(new Target((UUID) row[1], (String) row[2], (String) row[3]));
         }
+        Set<String> zero=new LinkedHashSet<>();
+        for(Object value:em.createNativeQuery("SELECT line_key FROM finance_report_line_confirmations WHERE confirmed_zero").getResultList())
+            zero.add(value.toString());
         return GlReportLine.configurableLines().stream()
-                .map(line -> new LineBinding(line.key(), line.label(), line.bindingKind(),
-                        List.copyOf(targets.getOrDefault(line.key(), List.of()))))
+                .map(line -> {
+                    var statement=FinancialStatementCatalog.find(line.key());
+                    return new LineBinding(line.key(), line.label(), line.bindingKind(),
+                        List.copyOf(targets.getOrDefault(line.key(), List.of())),
+                        statement==null?"EXPENSE":statement.category(),statement==null?null:statement.sheet(),zero.contains(line.key()),
+                        statement!=null&&!statement.roots().isEmpty()?"未单独绑定时沿用已证明的总账来源，实际状态见报表取数口径":null);
+                })
                 .toList();
     }
 
@@ -71,6 +80,12 @@ public class GlReportLineBindingService {
     @Transactional
     @PreAuthorize("hasAuthority('payment_style:edit')")
     public LineBinding replace(String lineKey, List<UUID> targetIds) {
+        return replace(lineKey,targetIds,false);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('payment_style:edit')")
+    public LineBinding replace(String lineKey, List<UUID> targetIds, boolean confirmedZero) {
         tx.bind();
         GlReportLine line = lineKey == null ? null : GlReportLine.configurable(lineKey.trim());
         if (line == null) {
@@ -81,6 +96,9 @@ public class GlReportLineBindingService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "绑定目标不能为空且最多 " + MAX_TARGETS + " 个");
         }
         boolean department = "DEPARTMENT".equals(line.bindingKind());
+        var statement=FinancialStatementCatalog.find(line.key());
+        if(confirmedZero&&(statement==null||!ids.isEmpty()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"确认无业务仅适用于未绑定科目的财务报表项目");
         if (!department) {
             // 与类别层级维护同一把锁(V265 协议): 校验到写入之间科目不会被挂上下级。
             // 加锁顺序固定为「类别层级 → 报表设置」, 与默认补齐、老库导入一致, 不会互等。
@@ -88,20 +106,22 @@ public class GlReportLineBindingService {
         }
         lockBindings();
         if (!ids.isEmpty()) {
-            long valid = ((Number) em.createNativeQuery(department ? """
+            var validationQuery = em.createNativeQuery(department ? """
                     SELECT count(*) FROM departments
                     WHERE id IN (:ids) AND COALESCE(is_deleted, FALSE) = FALSE
                     """ : """
                     SELECT count(*) FROM payment_styles style
-                    WHERE style.id IN (:ids) AND style.category = 'EXPENSE'
+                    WHERE style.id IN (:ids) AND style.category = :category
                       AND COALESCE(style.is_deleted, FALSE) = FALSE
                       AND NOT EXISTS (
                           SELECT 1 FROM payment_styles child
                           WHERE child.parent_id = style.id AND COALESCE(child.is_deleted, FALSE) = FALSE)
-                    """).setParameter("ids", ids).getSingleResult()).longValue();
+                    """).setParameter("ids", ids);
+            if(!department)validationQuery.setParameter("category",statement==null?"EXPENSE":statement.category());
+            long valid=((Number)validationQuery.getSingleResult()).longValue();
             if (valid != ids.size()) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, department
-                        ? "所选部门不存在或已删除" : "只能绑定费用类的末级科目");
+                        ? "所选部门不存在或已删除" : statement==null||"EXPENSE".equals(statement.category())?"只能绑定费用类的末级科目":"只能绑定本项目指定类别的末级科目");
             }
             if (department) requireNoLaborOverlap(line.key(), ids);
             else requireOneLinePerStyleInSheet(line.key(), ids);
@@ -109,6 +129,11 @@ public class GlReportLineBindingService {
         em.createNativeQuery("DELETE FROM finance_report_line_bindings WHERE line_key = :key")
                 .setParameter("key", line.key()).executeUpdate();
         UUID actor = currentUser.requireId();
+        if(statement!=null)em.createNativeQuery("""
+                INSERT INTO finance_report_line_confirmations(line_key,confirmed_zero,updated_by)
+                VALUES(:key,:zero,:actor) ON CONFLICT(line_key) DO UPDATE
+                SET confirmed_zero=excluded.confirmed_zero,updated_by=excluded.updated_by,updated_at=now()
+                """).setParameter("key",line.key()).setParameter("zero",confirmedZero).setParameter("actor",actor).executeUpdate();
         for (UUID id : ids) {
             em.createNativeQuery(department ? """
                     INSERT INTO finance_report_line_bindings(line_key, binding_kind, department_id, created_by)

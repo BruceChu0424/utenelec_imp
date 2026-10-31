@@ -44,6 +44,12 @@ public class FixedAssetController {
     private final FixedAssetService legacyReports;
     private final AuditDetailViewRecorder detailViewAudit;
 
+    @GetMapping("/fixed-assets/opening-vouchers")
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public java.util.List<FinanceAssetQueryService.OpeningVoucher> openingVouchers(@RequestParam String voucherNo) {
+        return query.openingVouchers(voucherNo);
+    }
+
     @GetMapping("/asset-workbench/overview")
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public AssetWorkbenchResponses.Overview overview() { return query.overview(); }
@@ -388,20 +394,20 @@ public class FixedAssetController {
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public ReportTableResponse depreciationSchedule(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?legacyReports.depreciationSchedule(page,size)
-                :legacyReports.depreciationSchedule(page,size,options);
+        return legacyReports.depreciationSchedule(page,size,options,dateTo);
     }
 
     @GetMapping("/reports/fa/amortization-schedule")
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public ReportTableResponse amortizationSchedule(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?legacyReports.amortizationSchedule(page,size)
-                :legacyReports.amortizationSchedule(page,size,options);
+        return legacyReports.amortizationSchedule(page,size,options,dateTo);
     }
 
     public record Items<T>(List<T> items) {}

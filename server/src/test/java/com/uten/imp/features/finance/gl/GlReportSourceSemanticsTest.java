@@ -49,59 +49,43 @@ class GlReportSourceSemanticsTest {
         assertThat(found).isEqualTo(11); // Both original and typed overloads retain the same snapshot boundary.
     }
     @Test
-    void balanceSheetConsumesQualifiedRootKeysAndPreservesSignsAndProfitCarryForward() {
-        EntityManager em = mock(EntityManager.class);
-        Query roots = mock(Query.class);
-        Query profit = mock(Query.class);
-        Query scope = mock(Query.class);
-        when(scope.getResultList()).thenReturn(List.of());
-        when(em.createNativeQuery(anyString())).thenReturn(scope, roots, roots, profit, profit);
-        List<Object[]> rows = new ArrayList<>();
-        int amount = 1;
-        for (GlReportSourceScopes.Root root : GlReportSourceScopes.Root.values()) {
-            rows.add(new Object[]{root.name(), BigDecimal.valueOf(amount++)});
-        }
-        when(roots.getResultList()).thenReturn(rows);
-        when(profit.getSingleResult()).thenReturn(new BigDecimal("7"));
-
-        var report = new GlReportService(em, mock(GlReportLineSource.class),com.uten.imp.support.FinanceReportTestAccess.company())
-                .balanceSheet(LocalDate.of(2032, 6, 30));
-        assertAmount(report.rows(), "货币资金", "periodEnd", "3");
-        assertAmount(report.rows(), "资产总计", "periodEnd", "36");
-        assertAmount(report.rows(), "流动负债合计", "periodEnd", "42");
-        assertAmount(report.rows(), "未分配利润", "periodEnd", "21");
-        assertAmount(report.rows(), "所有者权益合计", "periodEnd", "34");
-        verify(roots).setParameter("d", LocalDate.of(2032, 6, 30));
-        verify(roots).setParameter("d", LocalDate.of(2031, 12, 31));
+    void balanceSheetConsumesAllocatedFactsAndUsesOpeningAndClosingSnapshots() {
+        EntityManager em = statementQueries("BALANCE", List.<Object[]>of(
+                new Object[]{"BS_18",1,new BigDecimal("100000")},
+                new Object[]{"BS_19",1,new BigDecimal("20000")},
+                new Object[]{"BS_48",1,new BigDecimal("100000")},
+                new Object[]{"__PL",1,new BigDecimal("-20000")}));
+        var report = new GlReportService(em,mock(GlReportLineSource.class),
+                com.uten.imp.support.FinanceReportTestAccess.company()).balanceSheet(LocalDate.of(2032,6,30));
+        assertThat(report.rows()).hasSize(53);
+        assertAmount(report.rows(),"资产总计","periodEnd","80000");
+        assertAmount(report.rows(),"固定资产账面价值","periodEnd","80000");
+        assertAmount(report.rows(),"资产总计","yearStart","0");
     }
 
     @Test
-    void profitRowsKeepExplicitExpenseBindingsAndSourceScopedRevenueSeparate() {
-        EntityManager em = mock(EntityManager.class);
-        Query income = queryWithMonth("110");
-        Query cost = queryWithMonth("40");
-        Query nonOperating = queryWithMonth("5");
-        Query scope = mock(Query.class);
-        when(scope.getResultList()).thenReturn(List.of());
-        when(em.createNativeQuery(anyString())).thenReturn(scope, income, cost, nonOperating);
-        GlReportLineSource lines = mock(GlReportLineSource.class);
-        List<String> keys = List.of("PL_TAX", "SALES_FEE", "PL_FINANCE");
-        LocalDate from = LocalDate.of(2032, 1, 1), to = LocalDate.of(2032, 12, 31);
-        when(lines.bindings(keys)).thenReturn(new GlReportLineSource.Bindings(Map.of(
-                "PL_TAX", List.of("configured tax"), "SALES_FEE", List.of("configured sales"),
-                "PL_FINANCE", List.of("configured finance"))));
-        when(lines.styleMonthly(keys, "EXPENSE", from, to)).thenReturn(Map.of(
-                "PL_TAX", months("2"), "SALES_FEE", months("3"), "PL_FINANCE", months("4")));
-        when(lines.adminMonthly(keys, from, to)).thenReturn(months("12"));
-        var report = new GlReportService(em, lines,com.uten.imp.support.FinanceReportTestAccess.company()).profitMonthly(2032, 2);
-        assertAmount(report.rows(), "一、营业收入", "monthAmount", "110");
-        assertAmount(report.rows(), "管理费用", "monthAmount", "12");
-        assertAmount(report.rows(), "销售费用", "monthAmount", "3");
-        assertAmount(report.rows(), "四、净利润", "monthAmount", "54");
-        assertAmount(report.rows(), "四、净利润", "yearAmount", "54");
-        verify(income).setParameter("cat", "INCOME");
-        verify(cost).setParameter("cat", "EXPENSE");
-        verify(nonOperating).setParameter("cat", "INCOME");
+    void profitMonthlyIncludesNonOperatingExpensesAndTaxAndKeepsYearToDate() {
+        EntityManager em = statementQueries("PROFIT",List.<Object[]>of(
+                new Object[]{"PL_1",1,new BigDecimal("100")},new Object[]{"PL_1",2,new BigDecimal("110")},
+                new Object[]{"PL_2",2,new BigDecimal("40")},new Object[]{"PL_24",2,new BigDecimal("5")},
+                new Object[]{"PL_31",2,new BigDecimal("7")}));
+        var report=new GlReportService(em,mock(GlReportLineSource.class),
+                com.uten.imp.support.FinanceReportTestAccess.company()).profitMonthly(2032,2);
+        assertThat(report.rows()).hasSize(20);
+        assertAmount(report.rows(),"四、净利润","monthAmount","58");
+        assertAmount(report.rows(),"四、净利润","yearAmount","158");
+    }
+
+    private static EntityManager statementQueries(String sheet,List<Object[]> amounts) {
+        EntityManager em=mock(EntityManager.class);
+        Query scope=mock(Query.class),conflicts=mock(Query.class),metadata=mock(Query.class),facts=mock(Query.class);
+        when(scope.getResultList()).thenReturn(List.of());when(conflicts.getResultList()).thenReturn(List.of());
+        List<Object[]> configuration=FinancialStatementCatalog.lines(sheet).stream()
+                .filter(FinancialStatementCatalog.Line::direct).map(l->new Object[]{l.key(),false}).toList();
+        when(metadata.getResultList()).thenReturn(configuration);when(facts.getResultList()).thenReturn(amounts);
+        when(facts.setParameter(anyString(),org.mockito.ArgumentMatchers.any())).thenReturn(facts);
+        when(em.createNativeQuery(anyString())).thenReturn(scope,conflicts,metadata,facts);
+        return em;
     }
 
     @Test

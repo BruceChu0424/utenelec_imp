@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset.api;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.Digits;
@@ -45,7 +46,33 @@ public final class AssetWorkbenchRequests {
             @Size(max = 200) String sourceLineRef,
             LocalDate sourceDocumentDate,
             @Size(max = 2000) String remark,
-            Long expectedVersion) {}
+            Long expectedVersion,
+            @Valid OpeningBalance openingBalance,
+            Boolean clearOpeningBalance) {
+        public FixedAssetDraft(String code,String name,UUID categoryId,UUID departmentId,UUID custodianId,
+                String location,String serialNumber,String assetTag,String costCenterCode,BigDecimal originalValue,
+                BigDecimal salvageRate,Integer usefulMonths,String startPeriod,LocalDate acquisitionDate,
+                LocalDate acceptanceDate,LocalDate readyForUseDate,String sourceType,UUID sourceId,String sourceRef,
+                String sourceLineRef,LocalDate sourceDocumentDate,String remark,Long expectedVersion) {
+            this(code,name,categoryId,departmentId,custodianId,location,serialNumber,assetTag,costCenterCode,
+                originalValue,salvageRate,usefulMonths,startPeriod,acquisitionDate,acceptanceDate,readyForUseDate,
+                sourceType,sourceId,sourceRef,sourceLineRef,sourceDocumentDate,remark,expectedVersion,null,null);
+        }
+        public FixedAssetDraft(String code,String name,UUID categoryId,UUID departmentId,UUID custodianId,
+                String location,String serialNumber,String assetTag,String costCenterCode,BigDecimal originalValue,
+                BigDecimal salvageRate,Integer usefulMonths,String startPeriod,LocalDate acquisitionDate,
+                LocalDate acceptanceDate,LocalDate readyForUseDate,String sourceType,UUID sourceId,String sourceRef,
+                String sourceLineRef,LocalDate sourceDocumentDate,String remark,Long expectedVersion,OpeningBalance openingBalance) {
+            this(code,name,categoryId,departmentId,custodianId,location,serialNumber,assetTag,costCenterCode,
+                originalValue,salvageRate,usefulMonths,startPeriod,acquisitionDate,acceptanceDate,readyForUseDate,
+                sourceType,sourceId,sourceRef,sourceLineRef,sourceDocumentDate,remark,expectedVersion,openingBalance,null);
+        }
+    }
+
+    public record OpeningBalance(@NotNull LocalDate asOf,
+            @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+            @NotNull @DecimalMin("0.0000") @Digits(integer=14,fraction=4) BigDecimal accumulatedAmount,
+            @NotNull @Min(0) @Max(1200) Integer remainingMonths,UUID existingVoucherId) {}
 
     public record DeferredExpenseDraft(
             @Size(max = 64) String code,

@@ -108,6 +108,12 @@ public class FinanceAssetPeriodService {
             throw new ApiException(ErrorCode.CONFLICT, "该资产会计期间已经是关闭状态，请刷新后重试");
         }
 
+        for(String type:List.of("DEPRECIATION","AMORTIZATION"))
+            em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                    .setParameter("key","FINANCE_ASSET_RUN|"+type+"|CORPORATE").getSingleResult();
+        Number recognitionPending=(Number)em.createNativeQuery("SELECT count(*) FROM finance_asset_recognition_reversals WHERE status IN ('SUBMITTED','APPROVED')").getSingleResult();
+        if(recognitionPending.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,"请先完成初始确认撤销申请，再关闭资产期间");
+
         List<RunEvidence> runs = effectiveCorporateRuns(period);
         RunEvidence depreciation = uniqueRun(runs, "DEPRECIATION");
         RunEvidence amortization = uniqueRun(runs, "AMORTIZATION");

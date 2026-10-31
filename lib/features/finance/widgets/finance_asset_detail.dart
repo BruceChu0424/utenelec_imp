@@ -37,6 +37,9 @@ const _assetReviewerActions = <String>{
   'REJECT',
   'APPROVE_DISPOSAL',
   'APPROVE_TERMINATION',
+  'APPROVE_RECOGNITION_REVERSAL',
+  'POST_RECOGNITION_REVERSAL',
+  'REJECT_RECOGNITION_REVERSAL',
   'REJECT_DISPOSAL',
   'REJECT_TERMINATION',
 };
@@ -160,6 +163,10 @@ class _FinanceAssetDetailSurfaceState
       'DELETE' => widget.capabilities.canDelete,
       'APPROVE' || 'REJECT' => widget.capabilities.canApprove,
       'ACTIVATE' => widget.capabilities.canPost,
+      'REVERSE_RECOGNITION' ||
+      'POST_RECOGNITION_REVERSAL' => widget.capabilities.canReverse,
+      'APPROVE_RECOGNITION_REVERSAL' ||
+      'REJECT_RECOGNITION_REVERSAL' => widget.capabilities.canApprove,
       'DISPOSE' ||
       'TERMINATE' ||
       'APPROVE_DISPOSAL' ||
@@ -177,6 +184,8 @@ class _FinanceAssetDetailSurfaceState
     final normalized = action.toUpperCase().replaceAll('-', '_');
     if (const {
       'REJECT',
+      'REVERSE_RECOGNITION',
+      'REJECT_RECOGNITION_REVERSAL',
       'TRANSFER',
       'OPERATING_STATUS',
       'DISPOSE',
@@ -413,6 +422,10 @@ class _FinanceAssetDetailSurfaceState
       'APPROVE',
       'REJECT',
       'ACTIVATE',
+      'REVERSE_RECOGNITION',
+      'APPROVE_RECOGNITION_REVERSAL',
+      'REJECT_RECOGNITION_REVERSAL',
+      'POST_RECOGNITION_REVERSAL',
       'TRANSFER',
       'OPERATING_STATUS',
       'DISPOSE',
@@ -504,6 +517,22 @@ class _FinanceAssetDetailSurfaceState
         fact('归属部门', item.departmentName ?? item.departmentId),
         fact('政策月份', item.usefulMonths?.toString()),
         fact('开始期间', item.startPeriod),
+        if (item.openingBalance != null) ...[
+          fact('接续日', item.openingBalance!['asOf']?.toString()),
+          fact(
+            '期初累计折旧',
+            formatFinanceDecimal(
+              item.openingBalance!['accumulatedAmount']?.toString(),
+            ),
+          ),
+          fact('剩余计提月数', item.openingBalance!['remainingMonths']?.toString()),
+          fact(
+            '期初入账方式',
+            item.openingBalance!['existingVoucherId'] == null
+                ? '生成期初凭证'
+                : '关联已入账凭证，不重复记账',
+          ),
+        ],
         fact(
           widget.ledger == FinanceAssetLedger.fixedAsset
               ? '达到预定可使用日期'
@@ -818,6 +847,10 @@ String _actionLabel(String action) {
     'APPROVE' => '审批通过',
     'REJECT' => '驳回',
     'ACTIVATE' => '确认启用',
+    'REVERSE_RECOGNITION' => '申请撤销初始确认',
+    'APPROVE_RECOGNITION_REVERSAL' => '批准撤销初始确认',
+    'REJECT_RECOGNITION_REVERSAL' => '退回撤销申请',
+    'POST_RECOGNITION_REVERSAL' => '执行初始确认撤销',
     'TRANSFER' => '调拨',
     'OPERATING_STATUS' => '变更使用状态',
     'DISPOSE' => '处置',

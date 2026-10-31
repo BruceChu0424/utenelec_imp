@@ -2561,16 +2561,16 @@ public class FinanceReportService {
                     p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
             case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "gl/balance-sheet" -> (pg, sz) -> glSnapshotReport(report,dateTo,0,1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.balanceSheet(dateTo,FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/balance-sheet" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("BALANCE",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,0,1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.balanceSheet(dateTo,FinanceReportColumnOptions.from(p,sort,order))));
             case "gl/profit-annual" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitAnnual(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
-            case "gl/profit-monthly" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitMonthly(yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/profit-monthly" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("PROFIT",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitMonthly(yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order))));
             case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.manufacturingExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
             case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.adminExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
             case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.salesExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
             case "gl/operating-pl" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.operatingPlPage(yearOf(p,dateTo),monthOf(p,dateTo),pg,sz,FinanceReportColumnOptions.from(p,sort,order)));
             // C5 固定资产/长期待摊清单
-            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
+            case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,

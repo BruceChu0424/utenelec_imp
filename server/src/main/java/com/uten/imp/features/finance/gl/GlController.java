@@ -77,9 +77,9 @@ public class GlController {
     @GetMapping("/api/finance/reports/gl/balance-sheet")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse balanceSheet(
-            @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
+            @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo, @RequestParam(required=false) String layout) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.balanceSheet(dateTo):reports.balanceSheet(dateTo,options);
+        return FinancialStatementPresentation.apply("BALANCE",layout,options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.balanceSheet(dateTo):reports.balanceSheet(dateTo,options));
     }
 
     /** 附 10 年度利润汇总（行=项目 × 列=12 月）。year 缺省取 dateTo 年（通用报表页只传日期）。 */
@@ -98,9 +98,9 @@ public class GlController {
     public ReportTableResponse profitMonthly(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
-            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
+            @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo, @RequestParam(required=false) String layout) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo)):reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo),options);
+        return FinancialStatementPresentation.apply("PROFIT",layout,options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo)):reports.profitMonthly(yearOf(year,dateTo),monthOf(month,dateTo),options));
     }
 
     /** 附 12 制造费用明细。 */
@@ -160,7 +160,7 @@ public class GlController {
     @PreAuthorize("hasAuthority('payment_style:edit')")
     public GlReportLineBindingService.LineBinding replaceLineBinding(
             @PathVariable String lineKey, @RequestBody LineBindingRequest request) {
-        return lineBindings.replace(lineKey, request == null ? null : request.targetIds());
+        return lineBindings.replace(lineKey, request == null ? null : request.targetIds(),request!=null&&request.confirmedZero());
     }
 
     /** 按默认科目名单为还没有任何绑定的行补齐绑定(已有绑定的行不动)。 */
@@ -171,7 +171,7 @@ public class GlController {
     }
 
     /** 报表行绑定请求。 */
-    public record LineBindingRequest(java.util.List<java.util.UUID> targetIds) {
+    public record LineBindingRequest(java.util.List<java.util.UUID> targetIds, boolean confirmedZero) {
     }
 
     private static int yearOf(Integer year, LocalDate dateTo) {

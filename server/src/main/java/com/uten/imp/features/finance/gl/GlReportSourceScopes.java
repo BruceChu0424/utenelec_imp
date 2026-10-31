@@ -27,7 +27,8 @@ final class GlReportSourceScopes {
         CAPITAL("EQUITY", "301"), RETAINED_PROFIT("EQUITY", "321"),
         MAIN_REVENUE("INCOME", "031", "SALES_REVENUE"), OTHER_REVENUE("INCOME", "032"),
         NON_OPERATING_REVENUE("INCOME", "033"), MAIN_COST("EXPENSE", "041", "SALES_COST"),
-        OTHER_COST("EXPENSE", "042"), ADMIN_EXPENSE("EXPENSE", "043");
+        OTHER_COST("EXPENSE", "042"), ADMIN_EXPENSE("EXPENSE", "043"),
+        ACCUMULATED_DEPRECIATION("ACCOUNT", "152");
 
         final String category;
         final String sourceCode;
@@ -42,7 +43,7 @@ final class GlReportSourceScopes {
         }
     }
 
-    private static String scope(Root... roots) {
+    static String scope(Root... roots) {
         if (roots.length == 0) throw new IllegalArgumentException("report source roots must not be empty");
         String definitions = EnumSet.copyOf(Arrays.asList(roots)).stream()
                 .map(root -> "('%s','%s','%s',%s)".formatted(root.name(), root.category, root.sourceCode,
@@ -106,6 +107,7 @@ final class GlReportSourceScopes {
             case INVENTORY -> "存货";
             case PREPAID -> "待摊费用";
             case FIXED_ASSETS -> "固定资产";
+            case ACCUMULATED_DEPRECIATION -> "累计折旧";
             case PAYABLES -> "应付账款";
             case TAX_PAYABLE -> "应交税费";
             case OTHER_PAYABLES, OTHER_PAYABLES_ALTERNATE -> "其他应付款";

@@ -419,7 +419,7 @@ class _FinanceAssetWorkbenchPageState
                   _RestrictionLabel(
                     key: const Key('finance-asset-posted-workflow-gate'),
                     icon: Icons.lock_outline,
-                    label: '核心落账暂未开放',
+                    label: '处置与提前终止暂未开放',
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 UtenButton(
@@ -445,11 +445,13 @@ class _FinanceAssetWorkbenchPageState
             ),
             const SizedBox(height: UtenSpacing.s4),
             Text(
-              policyBlocked ? '可先保存草稿；提交、启用、过账和关账需完成政策配置。' : '可建立草稿并完成前置复核。',
+              policyBlocked
+                  ? '可先保存草稿；提交、启用、过账和关账需完成政策配置。'
+                  : '可录入、审核、启用资产，并在月末处理计提折旧。',
               style: theme.textTheme.bodySmall,
             ),
             if (postingBlocked)
-              Text('初始确认、处置和提前终止暂不可用。', style: theme.textTheme.bodySmall),
+              Text('初始确认和撤销已支持；处置和提前终止暂不可用。', style: theme.textTheme.bodySmall),
             UtenCollapsibleContent(
               expanded: _restrictionsExpanded,
               maintainState: false,

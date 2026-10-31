@@ -10,6 +10,44 @@ import 'package:uten_imp/features/finance/widgets/gl_report_line_bindings_dialog
 /// 「按默认名单补齐」调用服务端同一个库函数。
 void main() {
   testWidgets(
+    'statement categories and explicit zero confirmation are sent to the server',
+    (tester) async {
+      final api = _Api();
+      api.lines = [
+        {
+          'lineKey': 'BS_2',
+          'label': '短期投资',
+          'bindingKind': 'STYLE',
+          'category': 'ACCOUNT',
+          'sheet': 'BALANCE',
+          'targets': <Object>[],
+        },
+      ];
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(
+            home: GlReportLineBindingsDialog(canEdit: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('gl-line-edit-BS_2')));
+      await tester.pumpAndSettle();
+      expect(api.lastQuery, {'category': 'ACCOUNT'});
+      await tester.tap(find.byKey(const ValueKey('gl-line-confirm-zero')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
+      await tester.pumpAndSettle();
+      expect(api.putPath, '/finance/reports/gl/line-bindings/BS_2');
+      expect(api.putBody, {'targetIds': <String>[], 'confirmedZero': true});
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'lists unconfigured rows, saves the picked leaf and seeds defaults',
     (tester) async {
       final api = _Api();

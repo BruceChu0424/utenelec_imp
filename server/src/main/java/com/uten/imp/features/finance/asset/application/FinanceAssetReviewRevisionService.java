@@ -33,6 +33,9 @@ public class FinanceAssetReviewRevisionService {
                 'benefitStartDate', a.service_start_on, 'benefitEndDate', a.benefit_end_on
                 """ : """
                 'originalValue', a.original_value::text, 'salvageRate', a.salvage_rate::text,
+                'openingBalance',CASE WHEN a.opening_as_of IS NULL THEN NULL ELSE jsonb_build_object(
+                    'asOf',a.opening_as_of,'accumulatedAmount',a.opening_accumulated_amount::text,
+                    'remainingMonths',a.opening_remaining_months,'existingVoucherId',a.opening_voucher_id) END,
                 'acquisitionDate', a.acquired_on, 'acceptanceDate', a.accepted_on,
                 'readyForUseDate', a.ready_for_use_on, 'serialNumber', a.serial_number,
                 'assetTag', a.asset_tag

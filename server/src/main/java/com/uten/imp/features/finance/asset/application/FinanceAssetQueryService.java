@@ -39,13 +39,30 @@ public class FinanceAssetQueryService {
     private final FinanceAssetFeatureGate featureGate;
     private final FinanceAssetReviewRevisionService reviewRevisions;
 
+    public record OpeningVoucher(UUID id,String voucherNo,LocalDate voucherDate) {}
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    public List<OpeningVoucher> openingVouchers(String voucherNo) {
+        authorization.require(FinanceAssetAuthorization.EDIT);
+        if(voucherNo==null||voucherNo.isBlank()||voucherNo.length()>100)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"请输入完整的期初凭证编号");
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+                SELECT v.id,v.voucher_no,v.voucher_date FROM gl_vouchers v
+                WHERE v.source='MANUAL' AND v.status=1 AND NOT v.is_deleted AND v.voucher_no=:number
+                  AND NOT EXISTS(SELECT 1 FROM fixed_assets a WHERE a.opening_voucher_id=v.id
+                    AND a.lifecycle_status<>'REVERSED' AND NOT a.is_deleted)
+                ORDER BY v.id
+                """).setParameter("number",voucherNo.trim()).setMaxResults(2).getResultList();
+        return rows.stream().map(r->new OpeningVoucher(NativeValueConverters.uuid(r[0]),r[1].toString(),NativeValueConverters.toLocalDate(r[2]))).toList();
+    }
+
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public AssetWorkbenchResponses.Overview overview() {
         authorization.require(FinanceAssetAuthorization.VIEW);
         Object[] fixed = row(em.createNativeQuery("""
                 SELECT COALESCE(SUM(a.original_value),0),
-                       COALESCE(SUM(a.original_value - COALESCE(x.accumulated,0)),0)
+                       COALESCE(SUM(a.original_value - a.opening_accumulated_amount - COALESCE(x.accumulated,0)),0)
                 FROM fixed_assets a
                 LEFT JOIN LATERAL (
                     SELECT SUM(l.amount) accumulated
@@ -53,7 +70,7 @@ public class FinanceAssetQueryService {
                     WHERE l.asset_id=a.id AND l.entry_kind='NORMAL'
                       AND l.status='ACTIVE' AND l.is_deleted=false
                 ) x ON TRUE
-                WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','DISPOSAL_PENDING')
+                WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','DISPOSAL_PENDING','RECOGNITION_REVERSAL_PENDING','RECOGNITION_REVERSAL_APPROVED')
                 """).getSingleResult());
         BigDecimal deferred = NativeValueConverters.toBigDecimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(a.total_amount - COALESCE(x.accumulated,0)),0)
@@ -64,13 +81,13 @@ public class FinanceAssetQueryService {
                     WHERE l.deferred_id=a.id AND l.entry_kind='NORMAL'
                       AND l.status='ACTIVE' AND l.is_deleted=false
                 ) x ON TRUE
-                WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','TERMINATION_PENDING')
+                WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','TERMINATION_PENDING','RECOGNITION_REVERSAL_PENDING','RECOGNITION_REVERSAL_APPROVED')
                 """).getSingleResult());
         long pending = number(em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM fixed_assets
-                        WHERE lifecycle_status='PENDING_APPROVAL' AND is_deleted=false)
+                        WHERE lifecycle_status IN ('PENDING_APPROVAL','RECOGNITION_REVERSAL_PENDING','RECOGNITION_REVERSAL_APPROVED') AND is_deleted=false)
                      + (SELECT COUNT(*) FROM deferred_expenses
-                        WHERE lifecycle_status='PENDING_APPROVAL' AND is_deleted=false)
+                        WHERE lifecycle_status IN ('PENDING_APPROVAL','RECOGNITION_REVERSAL_PENDING','RECOGNITION_REVERSAL_APPROVED') AND is_deleted=false)
                      + (SELECT COUNT(*) FROM finance_asset_posting_runs
                         WHERE status='SUBMITTED')
                 """).getSingleResult()).longValue();
@@ -88,7 +105,7 @@ public class FinanceAssetQueryService {
         if (!hasReadyCategory("DEFERRED_EXPENSE")) missing.add("长期待摊费用类别政策");
         boolean postedWorkflowsEnabled = featureGate.postedWorkflowsEnabled();
         List<String> blockers = postedWorkflowsEnabled ? List.of() : List.of(
-                "初始确认、处置与提前终止的过账暂未开放，待专用的制单—复核—反冲链路交付后启用");
+                "处置与提前终止暂未开放；初始确认及其专用撤销已支持");
         return new AssetWorkbenchResponses.Overview(
                 NativeValueConverters.toBigDecimal(fixed[0]), NativeValueConverters.toBigDecimal(fixed[1]), deferred,
                 pending, exceptions, pending + exceptions, Instant.now().toString(),
@@ -118,14 +135,17 @@ public class FinanceAssetQueryService {
                        a.salvage_rate, a.useful_months, a.start_period,
                        a.ready_for_use_on, NULL::date, a.operating_status,
                        a.source_type, a.source_ref, a.remark, a.row_version,
-                       CASE WHEN a.lifecycle_status='DISPOSAL_PENDING' THEN
+                       CASE WHEN a.lifecycle_status LIKE 'RECOGNITION_REVERSAL_%%' THEN
+                           (SELECT requested_by FROM finance_asset_recognition_reversals r WHERE r.object_type='FIXED_ASSET' AND r.object_id=a.id AND r.status IN ('SUBMITTED','APPROVED'))
+                           WHEN a.lifecycle_status='DISPOSAL_PENDING' THEN
                            (SELECT s.actor_user_id FROM finance_asset_approval_steps s
                             WHERE s.object_type='FIXED_ASSET' AND s.object_id=a.id
                               AND s.workflow_type='DISPOSAL' AND s.action='SUBMIT'
                             ORDER BY s.step_no DESC LIMIT 1)
                            ELSE COALESCE(a.submitted_by,a.created_by) END,
                        a.acquired_on,a.accepted_on,a.serial_number,a.asset_tag,a.cost_center_code,
-                       NULL::date,a.source_id,a.source_line_ref,a.source_document_date,NULL::uuid
+                       NULL::date,a.source_id,a.source_line_ref,a.source_document_date,NULL::uuid,
+                       a.opening_as_of,a.opening_accumulated_amount,a.opening_remaining_months,a.opening_voucher_id
                 FROM fixed_assets a
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
@@ -160,7 +180,9 @@ public class FinanceAssetQueryService {
                        NULL::numeric, a.useful_months, a.start_period,
                        NULL::date, a.service_start_on, NULL::text,
                        a.source_type, a.source_ref, a.remark, a.row_version,
-                       CASE WHEN a.lifecycle_status='TERMINATION_PENDING' THEN
+                       CASE WHEN a.lifecycle_status LIKE 'RECOGNITION_REVERSAL_%%' THEN
+                           (SELECT requested_by FROM finance_asset_recognition_reversals r WHERE r.object_type='DEFERRED_EXPENSE' AND r.object_id=a.id AND r.status IN ('SUBMITTED','APPROVED'))
+                           WHEN a.lifecycle_status='TERMINATION_PENDING' THEN
                            (SELECT s.actor_user_id FROM finance_asset_approval_steps s
                             WHERE s.object_type='DEFERRED_EXPENSE' AND s.object_id=a.id
                               AND s.workflow_type='TERMINATION' AND s.action='SUBMIT'
@@ -168,7 +190,7 @@ public class FinanceAssetQueryService {
                            ELSE COALESCE(a.submitted_by,a.created_by) END,
                        NULL::date,NULL::date,NULL::text,NULL::text,a.cost_center_code,
                        a.benefit_end_on,a.source_id,a.source_line_ref,a.source_document_date,
-                       a.responsible_employee_id
+                       a.responsible_employee_id,NULL::date,NULL::numeric,NULL::int,NULL::uuid
                 FROM deferred_expenses a
                 LEFT JOIN finance_asset_categories c ON c.id=a.category_id
                 LEFT JOIN departments d ON d.id=a.department_id
@@ -277,14 +299,16 @@ public class FinanceAssetQueryService {
                 NativeValueConverters.toLocalDate(row[19]), NativeValueConverters.toLocalDate(row[20]), NativeValueConverters.text(row[21]), NativeValueConverters.text(row[22]), NativeValueConverters.text(row[23]), NativeValueConverters.text(row[24]),
                 number(row[25]).longValue(), actions,
                 NativeValueConverters.toLocalDate(row[27]), NativeValueConverters.toLocalDate(row[28]), NativeValueConverters.text(row[29]), NativeValueConverters.text(row[30]), NativeValueConverters.text(row[31]),
-                NativeValueConverters.toLocalDate(row[32]), NativeValueConverters.uuid(row[33]), NativeValueConverters.text(row[34]), NativeValueConverters.toLocalDate(row[35]), NativeValueConverters.uuid(row[36]));
+                NativeValueConverters.toLocalDate(row[32]), NativeValueConverters.uuid(row[33]), NativeValueConverters.text(row[34]), NativeValueConverters.toLocalDate(row[35]), NativeValueConverters.uuid(row[36]),
+                !deferred&&row.length>37&&row[37]!=null?new com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests.OpeningBalance(
+                    NativeValueConverters.toLocalDate(row[37]),NativeValueConverters.toBigDecimal(row[38]),number(row[39]).intValue(),NativeValueConverters.uuid(row[40])):null);
     }
 
     private List<AssetWorkbenchResponses.Balance> fixedBooks(UUID assetId) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT book_type, original_value, residual_amount, accumulated_amount,
-                       net_book_value, depreciable_amount, useful_months, start_period, status
+                       net_book_value, depreciable_amount-opening_accumulated_amount, useful_months, start_period, status
                 FROM finance_asset_books
                 WHERE asset_id=:asset AND is_deleted=false
                 ORDER BY book_type
@@ -297,7 +321,7 @@ public class FinanceAssetQueryService {
     private List<AssetWorkbenchResponses.ScheduleLine> fixedSchedule(UUID assetId) {
         @SuppressWarnings("unchecked")
         List<Object[]> books = em.createNativeQuery("""
-                SELECT id, original_value, residual_rate, useful_months, start_period
+                SELECT id, original_value, residual_rate, useful_months, start_period, opening_accumulated_amount, status
                 FROM finance_asset_books
                 WHERE asset_id=:asset AND book_type='CORPORATE' AND is_deleted=false
                 """).setParameter("asset", assetId).getResultList();
@@ -313,8 +337,8 @@ public class FinanceAssetQueryService {
                   AND l.status='ACTIVE' AND l.is_deleted=false
                 """).setParameter("asset", assetId).setParameter("book", NativeValueConverters.uuid(book[0])).getResultList();
         for (Object[] log : logs) posted.put(NativeValueConverters.text(log[1]), log);
-        var schedule = StraightLineScheduleCalculator.calculate(
-                NativeValueConverters.toBigDecimal(book[1]), NativeValueConverters.toBigDecimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(NativeValueConverters.text(book[4])));
+        var schedule = StraightLineScheduleCalculator.calculateOpening(
+                NativeValueConverters.toBigDecimal(book[1]), NativeValueConverters.toBigDecimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(NativeValueConverters.text(book[4])),NativeValueConverters.toBigDecimal(book[5]));
         List<AssetWorkbenchResponses.ScheduleLine> result = new ArrayList<>(schedule.lines().size());
         for (var line : schedule.lines()) {
             Object[] log = posted.get(line.period());
@@ -322,7 +346,7 @@ public class FinanceAssetQueryService {
                     log == null ? null : NativeValueConverters.uuid(log[0]), line.sequence(), line.period(),
                     schedule.originalAmount().subtract(line.openingAccumulated()),
                     line.amount(), line.closingAccumulated(), line.closingNetAmount(),
-                    log == null ? "PLANNED" : "POSTED", log == null ? null : NativeValueConverters.text(log[3])));
+                    log == null ? ("CLOSED".equals(NativeValueConverters.text(book[6]))?"CANCELLED":"PLANNED") : "POSTED", log == null ? null : NativeValueConverters.text(log[3])));
         }
         return List.copyOf(result);
     }
@@ -334,6 +358,7 @@ public class FinanceAssetQueryService {
                        l.accumulated_amount, l.closing_balance,
                        CASE
                            WHEN a.id IS NOT NULL THEN 'POSTED'
+                           WHEN d.lifecycle_status='REVERSED' THEN 'CANCELLED'
                            WHEN d.lifecycle_status='TERMINATED'
                                 AND l.period>=to_char(d.terminated_on,'YYYY-MM') THEN 'CANCELLED'
                            ELSE 'PLANNED'
@@ -344,7 +369,7 @@ public class FinanceAssetQueryService {
                 LEFT JOIN da_amortization_log a ON a.schedule_line_id=l.id
                     AND a.entry_kind='NORMAL' AND a.status='ACTIVE' AND a.is_deleted=false
                 LEFT JOIN gl_vouchers v ON v.id=a.voucher_id
-                WHERE s.deferred_id=:deferred AND s.status='APPROVED'
+                WHERE s.deferred_id=:deferred AND s.status IN ('APPROVED','CANCELLED')
                   AND s.is_deleted=false AND l.is_deleted=false
                 ORDER BY l.sequence
                 """).setParameter("deferred", deferredId).getResultList();
@@ -396,6 +421,8 @@ public class FinanceAssetQueryService {
                     UNION
                     SELECT voucher_id FROM %s
                     WHERE %s=:objectId AND voucher_id IS NOT NULL AND is_deleted=false
+                    UNION
+                    SELECT recognition_voucher_id FROM %s WHERE id=:objectId AND recognition_voucher_id IS NOT NULL
                 )
                 SELECT DISTINCT v.voucher_no
                 FROM gl_vouchers v
@@ -403,7 +430,7 @@ public class FinanceAssetQueryService {
                   AND (v.id IN (SELECT id FROM related_vouchers)
                        OR v.reversal_of_voucher_id IN (SELECT id FROM related_vouchers))
                 ORDER BY v.voucher_no
-                """.formatted(logTable, objectColumn);
+                """.formatted(logTable, objectColumn,"FIXED_ASSET".equals(objectType)?"fixed_assets":"deferred_expenses");
         @SuppressWarnings("unchecked")
         List<String> rows = em.createNativeQuery(sql)
                 .setParameter("sourceRef", sourcePrefix)
@@ -481,8 +508,8 @@ public class FinanceAssetQueryService {
     }
 
     private static String balanceExpression(String alias, boolean deferred) {
-        String closed = deferred ? "('COMPLETED','TERMINATED')" : "('DISPOSED')";
-        String amount = alias + (deferred ? ".total_amount" : ".original_value");
+        String closed = deferred ? "('COMPLETED','TERMINATED','REVERSED')" : "('DISPOSED','REVERSED')";
+        String amount = deferred?alias+".total_amount":alias+".original_value - "+alias+".opening_accumulated_amount";
         String table = deferred ? "da_amortization_log" : "fa_depreciation_log";
         String owner = deferred ? "deferred_id" : "asset_id";
         return "CASE WHEN " + alias + ".lifecycle_status IN " + closed + " THEN 0 ELSE " + amount

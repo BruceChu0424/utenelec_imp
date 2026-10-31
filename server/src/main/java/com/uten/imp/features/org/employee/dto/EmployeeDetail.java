@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -91,6 +92,8 @@ public class EmployeeDetail {
 
     // 登录账号状态（active/locked/disabled；null = 未开通账号）
     private String accountStatus;
+    /** Existing current staff account's last successful login; null means no available record, not never logged in. */
+    private OffsetDateTime accountLastLoginAt;
     /** Retained deleted identity is unopened; it must not be treated as a disabled live account. */
     private boolean accountDeleted;
     /** Target eligibility for this actor; endpoints still enforce current permissions and step-up. */

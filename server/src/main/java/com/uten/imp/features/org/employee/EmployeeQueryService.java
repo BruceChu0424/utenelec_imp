@@ -200,6 +200,8 @@ public class EmployeeQueryService {
         // Retained soft-deleted identities are unopened, matching the account candidate APIs.
         // Reopening reuses their UUID; ordinary disabled accounts remain explicitly disabled.
         d.setAccountStatus(account == null || account.isDeleted() ? null : account.getStatus());
+        // Reuse the account already loaded for this authorized detail. Refresh/activity/step-up are not logins.
+        d.setAccountLastLoginAt(account == null || account.isDeleted() ? null : account.getLastLoginAt());
         d.setAccountDeleted(account != null && account.isDeleted());
         d.setAccountSupportAllowed(currentUser.get().map(actor ->
                 !actor.isVisitor()

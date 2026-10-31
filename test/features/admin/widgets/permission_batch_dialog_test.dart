@@ -57,7 +57,7 @@ void main() {
         'departmentIds': ['department-a'],
         'templateId': _template.id,
         'templateVersion': 7,
-        'mode': 'MERGE',
+        'mode': 'REPLACE',
       });
       expect(_applyButton(tester).onPressed, isNull);
       await _confirmSensitive(tester, api);
@@ -96,7 +96,7 @@ void main() {
     expect(api.calls.single.body, {
       'templateId': _template.id,
       'templateVersion': 7,
-      'mode': 'MERGE',
+      'mode': 'REPLACE',
     });
     await _tap(
       tester,
@@ -108,22 +108,22 @@ void main() {
   });
 
   testWidgets(
-    'replace mode clears prior preview and every sensitive confirmation',
+    'switching from default replacement to merge clears all reviewed confirmation',
     (tester) async {
       final api = _BatchApi();
-      await _mount(tester, api, users: ['user-a', 'user-b']);
+      await _mount(tester, api, users: [], departments: ['department-a']);
       await _chooseTemplate(tester);
       await _tap(tester, find.text('预览变更'));
       await _confirmSensitive(tester, api);
       expect(_applyButton(tester).onPressed, isNotNull);
-      await _tap(tester, find.text('替换直接设置'));
+      await _tap(tester, find.text('追加现有权限'));
       expect(_applyButton(tester).onPressed, isNull);
       expect(
         find.byKey(const ValueKey('confirm-sensitive-user-a-credit')),
         findsNothing,
       );
       await _tap(tester, find.text('预览变更'));
-      expect(api.calls.last.body['mode'], 'REPLACE');
+      expect(api.calls.last.body['mode'], 'MERGE');
       expect(_applyButton(tester).onPressed, isNull);
       await _confirmSensitive(tester, api);
       await _tap(
@@ -131,7 +131,7 @@ void main() {
         find.byKey(const ValueKey('confirm-apply-permission-template')),
       );
       expect(api.calls.last.body['expectedFingerprint'], 'review-2');
-      expect((api.calls.last.body['request'] as Map)['mode'], 'REPLACE');
+      expect((api.calls.last.body['request'] as Map)['mode'], 'MERGE');
     },
   );
 

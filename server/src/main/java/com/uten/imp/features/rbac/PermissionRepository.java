@@ -52,6 +52,9 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     @Query(value="SELECT code FROM authorization_user_template_permission_sources WHERE user_id=:userId",nativeQuery=true)
     List<String> findUserTemplateCodes(@Param("userId") java.util.UUID userId);
 
+    @Query(value="SELECT EXISTS(SELECT 1 FROM user_permission_template_bindings WHERE user_id=:userId AND exact_permissions)",nativeQuery=true)
+    boolean hasExactTemplateBinding(@Param("userId") java.util.UUID userId);
+
     @Query(value="""
             SELECT permission.code FROM department_permission_template_bindings binding
             JOIN permission_templates template ON template.id=binding.template_id AND NOT template.is_deleted

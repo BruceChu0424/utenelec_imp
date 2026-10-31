@@ -90,7 +90,8 @@ public class PermissionTemplateAssignmentService {
                     || seen.templateVersion()==null || seen.legacySnapshot()==null) throw staleBinding();
             String key=seen.kind()+":"+seen.targetId();Binding now=actual.get(key);
             if(!checked.add(key) || now==null || !now.templateId().equals(seen.templateId())
-                    || now.templateVersion()!=seen.templateVersion() || now.legacySnapshot()!=seen.legacySnapshot()) throw staleBinding();
+                    || now.templateVersion()!=seen.templateVersion() || now.legacySnapshot()!=seen.legacySnapshot()
+                    || now.exactPermissions()!=Boolean.TRUE.equals(seen.exactPermissions())) throw staleBinding();
         }
     }
     private static ApiException staleBinding() { return conflict("模板关联已变化或确认信息不完整，请重新读取后确认解除关联"); }
@@ -122,10 +123,20 @@ public class PermissionTemplateAssignmentService {
                 if(!binding.legacySnapshot() && preservable) {
                     UserAccount account=support.require(id);
                     var before=resolver.breakdownOf(account);
-                    Set<String> grants=new TreeSet<>(before.grants());
-                    grants.addAll(before.templatePermissions()); grants.removeAll(before.revokes());
                     bindings.clearForUsers(List.of(id));
-                    overrides.applyTemplateSourceConfiguration(id,grants,new TreeSet<>(before.revokes()),false);
+                    if(binding.exactPermissions()) {
+                        var detached=resolver.breakdownOf(account);
+                        Set<String> inherited=union(detached.baselinePermissions(),detached.departmentPermissions(),detached.managerGrants());
+                        overrides.applyTemplateSourceConfiguration(id,new TreeSet<>(before.effective()),
+                                union(difference(inherited,before.effective()),before.revokes()),false);
+                        if(!resolver.breakdownOf(account).effective().equals(before.effective())) {
+                            throw conflict("解除模板后权限未能保持一致，本次修改已回滚，请重新读取");
+                        }
+                    } else {
+                        Set<String> grants=new TreeSet<>(before.grants());
+                        grants.addAll(before.templatePermissions()); grants.removeAll(before.revokes());
+                        overrides.applyTemplateSourceConfiguration(id,grants,new TreeSet<>(before.revokes()),false);
+                    }
                 } else bindings.clearForUsers(List.of(id));
             } else {
                 Set<String> codes=new TreeSet<>(departmentPermissions.findPermissionCodesByDepartmentId(id));
@@ -150,10 +161,12 @@ public class PermissionTemplateAssignmentService {
         TemplateData template=template(request.templateId(),request.templateVersion());
         Map<String,Permission> catalog=catalog();
         validateCodes(template.codes,catalog,GrantPolicy::individuallyGrantable);
-        Plan plan=new Plan(); plan.templateId=template.id;plan.existingBindings=bindings.list();
-        plan.notes.add("模板是独立权限来源；修改模板会同步所有关联员工及部门，个人明确收回始终优先。一次提交全部成功或全部回滚。");
-        plan.notes.add("替换直接设置会清除目标的手工加授并替换模板关联；全员基础、上级部门及个人收回继续保留。补充模式保留原有能力。");
-        plan.notes.add("旧版快照不会猜测拆分来源；重新应用时建立独立关联，补充模式继续保留原快照中的个人配置。");
+        Plan plan=new Plan(); plan.templateId=template.id;plan.existingBindings=bindings.list();plan.replaceUsers=true;
+        plan.notes.add("模板修改会同步关联对象；一次提交全部成功或全部回滚。");
+        if(!targets.users.isEmpty()) plan.notes.add("员工按模板完整覆盖：清除原个人加授、收回及负责人授权，不叠加部门和全员基础；应用后的有效权限与模板一致。旧客户端的合并请求也按完整覆盖执行。");
+        if(!targets.departments.isEmpty()) plan.notes.add(request.mode()==ApplyMode.REPLACE
+                ? "部门替换本部门直接配置，上级来源仍保留。" : "部门追加模板，保留本部门原有直接配置。");
+        plan.notes.add("旧版快照仅在本次明确应用时更新为实时关联，不自动更改其他账号。");
         if(!targets.departments.isEmpty()) plan.notes.add("部门配置变化会使现有负责人委派失效，请按最新权限重新委派。");
         for(UUID id:targets.departments) {
             try {
@@ -164,7 +177,7 @@ public class PermissionTemplateAssignmentService {
                 Set<String> manual=request.mode()==ApplyMode.REPLACE?new TreeSet<>():new TreeSet<>(current);
                 if(request.mode()==ApplyMode.MERGE) manual.addAll(difference(previousTemplate,template.codes));
                 Set<String> effective=union(manual,template.codes);
-                TargetPlan target=new TargetPlan("department",id,manual,Set.of(),effective,template.id);
+                TargetPlan target=new TargetPlan("department",id,manual,Set.of(),effective,template.id,false);
                 plan.targets.add(target);
                 addChange(plan,target,union(current,previousTemplate),effective,catalog);
                 addBindingChange(plan,target,template);
@@ -174,22 +187,17 @@ public class PermissionTemplateAssignmentService {
             try {
                 UserAccount account=eligibleUser(id);
                 var before=resolver.breakdownOf(account);
-                Set<String> inherited=inheritedFor(account,plan);
-                if(targets.departments.isEmpty()) inherited.addAll(before.managerGrants());
-                Set<String> grants=request.mode()==ApplyMode.REPLACE?new TreeSet<>():new TreeSet<>(before.grants());
-                Set<String> revokes=new TreeSet<>(before.revokes());
-                if(request.mode()==ApplyMode.MERGE) {
-                    Set<String> retained=difference(before.templatePermissions(),template.codes);
-                    retained.retainAll(before.effective()); grants.addAll(retained);
+                Set<String> desired=new TreeSet<>(template.codes);
+                if(!new PermissionDependencyCatalog(catalog.values()).usablePermissions(desired).equals(desired)) {
+                    throw invalid(label("user",id)+"：模板缺少操作必需的查看权限，请先补齐模板后再应用");
                 }
-                Set<String> effective=union(inherited,grants,template.codes);effective.removeAll(revokes);
-                effective=new TreeSet<>(new PermissionDependencyCatalog(catalog.values()).usablePermissions(effective));
-                TargetPlan target=new TargetPlan("user",id,grants,revokes,effective,template.id);
-                plan.targets.add(target); addChange(plan,target,before.effective(),effective,catalog); addBindingChange(plan,target,template);
-                if(!Collections.disjoint(template.codes,revokes)) plan.notes.add(label("user",id)+"：模板中已个人收回的权限继续保持收回。");
+                TargetPlan target=new TargetPlan("user",id,Set.of(),Set.of(),desired,template.id,true);
+                plan.targets.add(target);addChange(plan,target,before.effective(),desired,catalog);addBindingChange(plan,target,template);
+                plan.notes.add(label("user",id)+"：模板 "+desired.size()+" 项，应用后有效 "+desired.size()
+                        +" 项（当前 "+before.effective().size()+" 项）；原个人加授和收回将清除。");
             } catch(ApiException exception) { plan.issues.add(exception.getMessage()); }
         }
-        plan.fingerprint=fingerprint(request);
+        plan.fingerprint=fingerprint(List.of("employee-template-exact-v1",request));
         return plan;
     }
 
@@ -213,7 +221,7 @@ public class PermissionTemplateAssignmentService {
                 Set<String> manual=new TreeSet<>(before.permissions());manual.removeAll(removals);manual.addAll(additions);
                 manual.addAll(PermissionDependencyGrantPlanner.additions(catalog.values(),additions,union(manual,external),removals,
                         permission->GrantPolicy.departmentGrantable(permission.grantPolicies()),"部门批量权限"));
-                TargetPlan target=new TargetPlan("department",id,manual,Set.of(),union(manual,external),null);
+                TargetPlan target=new TargetPlan("department",id,manual,Set.of(),union(manual,external),null,false);
                 plan.targets.add(target);addChange(plan,target,union(before.permissions(),external),target.effective,catalog);
             } catch(ApiException exception) { plan.issues.add(exception.getMessage()); }
         }
@@ -230,7 +238,7 @@ public class PermissionTemplateAssignmentService {
                         permission->GrantPolicy.individuallyGrantable(permission.grantPolicies()),"员工批量权限"));
                 Set<String> effective=union(inherited,grants);effective.removeAll(revokes);
                 effective=new TreeSet<>(new PermissionDependencyCatalog(catalog.values()).usablePermissions(effective));
-                TargetPlan target=new TargetPlan("user",id,grants,revokes,effective,null);
+                TargetPlan target=new TargetPlan("user",id,grants,revokes,effective,null,permissions.hasExactTemplateBinding(id));
                 plan.targets.add(target);addChange(plan,target,before.effective(),effective,catalog);
             } catch(ApiException exception) { plan.issues.add(exception.getMessage()); }
         }
@@ -242,12 +250,21 @@ public class PermissionTemplateAssignmentService {
         for(TargetPlan target:plan.targets) {
             if(target.templateId!=null) {
                 boolean same=plan.existingBindings.stream().anyMatch(binding->binding.kind().equals(target.kind)
-                        && binding.targetId().equals(target.id) && binding.templateId().equals(target.templateId) && !binding.legacySnapshot());
-                bindings.bind(target.kind,target.id,target.templateId,actor);changed|=!same;
+                        && binding.targetId().equals(target.id) && binding.templateId().equals(target.templateId) && !binding.legacySnapshot()
+                        && binding.exactPermissions()==target.exact);
+                bindings.bind(target.kind,target.id,target.templateId,actor,target.exact);changed|=!same;
+                if(target.kind.equals("user") && target.exact && plan.replaceUsers) {
+                    changed|=em.createNativeQuery("UPDATE manager_permission_delegations SET enabled=false WHERE user_id=:id AND enabled")
+                            .setParameter("id",target.id).executeUpdate()>0;
+                }
             }
             if(target.kind.equals("department")) {
                 changed|=!departments.restoreExactDepartmentPermissions(target.id,List.copyOf(target.grants)).isEmpty();
             } else changed|=!overrides.applyTemplateSourceConfiguration(target.id,target.grants,target.revokes,true).isEmpty();
+        }
+        for(TargetPlan target:plan.targets) if(target.kind.equals("user") && target.exact
+                && !resolver.breakdownOf(support.require(target.id)).effective().equals(target.effective)) {
+            throw conflict("权限来源已变化，未能得到模板预览中的权限，本次修改已回滚，请重新预览");
         }
         if(changed) for(TargetPlan target:plan.targets) {
             List<Change> changes=plan.changes.stream().filter(change->change.targetId().equals(target.id) && change.kind().equals(target.kind)).toList();
@@ -261,7 +278,7 @@ public class PermissionTemplateAssignmentService {
 
     private void addBindingChange(Plan plan,TargetPlan target,TemplateData template) {
         if(plan.existingBindings.stream().noneMatch(binding->binding.kind().equals(target.kind) && binding.targetId().equals(target.id)
-                && binding.templateId().equals(template.id) && !binding.legacySnapshot())) {
+                && binding.templateId().equals(template.id) && !binding.legacySnapshot() && binding.exactPermissions()==target.exact)) {
             plan.changes.add(new Change(target.kind,template.id.toString(),target.id,label(target.kind,target.id)+"：模板关联",List.of(template.name),List.of()));
         }
     }
@@ -294,6 +311,7 @@ public class PermissionTemplateAssignmentService {
     }
 
     private Set<String> inheritedFor(UserAccount account,Plan plan) {
+        if(permissions.hasExactTemplateBinding(account.getId())) return new TreeSet<>();
         Set<String> result=new TreeSet<>(permissions.findBaselineCodes());
         @SuppressWarnings("unchecked") List<UUID> ancestors=em.createNativeQuery("""
                 WITH RECURSIVE ancestors AS (
@@ -367,9 +385,9 @@ public class PermissionTemplateAssignmentService {
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT,message); }
     private record Targets(Set<UUID> users,Set<UUID> departments) {}
     private record TemplateData(UUID id,String name,Set<String> codes) {}
-    private record TargetPlan(String kind,UUID id,Set<String> grants,Set<String> revokes,Set<String> effective,UUID templateId) {}
+    private record TargetPlan(String kind,UUID id,Set<String> grants,Set<String> revokes,Set<String> effective,UUID templateId,boolean exact) {}
     private static final class Plan {
-        UUID templateId;String fingerprint;List<Binding> existingBindings=List.of();
+        UUID templateId;String fingerprint;List<Binding> existingBindings=List.of();boolean replaceUsers;
         final List<TargetPlan> targets=new ArrayList<>(); final List<String> issues=new ArrayList<>(),notes=new ArrayList<>();
         final List<Change> changes=new ArrayList<>();final List<SensitiveAddition> sensitive=new ArrayList<>();
         Preview preview() { return new Preview(fingerprint,issues.isEmpty(),List.copyOf(issues),List.copyOf(changes),List.copyOf(sensitive),List.of(),List.of(),List.copyOf(notes)); }

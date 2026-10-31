@@ -777,7 +777,7 @@ void main() {
   });
 
   testWidgets(
-    'apply requires preview and sensitive confirmation, mode changes clear both',
+    'employee replacement requires preview and sensitive confirmation without a merge alternative',
     (tester) async {
       final repository = _Repository();
       await _mount(
@@ -790,13 +790,14 @@ void main() {
         ),
       );
       await _choose(tester);
+      expect(find.text('追加现有权限'), findsNothing);
       final apply = find.byKey(
         const ValueKey('confirm-apply-permission-template'),
       );
       expect(tester.widget<UtenButton>(apply).onPressed, isNull);
       await tester.tap(find.text('预览变更'));
       await tester.pumpAndSettle();
-      expect(repository.previewModes, [true]);
+      expect(repository.previewModes, [false]);
       expect(tester.widget<UtenButton>(apply).onPressed, isNull);
       await tester.ensureVisible(
         find.byKey(const ValueKey('confirm-sensitive-template-sensitive')),
@@ -806,25 +807,6 @@ void main() {
       );
       await tester.pump();
       expect(tester.widget<UtenButton>(apply).onPressed, isNotNull);
-      await tester.ensureVisible(find.text('替换直接设置'));
-      await tester.tap(find.text('替换直接设置'));
-      await tester.pumpAndSettle();
-      expect(tester.widget<UtenButton>(apply).onPressed, isNull);
-      expect(
-        find.byKey(const ValueKey('confirm-sensitive-template-sensitive')),
-        findsNothing,
-      );
-      await tester.ensureVisible(find.text('预览变更'));
-      await tester.tap(find.text('预览变更'));
-      await tester.pumpAndSettle();
-      expect(repository.previewModes, [true, false]);
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('confirm-sensitive-template-sensitive')),
-      );
-      await tester.tap(
-        find.byKey(const ValueKey('confirm-sensitive-template-sensitive')),
-      );
-      await tester.pump();
       await tester.ensureVisible(apply);
       await tester.tap(apply);
       await tester.pumpAndSettle();
@@ -862,6 +844,66 @@ void main() {
         isNull,
       );
       expect(repository.writes, 0);
+    },
+  );
+
+  testWidgets(
+    'replacement preview explains 98 to 100 without preserving old revokes',
+    (tester) async {
+      final repository = _Repository()
+        ..requireSensitiveConfirmation = false
+        ..previewChanges = [
+          {
+            'kind': 'user',
+            'sourceKey': 'template',
+            'targetId': 'target',
+            'label': '员工甲',
+            'added': ['employee:view', 'warehouse_iqc_stock_in:view'],
+            'removed': <String>[],
+          },
+        ]
+        ..previewNotes = ['员工甲：模板 100 项，应用后有效 100 项（当前 98 项）；原个人加授和收回将清除。'];
+      await _mount(
+        tester,
+        repository,
+        AdminPermissionTemplateActions(
+          user: _user,
+          enabled: true,
+          onApplied: () {},
+        ),
+        catalogPermissions: const [
+          AdminPermission(
+            id: 'employee',
+            code: 'employee:view',
+            name: '查看员工档案',
+            category: '员工档案',
+          ),
+          AdminPermission(
+            id: 'iqc',
+            code: 'warehouse_iqc_stock_in:view',
+            name: '查看来料检验合格待入库任务',
+            category: '来料检验入库',
+          ),
+        ],
+      );
+      await _choose(tester);
+      expect(find.text('按模板覆盖权限'), findsOneWidget);
+      await tester.tap(find.text('预览变更'));
+      await tester.pumpAndSettle();
+      expect(repository.previewModes, [false]);
+      expect(
+        find.textContaining('模板 100 项，应用后有效 100 项（当前 98 项）'),
+        findsOneWidget,
+      );
+      expect(repository.writes, 0);
+      if (_capture) {
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'permission-template-exact-98-to-100',
+        );
+      }
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -1049,6 +1091,9 @@ class _Repository extends PermissionTemplateRepository {
   final extraTemplates = <PermissionTemplate>[];
   bool deleted = false;
   final previewModes = <bool>[];
+  List<String> previewNotes = [];
+  List<Map<String, dynamic>> previewChanges = [];
+  bool requireSensitiveConfirmation = true;
   final savedConfirmations = <Set<String>>[];
   @override
   Future<List<PermissionTemplate>> list() async => [
@@ -1122,17 +1167,18 @@ class _Repository extends PermissionTemplateRepository {
       'fingerprint': 'template-preview',
       'canApply': true,
       'issues': <String>[],
-      'changes': <Map<String, dynamic>>[],
-      'notes': <String>[],
+      'changes': previewChanges,
+      'notes': previewNotes,
       'suggestions': <Map<String, dynamic>>[],
       'pinnedBaselineAdditions': <String>[],
       'sensitiveAdditions': [
-        {
-          'key': 'template-sensitive',
-          'label': '商业信息',
-          'permissionCode': 'goods:price:view',
-          'targetLabel': '员工甲',
-        },
+        if (requireSensitiveConfirmation)
+          {
+            'key': 'template-sensitive',
+            'label': '商业信息',
+            'permissionCode': 'goods:price:view',
+            'targetLabel': '员工甲',
+          },
       ],
     });
   }

@@ -25,7 +25,7 @@ public final class PermissionTemplateDtos {
     public record Apply(@NotNull UUID templateId, @NotNull @PositiveOrZero Long templateVersion,
                         @NotNull ApplyMode mode) implements StrictFields {}
     public record Binding(String kind, UUID targetId, UUID templateId, String templateName,
-                          long templateVersion, boolean legacySnapshot) {}
+                          long templateVersion, boolean legacySnapshot, boolean exactPermissions) {}
     public record DeltaRequest(@Size(max=500) List<@NotNull UUID> userIds,
                                @Size(max=500) List<@NotNull UUID> departmentIds,
                                @Size(max=3000) List<@NotBlank @Size(max=256) String> grants,
@@ -41,7 +41,11 @@ public final class PermissionTemplateDtos {
     public record ExpectedBinding(@NotBlank @Pattern(regexp="user|department") String kind,
                                   @NotNull UUID targetId, @NotNull UUID templateId,
                                   @NotNull @PositiveOrZero Long templateVersion,
-                                  @NotNull Boolean legacySnapshot) implements StrictFields {}
+                                  @NotNull Boolean legacySnapshot, Boolean exactPermissions) implements StrictFields {
+        public ExpectedBinding(String kind,UUID targetId,UUID templateId,Long templateVersion,Boolean legacySnapshot) {
+            this(kind,targetId,templateId,templateVersion,legacySnapshot,false);
+        }
+    }
     public record Unbind(@Size(max=500) List<@NotNull UUID> userIds,
                          @Size(max=500) List<@NotNull UUID> departmentIds,
                          @Size(max=500) List<@NotNull @Valid ExpectedBinding> expectedBindings) implements StrictFields {}

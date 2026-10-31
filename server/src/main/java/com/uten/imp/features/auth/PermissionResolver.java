@@ -396,6 +396,10 @@ public class PermissionResolver {
         List<String> legacyUnknownRevokes = new ArrayList<>();
         List<String> revokes = new ArrayList<>();
         List<String> templatePermissions=permissionRepo.findUserTemplateCodes(userId);
+        if(!superAdmin && permissionRepo.hasExactTemplateBinding(userId)) {
+            baseline.clear();
+            deptPerms.clear();
+        }
         Set<String> effective = new HashSet<>(baseline);
         effective.addAll(deptPerms);
         effective.addAll(templatePermissions);
@@ -673,6 +677,8 @@ public class PermissionResolver {
                 SELECT DISTINCT ancestor.user_id, permission.code FROM ancestors ancestor
                 JOIN authorization_department_permission_sources allocation ON allocation.department_id=ancestor.department_id
                 JOIN requested permission ON permission.id=allocation.permission_id
+                WHERE NOT EXISTS (SELECT 1 FROM user_permission_template_bindings binding
+                    WHERE binding.user_id=ancestor.user_id AND binding.exact_permissions)
             ), template_codes AS MATERIALIZED (
                 SELECT source.user_id,source.code FROM authorization_user_template_permission_sources source
                 JOIN accounts account ON account.id=source.user_id
@@ -686,6 +692,8 @@ public class PermissionResolver {
             ), base_codes(user_id, code) AS (
                 SELECT account.id, permission.code FROM requested_accounts account
                 CROSS JOIN requested permission WHERE permission.baseline
+                  AND NOT EXISTS (SELECT 1 FROM user_permission_template_bindings binding
+                    WHERE binding.user_id=account.id AND binding.exact_permissions)
                 UNION SELECT template.user_id,template.code FROM template_codes template
                 JOIN requested_accounts account ON account.id=template.user_id
                 UNION
@@ -699,6 +707,8 @@ public class PermissionResolver {
                 SELECT raw.user_id, raw.code FROM (
                     SELECT account.id AS user_id, permission.code FROM accounts account
                     CROSS JOIN requested permission WHERE permission.baseline
+                      AND NOT EXISTS (SELECT 1 FROM user_permission_template_bindings binding
+                        WHERE binding.user_id=account.id AND binding.exact_permissions)
                     UNION SELECT department.user_id, department.code FROM department_codes department
                     UNION SELECT template.user_id,template.code FROM template_codes template
                     UNION SELECT allocation.user_id, allocation.code FROM overrides allocation

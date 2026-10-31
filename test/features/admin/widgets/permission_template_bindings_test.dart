@@ -33,6 +33,23 @@ final _binding = StateProvider<PermissionTemplateBinding>((ref) => _bindingA);
 final _identity = StateProvider<String>((ref) => 'operator');
 
 void main() {
+  test(
+    'exact binding mode survives parsing and participates in unbind concurrency check',
+    () {
+      final binding = PermissionTemplateBinding.fromJson({
+        'kind': 'user',
+        'targetId': 'target',
+        'templateId': 'template-a',
+        'templateName': '模板甲',
+        'templateVersion': 7,
+        'legacySnapshot': false,
+        'exactPermissions': true,
+      });
+      expect(binding.exactPermissions, isTrue);
+      expect(binding.toExpectedJson()['exactPermissions'], isTrue);
+    },
+  );
+
   test('unbind sends only the five reviewed binding identity fields', () async {
     final api = _BindingApi();
     await PermissionTemplateRepository(

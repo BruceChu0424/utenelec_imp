@@ -384,34 +384,125 @@ class PermissionConfigurationTransferPostgresTest {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE action='permission_template_apply' AND target_id=?",Long.class,target.toString())).isEqualTo(1);
     }
 
-    @Test void mergePreservesExistingRightsAndNeverSilentlyRestoresExplicitRevocations() {
+    @Test void legacyMergeRequestsAlsoReplaceEmployeeRightsAndClearOldRevocations() {
         UUID target=account(department(),"模板补充");personal(target,"supplier:view");
         var template=templates.create(new PermissionTemplateDtos.Save("补充-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
         var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.MERGE);
         var preview=templates.preview(target,request);
         assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
         templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
-        assertThat(effective(target)).contains("goods:view","supplier:view");
+        assertThat(effective(target)).containsExactly("goods:view");
         UUID revoked=account(department(),"明确收回");revoke(revoked,"goods:view");
         var blocked=templates.preview(revoked,request);
         assertThat(blocked.canApply()).isTrue();
-        assertThat(blocked.notes()).anyMatch(message->message.contains("个人收回"));
+        assertThat(blocked.notes()).anyMatch(message->message.contains("完整覆盖"));
         templates.apply(revoked,new PermissionTemplateDtos.Commit(request,blocked.fingerprint(),confirmations(blocked)));
-        assertThat(effective(revoked)).doesNotContain("goods:view");
-        assertThat(activeEffects(revoked)).contains("goods:view=revoke");
+        assertThat(effective(revoked)).containsExactly("goods:view");
+        assertThat(activeEffects(revoked)).isEmpty();
     }
 
-    @Test void replacementChangesDirectSettingsAndKeepsInheritedSourcesAndExplicitPersonalRevokes() {
+    @Test void replacementMatchesTemplateAndClearsOldPersonalDecisionsAndInheritance() {
         UUID dept=department(),target=account(dept,"模板覆盖");departmentGrant(dept,"supplier:view");revoke(target,"goods:view");
         var template=templates.create(new PermissionTemplateDtos.Save("覆盖-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
         var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
         var preview=templates.preview(target,request);
         assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
-        assertThat(preview.changes().getFirst().removed()).doesNotContain("supplier:view");
+        assertThat(preview.changes().getFirst().removed()).contains("supplier:view");
+        assertThat(preview.changes().getFirst().added()).contains("goods:view");
         templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview)));
-        assertThat(effective(target)).contains("supplier:view").doesNotContain("goods:view");
-        assertThat(activeEffects(target)).contains("goods:view=revoke").doesNotContain("supplier:view=revoke","goods:view=grant");
+        assertThat(effective(target)).containsExactly("goods:view");
+        assertThat(activeEffects(target)).isEmpty();
         assertThat(breakdown(target).templatePermissions()).contains("goods:view");
+    }
+
+    @Test void warehouseTemplateWithTwoOldRevokesReplaces98WithExactly100AndStaysLive() throws Exception {
+        List<String> codes;
+        try(var input=getClass().getResourceAsStream("/permissions/warehouse-template-100.json")) {
+            codes=mapper.readValue(input,new com.fasterxml.jackson.core.type.TypeReference<List<String>>(){});
+        }
+        assertThat(codes).hasSize(100);
+        UUID dept=department(),target=account(dept,"仓库覆盖回归"),peer=account(dept,"仓库批量回归");
+        for(UUID user:List.of(target,peer)) {
+            for(String code:jdbc.queryForList("SELECT code FROM permissions WHERE baseline",String.class)) {
+                if(!codes.contains(code)) revoke(user,code);
+            }
+            revoke(user,"employee:view");revoke(user,"warehouse_iqc_stock_in:view");
+        }
+        var template=templates.create(new PermissionTemplateDtos.Save("仓库100-"+UUID.randomUUID(),"",codes,0L));
+        for(UUID user:List.of(target,peer)) {
+            jdbc.update("INSERT INTO user_permission_template_bindings(user_id,template_id,bound_by) VALUES (?,?,?)",user,template.id(),admin);
+        }
+        assertThat(effective(target)).hasSize(98);
+        var legacyBinding=assignments.bindings().stream().filter(binding->binding.targetId().equals(target)).findFirst().orElseThrow();
+        departmentGrant(dept,"client:view");personal(target,"supplier:export");delegation(target,admin,"goods:edit");
+        var single=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
+        var preview=templates.preview(target,single);
+        assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
+        assertThat(preview.changes().getFirst().added()).contains("employee:view","warehouse_iqc_stock_in:view");
+        assertThat(preview.changes().getFirst().removed()).contains("client:view","supplier:export");
+        templates.apply(target,new PermissionTemplateDtos.Commit(single,preview.fingerprint(),confirmations(preview)));
+        assertThatThrownBy(()->assignments.unbind(new PermissionTemplateDtos.Unbind(List.of(target),List.of(),List.of(expectedBinding(legacyBinding)))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        var batch=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE,List.of(peer),List.of());
+        var batchPreview=assignments.preview(batch);
+        assertThat(batchPreview.notes()).anyMatch(note->note.contains("模板 100 项，应用后有效 100 项"));
+        assignments.apply(new PermissionTemplateDtos.BatchCommit(batch,batchPreview.fingerprint(),confirmations(batchPreview)));
+        for(UUID user:List.of(target,peer)) {
+            assertThat(effective(user)).containsExactlyInAnyOrderElementsOf(codes);
+            assertThat(activeEffects(user)).isEmpty();
+            assertThat(resolver.grantedPermissionsFor(List.of(user),new HashSet<>(codes))).containsEntry(user,new HashSet<>(codes));
+            assertThat(resolver.usersGrantedAll(List.of(user),Set.of("client:view"))).isEmpty();
+            assertThat(resolver.usersGrantedAll(List.of(user),Set.of("goods:edit"))).isEmpty();
+        }
+        var again=templates.preview(target,single);
+        assertThat(templates.apply(target,new PermissionTemplateDtos.Commit(single,again.fingerprint(),confirmations(again))).changed()).isFalse();
+        // A later explicit delegation is a new decision; reapplying clears it as well.
+        jdbc.update("DELETE FROM manager_permission_delegations WHERE user_id=?",target);
+        delegation(target,admin,"goods:edit");
+        assertThat(effective(target)).contains("goods:edit");
+        assertThat(resolver.usersGrantedAll(List.of(target),Set.of("goods:edit"))).containsExactly(target);
+        var afterDelegation=templates.preview(target,single);
+        templates.apply(target,new PermissionTemplateDtos.Commit(single,afterDelegation.fingerprint(),confirmations(afterDelegation)));
+        assertThat(effective(target)).containsExactlyInAnyOrderElementsOf(codes);
+        var changedCodes=new ArrayList<>(codes);changedCodes.remove("goods:export");changedCodes.add("client:view");
+        var updated=templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",changedCodes,template.version()));
+        for(UUID user:List.of(target,peer)) {
+            assertThat(effective(user)).containsExactlyInAnyOrderElementsOf(changedCodes);
+            assertThat(resolver.usersGrantedAll(List.of(user),Set.of("client:view"))).containsExactly(user);
+            assertThat(resolver.usersGrantedAll(List.of(user),Set.of("goods:export"))).isEmpty();
+        }
+        // Unbinding and deleting freeze today's exact result, without reviving inherited extras.
+        unbind(List.of(target),List.of());
+        assertThat(effective(target)).containsExactlyInAnyOrderElementsOf(changedCodes);
+        jdbc.update("UPDATE users SET status='disabled' WHERE id=?",peer);
+        templates.delete(updated.id(),new PermissionTemplateDtos.Delete(updated.version()));
+        assertThat(effective(peer)).containsExactlyInAnyOrderElementsOf(changedCodes);
+    }
+
+    @Test void exactTemplatePreviewCannotOverwriteNewPersonalDecisionAndEmptyTemplateReallyClearsAuthority() throws Exception {
+        UUID target=account(department(),"覆盖并发");
+        var template=templates.create(new PermissionTemplateDtos.Save("覆盖并发-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
+        var request=new PermissionTemplateDtos.Apply(template.id(),template.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
+        var preview=templates.preview(target,request);
+        String legacyState=org.springframework.test.util.ReflectionTestUtils.invokeMethod(transfer,"stateFingerprint");
+        var legacyBatch=new PermissionTemplateDtos.BatchApply(template.id(),template.version(),request.mode(),List.of(target),List.of());
+        String legacyFingerprint=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(mapper.writeValueAsBytes(List.of(legacyBatch,legacyState))));
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,legacyFingerprint,confirmations(preview))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        personal(target,"supplier:view");
+        assertThatThrownBy(()->templates.apply(target,new PermissionTemplateDtos.Commit(request,preview.fingerprint(),confirmations(preview))))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        assertThat(effective(target)).contains("supplier:view");
+        var empty=templates.create(new PermissionTemplateDtos.Save("空模板-"+UUID.randomUUID(),"",List.of(),0L));
+        var emptyRequest=new PermissionTemplateDtos.Apply(empty.id(),empty.version(),PermissionTemplateDtos.ApplyMode.REPLACE);
+        var emptyPreview=templates.preview(target,emptyRequest);
+        templates.apply(target,new PermissionTemplateDtos.Commit(emptyRequest,emptyPreview.fingerprint(),confirmations(emptyPreview)));
+        assertThat(effective(target)).isEmpty();
+        assertThat(activeEffects(target)).isEmpty();
+        assertThat(resolver.usersGrantedAll(List.of(target),Set.of("notice:read"))).isEmpty();
+        unbind(List.of(target),List.of());
+        assertThat(effective(target)).isEmpty();
     }
 
     @Test void templateSensitiveRightsRequirePerEmployeeReviewAndStaleAuthorityOrTemplateNeverWrites() {
@@ -469,7 +560,8 @@ class PermissionConfigurationTransferPostgresTest {
         UUID target=account(department(),"独立来源");personal(target,"goods:view");
         var template=templates.create(new PermissionTemplateDtos.Save("独立-"+UUID.randomUUID(),"",List.of("goods:view","supplier:view"),0L));
         applyTemplate(template,List.of(target),List.of());
-        assertThat(activeEffects(target)).contains("goods:view=grant").doesNotContain("supplier:view=grant");
+        assertThat(activeEffects(target)).isEmpty();
+        jdbc.update("UPDATE user_permission_overrides SET active=true,row_version=row_version+1 WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='goods:view')",target);
         long epoch=jdbc.queryForObject("SELECT epoch FROM authorization_state WHERE singleton_id=1",Long.class);
         templates.update(template.id(),new PermissionTemplateDtos.Save(template.name(),"",List.of("client:view"),template.version()));
         assertThat(effective(target)).contains("goods:view","client:view").doesNotContain("supplier:view");
@@ -521,6 +613,7 @@ class PermissionConfigurationTransferPostgresTest {
         UUID first=account(department(),"增量一"),second=account(department(),"增量二");personal(first,"supplier:view");
         var template=templates.create(new PermissionTemplateDtos.Save("增量模板-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
         applyTemplate(template,List.of(first,second),List.of());
+        jdbc.update("UPDATE user_permission_overrides SET active=true,row_version=row_version+1 WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='supplier:view')",first);
         var request=new PermissionTemplateDtos.DeltaRequest(List.of(first,second),List.of(),List.of("client:view"),List.of("goods:view"));
         var preview=assignments.previewDelta(request);assertThat(preview.canApply()).as(preview.issues().toString()).isTrue();
         assignments.applyDelta(new PermissionTemplateDtos.DeltaCommit(request,preview.fingerprint(),confirmations(preview)));
@@ -553,7 +646,7 @@ class PermissionConfigurationTransferPostgresTest {
         assertThat(activeEffects(target)).contains("goods:view=grant").doesNotContain("supplier:view=grant");
         applyTemplate(updated,List.of(target),List.of());
         assertThat(assignments.bindings()).anyMatch(binding->binding.targetId().equals(target) && !binding.legacySnapshot());
-        assertThat(effective(target)).contains("goods:view","supplier:view");
+        assertThat(effective(target)).containsExactly("supplier:view");
     }
 
     @Test void addingSensitivePermissionsToLinkedTemplatesRequiresServerVerifiedConfirmation() {
@@ -621,15 +714,15 @@ class PermissionConfigurationTransferPostgresTest {
         assertThat(jdbc.queryForObject("SELECT auth_version FROM users WHERE id=?",Long.class,target)).isEqualTo(version);
     }
 
-    @Test void templateBindingDoesNotReconfirmUnrelatedLegacyOverridesOrMakeThemRedelegable() {
+    @Test void templateReplacementClearsUnrelatedLegacyOverridesWithoutPromotingTheirAuthority() {
         UUID target=account(department(),"历史来源保全");personal(target,"supplier:view");
         jdbc.update("UPDATE user_permission_overrides SET authority_source='LEGACY_UNKNOWN',source_actor_user_id=null WHERE user_id=?",target);
         var template=templates.create(new PermissionTemplateDtos.Save("保留来源-"+UUID.randomUUID(),"",List.of("goods:view"),0L));
         applyTemplate(template,List.of(target),List.of());
-        assertThat(breakdown(target).legacyUnknownGrants()).contains("supplier:view");
+        assertThat(breakdown(target).legacyUnknownGrants()).isEmpty();
         assertThat(breakdown(target).confirmedGrants()).doesNotContain("supplier:view");
         unbind(List.of(target),List.of());
-        assertThat(breakdown(target).legacyUnknownGrants()).contains("supplier:view");
+        assertThat(breakdown(target).legacyUnknownGrants()).isEmpty();
         assertThat(breakdown(target).confirmedGrants()).contains("goods:view").doesNotContain("supplier:view");
     }
 
@@ -674,7 +767,7 @@ class PermissionConfigurationTransferPostgresTest {
     }
 
     private PermissionTemplateDtos.ExpectedBinding expectedBinding(PermissionTemplateDtos.Binding binding) {
-        return new PermissionTemplateDtos.ExpectedBinding(binding.kind(),binding.targetId(),binding.templateId(),binding.templateVersion(),binding.legacySnapshot());
+        return new PermissionTemplateDtos.ExpectedBinding(binding.kind(),binding.targetId(),binding.templateId(),binding.templateVersion(),binding.legacySnapshot(),binding.exactPermissions());
     }
     private Result unbind(List<UUID> users,List<UUID> departments) {
         var expected=assignments.bindings().stream().filter(binding->binding.kind().equals("user")

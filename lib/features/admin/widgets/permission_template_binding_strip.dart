@@ -104,7 +104,11 @@ class _BindingState extends ConsumerState<PermissionTemplateBindingStrip> {
               const Icon(Icons.link_rounded, size: 16),
               Text('关联模板：${binding.templateName}'),
               Text(
-                binding.legacySnapshot ? '旧版快照，重新应用后建立完整联动' : '随模板同步，个人取消优先',
+                binding.legacySnapshot
+                    ? '旧版快照，重新应用后建立完整联动'
+                    : binding.exactPermissions
+                    ? '按模板覆盖，后续模板修改同步生效'
+                    : '追加模板，个人取消优先',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               TextButton(

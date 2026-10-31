@@ -2,11 +2,11 @@
 -- 模具主档迁移：CSV → moulds（不依赖 server 启动）
 -- =====================================================================
 -- 用法：bash server/legacy_migration/migrate.sh --mould-data
--- 前提：moulds 表已存在（V34 由 server Flyway 创建）；mould_categories 已迁。
+-- 前提：当前 Flyway 已完成（含 V869 manufacturer）；mould_categories 已迁。
 -- 来源：老库 B_Mould（1605 条），category_id 关联 mould_categories.legacy_id
 --   （B_Mould.ParentID → SystemItem.ItemID ItemclassID=18）。19 条 ParentID 悬空
 --   （指向已删 SystemItem）统一挂 V275 注册表中的系统“未分类”根。
--- 字段语义见 V34（MStatus=制造年月、Status=使用/报废、summary=保管人）。
+-- 字段语义见 V34（MStatus=制造年月、Status=使用/禁用、summary=制造商/模具供应商（2026-10-31 用户确认））。
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
@@ -41,7 +41,7 @@ CREATE TEMP TABLE mould_stage (
     mstatus      text,
     status       text,
     place        text,
-    keeper       text,
+    legacy_summary text,
     remark       text
 );
 \copy mould_stage FROM '/tmp/mould.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
@@ -60,7 +60,7 @@ WITH numbered AS (
     RETURNING last_seq
 )
 INSERT INTO moulds (
-    legacy_id, category_id, name, code, mnumber, qty, tqty, mstatus, status, place, keeper, remark,
+    legacy_id, category_id, name, code, mnumber, qty, tqty, mstatus, status, place, manufacturer, keeper, remark,
     code_managed, code_sequence
 )
 SELECT
@@ -78,7 +78,7 @@ SELECT
          ELSE 'MJ' || to_char(
                   reserved.last_seq - ms.allocation_count + ms.seq_ordinal, 'FM000000')
     END,
-    ms.mnumber, ms.qty, ms.tqty, ms.mstatus, ms.status, ms.place, ms.keeper, ms.remark,
+    ms.mnumber, ms.qty, ms.tqty, ms.mstatus, ms.status, ms.place, ms.legacy_summary, NULL::text, ms.remark,
     FALSE, reserved.last_seq - ms.allocation_count + ms.seq_ordinal
 FROM numbered ms CROSS JOIN reserved;
 

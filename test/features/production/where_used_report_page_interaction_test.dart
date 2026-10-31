@@ -1,3 +1,5 @@
+import 'package:flutter/gestures.dart';
+import 'package:uten_imp/features/basic_data/models/goods_detail_sequence.dart';
 import '../../support/table_read_status.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -1973,6 +1975,7 @@ void main() {
             builder: (_, s) => GoodsDetailPage(
               goodsId: s.pathParameters['id']!,
               initialTab: s.uri.queryParameters['tab'],
+              sequence: GoodsDetailSequence.fromExtra(s.extra),
             ),
           ),
           GoRoute(
@@ -2040,6 +2043,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.text('墙壁插座成品'));
       await tester.pumpAndSettle();
+      expect(find.text('暂无组装信息'), findsOneWidget);
+      expect(
+        find.byKey(const Key('goods-detail-product-code')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('goods-next-bom')), findsOneWidget);
+      expect(
+        find.byKey(const Key('where-used-product-detail-dialog')),
+        findsNothing,
+      );
+      router.pop();
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.text('墙壁插座成品'),
+        buttons: kSecondaryButton,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关系依据'));
+      await tester.pumpAndSettle();
       expect(find.text('全部历史 · A 螺丝(MAT-001)'), findsOneWidget);
       expect(
         find.byKey(const Key('where-used-current-bom-section')),
@@ -2052,17 +2075,21 @@ void main() {
       await tester.pumpAndSettle();
       // 整页详情 (tab=bom 组装信息)：BOM 表拉取并显示空态。
       expect(find.text('暂无组装信息'), findsOneWidget);
-      expect(bom.listCalls, [_productId]);
+      expect(bom.listCalls, [_productId, _productId]);
 
       // 返回反查页（等价于详情页返回键 pop）。
       router.pop();
       await tester.pumpAndSettle();
       expect(find.text('墙壁插座成品'), findsOneWidget);
 
-      // 再次双击打开（上一段详情已关闭）。
-      await tester.tap(find.text('墙壁插座成品'));
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.tap(find.text('墙壁插座成品'));
+      // 关系依据保留历史数量和库存跳转；双击直接打开完整 BOM。
+      await tester.tap(
+        find.text('墙壁插座成品'),
+        buttons: kSecondaryButton,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('关系依据'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('where-used-open-stock-movements')),

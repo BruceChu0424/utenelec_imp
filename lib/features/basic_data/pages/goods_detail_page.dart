@@ -1,3 +1,4 @@
+import '../models/goods_detail_sequence.dart';
 // 货品详情整页 (基础资料-货品资料): 列表双击行 / 「添加货品」/ 研发任务 /
 // 物料反查统一入口, 路由 /basicinfo/goods/new、/basicinfo/goods/:id
 // (?tab=basic|bom|cost|files|stock 指定页签; 旧深链的数字 0/1/2 仍认)。
@@ -39,6 +40,7 @@ class GoodsDetailPage extends ConsumerStatefulWidget {
     this.goodsId,
     this.categoryId,
     this.initialTab,
+    this.sequence,
   });
 
   /// 既有货品 id：查看/编辑态。为空则进入新增态（[categoryId] 应有值，
@@ -51,6 +53,7 @@ class GoodsDetailPage extends ConsumerStatefulWidget {
   /// 初始页签 (路由 ?tab= 原样传入): basic / bom / cost / files / stock;
   /// 旧深链数字 0=基本信息、1=组装信息、2=成本预算仍认; 空或认不出 = 基本信息。
   final String? initialTab;
+  final GoodsDetailSequence? sequence;
 
   @override
   ConsumerState<GoodsDetailPage> createState() => _GoodsDetailPageState();
@@ -401,6 +404,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
                 initialDetail: _detail,
                 initialCategoryId: widget.categoryId,
                 initialTab: GoodsDetailTab.parse(widget.initialTab),
+                sequence: widget.sequence,
                 canCreate: canCreate,
                 canEdit: canEdit,
                 canStatus: canStatus,

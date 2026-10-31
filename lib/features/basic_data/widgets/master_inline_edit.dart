@@ -1353,6 +1353,7 @@ class _MasterInlineEditGuardState<T> extends State<MasterInlineEditGuard<T>> {
         state.uri.path,
         confirmLeave,
         pageKey: state.pageKey,
+        router: GoRouter.maybeOf(context),
         reloadSafety: _reloadSafety,
       );
       _routerGuard = true;

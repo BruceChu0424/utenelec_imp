@@ -1,3 +1,6 @@
+import '../../features/basic_data/models/goods_detail_sequence.dart';
+import '../../shared/windows/business_windows.dart';
+import 'business_window_host.dart';
 // 路由配置
 // 文档：docs/05-架构/路由设计.md · 全局机制权限见 docs/05-架构/全局机制.md
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
@@ -408,16 +411,31 @@ final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>(
 );
 
 /// App 路由 Provider
-final appRouterProvider = Provider<GoRouter>((ref) {
+final appRouterProvider = Provider<GoRouter>((ref) => _createAppRouter(ref));
+
+final businessWindowRouterProvider = Provider.autoDispose
+    .family<GoRouter, BusinessWindow>(
+      (ref, window) => _createAppRouter(ref, window: window),
+      dependencies: [pageResumeProvider],
+    );
+
+GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
+  final windowRootSafety = window == null ? null : UpdateSafetyNavigation();
+  final windowShellSafety = window == null ? null : UpdateSafetyNavigation();
+  if (windowRootSafety != null) ref.onDispose(windowRootSafety.dispose);
+  if (windowShellSafety != null) ref.onDispose(windowShellSafety.dispose);
   final router = GoRouter(
-    navigatorKey: appNavigatorKey,
+    navigatorKey: window?.navigatorKey ?? appNavigatorKey,
     observers: [
-      ref.watch(clientUpdateNavigationProvider),
-      ref.watch(rootUpdateSafetyNavigationProvider),
+      if (window == null) ref.watch(clientUpdateNavigationProvider),
+      if (window == null) ref.watch(rootUpdateSafetyNavigationProvider),
+      ?windowRootSafety,
     ],
     // 2026-09-25 入口选择页退役：平台定位公司内部，应用直接落在员工登录页；
     // 访客门户前端同步下线（后端能力保留，将来另做独立入口）。
-    initialLocation: RouteName.login,
+    initialLocation: window?.location ?? RouteName.login,
+    initialExtra: window?.extra,
+    overridePlatformDefaultLocation: window != null,
     redirect: (context, state) {
       // Independent rescue must remain reachable without the business session/API.
       if (state.matchedLocation == RouteName.disasterRecovery) return null;
@@ -540,15 +558,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       ShellRoute(
-        observers: [ref.watch(shellUpdateSafetyNavigationProvider)],
+        observers: [
+          windowShellSafety ?? ref.watch(shellUpdateSafetyNavigationProvider),
+        ],
         // ⚠️ SelectionArea 已下线：Flutter 框架 bug（web 端 SelectableRegion 在
         // 动态内容重建时 _flushInactiveSelections 抛 ConcurrentModificationError），
         // 全局包裹会让轮询/表格刷新在拖选文字时崩掉整个调度帧，表现为"点了没反应"。
         // 后续如需复制功能，改为在静态内容页局部包 SelectionArea，勿全局包裹。
-        builder: (context, state, child) => MainShellPage(
-          reminderBuilder: ServerUpdatePopupGate.new,
-          child: child,
-        ),
+        builder: (context, state, child) => window != null
+            ? child
+            : BusinessWindowHost(
+                child: MainShellPage(
+                  reminderBuilder: ServerUpdatePopupGate.new,
+                  child: child,
+                ),
+              ),
         routes: [
           DraftAwareGoRoute(
             path: RouteName.home,
@@ -864,6 +888,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => GoodsDetailPage(
               goodsId: s.pathParameters['id']!,
               initialTab: s.uri.queryParameters['tab'],
+              sequence: GoodsDetailSequence.fromExtra(s.extra),
             ),
           ),
           DraftAwareGoRoute(
@@ -2398,7 +2423,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   });
 
   return router;
-});
+}
 
 class _ErrorPage extends StatelessWidget {
   const _ErrorPage();

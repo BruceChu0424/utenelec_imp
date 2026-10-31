@@ -1,3 +1,5 @@
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../basic_data/models/goods_detail_sequence.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
@@ -540,7 +542,10 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     for (final entry in _headers.entries) 'f.${entry.key}': entry.value,
   };
 
-  Future<void> _openProductDetail(Map<String, dynamic> row) async {
+  Future<void> _openProductDetail(
+    Map<String, dynamic> row, {
+    bool relationOnly = false,
+  }) async {
     if (_openingDetail) return;
     final loadedQuery = _loadedQuery;
     if (loadedQuery == null) {
@@ -553,6 +558,23 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     final epoch = _readEpoch;
     try {
       final permissions = ref.read(currentPermissionsProvider);
+      if (!relationOnly &&
+          (ref.read(isSuperAdminProvider) ||
+              permissions.contains(Perm.goodsView))) {
+        final id = (row['__productId'] ?? row['__srcId'])?.toString() ?? '';
+        if (id.isEmpty) return;
+        await _navigation.push<void>(
+          RoutePath.basicinfoGoodsDetail(id, tab: 'bom'),
+          extra: GoodsDetailSequence(
+            _tableRows.items.map(
+              (item) =>
+                  (item['__productId'] ?? item['__srcId'])?.toString() ?? '',
+            ),
+            label: '已加载反查结果',
+          ),
+        );
+        return;
+      }
       final result = await showWhereUsedProductDetailDialog(
         context: context,
         row: row,
@@ -1502,6 +1524,23 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       sortAscending: _sortAscending,
       onSortChange: _onSortChange,
       onRowTap: _openProductDetail,
+      rowMenuBuilder: (row) => [
+        UtenMenuItem(
+          label: '查看组装信息',
+          onTap: () => _openProductDetail(row),
+          enabled:
+              matches &&
+              (ref.read(isSuperAdminProvider) ||
+                  ref
+                      .read(currentPermissionsProvider)
+                      .contains(Perm.goodsView)),
+        ),
+        UtenMenuItem(
+          label: '关系依据',
+          onTap: () => _openProductDetail(row, relationOnly: true),
+          enabled: matches,
+        ),
+      ],
       isLoading: _loading,
       emptyMessage:
           '未找到可识别的已知关系(来源：${_source.label}，历史范围：$range)。'

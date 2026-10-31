@@ -1,3 +1,5 @@
+import '../models/goods_detail_sequence.dart';
+import 'goods_bom_navigation.dart';
 // 货品详情/编辑主体 (基础资料-货品资料): 页签 (基本信息 / 组装信息 / 成本预算 /
 // 图片和文件 / 库存与出入库), mode 感知: create (新增) / edit (编辑) / view (查看)。
 //
@@ -171,6 +173,7 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
     this.onSaved,
     this.readBoundary,
     this.busy = false,
+    this.sequence,
   });
 
   final GoodsDetail? initialDetail;
@@ -192,6 +195,7 @@ class GoodsDetailBody extends ConsumerStatefulWidget {
   final VoidCallback? onSaved;
   final SensitiveReadBoundary? readBoundary;
   final bool busy;
+  final GoodsDetailSequence? sequence;
 
   @override
   ConsumerState<GoodsDetailBody> createState() => _GoodsDetailBodyState();
@@ -341,6 +345,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           !mounted ||
           await (_bomKey.currentState?.finishEditing() ?? Future.value(true)),
       pageKey: route.pageKey,
+      router: GoRouter.maybeOf(context),
       reloadSafety: _reloadSafety,
     );
   }
@@ -1228,6 +1233,26 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     height: 56,
     child: UtenAppBar(
       title: title,
+      titleWidget: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium,
+          ),
+          if (_detail?.code?.isNotEmpty == true)
+            Text(
+              '产品编号：${_detail!.code}',
+              key: const Key('goods-detail-product-code'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+        ],
+      ),
       showBackButton: true,
       // Explicit app-bar/context.pop navigation is imperative and bypasses
       // PopScope.canPop. Run the same draft decision before that return too.
@@ -1830,38 +1855,67 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     if (_goodsId == null) {
       return _emptyTab('请先在「基本信息」保存货品后维护组装信息');
     }
-    return GoodsBomTab(
-      key: _bomKey,
+    return GoodsBomNavigation(
       goodsId: _goodsId!,
-      canCreate: widget.canBomCreate,
-      canEdit: widget.canBomEdit,
-      canDelete: widget.canBomDelete,
-      onEditModeChanged: (editing) {
-        if (mounted) setState(() => _bomEditing = editing);
-      },
-      onInteractionChanged: (busy) {
-        if (mounted && busy != _bomInteracting) {
-          setState(() => _bomInteracting = busy);
+      categoryId: _detail?.categoryId,
+      sequence: widget.sequence,
+      enabled:
+          !widget.busy &&
+          !_savingBasic &&
+          (!_bomInteracting || _bomEditing) &&
+          !_leavingBom &&
+          _mode == _GoodsDetailMode.view,
+      onSelected: (id) async {
+        if (_leavingBom) return;
+        _leavingBom = true;
+        try {
+          if (!await (_bomKey.currentState?.finishEditing() ??
+                  Future.value(true)) ||
+              !mounted) {
+            return;
+          }
+          context.replace(
+            RoutePath.basicinfoGoodsDetail(id, tab: 'bom'),
+            extra: widget.sequence,
+          );
+        } finally {
+          _leavingBom = false;
         }
       },
-      productCode: _detail?.code,
-      productName: _detail?.name,
-      // ADR-131：BOM 上整批领料的料的单个重量与货品资料单重相差 20% 以上时标黄。
-      productWeightGrams: _productWeightGrams(),
-      // 「预览」按钮渲染在组装信息表格工具条「全屏」旁（2026-09-12 从详情头部
-      // 迁入）；弹窗要的型号等取自 _detail，故由本 Body 接线。
-      onPreview: () => showGoodsBomPreview(
-        context: context,
+      builder: (context, actions) => GoodsBomTab(
+        key: _bomKey,
+        navigationActions: actions,
         goodsId: _goodsId!,
-        productName: _detail?.name,
-        productModel: _detail?.model,
+        canCreate: widget.canBomCreate,
+        canEdit: widget.canBomEdit,
+        canDelete: widget.canBomDelete,
+        onEditModeChanged: (editing) {
+          if (mounted) setState(() => _bomEditing = editing);
+        },
+        onInteractionChanged: (busy) {
+          if (mounted && busy != _bomInteracting) {
+            setState(() => _bomInteracting = busy);
+          }
+        },
         productCode: _detail?.code,
+        productName: _detail?.name,
+        // ADR-131：BOM 上整批领料的料的单个重量与货品资料单重相差 20% 以上时标黄。
+        productWeightGrams: _productWeightGrams(),
+        // 「预览」按钮渲染在组装信息表格工具条「全屏」旁（2026-09-12 从详情头部
+        // 迁入）；弹窗要的型号等取自 _detail，故由本 Body 接线。
+        onPreview: () => showGoodsBomPreview(
+          context: context,
+          goodsId: _goodsId!,
+          productName: _detail?.name,
+          productModel: _detail?.model,
+          productCode: _detail?.code,
+        ),
+        onDataChanged: () {
+          // BOM 变动后刷新 detail（sourceE 已被后端聚合），同步成本 Tab 与外层列表。
+          _refreshDetail();
+          widget.onDataChanged?.call();
+        },
       ),
-      onDataChanged: () {
-        // BOM 变动后刷新 detail（sourceE 已被后端聚合），同步成本 Tab 与外层列表。
-        _refreshDetail();
-        widget.onDataChanged?.call();
-      },
     );
   }
 

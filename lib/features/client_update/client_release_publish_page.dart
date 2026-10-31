@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
@@ -156,6 +157,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     if (!_current) return;
     try {
       final route = goRouterPageStateOrNull(context);
+      final draftRouter = GoRouter.maybeOf(context);
       final draft = _draft ??= ClientReleasePublishDraftLease(
         storage: ref.read(formDraftStorageProvider),
         server: _server,
@@ -183,6 +185,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
         clientReleasePublishRoute,
         _confirmLeave,
         pageKey: route?.pageKey,
+        router: draftRouter,
         reloadSafety: _reloadSafety,
       );
       FormDraftNavigation.registerReloadSafety(

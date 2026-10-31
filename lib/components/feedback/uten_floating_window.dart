@@ -160,6 +160,25 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
 
   Rect get _windowRect => Rect.fromLTWH(_left, _top, _width, _height);
 
+  /// Window hosts may tile existing instances without rebuilding their editors.
+  Rect get bounds => _windowRect;
+
+  void arrange(Rect bounds) {
+    if (!mounted || !_area.hasBoundedWidth || !_area.hasBoundedHeight) return;
+    _morph.stop();
+    _morph.value = 0;
+    setState(() {
+      _collapsed = false;
+      _width = bounds.width.clamp(widget.minSize.width, _maxWidth);
+      _height = bounds.height.clamp(widget.minSize.height, _maxHeight);
+      _left = bounds.left;
+      _top = bounds.top;
+      _positioned = true;
+      _clampPosition();
+    });
+    webUpdateSafety.changed();
+  }
+
   void _centerAtInitial() {
     final width = widget.initialSize.width.clamp(
       widget.minSize.width,

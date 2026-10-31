@@ -187,6 +187,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
       RouteName.adminPlatformSettings,
       _leave,
       pageKey: GoRouterState.of(context).pageKey,
+      router: GoRouter.maybeOf(context),
       reloadSafety: _reloadSafety,
     );
     FormDraftNavigation.registerReloadSafety(

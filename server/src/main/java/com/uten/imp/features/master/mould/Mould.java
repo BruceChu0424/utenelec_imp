@@ -25,8 +25,8 @@ import java.util.UUID;
  * 字段语义（老库字段名有误导，新库起清晰名）：
  *   code←Number(模具编号)、name←MouldName、mnumber←Mnumber、
  *   qty←QTY(varchar "1+1")、tqty←TQTY(总数量)、
- *   mstatus←MStatus(制造年月)、status←[Status](使用/报废 生命周期)、
- *   place←Place(车间)、keeper←summary(保管人)、remark←Remark。
+ *   mstatus←MStatus(制造年月)、status←[Status](使用/禁用 生命周期)、
+ *   place←Place(车间)、manufacturer←summary(制造商/模具供应商)、remark←Remark。
  */
 @Getter
 @Setter
@@ -62,10 +62,10 @@ public class Mould extends SoftDeletableEntity {
 
     // ===== 状态 =====
     private String mstatus;         // MStatus（制造年月，如 2018年7月）
-    private String manufacturer;    // 模具制造商（人工维护；历史数据留空）
+    private String manufacturer;    // 模具制造商/模具供应商原文（旧 summary；不推定供应商 UUID）
     private String status;          // [Status]（生命周期：使用/禁用）
     private String place;           // Place（车间/位置）
-    private String keeper;          // summary（保管人）
+    private String keeper;          // 独立的保管人文本（不是旧 summary）
 
     /** 车间部门 id（departments.id，对齐生产计划单；place 文本作 fallback 显示）。跨模块不建 FK。 */
     @Column(name = "department_id")

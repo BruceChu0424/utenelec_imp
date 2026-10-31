@@ -9,8 +9,8 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _DecompositionSeg @100 (supporting-class)<br>_RetainedRefreshBatch @118 (supporting-class)<br>SubcontractDecompositionPage @123 (page-class)<br>_SubcontractDecompositionPageState @171 (state-class)<br>SubcontractPendingRow @2912 (supporting-class)<br>SubcontractApplicationRow @2918 (supporting-class)<br>SubcontractPendingDrawRow @2927 (supporting-class)<br>_DrawStatusCell @2938 (supporting-class)<br>_ProgressStatusCell @2989 (supporting-class) |
-| 真实路由绑定 | /operations/workbench/subcontract；router @973；builder ['SubcontractDecompositionPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:1884","routerLine":1884,"path":"/subcontract/applications","targetConstants":["operationsSubcontractWorkbench"],"redirectExpression":"(_, _) => RouteName.operationsSubcontractWorkbench","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /operations/workbench/subcontract；router @998；builder ['SubcontractDecompositionPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:1909","routerLine":1909,"path":"/subcontract/applications","targetConstants":["operationsSubcontractWorkbench"],"redirectExpression":"(_, _) => RouteName.operationsSubcontractWorkbench","status":"possible alias; 需人工核实"} |
 | 权限 | subcontract_application:view @1510；定义 lib/shared/auth/permissions.dart:334<br>subcontract_order:view @1511；定义 lib/shared/auth/permissions.dart:335<br>subcontract_order:create @1512；定义 lib/shared/auth/permissions.dart:660<br>subcontract_order:decompose @1513；定义 lib/shared/auth/permissions.dart:663<br>subcontract_order:submit_finance @1619；定义 lib/shared/auth/permissions.dart:338<br>subcontract_report:export @2233；定义 lib/shared/auth/permissions.dart:365 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/operations_workbench/repositories/operations_workbench_repository.dart；接口：/operations/workbench/{department.apiValue}、/operations/workbench/{department.apiValue}/overview、ApiEndpoints.subcontractApplicationItemForwardBom<br>lib/features/subcontract/repositories/subcontract_draw_repository.dart；接口：/subcontract/draw-tasks<br>lib/features/subcontract/repositories/subcontract_kit_repository.dart；接口：ApiEndpoints.subcontractApplicationItemKit |
@@ -58,12 +58,12 @@
 
 ## W7-BIZ-157 · lib/features/subcontract/pages/subcontract_draw_request_page.dart
 
-模块 `subcontract`；571 行；SHA256 `188fa7583f9cad13cb41b0e94a98af1cae14f518d825d5204cf8ae927985af1b`。
+模块 `subcontract`；571 行；SHA256 `26d5a2d95895ed7e5146e48a9c583d941fbcaa2b5ec981e88e2ada1005ad7a08`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractDrawRequestPage @42 (page-class)<br>_SubcontractDrawRequestPageState @59 (state-class) |
-| 真实路由绑定 | /operations/workbench/subcontract/draw-request；router @985；builder ['SubcontractDrawRequestPage']；redirect None |
+| 真实路由绑定 | /operations/workbench/subcontract/draw-request；router @1010；builder ['SubcontractDrawRequestPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractHubPage @47 (page-class)<br>_Entry @277 (supporting-class)<br>_EntryTile @299 (supporting-class) |
-| 真实路由绑定 | /subcontract；router @1862；builder ['SubcontractHubPage']；redirect None<br>/subcontract/report；router @1867；builder ['SubcontractHubPage']；redirect None |
+| 真实路由绑定 | /subcontract；router @1887；builder ['SubcontractHubPage']；redirect None<br>/subcontract/report；router @1892；builder ['SubcontractHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -94,7 +94,7 @@
 
 ## W7-BIZ-159 · lib/features/subcontract/pages/subcontract_order_edit_page.dart
 
-模块 `subcontract`；2177 行；SHA256 `d1ed7f6b422fdb3c6adaef7344e9cdeb25902f8de0b05092c5822c7cd1060c5c`。
+模块 `subcontract`；2177 行；SHA256 `0db0bb61edcdf45d161c5c53cdbe4e01307530467b9801edb241e39b373d803b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -112,12 +112,12 @@
 
 ## W7-BIZ-160 · lib/features/subcontract/pages/subcontract_report_table_page.dart
 
-模块 `subcontract`；664 行；SHA256 `8d22519033987b7480775f4c43fbd75523c226617d5f6bbd9116acb39981377e`。
+模块 `subcontract`；664 行；SHA256 `a001be63a023f5ab18ddb4f310ab483ae2dbb7cc71ea9998963c0bd373107988`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractReportTablePage @60 (page-class)<br>_SubcontractReportTablePageState @69 (state-class) |
-| 真实路由绑定 | /subcontract/report/:kind；router @1900；builder ['SubcontractReportTablePage']；redirect None |
+| 真实路由绑定 | /subcontract/report/:kind；router @1925；builder ['SubcontractReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | subcontract_report:export @591；定义 lib/shared/auth/permissions.dart:365<br>subcontract_report:export @600；定义 lib/shared/auth/permissions.dart:365 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -130,12 +130,12 @@
 
 ## W7-BIZ-161 · lib/features/subcontract/pages/subcontract_short_delivery_page.dart
 
-模块 `subcontract`；1106 行；SHA256 `d3da1a7099634ba37a01f52b3848015fa3936861efce7974215272674b5887fc`。
+模块 `subcontract`；1106 行；SHA256 `55ecf80f0ab458a7f2ea599f57e4699d54e3fa6f24a899ee794bb1696dd09851`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SubcontractShortDeliveryPage @62 (page-class)<br>_SubcontractShortDeliveryPageState @88 (state-class)<br>_CaseDetailDialog @967 (supporting-class) |
-| 真实路由绑定 | /subcontract/short-deliveries；router @1873；builder ['SubcontractShortDeliveryPage']；redirect None |
+| 真实路由绑定 | /subcontract/short-deliveries；router @1898；builder ['SubcontractShortDeliveryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

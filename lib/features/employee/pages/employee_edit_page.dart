@@ -30,7 +30,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_identity_correction_dialog.dart';

@@ -3,8 +3,8 @@
 // 附带生产部 id，供选择器默认只展开生产部（问题 #5：车间选择器范围+默认展开+确认按钮）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../department/models/department_node.dart';
-import '../../department/repositories/department_repository.dart';
+import '../../../shared/models/department_node.dart';
+import '../../../shared/repositories/department_repository.dart';
 
 const _kMfgCenterCode = 'MFG_CENTER';
 const _kDeptProdCode = 'DEPT_PROD';

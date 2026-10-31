@@ -5,8 +5,8 @@ import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
+import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 
 Widget _app(Widget tree, {required double width, required bool dark}) =>
     MaterialApp(

@@ -11,7 +11,7 @@ import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
+import 'package:uten_imp/shared/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/finance/models/finance_asset_category_models.dart';
 import 'package:uten_imp/features/finance/models/finance_asset_models.dart';
 import 'package:uten_imp/features/finance/repositories/finance_asset_category_repository.dart';

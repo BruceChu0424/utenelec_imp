@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
-import '../models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/my_department.dart';
 
 class MyDepartmentRepository {

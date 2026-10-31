@@ -26,7 +26,7 @@ import 'package:uten_imp/features/admin/widgets/admin_permission_templates.dart'
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/admin/widgets/admin_permission_transfer_actions.dart';
 import 'package:uten_imp/features/admin/widgets/permission_batch_dialog.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';

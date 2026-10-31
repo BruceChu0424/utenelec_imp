@@ -6,10 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/app_router.dart';
 import 'package:uten_imp/core/router/business_window_host.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/shared/windows/business_windows.dart';
 
@@ -19,6 +21,9 @@ void main() {
     (tester) async {
       final container = ProviderContainer(
         overrides: [
+          // These synthetic routes exercise hosting; the real route policy is
+          // verified separately, including revoked effective permissions.
+          businessLocationAllowedProvider.overrideWith((ref, location) => true),
           sensitiveReadBoundaryProvider.overrideWithValue(
             SensitiveReadBoundary(
               identity: null,
@@ -119,6 +124,7 @@ void main() {
       final liveBoundary = StateProvider((ref) => boundary);
       final container = ProviderContainer(
         overrides: [
+          businessLocationAllowedProvider.overrideWith((ref, location) => true),
           sensitiveReadBoundaryProvider.overrideWith(
             (ref) => ref.watch(liveBoundary),
           ),
@@ -193,6 +199,92 @@ void main() {
       await tester.pumpAndSettle();
       expect(windows.windows, isEmpty);
       expect(find.byType(UtenFloatingWindow), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a stale window action and direct open cannot bypass revocation',
+    (tester) async {
+      const location = '/basicinfo/goods/saved-record';
+      final api = ApiClient(Dio());
+      SensitiveReadBoundary boundary(Set<String> permissions) =>
+          SensitiveReadBoundary(
+            identity: null,
+            api: api,
+            permissions: permissions,
+            superAdmin: true,
+          );
+      final liveBoundary = StateProvider((ref) => boundary({Perm.goodsView}));
+      final container = ProviderContainer(
+        overrides: [
+          sensitiveReadBoundaryProvider.overrideWith(
+            (ref) => ref.watch(liveBoundary),
+          ),
+          businessWindowRouterProvider.overrideWith((ref, window) {
+            final router = GoRouter(
+              initialLocation: location,
+              routes: [
+                GoRoute(
+                  path: location,
+                  builder: (_, _) =>
+                      const Scaffold(body: Text('Authorized record')),
+                ),
+              ],
+            );
+            ref.onDispose(router.dispose);
+            return router;
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = GoRouter(
+        initialLocation: location,
+        routes: [
+          GoRoute(
+            path: location,
+            builder: (_, _) => const BusinessWindowHost(
+              child: Scaffold(
+                appBar: UtenAppBar(
+                  title: '资料',
+                  showPagePermissionAction: false,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final action = find.byKey(const Key('business-open-window'));
+      final staleAction = tester
+          .widget<UtenAppBarActionButton>(action)
+          .onPressed!;
+      final windows = container.read(businessWindowsProvider);
+      container.read(liveBoundary.notifier).state = boundary({
+        Perm.productionWhereUsedView,
+      });
+      await tester.pumpAndSettle();
+      await Future<void>.sync(staleAction);
+      expect(windows.open(location, 'Saved callback'), isFalse);
+      expect(windows.windows, isEmpty);
+      expect(action, findsNothing);
+      container.read(liveBoundary.notifier).state = boundary({Perm.goodsView});
+      await tester.pumpAndSettle();
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(windows.windows, hasLength(1));
+      expect(find.text('Authorized record'), findsOneWidget);
+      container.read(liveBoundary.notifier).state = boundary({});
+      await tester.pumpAndSettle();
+      expect(windows.windows, isEmpty);
+      expect(find.text('Authorized record'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

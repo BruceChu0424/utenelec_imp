@@ -1,6 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog_modules.dart';
 import 'package:uten_imp/core/network/server_config.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -214,6 +214,75 @@ void main() {
   });
 
   for (final compact in [false, true]) {
+    testWidgets(
+      'removing a permission rule keeps other drafts isolated and cancel discards it compact=$compact',
+      (tester) async {
+        final state = await _mount(
+          tester,
+          size: compact ? const Size(390, 844) : const Size(1200, 1000),
+          dark: compact,
+          scale: compact ? 1.5 : 1,
+        );
+        final repo = _Repository()
+          ..existing = const CompanyFileAccess(
+            inheritPermissions: false,
+            version: 4,
+            rules: [
+              CompanyFileAccessRule(
+                subjectType: 'USER',
+                subjectId: 'alice',
+                subjectName: '张明',
+              ),
+              CompanyFileAccessRule(
+                subjectType: 'DEPARTMENT',
+                subjectId: 'hr',
+                subjectName: '人事部',
+              ),
+            ],
+          );
+        CompanyFileAccessDialog dialog() => CompanyFileAccessDialog(
+          entry: const CompanyFile(
+            id: 'folder',
+            name: '财务操作手册',
+            kind: 'FOLDER',
+            version: 4,
+            allowedActions: {'view', 'manage_permissions'},
+          ),
+          repository: repo,
+          scope: state.scope,
+          boundary: state.container.read(_identity),
+        );
+        final result = _show<bool>(tester, dialog());
+        await tester.pumpAndSettle();
+        final l = AppLocalizations.of(
+          tester.element(find.byType(CompanyFileAccessDialog)),
+        );
+        await _tap(tester, find.text('张明'));
+        expect(find.byType(FilterChip).hitTestable(), findsWidgets);
+        await _tap(tester, find.byTooltip(l.companyFilesRemoveRule).first);
+        expect(find.byType(CompanyFileAccessDialog), findsOneWidget);
+        expect(find.text('张明'), findsNothing);
+        expect(find.text('人事部'), findsOneWidget);
+        expect(find.byType(FilterChip).hitTestable(), findsNothing);
+        expect(repo.saves, 0);
+        await _tap(
+          tester,
+          find.widgetWithText(TextButton, l.companyFilesCancel),
+        );
+        expect(await result, isNull);
+        expect(repo.saves, 0);
+        _show<bool>(tester, dialog());
+        await tester.pumpAndSettle();
+        expect(find.text('张明'), findsOneWidget);
+        expect(find.text('人事部'), findsOneWidget);
+        await _tap(tester, find.byTooltip(l.companyFilesRemoveRule).first);
+        await _tap(tester, find.text(l.companyFilesSave));
+        expect(repo.savedRules!.map((rule) => rule.subjectId), ['hr']);
+        expect(repo.savedRules!.single.actions, {'view', 'download'});
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       'permission details collapse without losing edits compact=$compact',
       (tester) async {

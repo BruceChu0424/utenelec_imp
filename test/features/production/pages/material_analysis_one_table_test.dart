@@ -30,7 +30,7 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/models/material_quantity_apportionment.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';

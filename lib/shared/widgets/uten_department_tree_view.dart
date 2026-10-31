@@ -8,11 +8,11 @@
 // 两个使用场景：
 // - 选择器抽屉：mode=single/multi + showCompanyRoot=false + 默认可选层级谓词
 // - 部门管理页：mode=none + showCompanyRoot=true + 全部可点 + trailingBuilder
-import '../../../components/feedback/uten_context_menu.dart';
-import '../../../core/theme/uten_tokens.dart';
+import '../../components/feedback/uten_context_menu.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
-import '../../../shared/widgets/uten_hierarchy_tree_view.dart';
+import 'uten_hierarchy_tree_view.dart';
 import '../models/department_node.dart';
 
 /// 树的选择语义(与分类树同一枚举)。

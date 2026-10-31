@@ -41,6 +41,7 @@ import '../../../shared/paging/paged_query_identity.dart';
 import '../../../shared/paging/scoped_paged_read.dart'
     show pagedReadAccessDenied;
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/windows/business_windows.dart';
 import '../../../shared/stock_ledger/material_trace_models.dart';
 import '../../../shared/stock_ledger/material_trace_repository.dart';
 import '../../../shared/stock_ledger/widgets/goods_production_trace_view.dart';
@@ -558,13 +559,14 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     final epoch = _readEpoch;
     try {
       final permissions = ref.read(currentPermissionsProvider);
-      if (!relationOnly &&
-          (ref.read(isSuperAdminProvider) ||
-              permissions.contains(Perm.goodsView))) {
-        final id = (row['__productId'] ?? row['__srcId'])?.toString() ?? '';
-        if (id.isEmpty) return;
+      final id = (row['__productId'] ?? row['__srcId'])?.toString() ?? '';
+      final goodsLocation = RoutePath.basicinfoGoodsDetail(id, tab: 'bom');
+      final canViewGoods =
+          id.isNotEmpty &&
+          ref.read(businessLocationAllowedProvider(goodsLocation));
+      if (!relationOnly && canViewGoods) {
         await _navigation.push<void>(
-          RoutePath.basicinfoGoodsDetail(id, tab: 'bom'),
+          goodsLocation,
           extra: GoodsDetailSequence(
             _tableRows.items.map(
               (item) =>
@@ -580,7 +582,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         row: row,
         material: loadedQuery.material,
         historyRangeLabel: _historyRangeLabel(loadedQuery),
-        canViewGoods: permissions.contains(Perm.goodsView),
+        canViewGoods: canViewGoods,
         canViewStock: permissions.contains(Perm.stockView),
         readBoundary: boundary,
       );
@@ -599,12 +601,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       if (detail == null) return;
       // 货品详情整页 (tab=bom 组装信息直达 BOM)；「出入库流水」按钮
       // 由详情页按 stock:view 权限自行决定是否显示。
-      await _navigation.push(
-        RoutePath.basicinfoGoodsDetail(
-          detail.id,
-          tab: result.link == WhereUsedProductLink.bom ? 'bom' : 'basic',
-        ),
+      final destination = RoutePath.basicinfoGoodsDetail(
+        detail.id,
+        tab: result.link == WhereUsedProductLink.bom ? 'bom' : 'basic',
       );
+      if (!ref.read(businessLocationAllowedProvider(destination))) return;
+      await _navigation.push(destination);
     } finally {
       _openingDetail = false;
     }
@@ -1530,10 +1532,14 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           onTap: () => _openProductDetail(row),
           enabled:
               matches &&
-              (ref.read(isSuperAdminProvider) ||
-                  ref
-                      .read(currentPermissionsProvider)
-                      .contains(Perm.goodsView)),
+              ref.read(
+                businessLocationAllowedProvider(
+                  RoutePath.basicinfoGoodsDetail(
+                    (row['__productId'] ?? row['__srcId'])?.toString() ?? '',
+                    tab: 'bom',
+                  ),
+                ),
+              ),
         ),
         UtenMenuItem(
           label: '关系依据',

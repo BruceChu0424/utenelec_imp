@@ -4,10 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/models/position.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/department/repositories/position_repository.dart';
 import 'package:uten_imp/features/department/widgets/uten_position_entry_picker.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
+import 'package:uten_imp/shared/widgets/uten_department_picker.dart';
 
 void main() {
   testWidgets('未选部门时岗位字段禁用', (tester) async {

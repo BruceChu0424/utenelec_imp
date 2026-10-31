@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/router/business_window_host.dart';
+import 'package:uten_imp/core/router/route_access_policy.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 
 GoRouter _router() => GoRouter(
@@ -40,6 +43,55 @@ Widget _app(
 );
 
 void main() {
+  test(
+    'business links require a known route and effective goods authority',
+    () {
+      final goods = RoutePath.basicinfoGoodsDetail('saved-record', tab: 'bom');
+      for (final superAdmin in [false, true]) {
+        expect(
+          businessLocationAllowedFor({}, superAdmin, RouteName.basicinfo),
+          isFalse,
+        );
+        expect(
+          businessLocationAllowedFor(
+            {Perm.goodsView},
+            superAdmin,
+            RouteName.basicinfo,
+          ),
+          isTrue,
+        );
+        expect(
+          businessLocationAllowedFor(
+            {Perm.productionWhereUsedView},
+            superAdmin,
+            goods,
+          ),
+          isFalse,
+        );
+        expect(
+          businessLocationAllowedFor({Perm.goodsView}, superAdmin, goods),
+          isTrue,
+        );
+        expect(
+          businessLocationAllowedFor(
+            {Perm.goodsView},
+            superAdmin,
+            '/unregistered-business-route',
+          ),
+          isFalse,
+        );
+        expect(
+          businessLocationAllowedFor(
+            {Perm.goodsView},
+            superAdmin,
+            'https://example.invalid/basicinfo/goods/x',
+          ),
+          isFalse,
+        );
+      }
+    },
+  );
+
   testWidgets('window navigation and refresh never write browser history', (
     tester,
   ) async {

@@ -24,7 +24,7 @@ import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/layout/uten_ancestor_row_window.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
-import 'package:uten_imp/features/department/repositories/department_repository.dart';
+import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';

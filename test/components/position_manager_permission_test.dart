@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/department/models/position.dart';
 import 'package:uten_imp/features/department/repositories/position_repository.dart';
 import 'package:uten_imp/features/department/widgets/position_manager_sheet.dart';

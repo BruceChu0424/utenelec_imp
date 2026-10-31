@@ -545,16 +545,21 @@ List<Map<String, dynamic>> _richActualRows() => [
 ];
 
 class _GoodsRepository extends Fake implements GoodsRepository {
+  final detailCalls = <String>[];
+
   @override
-  Future<GoodsDetail> detail(String id) async => GoodsDetail(
-    id: id,
-    code: 'CP-001',
-    name: '墙壁插座成品',
-    categoryName: '插座',
-    status: '使用',
-    sourceType: '自制',
-    spec: '10A',
-  );
+  Future<GoodsDetail> detail(String id) async {
+    detailCalls.add(id);
+    return GoodsDetail(
+      id: id,
+      code: 'CP-001',
+      name: '墙壁插座成品',
+      categoryName: '插座',
+      status: '使用',
+      sourceType: '自制',
+      spec: '10A',
+    );
+  }
 }
 
 class _BomRepository extends Fake implements GoodsBomRepository {
@@ -580,6 +585,8 @@ Future<void> _pumpSimplePage(
   required Size size,
   double textScale = 1,
   Set<String>? permissions,
+  GoodsRepository? goodsRepository,
+  bool superAdmin = false,
   ThemeData? theme,
   PlatformTableLayout? tableLayout,
 }) async {
@@ -587,6 +594,8 @@ Future<void> _pumpSimplePage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (goodsRepository != null)
+          goodsRepositoryProvider.overrideWithValue(goodsRepository),
         if (tableLayout != null)
           platformTableLayoutProvider(
             _reportTableKey,
@@ -600,7 +609,7 @@ Future<void> _pumpSimplePage(
         authenticatedScopeProvider.overrideWith(
           (ref) => ref.watch(_liveIdentity),
         ),
-        isSuperAdminProvider.overrideWithValue(false),
+        isSuperAdminProvider.overrideWithValue(superAdmin),
       ],
       child: RepaintBoundary(
         key: _captureBoundary,
@@ -1951,6 +1960,39 @@ void main() {
       expect(api.lastQuery?['dateTo'], ChinaDateTime.formatDate(today));
     },
   );
+  for (final superAdmin in [false, true]) {
+    testWidgets(
+      'where-used-only cannot read goods through row navigation (admin=$superAdmin)',
+      (tester) async {
+        final goods = _GoodsRepository();
+        await _pumpSimplePage(
+          tester,
+          _WhereUsedApi(),
+          size: const Size(1400, 900),
+          permissions: {Perm.productionWhereUsedView},
+          goodsRepository: goods,
+          superAdmin: superAdmin,
+        );
+        await _selectMaterial(tester);
+        await tester.tap(find.text('墙壁插座成品'));
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.text('墙壁插座成品'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('where-used-product-detail-dialog')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('where-used-open-bom')), findsNothing);
+        expect(
+          find.byKey(const Key('where-used-open-goods-profile')),
+          findsNothing,
+        );
+        expect(goods.detailCalls, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'result row opens source detail, BOM, and stock link without losing state',
     (tester) async {

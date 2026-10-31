@@ -11,17 +11,17 @@
 // 底部「取消/确定」确认；任何入口均不可跳过确认。
 // 路径显示：从第一个可选组织节点起用「-」连接。
 // 树渲染由全站共享的 UtenDepartmentTreeView 提供。
-import '../../../core/theme/uten_tokens.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/feedback/uten_toast.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../components/inputs/uten_table_cell_spec.dart';
-import '../../../components/layout/uten_adaptive_panel.dart';
-import '../../../components/layout/uten_panel_header.dart';
-import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../components/feedback/uten_toast.dart';
+import '../../components/inputs/uten_field_message.dart';
+import '../../components/inputs/uten_input_decoration.dart';
+import '../../components/inputs/uten_table_cell_spec.dart';
+import '../../components/layout/uten_adaptive_panel.dart';
+import '../../components/layout/uten_panel_header.dart';
+import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
 import 'uten_department_tree_view.dart';

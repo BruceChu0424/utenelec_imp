@@ -15,7 +15,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
+import 'package:uten_imp/shared/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';

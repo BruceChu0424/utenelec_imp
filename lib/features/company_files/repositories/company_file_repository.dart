@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 

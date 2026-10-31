@@ -2,7 +2,7 @@
 // 验证 API 模型 fromJson 与后端 JSON 字段对齐。
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 

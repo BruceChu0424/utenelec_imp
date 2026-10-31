@@ -38,11 +38,11 @@ import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
-import '../models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 import '../models/my_department.dart';
 import '../providers/my_department_providers.dart';
 import '../repositories/my_department_repository.dart';
-import '../widgets/uten_department_tree_view.dart';
+import '../../../shared/widgets/uten_department_tree_view.dart';
 
 class MyDepartmentPage extends ConsumerStatefulWidget {
   const MyDepartmentPage({super.key});

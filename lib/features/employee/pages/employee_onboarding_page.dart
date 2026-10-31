@@ -50,7 +50,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/drafts/people_form_draft_values.dart';
 import '../../department/models/position.dart';
 import '../../department/widgets/uten_position_entry_picker.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../models/employee_id_types.dart';
 import '../repositories/employee_picker_candidates.dart';

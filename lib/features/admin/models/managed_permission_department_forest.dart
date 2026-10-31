@@ -1,6 +1,6 @@
 import '../../../shared/auth/page_permission_delegation_models.dart';
 
-import '../../department/models/department_node.dart';
+import '../../../shared/models/department_node.dart';
 
 /// 把服务端按权限裁剪后的扁平组织范围还原为人事部门树组件可直接使用的 forest。
 ///

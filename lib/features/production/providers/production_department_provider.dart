@@ -1,8 +1,8 @@
 // 生产组织树 provider：供生产计划/日报编辑页的车间和人员选择器使用。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../department/models/department_node.dart';
-import '../../department/repositories/department_repository.dart';
+import '../../../shared/models/department_node.dart';
+import '../../../shared/repositories/department_repository.dart';
 
 /// 生产部子车间列表（不含生产部本身，避免误选一级部门）。
 /// 树加载前为空（picker 回退默认整树），加载后只显示车间。

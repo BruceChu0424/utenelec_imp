@@ -8,7 +8,7 @@ import '../../../components/feedback/uten_motion.dart';
 import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../models/workforce_overview.dart';
+import '../../../shared/models/workforce_overview.dart';
 
 class OrganizationWorkforceOverviewCard extends StatefulWidget {
   const OrganizationWorkforceOverviewCard({

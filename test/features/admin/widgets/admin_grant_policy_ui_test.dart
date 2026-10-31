@@ -16,7 +16,7 @@ import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_baseline_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
-import 'package:uten_imp/features/department/models/department_node.dart';
+import 'package:uten_imp/shared/models/department_node.dart';
 import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';

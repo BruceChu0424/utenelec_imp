@@ -12,7 +12,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../models/permission_configuration.dart';
 import '../repositories/admin_repository.dart';

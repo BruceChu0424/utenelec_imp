@@ -7,7 +7,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';

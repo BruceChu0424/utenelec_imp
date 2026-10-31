@@ -21,6 +21,7 @@ import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.TemporaryPasswordGenerator;
+import com.uten.imp.security.PasswordPolicy;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -170,6 +171,49 @@ class AccountSupportBoundaryTest {
                 ApiException.class,
                 () -> support.requireAccountSupportTarget(target));
         verify(currentUser, never()).requireId();
+    }
+
+    @Test
+    void onlyCredentialSupportAllowsAnotherSuperAdministratorAndNeverSelfOrRoutineActions() {
+        AdminUserSupport support=new AdminUserSupport(users,currentUser,credentialPolicy());
+        UserAccount target=new UserAccount();target.setSuperAdmin(true);target.setEmployeeId(UUID.randomUUID());
+        AuthUser administrator=superActor();
+        when(currentUser.requireId()).thenReturn(administrator.getId());
+        when(currentUser.get()).thenReturn(Optional.of(administrator));
+        assertTrue(support.canResetPasswordTarget(target));
+        assertFalse(support.canSupportTarget(target));
+        support.requirePasswordResetAllowed(target);
+        UUID employeeId=target.getEmployeeId();target.setEmployeeId(null);
+        assertFalse(support.canResetPasswordTarget(target));
+        target.setEmployeeId(employeeId);
+        assertThrows(ApiException.class,()->support.requireAccountSupportTarget(target));
+        target.setId(administrator.getId());
+        assertFalse(support.canResetPasswordTarget(target));
+        assertThrows(ApiException.class,()->support.requirePasswordResetAllowed(target));
+        target.setId(UUID.randomUUID());
+        when(currentUser.get()).thenReturn(Optional.of(actor()));
+        assertFalse(support.canResetPasswordTarget(target));
+        assertThrows(ApiException.class,()->support.requirePasswordResetAllowed(target));
+        verify(permissionResolver,never()).permsOf(any());
+    }
+
+    @Test
+    void explicitTemporaryPasswordKeepsItsOriginalValueAndSkipsTheGenerator() {
+        AdminUserSupport support=mock(AdminUserSupport.class);
+        UserAccount target=new UserAccount();target.setEmployeeId(UUID.randomUUID());
+        lock(target,activeEmployee());
+        when(support.requireCurrentUser()).thenReturn(actor());
+        String chosen="  输入的临时密码  ";
+        when(encoder.encode(chosen)).thenReturn("argon2-hash");
+        when(users.bumpAuthVersion(target.getId())).thenReturn(1);
+        when(settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)).thenReturn(24);
+        assertEquals(chosen,service(support).resetPassword(target.getId(),chosen));
+        verify(passwords,never()).generate();
+        assertTrue(target.isMustChangePassword());
+        assertNotNull(target.getTempPasswordExpiresAt());
+        verify(refreshTokens).revokeAllByUserId(target.getId());
+        verify(sessions).revokeAllForUser(target.getId(),AuthSessionService.REASON_PASSWORD_RESET);
+        verify(accountNotice).notifyAccountHolder(eq(target.getId()),any(),org.mockito.ArgumentMatchers.argThat(text->!text.contains(chosen)));
     }
 
     @Test
@@ -343,6 +387,7 @@ class AccountSupportBoundaryTest {
     void highRiskTargetCanOnlyBeResetBySuperAdministrator() {
         AdminUserSupport support = new AdminUserSupport(users, currentUser, credentialPolicy());
         UserAccount target = new UserAccount();
+        target.setEmployeeId(UUID.randomUUID());
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(currentUser.get()).thenReturn(Optional.of(actor()));
         // 付款审批人: 账号支持人员重置后拿到明文临时密码就能冒充他付款 (security-02 评审补例)
@@ -360,6 +405,7 @@ class AccountSupportBoundaryTest {
     void superAdministratorMayResetHighRiskTarget() {
         AdminUserSupport support = new AdminUserSupport(users, currentUser, credentialPolicy());
         UserAccount target = new UserAccount();
+        target.setEmployeeId(UUID.randomUUID());
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(currentUser.get()).thenReturn(Optional.of(superActor()));
 
@@ -372,6 +418,7 @@ class AccountSupportBoundaryTest {
     void ordinaryTargetMayBeResetByAccountSupport() {
         AdminUserSupport support = new AdminUserSupport(users, currentUser, credentialPolicy());
         UserAccount target = new UserAccount();
+        target.setEmployeeId(UUID.randomUUID());
         when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(currentUser.get()).thenReturn(Optional.of(actor()));
         when(permissionResolver.permsOf(target)).thenReturn(java.util.Set.of("notice:read", "expense:apply"));
@@ -655,7 +702,7 @@ class AccountSupportBoundaryTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "super-admin",
-                java.util.Set.of(),
+                java.util.Set.of("account:support"),
                 false,
                 true,
                 true);
@@ -667,7 +714,7 @@ class AccountSupportBoundaryTest {
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 "hr-support",
-                java.util.Set.of(),
+                java.util.Set.of("account:support"),
                 false,
                 true,
                 false);
@@ -681,6 +728,7 @@ class AccountSupportBoundaryTest {
                 refreshTokens,
                 encoder,
                 passwords,
+                new PasswordPolicy(),
                 tx,
                 support,
                 accountLifecycle,
@@ -688,7 +736,8 @@ class AccountSupportBoundaryTest {
                 sessions,
                 settings,
                 accountNotice,
-                mock(AccountLifecycleCoordinator.class));
+                mock(AccountLifecycleCoordinator.class),
+                mock(com.uten.imp.security.CurrentStaffWriteGuard.class));
     }
 
     private AdminAccountLifecycleLock.LockedTarget lock(

@@ -201,6 +201,9 @@ public class EmployeeQueryService {
         // Reopening reuses their UUID; ordinary disabled accounts remain explicitly disabled.
         d.setAccountStatus(account == null || account.isDeleted() ? null : account.getStatus());
         d.setAccountDeleted(account != null && account.isDeleted());
+        d.setPasswordResetSupportAllowed(currentUser.get().map(actor ->
+                com.uten.imp.features.auth.CredentialIssuancePolicy.passwordResetSupportAllowed(actor, account))
+                .orElse(false));
         d.setAccountSupportAllowed(currentUser.get().map(actor ->
                 !actor.isVisitor()
                         && !actor.isMustChangePassword()

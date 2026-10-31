@@ -62,8 +62,21 @@ class AdminUserSupport {
      * 与补开账号同一判定 ({@link CredentialIssuancePolicy})。
      */
     void requirePasswordResetAllowed(UserAccount target) {
-        requireAccountSupportTarget(target);
+        if (currentUser.requireId().equals(target.getId())) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "不能对本人设置临时密码，请使用修改本人密码");
+        }
+        var actor = requireCurrentUser();
+        if (!CredentialIssuancePolicy.passwordResetSupportAllowed(actor, target)) {
+            throw new ApiException(ErrorCode.FORBIDDEN, target.isSuperAdmin()
+                    ? "只有超级管理员可为其他超级管理员设置临时密码"
+                    : "当前账号不能为此目标设置临时密码");
+        }
         credentialIssuance.requireCanIssueCredentials(target);
+    }
+
+    boolean canResetPasswordTarget(UserAccount target) {
+        return currentUser.get().map(actor -> CredentialIssuancePolicy.passwordResetSupportAllowed(actor, target))
+                .orElse(false);
     }
 
     /** Authorization policy is a super-admin-only boundary, independent of JWT permission claims. */

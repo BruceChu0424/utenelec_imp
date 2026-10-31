@@ -274,12 +274,13 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         JsonNode relogin = login(target.loginAccount(), temporary);
         assertTrue(relogin.path("mustChangePassword").asBoolean());
 
-        // 自定临时密码的旧请求体被忽略: 仍然只能拿到系统生成的密码
+        // Explicit administrator input now uses the same reset lifecycle and exact password value.
         String again = stepUp(admin, ADMIN_PASSWORD);
         MvcResult custom = mvc.perform(json(post("/api/admin/users/" + target.userId() + "/reset-password"),
                 Map.of("temporaryPassword", "Chosen-By-Admin-1"), admin).header(STEP_UP_HEADER, again)).andReturn();
         assertEquals(200, custom.getResponse().getStatus(), body(custom));
-        assertNotEquals("Chosen-By-Admin-1", json(custom).path("temporaryPassword").asText());
+        assertEquals("Chosen-By-Admin-1", json(custom).path("temporaryPassword").asText());
+        assertTrue(login(target.loginAccount(), "Chosen-By-Admin-1").path("mustChangePassword").asBoolean());
     }
 
     @Test

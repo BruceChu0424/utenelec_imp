@@ -95,6 +95,8 @@ public class EmployeeDetail {
     private boolean accountDeleted;
     /** Target eligibility for this actor; endpoints still enforce current permissions and step-up. */
     private Boolean accountSupportAllowed;
+    /** Separate credential eligibility; does not enable account lock/disable actions. */
+    private Boolean passwordResetSupportAllowed;
 
     // 嵌套
     private List<EmergencyContactDto> emergencyContacts;

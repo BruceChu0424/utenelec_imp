@@ -58,6 +58,21 @@ class JwtAuthorizationVersionTest {
     }
 
     @Test
+    void unverifiedRequestCannotSupplyOrRetainInternalWriteAuthority() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/admin/users/test/reset-password");
+        String attribute = VerifiedStaffRequest.class.getName();
+        request.setAttribute(attribute, new VerifiedStaffRequest.Identity(
+                UUID.randomUUID(), UUID.randomUUID(), SESSION, 5, 9));
+        request.addHeader(attribute, "verified");
+        request.addHeader("av", "5");
+        request.addHeader("ae", "9");
+        request.setContent("{\"av\":5,\"ae\":9}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        filter.doFilter(request, new MockHttpServletResponse(), mock(FilterChain.class));
+        assertNull(request.getAttribute(attribute));
+        verifyNoInteractions(sessions, staffAuthorityResolver);
+    }
+
+    @Test
     void rejectsAccessTokenWhenDirectAuthorizationVersionChanged() throws Exception {
         UUID userId = UUID.randomUUID();
         when(jwtService.parse("stale-token")).thenReturn(claims(userId, 4, 9));
@@ -128,6 +143,8 @@ class JwtAuthorizationVersionTest {
         assertEquals(
                 sessionId,
                 request.getAttribute(AuditRequestContext.SESSION_ID_ATTRIBUTE));
+        assertEquals(new VerifiedStaffRequest.Identity(userId, employeeId, sessionId, 5, 9),
+                request.getAttribute(VerifiedStaffRequest.class.getName()));
     }
 
     @Test

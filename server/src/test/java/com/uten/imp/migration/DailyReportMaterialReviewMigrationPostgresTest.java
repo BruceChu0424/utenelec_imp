@@ -27,6 +27,47 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
     private static final List<String> V885_HISTORY_TABLES=List.of(
             "master_operation_history","master_operation_history_rows","master_operation_history_events");
+    // Independently declared V973/V974 facts and V976 FK indexes. V971/V972/V975
+    // add no table/index objects. V974 changes only the eight existing source
+    // uniqueness predicates so an audited REVERSED registration can be replaced.
+    private static final List<String> V973_TO_V976_TABLE_ADDITIONS=List.of(
+            "finance_report_line_confirmations","finance_asset_recognition_reversals");
+    private static final Map<String,String> V973_TO_V976_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("finance_report_line_confirmations_pkey","CREATE UNIQUE INDEX finance_report_line_confirmations_pkey ON public.finance_report_line_confirmations USING btree (line_key)"),
+            Map.entry("finance_asset_recognition_reversals_pkey","CREATE UNIQUE INDEX finance_asset_recognition_reversals_pkey ON public.finance_asset_recognition_reversals USING btree (id)"),
+            Map.entry("ux_asset_pending_recognition_reversal","CREATE UNIQUE INDEX ux_asset_pending_recognition_reversal ON public.finance_asset_recognition_reversals USING btree (object_type, object_id) WHERE (status = ANY (ARRAY['SUBMITTED'::text, 'APPROVED'::text]))"),
+            Map.entry("ux_fixed_asset_opening_voucher","CREATE UNIQUE INDEX ux_fixed_asset_opening_voucher ON public.fixed_assets USING btree (opening_voucher_id) WHERE ((opening_voucher_id IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text) AND (NOT is_deleted))"),
+            Map.entry("idx_fixed_assets_recognition_voucher","CREATE INDEX idx_fixed_assets_recognition_voucher ON public.fixed_assets USING btree (recognition_voucher_id)"),
+            Map.entry("idx_deferred_expenses_recognition_voucher","CREATE INDEX idx_deferred_expenses_recognition_voucher ON public.deferred_expenses USING btree (recognition_voucher_id)"),
+            Map.entry("idx_asset_recognition_reversal_original_voucher","CREATE INDEX idx_asset_recognition_reversal_original_voucher ON public.finance_asset_recognition_reversals USING btree (original_voucher_id)"),
+            Map.entry("idx_asset_recognition_reversal_reversal_voucher","CREATE INDEX idx_asset_recognition_reversal_reversal_voucher ON public.finance_asset_recognition_reversals USING btree (reversal_voucher_id)"));
+    private record IndexReplacement(String before,String after) { }
+    private static final Map<String,IndexReplacement> V974_SOURCE_INDEX_REPLACEMENTS=Map.ofEntries(
+            Map.entry("ux_fixed_assets_active_source_line",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_source_line ON public.fixed_assets USING btree (source_type, source_id, source_line_ref) WHERE ((is_deleted = false) AND (source_type IS NOT NULL) AND (source_id IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_source_line ON public.fixed_assets USING btree (source_type, source_id, source_line_ref) WHERE ((is_deleted = false) AND (source_type IS NOT NULL) AND (source_id IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_fixed_assets_active_external_source_line",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_external_source_line ON public.fixed_assets USING btree (source_type, source_ref, source_line_ref) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_external_source_line ON public.fixed_assets USING btree (source_type, source_ref, source_line_ref) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_fixed_assets_active_source_line_normalized",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_source_line_normalized ON public.fixed_assets USING btree (upper(btrim((source_type)::text)), source_id, lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NOT NULL) AND (source_type IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_source_line_normalized ON public.fixed_assets USING btree (upper(btrim((source_type)::text)), source_id, lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NOT NULL) AND (source_type IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_fixed_assets_active_external_source_line_normalized",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_external_source_line_normalized ON public.fixed_assets USING btree (upper(btrim((source_type)::text)), lower(btrim(source_ref)), lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_fixed_assets_active_external_source_line_normalized ON public.fixed_assets USING btree (upper(btrim((source_type)::text)), lower(btrim(source_ref)), lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_deferred_expenses_active_source_line",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_source_line ON public.deferred_expenses USING btree (source_type, source_id, source_line_ref) WHERE ((is_deleted = false) AND (source_type IS NOT NULL) AND (source_id IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_source_line ON public.deferred_expenses USING btree (source_type, source_id, source_line_ref) WHERE ((is_deleted = false) AND (source_type IS NOT NULL) AND (source_id IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_deferred_expenses_active_external_source_line",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_external_source_line ON public.deferred_expenses USING btree (source_type, source_ref, source_line_ref) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_external_source_line ON public.deferred_expenses USING btree (source_type, source_ref, source_line_ref) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_deferred_expenses_active_source_line_normalized",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_source_line_normalized ON public.deferred_expenses USING btree (upper(btrim((source_type)::text)), source_id, lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NOT NULL) AND (source_type IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_source_line_normalized ON public.deferred_expenses USING btree (upper(btrim((source_type)::text)), source_id, lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NOT NULL) AND (source_type IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")),
+            Map.entry("ux_deferred_expenses_active_external_source_line_normalized",new IndexReplacement(
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_external_source_line_normalized ON public.deferred_expenses USING btree (upper(btrim((source_type)::text)), lower(btrim(source_ref)), lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL))",
+                    "CREATE UNIQUE INDEX ux_deferred_expenses_active_external_source_line_normalized ON public.deferred_expenses USING btree (upper(btrim((source_type)::text)), lower(btrim(source_ref)), lower(btrim(source_line_ref))) WHERE ((is_deleted = false) AND (source_id IS NULL) AND (source_type IS NOT NULL) AND (source_ref IS NOT NULL) AND (source_line_ref IS NOT NULL) AND ((lifecycle_status)::text <> 'REVERSED'::text))")));
+
     // Independent V938/V939 CREATE TABLE/INDEX declarations: permanent task
     // identity and authorization lineage, not additional business fact tables.
     private static final List<String> V938_TO_V939_TABLE_ADDITIONS=List.of(
@@ -309,6 +350,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         V938_TO_V939_TABLE_ADDITIONS.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(24, V949_TO_V968_TABLE_ADDITIONS.size());
         V949_TO_V968_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
+        V973_TO_V976_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
@@ -380,6 +422,14 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(53, V949_TO_V968_INDEX_ADDITIONS.size());
         V949_TO_V968_INDEX_ADDITIONS.forEach((name, definition) -> assertNull(expectedIndexes.put(name, definition),
                 "A reviewed V949-V968 index addition must not replace an existing index: " + name));
+        assertEquals(8,V973_TO_V976_INDEX_ADDITIONS.size());
+        V973_TO_V976_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A declared finance audit/voucher index must not replace an existing index: "+name));
+        assertEquals(8,V974_SOURCE_INDEX_REPLACEMENTS.size());
+        V974_SOURCE_INDEX_REPLACEMENTS.forEach((name,replacement)->{
+            assertEquals(replacement.before(),expectedIndexes.remove(name),"The exact pre-V974 source uniqueness must be present: "+name);
+            assertNull(expectedIndexes.put(name,replacement.after()));
+        });
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {
